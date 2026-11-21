@@ -135,54 +135,50 @@ pub fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `encodeString(x, width, quote, na.encode, justify)`. Tag the two
 /// trailing arguments by name so both shapes resolve identically.
 pub fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut cell = crate::sexp::accessors::CDR(args);
-        let mut index = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            if index >= 2 {
-                let label = if index == 2 { "justify" } else { "na.encode" };
-                let cstring = std::ffi::CString::new(label).unwrap_or_default();
-                crate::sexp::accessors::SETTAG(
-                    cell,
-                    crate::sexp::symbol::Rf_install(cstring.as_ptr()),
-                );
-            }
-            cell = crate::sexp::accessors::CDR(cell);
-            index += 1;
+    let mut cell = crate::sexp::accessors::CDR(args);
+    let mut index = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        if index >= 2 {
+            let label = if index == 2 { "justify" } else { "na.encode" };
+            let cstring = std::ffi::CString::new(label).unwrap_or_default();
+            crate::sexp::accessors::SETTAG(
+                cell,
+                install_cstr(&cstring),
+            );
         }
-        do_encodeString(call, op, args, rho)
+        cell = crate::sexp::accessors::CDR(cell);
+        index += 1;
     }
+    do_encodeString(call, op, args, rho)
 }
 
 /// GNU `Encoding(x)` — per-element "unknown"/"latin1"/"UTF-8"/"bytes".
 pub fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "a character vector argument expected",
-            );
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _result = protect(result);
-        for i in 0..n {
-            let el = STRING_ELT(x, i);
-            let label = if crate::sexp::accessors::IS_BYTES(el) != 0 {
-                "bytes"
-            } else if crate::sexp::accessors::IS_LATIN1(el) != 0 {
-                "latin1"
-            } else if crate::sexp::accessors::IS_UTF8(el) != 0 {
-                "UTF-8"
-            } else {
-                "unknown"
-            };
-            let cstr = CString::new(label).unwrap_or_default();
-            SET_STRING_ELT(result, i, Rf_mkChar(cstr.as_ptr()));
-        }
-        result
+    let x = CAR(args);
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "a character vector argument expected",
+        );
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _result = protect(result);
+    for i in 0..n {
+        let el = STRING_ELT(x, i);
+        let label = if crate::sexp::accessors::IS_BYTES(el) != 0 {
+            "bytes"
+        } else if crate::sexp::accessors::IS_LATIN1(el) != 0 {
+            "latin1"
+        } else if crate::sexp::accessors::IS_UTF8(el) != 0 {
+            "UTF-8"
+        } else {
+            "unknown"
+        };
+        let cstr = CString::new(label).unwrap_or_default();
+        SET_STRING_ELT(result, i, mk_char_cstr(&cstr));
+    }
+    result
 }
 
 /// GNU `Encoding<-` — mark CHARSXP encodings, recycling `value`.
@@ -268,7 +264,7 @@ pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
         }
         if locale.is_empty() {
-            let cat = Rf_mkString(c"LC_CTYPE".as_ptr());
+            let cat = mk_string_cstr(c"LC_CTYPE");
             let _c = protect(cat);
             let got = crate::mainutils::essentials::do_Sys_getlocale(
                 std::ptr::null_mut(),

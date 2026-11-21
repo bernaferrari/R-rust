@@ -42,48 +42,46 @@ fn time_value(value: SEXP, default: f64) -> f64 {
 }
 
 fn set_ts_matrix_dimnames(result: SEXP, data: SEXP, nseries: R_xlen_t, args: SEXP) {
-    unsafe {
-        let supplied_names = supplied_arg(args, "names", 7);
-        let source_dimnames =
-            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimNamesSymbol());
-        let source_names = if source_dimnames != R_NilValue()
-            && TYPEOF(source_dimnames) == SEXPTYPE::VECSXP
-            && XLENGTH(source_dimnames) > 1
-        {
-            VECTOR_ELT(source_dimnames, 1)
-        } else {
-            R_NilValue()
-        };
-        let names = if let Some(names) = supplied_names {
-            names
-        } else if source_names != R_NilValue() {
-            source_names
-        } else {
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, nseries);
-            let _names_guard = protect(names);
-            for i in 0..nseries {
-                let label = CString::new(format!("Series {}", i + 1)).unwrap_or_default();
-                SET_STRING_ELT(names, i, Rf_mkChar(label.as_ptr()));
-            }
-            names
-        };
+    let supplied_names = supplied_arg(args, "names", 7);
+    let source_dimnames =
+        crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let source_names = if source_dimnames != R_NilValue()
+        && TYPEOF(source_dimnames) == SEXPTYPE::VECSXP
+        && XLENGTH(source_dimnames) > 1
+    {
+        VECTOR_ELT(source_dimnames, 1)
+    } else {
+        R_NilValue()
+    };
+    let names = if let Some(names) = supplied_names {
+        names
+    } else if source_names != R_NilValue() {
+        source_names
+    } else {
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, nseries);
         let _names_guard = protect(names);
-        if names != R_NilValue() && XLENGTH(names) != nseries {
-            std::panic::panic_any(RError {
-                message: "length of 'dimnames' [2] not equal to array extent".to_string(),
-            });
+        for i in 0..nseries {
+            let label = CString::new(format!("Series {}", i + 1)).unwrap_or_default();
+            SET_STRING_ELT(names, i, mk_char_cstr(&label));
         }
-
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dimnames_guard = protect(dimnames);
-        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
-        SET_VECTOR_ELT(dimnames, 1, names);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dimnames,
-        );
+        names
+    };
+    let _names_guard = protect(names);
+    if names != R_NilValue() && XLENGTH(names) != nseries {
+        std::panic::panic_any(RError {
+            message: "length of 'dimnames' [2] not equal to array extent".to_string(),
+        });
     }
+
+    let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dimnames_guard = protect(dimnames);
+    SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+    SET_VECTOR_ELT(dimnames, 1, names);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dimnames,
+    );
 }
 
 fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_xlen_t) -> SEXP {
@@ -126,19 +124,17 @@ fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_xlen_t)
 }
 
 fn default_ts_class(nseries: R_xlen_t) -> SEXP {
-    unsafe {
-        if nseries == 1 {
-            return Rf_mkString(c"ts".as_ptr());
-        }
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
-        if class.is_null() {
-            return R_NilValue();
-        }
-        for (index, name) in [c"mts", c"ts", c"matrix", c"array"].iter().enumerate() {
-            SET_STRING_ELT(class, index as R_xlen_t, Rf_mkChar(name.as_ptr()));
-        }
-        class
+    if nseries == 1 {
+        return mk_string_cstr(c"ts");
     }
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+    if class.is_null() {
+        return R_NilValue();
+    }
+    for (index, name) in [c"mts", c"ts", c"matrix", c"array"].iter().enumerate() {
+        SET_STRING_ELT(class, index as R_xlen_t, mk_char_cstr(&name));
+    }
+    class
 }
 
 /// GNU R's `stats::ts()` constructor.
@@ -347,8 +343,8 @@ fn cbind_ts(args: SEXP, union: bool) -> SEXP {
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _c = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"mts".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"ts".as_ptr()));
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"mts"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"ts"));
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),

@@ -49,7 +49,7 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
 
         // Get dimensions
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
         let (nrow, ncol) =
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
@@ -176,7 +176,7 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Copy dim attribute if present
         if !dim_attr.is_null() {
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim_attr);
+            crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim_attr);
         }
 
         result

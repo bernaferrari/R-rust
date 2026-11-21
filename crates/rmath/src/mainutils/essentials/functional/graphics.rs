@@ -260,7 +260,7 @@ pub fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dollar = Rf_lang3(
             crate::sexp::symbol::R_DollarSymbol(),
             VECTOR_ELT(aovlist, 0),
-            Rf_install(c"qr".as_ptr()),
+            install_str("qr"),
         );
         let _ = crate::eval::eval::Rf_eval(dollar, rho);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -311,9 +311,9 @@ pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         let dollar = crate::sexp::constructors::Rf_lang3(
-            crate::sexp::symbol::Rf_install(c"$".as_ptr()),
+            install_str("$"),
             x,
-            crate::sexp::symbol::Rf_install(c"sdev".as_ptr()),
+            install_str("sdev"),
         );
         let _d = protect(dollar);
         let _ = crate::eval::eval::Rf_eval(dollar, rho);
@@ -334,7 +334,7 @@ pub fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let dollar = Rf_lang3(Rf_install(c"$".as_ptr()), x, Rf_install(c"spec".as_ptr()));
+        let dollar = Rf_lang3(install_str("$"), x, install_str("spec"));
         let _d = protect(dollar);
         let _ = crate::eval::eval::Rf_eval(dollar, rho);
         R_NilValue()

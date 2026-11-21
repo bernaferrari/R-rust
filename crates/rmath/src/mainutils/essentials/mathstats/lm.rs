@@ -90,7 +90,7 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_LevelsSymbol(),
             new_levels,
         );
-        let class = Rf_mkString(c"factor".as_ptr());
+        let class = mk_string_cstr(c"factor");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -103,7 +103,7 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             set_real_checked(sc, (i) as R_xlen_t, scores[i]);
         }
         crate::sexp::attrib_core::setAttrib(sc, crate::sexp::attrib_core::R_NamesSymbol(), levels);
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"scores".as_ptr()), sc);
+        crate::sexp::attrib_core::setAttrib(result, install_str("scores"), sc);
         result
     }
 }
@@ -235,9 +235,9 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_real_checked(parameter, (1) as R_xlen_t, df2);
         set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
         let method_s = if var_equal {
-            Rf_mkString(c"One-way analysis of means".as_ptr())
+            mk_string_cstr(c"One-way analysis of means")
         } else {
-            Rf_mkString(c"One-way analysis of means (not assuming equal variances)".as_ptr())
+            mk_string_cstr(c"One-way analysis of means (not assuming equal variances)")
         };
         let _ = method;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
@@ -246,7 +246,7 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 1, parameter);
         SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
         SET_VECTOR_ELT(result, 3, method_s);
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x and g".as_ptr()));
+        SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x and g"));
         crate::mainutils::essentials::set_string_names(
             result,
             &[
@@ -257,7 +257,7 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "data.name".to_string(),
             ],
         );
-        let class = Rf_mkString(c"htest".as_ptr());
+        let class = mk_string_cstr(c"htest");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -273,24 +273,20 @@ fn loglik_numeric(x: SEXP) -> f64 {
 }
 
 fn loglik_df(x: SEXP) -> f64 {
-    unsafe {
-        let df = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"df".as_ptr()));
-        if !df.is_null() && df != R_NilValue() {
-            elt_real_safe(df, 0)
-        } else {
-            0.0
-        }
+    let df = crate::sexp::attrib_core::getAttrib(x, install_str("df"));
+    if !df.is_null() && df != R_NilValue() {
+        elt_real_safe(df, 0)
+    } else {
+        0.0
     }
 }
 
 fn loglik_nobs(x: SEXP) -> f64 {
-    unsafe {
-        let n = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"nobs".as_ptr()));
-        if !n.is_null() && n != R_NilValue() {
-            elt_real_safe(n, 0)
-        } else {
-            0.0
-        }
+    let n = crate::sexp::attrib_core::getAttrib(x, install_str("nobs"));
+    if !n.is_null() && n != R_NilValue() {
+        elt_real_safe(n, 0)
+    } else {
+        0.0
     }
 }
 
@@ -414,30 +410,28 @@ pub fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `case.names(object)` — `names(residuals)` or `1:n`.
 pub fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let r = list_named_elt(obj, "residuals");
-        if r != R_NilValue() {
-            let names =
-                crate::sexp::attrib_core::getAttrib(r, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == XLENGTH(r)
-            {
-                return names;
-            }
-            let n = XLENGTH(r);
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _o = protect(out);
-            for i in 0..n {
-                let s = CString::new((i + 1).to_string()).unwrap_or_default();
-                SET_STRING_ELT(out, i, Rf_mkChar(s.as_ptr()));
-            }
-            return out;
+    let obj = CAR(args);
+    let r = list_named_elt(obj, "residuals");
+    if r != R_NilValue() {
+        let names =
+            crate::sexp::attrib_core::getAttrib(r, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == XLENGTH(r)
+        {
+            return names;
         }
-        crate::mainutils::essentials::do_rownames(call, op, args, rho)
+        let n = XLENGTH(r);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let s = CString::new((i + 1).to_string()).unwrap_or_default();
+            SET_STRING_ELT(out, i, mk_char_cstr(&s));
+        }
+        return out;
     }
+    crate::mainutils::essentials::do_rownames(call, op, args, rho)
 }
 
 /// GNU `variable.names(object)` — `names(coefficients)`.
@@ -504,8 +498,8 @@ pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let hi_pct = format!("{} %", (100.0 * (1.0 - a) * 10.0).round() / 10.0);
         let lo_c = std::ffi::CString::new(lo_pct).unwrap_or_default();
         let hi_c = std::ffi::CString::new(hi_pct).unwrap_or_default();
-        SET_STRING_ELT(cn, 0, Rf_mkChar(lo_c.as_ptr()));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(hi_c.as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(&lo_c));
+        SET_STRING_ELT(cn, 1, mk_char_cstr(&hi_c));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, if rn != R_NilValue() { rn } else { R_NilValue() });
@@ -521,49 +515,47 @@ pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `confint.default(object)` — Wald z from `$vcov` or `vcov.lm`.
 pub fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let mut vcov = list_named_elt(obj, "vcov");
-        if vcov == R_NilValue() {
-            vcov = do_vcov_lm(call, op, args, rho);
-        }
-        if vcov == R_NilValue() {
-            return R_NilValue();
-        }
-        let _v = protect(vcov);
-        let rest = Rf_cons(vcov, R_NilValue());
-        let _r = protect(rest);
-        SETTAG(rest, crate::sexp::symbol::Rf_install(c"vcov".as_ptr()));
-        let wrapped = Rf_cons(obj, rest);
-        let _w = protect(wrapped);
-        // stash vcov on a shallow copy so do_confint can read $vcov
-        let names =
-            crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_NamesSymbol());
-        let n = if TYPEOF(obj) == SEXPTYPE::VECSXP {
-            XLENGTH(obj)
-        } else {
-            0
-        };
-        let copy = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
-        let _c = protect(copy);
-        for i in 0..n {
-            SET_VECTOR_ELT(copy, i, VECTOR_ELT(obj, i));
-        }
-        SET_VECTOR_ELT(copy, n, vcov);
-        let mut nms: Vec<String> = Vec::new();
-        if TYPEOF(names) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(names) {
-                nms.push(
-                    charsxp_text(STRING_ELT(names, i)).unwrap_or_default(),
-                );
-            }
-        }
-        nms.push("vcov".to_string());
-        crate::mainutils::essentials::set_string_names(copy, &nms);
-        let cargs = Rf_cons(copy, CDR(args));
-        let _ca = protect(cargs);
-        do_confint(call, op, cargs, rho)
+    let obj = CAR(args);
+    let mut vcov = list_named_elt(obj, "vcov");
+    if vcov == R_NilValue() {
+        vcov = do_vcov_lm(call, op, args, rho);
     }
+    if vcov == R_NilValue() {
+        return R_NilValue();
+    }
+    let _v = protect(vcov);
+    let rest = Rf_cons(vcov, R_NilValue());
+    let _r = protect(rest);
+    SETTAG(rest, install_str("vcov"));
+    let wrapped = Rf_cons(obj, rest);
+    let _w = protect(wrapped);
+    // stash vcov on a shallow copy so do_confint can read $vcov
+    let names =
+        crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_NamesSymbol());
+    let n = if TYPEOF(obj) == SEXPTYPE::VECSXP {
+        XLENGTH(obj)
+    } else {
+        0
+    };
+    let copy = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+    let _c = protect(copy);
+    for i in 0..n {
+        SET_VECTOR_ELT(copy, i, VECTOR_ELT(obj, i));
+    }
+    SET_VECTOR_ELT(copy, n, vcov);
+    let mut nms: Vec<String> = Vec::new();
+    if TYPEOF(names) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(names) {
+            nms.push(
+                charsxp_text(STRING_ELT(names, i)).unwrap_or_default(),
+            );
+        }
+    }
+    nms.push("vcov".to_string());
+    crate::mainutils::essentials::set_string_names(copy, &nms);
+    let cargs = Rf_cons(copy, CDR(args));
+    let _ca = protect(cargs);
+    do_confint(call, op, cargs, rho)
 }
 
 /// GNU `confint.lm(object)` — t intervals for intercept + slope.
@@ -660,78 +652,76 @@ pub fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `dummy.coef(object)` — original coding; treatment 2-level factor.
 pub fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let cf = list_named_elt(obj, "coefficients");
-        if cf == R_NilValue() {
-            return R_NilValue();
-        }
-        let xl = crate::sexp::attrib_core::getAttrib(
-            obj,
-            crate::sexp::symbol::Rf_install(c"xlevels".as_ptr()),
-        );
-        if !xl.is_null()
-            && xl != R_NilValue()
-            && TYPEOF(xl) == SEXPTYPE::VECSXP
-            && XLENGTH(xl) >= 1
-            && XLENGTH(cf) >= 2
-        {
-            let lev = VECTOR_ELT(xl, 0);
-            let nlev = XLENGTH(lev);
-            if TYPEOF(lev) == SEXPTYPE::STRSXP && nlev >= 2 {
-                let fac = Rf_allocVector3(SEXPTYPE::REALSXP, nlev);
-                let _f = protect(fac);
-                set_real_checked(fac, 0, 0.0);
-                for i in 1..nlev as usize {
-                    set_real_checked(fac, (i) as R_xlen_t, elt_real_safe(cf, i as i64));
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    fac,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    lev,
-                );
-                let xl_names = crate::sexp::attrib_core::getAttrib(
-                    xl,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _r = protect(result);
-                SET_VECTOR_ELT(result, 0, Rf_ScalarReal(elt_real_safe(cf, 0)));
-                SET_VECTOR_ELT(result, 1, fac);
-                let on = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-                let _on = protect(on);
-                SET_STRING_ELT(on, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
-                if !xl_names.is_null() && TYPEOF(xl_names) == SEXPTYPE::STRSXP {
-                    SET_STRING_ELT(on, 1, STRING_ELT(xl_names, 0));
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    on,
-                );
-                return result;
-            }
-        }
-        let n = XLENGTH(cf);
-        let names =
-            crate::sexp::attrib_core::getAttrib(cf, crate::sexp::attrib_core::R_NamesSymbol());
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        let _r = protect(result);
-        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _on = protect(out_names);
-        for i in 0..n {
-            SET_VECTOR_ELT(result, i, Rf_ScalarReal(elt_real_safe(cf, i)));
-            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
-                SET_STRING_ELT(out_names, i, STRING_ELT(names, i));
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            out_names,
-        );
-        result
+    let obj = CAR(args);
+    let cf = list_named_elt(obj, "coefficients");
+    if cf == R_NilValue() {
+        return R_NilValue();
     }
+    let xl = crate::sexp::attrib_core::getAttrib(
+        obj,
+        install_str("xlevels"),
+    );
+    if !xl.is_null()
+        && xl != R_NilValue()
+        && TYPEOF(xl) == SEXPTYPE::VECSXP
+        && XLENGTH(xl) >= 1
+        && XLENGTH(cf) >= 2
+    {
+        let lev = VECTOR_ELT(xl, 0);
+        let nlev = XLENGTH(lev);
+        if TYPEOF(lev) == SEXPTYPE::STRSXP && nlev >= 2 {
+            let fac = Rf_allocVector3(SEXPTYPE::REALSXP, nlev);
+            let _f = protect(fac);
+            set_real_checked(fac, 0, 0.0);
+            for i in 1..nlev as usize {
+                set_real_checked(fac, (i) as R_xlen_t, elt_real_safe(cf, i as i64));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                fac,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                lev,
+            );
+            let xl_names = crate::sexp::attrib_core::getAttrib(
+                xl,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _r = protect(result);
+            SET_VECTOR_ELT(result, 0, Rf_ScalarReal(elt_real_safe(cf, 0)));
+            SET_VECTOR_ELT(result, 1, fac);
+            let on = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            let _on = protect(on);
+            SET_STRING_ELT(on, 0, mk_char_cstr(c"(Intercept)"));
+            if !xl_names.is_null() && TYPEOF(xl_names) == SEXPTYPE::STRSXP {
+                SET_STRING_ELT(on, 1, STRING_ELT(xl_names, 0));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                on,
+            );
+            return result;
+        }
+    }
+    let n = XLENGTH(cf);
+    let names =
+        crate::sexp::attrib_core::getAttrib(cf, crate::sexp::attrib_core::R_NamesSymbol());
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    let _r = protect(result);
+    let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _on = protect(out_names);
+    for i in 0..n {
+        SET_VECTOR_ELT(result, i, Rf_ScalarReal(elt_real_safe(cf, i)));
+        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
+            SET_STRING_ELT(out_names, i, STRING_ELT(names, i));
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        out_names,
+    );
+    result
 }
 
 /// GNU `hat(x)` leverages for intercept + x.
@@ -854,14 +844,14 @@ pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             {
                 STRING_ELT(cnames, j as i64)
             } else {
-                Rf_mkChar(c"dfb".as_ptr())
+                mk_char_cstr(c"dfb")
             };
             SET_STRING_ELT(cn, j as i64, nm);
         }
-        SET_STRING_ELT(cn, p as i64, Rf_mkChar(c"dffit".as_ptr()));
-        SET_STRING_ELT(cn, (p + 1) as i64, Rf_mkChar(c"cov.r".as_ptr()));
-        SET_STRING_ELT(cn, (p + 2) as i64, Rf_mkChar(c"cook.d".as_ptr()));
-        SET_STRING_ELT(cn, (p + 3) as i64, Rf_mkChar(c"hat".as_ptr()));
+        SET_STRING_ELT(cn, p as i64, mk_char_cstr(c"dffit"));
+        SET_STRING_ELT(cn, (p + 1) as i64, mk_char_cstr(c"cov.r"));
+        SET_STRING_ELT(cn, (p + 2) as i64, mk_char_cstr(c"cook.d"));
+        SET_STRING_ELT(cn, (p + 3) as i64, mk_char_cstr(c"hat"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 1, cn);
@@ -935,7 +925,7 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         };
         let cname = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-        let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+        let sym = install_cstr(&cname);
         let val = crate::eval::eval::Rf_eval(expr, rho);
         let _v = protect(val);
         let x0 = crate::eval::eval::Rf_eval(sym, rho);
@@ -952,7 +942,7 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_real_checked(grad, 0, g);
         crate::sexp::attrib_core::setAttrib(
             val,
-            crate::sexp::symbol::Rf_install(c"gradient".as_ptr()),
+            install_str("gradient"),
             grad,
         );
         val
@@ -1376,21 +1366,19 @@ pub fn do_dfbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn lm_named_call(call: SEXP) -> SEXP {
-    unsafe {
-        if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
-            return R_NilValue();
-        }
-        let saved = crate::mainutils::duplicate::Rf_duplicate(call);
-        let _s = protect(saved);
-        let arg = CDR(saved);
-        if !arg.is_null() && arg != R_NilValue() {
-            let tag = TAG(arg);
-            if tag.is_null() || tag == R_NilValue() {
-                SETTAG(arg, Rf_install(c"formula".as_ptr()));
-            }
-        }
-        saved
+    if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+        return R_NilValue();
     }
+    let saved = crate::mainutils::duplicate::Rf_duplicate(call);
+    let _s = protect(saved);
+    let arg = CDR(saved);
+    if !arg.is_null() && arg != R_NilValue() {
+        let tag = TAG(arg);
+        if tag.is_null() || tag == R_NilValue() {
+            SETTAG(arg, install_str("formula"));
+        }
+    }
+    saved
 }
 
 #[path = "lm_intercept.rs"]
@@ -1404,79 +1392,77 @@ pub(super) fn try_lm_intercept(
     args: SEXP,
     rho: SEXP,
 ) -> Option<SEXP> {
-    unsafe {
-        use crate::sexp::object::{Sexp, SexpError};
-        let arguments = owner
-            .sexp(args)
-            .and_then(Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let call = if call.is_null() {
-            owner.node_factory().nil()
-        } else {
-            owner
-                .sexp(call)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        }
-        .into_owned()
+    use crate::sexp::object::{Sexp, SexpError};
+    let arguments = owner
+        .sexp(args)
+        .and_then(Sexp::into_owned)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let parent = owner
-            .sexp(rho)
-            .and_then(Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let weak = owner
-            .weak_owner()
-            .unwrap_or_else(|| crate::sexp::context::r_error("lm requires a managed runtime"));
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::sexp::owner::with_runtime(
-                &weak,
-                |access| -> Result<Option<Sexp<'static>>, String> {
-                    let Some(request) =
-                        lm_intercept::Request::capture(access, &arguments, call, parent)?
-                    else {
-                        return Ok(None);
-                    };
-                    let intern = |name: &str| -> Result<Sexp<'static>, String> {
-                        let name = CString::new(name).map_err(|_| "invalid model column name")?;
-                        access
-                            .with_native(|token| {
-                                let symbol = Rf_install(name.as_ptr());
-                                token.require_active()?;
-                                token.sexp(symbol)?.into_owned()
-                            })
-                            .map_err(|error| error.to_string())
-                    };
-                    let mut bindings = Vec::new();
-                    for (name, value) in request.bindings(access)? {
-                        bindings.push((intern(&name)?, value));
-                    }
-                    let environment = request.environment(access, &bindings)?;
-                    let response = access
-                        .with_native(|_| {
-                            crate::eval::eval::eval_safe(request.expression.clone(), environment)
-                                .map_err(|message| SexpError::EvaluationFailed { message })?
-                                .into_owned()
-                        })
-                        .map_err(|error| error.to_string())?;
-                    let symbols = lm_intercept::Symbols {
-                        names: intern("names")?,
-                        class: intern("class")?,
-                        dim: intern("dim")?,
-                        dimnames: intern("dimnames")?,
-                        assign: intern("assign")?,
-                        formula: intern("formula")?,
-                    };
-                    lm_intercept::evaluate(access, &request, response, &symbols).map(Some)
-                },
-            )
-        }));
+    let call = if call.is_null() {
+        owner.node_factory().nil()
+    } else {
         owner
-            .require_active()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        match result {
-            Ok(Ok(Ok(model))) => model.map(|model| model.as_raw()),
-            Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
-            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
+            .sexp(call)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    }
+    .into_owned()
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let parent = owner
+        .sexp(rho)
+        .and_then(Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("lm requires a managed runtime"));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(
+            &weak,
+            |access| -> Result<Option<Sexp<'static>>, String> {
+                let Some(request) =
+                    lm_intercept::Request::capture(access, &arguments, call, parent)?
+                else {
+                    return Ok(None);
+                };
+                let intern = |name: &str| -> Result<Sexp<'static>, String> {
+                    let name = CString::new(name).map_err(|_| "invalid model column name")?;
+                    access
+                        .with_native(|token| {
+                            let symbol = install_cstr(&name);
+                            token.require_active()?;
+                            token.sexp(symbol)?.into_owned()
+                        })
+                        .map_err(|error| error.to_string())
+                };
+                let mut bindings = Vec::new();
+                for (name, value) in request.bindings(access)? {
+                    bindings.push((intern(&name)?, value));
+                }
+                let environment = request.environment(access, &bindings)?;
+                let response = access
+                    .with_native(|_| {
+                        crate::eval::eval::eval_safe(request.expression.clone(), environment)
+                            .map_err(|message| SexpError::EvaluationFailed { message })?
+                            .into_owned()
+                    })
+                    .map_err(|error| error.to_string())?;
+                let symbols = lm_intercept::Symbols {
+                    names: intern("names")?,
+                    class: intern("class")?,
+                    dim: intern("dim")?,
+                    dimnames: intern("dimnames")?,
+                    assign: intern("assign")?,
+                    formula: intern("formula")?,
+                };
+                lm_intercept::evaluate(access, &request, response, &symbols).map(Some)
+            },
+        )
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    match result {
+        Ok(Ok(Ok(model))) => model.map(|model| model.as_raw()),
+        Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
+        Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }

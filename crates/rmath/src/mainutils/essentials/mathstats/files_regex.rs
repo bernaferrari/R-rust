@@ -23,12 +23,12 @@ pub fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         // paste(x, collapse = ", "): dispatch as.character for classed objects.
         let chars = if crate::sexp::attrib_core::isObject(x) != 0 {
             let coerce = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"as.character".as_ptr()),
+                install_str("as.character"),
                 x,
             );
             let _coerce_guard = protect(coerce);
@@ -305,12 +305,12 @@ pub fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             .enumerate()
             {
                 let cstr = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&cstr));
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+            crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
         }
-        let class = Rf_mkString(c"proc_time".as_ptr());
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
+        let class = mk_string_cstr(c"proc_time");
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
         result
     }
 }
@@ -362,7 +362,7 @@ fn regex_index_attrs(result: SEXP, requested: bool, byte_mode: bool) {
         unsafe {
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(c"index.type".as_ptr()),
+                install_str("index.type"),
                 Rf_mkString(if requested {
                     c"bytes".as_ptr()
                 } else {
@@ -371,7 +371,7 @@ fn regex_index_attrs(result: SEXP, requested: bool, byte_mode: bool) {
             );
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(c"useBytes".as_ptr()),
+                install_str("useBytes"),
                 Rf_ScalarLogical(TRUE),
             );
         }
@@ -432,7 +432,7 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(c"match.length".as_ptr()),
+            install_str("match.length"),
             match_len,
         );
         regex_index_attrs(result, requested_bytes, byte_mode);
@@ -487,17 +487,17 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(c"capture.start".as_ptr()),
+                install_str("capture.start"),
                 capture_start,
             );
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(c"capture.length".as_ptr()),
+                install_str("capture.length"),
                 capture_len,
             );
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(c"capture.names".as_ptr()),
+                install_str("capture.names"),
                 names_sexp,
             );
 
@@ -659,202 +659,200 @@ fn fill_capture_no_match(
 /// per group) and capture.names, mirroring grep.c's perl branch of
 /// do_gregexpr; non-matching elements get one row of -1s.
 pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let position_workspace = crate::mainutils::grep::regex_workspace();
-        let pattern = CAR(args);
-        if pattern.is_null()
-            || TYPEOF(pattern) != SEXPTYPE::STRSXP
-            || XLENGTH(pattern) == 0
-            || STRING_ELT(pattern, 0) == crate::sexp::globals::R_NaString()
-        {
-            super::base_error("invalid 'pattern' argument");
-        }
-        let pat = elt_to_string(CAR(args), 0);
-        let text = CAR(CDR(args));
-        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
-        let mut perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
-        let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
-        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
-        crate::mainutils::grep::validate_pattern(&pat, ignore_case, perl, fixed)
-            .unwrap_or_else(|message| super::base_error(&message));
-        let (requested_bytes, byte_mode) = regex_coordinates(args, &pat, text);
-
-        // grep.c drops perl when fixed = TRUE, so only a genuine perl run
-        // gets capture attribution (same guard as do_regexpr).
-        let (capture_count, capture_names) = if perl && !fixed {
-            crate::mainutils::grep::perl_group_info(&pat, ignore_case)
-                .unwrap_or_else(|| (0, GroupNames::default()))
-        } else {
-            (0, GroupNames::default())
-        };
-        let n = XLENGTH(text);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for i in 0..n {
-            let txt = elt_to_string(text, i);
-            let empty_positions = pat.is_empty().then(|| {
-                let mode = if fixed || (perl && requested_bytes) {
-                    EmptyPatternMode::Bytes
-                } else if perl {
-                    EmptyPatternMode::PerlCharacters
-                } else if requested_bytes {
-                    EmptyPatternMode::EreBytes
-                } else {
-                    EmptyPatternMode::EreCharacters
-                };
-                empty_pattern_positions(&txt, mode)
-            });
-            let capacity = empty_positions
-                .as_ref()
-                .map_or(0, |positions| positions.len());
-            let mut starts = position_workspace.buffer(capacity);
-            let mut lengths = position_workspace.buffer(capacity);
-            // Keep original admitted kernel storage through R capture-matrix
-            // construction instead of copying into uncharged native row vectors.
-            let mut capture_rows: Option<crate::mainutils::grep::RegexMatches> = None;
-            if let Some(positions) = empty_positions {
-                for position in positions {
-                    starts.push(position);
-                    lengths.push(0);
-                }
-            } else if perl {
-                if let Some(all) = crate::mainutils::grep::mode_captures_all(
-                    &pat,
-                    &txt,
-                    ignore_case,
-                    requested_bytes,
-                ) {
-                    for caps in all.iter() {
-                        if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
-                            starts.push(whole.start + 1);
-                            lengths.push(whole.end - whole.start);
-                        }
-                    }
-                    if capture_count != 0 {
-                        capture_rows = Some(all);
-                    }
-                }
-            } else {
-                let mut offset = 0usize;
-                while offset <= txt.len() {
-                    let hay = txt.get(offset..).unwrap_or("");
-                    let found = if fixed {
-                        fixed_find(hay, &pat, ignore_case)
-                    } else if perl {
-                        crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
-                    } else {
-                        crate::mainutils::grep::ere_find_at(
-                            &pat,
-                            &txt,
-                            ignore_case,
-                            offset,
-                            requested_bytes,
-                        )
-                        .map(|m| crate::mainutils::grep::RegexMatch {
-                            start: m.start - offset,
-                            end: m.end - offset,
-                        })
-                    };
-                    let Some(m) = found else {
-                        break;
-                    };
-                    let start = offset + m.start;
-                    starts.push(start + 1);
-                    lengths.push(m.end - m.start);
-                    let next_offset = offset + m.end;
-                    offset = if m.start == m.end {
-                        next_offset
-                            + if requested_bytes {
-                                1
-                            } else {
-                                txt[next_offset..].chars().next().map_or(1, char::len_utf8)
-                            }
-                    } else {
-                        next_offset
-                    };
-                }
-            }
-
-            if !byte_mode && !pat.is_empty() {
-                for (start, length) in starts.iter_mut().zip(lengths.iter_mut()) {
-                    let (s, n) = regex_span(&txt, *start - 1, *start - 1 + *length, false);
-                    *start = s as usize;
-                    *length = n as usize;
-                }
-            }
-            let missing = TYPEOF(text) == SEXPTYPE::STRSXP
-                && STRING_ELT(text, i) == crate::sexp::globals::R_NaString();
-            if missing {
-                starts.clear();
-                lengths.clear();
-                capture_rows = None;
-            }
-            let (elt, match_lengths) = if starts.is_empty() {
-                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                if elt.is_null() || match_lengths.is_null() {
-                    return R_NilValue();
-                }
-                let _elt_guard = protect(elt);
-                let _ml_guard = protect(match_lengths);
-                set_integer_checked(elt, 0, if missing { NA_INTEGER } else { -1 });
-                set_integer_checked(match_lengths, 0, if missing { NA_INTEGER } else { -1 });
-                (elt, match_lengths)
-            } else {
-                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
-                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
-                if elt.is_null() || match_lengths.is_null() {
-                    return R_NilValue();
-                }
-                let _elt_guard = protect(elt);
-                let _ml_guard = protect(match_lengths);
-                for (idx, start) in starts.iter().enumerate() {
-                    set_integer_checked(elt, (idx) as R_xlen_t, *start as c_int);
-                    set_integer_checked(match_lengths, (idx) as R_xlen_t, lengths[idx] as c_int);
-                }
-                (elt, match_lengths)
-            };
-
-            crate::sexp::attrib_core::setAttrib(
-                elt,
-                Rf_install(c"match.length".as_ptr()),
-                match_lengths,
-            );
-            if !missing {
-                regex_index_attrs(elt, requested_bytes, byte_mode);
-            }
-            if capture_count > 0 && !missing {
-                if starts.is_empty() {
-                    // grep.c's no-match branch: one row of -1s per group.
-                    set_gregexpr_capture_attrs(elt, 1, capture_count, &capture_names, |_, _| {
-                        (-1, -1)
-                    });
-                } else {
-                    let spans = capture_rows
-                        .as_ref()
-                        .expect("successful Perl matches retain their admitted captures");
-                    set_gregexpr_capture_attrs(
-                        elt,
-                        starts.len(),
-                        capture_count,
-                        &capture_names,
-                        |k, g| {
-                            spans[k][g + 1].map_or((0, 0), |span| {
-                                regex_span(&txt, span.start, span.end, byte_mode)
-                            })
-                        },
-                    );
-                }
-            }
-            SET_VECTOR_ELT(result, i, elt);
-        }
-
-        result
+    let position_workspace = crate::mainutils::grep::regex_workspace();
+    let pattern = CAR(args);
+    if pattern.is_null()
+        || TYPEOF(pattern) != SEXPTYPE::STRSXP
+        || XLENGTH(pattern) == 0
+        || STRING_ELT(pattern, 0) == crate::sexp::globals::R_NaString()
+    {
+        super::base_error("invalid 'pattern' argument");
     }
+    let pat = elt_to_string(CAR(args), 0);
+    let text = CAR(CDR(args));
+    let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 2).unwrap_or(false);
+    let mut perl = logical_arg_by_name_or_position(args, "perl", 3).unwrap_or(false);
+    let fixed = logical_arg_by_name_or_position(args, "fixed", 4).unwrap_or(false);
+    super::shared::ignore_perl_when_fixed(&mut perl, fixed);
+    crate::mainutils::grep::validate_pattern(&pat, ignore_case, perl, fixed)
+        .unwrap_or_else(|message| super::base_error(&message));
+    let (requested_bytes, byte_mode) = regex_coordinates(args, &pat, text);
+
+    // grep.c drops perl when fixed = TRUE, so only a genuine perl run
+    // gets capture attribution (same guard as do_regexpr).
+    let (capture_count, capture_names) = if perl && !fixed {
+        crate::mainutils::grep::perl_group_info(&pat, ignore_case)
+            .unwrap_or_else(|| (0, GroupNames::default()))
+    } else {
+        (0, GroupNames::default())
+    };
+    let n = XLENGTH(text);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+
+    for i in 0..n {
+        let txt = elt_to_string(text, i);
+        let empty_positions = pat.is_empty().then(|| {
+            let mode = if fixed || (perl && requested_bytes) {
+                EmptyPatternMode::Bytes
+            } else if perl {
+                EmptyPatternMode::PerlCharacters
+            } else if requested_bytes {
+                EmptyPatternMode::EreBytes
+            } else {
+                EmptyPatternMode::EreCharacters
+            };
+            empty_pattern_positions(&txt, mode)
+        });
+        let capacity = empty_positions
+            .as_ref()
+            .map_or(0, |positions| positions.len());
+        let mut starts = position_workspace.buffer(capacity);
+        let mut lengths = position_workspace.buffer(capacity);
+        // Keep original admitted kernel storage through R capture-matrix
+        // construction instead of copying into uncharged native row vectors.
+        let mut capture_rows: Option<crate::mainutils::grep::RegexMatches> = None;
+        if let Some(positions) = empty_positions {
+            for position in positions {
+                starts.push(position);
+                lengths.push(0);
+            }
+        } else if perl {
+            if let Some(all) = crate::mainutils::grep::mode_captures_all(
+                &pat,
+                &txt,
+                ignore_case,
+                requested_bytes,
+            ) {
+                for caps in all.iter() {
+                    if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
+                        starts.push(whole.start + 1);
+                        lengths.push(whole.end - whole.start);
+                    }
+                }
+                if capture_count != 0 {
+                    capture_rows = Some(all);
+                }
+            }
+        } else {
+            let mut offset = 0usize;
+            while offset <= txt.len() {
+                let hay = txt.get(offset..).unwrap_or("");
+                let found = if fixed {
+                    fixed_find(hay, &pat, ignore_case)
+                } else if perl {
+                    crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
+                } else {
+                    crate::mainutils::grep::ere_find_at(
+                        &pat,
+                        &txt,
+                        ignore_case,
+                        offset,
+                        requested_bytes,
+                    )
+                    .map(|m| crate::mainutils::grep::RegexMatch {
+                        start: m.start - offset,
+                        end: m.end - offset,
+                    })
+                };
+                let Some(m) = found else {
+                    break;
+                };
+                let start = offset + m.start;
+                starts.push(start + 1);
+                lengths.push(m.end - m.start);
+                let next_offset = offset + m.end;
+                offset = if m.start == m.end {
+                    next_offset
+                        + if requested_bytes {
+                            1
+                        } else {
+                            txt[next_offset..].chars().next().map_or(1, char::len_utf8)
+                        }
+                } else {
+                    next_offset
+                };
+            }
+        }
+
+        if !byte_mode && !pat.is_empty() {
+            for (start, length) in starts.iter_mut().zip(lengths.iter_mut()) {
+                let (s, n) = regex_span(&txt, *start - 1, *start - 1 + *length, false);
+                *start = s as usize;
+                *length = n as usize;
+            }
+        }
+        let missing = TYPEOF(text) == SEXPTYPE::STRSXP
+            && STRING_ELT(text, i) == crate::sexp::globals::R_NaString();
+        if missing {
+            starts.clear();
+            lengths.clear();
+            capture_rows = None;
+        }
+        let (elt, match_lengths) = if starts.is_empty() {
+            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            if elt.is_null() || match_lengths.is_null() {
+                return R_NilValue();
+            }
+            let _elt_guard = protect(elt);
+            let _ml_guard = protect(match_lengths);
+            set_integer_checked(elt, 0, if missing { NA_INTEGER } else { -1 });
+            set_integer_checked(match_lengths, 0, if missing { NA_INTEGER } else { -1 });
+            (elt, match_lengths)
+        } else {
+            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
+            let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
+            if elt.is_null() || match_lengths.is_null() {
+                return R_NilValue();
+            }
+            let _elt_guard = protect(elt);
+            let _ml_guard = protect(match_lengths);
+            for (idx, start) in starts.iter().enumerate() {
+                set_integer_checked(elt, (idx) as R_xlen_t, *start as c_int);
+                set_integer_checked(match_lengths, (idx) as R_xlen_t, lengths[idx] as c_int);
+            }
+            (elt, match_lengths)
+        };
+
+        crate::sexp::attrib_core::setAttrib(
+            elt,
+            install_str("match.length"),
+            match_lengths,
+        );
+        if !missing {
+            regex_index_attrs(elt, requested_bytes, byte_mode);
+        }
+        if capture_count > 0 && !missing {
+            if starts.is_empty() {
+                // grep.c's no-match branch: one row of -1s per group.
+                set_gregexpr_capture_attrs(elt, 1, capture_count, &capture_names, |_, _| {
+                    (-1, -1)
+                });
+            } else {
+                let spans = capture_rows
+                    .as_ref()
+                    .expect("successful Perl matches retain their admitted captures");
+                set_gregexpr_capture_attrs(
+                    elt,
+                    starts.len(),
+                    capture_count,
+                    &capture_names,
+                    |k, g| {
+                        spans[k][g + 1].map_or((0, 0), |span| {
+                            regex_span(&txt, span.start, span.end, byte_mode)
+                        })
+                    },
+                );
+            }
+        }
+        SET_VECTOR_ELT(result, i, elt);
+    }
+
+    result
 }
 
 fn substring_chars(text: &str, start: i32, end: i32) -> String {
@@ -869,63 +867,29 @@ fn substring_chars(text: &str, start: i32, end: i32) -> String {
 
 /// GNU `regmatches(x, m)` for invert = FALSE.
 pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let m = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || m.is_null() || m == R_NilValue() {
-            return R_NilValue();
-        }
-        let ml_sym = crate::sexp::symbol::Rf_install(c"match.length".as_ptr());
-        if TYPEOF(m) == SEXPTYPE::VECSXP {
-            let n = XLENGTH(m);
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-            let _r = protect(result);
-            for i in 0..n {
-                let starts = VECTOR_ELT(m, i);
-                let lengths = crate::sexp::attrib_core::getAttrib(starts, ml_sym);
-                let text = elt_to_string(x, i);
-                let ns = if starts.is_null() || starts == R_NilValue() {
-                    0
-                } else {
-                    XLENGTH(starts)
-                };
-                let mut parts: Vec<String> = Vec::new();
-                for j in 0..ns {
-                    let so = if TYPEOF(starts) == SEXPTYPE::INTSXP {
-                        integer_elt_checked(starts, (j as usize) as R_xlen_t)
-                    } else {
-                        -1
-                    };
-                    if so <= 0 {
-                        continue;
-                    }
-                    let ml = if !lengths.is_null()
-                        && lengths != R_NilValue()
-                        && TYPEOF(lengths) == SEXPTYPE::INTSXP
-                        && XLENGTH(lengths) > j
-                    {
-                        integer_elt_checked(lengths, (j as usize) as R_xlen_t)
-                    } else {
-                        0
-                    };
-                    parts.push(substring_chars(&text, so, so + ml - 1));
-                }
-                let elt = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
-                let _e = protect(elt);
-                for (j, p) in parts.iter().enumerate() {
-                    let c = CString::new(p.as_str()).unwrap_or_default();
-                    SET_STRING_ELT(elt, j as i64, Rf_mkChar(c.as_ptr()));
-                }
-                SET_VECTOR_ELT(result, i, elt);
-            }
-            result
-        } else {
-            let n = XLENGTH(m);
-            let lengths = crate::sexp::attrib_core::getAttrib(m, ml_sym);
+    let x = CAR(args);
+    let m = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || m.is_null() || m == R_NilValue() {
+        return R_NilValue();
+    }
+    let ml_sym = install_str("match.length");
+    if TYPEOF(m) == SEXPTYPE::VECSXP {
+        let n = XLENGTH(m);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let starts = VECTOR_ELT(m, i);
+            let lengths = crate::sexp::attrib_core::getAttrib(starts, ml_sym);
+            let text = elt_to_string(x, i);
+            let ns = if starts.is_null() || starts == R_NilValue() {
+                0
+            } else {
+                XLENGTH(starts)
+            };
             let mut parts: Vec<String> = Vec::new();
-            for i in 0..n {
-                let so = if TYPEOF(m) == SEXPTYPE::INTSXP {
-                    integer_elt_checked(m, (i as usize) as R_xlen_t)
+            for j in 0..ns {
+                let so = if TYPEOF(starts) == SEXPTYPE::INTSXP {
+                    integer_elt_checked(starts, (j as usize) as R_xlen_t)
                 } else {
                     -1
                 };
@@ -935,23 +899,55 @@ pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let ml = if !lengths.is_null()
                     && lengths != R_NilValue()
                     && TYPEOF(lengths) == SEXPTYPE::INTSXP
-                    && XLENGTH(lengths) > i
+                    && XLENGTH(lengths) > j
                 {
-                    integer_elt_checked(lengths, (i as usize) as R_xlen_t)
+                    integer_elt_checked(lengths, (j as usize) as R_xlen_t)
                 } else {
                     0
                 };
-                let text = elt_to_string(x, i);
                 parts.push(substring_chars(&text, so, so + ml - 1));
             }
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
-            let _r = protect(result);
+            let elt = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
+            let _e = protect(elt);
             for (j, p) in parts.iter().enumerate() {
                 let c = CString::new(p.as_str()).unwrap_or_default();
-                SET_STRING_ELT(result, j as i64, Rf_mkChar(c.as_ptr()));
+                SET_STRING_ELT(elt, j as i64, mk_char_cstr(&c));
             }
-            result
+            SET_VECTOR_ELT(result, i, elt);
         }
+        result
+    } else {
+        let n = XLENGTH(m);
+        let lengths = crate::sexp::attrib_core::getAttrib(m, ml_sym);
+        let mut parts: Vec<String> = Vec::new();
+        for i in 0..n {
+            let so = if TYPEOF(m) == SEXPTYPE::INTSXP {
+                integer_elt_checked(m, (i as usize) as R_xlen_t)
+            } else {
+                -1
+            };
+            if so <= 0 {
+                continue;
+            }
+            let ml = if !lengths.is_null()
+                && lengths != R_NilValue()
+                && TYPEOF(lengths) == SEXPTYPE::INTSXP
+                && XLENGTH(lengths) > i
+            {
+                integer_elt_checked(lengths, (i as usize) as R_xlen_t)
+            } else {
+                0
+            };
+            let text = elt_to_string(x, i);
+            parts.push(substring_chars(&text, so, so + ml - 1));
+        }
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as i64);
+        let _r = protect(result);
+        for (j, p) in parts.iter().enumerate() {
+            let c = CString::new(p.as_str()).unwrap_or_default();
+            SET_STRING_ELT(result, j as i64, mk_char_cstr(&c));
+        }
+        result
     }
 }
 
@@ -1017,15 +1013,15 @@ fn set_gregexpr_capture_attrs(
 
         crate::sexp::attrib_core::setAttrib(
             elt,
-            Rf_install(c"capture.start".as_ptr()),
+            install_str("capture.start"),
             capture_start,
         );
         crate::sexp::attrib_core::setAttrib(
             elt,
-            Rf_install(c"capture.length".as_ptr()),
+            install_str("capture.length"),
             capture_len,
         );
-        crate::sexp::attrib_core::setAttrib(elt, Rf_install(c"capture.names".as_ptr()), names_sexp);
+        crate::sexp::attrib_core::setAttrib(elt, install_str("capture.names"), names_sexp);
     }
 }
 
@@ -1109,7 +1105,7 @@ pub fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if named_groups {
                     let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
                     let _names_guard = protect(names);
-                    SET_STRING_ELT(names, 0, Rf_mkChar(c"".as_ptr()));
+                    SET_STRING_ELT(names, 0, mk_char_cstr(c""));
                     for (g, name) in capture_names.iter().enumerate() {
                         let length =
                             c_int::try_from(name.len()).expect("compiled capture-name length");
@@ -1132,19 +1128,19 @@ pub fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
             crate::sexp::attrib_core::setAttrib(
                 elt,
-                Rf_install(c"match.length".as_ptr()),
+                install_str("match.length"),
                 match_lengths,
             );
             // GNU regexec's Perl branch publishes useBytes before index.type.
             if perl && byte_mode {
                 crate::sexp::attrib_core::setAttrib(
                     elt,
-                    Rf_install(c"useBytes".as_ptr()),
+                    install_str("useBytes"),
                     Rf_ScalarLogical(TRUE),
                 );
                 crate::sexp::attrib_core::setAttrib(
                     elt,
-                    Rf_install(c"index.type".as_ptr()),
+                    install_str("index.type"),
                     Rf_mkString(if requested_bytes {
                         c"bytes".as_ptr()
                     } else {
@@ -1208,33 +1204,29 @@ pub fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
-    unsafe {
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(c"index.type".as_ptr()),
-            Rf_mkString(c"chars".as_ptr()),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(c"useBytes".as_ptr()),
-            Rf_ScalarLogical(TRUE),
-        );
-    }
+    crate::sexp::attrib_core::setAttrib(x, install_str("match.length"), match_lengths);
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        install_str("index.type"),
+        mk_string_cstr(c"chars"),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        install_str("useBytes"),
+        Rf_ScalarLogical(TRUE),
+    );
 }
 
 fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
-    unsafe {
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(c"useBytes".as_ptr()),
-            Rf_ScalarLogical(TRUE),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(c"index.type".as_ptr()),
-            Rf_mkString(c"chars".as_ptr()),
-        );
-    }
+    crate::sexp::attrib_core::setAttrib(x, install_str("match.length"), match_lengths);
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        install_str("useBytes"),
+        Rf_ScalarLogical(TRUE),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        install_str("index.type"),
+        mk_string_cstr(c"chars"),
+    );
 }

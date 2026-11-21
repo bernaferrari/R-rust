@@ -1,40 +1,36 @@
 use super::*;
 
 pub(crate) fn set_single_class(x: SEXP, class_name: &str) {
-    unsafe {
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if class.is_null() {
-            return;
-        }
-        let _guard = protect(class);
-        let cstr = CString::new(class_name).unwrap_or_default();
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-        if !charsxp.is_null() {
-            SET_STRING_ELT(class, 0, charsxp);
-        }
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if class.is_null() {
+        return;
     }
+    let _guard = protect(class);
+    let cstr = CString::new(class_name).unwrap_or_default();
+    let charsxp = mk_char_cstr(&cstr);
+    if !charsxp.is_null() {
+        SET_STRING_ELT(class, 0, charsxp);
+    }
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
 }
 
 pub(crate) fn set_posixct_class(x: SEXP, tz: &str) {
-    unsafe {
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !class.is_null() {
-            let _guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if !class.is_null() {
+        let _guard = protect(class);
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
 
-        let tz_cstr = CString::new(tz).unwrap_or_default();
-        let tzone = Rf_mkString(tz_cstr.as_ptr());
-        if !tzone.is_null() {
-            crate::sexp::attrib_core::setAttrib(x, Rf_install(c"tzone".as_ptr()), tzone);
-        }
+    let tz_cstr = CString::new(tz).unwrap_or_default();
+    let tzone = mk_string_cstr(&tz_cstr);
+    if !tzone.is_null() {
+        crate::sexp::attrib_core::setAttrib(x, install_str("tzone"), tzone);
     }
 }
 

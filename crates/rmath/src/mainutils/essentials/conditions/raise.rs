@@ -210,14 +210,14 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         // Stock returns the message string (the R closure wraps it in
         // invisible()); print(warning("w")) therefore renders `[1] "w"`.
-        Rf_mkString(c_msg.as_ptr())
+        mk_string_cstr(&c_msg)
     }
 }
 
 /// GNU `warnings()` — return `last.warning` as a `"warnings"` object.
 pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let sym = Rf_install(c"last.warning".as_ptr());
+        let sym = install_str("last.warning");
         let mut last = crate::sexp::accessors::SYMVALUE(sym);
         if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
         {
@@ -238,7 +238,7 @@ pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             let owner = active_owner();
             if let (Ok(mut class_mut), Ok(charsxp)) = (
                 owner.sexp(class).and_then(SexpMut::try_from_checked),
-                owner.sexp(crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr())),
+                owner.sexp(mk_char_cstr(c"warnings")),
             ) {
                 let _ = class_mut.try_set_string_elt(0, charsxp);
             }
@@ -315,25 +315,23 @@ pub fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `inherits(x, what)` — check class.
 pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let what = CAR(CDR(args));
-        if x.is_null() || what.is_null() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let class_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        if class_attr.is_null() || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let target = elt_to_string(what, 0);
-        let n = XLENGTH(class_attr);
-        for i in 0..n {
-            if elt_to_string(class_attr, i) == target {
-                return Rf_ScalarLogical(TRUE);
-            }
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    let what = CAR(CDR(args));
+    if x.is_null() || what.is_null() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let class_attr = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+    if class_attr.is_null() || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let target = elt_to_string(what, 0);
+    let n = XLENGTH(class_attr);
+    for i in 0..n {
+        if elt_to_string(class_attr, i) == target {
+            return Rf_ScalarLogical(TRUE);
+        }
+    }
+    Rf_ScalarLogical(FALSE)
 }
 
 pub(crate) fn simple_error_condition(message: &str) -> SEXP {
@@ -437,7 +435,7 @@ pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -
             if let Ok(mut names_mut) = owner.sexp(names).and_then(SexpMut::try_from_checked) {
                 for (i, text) in [c"message", c"call"].into_iter().enumerate() {
                     let charsxp = owner
-                        .sexp(Rf_mkChar(text.as_ptr()))
+                        .sexp(mk_char_cstr(&text))
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
                 }
@@ -461,7 +459,7 @@ pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -
                     let _ = class_mut.try_set_string_elt(i as R_xlen_t, charsxp);
                 }
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
+            crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
         }
 
         result

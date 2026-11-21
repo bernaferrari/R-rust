@@ -7,28 +7,26 @@ mod replacement_missing_tests;
 
 /// R's `trimws(x, which="both")` — trim whitespace from strings.
 pub fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return x;
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let trimmed = s.trim();
-            let cstr = CString::new(trimmed).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return x;
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let trimmed = s.trim();
+        let cstr = CString::new(trimmed).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// R's `gsub(pattern, replacement, x)` — global string substitution (literal).
@@ -378,7 +376,7 @@ pub fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
                 );
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+            crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
         }
 
         result
@@ -595,7 +593,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                     SET_STRING_ELT(
                         result,
                         i,
-                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                        mk_char_cstr(&cstr),
                     );
                 }
             }
@@ -639,7 +637,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 } else {
                     let original =
                         CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
-                    crate::sexp::constructors::Rf_mkChar(original.as_ptr())
+                    mk_char_cstr(&original)
                 };
                 SET_STRING_ELT(result, i, value);
                 continue;
@@ -675,7 +673,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 .or(regex_replacement.as_deref())
                 .unwrap_or(&s);
             let cstr = CString::new(string_to_native_bytes(replaced, latin1)).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }

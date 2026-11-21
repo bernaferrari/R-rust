@@ -31,50 +31,48 @@ fn unix_secs_to_utc(secs: i64) -> crate::tzone_strftime::stm {
 
 /// GNU `strftime(x, format, tz)` is `format(as.POSIXlt(x, tz), format)`.
 pub fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let mut format = R_NilValue();
-        let mut tz = R_NilValue();
-        let mut cell = CDR(args);
-        let mut pos = 0usize;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "format" || (name.is_empty() && pos == 0) {
-                format = CAR(cell);
-            } else if name == "tz" || (name.is_empty() && pos == 1) {
-                tz = CAR(cell);
-            }
-            if name.is_empty() {
-                pos += 1;
-            }
-            cell = CDR(cell);
-        }
-        let lt_args = if tz.is_null() || tz == R_NilValue() {
-            Rf_cons(x, R_NilValue())
-        } else {
-            Rf_cons(x, Rf_cons(tz, R_NilValue()))
-        };
-        let _la = protect(lt_args);
-        let lt = crate::mainutils::datetime::do_as_POSIXlt(call, op, lt_args, rho);
-        let _lt = protect(lt);
-        let fmt_args = if format.is_null() || format == R_NilValue() {
-            Rf_cons(lt, R_NilValue())
-        } else {
-            let cell = Rf_cons(format, R_NilValue());
-            SETTAG(cell, Rf_install(c"format".as_ptr()));
-            Rf_cons(lt, cell)
-        };
-        let _fa = protect(fmt_args);
-        crate::mainutils::datetime::do_format_POSIXlt(call, op, fmt_args, rho)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let mut format = R_NilValue();
+    let mut tz = R_NilValue();
+    let mut cell = CDR(args);
+    let mut pos = 0usize;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if name == "format" || (name.is_empty() && pos == 0) {
+            format = CAR(cell);
+        } else if name == "tz" || (name.is_empty() && pos == 1) {
+            tz = CAR(cell);
+        }
+        if name.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
+    }
+    let lt_args = if tz.is_null() || tz == R_NilValue() {
+        Rf_cons(x, R_NilValue())
+    } else {
+        Rf_cons(x, Rf_cons(tz, R_NilValue()))
+    };
+    let _la = protect(lt_args);
+    let lt = crate::mainutils::datetime::do_as_POSIXlt(call, op, lt_args, rho);
+    let _lt = protect(lt);
+    let fmt_args = if format.is_null() || format == R_NilValue() {
+        Rf_cons(lt, R_NilValue())
+    } else {
+        let cell = Rf_cons(format, R_NilValue());
+        SETTAG(cell, install_str("format"));
+        Rf_cons(lt, cell)
+    };
+    let _fa = protect(fmt_args);
+    crate::mainutils::datetime::do_format_POSIXlt(call, op, fmt_args, rho)
 }
 
 /// GNU `format.Date(x, format="%Y-%m-%d")`.

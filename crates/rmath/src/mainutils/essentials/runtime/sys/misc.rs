@@ -18,11 +18,9 @@ pub fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `Sys.timezone()` — current timezone (simplified).
 pub fn do_Sys_timezone(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let tz = system_timezone_name();
-        let s = CString::new(tz).unwrap_or_default();
-        Rf_mkString(s.as_ptr())
-    }
+    let tz = system_timezone_name();
+    let s = CString::new(tz).unwrap_or_default();
+    mk_string_cstr(&s)
 }
 
 fn system_timezone_name() -> String {
@@ -58,13 +56,11 @@ pub(crate) fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
 
 /// GNU `utils::sessionInfo()` — enough fields for datetime2.R.
 pub fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_mkString(c"internal".as_ptr()));
-        crate::mainutils::essentials::set_string_names(result, &["tzcode_type".to_string()]);
-        result
-    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, mk_string_cstr(c"internal"));
+    crate::mainutils::essentials::set_string_names(result, &["tzcode_type".to_string()]);
+    result
 }
 
 /// GNU `.POSIXct(xx, tz = NULL, cl = c("POSIXct", "POSIXt"))`.
@@ -82,8 +78,8 @@ pub fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _n = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            SET_STRING_ELT(names, 0, mk_char_cstr(c"POSIXct"));
+            SET_STRING_ELT(names, 1, mk_char_cstr(c"POSIXt"));
             names
         } else {
             cl_arg
@@ -94,7 +90,7 @@ pub fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _a = protect(call_args);
         let result = crate::mainutils::attrib::do_classgets(_call, _op, call_args, rho);
         if !tz.is_null() && tz != R_NilValue() && tz != crate::sexp::globals::R_MissingArg() {
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"tzone".as_ptr()), tz);
+            crate::sexp::attrib_core::setAttrib(result, install_str("tzone"), tz);
         }
         result
     }

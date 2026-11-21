@@ -101,67 +101,65 @@ pub fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `sapply(X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE)`.
 /// `simplify` / `USE.NAMES` are not forwarded into FUN's `...`.
 pub fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
-        let _x = protect(x);
-        let (lapply_args, simplify, use_names) = sapply_control_args(args, x, rho);
-        let _lapply_args = protect(lapply_args);
-        let _simplify = protect(simplify);
-        let list = do_lapply(_call, _op, lapply_args, rho);
-        let _list = protect(list);
+    let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+    let _x = protect(x);
+    let (lapply_args, simplify, use_names) = sapply_control_args(args, x, rho);
+    let _lapply_args = protect(lapply_args);
+    let _simplify = protect(simplify);
+    let list = do_lapply(_call, _op, lapply_args, rho);
+    let _list = protect(list);
 
-        if use_names
-            && !list.is_null()
-            && TYPEOF(list) == SEXPTYPE::VECSXP
-            && TYPEOF(x) == SEXPTYPE::STRSXP
-            && XLENGTH(x) == XLENGTH(list)
-        {
-            let names = crate::sexp::attrib_core::getAttrib(
+    if use_names
+        && !list.is_null()
+        && TYPEOF(list) == SEXPTYPE::VECSXP
+        && TYPEOF(x) == SEXPTYPE::STRSXP
+        && XLENGTH(x) == XLENGTH(list)
+    {
+        let names = crate::sexp::attrib_core::getAttrib(
+            list,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        if names.is_null() || names == R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
                 list,
                 crate::sexp::attrib_core::R_NamesSymbol(),
+                x,
             );
-            if names.is_null() || names == R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    list,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    x,
-                );
-            }
         }
-        if sapply_is_false(simplify) {
-            return list;
-        }
-        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP || XLENGTH(list) == 0 {
-            return list;
-        }
-        let first = VECTOR_ELT(list, 0);
-        let atomic = !first.is_null()
-            && matches!(
-                SEXPTYPE(TYPEOF(first)),
-                SEXPTYPE::REALSXP
-                    | SEXPTYPE::INTSXP
-                    | SEXPTYPE::LGLSXP
-                    | SEXPTYPE::STRSXP
-                    | SEXPTYPE::CPLXSXP
-                    | SEXPTYPE::RAWSXP
-            );
-        if !atomic {
-            return list;
-        }
-        let higher = if sapply_is_array(simplify) {
-            TRUE
-        } else {
-            FALSE
-        };
-        let higher_s = Rf_ScalarLogical(higher);
-        let _higher = protect(higher_s);
-        let tail = Rf_cons(higher_s, R_NilValue());
-        let _tail = protect(tail);
-        SETTAG(tail, Rf_install(c"higher".as_ptr()));
-        let sargs = Rf_cons(list, tail);
-        let _sargs = protect(sargs);
-        do_simplify2array(_call, _op, sargs, rho)
     }
+    if sapply_is_false(simplify) {
+        return list;
+    }
+    if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP || XLENGTH(list) == 0 {
+        return list;
+    }
+    let first = VECTOR_ELT(list, 0);
+    let atomic = !first.is_null()
+        && matches!(
+            SEXPTYPE(TYPEOF(first)),
+            SEXPTYPE::REALSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::RAWSXP
+        );
+    if !atomic {
+        return list;
+    }
+    let higher = if sapply_is_array(simplify) {
+        TRUE
+    } else {
+        FALSE
+    };
+    let higher_s = Rf_ScalarLogical(higher);
+    let _higher = protect(higher_s);
+    let tail = Rf_cons(higher_s, R_NilValue());
+    let _tail = protect(tail);
+    SETTAG(tail, install_str("higher"));
+    let sargs = Rf_cons(list, tail);
+    let _sargs = protect(sargs);
+    do_simplify2array(_call, _op, sargs, rho)
 }
 
 pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bool) {
@@ -675,7 +673,7 @@ pub fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let matched = Rf_cons(raw, R_NilValue());
         let _m = protect(matched);
         let call = Rf_cons(
-            crate::sexp::symbol::Rf_install(c"match.fun".as_ptr()),
+            install_str("match.fun"),
             matched,
         );
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());

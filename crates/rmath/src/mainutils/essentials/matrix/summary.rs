@@ -7,39 +7,35 @@ use super::*;
 
 /// R's `NROW(x)` — number of rows; falls back to length(x) if no dim.
 pub fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
-        }
-        if is_data_frame_like(x) {
-            return Rf_ScalarInteger(data_frame_row_count(x) as i32);
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
-            Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
-        } else {
-            Rf_ScalarInteger(XLENGTH(x) as i32)
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    if is_data_frame_like(x) {
+        return Rf_ScalarInteger(data_frame_row_count(x) as i32);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
+        Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
+    } else {
+        Rf_ScalarInteger(XLENGTH(x) as i32)
     }
 }
 
 /// R's `NCOL(x)` — number of columns; returns 1 for vectors.
 pub fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
-        }
-        if is_data_frame_like(x) {
-            return Rf_ScalarInteger(XLENGTH(x) as i32);
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-            Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
-        } else {
-            Rf_ScalarInteger(1)
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    if is_data_frame_like(x) {
+        return Rf_ScalarInteger(XLENGTH(x) as i32);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
+        Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
+    } else {
+        Rf_ScalarInteger(1)
     }
 }
 
@@ -111,61 +107,57 @@ pub fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn copy_datetime_class(from: SEXP, to: SEXP) {
-    unsafe {
-        let class =
-            crate::sexp::attrib_core::getAttrib(from, crate::sexp::attrib_core::R_ClassSymbol());
-        if !class.is_null() && class != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                to,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
-        let tzone = crate::sexp::attrib_core::getAttrib(
-            from,
-            crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+    let class =
+        crate::sexp::attrib_core::getAttrib(from, crate::sexp::attrib_core::R_ClassSymbol());
+    if !class.is_null() && class != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            to,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
         );
-        if !tzone.is_null() && tzone != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                to,
-                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
-                tzone,
-            );
-        }
+    }
+    let tzone = crate::sexp::attrib_core::getAttrib(
+        from,
+        install_str("tzone"),
+    );
+    if !tzone.is_null() && tzone != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            to,
+            install_str("tzone"),
+            tzone,
+        );
     }
 }
 
 fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
-    unsafe {
-        let old = crate::mainutils::subassign::posixlt_obs_length(x);
-        if old == new_len {
-            return x;
-        }
-        let ncomp = XLENGTH(x);
+    let old = crate::mainutils::subassign::posixlt_obs_length(x);
+    if old == new_len {
+        return x;
+    }
+    let ncomp = XLENGTH(x);
 
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
-        let _a = protect(ans);
-        for j in 0..ncomp {
-            SET_VECTOR_ELT(ans, j, resize_vector(VECTOR_ELT(x, j), new_len));
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-        copy_datetime_class(x, ans);
+    let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
+    let _a = protect(ans);
+    for j in 0..ncomp {
+        SET_VECTOR_ELT(ans, j, resize_vector(VECTOR_ELT(x, j), new_len));
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(
             ans,
-            crate::sexp::symbol::Rf_install(c"balanced".as_ptr()),
-            Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
         );
-
-        ans
     }
+    copy_datetime_class(x, ans);
+    crate::sexp::attrib_core::setAttrib(
+        ans,
+        install_str("balanced"),
+        Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL),
+    );
+
+    ans
 }
 
 pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
@@ -240,31 +232,29 @@ pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
 }
 
 pub fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
-    unsafe {
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return;
-        }
-
-        let resized = Rf_allocVector3(SEXPTYPE::STRSXP, new_len);
-        if resized.is_null() {
-            return;
-        }
-        let _resized_guard = protect(resized);
-        let copy_len = XLENGTH(names).min(new_len);
-        for i in 0..copy_len {
-            SET_STRING_ELT(resized, i, STRING_ELT(names, i));
-        }
-        for i in copy_len..new_len {
-            SET_STRING_ELT(resized, i, Rf_mkChar(c"".as_ptr()));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            resized,
-        );
+    let names =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return;
     }
+
+    let resized = Rf_allocVector3(SEXPTYPE::STRSXP, new_len);
+    if resized.is_null() {
+        return;
+    }
+    let _resized_guard = protect(resized);
+    let copy_len = XLENGTH(names).min(new_len);
+    for i in 0..copy_len {
+        SET_STRING_ELT(resized, i, STRING_ELT(names, i));
+    }
+    for i in copy_len..new_len {
+        SET_STRING_ELT(resized, i, mk_char_cstr(c""));
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        resized,
+    );
 }
 
 pub fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
@@ -671,7 +661,7 @@ fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
         let la = CAR(args);
         if !la.is_null() && la != R_NilValue() && TYPEOF(la) == SEXPTYPE::INTSXP && LENGTH(la) >= 1
         {
-            let dim_attr = crate::sexp::attrib_core::getAttrib(la, Rf_install(c"dim".as_ptr()));
+            let dim_attr = crate::sexp::attrib_core::getAttrib(la, install_str("dim"));
             if dim_attr.is_null() || dim_attr == R_NilValue() {
                 return rowcol_indices(INTEGER(la), LENGTH(la), is_row);
             }
@@ -686,7 +676,7 @@ fn rowcol_from_matrix_arg(args: SEXP, is_row: bool) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
         if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
             std::panic::panic_any(RError {
                 message: format!(

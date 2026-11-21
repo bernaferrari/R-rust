@@ -1,4 +1,5 @@
 //! GNU which.min/which.max with rooted coercion and comparison values.
+use crate::mainutils::essentials::install_str;
 use crate::sexp::{
     ffi::{NA_INTEGER, SEXP, SEXPTYPE},
     object::{SessionNodeFactory, Sexp, SexpMut},
@@ -40,7 +41,7 @@ pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minimum: boo
         let source = arguments.try_car().expect("extrema input");
         let mut input = source.clone();
         if input.is_object() && !is_data_frame(&factory, &input, check) {
-            let symbol = crate::sexp::symbol::Rf_install(c"xtfrm".as_ptr());
+            let symbol = install_str("xtfrm");
             check();
             let function = factory.wrap(symbol).expect("root xtfrm symbol");
             let nil = factory.nil();

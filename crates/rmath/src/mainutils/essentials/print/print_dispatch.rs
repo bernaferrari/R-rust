@@ -21,7 +21,7 @@ pub fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let mut max = None;
-        let max_sym = Rf_install(c"max".as_ptr());
+        let max_sym = install_str("max");
         let mut p = CDR(args);
         while !p.is_null() && p != R_NilValue() {
             if TAG(p) == max_sym {
@@ -71,10 +71,10 @@ pub fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let mut max = None;
         let mut width = None;
-        let max_sym = Rf_install(c"max".as_ptr());
-        let digits_sym = Rf_install(c"digits".as_ptr());
-        let usetz_sym = Rf_install(c"usetz".as_ptr());
-        let width_sym = Rf_install(c"width".as_ptr());
+        let max_sym = install_str("max");
+        let digits_sym = install_str("digits");
+        let usetz_sym = install_str("usetz");
+        let width_sym = install_str("width");
         let mut digits = R_NilValue();
         let mut usetz_val = TRUE;
         let mut p = CDR(args);

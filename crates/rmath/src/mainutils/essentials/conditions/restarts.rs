@@ -59,17 +59,15 @@ pub fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `restartDescription(r)` — return the restart description, if any.
 pub fn do_restartDescription(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let restart = CAR(args);
-        if !is_restart_object(restart) {
-            return R_NilValue();
-        }
-        let description = restart_field(restart, "description", 3);
-        if description.is_null() || description == R_NilValue() {
-            Rf_mkString(c"".as_ptr())
-        } else {
-            description
-        }
+    let restart = CAR(args);
+    if !is_restart_object(restart) {
+        return R_NilValue();
+    }
+    let description = restart_field(restart, "description", 3);
+    if description.is_null() || description == R_NilValue() {
+        mk_string_cstr(c"")
+    } else {
+        description
     }
 }
 
@@ -253,7 +251,7 @@ pub(crate) fn call_function_with_args(
         }
         let mut quoted = factory.nil();
         for (value, tag) in entries.into_iter().rev() {
-            let value = restart_owned(Rf_lang2(Rf_install(c"quote".as_ptr()), value.as_raw()));
+            let value = restart_owned(Rf_lang2(install_str("quote"), value.as_raw()));
             quoted = factory
                 .pairlist_cell(&value, &quoted, &tag)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -426,37 +424,35 @@ pub(crate) fn restart_handler(restart: SEXP) -> SEXP {
 }
 
 fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {
-    unsafe {
-        if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let restart_owned = restart_owned(restart);
-        let restart = restart_owned.as_raw();
-        let names = crate::sexp::attrib_core::getAttrib(restart, Rf_install(c"names".as_ptr()));
-        let names_owned = if names.is_null() {
-            None
-        } else {
-            Some(condition_entry_value(&condition_entry_factory(), names))
-        };
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            let limit = XLENGTH(names).min(XLENGTH(restart));
-            for index in 0..limit {
-                if elt_to_string(names, index) == field_name {
-                    return restart_owned
-                        .try_vector_elt(index)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
+    if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
+    let restart_owned = restart_owned(restart);
+    let restart = restart_owned.as_raw();
+    let names = crate::sexp::attrib_core::getAttrib(restart, install_str("names"));
+    let names_owned = if names.is_null() {
+        None
+    } else {
+        Some(condition_entry_value(&condition_entry_factory(), names))
+    };
+    if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+        let limit = XLENGTH(names).min(XLENGTH(restart));
+        for index in 0..limit {
+            if elt_to_string(names, index) == field_name {
+                return restart_owned
+                    .try_vector_elt(index)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
-        if fallback_index < XLENGTH(restart) {
-            restart_owned
-                .try_vector_elt(fallback_index)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        } else {
-            R_NilValue()
-        }
+    }
+    if fallback_index < XLENGTH(restart) {
+        restart_owned
+            .try_vector_elt(fallback_index)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    } else {
+        R_NilValue()
     }
 }
 
@@ -485,7 +481,7 @@ pub(crate) fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
         );
         put(1, exit, &mut restart_mut);
         put(2, handler, &mut restart_mut);
-        put(3, Rf_mkString(c"".as_ptr()), &mut restart_mut);
+        put(3, mk_string_cstr(c""), &mut restart_mut);
         put(4, R_NilValue(), &mut restart_mut);
         put(5, R_NilValue(), &mut restart_mut);
 
@@ -500,13 +496,13 @@ pub(crate) fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
         let names_owned = restart_owned(names);
         crate::sexp::attrib_core::setAttrib(
             restart,
-            Rf_install(c"names".as_ptr()),
+            install_str("names"),
             names_owned.as_raw(),
         );
         crate::sexp::attrib_core::setAttrib(
             restart,
-            Rf_install(c"class".as_ptr()),
-            Rf_mkString(c"restart".as_ptr()),
+            install_str("class"),
+            mk_string_cstr(c"restart"),
         );
         restart
     }
@@ -534,8 +530,8 @@ fn abort_restart_entry() -> SEXP {
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         crate::sexp::attrib_core::setAttrib(
             restart,
-            Rf_install(c"class".as_ptr()),
-            Rf_mkString(c"restart".as_ptr()),
+            install_str("class"),
+            mk_string_cstr(c"restart"),
         );
         restart
     }

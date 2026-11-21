@@ -46,17 +46,15 @@ fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
 }
 
 fn set_mode_class(x: SEXP, class: &str) -> SEXP {
-    unsafe {
-        let dup = crate::mainutils::duplicate::Rf_duplicate(x);
-        let _d = protect(dup);
-        let cstr = CString::new(class).unwrap_or_else(|_| CString::new("").unwrap());
-        crate::sexp::attrib_core::setAttrib(
-            dup,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(cstr.as_ptr()),
-        );
-        dup
-    }
+    let dup = crate::mainutils::duplicate::Rf_duplicate(x);
+    let _d = protect(dup);
+    let cstr = CString::new(class).unwrap_or_else(|_| CString::new("").unwrap());
+    crate::sexp::attrib_core::setAttrib(
+        dup,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(&cstr),
+    );
+    dup
 }
 
 /// GNU `as.hexmode(x)`.
@@ -90,43 +88,41 @@ pub fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
-    unsafe {
-        let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
-            XLENGTH(x)
+    let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
+        XLENGTH(x)
+    } else {
+        0
+    };
+    let mut texts: Vec<Option<String>> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        if v == NA_INTEGER {
+            texts.push(None);
+        } else if hex {
+            texts.push(Some(format!("{v:x}")));
         } else {
-            0
-        };
-        let mut texts: Vec<Option<String>> = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            if v == NA_INTEGER {
-                texts.push(None);
-            } else if hex {
-                texts.push(Some(format!("{v:x}")));
-            } else {
-                texts.push(Some(format!("{v:o}")));
-            }
+            texts.push(Some(format!("{v:o}")));
         }
-        if n > 1 {
-            let width = texts.iter().flatten().map(|s| s.len()).max().unwrap_or(0);
-            for text in texts.iter_mut().flatten() {
-                *text = format!("{text:0>width$}");
-            }
-        }
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for (i, s) in texts.iter().enumerate() {
-            let ch = if let Some(text) = s {
-                let c = CString::new(text.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-                Rf_mkChar(c.as_ptr())
-            } else {
-                crate::sexp::globals::R_NaString()
-            };
-            SET_STRING_ELT(out, i as i64, ch);
-        }
-        copy_mode_structure(out, x);
-        out
     }
+    if n > 1 {
+        let width = texts.iter().flatten().map(|s| s.len()).max().unwrap_or(0);
+        for text in texts.iter_mut().flatten() {
+            *text = format!("{text:0>width$}");
+        }
+    }
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    for (i, s) in texts.iter().enumerate() {
+        let ch = if let Some(text) = s {
+            let c = CString::new(text.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+            mk_char_cstr(&c)
+        } else {
+            crate::sexp::globals::R_NaString()
+        };
+        SET_STRING_ELT(out, i as i64, ch);
+    }
+    copy_mode_structure(out, x);
+    out
 }
 
 fn copy_mode_structure(out: SEXP, x: SEXP) {
@@ -148,34 +144,32 @@ fn copy_mode_structure(out: SEXP, x: SEXP) {
 }
 
 pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
-    unsafe {
-        let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
-            XLENGTH(x)
+    let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
+        XLENGTH(x)
+    } else {
+        0
+    };
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    for i in 0..n {
+        let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        let ch = if v == NA_INTEGER {
+            crate::sexp::globals::R_NaString()
         } else {
-            0
-        };
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for i in 0..n {
-            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            let ch = if v == NA_INTEGER {
-                crate::sexp::globals::R_NaString()
+            let s = if hex {
+                format!("{v:x}")
             } else {
-                let s = if hex {
-                    format!("{v:x}")
-                } else {
-                    format!("{v:o}")
-                };
-                let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
-                Rf_mkChar(c.as_ptr())
+                format!("{v:o}")
             };
-            SET_STRING_ELT(out, i as i64, ch);
-        }
-        if keep_str {
-            copy_mode_structure(out, x);
-        }
-        out
+            let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+            mk_char_cstr(&c)
+        };
+        SET_STRING_ELT(out, i as i64, ch);
     }
+    if keep_str {
+        copy_mode_structure(out, x);
+    }
+    out
 }
 
 pub(crate) fn mode_keep_str(args: SEXP) -> bool {
@@ -377,112 +371,110 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
 
 /// GNU `formatC(x, digits, width, format)`.
 pub fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // GNU util.c do_formatC: positional (x, type, width, digits,
-        // format, flag, i.strlen). The R-level formatC closure in
-        // base/format.R performs argument checking, character padding,
-        // zero.print splicing and prettyNum post-processing.
-        let mut cell = args;
-        let mut next = || -> Option<SEXP> {
-            if cell.is_null() || cell == R_NilValue() {
-                None
-            } else {
-                let v = CAR(cell);
-                cell = CDR(cell);
-                Some(v)
-            }
-        };
-        let x = next().unwrap_or(R_NilValue());
-        let type_arg = next().unwrap_or(R_NilValue());
-        let width_arg = next().unwrap_or(R_NilValue());
-        let digits_arg = next().unwrap_or(R_NilValue());
-        let format_arg = next().unwrap_or(R_NilValue());
-        let flag_arg = next().unwrap_or(R_NilValue());
-        let i_strlen_arg = next().unwrap_or(R_NilValue());
+    // GNU util.c do_formatC: positional (x, type, width, digits,
+    // format, flag, i.strlen). The R-level formatC closure in
+    // base/format.R performs argument checking, character padding,
+    // zero.print splicing and prettyNum post-processing.
+    let mut cell = args;
+    let mut next = || -> Option<SEXP> {
+        if cell.is_null() || cell == R_NilValue() {
+            None
+        } else {
+            let v = CAR(cell);
+            cell = CDR(cell);
+            Some(v)
+        }
+    };
+    let x = next().unwrap_or(R_NilValue());
+    let type_arg = next().unwrap_or(R_NilValue());
+    let width_arg = next().unwrap_or(R_NilValue());
+    let digits_arg = next().unwrap_or(R_NilValue());
+    let format_arg = next().unwrap_or(R_NilValue());
+    let flag_arg = next().unwrap_or(R_NilValue());
+    let i_strlen_arg = next().unwrap_or(R_NilValue());
 
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let _x_guard = protect(x);
-        let _type_guard = protect(type_arg);
-        let _width_guard = protect(width_arg);
-        let _digits_guard = protect(digits_arg);
-        let _format_guard = protect(format_arg);
-        let _flag_guard = protect(flag_arg);
-        let _i_strlen_source_guard = protect(i_strlen_arg);
-        // GNU do_formatC() coerces i.strlen to integer before allocating its
-        // output buffers. Its R-level pmax can produce a real vector, so use
-        // the shared R coercion path rather than an unchecked Rust cast.
-        let i_strlen_arg =
-            crate::mainutils::coerce::coerceVector(i_strlen_arg, SEXPTYPE::INTSXP.as_c_int());
-        let _i_strlen_guard = protect(i_strlen_arg);
-        let type_str = string_elt_or(&type_arg, "double");
-        let mut width = int_or_na(&width_arg);
-        let digits = int_or_na(&digits_arg);
-        let mut format = string_elt_or(&format_arg, "");
-        if format.is_empty() {
-            format = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                "d".to_string()
-            } else {
-                "g".to_string()
-            };
-        }
-        let flag = string_elt_or(&flag_arg, "");
-        let alt = flag.contains('#');
-        if width == NA_INTEGER {
-            width = 0;
-        }
-
-        let n = XLENGTH(x);
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for i in 0..n {
-            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                REAL_ELT(x, i as i32)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = INTEGER_ELT(x, i as i32);
-                if iv == NA_INTEGER {
-                    f64::NAN
-                } else {
-                    iv as f64
-                }
-            } else {
-                0.0
-            };
-            let s = if v.is_nan() {
-                "NA".to_string()
-            } else if format == "d" {
-                // %*d with the flag modifiers; width < 0 left-justifies.
-                let w = width.unsigned_abs() as usize;
-                let body = format!("{}", v as i64);
-                c_pad(body, w, &flag, width < 0, flag.contains('0'))
-            } else {
-                let body = formatc_one(v, digits, &format, alt);
-                c_pad(
-                    body,
-                    width.unsigned_abs() as usize,
-                    &flag,
-                    width < 0 || flag.contains('-'),
-                    flag.contains('0') && !flag.contains('-'),
-                )
-            };
-            // The C buffers hold i.strlen + 2 characters plus NUL; longer
-            // formatted strings are truncated to that cap.
-            let cap = if XLENGTH(i_strlen_arg) > i {
-                (INTEGER_ELT(i_strlen_arg, i as i32) as usize).saturating_add(2)
-            } else {
-                usize::MAX
-            };
-            let s = if s.chars().count() > cap {
-                s.chars().take(cap).collect()
-            } else {
-                s
-            };
-            let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
-        }
-        out
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let _x_guard = protect(x);
+    let _type_guard = protect(type_arg);
+    let _width_guard = protect(width_arg);
+    let _digits_guard = protect(digits_arg);
+    let _format_guard = protect(format_arg);
+    let _flag_guard = protect(flag_arg);
+    let _i_strlen_source_guard = protect(i_strlen_arg);
+    // GNU do_formatC() coerces i.strlen to integer before allocating its
+    // output buffers. Its R-level pmax can produce a real vector, so use
+    // the shared R coercion path rather than an unchecked Rust cast.
+    let i_strlen_arg =
+        crate::mainutils::coerce::coerceVector(i_strlen_arg, SEXPTYPE::INTSXP.as_c_int());
+    let _i_strlen_guard = protect(i_strlen_arg);
+    let type_str = string_elt_or(&type_arg, "double");
+    let mut width = int_or_na(&width_arg);
+    let digits = int_or_na(&digits_arg);
+    let mut format = string_elt_or(&format_arg, "");
+    if format.is_empty() {
+        format = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            "d".to_string()
+        } else {
+            "g".to_string()
+        };
+    }
+    let flag = string_elt_or(&flag_arg, "");
+    let alt = flag.contains('#');
+    if width == NA_INTEGER {
+        width = 0;
+    }
+
+    let n = XLENGTH(x);
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    for i in 0..n {
+        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let iv = INTEGER_ELT(x, i as i32);
+            if iv == NA_INTEGER {
+                f64::NAN
+            } else {
+                iv as f64
+            }
+        } else {
+            0.0
+        };
+        let s = if v.is_nan() {
+            "NA".to_string()
+        } else if format == "d" {
+            // %*d with the flag modifiers; width < 0 left-justifies.
+            let w = width.unsigned_abs() as usize;
+            let body = format!("{}", v as i64);
+            c_pad(body, w, &flag, width < 0, flag.contains('0'))
+        } else {
+            let body = formatc_one(v, digits, &format, alt);
+            c_pad(
+                body,
+                width.unsigned_abs() as usize,
+                &flag,
+                width < 0 || flag.contains('-'),
+                flag.contains('0') && !flag.contains('-'),
+            )
+        };
+        // The C buffers hold i.strlen + 2 characters plus NUL; longer
+        // formatted strings are truncated to that cap.
+        let cap = if XLENGTH(i_strlen_arg) > i {
+            (INTEGER_ELT(i_strlen_arg, i as i32) as usize).saturating_add(2)
+        } else {
+            usize::MAX
+        };
+        let s = if s.chars().count() > cap {
+            s.chars().take(cap).collect()
+        } else {
+            s
+        };
+        let c = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+        SET_STRING_ELT(out, i, mk_char_cstr(&c));
+    }
+    out
 }
 
 /// Read element 0 of a string argument with a fallback.
@@ -602,57 +594,55 @@ fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
 
 /// GNU `prettyNum(x, big.mark, decimal.mark)`.
 pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let (x, rest) = pretty_num_split(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let mut drop0 = false;
-        let mut scan = rest;
-        while !scan.is_null() && scan != R_NilValue() {
-            let tag = TAG(scan);
-            if !tag.is_null() && tag != R_NilValue() {
-                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
-                if name == "drop0trailing" {
-                    drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
-                }
-            }
-            scan = CDR(scan);
-        }
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _out = protect(out);
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            for i in 0..n {
-                let s = elt_to_string(x, i);
-                let s = pretty_num_one(&s, "", drop0, ".", "", 5);
-                let c = std::ffi::CString::new(s).unwrap_or_default();
-                SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
-            }
-            return out;
-        }
-        for i in 0..n {
-            let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                Rf_ScalarInteger(integer_elt_checked(x, (i as usize) as R_xlen_t))
-            } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-                Rf_ScalarReal(real_elt_checked(x, (i as usize) as R_xlen_t))
-            } else if TYPEOF(x) == SEXPTYPE::STRSXP {
-                let one = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                SET_STRING_ELT(one, 0, STRING_ELT(x, i));
-                one
-            } else {
-                x
-            };
-            let _elt = protect(elt);
-            let call_args = Rf_cons(elt, rest);
-            let _call_args = protect(call_args);
-            let formatted = format_numeric_vector(elt, 1, call_args);
-            if TYPEOF(formatted) == SEXPTYPE::STRSXP && XLENGTH(formatted) > 0 {
-                SET_STRING_ELT(out, i, STRING_ELT(formatted, 0));
-            }
-        }
-        out
+    let (x, rest) = pretty_num_split(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let n = XLENGTH(x);
+    let mut drop0 = false;
+    let mut scan = rest;
+    while !scan.is_null() && scan != R_NilValue() {
+        let tag = TAG(scan);
+        if !tag.is_null() && tag != R_NilValue() {
+            let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
+            if name == "drop0trailing" {
+                drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
+            }
+        }
+        scan = CDR(scan);
+    }
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _out = protect(out);
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            let s = pretty_num_one(&s, "", drop0, ".", "", 5);
+            let c = std::ffi::CString::new(s).unwrap_or_default();
+            SET_STRING_ELT(out, i, mk_char_cstr(&c));
+        }
+        return out;
+    }
+    for i in 0..n {
+        let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
+            Rf_ScalarInteger(integer_elt_checked(x, (i as usize) as R_xlen_t))
+        } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+            Rf_ScalarReal(real_elt_checked(x, (i as usize) as R_xlen_t))
+        } else if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let one = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            SET_STRING_ELT(one, 0, STRING_ELT(x, i));
+            one
+        } else {
+            x
+        };
+        let _elt = protect(elt);
+        let call_args = Rf_cons(elt, rest);
+        let _call_args = protect(call_args);
+        let formatted = format_numeric_vector(elt, 1, call_args);
+        if TYPEOF(formatted) == SEXPTYPE::STRSXP && XLENGTH(formatted) > 0 {
+            SET_STRING_ELT(out, i, STRING_ELT(formatted, 0));
+        }
+    }
+    out
 }
 
 /// R's `format(x, digits, nsmall)` — format numbers as strings.
@@ -662,7 +652,7 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let digits_arg = CAR(CDR(args));
         let nsmall_arg = CAR(CDR(CDR(args)));
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         // Upstream `format` is a UseMethod generic; its .Internal core
         // (do_format) never dispatches — GNU reaches the internal only via
@@ -721,9 +711,9 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if let Some(env_sexp) = crate::sexp::object::Sexp::from_raw(x) {
                 let rendered = crate::sexp::output::format_environment_public(env_sexp);
                 let cstr = CString::new(rendered).unwrap_or_default();
-                return Rf_mkString(cstr.as_ptr());
+                return mk_string_cstr(&cstr);
             }
-            return Rf_mkString(c"<environment>".as_ptr() as *const std::os::raw::c_char);
+            return mk_string_cstr(c"<environment>");
         }
         if x_type == SEXPTYPE::CLOSXP
             || x_type == SEXPTYPE::SPECIALSXP
@@ -788,7 +778,7 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 elt_to_string(x, i)
             };
             let cstr = CString::new(s).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
@@ -1128,7 +1118,7 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         }
         for (i, text) in encoded_strings.iter().enumerate() {
             let cstr = CString::new(text.as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
@@ -1522,7 +1512,7 @@ fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 justify_pad(s, field, justify)
             };
             let cstr = CString::new(out).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
@@ -1625,35 +1615,33 @@ fn calendar_label(days: f64, kind: CalendarLabel) -> Option<String> {
 }
 
 fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
-    unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        if TYPEOF(x) != SEXPTYPE::REALSXP
-            || (!sexp_has_class(x, "Date") && !sexp_has_class(x, "POSIXct"))
-        {
-            base_error("no applicable method");
-        }
-
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _guard = protect(result);
-        for i in 0..n {
-            let label = calendar_days_from_element(x, i)
-                .and_then(|days| calendar_label(days, kind))
-                .or_else(|| matches!(kind, CalendarLabel::Quarter).then(|| "QNA".to_string()));
-            let charsxp = label
-                .and_then(|label| CString::new(label).ok())
-                .map(|label| Rf_mkChar(label.as_ptr()))
-                .unwrap_or_else(crate::sexp::globals::R_NaString);
-            SET_STRING_ELT(result, i, charsxp);
-        }
-        result
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    if TYPEOF(x) != SEXPTYPE::REALSXP
+        || (!sexp_has_class(x, "Date") && !sexp_has_class(x, "POSIXct"))
+    {
+        base_error("no applicable method");
+    }
+
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _guard = protect(result);
+    for i in 0..n {
+        let label = calendar_days_from_element(x, i)
+            .and_then(|days| calendar_label(days, kind))
+            .or_else(|| matches!(kind, CalendarLabel::Quarter).then(|| "QNA".to_string()));
+        let charsxp = label
+            .and_then(|label| CString::new(label).ok())
+            .map(|label| mk_char_cstr(&label))
+            .unwrap_or_else(crate::sexp::globals::R_NaString);
+        SET_STRING_ELT(result, i, charsxp);
+    }
+    result
 }
 
 /// R's `weekdays(x)` for Date/POSIXct values.

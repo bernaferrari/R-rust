@@ -240,7 +240,7 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 STRING_ELT(dimnames_names, 1)
                             } else {
                                 // R_BlankString
-                                Rf_mkChar(c"".as_ptr())
+                                mk_char_cstr(c"")
                             },
                         );
                         crate::sexp::attrib_core::setAttrib(
@@ -296,39 +296,35 @@ pub fn not_matrix() -> ! {
 
 /// R's `nrow(x)` — number of rows.
 pub fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
-        }
-        if is_data_frame_object(x) {
-            return Rf_ScalarInteger(data_frame_row_count(x) as c_int);
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
-            Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
-        } else {
-            Rf_ScalarInteger(XLENGTH(x) as c_int)
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    if is_data_frame_object(x) {
+        return Rf_ScalarInteger(data_frame_row_count(x) as c_int);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
+        Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
+    } else {
+        Rf_ScalarInteger(XLENGTH(x) as c_int)
     }
 }
 
 /// R's `ncol(x)` — number of columns.
 pub fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
-        }
-        if is_data_frame_object(x) {
-            return Rf_ScalarInteger(XLENGTH(x) as c_int);
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-            Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
-        } else {
-            Rf_ScalarInteger(1)
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    if is_data_frame_object(x) {
+        return Rf_ScalarInteger(XLENGTH(x) as c_int);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
+        Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
+    } else {
+        Rf_ScalarInteger(1)
     }
 }
 
@@ -363,7 +359,7 @@ pub fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             set_integer_checked(dim, (1) as R_xlen_t, XLENGTH(x) as c_int);
             return dim;
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
         if !dim_attr.is_null() {
             dim_attr
         } else {
@@ -554,6 +550,6 @@ pub fn do_dimnames(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if crate::mainutils::essentials::is_data_frame_like(x) {
             return dimnames_data_frame(x);
         }
-        crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()))
+        crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"))
     }
 }

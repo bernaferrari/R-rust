@@ -62,11 +62,11 @@ pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         UnlistValue::NaString => crate::sexp::globals::R_NaString(),
                         UnlistValue::String(bytes) => {
                             let cstr = CString::new(bytes.as_slice()).unwrap_or_default();
-                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                            mk_char_cstr(&cstr)
                         }
                         other => {
                             let cstr = CString::new(other.as_string()).unwrap_or_default();
-                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                            mk_char_cstr(&cstr)
                         }
                     };
                     if !charsxp.is_null() {
@@ -110,9 +110,9 @@ pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         UnlistName::Na => crate::sexp::globals::R_NaString(),
                         UnlistName::Value(s) => {
                             let cstr = CString::new(s.as_str()).unwrap_or_default();
-                            Rf_mkChar(cstr.as_ptr())
+                            mk_char_cstr(&cstr)
                         }
-                        UnlistName::Absent => Rf_mkChar(c"".as_ptr()),
+                        UnlistName::Absent => mk_char_cstr(c""),
                     };
                     SET_STRING_ELT(names, idx as R_xlen_t, charsxp);
                 }

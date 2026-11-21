@@ -191,7 +191,7 @@ pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return scalar_logical(FALSE);
     }
     // SAFETY: x is a live SEXP retained by the caller's argument graph.
-    let names = unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr())) };
+    let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
     let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
     scalar_logical(if has_names { TRUE } else { FALSE })
 }

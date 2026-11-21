@@ -410,7 +410,7 @@ pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
             if !path_string.is_null() {
                 crate::sexp::attrib_core::setAttrib(
                     package_env,
-                    Rf_install(c"path".as_ptr()),
+                    install_str("path"),
                     path_string,
                 );
             }
@@ -422,7 +422,7 @@ pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
 /// utils namespace when its `.onLoad` could not (GNU's zzz.R).
 pub(super) fn ensure_utils_os_version(package_env: SEXP) {
     unsafe {
-        let sym = Rf_install(c"osVersion".as_ptr());
+        let sym = install_str("osVersion");
         let existing = crate::sexp::envir::R_findVarInFrame(package_env, sym);
         if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
             return;
@@ -433,7 +433,7 @@ pub(super) fn ensure_utils_os_version(package_env: SEXP) {
         let Ok(cstring) = std::ffi::CString::new(text) else {
             return;
         };
-        let value = crate::sexp::constructors::Rf_mkString(cstring.as_ptr());
+        let value = mk_string_cstr(&cstring);
         let _v = protect(value);
         crate::sexp::envir::defineVar(sym, value, package_env);
     }
@@ -477,7 +477,7 @@ pub(super) fn gnu_os_version_string() -> Option<String> {
 
 pub(super) fn ensure_s3methods_slot(info: SEXP) {
     unsafe {
-        let sym = Rf_install(c"S3methods".as_ptr());
+        let sym = install_str("S3methods");
         let existing = crate::sexp::envir::R_findVarInFrame(info, sym);
         if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
             return;
@@ -493,7 +493,7 @@ pub(super) fn ensure_s3methods_slot(info: SEXP) {
 
 pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &NamespaceDirectives) {
     unsafe {
-        let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let info_sym = install_str(".__NAMESPACE__.");
         let info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
         if info.is_null()
             || info == crate::sexp::globals::R_UnboundValue()
@@ -502,7 +502,7 @@ pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &Names
             return;
         }
         let _info = protect(info);
-        let sym = Rf_install(c"S3methods".as_ptr());
+        let sym = install_str("S3methods");
         let rows: Vec<_> = directives
             .s3_methods
             .iter()

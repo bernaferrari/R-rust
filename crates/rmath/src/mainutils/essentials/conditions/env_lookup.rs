@@ -461,62 +461,60 @@ pub(crate) fn logical_arg(arg: SEXP, default: bool) -> bool {
 
 /// R's `ls(envir)` — list objects.
 pub fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut env = rho;
-        let mut all_names = false;
-        let mut sorted = true;
+    let mut env = rho;
+    let mut all_names = false;
+    let mut sorted = true;
 
-        let mut positional = 0;
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let arg = CAR(cell);
-            let name = symbol_name(TAG(cell));
-            match name.as_deref() {
-                Some("name") | Some("pos") | Some("envir") => {
-                    env = coerce_search_envir(arg, env);
-                }
-                Some("all.names") => all_names = logical_arg(arg, all_names),
-                Some("sorted") => sorted = logical_arg(arg, sorted),
-                _ => {
-                    match positional {
-                        0 => env = coerce_search_envir(arg, env),
-                        1 => all_names = logical_arg(arg, all_names),
-                        2 => sorted = logical_arg(arg, sorted),
-                        _ => {}
-                    }
-                    positional += 1;
-                }
+    let mut positional = 0;
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let arg = CAR(cell);
+        let name = symbol_name(TAG(cell));
+        match name.as_deref() {
+            Some("name") | Some("pos") | Some("envir") => {
+                env = coerce_search_envir(arg, env);
             }
-            cell = CDR(cell);
+            Some("all.names") => all_names = logical_arg(arg, all_names),
+            Some("sorted") => sorted = logical_arg(arg, sorted),
+            _ => {
+                match positional {
+                    0 => env = coerce_search_envir(arg, env),
+                    1 => all_names = logical_arg(arg, all_names),
+                    2 => sorted = logical_arg(arg, sorted),
+                    _ => {}
+                }
+                positional += 1;
+            }
         }
-
-        let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
-            super::shared::frame_binding_names_for_listing(env, all_names)
-        } else {
-            Vec::new()
-        };
-
-        if sorted {
-            names.sort_by(|a, b| super::sets::collate_str(a, b));
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, name) in names.iter().enumerate() {
-            let cstr = CString::new(name.as_str()).unwrap_or_default();
-            let charsxp = owner
-                .sexp(Rf_mkChar(cstr.as_ptr()))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_string_elt(i as R_xlen_t, charsxp)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        result
+        cell = CDR(cell);
     }
+
+    let mut names = if TYPEOF(env) == SEXPTYPE::ENVSXP {
+        super::shared::frame_binding_names_for_listing(env, all_names)
+    } else {
+        Vec::new()
+    };
+
+    if sorted {
+        names.sort_by(|a, b| super::sets::collate_str(a, b));
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, name) in names.iter().enumerate() {
+        let cstr = CString::new(name.as_str()).unwrap_or_default();
+        let charsxp = owner
+            .sexp(mk_char_cstr(&cstr))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_string_elt(i as R_xlen_t, charsxp)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    result
 }
 
 /// `ls.str(envir)` — list names and `str` each value without forcing symbols.

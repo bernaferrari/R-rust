@@ -21,7 +21,6 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Set operations: setdiff, union, intersect, setequal

@@ -1,4 +1,5 @@
 //! Original-domain mget operands and sequential lazy-binding evaluation.
+use crate::mainutils::essentials::install_cstr;
 use crate::sexp::{
     ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpMut, SexpResult},
@@ -381,11 +382,9 @@ fn execute(
         let symbol = access.with_native(|token| {
             let name =
                 std::ffi::CString::new(name.as_str()).map_err(|_| failure("invalid mget name"))?;
-            unsafe {
-                token
-                    .sexp(crate::sexp::symbol::Rf_install(name.as_ptr()))?
-                    .into_owned()
-            }
+            token
+                .sexp(install_cstr(&name))?
+                .into_owned()
         })?;
         let selected = lookup(&symbol, environment.clone(), mode, inherits, access)?;
         let value = match selected {

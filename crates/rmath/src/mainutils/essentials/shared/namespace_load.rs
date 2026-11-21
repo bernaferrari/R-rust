@@ -3,19 +3,19 @@
 use super::*;
 
 pub(crate) fn package_name_symbol() -> SEXP {
-    unsafe { Rf_install(c".packageName".as_ptr()) }
+    install_str(".packageName")
 }
 
 pub(crate) fn name_symbol() -> SEXP {
-    unsafe { Rf_install(c"name".as_ptr()) }
+    install_str("name")
 }
 
 pub(crate) fn namespace_env_symbol() -> SEXP {
-    unsafe { Rf_install(c".namespaceEnv".as_ptr()) }
+    install_str(".namespaceEnv")
 }
 
 pub(crate) fn lazy_data_names_symbol() -> SEXP {
-    unsafe { Rf_install(c".lazyDataNames".as_ptr()) }
+    install_str(".lazyDataNames")
 }
 
 pub(crate) fn package_name_binding(env: SEXP) -> Option<String> {
@@ -462,7 +462,7 @@ pub(crate) fn run_methods_onload_cache_metadata(where_env: SEXP) {
         {
             let primitive = crate::sexp::envir::R_findVarInFrame(
                 crate::sexp::globals::R_BaseEnv(),
-                Rf_install(c"$".as_ptr()),
+                install_str("$"),
             );
             // Admit primitive dispatch for both installed and captured namespaces;
             // restore the original
@@ -528,7 +528,7 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
         // current owner generic table as evidence first. Unknown or
         // multi-argument signatures take the full path to preserve dispatch.
         let table =
-            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".BasicFunsList".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(ns, install_str(".BasicFunsList"));
         if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::VECSXP {
             return true;
         }
@@ -566,7 +566,7 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
             return true;
         }
         let sig_length =
-            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".SigLength".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".SigLength"));
         if sig_length.is_null()
             || sig_length == R_NilValue()
             || TYPEOF(sig_length) != SEXPTYPE::INTSXP
@@ -576,7 +576,7 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
             return true;
         }
         let methods_table =
-            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".AllMTable".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".AllMTable"));
         if methods_table.is_null()
             || methods_table == R_NilValue()
             || TYPEOF(methods_table) != SEXPTYPE::ENVSXP
@@ -645,7 +645,7 @@ pub(super) fn register_original_primitive_generic(ns: SEXP, primitive_name: &std
             .pin()
             .unwrap_or_else(|error| package_error(error.to_string()));
         let table =
-            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".BasicFunsList".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(ns, install_str(".BasicFunsList"));
         let table = owner
             .sexp(table)
             .and_then(crate::sexp::object::Sexp::into_owned)
@@ -680,7 +680,7 @@ pub(super) fn register_original_primitive_generic(ns: SEXP, primitive_name: &std
                     .unwrap_or_else(|error| package_error(error.to_string()));
                 let primitive = crate::sexp::envir::R_findVarInFrame(
                     crate::sexp::globals::R_BaseEnv(),
-                    Rf_install(primitive_name.as_ptr()),
+                    install_cstr(&primitive_name),
                 );
                 crate::mainutils::objects::do_set_prim_method(
                     primitive,
@@ -759,7 +759,7 @@ fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
             .unwrap_or_else(|error| package_error(error.to_string()));
         let mut fun = crate::sexp::envir::R_findVarInFrame(
             methods_root.as_raw(),
-            Rf_install(c"cacheMetaData".as_ptr()),
+            install_str("cacheMetaData"),
         );
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;
@@ -952,7 +952,7 @@ pub(super) fn eval_methods_ns_fun(
     attach: Option<SEXP>,
 ) {
     unsafe {
-        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, Rf_install(name.as_ptr()));
+        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, install_cstr(&name));
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;
         }
@@ -987,7 +987,7 @@ pub(super) fn purge_missing_arg_placeholders(env: SEXP) {
             let Ok(cname) = CString::new(name.as_str()) else {
                 continue;
             };
-            let symbol = Rf_install(cname.as_ptr());
+            let symbol = install_cstr(&cname);
             let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
             if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
                 continue;
@@ -1006,14 +1006,14 @@ pub(super) fn purge_missing_arg_placeholders(env: SEXP) {
             let Ok(cname) = CString::new(name) else {
                 continue;
             };
-            crate::sexp::envir::remove_binding_raw(env, Rf_install(cname.as_ptr()));
+            crate::sexp::envir::remove_binding_raw(env, install_cstr(&cname));
         }
     }
 }
 
 pub(super) fn retarget_methods_generics(ns: SEXP) {
     unsafe {
-        let methods_ns_sym = Rf_install(c".methodsNamespace".as_ptr());
+        let methods_ns_sym = install_str(".methodsNamespace");
         let old_ns = crate::sexp::envir::R_findVarInFrame(ns, methods_ns_sym);
         // `.InitRefClasses` captured this stub as envRefClass@refMethods$.objectParent.
         if !old_ns.is_null()
@@ -1073,7 +1073,7 @@ pub(super) fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
 pub(super) fn retarget_envref_object_parent(ns: SEXP) {
     unsafe {
         let class_def =
-            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".__C__envRefClass".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(ns, install_str(".__C__envRefClass"));
         if class_def.is_null()
             || class_def == crate::sexp::globals::R_UnboundValue()
             || class_def == R_NilValue()
@@ -1090,13 +1090,13 @@ pub(super) fn retarget_envref_object_parent(ns: SEXP) {
 pub(crate) fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP) {
     unsafe {
         let ref_methods =
-            crate::eval::attrib_core::getAttrib(class_def, Rf_install(c"refMethods".as_ptr()));
+            crate::eval::attrib_core::getAttrib(class_def, install_str("refMethods"));
         if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {
             return;
         }
         let object_parent = crate::sexp::envir::R_findVarInFrame(
             ref_methods,
-            Rf_install(c".objectParent".as_ptr()),
+            install_str(".objectParent"),
         );
         if object_parent.is_null()
             || object_parent == crate::sexp::globals::R_UnboundValue()

@@ -81,7 +81,7 @@ pub fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let int = y1 - slope * x1;
 
         let ab = crate::sexp::constructors::Rf_lang3(
-            Rf_install(c"abline".as_ptr()),
+            install_str("abline"),
             Rf_ScalarReal(int),
             Rf_ScalarReal(slope),
         );
@@ -471,7 +471,7 @@ pub fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Estimate".as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(c"Estimate"));
         let rn =
             crate::sexp::attrib_core::getAttrib(coef, crate::sexp::attrib_core::R_NamesSymbol());
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);

@@ -42,23 +42,21 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `commandArgs()` — returns the command line arguments as a character vector.
 pub fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let args: Vec<String> = std::env::args().collect();
-        let n = args.len() as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        for (i, arg) in args.iter().enumerate() {
-            let cs = CString::new(arg.as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let args: Vec<String> = std::env::args().collect();
+    let n = args.len() as R_xlen_t;
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _p = protect(result);
+    for (i, arg) in args.iter().enumerate() {
+        let cs = CString::new(arg.as_str()).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cs);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// R's `getOption(x)` — delegate to the canonical options implementation.
@@ -111,7 +109,7 @@ pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 .enumerate()
             {
                 let value = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(class, i as R_xlen_t, Rf_mkChar(value.as_ptr()));
+                SET_STRING_ELT(class, i as R_xlen_t, mk_char_cstr(&value));
             }
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -253,7 +251,7 @@ pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SET_STRING_ELT(outnames, i, STRING_ELT(names, i));
             let nm = elt_to_string(names, i);
             let cname = CString::new(nm.as_str()).unwrap_or_default();
-            let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+            let sym = install_cstr(&cname);
             let mut val = crate::sexp::envir::R_findVar(sym, env);
             if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
                 continue;

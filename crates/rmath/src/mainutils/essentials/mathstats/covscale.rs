@@ -448,7 +448,7 @@ pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             let input_names = crate::sexp::attrib_core::getAttrib(
                 x,
-                crate::sexp::symbol::Rf_install(c"names".as_ptr()),
+                install_str("names"),
             );
             if input_names.is_null() || input_names == R_NilValue() {
                 R_NilValue()
@@ -562,7 +562,7 @@ pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             {
                 crate::sexp::attrib_core::setAttrib(
                     attribute,
-                    crate::sexp::symbol::Rf_install(c"names".as_ptr()),
+                    install_str("names"),
                     colnames,
                 );
             }
@@ -688,17 +688,15 @@ pub fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn set_rle_attrs(x: SEXP) {
-    unsafe {
-        set_string_names(x, &["lengths".to_string(), "values".to_string()]);
-        let class = Rf_mkString(c"rle".as_ptr());
-        if !class.is_null() {
-            let _class_guard = protect(class);
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
+    set_string_names(x, &["lengths".to_string(), "values".to_string()]);
+    let class = mk_string_cstr(c"rle");
+    if !class.is_null() {
+        let _class_guard = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
     }
 }
 
@@ -781,7 +779,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let xt = TYPEOF(x);
         if xt == SEXPTYPE::VECSXP {
-            let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
+            let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
             let is_df = !class.is_null()
                 && TYPEOF(class) == SEXPTYPE::STRSXP
                 && (0..XLENGTH(class)).any(|i| {
@@ -837,14 +835,14 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !rownames.is_null() && rownames != R_NilValue() {
                 crate::sexp::attrib_core::setAttrib(
                     ans,
-                    Rf_install(c"row.names".as_ptr()),
+                    install_str("row.names"),
                     rownames,
                 );
             }
             let cls = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             let c = std::ffi::CString::new("data.frame").unwrap_or_default();
-            SET_STRING_ELT(cls, 0, Rf_mkChar(c.as_ptr()));
-            crate::sexp::attrib_core::setAttrib(ans, Rf_install(c"class".as_ptr()), cls);
+            SET_STRING_ELT(cls, 0, mk_char_cstr(&c));
+            crate::sexp::attrib_core::setAttrib(ans, install_str("class"), cls);
             return ans;
         }
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
@@ -934,7 +932,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, ng);
         for (i, lab) in sorted_labels.iter().enumerate() {
             let cstr = CString::new(lab.as_str()).unwrap_or_default();
-            SET_STRING_ELT(rn, i as i64, Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(rn, i as i64, mk_char_cstr(&cstr));
         }
         SET_VECTOR_ELT(dn, 0, rn);
         let xdn =

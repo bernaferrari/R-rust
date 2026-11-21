@@ -2,7 +2,7 @@ use super::*;
 
 fn print_data_frame_show_row_names(args: SEXP) -> bool {
     unsafe {
-        let row_names_sym = Rf_install(c"row.names".as_ptr());
+        let row_names_sym = install_str("row.names");
         let mut arg = CDR(args);
         while !arg.is_null() && arg != R_NilValue() {
             if TAG(arg) == row_names_sym {
@@ -21,7 +21,7 @@ fn print_data_frame_show_row_names(args: SEXP) -> bool {
 }
 fn print_data_frame_max(args: SEXP) -> i64 {
     unsafe {
-        let max_sym = Rf_install(c"max".as_ptr());
+        let max_sym = install_str("max");
         let mut arg = CDR(args);
         while !arg.is_null() && arg != R_NilValue() {
             if TAG(arg) == max_sym {
@@ -72,7 +72,7 @@ fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
 /// so default frames stay on `elt_to_string`.
 fn data_frame_print_digits(args: SEXP) -> Option<i32> {
     unsafe {
-        let sym = Rf_install(c"digits".as_ptr());
+        let sym = install_str("digits");
         let mut arg = args;
         while !arg.is_null() && arg != R_NilValue() {
             if TAG(arg) == sym {
@@ -120,53 +120,51 @@ fn plain_numeric_column(col: SEXP) -> bool {
 
 /// GNU `format.data.frame` formats each numeric column with `digits`.
 fn format_plain_numeric_column(col: SEXP, nrow: R_xlen_t, digits: i32) -> Vec<String> {
-    unsafe {
-        let trim = Rf_ScalarLogical(TRUE);
-        let dig = Rf_ScalarInteger(digits);
-        let nsmall = Rf_ScalarInteger(0);
-        let width = Rf_ScalarInteger(0);
-        let adj = Rf_ScalarInteger(3);
-        let na_encode = Rf_ScalarLogical(TRUE);
-        let scientific = Rf_ScalarLogical(NA_LOGICAL);
-        let decimal = Rf_mkString(c".".as_ptr());
-        let mut guards = Vec::new();
-        for value in [
-            trim, dig, nsmall, width, adj, na_encode, scientific, decimal,
-        ] {
-            guards.push(protect(value));
-        }
-        // .Internal(format) is positional: trim, digits, nsmall, width, adj, na.encode, scientific, decimal.mark.
-        let mut rest = R_NilValue();
-        for value in [
-            decimal, scientific, na_encode, adj, width, nsmall, dig, trim,
-        ] {
-            rest = Rf_cons(value, rest);
-            guards.push(protect(rest));
-        }
-        let args = Rf_cons(col, rest);
-        guards.push(protect(args));
-        let formatted = do_format(
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            args,
-            crate::sexp::globals::R_GlobalEnv(),
-        );
-        if formatted.is_null() || formatted == R_NilValue() || TYPEOF(formatted) != SEXPTYPE::STRSXP
-        {
-            return vec![String::new(); nrow.max(0) as usize];
-        }
-        guards.push(protect(formatted));
-        let mut values = Vec::with_capacity(nrow as usize);
-        for i in 0..nrow {
-            let text = if i < XLENGTH(formatted) {
-                elt_to_string(formatted, i).trim().to_string()
-            } else {
-                String::new()
-            };
-            values.push(text);
-        }
-        values
+    let trim = Rf_ScalarLogical(TRUE);
+    let dig = Rf_ScalarInteger(digits);
+    let nsmall = Rf_ScalarInteger(0);
+    let width = Rf_ScalarInteger(0);
+    let adj = Rf_ScalarInteger(3);
+    let na_encode = Rf_ScalarLogical(TRUE);
+    let scientific = Rf_ScalarLogical(NA_LOGICAL);
+    let decimal = mk_string_cstr(c".");
+    let mut guards = Vec::new();
+    for value in [
+        trim, dig, nsmall, width, adj, na_encode, scientific, decimal,
+    ] {
+        guards.push(protect(value));
     }
+    // .Internal(format) is positional: trim, digits, nsmall, width, adj, na.encode, scientific, decimal.mark.
+    let mut rest = R_NilValue();
+    for value in [
+        decimal, scientific, na_encode, adj, width, nsmall, dig, trim,
+    ] {
+        rest = Rf_cons(value, rest);
+        guards.push(protect(rest));
+    }
+    let args = Rf_cons(col, rest);
+    guards.push(protect(args));
+    let formatted = do_format(
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        args,
+        crate::sexp::globals::R_GlobalEnv(),
+    );
+    if formatted.is_null() || formatted == R_NilValue() || TYPEOF(formatted) != SEXPTYPE::STRSXP
+    {
+        return vec![String::new(); nrow.max(0) as usize];
+    }
+    guards.push(protect(formatted));
+    let mut values = Vec::with_capacity(nrow as usize);
+    for i in 0..nrow {
+        let text = if i < XLENGTH(formatted) {
+            elt_to_string(formatted, i).trim().to_string()
+        } else {
+            String::new()
+        };
+        values.push(text);
+    }
+    values
 }
 
 fn print_data_frame_column_texts(
@@ -175,49 +173,47 @@ fn print_data_frame_column_texts(
     nrow: R_xlen_t,
     digits: Option<i32>,
 ) -> (Vec<String>, Vec<Vec<String>>) {
-    unsafe {
-        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
-        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
-        let mut headers = Vec::with_capacity(ncol as usize);
-        let mut columns = Vec::with_capacity(ncol as usize);
-        for j in 0..ncol {
-            let col = VECTOR_ELT(x, j as R_xlen_t);
-            if crate::mainutils::essentials::sexp_has_class(col, "data.frame") && XLENGTH(col) > 0 {
-                let (mut inner_headers, inner_columns) =
-                    print_data_frame_column_texts(col, XLENGTH(col), nrow, digits);
-                if inner_headers.len() == 1
-                    && inner_headers[0].starts_with("[,")
-                    && has_names
-                    && j < XLENGTH(names)
-                {
-                    inner_headers[0] = elt_to_string(names, j);
-                }
-                headers.extend(inner_headers);
-                columns.extend(inner_columns);
-                continue;
+    let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+    let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+    let mut headers = Vec::with_capacity(ncol as usize);
+    let mut columns = Vec::with_capacity(ncol as usize);
+    for j in 0..ncol {
+        let col = VECTOR_ELT(x, j as R_xlen_t);
+        if crate::mainutils::essentials::sexp_has_class(col, "data.frame") && XLENGTH(col) > 0 {
+            let (mut inner_headers, inner_columns) =
+                print_data_frame_column_texts(col, XLENGTH(col), nrow, digits);
+            if inner_headers.len() == 1
+                && inner_headers[0].starts_with("[,")
+                && has_names
+                && j < XLENGTH(names)
+            {
+                inner_headers[0] = elt_to_string(names, j);
             }
-            if !print_data_frame_column(col) {
-                continue;
-            }
-            let header = if has_names && j < XLENGTH(names) {
-                elt_to_string(names, j)
-            } else {
-                format!("[,{}]", j + 1)
-            };
-            headers.push(header);
-            let values = if digits.is_some_and(|digits| digits > 0) && plain_numeric_column(col) {
-                format_plain_numeric_column(col, nrow, digits.unwrap_or(7))
-            } else {
-                let mut values = Vec::with_capacity(nrow as usize);
-                for i in 0..nrow {
-                    values.push(data_frame_cell_text(col, i));
-                }
-                values
-            };
-            columns.push(values);
+            headers.extend(inner_headers);
+            columns.extend(inner_columns);
+            continue;
         }
-        (headers, columns)
+        if !print_data_frame_column(col) {
+            continue;
+        }
+        let header = if has_names && j < XLENGTH(names) {
+            elt_to_string(names, j)
+        } else {
+            format!("[,{}]", j + 1)
+        };
+        headers.push(header);
+        let values = if digits.is_some_and(|digits| digits > 0) && plain_numeric_column(col) {
+            format_plain_numeric_column(col, nrow, digits.unwrap_or(7))
+        } else {
+            let mut values = Vec::with_capacity(nrow as usize);
+            for i in 0..nrow {
+                values.push(data_frame_cell_text(col, i));
+            }
+            values
+        };
+        columns.push(values);
     }
+    (headers, columns)
 }
 fn print_data_frame_column(col: SEXP) -> bool {
     {
@@ -290,39 +286,37 @@ fn emit_print_data_frame_columns(
     }
 }
 fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
-    unsafe {
-        if ncol == 0 {
-            let row_names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_RowNamesSymbol(),
-            );
-            let n = if !row_names.is_null()
-                && row_names != R_NilValue()
-                && (TYPEOF(row_names) == SEXPTYPE::STRSXP || TYPEOF(row_names) == SEXPTYPE::INTSXP)
-            {
-                XLENGTH(row_names)
-            } else {
-                0
-            };
-            let line = if n == 1 {
-                "data frame with 0 columns and 1 row".to_string()
-            } else {
-                format!("data frame with 0 columns and {n} rows")
-            };
-            emit_print_data_frame_line(&line);
-            return;
-        }
-        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
-        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
-            let mut line = String::from("[1]");
-            for i in 0..XLENGTH(names) {
-                line.push(' ');
-                line.push_str(&elt_to_string(names, i));
-            }
-            emit_print_data_frame_line(&line);
-        }
-        emit_print_data_frame_line("<0 rows> (or 0-length row.names)");
+    if ncol == 0 {
+        let row_names = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
+        let n = if !row_names.is_null()
+            && row_names != R_NilValue()
+            && (TYPEOF(row_names) == SEXPTYPE::STRSXP || TYPEOF(row_names) == SEXPTYPE::INTSXP)
+        {
+            XLENGTH(row_names)
+        } else {
+            0
+        };
+        let line = if n == 1 {
+            "data frame with 0 columns and 1 row".to_string()
+        } else {
+            format!("data frame with 0 columns and {n} rows")
+        };
+        emit_print_data_frame_line(&line);
+        return;
     }
+    let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+    if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
+        let mut line = String::from("[1]");
+        for i in 0..XLENGTH(names) {
+            line.push(' ');
+            line.push_str(&elt_to_string(names, i));
+        }
+        emit_print_data_frame_line(&line);
+    }
+    emit_print_data_frame_line("<0 rows> (or 0-length row.names)");
 }
 
 /// Derive the row labels of a data.frame for printing.
@@ -333,7 +327,7 @@ fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
 fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String> {
     let n = nrow.min(limit).max(0);
     let row_names =
-        unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr())) };
+        crate::sexp::attrib_core::getAttrib(x, install_str("row.names"));
     unsafe {
         if !row_names.is_null() {
             let t = TYPEOF(row_names);
@@ -568,7 +562,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 SET_STRING_ELT(
                     result,
                     (j * nrow + i) as R_xlen_t,
-                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    mk_char_cstr(&cstr),
                 );
             }
         }
@@ -581,7 +575,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             SET_STRING_ELT(
                 rn,
                 i as R_xlen_t,
-                crate::sexp::constructors::Rf_mkChar(c"".as_ptr()),
+                mk_char_cstr(c""),
             );
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
@@ -593,7 +587,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 STRING_ELT(col_names_attr, j)
             } else {
                 let label = CString::new(format!("[,{}]", j + 1)).unwrap_or_default();
-                Rf_mkChar(label.as_ptr())
+                mk_char_cstr(&label)
             };
             let ch = {
                 let column = VECTOR_ELT(x, j);
@@ -642,7 +636,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             crate::sexp::attrib_core::R_DimNamesSymbol(),
             dn,
         );
-        let class = Rf_mkString(c"table".as_ptr());
+        let class = mk_string_cstr(c"table");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -667,61 +661,59 @@ fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
 }
 
 fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usize) {
-    unsafe {
-        if sms.is_null() || sms == R_NilValue() {
-            return (Vec::new(), 0);
-        }
-        let names_attr =
-            crate::sexp::attrib_core::getAttrib(sms, crate::sexp::attrib_core::R_NamesSymbol());
-        let n = XLENGTH(sms);
-        let mut labels = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            labels.push(
-                if !names_attr.is_null()
-                    && TYPEOF(names_attr) == SEXPTYPE::STRSXP
-                    && i < XLENGTH(names_attr)
-                {
-                    elt_to_string(names_attr, i)
-                } else {
-                    String::new()
-                },
-            );
-        }
-        let lw = labels.iter().map(|s| s.chars().count()).max().unwrap_or(0);
-        let labels: Vec<String> = labels.into_iter().map(|s| format!("{s:<lw$}")).collect();
-
-        let digits_s = Rf_ScalarInteger(digits);
-        let _ds = protect(digits_s);
-        let rest = Rf_cons(digits_s, R_NilValue());
-        SETTAG(rest, Rf_install(c"digits".as_ptr()));
-        let _rest = protect(rest);
-        let fmt_args = Rf_cons(sms, rest);
-        let _fa = protect(fmt_args);
-        let formatted = crate::mainutils::essentials::do_format(
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            fmt_args,
-            rho,
-        );
-
-        let _f = protect(formatted);
-        let mut cells = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let value = if !formatted.is_null()
-                && TYPEOF(formatted) == SEXPTYPE::STRSXP
-                && i < XLENGTH(formatted)
+    if sms.is_null() || sms == R_NilValue() {
+        return (Vec::new(), 0);
+    }
+    let names_attr =
+        crate::sexp::attrib_core::getAttrib(sms, crate::sexp::attrib_core::R_NamesSymbol());
+    let n = XLENGTH(sms);
+    let mut labels = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        labels.push(
+            if !names_attr.is_null()
+                && TYPEOF(names_attr) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names_attr)
             {
-                elt_to_string(formatted, i)
+                elt_to_string(names_attr, i)
             } else {
                 String::new()
-            };
-            cells.push(format!(
-                "{}:{value}  ",
-                labels.get(i as usize).cloned().unwrap_or_default()
-            ));
-        }
-        (cells, lw)
+            },
+        );
     }
+    let lw = labels.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    let labels: Vec<String> = labels.into_iter().map(|s| format!("{s:<lw$}")).collect();
+
+    let digits_s = Rf_ScalarInteger(digits);
+    let _ds = protect(digits_s);
+    let rest = Rf_cons(digits_s, R_NilValue());
+    SETTAG(rest, install_str("digits"));
+    let _rest = protect(rest);
+    let fmt_args = Rf_cons(sms, rest);
+    let _fa = protect(fmt_args);
+    let formatted = crate::mainutils::essentials::do_format(
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        fmt_args,
+        rho,
+    );
+
+    let _f = protect(formatted);
+    let mut cells = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let value = if !formatted.is_null()
+            && TYPEOF(formatted) == SEXPTYPE::STRSXP
+            && i < XLENGTH(formatted)
+        {
+            elt_to_string(formatted, i)
+        } else {
+            String::new()
+        };
+        cells.push(format!(
+            "{}:{value}  ",
+            labels.get(i as usize).cloned().unwrap_or_default()
+        ));
+    }
+    (cells, lw)
 }
 
 /// R's `format.data.frame(x, ..., justify = "none")`.
@@ -732,7 +724,7 @@ pub fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe {
         let fun = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_BaseEnv(),
-            crate::sexp::symbol::Rf_install(c"format.data.frame".as_ptr()),
+            install_str("format.data.frame"),
         );
         let _fun_guard = crate::sexp::protect::protect(fun);
         let mut cells: Vec<SEXP> = Vec::new();
@@ -758,46 +750,42 @@ pub fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 fn format_data_frame_rest_args(args: SEXP) -> SEXP {
-    unsafe {
-        let rest = CDR(args);
-        let mut cell = rest;
-        while !cell.is_null() && cell != R_NilValue() {
-            if tag_name(cell).as_deref() == Some("justify") {
-                return rest;
-            }
-            cell = CDR(cell);
+    let rest = CDR(args);
+    let mut cell = rest;
+    while !cell.is_null() && cell != R_NilValue() {
+        if tag_name(cell).as_deref() == Some("justify") {
+            return rest;
         }
-        let none = crate::sexp::constructors::Rf_mkString(c"none".as_ptr());
-        let _none = protect(none);
-        let cell = Rf_cons(none, rest);
-        SETTAG(cell, Rf_install(c"justify".as_ptr()));
-        cell
+        cell = CDR(cell);
     }
+    let none = mk_string_cstr(c"none");
+    let _none = protect(none);
+    let cell = Rf_cons(none, rest);
+    SETTAG(cell, install_str("justify"));
+    cell
 }
 
 fn mark_asis_if_character(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
-            return x;
-        }
-        if crate::mainutils::objects::inherits2(x, c"AsIs".as_ptr()) != FALSE {
-            return x;
-        }
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if class_vec.is_null() {
-            return x;
-        }
-        let _c = protect(class_vec);
-        SET_STRING_ELT(
-            class_vec,
-            0,
-            crate::sexp::constructors::Rf_mkChar(c"AsIs".as_ptr()),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class_vec,
-        );
-        x
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
+        return x;
     }
+    if crate::mainutils::objects::inherits2(x, c"AsIs".as_ptr()) != FALSE {
+        return x;
+    }
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if class_vec.is_null() {
+        return x;
+    }
+    let _c = protect(class_vec);
+    SET_STRING_ELT(
+        class_vec,
+        0,
+        mk_char_cstr(c"AsIs"),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class_vec,
+    );
+    x
 }

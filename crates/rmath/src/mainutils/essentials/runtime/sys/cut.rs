@@ -171,7 +171,7 @@ pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for k in 0..nlev {
             let s = date_level_string(breaks[k]);
             let c = CString::new(s).unwrap_or_default();
-            SET_STRING_ELT(levels_vec, k as i64, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(levels_vec, k as i64, mk_char_cstr(&c));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -181,7 +181,7 @@ pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"factor".as_ptr()),
+            mk_string_cstr(c"factor"),
         );
         result
     }
@@ -355,7 +355,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     crate::sexp::attrib_core::R_ClassSymbol(),
-                    Rf_mkString(c"factor".as_ptr()),
+                    mk_string_cstr(c"factor"),
                 );
                 return result;
             }

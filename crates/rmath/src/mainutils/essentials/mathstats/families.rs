@@ -223,42 +223,40 @@ pub fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 fn family_object(family: &str, link: &str) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        let fam = match family {
-            "gaussian" => Rf_mkString(c"gaussian".as_ptr()),
-            "poisson" => Rf_mkString(c"poisson".as_ptr()),
-            "Gamma" => Rf_mkString(c"Gamma".as_ptr()),
-            "inverse.gaussian" => Rf_mkString(c"inverse.gaussian".as_ptr()),
-            "quasi" => Rf_mkString(c"quasi".as_ptr()),
-            "quasibinomial" => Rf_mkString(c"quasibinomial".as_ptr()),
-            "quasipoisson" => Rf_mkString(c"quasipoisson".as_ptr()),
-            _ => Rf_mkString(c"binomial".as_ptr()),
-        };
-        let lnk = match link {
-            "identity" => Rf_mkString(c"identity".as_ptr()),
-            "probit" => Rf_mkString(c"probit".as_ptr()),
-            "log" => Rf_mkString(c"log".as_ptr()),
-            "inverse" => Rf_mkString(c"inverse".as_ptr()),
-            "1/mu^2" => Rf_mkString(c"1/mu^2".as_ptr()),
-            _ => Rf_mkString(c"logit".as_ptr()),
-        };
-        SET_VECTOR_ELT(result, 0, fam);
-        SET_VECTOR_ELT(result, 1, lnk);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["family".to_string(), "link".to_string()],
-        );
-        let class = Rf_mkString(c"family".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
-    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    let fam = match family {
+        "gaussian" => mk_string_cstr(c"gaussian"),
+        "poisson" => mk_string_cstr(c"poisson"),
+        "Gamma" => mk_string_cstr(c"Gamma"),
+        "inverse.gaussian" => mk_string_cstr(c"inverse.gaussian"),
+        "quasi" => mk_string_cstr(c"quasi"),
+        "quasibinomial" => mk_string_cstr(c"quasibinomial"),
+        "quasipoisson" => mk_string_cstr(c"quasipoisson"),
+        _ => mk_string_cstr(c"binomial"),
+    };
+    let lnk = match link {
+        "identity" => mk_string_cstr(c"identity"),
+        "probit" => mk_string_cstr(c"probit"),
+        "log" => mk_string_cstr(c"log"),
+        "inverse" => mk_string_cstr(c"inverse"),
+        "1/mu^2" => mk_string_cstr(c"1/mu^2"),
+        _ => mk_string_cstr(c"logit"),
+    };
+    SET_VECTOR_ELT(result, 0, fam);
+    SET_VECTOR_ELT(result, 1, lnk);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["family".to_string(), "link".to_string()],
+    );
+    let class = mk_string_cstr(c"family");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `binomial()` family object.
@@ -400,36 +398,34 @@ pub fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `make.link(link)` — name + class `link-glm`.
 pub fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut link = "identity".to_string();
-        let v = CAR(args);
-        if !v.is_null() && v != R_NilValue() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-            link = elt_to_string(v, 0);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        let name = match link.as_str() {
-            "logit" => Rf_mkString(c"logit".as_ptr()),
-            "probit" => Rf_mkString(c"probit".as_ptr()),
-            "log" => Rf_mkString(c"log".as_ptr()),
-            "inverse" => Rf_mkString(c"inverse".as_ptr()),
-            "1/mu^2" => Rf_mkString(c"1/mu^2".as_ptr()),
-            "cloglog" => Rf_mkString(c"cloglog".as_ptr()),
-            "cauchit" => Rf_mkString(c"cauchit".as_ptr()),
-            "sqrt" => Rf_mkString(c"sqrt".as_ptr()),
-            _ => Rf_mkString(c"identity".as_ptr()),
-        };
-        SET_VECTOR_ELT(result, 0, name);
-        crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
-        let class = Rf_mkString(c"link-glm".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let mut link = "identity".to_string();
+    let v = CAR(args);
+    if !v.is_null() && v != R_NilValue() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+        link = elt_to_string(v, 0);
     }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    let name = match link.as_str() {
+        "logit" => mk_string_cstr(c"logit"),
+        "probit" => mk_string_cstr(c"probit"),
+        "log" => mk_string_cstr(c"log"),
+        "inverse" => mk_string_cstr(c"inverse"),
+        "1/mu^2" => mk_string_cstr(c"1/mu^2"),
+        "cloglog" => mk_string_cstr(c"cloglog"),
+        "cauchit" => mk_string_cstr(c"cauchit"),
+        "sqrt" => mk_string_cstr(c"sqrt"),
+        _ => mk_string_cstr(c"identity"),
+    };
+    SET_VECTOR_ELT(result, 0, name);
+    crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
+    let class = mk_string_cstr(c"link-glm");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `power(lambda)` — Box-Cox GLM link name.
@@ -456,7 +452,7 @@ pub fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_mkString(CString::new(name).unwrap().as_ptr()));
         crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
-        let class = Rf_mkString(c"link-glm".as_ptr());
+        let class = mk_string_cstr(c"link-glm");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -483,7 +479,7 @@ pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"Pair".as_ptr()),
+            mk_string_cstr(c"Pair"),
         );
         result
     }
@@ -506,7 +502,7 @@ pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         if !omit {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         let n = XLENGTH(x);
         let msg = if n == 1 {
@@ -520,22 +516,20 @@ pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `aov(y ~ x)` — `lm` with class `c("aov","lm")`.
 pub fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let result = do_lm(call, op, args, rho);
-        if result.is_null() || result == R_NilValue() {
-            return result;
-        }
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"aov".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"lm".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let result = do_lm(call, op, args, rho);
+    if result.is_null() || result == R_NilValue() {
+        return result;
     }
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _cl = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"aov"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"lm"));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `manova(cbind(y1,y2) ~ g)` — two-group coefficients and residuals.
@@ -631,11 +625,11 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"manova".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"maov".as_ptr()));
-        SET_STRING_ELT(class, 2, Rf_mkChar(c"aov".as_ptr()));
-        SET_STRING_ELT(class, 3, Rf_mkChar(c"mlm".as_ptr()));
-        SET_STRING_ELT(class, 4, Rf_mkChar(c"lm".as_ptr()));
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"manova"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"maov"));
+        SET_STRING_ELT(class, 2, mk_char_cstr(c"aov"));
+        SET_STRING_ELT(class, 3, mk_char_cstr(c"mlm"));
+        SET_STRING_ELT(class, 4, mk_char_cstr(c"lm"));
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -735,16 +729,16 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         set_real_checked(stats, (11) as R_xlen_t, f64::NAN);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, Rf_mkChar(c"g".as_ptr()));
-        SET_STRING_ELT(rn, 1, Rf_mkChar(c"Residuals".as_ptr()));
+        SET_STRING_ELT(rn, 0, mk_char_cstr(c"g"));
+        SET_STRING_ELT(rn, 1, mk_char_cstr(c"Residuals"));
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 6);
         let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Df".as_ptr()));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(c"Pillai".as_ptr()));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(c"approx F".as_ptr()));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(c"num Df".as_ptr()));
-        SET_STRING_ELT(cn, 4, Rf_mkChar(c"den Df".as_ptr()));
-        SET_STRING_ELT(cn, 5, Rf_mkChar(c"Pr(>F)".as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(c"Df"));
+        SET_STRING_ELT(cn, 1, mk_char_cstr(c"Pillai"));
+        SET_STRING_ELT(cn, 2, mk_char_cstr(c"approx F"));
+        SET_STRING_ELT(cn, 3, mk_char_cstr(c"num Df"));
+        SET_STRING_ELT(cn, 4, mk_char_cstr(c"den Df"));
+        SET_STRING_ELT(cn, 5, mk_char_cstr(c"Pr(>F)"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
@@ -758,7 +752,7 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, stats);
         crate::mainutils::essentials::set_string_names(result, &["stats".to_string()]);
-        let class = Rf_mkString(c"summary.manova".as_ptr());
+        let class = mk_string_cstr(c"summary.manova");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -874,10 +868,10 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(c"diff".as_ptr()));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(c"lwr".as_ptr()));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(c"upr".as_ptr()));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(c"p adj".as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(c"diff"));
+        SET_STRING_ELT(cn, 1, mk_char_cstr(c"lwr"));
+        SET_STRING_ELT(cn, 2, mk_char_cstr(c"upr"));
+        SET_STRING_ELT(cn, 3, mk_char_cstr(c"p adj"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
@@ -894,13 +888,13 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let tn = std::ffi::CString::new(term).unwrap_or_default();
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _nm = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(tn.as_ptr()));
+        SET_STRING_ELT(names, 0, mk_char_cstr(&tn));
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_NamesSymbol(),
             names,
         );
-        let class = Rf_mkString(c"TukeyHSD".as_ptr());
+        let class = mk_string_cstr(c"TukeyHSD");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -913,44 +907,42 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
 pub fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let lm = do_lm(call, op, args, rho);
-        if lm.is_null() || lm == R_NilValue() {
-            return lm;
-        }
-        let n = XLENGTH(lm);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
-        let _r = protect(result);
-        for i in 0..n {
-            SET_VECTOR_ELT(result, i, VECTOR_ELT(lm, i));
-        }
-        SET_VECTOR_ELT(result, n, family_object("gaussian", "identity"));
-        let old_names =
-            crate::sexp::attrib_core::getAttrib(lm, crate::sexp::attrib_core::R_NamesSymbol());
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n + 1);
-        let _nm = protect(names);
-        for i in 0..n {
-            if TYPEOF(old_names) == SEXPTYPE::STRSXP && i < XLENGTH(old_names) {
-                SET_STRING_ELT(names, i, STRING_ELT(old_names, i));
-            }
-        }
-        SET_STRING_ELT(names, n, Rf_mkChar(c"family".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"glm".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"lm".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let lm = do_lm(call, op, args, rho);
+    if lm.is_null() || lm == R_NilValue() {
+        return lm;
     }
+    let n = XLENGTH(lm);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+    let _r = protect(result);
+    for i in 0..n {
+        SET_VECTOR_ELT(result, i, VECTOR_ELT(lm, i));
+    }
+    SET_VECTOR_ELT(result, n, family_object("gaussian", "identity"));
+    let old_names =
+        crate::sexp::attrib_core::getAttrib(lm, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, n + 1);
+    let _nm = protect(names);
+    for i in 0..n {
+        if TYPEOF(old_names) == SEXPTYPE::STRSXP && i < XLENGTH(old_names) {
+            SET_STRING_ELT(names, i, STRING_ELT(old_names, i));
+        }
+    }
+    SET_STRING_ELT(names, n, mk_char_cstr(c"family"));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        names,
+    );
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _cl = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"glm"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"lm"));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `proj(lm)` — intercept mean, centered slope, residuals.
@@ -990,9 +982,9 @@ pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(c"I(1:5)".as_ptr()));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(c"Residuals".as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(c"(Intercept)"));
+        SET_STRING_ELT(cn, 1, mk_char_cstr(c"I(1:5)"));
+        SET_STRING_ELT(cn, 2, mk_char_cstr(c"Residuals"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 1, cn);

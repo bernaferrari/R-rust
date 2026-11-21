@@ -31,51 +31,47 @@ fn file_ext_of(path: &str) -> String {
 
 /// GNU `tools::file_ext(x)`.
 pub fn do_file_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let ext = file_ext_of(&s);
-            let c = CString::new(ext).unwrap_or_default();
-            SET_STRING_ELT(result, i, Rf_mkChar(c.as_ptr()));
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let ext = file_ext_of(&s);
+        let c = CString::new(ext).unwrap_or_default();
+        SET_STRING_ELT(result, i, mk_char_cstr(&c));
+    }
+    result
 }
 
 /// GNU `tools::file_path_sans_ext(x)`.
 pub fn do_file_path_sans_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let ext = file_ext_of(&s);
-            let out = if ext.is_empty() {
-                s
-            } else {
-                let suffix = format!(".{ext}");
-                match s.rfind(&suffix) {
-                    Some(idx) => s[..idx].to_string(),
-                    None => s,
-                }
-            };
-            let c = CString::new(out).unwrap_or_default();
-            SET_STRING_ELT(result, i, Rf_mkChar(c.as_ptr()));
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let ext = file_ext_of(&s);
+        let out = if ext.is_empty() {
+            s
+        } else {
+            let suffix = format!(".{ext}");
+            match s.rfind(&suffix) {
+                Some(idx) => s[..idx].to_string(),
+                None => s,
+            }
+        };
+        let c = CString::new(out).unwrap_or_default();
+        SET_STRING_ELT(result, i, mk_char_cstr(&c));
+    }
+    result
 }
 
 pub(crate) fn unicode_display_width(ch: char) -> usize {

@@ -41,18 +41,16 @@ pub(crate) fn condition_message_of(cond: SEXP) -> Option<String> {
 /// handler entries in registration order and takes the first whose
 /// class the condition inherits from).
 pub(crate) fn condition_classes(cond: SEXP) -> Vec<String> {
-    unsafe {
-        let class_attr = crate::sexp::attrib_core::getAttrib(cond, Rf_install(c"class".as_ptr()));
-        if class_attr.is_null()
-            || class_attr == R_NilValue()
-            || TYPEOF(class_attr) != SEXPTYPE::STRSXP
-        {
-            return vec!["error".to_string()];
-        }
-        (0..XLENGTH(class_attr))
-            .map(|i| elt_to_string(class_attr, i))
-            .collect()
+    let class_attr = crate::sexp::attrib_core::getAttrib(cond, install_str("class"));
+    if class_attr.is_null()
+        || class_attr == R_NilValue()
+        || TYPEOF(class_attr) != SEXPTYPE::STRSXP
+    {
+        return vec!["error".to_string()];
     }
+    (0..XLENGTH(class_attr))
+        .map(|i| elt_to_string(class_attr, i))
+        .collect()
 }
 /// Panic payload for warning unwinds: `RSignal::Warning { message }`
 /// (sexp::context) carries the warning out of `warning()` into an

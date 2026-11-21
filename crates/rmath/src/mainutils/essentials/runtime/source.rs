@@ -398,22 +398,18 @@ fn option_continue() -> String {
 }
 
 fn option_keep_source() -> bool {
-    unsafe {
-        let opt = crate::mainutils::options::GetOption1(Rf_install(c"keep.source".as_ptr()));
-        !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
-    }
+    let opt = crate::mainutils::options::GetOption1(install_str("keep.source"));
+    !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
 }
 
 fn option_string(name: &str, default: &str) -> String {
-    unsafe {
-        let cname = CString::new(name).unwrap_or_default();
-        let opt = crate::mainutils::options::GetOption1(Rf_install(cname.as_ptr()));
-        if opt.is_null() || opt == R_NilValue() || TYPEOF(opt) != SEXPTYPE::STRSXP {
-            default.to_string()
-        } else {
-            let s = elt_to_string(opt, 0);
-            if s.is_empty() { default.to_string() } else { s }
-        }
+    let cname = CString::new(name).unwrap_or_default();
+    let opt = crate::mainutils::options::GetOption1(install_cstr(&cname));
+    if opt.is_null() || opt == R_NilValue() || TYPEOF(opt) != SEXPTYPE::STRSXP {
+        default.to_string()
+    } else {
+        let s = elt_to_string(opt, 0);
+        if s.is_empty() { default.to_string() } else { s }
     }
 }
 
@@ -593,19 +589,17 @@ fn echo_source_expression(
 }
 
 fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _result = protect(result);
-        SET_VECTOR_ELT(result, 0, value);
-        SET_VECTOR_ELT(result, 1, Rf_ScalarLogical(visible));
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _names = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"value".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"visible".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        result
-    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _result = protect(result);
+    SET_VECTOR_ELT(result, 0, value);
+    SET_VECTOR_ELT(result, 1, Rf_ScalarLogical(visible));
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _names = protect(names);
+    SET_STRING_ELT(names, 0, mk_char_cstr(c"value"));
+    SET_STRING_ELT(names, 1, mk_char_cstr(c"visible"));
+    crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
+    crate::sexp::globals::set_R_Visible(FALSE);
+    result
 }
 
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
@@ -1189,7 +1183,7 @@ fn utils_example_closure() -> Option<SEXP> {
     unsafe {
         let namespace =
             crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
-        let symbol = Rf_install(c"example".as_ptr());
+        let symbol = install_str("example");
         let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
             return None;

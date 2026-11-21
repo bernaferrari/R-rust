@@ -263,7 +263,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _p = protect(result);
         for (i, line) in lines.iter().enumerate() {
             let cstr = CString::new(*line).unwrap_or_default();
-            let charsxp = Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
@@ -275,37 +275,35 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
 /// R's `withVisible(x)` — returns a list with $value and $visible.
 pub fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let visible = crate::sexp::globals::R_Visible();
-        // Return a VECSXP (list) with two elements: value, visible
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        crate::sexp::accessors::SET_VECTOR_ELT(result, 0, x);
-        let vis_vec = Rf_ScalarLogical(visible);
-        crate::sexp::accessors::SET_VECTOR_ELT(result, 1, vis_vec);
-        // Set names
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !names.is_null() {
-            let _n_p = crate::sexp::protect::protect(names);
-            let v_str = c"value";
-            let vi_str = c"visible";
-            let v_char = crate::sexp::constructors::Rf_mkChar(v_str.as_ptr());
-            let vi_char = crate::sexp::constructors::Rf_mkChar(vi_str.as_ptr());
-            if !v_char.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names, 0 as R_xlen_t, v_char);
-            }
-            if !vi_char.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names, 1 as R_xlen_t, vi_char);
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-        result
+    let x = CAR(args);
+    let visible = crate::sexp::globals::R_Visible();
+    // Return a VECSXP (list) with two elements: value, visible
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _p = protect(result);
+    crate::sexp::accessors::SET_VECTOR_ELT(result, 0, x);
+    let vis_vec = Rf_ScalarLogical(visible);
+    crate::sexp::accessors::SET_VECTOR_ELT(result, 1, vis_vec);
+    // Set names
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if !names.is_null() {
+        let _n_p = crate::sexp::protect::protect(names);
+        let v_str = c"value";
+        let vi_str = c"visible";
+        let v_char = mk_char_cstr(&v_str);
+        let vi_char = mk_char_cstr(&vi_str);
+        if !v_char.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(names, 0 as R_xlen_t, v_char);
+        }
+        if !vi_char.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(names, 1 as R_xlen_t, vi_char);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+    result
 }
 
 /// R's `invisible(x)` — return x, setting visibility to FALSE.

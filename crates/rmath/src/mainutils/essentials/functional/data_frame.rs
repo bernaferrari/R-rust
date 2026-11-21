@@ -44,89 +44,87 @@ pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
 }
 
 pub(crate) fn melt_table(value: SEXP) -> SEXP {
-    unsafe {
-        let dim =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
-        let nd = XLENGTH(dim) as usize;
-        let mut sizes = Vec::with_capacity(nd);
-        let mut total: i64 = 1;
-        for i in 0..nd {
-            let n = integer_elt_checked(dim, (i) as R_xlen_t) as i64;
-            sizes.push(n);
-            total = total.saturating_mul(n.max(0));
-        }
-        let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (nd as i64) + 1);
-        let _frame_guard = protect(frame);
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            value,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
-        let dimnames_names = if !dimnames.is_null() && dimnames != R_NilValue() {
-            crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
+    let dim =
+        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+    let nd = XLENGTH(dim) as usize;
+    let mut sizes = Vec::with_capacity(nd);
+    let mut total: i64 = 1;
+    for i in 0..nd {
+        let n = integer_elt_checked(dim, (i) as R_xlen_t) as i64;
+        sizes.push(n);
+        total = total.saturating_mul(n.max(0));
+    }
+    let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (nd as i64) + 1);
+    let _frame_guard = protect(frame);
+    let dimnames = crate::sexp::attrib_core::getAttrib(
+        value,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+    );
+    let dimnames_names = if !dimnames.is_null() && dimnames != R_NilValue() {
+        crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
+    } else {
+        R_NilValue()
+    };
+    let mut names = Vec::with_capacity(nd + 1);
+    for d in 0..nd {
+        let col = Rf_allocVector3(SEXPTYPE::STRSXP, total);
+        SET_VECTOR_ELT(frame, d as i64, col);
+        let levels = if !dimnames.is_null()
+            && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+            && (d as i64) < XLENGTH(dimnames)
+        {
+            VECTOR_ELT(dimnames, d as i64)
         } else {
             R_NilValue()
         };
-        let mut names = Vec::with_capacity(nd + 1);
-        for d in 0..nd {
-            let col = Rf_allocVector3(SEXPTYPE::STRSXP, total);
-            SET_VECTOR_ELT(frame, d as i64, col);
-            let levels = if !dimnames.is_null()
-                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
-                && (d as i64) < XLENGTH(dimnames)
-            {
-                VECTOR_ELT(dimnames, d as i64)
-            } else {
-                R_NilValue()
-            };
-            for idx in 0..total {
-                let mut rem = idx;
-                for s in &sizes[..d] {
-                    rem /= (*s).max(1);
-                }
-                let level = if sizes[d] == 0 { 0 } else { rem % sizes[d] };
-                let text = if !levels.is_null()
-                    && TYPEOF(levels) == SEXPTYPE::STRSXP
-                    && level < XLENGTH(levels)
-                {
-                    elt_to_string(levels, level)
-                } else {
-                    (level + 1).to_string()
-                };
-                let cstr = std::ffi::CString::new(text).unwrap_or_default();
-                SET_STRING_ELT(col, idx, Rf_mkChar(cstr.as_ptr()));
-            }
-            let nm = if !dimnames_names.is_null()
-                && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP
-                && (d as i64) < XLENGTH(dimnames_names)
-            {
-                elt_to_string(dimnames_names, d as i64)
-            } else {
-                String::new()
-            };
-            names.push(if nm.is_empty() {
-                format!("Var{}", d + 1)
-            } else {
-                nm
-            });
-        }
-        let freq = Rf_allocVector3(SEXPTYPE::INTSXP, total);
-        SET_VECTOR_ELT(frame, nd as i64, freq);
         for idx in 0..total {
-            let v = if TYPEOF(value) == SEXPTYPE::INTSXP {
-                integer_elt_checked(value, (idx as usize) as R_xlen_t)
-            } else if TYPEOF(value) == SEXPTYPE::REALSXP {
-                real_elt_checked(value, (idx as usize) as R_xlen_t) as i32
+            let mut rem = idx;
+            for s in &sizes[..d] {
+                rem /= (*s).max(1);
+            }
+            let level = if sizes[d] == 0 { 0 } else { rem % sizes[d] };
+            let text = if !levels.is_null()
+                && TYPEOF(levels) == SEXPTYPE::STRSXP
+                && level < XLENGTH(levels)
+            {
+                elt_to_string(levels, level)
             } else {
-                0
+                (level + 1).to_string()
             };
-            set_integer_checked(freq, (idx as usize) as R_xlen_t, v);
+            let cstr = std::ffi::CString::new(text).unwrap_or_default();
+            SET_STRING_ELT(col, idx, mk_char_cstr(&cstr));
         }
-        names.push("Freq".to_string());
-        set_string_names(frame, &names);
-        set_compact_row_names(frame, total);
-        set_data_frame_class(frame);
-        frame
+        let nm = if !dimnames_names.is_null()
+            && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP
+            && (d as i64) < XLENGTH(dimnames_names)
+        {
+            elt_to_string(dimnames_names, d as i64)
+        } else {
+            String::new()
+        };
+        names.push(if nm.is_empty() {
+            format!("Var{}", d + 1)
+        } else {
+            nm
+        });
     }
+    let freq = Rf_allocVector3(SEXPTYPE::INTSXP, total);
+    SET_VECTOR_ELT(frame, nd as i64, freq);
+    for idx in 0..total {
+        let v = if TYPEOF(value) == SEXPTYPE::INTSXP {
+            integer_elt_checked(value, (idx as usize) as R_xlen_t)
+        } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+            real_elt_checked(value, (idx as usize) as R_xlen_t) as i32
+        } else {
+            0
+        };
+        set_integer_checked(freq, (idx as usize) as R_xlen_t, v);
+    }
+    names.push("Freq".to_string());
+    set_string_names(frame, &names);
+    set_compact_row_names(frame, total);
+    set_data_frame_class(frame);
+    frame
 }
 
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.

@@ -231,7 +231,7 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             let d = INTEGER(dim);
             *d.add(0) = 2;
             *d.add(1) = ncols as c_int;
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
+            crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
         }
         // dimnames = list(c("Ncells", "Vcells"), col_names)
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -245,12 +245,12 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     row_names,
                     0,
-                    crate::sexp::constructors::Rf_mkChar(s1.as_ptr()),
+                    mk_char_cstr(&s1),
                 );
                 SET_STRING_ELT(
                     row_names,
                     1,
-                    crate::sexp::constructors::Rf_mkChar(s2.as_ptr()),
+                    mk_char_cstr(&s2),
                 );
                 SET_VECTOR_ELT(dn, 0, row_names);
             }
@@ -262,12 +262,12 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                     SET_STRING_ELT(
                         col_names_vec,
                         i as R_xlen_t,
-                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                        mk_char_cstr(&cstr),
                     );
                 }
                 SET_VECTOR_ELT(dn, 1, col_names_vec);
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dimnames".as_ptr()), dn);
+            crate::sexp::attrib_core::setAttrib(result, install_str("dimnames"), dn);
         }
         result
     }
@@ -409,7 +409,7 @@ pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
                     Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
                 );
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+            crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
         }
 
         result
@@ -427,13 +427,13 @@ pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !class_vec.is_null() {
                 let _p2 = protect(class_vec);
                 let cstr = c"object_size";
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                let charsxp = mk_char_cstr(&cstr);
                 if !charsxp.is_null() {
                     crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
-                    Rf_install(c"class".as_ptr()),
+                    install_str("class"),
                     class_vec,
                 );
             }
@@ -487,11 +487,11 @@ pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !class_vec.is_null() {
             let _p2 = protect(class_vec);
             let cstr = c"object_size";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
             }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
+            crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
         }
         result
     }

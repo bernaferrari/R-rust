@@ -20,52 +20,50 @@ pub(super) fn list_apply_len(x: SEXP) -> R_xlen_t {
 }
 
 pub(super) fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
-    unsafe {
-        if n <= 0 {
-            return R_NilValue();
-        }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
-                let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-                if names.is_null() {
-                    return R_NilValue();
-                }
-                let _names_guard = protect(names);
-                let mut current = x;
-                let mut i = 0;
-                let mut any_name = false;
-                while !current.is_null() && current != R_NilValue() && i < n {
-                    let tag = TAG(current);
-                    if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                        let printname = PRINTNAME(tag);
-                        if !printname.is_null() && printname != R_NilValue() {
-                            SET_STRING_ELT(names, i, printname);
-                            any_name = true;
-                        } else {
-                            SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
-                        }
-                    } else {
-                        SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
-                    }
-                    i += 1;
-                    current = CDR(current);
-                }
-                if any_name { names } else { R_NilValue() }
+    if n <= 0 {
+        return R_NilValue();
+    }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if names.is_null() {
+                return R_NilValue();
             }
-            _ => {
-                let names = crate::sexp::attrib_core::getAttrib(
-                    x,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                if !names.is_null()
-                    && names != R_NilValue()
-                    && TYPEOF(names) == SEXPTYPE::STRSXP
-                    && XLENGTH(names) == n
-                {
-                    names
+            let _names_guard = protect(names);
+            let mut current = x;
+            let mut i = 0;
+            let mut any_name = false;
+            while !current.is_null() && current != R_NilValue() && i < n {
+                let tag = TAG(current);
+                if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                    let printname = PRINTNAME(tag);
+                    if !printname.is_null() && printname != R_NilValue() {
+                        SET_STRING_ELT(names, i, printname);
+                        any_name = true;
+                    } else {
+                        SET_STRING_ELT(names, i, mk_char_cstr(c""));
+                    }
                 } else {
-                    R_NilValue()
+                    SET_STRING_ELT(names, i, mk_char_cstr(c""));
                 }
+                i += 1;
+                current = CDR(current);
+            }
+            if any_name { names } else { R_NilValue() }
+        }
+        _ => {
+            let names = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+            {
+                names
+            } else {
+                R_NilValue()
             }
         }
     }
@@ -139,7 +137,7 @@ pub fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Get dimensions
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) < 2 {
             return R_NilValue(); // not a matrix/array
         }
@@ -490,54 +488,52 @@ pub(super) fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {
 }
 
 pub(super) fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
-    unsafe {
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, indexes.len() as R_xlen_t);
-        if dim.is_null() {
-            return;
-        }
-        let _dim_guard = protect(dim);
-        for (i, index) in indexes.iter().enumerate() {
-            set_integer_checked(dim, (i) as R_xlen_t, index.labels.len() as i32);
-        }
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, indexes.len() as R_xlen_t);
+    if dim.is_null() {
+        return;
+    }
+    let _dim_guard = protect(dim);
+    for (i, index) in indexes.iter().enumerate() {
+        set_integer_checked(dim, (i) as R_xlen_t, index.labels.len() as i32);
+    }
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, indexes.len() as R_xlen_t);
-        if dimnames.is_null() {
+    let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, indexes.len() as R_xlen_t);
+    if dimnames.is_null() {
+        return;
+    }
+    let _dimnames_guard = protect(dimnames);
+    for (i, index) in indexes.iter().enumerate() {
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, index.labels.len() as R_xlen_t);
+        if names.is_null() {
             return;
         }
-        let _dimnames_guard = protect(dimnames);
-        for (i, index) in indexes.iter().enumerate() {
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, index.labels.len() as R_xlen_t);
-            if names.is_null() {
-                return;
-            }
-            let _names_guard = protect(names);
-            for (j, label) in index.labels.iter().enumerate() {
-                let label_c = CString::new(label.as_str()).unwrap_or_default();
-                SET_STRING_ELT(names, j as R_xlen_t, Rf_mkChar(label_c.as_ptr()));
-            }
-            SET_VECTOR_ELT(dimnames, i as R_xlen_t, names);
+        let _names_guard = protect(names);
+        for (j, label) in index.labels.iter().enumerate() {
+            let label_c = CString::new(label.as_str()).unwrap_or_default();
+            SET_STRING_ELT(names, j as R_xlen_t, mk_char_cstr(&label_c));
         }
-        let dimname_names = Rf_allocVector3(SEXPTYPE::STRSXP, indexes.len() as R_xlen_t);
-        if !dimname_names.is_null() {
-            let _dimname_names_guard = protect(dimname_names);
-            for (i, index) in indexes.iter().enumerate() {
-                let label_c =
-                    CString::new(index.dim_name.as_deref().unwrap_or("")).unwrap_or_default();
-                SET_STRING_ELT(dimname_names, i as R_xlen_t, Rf_mkChar(label_c.as_ptr()));
-            }
-            crate::sexp::attrib_core::setAttrib(
-                dimnames,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                dimname_names,
-            );
+        SET_VECTOR_ELT(dimnames, i as R_xlen_t, names);
+    }
+    let dimname_names = Rf_allocVector3(SEXPTYPE::STRSXP, indexes.len() as R_xlen_t);
+    if !dimname_names.is_null() {
+        let _dimname_names_guard = protect(dimname_names);
+        for (i, index) in indexes.iter().enumerate() {
+            let label_c =
+                CString::new(index.dim_name.as_deref().unwrap_or("")).unwrap_or_default();
+            SET_STRING_ELT(dimname_names, i as R_xlen_t, mk_char_cstr(&label_c));
         }
         crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
             dimnames,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            dimname_names,
         );
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dimnames,
+    );
 }
 
 /// R's `outer(X, Y, FUN="*")` — outer product. Returns a matrix of length(X) x length(Y).
@@ -608,7 +604,7 @@ pub fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _y = protect(y);
         let fun_cell = CDR(CDR(args));
         let fun = if fun_cell.is_null() || fun_cell == R_NilValue() {
-            Rf_mkString(c"*".as_ptr())
+            mk_string_cstr(c"*")
         } else {
             CAR(fun_cell)
         };
@@ -697,7 +693,7 @@ pub(super) fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
 pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if fun_arg.is_null() || fun_arg == R_NilValue() {
-            return crate::sexp::envir::findFun(Rf_install(c"*".as_ptr()), rho);
+            return crate::sexp::envir::findFun(install_str("*"), rho);
         }
         let ty = TYPEOF(fun_arg);
         if ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
@@ -706,7 +702,7 @@ pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
         let sym = if ty == SEXPTYPE::STRSXP {
             let name = elt_to_string(fun_arg, 0);
             let cstr = CString::new(name.as_str()).unwrap_or_default();
-            Rf_install(cstr.as_ptr())
+            install_cstr(&cstr)
         } else if ty == SEXPTYPE::SYMSXP {
             fun_arg
         } else {

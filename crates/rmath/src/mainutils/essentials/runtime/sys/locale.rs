@@ -110,7 +110,7 @@ pub fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             (*inst).eval_state.capabilities.allow_environment_mutation
         });
         if !allowed || crate::mainutils::platform::portable_utf8_profile() {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
 
         let category = locale_category_from_arg(CAR(args));

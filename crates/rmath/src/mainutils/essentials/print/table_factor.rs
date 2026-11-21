@@ -2,112 +2,110 @@ use super::*;
 
 /// R's `print.table(x)` — print a table object.
 pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = print_method_x(_call, args, "table");
-        if x.is_null() || x == R_NilValue() {
-            println!("NULL");
-            return R_NilValue();
-        }
-        // Table objects are typically arrays (REALSXP/INTSXP with dim attribute)
-        let t = TYPEOF(x);
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2 {
-            // 2D table: print as matrix
-            let nrow = integer_elt_checked(dim_attr, 0) as usize;
-            let ncol = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
-
-            // Get dimnames
-            let dn = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
-            let has_dn = !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP;
-
-            // Print row names and values
-            for i in 0..nrow {
-                let rname = if has_dn && !VECTOR_ELT(dn, 0).is_null() {
-                    elt_to_string(VECTOR_ELT(dn, 0), i as R_xlen_t)
-                } else {
-                    format!("{}", i + 1)
-                };
-                print!("{:>12} ", rname);
-                for j in 0..ncol {
-                    let idx = i * ncol + j;
-                    let val = if t == SEXPTYPE::REALSXP {
-                        format!("{:>6}", real_elt_checked(x, (idx) as R_xlen_t))
-                    } else if t == SEXPTYPE::INTSXP {
-                        format!("{:>6}", integer_elt_checked(x, (idx) as R_xlen_t))
-                    } else {
-                        format!("{:>6}", elt_to_string(x, idx as R_xlen_t))
-                    };
-                    print!("{}", val);
-                }
-                println!();
-            }
-            // Print column names
-            if has_dn && !VECTOR_ELT(dn, 1).is_null() {
-                print!("{:>12} ", "");
-                for j in 0..ncol {
-                    print!("{:>6}", elt_to_string(VECTOR_ELT(dn, 1), j as R_xlen_t));
-                }
-                println!();
-            }
-        } else {
-            let n = XLENGTH(x);
-            let mut names =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
-                let dn = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
-                if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
-                    names = VECTOR_ELT(dn, 0);
-                }
-            }
-            let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
-            if has_names {
-                let labels: Vec<String> = (0..n).map(|i| elt_to_string(names, i)).collect();
-                let values: Vec<String> = (0..n)
-                    .map(|i| {
-                        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                            (integer_elt_checked(x, (i as usize) as R_xlen_t)).to_string()
-                        } else if t == SEXPTYPE::REALSXP {
-                            format!("{}", real_elt_checked(x, (i as usize) as R_xlen_t))
-                        } else {
-                            elt_to_string(x, i)
-                        }
-                    })
-                    .collect();
-                let width = labels
-                    .iter()
-                    .zip(&values)
-                    .map(|(name, value)| name.len().max(value.len()))
-                    .max()
-                    .unwrap_or(1);
-                let name_line = labels
-                    .iter()
-                    .map(|name| format!("{name:>width$}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let value_line = values
-                    .iter()
-                    .map(|value| format!("{value:>width$}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                println!();
-                // GNU print.array of a 1-d table: a space after the last
-                // column, so both header and count lines gain a trailing space.
-                println!("{name_line} ");
-                println!("{value_line} ");
-
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                return x;
-            }
-            for i in 0..n {
-                let val = elt_to_string(x, i);
-                println!("  {}", val);
-            }
-        }
-
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = print_method_x(_call, args, "table");
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
     }
+    // Table objects are typically arrays (REALSXP/INTSXP with dim attribute)
+    let t = TYPEOF(x);
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2 {
+        // 2D table: print as matrix
+        let nrow = integer_elt_checked(dim_attr, 0) as usize;
+        let ncol = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
+
+        // Get dimnames
+        let dn = crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"));
+        let has_dn = !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP;
+
+        // Print row names and values
+        for i in 0..nrow {
+            let rname = if has_dn && !VECTOR_ELT(dn, 0).is_null() {
+                elt_to_string(VECTOR_ELT(dn, 0), i as R_xlen_t)
+            } else {
+                format!("{}", i + 1)
+            };
+            print!("{:>12} ", rname);
+            for j in 0..ncol {
+                let idx = i * ncol + j;
+                let val = if t == SEXPTYPE::REALSXP {
+                    format!("{:>6}", real_elt_checked(x, (idx) as R_xlen_t))
+                } else if t == SEXPTYPE::INTSXP {
+                    format!("{:>6}", integer_elt_checked(x, (idx) as R_xlen_t))
+                } else {
+                    format!("{:>6}", elt_to_string(x, idx as R_xlen_t))
+                };
+                print!("{}", val);
+            }
+            println!();
+        }
+        // Print column names
+        if has_dn && !VECTOR_ELT(dn, 1).is_null() {
+            print!("{:>12} ", "");
+            for j in 0..ncol {
+                print!("{:>6}", elt_to_string(VECTOR_ELT(dn, 1), j as R_xlen_t));
+            }
+            println!();
+        }
+    } else {
+        let n = XLENGTH(x);
+        let mut names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            let dn = crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"));
+            if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                names = VECTOR_ELT(dn, 0);
+            }
+        }
+        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        if has_names {
+            let labels: Vec<String> = (0..n).map(|i| elt_to_string(names, i)).collect();
+            let values: Vec<String> = (0..n)
+                .map(|i| {
+                    if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                        (integer_elt_checked(x, (i as usize) as R_xlen_t)).to_string()
+                    } else if t == SEXPTYPE::REALSXP {
+                        format!("{}", real_elt_checked(x, (i as usize) as R_xlen_t))
+                    } else {
+                        elt_to_string(x, i)
+                    }
+                })
+                .collect();
+            let width = labels
+                .iter()
+                .zip(&values)
+                .map(|(name, value)| name.len().max(value.len()))
+                .max()
+                .unwrap_or(1);
+            let name_line = labels
+                .iter()
+                .map(|name| format!("{name:>width$}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let value_line = values
+                .iter()
+                .map(|value| format!("{value:>width$}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!();
+            // GNU print.array of a 1-d table: a space after the last
+            // column, so both header and count lines gain a trailing space.
+            println!("{name_line} ");
+            println!("{value_line} ");
+
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+        for i in 0..n {
+            let val = elt_to_string(x, i);
+            println!("  {}", val);
+        }
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// GNU `print.factor` (base factor.R): build the `xx` character vector via
@@ -124,7 +122,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let n = XLENGTH(x);
-        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
+        let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
         let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
 
         // print.factor(x, quote = FALSE, max.levels = NULL, width)
@@ -132,9 +130,9 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut max_levels_num: Option<i64> = None;
         let mut max_levels_on = true;
         let mut width_opt: Option<i64> = None;
-        let quote_sym = Rf_install(c"quote".as_ptr());
-        let max_sym = Rf_install(c"max.levels".as_ptr());
-        let width_sym = Rf_install(c"width".as_ptr());
+        let quote_sym = install_str("quote");
+        let max_sym = install_str("max.levels");
+        let width_sym = install_str("width");
         let mut p = CDR(args);
         while !p.is_null() && p != R_NilValue() {
             let tag = TAG(p);
@@ -190,15 +188,15 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         // Malformed code: GNU errors; keep the lenient raw
                         // code rendering so diagnostics stay printable.
                         let text = CString::new(format!("{v}")).unwrap_or_default();
-                        Rf_mkChar(text.as_ptr())
+                        mk_char_cstr(&text)
                     }
                 } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                     let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     let text = CString::new(format!("{v}")).unwrap_or_default();
-                    Rf_mkChar(text.as_ptr())
+                    mk_char_cstr(&text)
                 } else {
                     let text = CString::new(elt_to_string(x, i)).unwrap_or_default();
-                    Rf_mkChar(text.as_ptr())
+                    mk_char_cstr(&text)
                 };
                 SET_STRING_ELT(xx, i, ch);
             }
@@ -325,7 +323,7 @@ pub(crate) fn factor_validity_message(x: SEXP) -> Option<String> {
         if !is_factor {
             return None;
         }
-        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
+        let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
         if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
             return Some("factor levels must be \"character\"".to_string());
         }
@@ -356,57 +354,55 @@ pub(crate) fn factor_validity_message(x: SEXP) -> Option<String> {
 /// rle.R): "Run Length Encoding" header, then `str()` of `$lengths` (default
 /// digits.d) and `$values` (digits.d = `digits`), joined onto the cat() text.
 pub fn do_print_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = print_method_x(_call, args, "rle");
-        if x.is_null()
-            || x == R_NilValue()
-            || TYPEOF(x) != SEXPTYPE::VECSXP
-            || !crate::mainutils::essentials::sexp_has_class(x, "rle")
-        {
-            return do_print_default(_call, _op, args, _rho);
-        }
-        let component = |name: &str| -> SEXP {
-            let names =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-                return R_NilValue();
-            }
-            for i in 0..XLENGTH(names) {
-                if elt_to_string(names, i) == name {
-                    return VECTOR_ELT(x, i);
-                }
-            }
-            R_NilValue()
-        };
-
-        let lengths = component("lengths");
-        let _l_guard = protect(lengths);
-        let values = component("values");
-        let _v_guard = protect(values);
-
-        // str(x$lengths, ...) with strOptions() default digits.d
-        emit_print_text("Run Length Encoding\n  lengths:");
-        let lengths_args = Rf_cons(lengths, R_NilValue());
-        let _la_guard = protect(lengths_args);
-        let _g1 = StrDigitsGuard::new(None);
-        do_str(R_NilValue(), R_NilValue(), lengths_args, _rho);
-        drop(_g1);
-
-        // str(x$values, digits.d = getOption("digits"), ...)
-        emit_print_text("  values :");
-        let digits = crate::mainutils::format::format_get_R_print().digits;
-        let digits_arg = Rf_ScalarInteger(digits);
-        let _d_guard = protect(digits_arg);
-        let dd_tail = Rf_cons(digits_arg, R_NilValue());
-        let _dd_guard = protect(dd_tail);
-        SETTAG(dd_tail, Rf_install(c"digits.d".as_ptr()));
-        let values_args = Rf_cons(values, dd_tail);
-        let _va_guard = protect(values_args);
-        do_str(R_NilValue(), R_NilValue(), values_args, _rho);
-
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = print_method_x(_call, args, "rle");
+    if x.is_null()
+        || x == R_NilValue()
+        || TYPEOF(x) != SEXPTYPE::VECSXP
+        || !crate::mainutils::essentials::sexp_has_class(x, "rle")
+    {
+        return do_print_default(_call, _op, args, _rho);
     }
+    let component = |name: &str| -> SEXP {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        for i in 0..XLENGTH(names) {
+            if elt_to_string(names, i) == name {
+                return VECTOR_ELT(x, i);
+            }
+        }
+        R_NilValue()
+    };
+
+    let lengths = component("lengths");
+    let _l_guard = protect(lengths);
+    let values = component("values");
+    let _v_guard = protect(values);
+
+    // str(x$lengths, ...) with strOptions() default digits.d
+    emit_print_text("Run Length Encoding\n  lengths:");
+    let lengths_args = Rf_cons(lengths, R_NilValue());
+    let _la_guard = protect(lengths_args);
+    let _g1 = StrDigitsGuard::new(None);
+    do_str(R_NilValue(), R_NilValue(), lengths_args, _rho);
+    drop(_g1);
+
+    // str(x$values, digits.d = getOption("digits"), ...)
+    emit_print_text("  values :");
+    let digits = crate::mainutils::format::format_get_R_print().digits;
+    let digits_arg = Rf_ScalarInteger(digits);
+    let _d_guard = protect(digits_arg);
+    let dd_tail = Rf_cons(digits_arg, R_NilValue());
+    let _dd_guard = protect(dd_tail);
+    SETTAG(dd_tail, install_str("digits.d"));
+    let values_args = Rf_cons(values, dd_tail);
+    let _va_guard = protect(values_args);
+    do_str(R_NilValue(), R_NilValue(), values_args, _rho);
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// GNU `print.eigen(x, ...)`: header line plus `print(unclass(x), ...)`;
@@ -468,7 +464,7 @@ pub fn do_print_proc_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let _names_guard = protect(names);
         for (i, name) in ["user", "system", "elapsed"].iter().enumerate() {
             let cstr = std::ffi::CString::new(*name).unwrap_or_default();
-            SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&cstr));
         }
         crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
 

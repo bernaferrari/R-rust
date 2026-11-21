@@ -9,7 +9,7 @@ use crate::sexp::object::SexpMut;
 pub fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // GNU formals `(expr, ...)`. `expr=` binds by name; other tags are handlers.
-        let expr_sym = Rf_install(c"expr".as_ptr());
+        let expr_sym = install_str("expr");
         let mut expr = crate::sexp::globals::R_MissingArg();
         let mut handler_args = R_NilValue();
         let mut p = args;
@@ -209,52 +209,50 @@ fn empty_named_list() -> SEXP {
 }
 
 fn named_list_from_dots(mut args: SEXP) -> SEXP {
-    unsafe {
-        let mut n = 0;
-        let mut p = args;
-        while !p.is_null() && p != R_NilValue() {
-            n += 1;
-            p = CDR(p);
-        }
-        let list = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        let _list = protect(list);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _names = protect(names);
-        let owner = active_owner();
-        let mut list_mut = owner
-            .sexp(list)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut names_mut = owner
-            .sexp(names)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut i = 0i64;
-        while !args.is_null() && args != R_NilValue() {
-            let value = owner_sexp(owner, CAR(args));
-            list_mut
-                .try_set_vector_elt(i, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let tag = TAG(args);
-            let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP
-            {
-                owner
-                    .sexp(Rf_mkChar(c"".as_ptr()))
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            } else {
-                owner
-                    .sexp(PRINTNAME(tag))
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            };
-            names_mut
-                .try_set_string_elt(i, charsxp)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            i += 1;
-            args = CDR(args);
-        }
-        crate::sexp::attrib_core::setAttrib(list, crate::sexp::attrib_core::R_NamesSymbol(), names);
-        list
+    let mut n = 0;
+    let mut p = args;
+    while !p.is_null() && p != R_NilValue() {
+        n += 1;
+        p = CDR(p);
     }
+    let list = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    let _list = protect(list);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _names = protect(names);
+    let owner = active_owner();
+    let mut list_mut = owner
+        .sexp(list)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut names_mut = owner
+        .sexp(names)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut i = 0i64;
+    while !args.is_null() && args != R_NilValue() {
+        let value = owner_sexp(owner, CAR(args));
+        list_mut
+            .try_set_vector_elt(i, value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let tag = TAG(args);
+        let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP
+        {
+            owner
+                .sexp(mk_char_cstr(c""))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        } else {
+            owner
+                .sexp(PRINTNAME(tag))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        names_mut
+            .try_set_string_elt(i, charsxp)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        i += 1;
+        args = CDR(args);
+    }
+    crate::sexp::attrib_core::setAttrib(list, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    list
 }
 
 fn validate_named_handlers(list: SEXP) {

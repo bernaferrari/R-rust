@@ -44,73 +44,71 @@ fn glob2rx_one(pattern: &str, trim_head: bool, trim_tail: bool) -> String {
 
 /// GNU `glob2rx(pattern, trim.head=FALSE, trim.tail=TRUE)`.
 pub fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let pattern = CAR(args);
-        if pattern.is_null() || pattern == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = if TYPEOF(pattern) == SEXPTYPE::STRSXP {
-            XLENGTH(pattern)
-        } else {
-            0
-        };
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let mut trim_head = false;
-        let mut trim_tail = true;
-        let mut cell = CDR(args);
-        let mut positional = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let is_true = !value.is_null()
-                && value != R_NilValue()
-                && ((TYPEOF(value) == SEXPTYPE::LGLSXP
-                    && XLENGTH(value) > 0
-                    && logical_elt_checked(value, 0) == TRUE)
-                    || (TYPEOF(value) == SEXPTYPE::INTSXP
-                        && XLENGTH(value) > 0
-                        && integer_elt_checked(value, 0) != 0
-                        && integer_elt_checked(value, 0) != NA_INTEGER));
-            let is_false = !value.is_null()
-                && value != R_NilValue()
-                && ((TYPEOF(value) == SEXPTYPE::LGLSXP
-                    && XLENGTH(value) > 0
-                    && logical_elt_checked(value, 0) == FALSE)
-                    || (TYPEOF(value) == SEXPTYPE::INTSXP
-                        && XLENGTH(value) > 0
-                        && integer_elt_checked(value, 0) == 0));
-            if named == "trim.head" || (named.is_empty() && positional == 0) {
-                trim_head = is_true;
-            } else if named == "trim.tail" || (named.is_empty() && positional == 1) {
-                trim_tail = !is_false;
-            }
-            if named.is_empty() {
-                positional += 1;
-            }
-            cell = CDR(cell);
-        }
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        for i in 0..n {
-            let ch = STRING_ELT(pattern, i);
-            let raw = if ch.is_null() {
-                String::new()
-            } else {
-                charsxp_text(ch).unwrap_or_default()
-            };
-            let converted = glob2rx_one(&raw, trim_head, trim_tail);
-            let c = CString::new(converted).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
-        }
-        out
+    let pattern = CAR(args);
+    if pattern.is_null() || pattern == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let n = if TYPEOF(pattern) == SEXPTYPE::STRSXP {
+        XLENGTH(pattern)
+    } else {
+        0
+    };
+    if n == 0 {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+    let mut trim_head = false;
+    let mut trim_tail = true;
+    let mut cell = CDR(args);
+    let mut positional = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let is_true = !value.is_null()
+            && value != R_NilValue()
+            && ((TYPEOF(value) == SEXPTYPE::LGLSXP
+                && XLENGTH(value) > 0
+                && logical_elt_checked(value, 0) == TRUE)
+                || (TYPEOF(value) == SEXPTYPE::INTSXP
+                    && XLENGTH(value) > 0
+                    && integer_elt_checked(value, 0) != 0
+                    && integer_elt_checked(value, 0) != NA_INTEGER));
+        let is_false = !value.is_null()
+            && value != R_NilValue()
+            && ((TYPEOF(value) == SEXPTYPE::LGLSXP
+                && XLENGTH(value) > 0
+                && logical_elt_checked(value, 0) == FALSE)
+                || (TYPEOF(value) == SEXPTYPE::INTSXP
+                    && XLENGTH(value) > 0
+                    && integer_elt_checked(value, 0) == 0));
+        if named == "trim.head" || (named.is_empty() && positional == 0) {
+            trim_head = is_true;
+        } else if named == "trim.tail" || (named.is_empty() && positional == 1) {
+            trim_tail = !is_false;
+        }
+        if named.is_empty() {
+            positional += 1;
+        }
+        cell = CDR(cell);
+    }
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    for i in 0..n {
+        let ch = STRING_ELT(pattern, i);
+        let raw = if ch.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ch).unwrap_or_default()
+        };
+        let converted = glob2rx_one(&raw, trim_head, trim_tail);
+        let c = CString::new(converted).unwrap_or_else(|_| CString::new("").unwrap());
+        SET_STRING_ELT(out, i, mk_char_cstr(&c));
+    }
+    out
 }
 
 fn adist_levenshtein(a: &str, b: &str) -> i32 {
@@ -182,32 +180,30 @@ fn adist_path(a: &str, b: &str) -> (i32, String, i32, i32, i32) {
 }
 
 fn ints_to_char_vector(list: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(list);
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if out.is_null() {
-            return out;
-        }
-        for i in 0..n {
-            let elt = VECTOR_ELT(list, i);
-            let text = if TYPEOF(elt) == SEXPTYPE::INTSXP {
-                let mut s = String::new();
-                for k in 0..XLENGTH(elt) {
-                    let cp = integer_elt_checked(elt, (k as usize) as R_xlen_t);
-                    if let Some(ch) = char::from_u32(cp as u32) {
-                        s.push(ch);
-                    }
-                }
-                s
-            } else {
-                String::new()
-            };
-            if let Ok(cs) = std::ffi::CString::new(text) {
-                SET_STRING_ELT(out, i, Rf_mkChar(cs.as_ptr()));
-            }
-        }
-        out
+    let n = XLENGTH(list);
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if out.is_null() {
+        return out;
     }
+    for i in 0..n {
+        let elt = VECTOR_ELT(list, i);
+        let text = if TYPEOF(elt) == SEXPTYPE::INTSXP {
+            let mut s = String::new();
+            for k in 0..XLENGTH(elt) {
+                let cp = integer_elt_checked(elt, (k as usize) as R_xlen_t);
+                if let Some(ch) = char::from_u32(cp as u32) {
+                    s.push(ch);
+                }
+            }
+            s
+        } else {
+            String::new()
+        };
+        if let Ok(cs) = std::ffi::CString::new(text) {
+            SET_STRING_ELT(out, i, mk_char_cstr(&cs));
+        }
+    }
+    out
 }
 
 /// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
@@ -303,7 +299,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     trafos,
                     k as i64,
-                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    mk_char_cstr(&cstr),
                 );
                 set_integer_checked(cnt, (k) as R_xlen_t, *del);
                 set_integer_checked(cnt, (k + (nx * ny) as usize) as R_xlen_t, *ins);
@@ -321,7 +317,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     layer,
                     i as i64,
-                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    mk_char_cstr(&cstr),
                 );
             }
             SET_VECTOR_ELT(dnames, 2, layer);
@@ -340,12 +336,12 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
             crate::sexp::attrib_core::setAttrib(
                 mat,
-                crate::sexp::symbol::Rf_install(c"trafos".as_ptr()),
+                install_str("trafos"),
                 trafos,
             );
             crate::sexp::attrib_core::setAttrib(
                 mat,
-                crate::sexp::symbol::Rf_install(c"counts".as_ptr()),
+                install_str("counts"),
                 cnt,
             );
         }
@@ -379,105 +375,103 @@ fn aregexec_match(pat: &str, text: &str, maxd: i32) -> Option<(i32, i32)> {
 
 /// GNU `aregexec(pattern, text, max.distance)` for literal patterns.
 pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let pat = CAR(args);
-        let text = CAR(CDR(args));
-        let mut maxd = 0.1;
-        let mut cell = CDR(CDR(args));
-        // The GNU closure passes .Internal(aregexec(pattern, text,
-        // bounds, costs, ...)): only the third argument (the expanded
-        // match-distance bounds) carries the distance. Later unnamed
-        // arguments (costs, flags) must not overwrite it.
-        let mut positional = 2;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "max.distance" || (name.is_empty() && positional == 2) {
-                let v = CAR(cell);
-                if !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
-                    let candidate = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                        real_elt_checked(v, 0)
-                    } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                        let iv = integer_elt_checked(v, 0);
-                        if iv == crate::sexp::ffi::NA_INTEGER {
-                            f64::NAN
-                        } else {
-                            iv as f64
-                        }
-                    } else {
-                        f64::NAN
-                    };
-                    // Scalar max.distance expands to bounds = c(x, NA*4);
-                    // the list form leaves bounds[1] ("cost") NA and sets
-                    // the shared "all" bound instead.
-                    if !candidate.is_nan() {
-                        maxd = candidate;
-                    } else if XLENGTH(v) > 4
-                        && TYPEOF(v) == SEXPTYPE::REALSXP
-                        && !(real_elt_checked(v, (4) as R_xlen_t)).is_nan()
-                    {
-                        maxd = real_elt_checked(v, (4) as R_xlen_t);
-                    }
-                }
-            }
-            if name.is_empty() {
-                positional += 1;
-            }
-            cell = CDR(cell);
-        }
-        if pat.is_null() || pat == R_NilValue() || text.is_null() || text == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        }
-        let pstr = if TYPEOF(pat) == SEXPTYPE::STRSXP && XLENGTH(pat) > 0 {
-            let ch = STRING_ELT(pat, 0);
-            if ch.is_null() {
-                String::new()
-            } else {
-                charsxp_text(ch).unwrap_or_default()
-            }
+    let pat = CAR(args);
+    let text = CAR(CDR(args));
+    let mut maxd = 0.1;
+    let mut cell = CDR(CDR(args));
+    // The GNU closure passes .Internal(aregexec(pattern, text,
+    // bounds, costs, ...)): only the third argument (the expanded
+    // match-distance bounds) carries the distance. Later unnamed
+    // arguments (costs, flags) must not overwrite it.
+    let mut positional = 2;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
         } else {
             String::new()
         };
-        let max_int = if maxd >= 1.0 {
-            maxd.floor() as i32
-        } else {
-            (maxd * pstr.chars().count() as f64).floor() as i32
-        };
-        let n = if TYPEOF(text) == SEXPTYPE::STRSXP {
-            XLENGTH(text)
-        } else {
-            0
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        let _r = protect(result);
-        let ml_sym = Rf_install(c"match.length".as_ptr());
-        for i in 0..n {
-            let ch = STRING_ELT(text, i);
-            let txt = if ch.is_null() {
-                String::new()
-            } else {
-                charsxp_text(ch).unwrap_or_default()
-            };
-            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            let _e = protect(elt);
-            let ml = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            let _m = protect(ml);
-            if let Some((start, len)) = aregexec_match(&pstr, &txt, max_int) {
-                set_integer_checked(elt, 0, start);
-                set_integer_checked(ml, 0, len);
-            } else {
-                set_integer_checked(elt, 0, -1);
-                set_integer_checked(ml, 0, -1);
+        if name == "max.distance" || (name.is_empty() && positional == 2) {
+            let v = CAR(cell);
+            if !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
+                let candidate = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                    real_elt_checked(v, 0)
+                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                    let iv = integer_elt_checked(v, 0);
+                    if iv == crate::sexp::ffi::NA_INTEGER {
+                        f64::NAN
+                    } else {
+                        iv as f64
+                    }
+                } else {
+                    f64::NAN
+                };
+                // Scalar max.distance expands to bounds = c(x, NA*4);
+                // the list form leaves bounds[1] ("cost") NA and sets
+                // the shared "all" bound instead.
+                if !candidate.is_nan() {
+                    maxd = candidate;
+                } else if XLENGTH(v) > 4
+                    && TYPEOF(v) == SEXPTYPE::REALSXP
+                    && !(real_elt_checked(v, (4) as R_xlen_t)).is_nan()
+                {
+                    maxd = real_elt_checked(v, (4) as R_xlen_t);
+                }
             }
-            crate::sexp::attrib_core::setAttrib(elt, ml_sym, ml);
-            SET_VECTOR_ELT(result, i, elt);
         }
-        result
+        if name.is_empty() {
+            positional += 1;
+        }
+        cell = CDR(cell);
     }
+    if pat.is_null() || pat == R_NilValue() || text.is_null() || text == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+    }
+    let pstr = if TYPEOF(pat) == SEXPTYPE::STRSXP && XLENGTH(pat) > 0 {
+        let ch = STRING_ELT(pat, 0);
+        if ch.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ch).unwrap_or_default()
+        }
+    } else {
+        String::new()
+    };
+    let max_int = if maxd >= 1.0 {
+        maxd.floor() as i32
+    } else {
+        (maxd * pstr.chars().count() as f64).floor() as i32
+    };
+    let n = if TYPEOF(text) == SEXPTYPE::STRSXP {
+        XLENGTH(text)
+    } else {
+        0
+    };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    let _r = protect(result);
+    let ml_sym = install_str("match.length");
+    for i in 0..n {
+        let ch = STRING_ELT(text, i);
+        let txt = if ch.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ch).unwrap_or_default()
+        };
+        let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        let _e = protect(elt);
+        let ml = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        let _m = protect(ml);
+        if let Some((start, len)) = aregexec_match(&pstr, &txt, max_int) {
+            set_integer_checked(elt, 0, start);
+            set_integer_checked(ml, 0, len);
+        } else {
+            set_integer_checked(elt, 0, -1);
+            set_integer_checked(ml, 0, -1);
+        }
+        crate::sexp::attrib_core::setAttrib(elt, ml_sym, ml);
+        SET_VECTOR_ELT(result, i, elt);
+    }
+    result
 }
 
 fn abbreviate_first_char(s: &[u8], i: usize) -> bool {
@@ -618,62 +612,60 @@ fn abbreviate_unique(names: &[String], minlength: usize) -> Vec<String> {
 
 /// GNU `abbreviate(names.arg, minlength=4)`.
 pub fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let names_s = CAR(args);
-        if names_s.is_null() || names_s == R_NilValue() || TYPEOF(names_s) != SEXPTYPE::STRSXP {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = XLENGTH(names_s);
-        let mut minlength = 4i32;
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let m = CAR(rest);
-            if TYPEOF(m) == SEXPTYPE::INTSXP && XLENGTH(m) > 0 {
-                minlength = integer_elt_checked(m, 0);
-            } else if TYPEOF(m) == SEXPTYPE::REALSXP && XLENGTH(m) > 0 {
-                minlength = real_elt_checked(m, 0) as i32;
-            }
-        }
-        let mut old = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let ch = STRING_ELT(names_s, i);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                old.push(String::new());
-                continue;
-            }
-            let raw = charsxp_text(ch).unwrap_or_default();
-            old.push(raw.trim().to_string());
-        }
-        let mut unique_names = Vec::new();
-        let mut first_of: Vec<usize> = Vec::with_capacity(n as usize);
-        for name in &old {
-            if let Some(pos) = unique_names.iter().position(|u| u == name) {
-                first_of.push(pos);
-            } else {
-                first_of.push(unique_names.len());
-                unique_names.push(name.clone());
-            }
-        }
-        let minlen = if minlength < 0 { 0 } else { minlength as usize };
-        let uniq = abbreviate_unique(&unique_names, minlen);
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        let nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _n = protect(nm);
-        for i in 0..n as usize {
-            let ch = STRING_ELT(names_s, i as i64);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                SET_STRING_ELT(out, i as i64, crate::sexp::globals::R_NaString());
-                SET_STRING_ELT(nm, i as i64, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            let abbr = &uniq[first_of[i]];
-            let c = CString::new(abbr.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
-            let oc = CString::new(old[i].as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(nm, i as i64, Rf_mkChar(oc.as_ptr()));
-        }
-        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), nm);
-        out
+    let names_s = CAR(args);
+    if names_s.is_null() || names_s == R_NilValue() || TYPEOF(names_s) != SEXPTYPE::STRSXP {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let n = XLENGTH(names_s);
+    let mut minlength = 4i32;
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let m = CAR(rest);
+        if TYPEOF(m) == SEXPTYPE::INTSXP && XLENGTH(m) > 0 {
+            minlength = integer_elt_checked(m, 0);
+        } else if TYPEOF(m) == SEXPTYPE::REALSXP && XLENGTH(m) > 0 {
+            minlength = real_elt_checked(m, 0) as i32;
+        }
+    }
+    let mut old = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let ch = STRING_ELT(names_s, i);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            old.push(String::new());
+            continue;
+        }
+        let raw = charsxp_text(ch).unwrap_or_default();
+        old.push(raw.trim().to_string());
+    }
+    let mut unique_names = Vec::new();
+    let mut first_of: Vec<usize> = Vec::with_capacity(n as usize);
+    for name in &old {
+        if let Some(pos) = unique_names.iter().position(|u| u == name) {
+            first_of.push(pos);
+        } else {
+            first_of.push(unique_names.len());
+            unique_names.push(name.clone());
+        }
+    }
+    let minlen = if minlength < 0 { 0 } else { minlength as usize };
+    let uniq = abbreviate_unique(&unique_names, minlen);
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    let nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _n = protect(nm);
+    for i in 0..n as usize {
+        let ch = STRING_ELT(names_s, i as i64);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            SET_STRING_ELT(out, i as i64, crate::sexp::globals::R_NaString());
+            SET_STRING_ELT(nm, i as i64, crate::sexp::globals::R_NaString());
+            continue;
+        }
+        let abbr = &uniq[first_of[i]];
+        let c = CString::new(abbr.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+        SET_STRING_ELT(out, i as i64, mk_char_cstr(&c));
+        let oc = CString::new(old[i].as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+        SET_STRING_ELT(nm, i as i64, mk_char_cstr(&oc));
+    }
+    crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), nm);
+    out
 }

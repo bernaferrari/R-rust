@@ -57,7 +57,7 @@ fn try_methods_bind(
         let _wrapped = protect(wrapped);
         SETTAG(
             wrapped,
-            crate::sexp::symbol::Rf_install(c"deparse.level".as_ptr()),
+            install_str("deparse.level"),
         );
         Some(crate::eval::closure::applyClosure(
             call,
@@ -439,7 +439,7 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             force_bind_arg(dispatch)
         };
         if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
-            let sym = Rf_install(c"rbind.data.frame".as_ptr());
+            let sym = install_str("rbind.data.frame");
             let method = crate::sexp::envir::R_findVar(sym, rho);
             if TYPEOF(method) == SEXPTYPE::CLOSXP {
                 return crate::eval::closure::applyClosure(
@@ -1219,116 +1219,114 @@ fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
 }
 
 pub fn copy_bind_value(dst: SEXP, dst_i: R_xlen_t, dst_type: SEXPTYPE, src: SEXP, src_i: R_xlen_t) {
-    unsafe {
-        let owner = active_owner();
-        let src_owned = owner_sexp(owner, src);
-        let mut dst_mut = owner
-            .sexp(dst)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        fn fail<T>(error: crate::sexp::object::SexpError) -> T {
-            crate::sexp::context::r_error(error.to_string())
-        }
-        match dst_type {
-            SEXPTYPE::STRSXP => {
-                let src_str_na = TYPEOF(src) == SEXPTYPE::STRSXP
-                    && matches!(src_owned.try_string_value_elt(src_i), Ok(None));
-                if src_str_na {
-                    let na = owner
-                        .sexp(crate::sexp::globals::R_NaString())
-                        .unwrap_or_else(fail);
-                    dst_mut.try_set_string_elt(dst_i, na).unwrap_or_else(fail);
-                } else {
-                    let value = elt_to_string(src, src_i);
-                    let c_value = CString::new(value).unwrap_or_default();
-                    let charsxp = owner.sexp(Rf_mkChar(c_value.as_ptr())).unwrap_or_else(fail);
-                    dst_mut
-                        .try_set_string_elt(dst_i, charsxp)
-                        .unwrap_or_else(fail);
-                }
-            }
-            SEXPTYPE::CPLXSXP => {
-                let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::CPLXSXP => src_owned.try_complex_elt(src_i).unwrap_or_else(fail),
-                    SEXPTYPE::REALSXP => Rcomplex {
-                        r: src_owned.try_real_elt(src_i).unwrap_or_else(fail),
-                        i: 0.0,
-                    },
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
-                        let v = integer_like_elt(&src_owned, src_i);
-                        if v == NA_INTEGER {
-                            Rcomplex { r: NA_REAL, i: 0.0 }
-                        } else {
-                            Rcomplex {
-                                r: v as f64,
-                                i: 0.0,
-                            }
-                        }
-                    }
-                    SEXPTYPE::RAWSXP => {
-                        let b = src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64;
-                        Rcomplex { r: b, i: 0.0 }
-                    }
-                    _ => Rcomplex {
-                        r: NA_REAL,
-                        i: NA_REAL,
-                    },
-                };
+    let owner = active_owner();
+    let src_owned = owner_sexp(owner, src);
+    let mut dst_mut = owner
+        .sexp(dst)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    fn fail<T>(error: crate::sexp::object::SexpError) -> T {
+        crate::sexp::context::r_error(error.to_string())
+    }
+    match dst_type {
+        SEXPTYPE::STRSXP => {
+            let src_str_na = TYPEOF(src) == SEXPTYPE::STRSXP
+                && matches!(src_owned.try_string_value_elt(src_i), Ok(None));
+            if src_str_na {
+                let na = owner
+                    .sexp(crate::sexp::globals::R_NaString())
+                    .unwrap_or_else(fail);
+                dst_mut.try_set_string_elt(dst_i, na).unwrap_or_else(fail);
+            } else {
+                let value = elt_to_string(src, src_i);
+                let c_value = CString::new(value).unwrap_or_default();
+                let charsxp = owner.sexp(mk_char_cstr(&c_value)).unwrap_or_else(fail);
                 dst_mut
-                    .try_set_complex_elt(dst_i, value)
+                    .try_set_string_elt(dst_i, charsxp)
                     .unwrap_or_else(fail);
             }
-            SEXPTYPE::REALSXP => {
-                let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::REALSXP => src_owned.try_real_elt(src_i).unwrap_or_else(fail),
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
-                        let value = integer_like_elt(&src_owned, src_i);
-                        if value == NA_INTEGER {
-                            NA_REAL
-                        } else {
-                            value as f64
-                        }
-                    }
-                    SEXPTYPE::RAWSXP => src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64,
-                    _ => NA_REAL,
-                };
-                dst_mut.try_set_real_elt(dst_i, value).unwrap_or_else(fail);
-            }
-
-            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
-                let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => integer_like_elt(&src_owned, src_i),
-                    SEXPTYPE::RAWSXP => {
-                        let b = src_owned.try_raw_elt(src_i).unwrap_or_else(fail);
-                        if dst_type == SEXPTYPE::LGLSXP {
-                            if b == 0 { 0 } else { 1 }
-                        } else {
-                            b as i32
-                        }
-                    }
-                    _ => NA_INTEGER,
-                };
-                if dst_type == SEXPTYPE::LGLSXP {
-                    dst_mut
-                        .try_set_logical_elt(dst_i, value)
-                        .unwrap_or_else(fail);
-                } else {
-                    dst_mut
-                        .try_set_integer_elt(dst_i, value)
-                        .unwrap_or_else(fail);
-                }
-            }
-            SEXPTYPE::VECSXP => {
-                let elt = if TYPEOF(src) == SEXPTYPE::VECSXP {
-                    src_owned.try_vector_elt(src_i).unwrap_or_else(fail)
-                } else {
-                    owner.sexp(src).unwrap_or_else(fail)
-                };
-                dst_mut.try_set_vector_elt(dst_i, elt).unwrap_or_else(fail);
-            }
-
-            _ => {}
         }
+        SEXPTYPE::CPLXSXP => {
+            let value = match SEXPTYPE(TYPEOF(src)) {
+                SEXPTYPE::CPLXSXP => src_owned.try_complex_elt(src_i).unwrap_or_else(fail),
+                SEXPTYPE::REALSXP => Rcomplex {
+                    r: src_owned.try_real_elt(src_i).unwrap_or_else(fail),
+                    i: 0.0,
+                },
+                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                    let v = integer_like_elt(&src_owned, src_i);
+                    if v == NA_INTEGER {
+                        Rcomplex { r: NA_REAL, i: 0.0 }
+                    } else {
+                        Rcomplex {
+                            r: v as f64,
+                            i: 0.0,
+                        }
+                    }
+                }
+                SEXPTYPE::RAWSXP => {
+                    let b = src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64;
+                    Rcomplex { r: b, i: 0.0 }
+                }
+                _ => Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                },
+            };
+            dst_mut
+                .try_set_complex_elt(dst_i, value)
+                .unwrap_or_else(fail);
+        }
+        SEXPTYPE::REALSXP => {
+            let value = match SEXPTYPE(TYPEOF(src)) {
+                SEXPTYPE::REALSXP => src_owned.try_real_elt(src_i).unwrap_or_else(fail),
+                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                    let value = integer_like_elt(&src_owned, src_i);
+                    if value == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        value as f64
+                    }
+                }
+                SEXPTYPE::RAWSXP => src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64,
+                _ => NA_REAL,
+            };
+            dst_mut.try_set_real_elt(dst_i, value).unwrap_or_else(fail);
+        }
+
+        SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+            let value = match SEXPTYPE(TYPEOF(src)) {
+                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => integer_like_elt(&src_owned, src_i),
+                SEXPTYPE::RAWSXP => {
+                    let b = src_owned.try_raw_elt(src_i).unwrap_or_else(fail);
+                    if dst_type == SEXPTYPE::LGLSXP {
+                        if b == 0 { 0 } else { 1 }
+                    } else {
+                        b as i32
+                    }
+                }
+                _ => NA_INTEGER,
+            };
+            if dst_type == SEXPTYPE::LGLSXP {
+                dst_mut
+                    .try_set_logical_elt(dst_i, value)
+                    .unwrap_or_else(fail);
+            } else {
+                dst_mut
+                    .try_set_integer_elt(dst_i, value)
+                    .unwrap_or_else(fail);
+            }
+        }
+        SEXPTYPE::VECSXP => {
+            let elt = if TYPEOF(src) == SEXPTYPE::VECSXP {
+                src_owned.try_vector_elt(src_i).unwrap_or_else(fail)
+            } else {
+                owner.sexp(src).unwrap_or_else(fail)
+            };
+            dst_mut.try_set_vector_elt(dst_i, elt).unwrap_or_else(fail);
+        }
+
+        _ => {}
     }
 }
 
@@ -2005,14 +2003,12 @@ mod owned_bind_argument_tests {
         let level = integer(&[1]);
         let x = integer(&[1, 2]);
         let y = integer(&[3, 4]);
-        let (generic, x_symbol, y_symbol, label) = unsafe {
-            (
-                factory.wrap(Rf_install(generic.as_ptr())).unwrap(),
-                factory.wrap(Rf_install(c"x".as_ptr())).unwrap(),
-                factory.wrap(Rf_install(c"y".as_ptr())).unwrap(),
-                factory.wrap(Rf_install(c"labelled".as_ptr())).unwrap(),
-            )
-        };
+        let (generic, x_symbol, y_symbol, label) = (
+            factory.wrap(install_cstr(&generic)).unwrap(),
+            factory.wrap(install_str("x")).unwrap(),
+            factory.wrap(install_str("y")).unwrap(),
+            factory.wrap(install_str("labelled")).unwrap(),
+        );
         let environment = session.global_env().unwrap();
         unsafe {
             crate::sexp::envir::defineVar(x_symbol.as_raw(), x.as_raw(), environment.as_raw());
@@ -2085,7 +2081,7 @@ mod owned_bind_argument_tests {
             [(c"cbind", [1, 2, 3, 4], 1), (c"rbind", [1, 3, 2, 4], 0)]
         {
             let session = RSession::new_for_gc_tests();
-            session.with_active(|| unsafe {
+            session.with_active(|| {
                 let (call, arguments) = inputs(&session, generic);
                 let factory = session.owner_token().unwrap().node_factory();
                 let notifications = collect_at_every_allocation(&session);

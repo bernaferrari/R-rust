@@ -67,7 +67,7 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if tz.is_empty() && !tz_supplied {
                 let attr = crate::sexp::attrib_core::getAttrib(
                     x,
-                    crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                    install_str("tzone"),
                 );
                 if !attr.is_null()
                     && attr != R_NilValue()

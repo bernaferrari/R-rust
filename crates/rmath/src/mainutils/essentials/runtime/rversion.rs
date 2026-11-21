@@ -41,42 +41,40 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 fn make_r_version_list(simple_list_class: bool) -> SEXP {
-    unsafe {
-        let fields = crate::mainutils::compatibility_target::FIELDS;
+    let fields = crate::mainutils::compatibility_target::FIELDS;
 
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for (i, (_, value)) in fields.iter().enumerate() {
-            let value = CString::new(*value).unwrap_or_default();
-            SET_VECTOR_ELT(result, i as R_xlen_t, Rf_mkString(value.as_ptr()));
-        }
-
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, fields.len() as R_xlen_t);
-        if !names.is_null() {
-            let _names_guard = protect(names);
-            for (i, (name, _)) in fields.iter().enumerate() {
-                let name = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(name.as_ptr()));
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
-        }
-
-        if simple_list_class {
-            let class = Rf_mkString(c"simple.list".as_ptr());
-            let _class_guard = protect(class);
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
-
-        result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+
+    for (i, (_, value)) in fields.iter().enumerate() {
+        let value = CString::new(*value).unwrap_or_default();
+        SET_VECTOR_ELT(result, i as R_xlen_t, mk_string_cstr(&value));
+    }
+
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, fields.len() as R_xlen_t);
+    if !names.is_null() {
+        let _names_guard = protect(names);
+        for (i, (name, _)) in fields.iter().enumerate() {
+            let name = CString::new(*name).unwrap_or_default();
+            SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&name));
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
+    }
+
+    if simple_list_class {
+        let class = mk_string_cstr(c"simple.list");
+        let _class_guard = protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
+
+    result
 }
 
 /// R's `version` — legacy constant alias for `R.version`.

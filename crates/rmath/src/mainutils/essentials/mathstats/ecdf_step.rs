@@ -70,7 +70,7 @@ pub fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             result,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"SSD".as_ptr()),
+            mk_string_cstr(c"SSD"),
         );
         result
     }
@@ -154,35 +154,33 @@ pub fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `selfStart(model, initial, parameters)` — `pnames` + `initial` + class.
 pub fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let model = CAR(args);
-        let initial = CAR(CDR(args));
-        let parameters = CAR(CDR(CDR(args)));
-        crate::sexp::attrib_core::setAttrib(
-            model,
-            crate::sexp::symbol::Rf_install(c"initial".as_ptr()),
-            if initial.is_null() {
-                R_NilValue()
-            } else {
-                initial
-            },
-        );
-        crate::sexp::attrib_core::setAttrib(
-            model,
-            crate::sexp::symbol::Rf_install(c"pnames".as_ptr()),
-            if parameters.is_null() {
-                R_NilValue()
-            } else {
-                parameters
-            },
-        );
-        crate::sexp::attrib_core::setAttrib(
-            model,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"selfStart".as_ptr()),
-        );
-        model
-    }
+    let model = CAR(args);
+    let initial = CAR(CDR(args));
+    let parameters = CAR(CDR(CDR(args)));
+    crate::sexp::attrib_core::setAttrib(
+        model,
+        install_str("initial"),
+        if initial.is_null() {
+            R_NilValue()
+        } else {
+            initial
+        },
+    );
+    crate::sexp::attrib_core::setAttrib(
+        model,
+        install_str("pnames"),
+        if parameters.is_null() {
+            R_NilValue()
+        } else {
+            parameters
+        },
+    );
+    crate::sexp::attrib_core::setAttrib(
+        model,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(c"selfStart"),
+    );
+    model
 }
 
 /// GNU `getInitial(object, data)` — call `attr(object,"initial")`.
@@ -191,7 +189,7 @@ pub fn do_get_initial(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let obj = CAR(args);
         let ini = crate::sexp::attrib_core::getAttrib(
             obj,
-            crate::sexp::symbol::Rf_install(c"initial".as_ptr()),
+            install_str("initial"),
         );
         if ini.is_null() || ini == R_NilValue() {
             return R_NilValue();
@@ -318,9 +316,9 @@ pub fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _cn = protect(cn);
         for (i, name) in names.iter().enumerate() {
             let c = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(cn, i as i64, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(cn, i as i64, mk_char_cstr(&c));
         }
-        SET_STRING_ELT(cn, nc as i64, Rf_mkChar(c"Pr(>Chi)".as_ptr()));
+        SET_STRING_ELT(cn, nc as i64, mk_char_cstr(c"Pr(>Chi)"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 1, cn);
@@ -335,60 +333,58 @@ pub fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `cophenetic(hclust)` — height of the first common ancestor.
 pub fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let merge = list_named_elt(obj, "merge");
-        let height = list_named_elt(obj, "height");
-        if merge == R_NilValue() || height == R_NilValue() {
-            return R_NilValue();
-        }
-        let nmerge = XLENGTH(height) as usize;
-        if nmerge == 0 {
-            return R_NilValue();
-        }
-        let n = nmerge + 1;
-        let mut members: Vec<Vec<usize>> = vec![Vec::new(); nmerge];
-        let mut coph = vec![0.0; n * (n - 1) / 2];
-        for s in 0..nmerge {
-            let left = integer_elt_checked(merge, (s) as R_xlen_t);
-            let right = integer_elt_checked(merge, (s + nmerge) as R_xlen_t);
-            let left_m = if left < 0 {
-                vec![(-left as usize) - 1]
-            } else {
-                members[(left as usize) - 1].clone()
-            };
-            let right_m = if right < 0 {
-                vec![(-right as usize) - 1]
-            } else {
-                members[(right as usize) - 1].clone()
-            };
-            let h = elt_real_safe(height, s as i64);
-            for &i in &left_m {
-                for &j in &right_m {
-                    dist_compact_set(&mut coph, i, j, n, h);
-                }
-            }
-            let mut both = left_m;
-            both.extend(right_m);
-            members[s] = both;
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, coph.len() as i64);
-        let _r = protect(result);
-        for (i, v) in coph.iter().enumerate() {
-            set_real_checked(result, (i) as R_xlen_t, *v);
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
-            Rf_ScalarInteger(n as c_int),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"dist".as_ptr()),
-        );
-        result
+    let obj = CAR(args);
+    let merge = list_named_elt(obj, "merge");
+    let height = list_named_elt(obj, "height");
+    if merge == R_NilValue() || height == R_NilValue() {
+        return R_NilValue();
     }
+    let nmerge = XLENGTH(height) as usize;
+    if nmerge == 0 {
+        return R_NilValue();
+    }
+    let n = nmerge + 1;
+    let mut members: Vec<Vec<usize>> = vec![Vec::new(); nmerge];
+    let mut coph = vec![0.0; n * (n - 1) / 2];
+    for s in 0..nmerge {
+        let left = integer_elt_checked(merge, (s) as R_xlen_t);
+        let right = integer_elt_checked(merge, (s + nmerge) as R_xlen_t);
+        let left_m = if left < 0 {
+            vec![(-left as usize) - 1]
+        } else {
+            members[(left as usize) - 1].clone()
+        };
+        let right_m = if right < 0 {
+            vec![(-right as usize) - 1]
+        } else {
+            members[(right as usize) - 1].clone()
+        };
+        let h = elt_real_safe(height, s as i64);
+        for &i in &left_m {
+            for &j in &right_m {
+                dist_compact_set(&mut coph, i, j, n, h);
+            }
+        }
+        let mut both = left_m;
+        both.extend(right_m);
+        members[s] = both;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, coph.len() as i64);
+    let _r = protect(result);
+    for (i, v) in coph.iter().enumerate() {
+        set_real_checked(result, (i) as R_xlen_t, *v);
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("Size"),
+        Rf_ScalarInteger(n as c_int),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(c"dist"),
+    );
+    result
 }
 
 /// GNU `ecdf(x)` — empirical CDF as a step function.
@@ -449,23 +445,23 @@ pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             set_real_checked(vx, (i) as R_xlen_t, *v);
             set_real_checked(vy, (i) as R_xlen_t, ys[i]);
         }
-        crate::sexp::envir::defineVar(Rf_install(c"vals".as_ptr()), vx, env);
-        crate::sexp::envir::defineVar(Rf_install(c"ys".as_ptr()), vy, env);
+        crate::sexp::envir::defineVar(install_str("vals"), vx, env);
+        crate::sexp::envir::defineVar(install_str("ys"), vy, env);
         crate::sexp::envir::defineVar(
-            Rf_install(c"nobs".as_ptr()),
+            install_str("nobs"),
             Rf_ScalarInteger(n as c_int),
             env,
         );
-        let vsym = Rf_install(c"v".as_ptr());
+        let vsym = install_str("v");
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
-        let body = crate::sexp::constructors::Rf_lang2(Rf_install(c".ecdf_apply".as_ptr()), vsym);
+        let body = crate::sexp::constructors::Rf_lang2(install_str(".ecdf_apply"), vsym);
         let fun = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
         let _fun = protect(fun);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"ecdf".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"stepfun".as_ptr()));
-        SET_STRING_ELT(class, 2, Rf_mkChar(c"function".as_ptr()));
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"ecdf"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"stepfun"));
+        SET_STRING_ELT(class, 2, mk_char_cstr(c"function"));
         crate::sexp::attrib_core::setAttrib(fun, crate::sexp::attrib_core::R_ClassSymbol(), class);
         fun
     }
@@ -480,7 +476,7 @@ pub fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let env = crate::sexp::accessors::CLOENV(fun);
         for name in [c"x", c"vals"] {
-            let v = crate::sexp::envir::R_findVarInFrame(env, Rf_install(name.as_ptr()));
+            let v = crate::sexp::envir::R_findVarInFrame(env, install_cstr(&name));
             if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue() {
                 return v;
             }
@@ -503,7 +499,7 @@ pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let env = crate::sexp::accessors::CLOENV(fun);
             let mut found = R_NilValue();
             for name in [c"x", c"vals"] {
-                let v = crate::sexp::envir::R_findVarInFrame(env, Rf_install(name.as_ptr()));
+                let v = crate::sexp::envir::R_findVarInFrame(env, install_cstr(&name));
                 if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue()
                 {
                     found = v;
@@ -564,8 +560,8 @@ pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
     unsafe {
         let env = crate::sexp::accessors::CLOENV(fun);
-        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
-        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
+        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
+        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
         let nv = XLENGTH(mids) as usize;
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
         if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
@@ -694,14 +690,14 @@ pub fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let lev = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _lv = protect(lev);
-        SET_STRING_ELT(lev, 0, Rf_mkChar(c"Control".as_ptr()));
-        SET_STRING_ELT(lev, 1, Rf_mkChar(c"B".as_ptr()));
+        SET_STRING_ELT(lev, 0, mk_char_cstr(c"Control"));
+        SET_STRING_ELT(lev, 1, mk_char_cstr(c"B"));
         crate::sexp::attrib_core::setAttrib(
             groups,
             crate::sexp::attrib_core::R_LevelsSymbol(),
             lev,
         );
-        let fclass = Rf_mkString(c"factor".as_ptr());
+        let fclass = mk_string_cstr(c"factor");
         let _fc = protect(fclass);
         crate::sexp::attrib_core::setAttrib(
             groups,
@@ -722,10 +718,10 @@ pub fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_integer_checked(rn, (1) as R_xlen_t, -(ntot as i32));
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            install_str("row.names"),
             rn,
         );
-        let class = Rf_mkString(c"data.frame".as_ptr());
+        let class = mk_string_cstr(c"data.frame");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -747,18 +743,18 @@ pub fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         let _env = protect(env);
-        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
-        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
-        let vsym = Rf_install(c"v".as_ptr());
+        crate::sexp::envir::defineVar(install_str("x"), x, env);
+        crate::sexp::envir::defineVar(install_str("y"), y, env);
+        let vsym = install_str("v");
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
         let body =
-            crate::sexp::constructors::Rf_lang2(Rf_install(c".stepfun_apply".as_ptr()), vsym);
+            crate::sexp::constructors::Rf_lang2(install_str(".stepfun_apply"), vsym);
         let fun = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
         let _fun = protect(fun);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"stepfun".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"function".as_ptr()));
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"stepfun"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"function"));
         crate::sexp::attrib_core::setAttrib(fun, crate::sexp::attrib_core::R_ClassSymbol(), class);
         fun
     }
@@ -769,8 +765,8 @@ pub fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         let env = crate::sexp::accessors::ENCLOS(rho);
-        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
-        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
+        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
+        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
         if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
             return R_NilValue();
         }
@@ -798,14 +794,14 @@ pub fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let m = CAR(CDR(CDR(args)));
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         let _env = protect(env);
-        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
-        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
-        crate::sexp::envir::defineVar(Rf_install(c"m".as_ptr()), m, env);
-        let vsym = Rf_install(c"v".as_ptr());
+        crate::sexp::envir::defineVar(install_str("x"), x, env);
+        crate::sexp::envir::defineVar(install_str("y"), y, env);
+        crate::sexp::envir::defineVar(install_str("m"), m, env);
+        let vsym = install_str("v");
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
         let body =
-            crate::sexp::constructors::Rf_lang2(Rf_install(c".splinefunH_apply".as_ptr()), vsym);
+            crate::sexp::constructors::Rf_lang2(install_str(".splinefunH_apply"), vsym);
         crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
     }
 }
@@ -815,9 +811,9 @@ pub fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe {
         let v = CAR(args);
         let env = crate::sexp::accessors::ENCLOS(rho);
-        let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
-        let y = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"y".as_ptr()));
-        let m = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"m".as_ptr()));
+        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
+        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
+        let m = crate::sexp::envir::R_findVarInFrame(env, install_str("m"));
         let n = XLENGTH(x) as usize;
         if n < 2 {
             return R_NilValue();
@@ -859,8 +855,8 @@ pub fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         let parent = crate::sexp::accessors::ENCLOS(rho);
-        let vals = crate::sexp::envir::R_findVar(Rf_install(c"vals".as_ptr()), parent);
-        let ys = crate::sexp::envir::R_findVar(Rf_install(c"ys".as_ptr()), parent);
+        let vals = crate::sexp::envir::R_findVar(install_str("vals"), parent);
+        let ys = crate::sexp::envir::R_findVar(install_str("ys"), parent);
         if vals.is_null()
             || ys.is_null()
             || TYPEOF(vals) != SEXPTYPE::REALSXP

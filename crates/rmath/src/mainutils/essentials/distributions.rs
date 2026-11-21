@@ -1421,17 +1421,15 @@ mod safety_tests {
 
         let session = crate::sexp::RSession::new_for_gc_tests();
         let owner = session.owner_token().unwrap();
-        let source = session.with_active(|| unsafe {
-            owner
-                .sexp(Rf_ScalarReal(1.0))
-                .unwrap()
-                .into_owned()
-                .unwrap()
-        });
-        let target = session.with_active(|| unsafe { owner.sexp(Rf_ScalarReal(2.0)).unwrap() });
-        let (first, second) = session.with_active(|| unsafe {
-            let first = owner.sexp(Rf_install(c"dpq.first".as_ptr())).unwrap();
-            let second = owner.sexp(Rf_install(c"dpq.second".as_ptr())).unwrap();
+        let source = session.with_active(|| owner
+            .sexp(Rf_ScalarReal(1.0))
+            .unwrap()
+            .into_owned()
+            .unwrap());
+        let target = session.with_active(|| owner.sexp(Rf_ScalarReal(2.0)).unwrap());
+        let (first, second) = session.with_active(|| {
+            let first = owner.sexp(install_str("dpq.first")).unwrap();
+            let second = owner.sexp(install_str("dpq.second")).unwrap();
             crate::sexp::attrib_core::setAttrib(
                 source.as_raw(),
                 first.as_raw(),
@@ -1451,12 +1449,8 @@ mod safety_tests {
         session.with_active(|| {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !observed.replace(true) {
-                    // SAFETY: the callback retains the admitted original
-                    // source handle throughout detachment and collection.
-                    unsafe {
-                        SET_ATTRIB(callback_source.as_raw(), R_NilValue());
-                        crate::sexp::gengc::full_gc();
-                    }
+                    SET_ATTRIB(callback_source.as_raw(), R_NilValue());
+                    crate::sexp::gengc::full_gc();
                 }
             }));
         });
@@ -1471,7 +1465,7 @@ mod safety_tests {
             for (tag, expected) in [(first, 7), (second, 9)] {
                 // SAFETY: the checked target and tag remain live.
                 let value =
-                    unsafe { crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw()) };
+                    crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw());
                 assert_eq!(owner.sexp(value).unwrap().try_integer_elt(0), Ok(expected));
             }
         });
@@ -1500,27 +1494,23 @@ mod safety_tests {
             let source = make_real(&[2.0, NA_REAL, 4.0]);
             let rate = make_real(&[2.0, 4.0]);
             let labels = owner.node_factory().strings(&["a", "b", "c"]).unwrap();
-            // SAFETY: owned fixture objects remain rooted through attribute
-            // assignment and the translated builtin call.
-            unsafe {
-                let names = crate::sexp::attrib_core::R_NamesSymbol();
-                crate::sexp::attrib_core::setAttrib(source.as_raw(), names, labels.as_raw());
-                let args = [
-                    DpqOperand::Numeric(source.as_raw()),
-                    DpqOperand::Inverse(rate.as_raw()),
-                ];
-                let result = dpq_evaluate(R_NilValue(), &args, false, false, &mut |x, _, _| {
-                    x[0] * x[1]
-                });
-                let result = owner.sexp(result).unwrap();
-                assert_eq!(result.try_real_elt(0), Ok(1.0));
-                assert_eq!(result.try_real_elt(1).unwrap().to_bits(), NA_REAL.to_bits());
-                assert_eq!(result.try_real_elt(2), Ok(2.0));
-                assert_eq!(
-                    crate::sexp::attrib_core::getAttrib(result.as_raw(), names),
-                    labels.as_raw()
-                );
-            }
+            let names = crate::sexp::attrib_core::R_NamesSymbol();
+            crate::sexp::attrib_core::setAttrib(source.as_raw(), names, labels.as_raw());
+            let args = [
+                DpqOperand::Numeric(source.as_raw()),
+                DpqOperand::Inverse(rate.as_raw()),
+            ];
+            let result = dpq_evaluate(R_NilValue(), &args, false, false, &mut |x, _, _| {
+                x[0] * x[1]
+            });
+            let result = owner.sexp(result).unwrap();
+            assert_eq!(result.try_real_elt(0), Ok(1.0));
+            assert_eq!(result.try_real_elt(1).unwrap().to_bits(), NA_REAL.to_bits());
+            assert_eq!(result.try_real_elt(2), Ok(2.0));
+            assert_eq!(
+                crate::sexp::attrib_core::getAttrib(result.as_raw(), names),
+                labels.as_raw()
+            );
         });
     }
 }

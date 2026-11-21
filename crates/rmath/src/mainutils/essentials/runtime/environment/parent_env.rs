@@ -1,4 +1,5 @@
 //! Original-domain environment arguments remain owned through admission and writes.
+use crate::mainutils::essentials::{install_cstr, install_str};
 use crate::sexp::{
     ffi::{SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpResult},
@@ -63,7 +64,7 @@ fn lookup(
 ) -> SexpResult<Sexp<'static>> {
     access.with_native(|owner| unsafe {
         let symbol = owner
-            .sexp(crate::sexp::symbol::Rf_install(name.as_ptr()))?
+            .sexp(install_cstr(&name))?
             .into_owned()?;
         owner
             .sexp(crate::sexp::envir::R_findVarInFrame(
@@ -111,9 +112,9 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
             return Err(failure("can not set the parent environment of a namespace"));
         }
         if env.try_enclos()?.as_raw() == base.as_raw() {
-            let name = access.with_native(|owner| unsafe {
+            let name = access.with_native(|owner| {
                 let symbol = owner
-                    .sexp(crate::sexp::symbol::Rf_install(c"name".as_ptr()))?
+                    .sexp(install_str("name"))?
                     .into_owned()?;
                 owner
                     .sexp(crate::sexp::attrib_core::getAttrib(

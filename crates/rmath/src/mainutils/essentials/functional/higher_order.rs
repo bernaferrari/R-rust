@@ -39,18 +39,16 @@ pub fn do_is_recursive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `is.object(x)` — TRUE if x has a "class" attribute.
 pub fn do_is_object(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        Rf_ScalarLogical(if !class.is_null() && class != R_NilValue() {
-            TRUE
-        } else {
-            FALSE
-        })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+    Rf_ScalarLogical(if !class.is_null() && class != R_NilValue() {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -278,18 +276,16 @@ pub fn do_discard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `is.data.frame(x)` — check if x has "data.frame" class.
 pub fn do_is_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
-            let cls = elt_to_string(class, 0);
-            return Rf_ScalarLogical(if cls == "data.frame" { TRUE } else { FALSE });
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
+        let cls = elt_to_string(class, 0);
+        return Rf_ScalarLogical(if cls == "data.frame" { TRUE } else { FALSE });
+    }
+    Rf_ScalarLogical(FALSE)
 }
 
 // ---------------------------------------------------------------------------

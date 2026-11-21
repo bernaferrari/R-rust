@@ -144,28 +144,28 @@ pub fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut env = CAR(args);
         if env.is_null() || env == R_NilValue() {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         let _argument = protect(env);
         if TYPEOF(env) == SEXPTYPE::OBJSXP && crate::mainutils::objects::isS4(env) != FALSE {
             env = crate::mainutils::subassign::R_getS4DataSlot(env, SEXPTYPE::ENVSXP.as_c_int());
         }
         if TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         let _environment = protect(env);
         // Check if it's a special environment
         if env == crate::sexp::globals::R_GlobalEnv() {
-            return Rf_mkString(c"R_GlobalEnv".as_ptr());
+            return mk_string_cstr(c"R_GlobalEnv");
         }
         if env == crate::sexp::globals::R_EmptyEnv() {
-            return Rf_mkString(c"R_EmptyEnv".as_ptr());
+            return mk_string_cstr(c"R_EmptyEnv");
         }
         if env == crate::sexp::globals::R_BaseEnv() || env == crate::sexp::envir::R_BaseNamespace()
         {
-            return Rf_mkString(c"base".as_ptr());
+            return mk_string_cstr(c"base");
         }
-        let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
+        let name = crate::sexp::attrib_core::getAttrib(env, install_str("name"));
         let _name = protect(name);
         if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
             let value = STRING_ELT(name, 0);
@@ -187,7 +187,7 @@ pub fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if name != R_NilValue() {
             return name;
         }
-        Rf_mkString(c"".as_ptr())
+        mk_string_cstr(c"")
     }
 }
 
@@ -199,12 +199,12 @@ pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
         }
         let _environment = protect(env);
         let info =
-            crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".__NAMESPACE__.".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(env, install_str(".__NAMESPACE__."));
         if TYPEOF(info) != SEXPTYPE::ENVSXP {
             return None;
         }
         let _info = protect(info);
-        let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+        let spec = crate::sexp::envir::R_findVarInFrame(info, install_str("spec"));
         (TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0).then_some(spec)
     }
 }
@@ -265,9 +265,9 @@ pub fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _g = protect(ans);
         let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _nms = protect(nms);
-        crate::sexp::accessors::SET_STRING_ELT(nms, 0, Rf_mkChar(c"size".as_ptr()));
-        crate::sexp::accessors::SET_STRING_ELT(nms, 1, Rf_mkChar(c"nchains".as_ptr()));
-        crate::sexp::accessors::SET_STRING_ELT(nms, 2, Rf_mkChar(c"counts".as_ptr()));
+        crate::sexp::accessors::SET_STRING_ELT(nms, 0, mk_char_cstr(c"size"));
+        crate::sexp::accessors::SET_STRING_ELT(nms, 1, mk_char_cstr(c"nchains"));
+        crate::sexp::accessors::SET_STRING_ELT(nms, 2, mk_char_cstr(c"counts"));
         crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(size));
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));

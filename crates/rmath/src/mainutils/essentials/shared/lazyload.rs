@@ -44,14 +44,14 @@ pub(crate) fn ensure_namespace_info(
                     symbol,
                 ) != crate::sexp::globals::R_UnboundValue()
         };
-        let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let info_sym = install_str(".__NAMESPACE__.");
         let existing = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
         if !existing.is_null()
             && existing != crate::sexp::globals::R_UnboundValue()
             && TYPEOF(existing) == SEXPTYPE::ENVSXP
         {
             let exports =
-                crate::sexp::envir::R_findVarInFrame(existing, Rf_install(c"exports".as_ptr()));
+                crate::sexp::envir::R_findVarInFrame(existing, install_str("exports"));
             if TYPEOF(exports) == SEXPTYPE::ENVSXP {
                 let exports = factory
                     .wrap(exports)
@@ -60,7 +60,7 @@ pub(crate) fn ensure_namespace_info(
                     let Ok(name) = CString::new(name) else {
                         continue;
                     };
-                    let symbol = Rf_install(name.as_ptr());
+                    let symbol = install_cstr(&name);
                     if export_present(symbol) {
                         crate::sexp::envir::defineVar(symbol, symbol, exports.as_raw());
                     }
@@ -88,26 +88,26 @@ pub(crate) fn ensure_namespace_info(
             let Ok(cname) = CString::new(name.as_str()) else {
                 continue;
             };
-            let symbol = Rf_install(cname.as_ptr());
+            let symbol = install_cstr(&cname);
             if !export_present(symbol) {
                 continue;
             }
             crate::sexp::envir::defineVar(symbol, symbol, exports);
         }
 
-        crate::sexp::envir::defineVar(Rf_install(c"exports".as_ptr()), exports, info);
+        crate::sexp::envir::defineVar(install_str("exports"), exports, info);
 
         let spec_names = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _spec_names = protect(spec_names);
         crate::sexp::accessors::SET_STRING_ELT(
             spec_names,
             0,
-            crate::sexp::constructors::Rf_mkChar(c"name".as_ptr()),
+            mk_char_cstr(c"name"),
         );
         crate::sexp::accessors::SET_STRING_ELT(
             spec_names,
             1,
-            crate::sexp::constructors::Rf_mkChar(c"version".as_ptr()),
+            mk_char_cstr(c"version"),
         );
         let spec = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _spec = protect(spec);
@@ -140,7 +140,7 @@ pub(crate) fn ensure_namespace_info(
             crate::sexp::attrib_core::R_NamesSymbol(),
             spec_names,
         );
-        crate::sexp::envir::defineVar(Rf_install(c"spec".as_ptr()), spec, info);
+        crate::sexp::envir::defineVar(install_str("spec"), spec, info);
         ensure_s3methods_slot(info);
 
         let path = Rf_mkString(
@@ -148,7 +148,7 @@ pub(crate) fn ensure_namespace_info(
                 .unwrap_or_default()
                 .as_ptr(),
         );
-        crate::sexp::envir::defineVar(Rf_install(c"path".as_ptr()), path, info);
+        crate::sexp::envir::defineVar(install_str("path"), path, info);
         crate::sexp::envir::defineVar(info_sym, info, package_env);
         ensure_imports_slot(info, directives);
     }
@@ -156,7 +156,7 @@ pub(crate) fn ensure_namespace_info(
 
 pub(super) fn ensure_imports_slot(info: SEXP, directives: Option<&NamespaceDirectives>) {
     unsafe {
-        let symbol = Rf_install(c"imports".as_ptr());
+        let symbol = install_str("imports");
         if crate::sexp::envir::R_findVarInFrame(info, symbol)
             != crate::sexp::globals::R_UnboundValue()
         {
@@ -409,9 +409,9 @@ pub(crate) fn lazy_lazy_load_package_db(
             R_NilValue(),
         );
         let _cache_guard = protect(cache);
-        crate::sexp::envir::defineVar(Rf_install(c"cache".as_ptr()), cache, hook);
-        crate::sexp::envir::defineVar(Rf_install(c"datafile".as_ptr()), datafile, hook);
-        crate::sexp::envir::defineVar(Rf_install(c"compressed".as_ptr()), compressed, hook);
+        crate::sexp::envir::defineVar(install_str("cache"), cache, hook);
+        crate::sexp::envir::defineVar(install_str("datafile"), datafile, hook);
+        crate::sexp::envir::defineVar(install_str("compressed"), compressed, hook);
         if let Some(refs) = list_element_by_name(map, "references") {
             let refs_env = crate::sexp::memory_ext::NewEnvironment(
                 R_NilValue(),
@@ -427,7 +427,7 @@ pub(crate) fn lazy_lazy_load_package_db(
                     R_NilValue(),
                 );
             }
-            crate::sexp::envir::defineVar(Rf_install(c"refs".as_ptr()), refs_env, hook);
+            crate::sexp::envir::defineVar(install_str("refs"), refs_env, hook);
         }
 
         let names = crate::sexp::attrib_core::getAttrib(
@@ -455,7 +455,7 @@ pub(crate) fn lazy_lazy_load_package_db(
             return Ok(());
         }
 
-        let fetch_sym = Rf_install(c"lazyLoadDBfetch".as_ptr());
+        let fetch_sym = install_str("lazyLoadDBfetch");
         let template = Rf_cons(
             fetch_sym,
             Rf_cons(
@@ -661,7 +661,7 @@ pub(crate) fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
     ) -> SexpResult<Sexp<'static>> {
         access.domain().link(environment)?;
         let symbol = access
-            .with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })?;
+            .with_native(|owner| owner.sexp(install_cstr(&name))?.into_owned())?;
         let value = access.with_native(|owner| unsafe {
             owner
                 .sexp(crate::sexp::envir::R_findVarInFrame(

@@ -8,30 +8,28 @@ fn current_framedepth() -> i32 {
 /// Keep its call on the context stack while forcing the protected expression,
 /// so an inferred error call has a real caller even at top level.
 pub(crate) fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
-    unsafe {
-        let inner = crate::sexp::constructors::Rf_lang2(
-            Rf_install(c"return".as_ptr()),
-            Rf_install(c"expr".as_ptr()),
-        );
-        let _inner_guard = protect(inner);
-        let call = crate::sexp::constructors::Rf_lang5(
-            Rf_install(c"doTryCatch".as_ptr()),
-            inner,
-            Rf_install(c"name".as_ptr()),
-            Rf_install(c"parentenv".as_ptr()),
-            Rf_install(c"handler".as_ptr()),
-        );
-        let _call_guard = protect(call);
-        crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_RETURN,
-            call,
-            rho,
-            rho,
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        )
-    }
+    let inner = crate::sexp::constructors::Rf_lang2(
+        install_str("return"),
+        install_str("expr"),
+    );
+    let _inner_guard = protect(inner);
+    let call = crate::sexp::constructors::Rf_lang5(
+        install_str("doTryCatch"),
+        inner,
+        install_str("name"),
+        install_str("parentenv"),
+        install_str("handler"),
+    );
+    let _call_guard = protect(call);
+    crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_RETURN,
+        call,
+        rho,
+        rho,
+        None,
+        R_NilValue(),
+        R_NilValue(),
+    )
 }
 
 /// GNU `errorcall(call)` stores the applied language object; `stop()` uses

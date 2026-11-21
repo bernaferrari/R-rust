@@ -108,33 +108,31 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `readLines(con)` — read lines from file.
 pub fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let con = CAR(args);
-        if con.is_null() {
-            return R_NilValue();
-        }
-        let path = elt_to_string(con, 0);
-
-        let lines = crate::mainutils::browser_files::read_text_or_host(&path)
-            .unwrap_or_else(|error| base_error(error.to_string()));
-        let line_vec: Vec<&str> = lines.lines().collect();
-        let n = line_vec.len();
-
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for (i, line) in line_vec.iter().enumerate() {
-            let cstr = CString::new(*line).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let con = CAR(args);
+    if con.is_null() {
+        return R_NilValue();
     }
+    let path = elt_to_string(con, 0);
+
+    let lines = crate::mainutils::browser_files::read_text_or_host(&path)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    let line_vec: Vec<&str> = lines.lines().collect();
+    let n = line_vec.len();
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+
+    for (i, line) in line_vec.iter().enumerate() {
+        let cstr = CString::new(*line).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// R's `file.exists(...)` — check if files exist.
@@ -167,91 +165,87 @@ pub fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `list.files(path)` — list files in directory.
 pub fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let path_arg = CAR(args);
-        let path = if path_arg.is_null() || path_arg == R_NilValue() {
-            ".".to_string()
-        } else {
-            elt_to_string(path_arg, 0)
-        };
+    let path_arg = CAR(args);
+    let path = if path_arg.is_null() || path_arg == R_NilValue() {
+        ".".to_string()
+    } else {
+        elt_to_string(path_arg, 0)
+    };
 
-        let entries: Vec<String> = std::fs::read_dir(&path)
-            .map(|dir| {
-                dir.filter_map(|e| e.ok())
-                    .filter_map(|e| e.file_name().into_string().ok())
-                    .collect()
-            })
-            .unwrap_or_default();
+    let entries: Vec<String> = std::fs::read_dir(&path)
+        .map(|dir| {
+            dir.filter_map(|e| e.ok())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default();
 
-        let n = entries.len();
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for (i, name) in entries.iter().enumerate() {
-            let cstr = CString::new(name.as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let n = entries.len();
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+
+    for (i, name) in entries.iter().enumerate() {
+        let cstr = CString::new(name.as_str()).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// R's `system(command, intern = FALSE)` — run a system command.
 pub fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let cmd = CAR(args);
-        if cmd.is_null() {
-            return R_NilValue();
-        }
-        let cmd_str = elt_to_string(cmd, 0);
-        let intern = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-            logical_arg(CAR(CDR(args)), false)
-        } else {
-            false
-        };
+    let cmd = CAR(args);
+    if cmd.is_null() {
+        return R_NilValue();
+    }
+    let cmd_str = elt_to_string(cmd, 0);
+    let intern = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+        logical_arg(CAR(CDR(args)), false)
+    } else {
+        false
+    };
 
-        if system_commands_disabled_by_runtime_policy() {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "system() is disabled by the session capability policy".to_string(),
-            });
-        }
+    if system_commands_disabled_by_runtime_policy() {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "system() is disabled by the session capability policy".to_string(),
+        });
+    }
 
-        let output = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd_str)
-            .output();
-        match output {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                if intern {
-                    let lines: Vec<&str> = stdout.lines().collect();
-                    let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
-                    for (i, line) in lines.iter().enumerate() {
-                        let cstr = CString::new(*line).unwrap_or_default();
-                        SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-                    }
-                    result
-                } else {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    if !stdout.is_empty() {
-                        crate::sexp::output::capture_stdout(&stdout);
-                    }
-                    if !stderr.is_empty() {
-                        crate::sexp::output::capture_stderr(&stderr);
-                    }
-                    crate::sexp::globals::set_R_Visible(FALSE);
-                    Rf_ScalarInteger(out.status.code().unwrap_or(1))
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&cmd_str)
+        .output();
+    match output {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if intern {
+                let lines: Vec<&str> = stdout.lines().collect();
+                let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
+                for (i, line) in lines.iter().enumerate() {
+                    let cstr = CString::new(*line).unwrap_or_default();
+                    SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&cstr));
                 }
-            }
-            Err(_) => {
+                result
+            } else {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if !stdout.is_empty() {
+                    crate::sexp::output::capture_stdout(&stdout);
+                }
+                if !stderr.is_empty() {
+                    crate::sexp::output::capture_stderr(&stderr);
+                }
                 crate::sexp::globals::set_R_Visible(FALSE);
-                Rf_ScalarInteger(127)
+                Rf_ScalarInteger(out.status.code().unwrap_or(1))
             }
+        }
+        Err(_) => {
+            crate::sexp::globals::set_R_Visible(FALSE);
+            Rf_ScalarInteger(127)
         }
     }
 }

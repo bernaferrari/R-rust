@@ -96,17 +96,15 @@ mod raw_to_char;
 /// real vectors. Non-numeric arguments (and factors, via Math.factor)
 /// error like stock Math1.
 fn math_factor_error(call: SEXP, name: &str) -> ! {
-    unsafe {
-        let method_call = crate::sexp::constructors::Rf_lang2(
-            Rf_install(c"Math.factor".as_ptr()),
-            CAR(CDR(call)),
-        );
-        let _guard = protect(method_call);
-        crate::mainutils::errors::errorcall_str(
-            method_call,
-            &format!("'{name}' not meaningful for factors"),
-        );
-    }
+    let method_call = crate::sexp::constructors::Rf_lang2(
+        install_str("Math.factor"),
+        CAR(CDR(call)),
+    );
+    let _guard = protect(method_call);
+    crate::mainutils::errors::errorcall_str(
+        method_call,
+        &format!("'{name}' not meaningful for factors"),
+    );
 }
 
 fn math_nonnum_error() -> ! {
@@ -579,13 +577,13 @@ fn checked_math(
     let environment = environment.map(root);
     active();
     let warning_call = warning_call.map(root).or_else(|| {
-        warning_op.as_ref().and_then(|op| unsafe {
+        warning_op.as_ref().and_then(|op| {
             let name = match operation {
                 choose_checked::Operation::BesselJ => c"besselJ",
                 choose_checked::Operation::BesselY => c"besselY",
                 _ => return None,
             };
-            let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+            let symbol = install_cstr(&name);
             active();
             let symbol = root(symbol);
             bessel_internal_warning_call(op.as_raw(), symbol.as_raw()).map(root)
@@ -929,14 +927,14 @@ mod choose_validation_tests {
     #[test]
     fn argument_validation_precedes_empty_and_complex_paths() {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
-        session.with_active(|| unsafe {
+        session.with_active(|| {
             let numeric = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
             let _numeric = protect(numeric);
             let logical = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
             let _logical = protect(logical);
             let complex = Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
             let _complex = protect(complex);
-            let text = Rf_mkString(c"5".as_ptr());
+            let text = mk_string_cstr(c"5");
             let _text = protect(text);
             crate::sexp::gengc::full_gc();
             assert_eq!(validate_math2_inputs(numeric, logical), Ok(()));

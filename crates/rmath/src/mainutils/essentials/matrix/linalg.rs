@@ -26,7 +26,7 @@ pub fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_ScalarReal(NA_REAL);
         }
 
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
             return Rf_ScalarReal(NA_REAL);
         }
@@ -271,126 +271,124 @@ pub fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `chol(x)` — upper Cholesky factor.
 pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = coerce_numeric_matrix(CAR(args));
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
-        if !has_dim && crate::sexp::accessors::XLENGTH(x) > 0 {
-            let n = crate::sexp::accessors::XLENGTH(x) as i32;
-            x = crate::mainutils::duplicate::Rf_duplicate(x);
-            let _xd = protect(x);
-            let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _d = protect(d);
-            set_integer_checked(d, 0, n);
-            set_integer_checked(d, (1) as R_xlen_t, 1);
-            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
-        }
-        let mut pivot = FALSE;
-        let mut cell = CDR(args);
-        let mut pos = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let val = CAR(cell);
-            if named == "pivot" || (named.is_empty() && pos == 0) {
-                if TYPEOF(val) == SEXPTYPE::LGLSXP && XLENGTH(val) > 0 {
-                    pivot = logical_elt_checked(val, 0);
-                }
-            }
-            if named.is_empty() {
-                pos += 1;
-            }
-            cell = CDR(cell);
-        }
-        let pivot_s = Rf_ScalarLogical(pivot);
-        let _p = protect(pivot_s);
-        let tol = Rf_ScalarReal(-1.0);
-        let _t = protect(tol);
-        // GNU's native warning is attributed to the active `chol.default`
-        // method call. Prefer the runtime's current-call helper when the
-        // folded `.Internal` handler is reached from that method. The direct
-        // builtin fallback has no method frame, so construct the equivalent
-        // dispatch call by cloning the original syntax and changing only its
-        // head.
-        let method = Rf_install(c"chol.default".as_ptr());
-        let current_call = crate::mainutils::errors::condition_caller_call();
-        let has_method_call = !current_call.is_null()
-            && current_call != R_NilValue()
-            && TYPEOF(current_call) == SEXPTYPE::LANGSXP
-            && crate::sexp::accessors::CAR(current_call) == method;
-        let source_call = if has_method_call { current_call } else { call };
-        let source_call = if !source_call.is_null()
-            && source_call != R_NilValue()
-            && TYPEOF(source_call) == SEXPTYPE::LANGSXP
-        {
-            // Retain the original call owner before allocating its printable
-            // clone; no callback may turn a raw context pointer into an
-            // unrooted reference during warning construction.
-            Some(crate::sexp::context::own_control_value(source_call))
-        } else {
-            None
-        };
-        let _warning_call = if let Some(source_call) = source_call {
-            let warning_call = crate::mainutils::duplicate::Rf_duplicate(source_call.as_raw());
-            let _warning_call_root = protect(warning_call);
-            if !has_method_call && crate::sexp::accessors::CAR(warning_call) != method {
-                crate::sexp::accessors::SETCAR(warning_call, method);
-            }
-            Some(crate::mainutils::errors::warning_call_guard(warning_call))
-        } else {
-            None
-        };
-        let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot_s, tol);
-        let _a = protect(ans);
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        }
-        let src_names = crate::sexp::attrib_core::getAttrib(
-            CAR(args),
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
-        if !src_names.is_null()
-            && src_names != R_NilValue()
-            && TYPEOF(src_names) == SEXPTYPE::VECSXP
-            && XLENGTH(src_names) == 2
-        {
-            let out_names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            let _on = protect(out_names);
-            SET_VECTOR_ELT(out_names, 0, VECTOR_ELT(src_names, 0));
-            let cols = VECTOR_ELT(src_names, 1);
-            let piv = crate::sexp::attrib_core::getAttrib(ans, Rf_install(c"pivot".as_ptr()));
-            if !piv.is_null()
-                && piv != R_NilValue()
-                && TYPEOF(piv) == SEXPTYPE::INTSXP
-                && TYPEOF(cols) == SEXPTYPE::STRSXP
-                && XLENGTH(cols) == XLENGTH(piv)
-            {
-                let n = XLENGTH(piv);
-                let ordered = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-                let _ord = protect(ordered);
-                for j in 0..n {
-                    let source = integer_elt_checked(piv, (j as usize) as R_xlen_t);
-                    if source >= 1 && source as i64 <= n {
-                        SET_STRING_ELT(ordered, j, STRING_ELT(cols, (source - 1) as i64));
-                    }
-                }
-                SET_VECTOR_ELT(out_names, 1, ordered);
-            } else {
-                SET_VECTOR_ELT(out_names, 1, cols);
-            }
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                out_names,
-            );
-        }
-        ans
+    let mut x = coerce_numeric_matrix(CAR(args));
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
+    if !has_dim && crate::sexp::accessors::XLENGTH(x) > 0 {
+        let n = crate::sexp::accessors::XLENGTH(x) as i32;
+        x = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _xd = protect(x);
+        let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _d = protect(d);
+        set_integer_checked(d, 0, n);
+        set_integer_checked(d, (1) as R_xlen_t, 1);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
     }
+    let mut pivot = FALSE;
+    let mut cell = CDR(args);
+    let mut pos = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let val = CAR(cell);
+        if named == "pivot" || (named.is_empty() && pos == 0) {
+            if TYPEOF(val) == SEXPTYPE::LGLSXP && XLENGTH(val) > 0 {
+                pivot = logical_elt_checked(val, 0);
+            }
+        }
+        if named.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
+    }
+    let pivot_s = Rf_ScalarLogical(pivot);
+    let _p = protect(pivot_s);
+    let tol = Rf_ScalarReal(-1.0);
+    let _t = protect(tol);
+    // GNU's native warning is attributed to the active `chol.default`
+    // method call. Prefer the runtime's current-call helper when the
+    // folded `.Internal` handler is reached from that method. The direct
+    // builtin fallback has no method frame, so construct the equivalent
+    // dispatch call by cloning the original syntax and changing only its
+    // head.
+    let method = install_str("chol.default");
+    let current_call = crate::mainutils::errors::condition_caller_call();
+    let has_method_call = !current_call.is_null()
+        && current_call != R_NilValue()
+        && TYPEOF(current_call) == SEXPTYPE::LANGSXP
+        && crate::sexp::accessors::CAR(current_call) == method;
+    let source_call = if has_method_call { current_call } else { call };
+    let source_call = if !source_call.is_null()
+        && source_call != R_NilValue()
+        && TYPEOF(source_call) == SEXPTYPE::LANGSXP
+    {
+        // Retain the original call owner before allocating its printable
+        // clone; no callback may turn a raw context pointer into an
+        // unrooted reference during warning construction.
+        Some(crate::sexp::context::own_control_value(source_call))
+    } else {
+        None
+    };
+    let _warning_call = if let Some(source_call) = source_call {
+        let warning_call = crate::mainutils::duplicate::Rf_duplicate(source_call.as_raw());
+        let _warning_call_root = protect(warning_call);
+        if !has_method_call && crate::sexp::accessors::CAR(warning_call) != method {
+            crate::sexp::accessors::SETCAR(warning_call, method);
+        }
+        Some(crate::mainutils::errors::warning_call_guard(warning_call))
+    } else {
+        None
+    };
+    let ans = crate::modules::lapack::lapack_impl::La_chol(x, pivot_s, tol);
+    let _a = protect(ans);
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    }
+    let src_names = crate::sexp::attrib_core::getAttrib(
+        CAR(args),
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+    );
+    if !src_names.is_null()
+        && src_names != R_NilValue()
+        && TYPEOF(src_names) == SEXPTYPE::VECSXP
+        && XLENGTH(src_names) == 2
+    {
+        let out_names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _on = protect(out_names);
+        SET_VECTOR_ELT(out_names, 0, VECTOR_ELT(src_names, 0));
+        let cols = VECTOR_ELT(src_names, 1);
+        let piv = crate::sexp::attrib_core::getAttrib(ans, install_str("pivot"));
+        if !piv.is_null()
+            && piv != R_NilValue()
+            && TYPEOF(piv) == SEXPTYPE::INTSXP
+            && TYPEOF(cols) == SEXPTYPE::STRSXP
+            && XLENGTH(cols) == XLENGTH(piv)
+        {
+            let n = XLENGTH(piv);
+            let ordered = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _ord = protect(ordered);
+            for j in 0..n {
+                let source = integer_elt_checked(piv, (j as usize) as R_xlen_t);
+                if source >= 1 && source as i64 <= n {
+                    SET_STRING_ELT(ordered, j, STRING_ELT(cols, (source - 1) as i64));
+                }
+            }
+            SET_VECTOR_ELT(out_names, 1, ordered);
+        } else {
+            SET_VECTOR_ELT(out_names, 1, cols);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            out_names,
+        );
+    }
+    ans
 }
 
 /// GNU `chol2inv(x, size = NCOL(x))` — inverse from an upper Cholesky / R factor.
@@ -463,37 +461,33 @@ pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `norm(x, type)` — `La_dlange`. Default type `"O"`.
 pub fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let typ = CAR(CDR(args));
-        let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
-            let s = Rf_mkString(c"O".as_ptr());
-            let _s = protect(s);
-            s
-        } else {
-            typ
-        };
-        crate::modules::lapack::lapack_impl::La_dlange(x, typ)
-    }
+    let x = CAR(args);
+    let typ = CAR(CDR(args));
+    let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
+        let s = mk_string_cstr(c"O");
+        let _s = protect(s);
+        s
+    } else {
+        typ
+    };
+    crate::modules::lapack::lapack_impl::La_dlange(x, typ)
 }
 
 /// GNU `rcond(x, norm)` — `La_dgecon`. Default norm `"O"`.
 pub fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = coerce_numeric_matrix(CAR(args));
-        let typ = CAR(CDR(args));
-        let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
-            let s = Rf_mkString(c"O".as_ptr());
-            let _s = protect(s);
-            s
-        } else {
-            typ
-        };
-        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            crate::modules::lapack::lapack_impl::La_zgecon(x, typ)
-        } else {
-            crate::modules::lapack::lapack_impl::La_dgecon(x, typ)
-        }
+    let x = coerce_numeric_matrix(CAR(args));
+    let typ = CAR(CDR(args));
+    let typ = if typ.is_null() || typ == R_NilValue() || TYPEOF(typ) != SEXPTYPE::STRSXP {
+        let s = mk_string_cstr(c"O");
+        let _s = protect(s);
+        s
+    } else {
+        typ
+    };
+    if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+        crate::modules::lapack::lapack_impl::La_zgecon(x, typ)
+    } else {
+        crate::modules::lapack::lapack_impl::La_dgecon(x, typ)
     }
 }
 pub fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -593,7 +587,7 @@ pub fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let tail = Rf_cons(ut, R_NilValue());
         crate::sexp::accessors::SETTAG(
             tail,
-            crate::sexp::symbol::Rf_install(c"upper.tri".as_ptr()),
+            install_str("upper.tri"),
         );
         let packed = Rf_cons(l, Rf_cons(x, tail));
         let _p = protect(packed);
@@ -698,7 +692,7 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             SEXPTYPE::REALSXP.as_c_int()
         };
-        let jobu = Rf_mkString(c"A".as_ptr());
+        let jobu = mk_string_cstr(c"A");
         let _j = protect(jobu);
         let s = Rf_allocVector3(SEXPTYPE::REALSXP, min_np as i64);
         let _s = protect(s);

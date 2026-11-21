@@ -149,312 +149,310 @@ pub(super) fn store_na(out: SEXP, i: i64) {
 
 /// GNU `merge` inner join on intersecting column names.
 pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        if TYPEOF(x) == SEXPTYPE::INTSXP && TYPEOF(y) == SEXPTYPE::INTSXP {
-            let nx = XLENGTH(x) as usize;
-            let ny = XLENGTH(y) as usize;
-            if nx == 0 || ny == 0 {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "invalid 'xinds' argument",
-                );
-            }
-            let all = CAR(CDR(CDR(args)));
-            let ally = CAR(CDR(CDR(CDR(args))));
-            let all_x = !all.is_null()
-                && TYPEOF(all) == SEXPTYPE::LGLSXP
-                && XLENGTH(all) > 0
-                && integer_elt_checked(all, 0) == TRUE;
-            let all_y = !ally.is_null()
-                && TYPEOF(ally) == SEXPTYPE::LGLSXP
-                && XLENGTH(ally) > 0
-                && integer_elt_checked(ally, 0) == TRUE;
-            let mut ix: Vec<(i32, i32)> = (0..nx)
-                .map(|i| (integer_elt_checked(x, (i) as R_xlen_t), (i as i32) + 1))
-                .collect();
-            let mut iy: Vec<(i32, i32)> = (0..ny)
-                .map(|i| (integer_elt_checked(y, (i) as R_xlen_t), (i as i32) + 1))
-                .collect();
-            ix.sort_by_key(|p| p.0);
-            iy.sort_by_key(|p| p.0);
-            let nx_lone = ix.iter().position(|p| p.0 > 0).unwrap_or(nx);
-            let ny_lone = iy.iter().position(|p| p.0 > 0).unwrap_or(ny);
-            let mut pairs: Vec<(i32, i32)> = Vec::new();
-            let mut i = nx_lone;
-            let mut j = ny_lone;
-            while i < nx {
-                let tmp = ix[i].0;
-                let mut nnx = i;
-                while nnx < nx && ix[nnx].0 == tmp {
-                    nnx += 1;
-                }
-                while j < ny && iy[j].0 < tmp {
-                    j += 1;
-                }
-                let j0 = j;
-                while j < ny && iy[j].0 == tmp {
-                    j += 1;
-                }
-                for a in i..nnx {
-                    for b in j0..j {
-                        pairs.push((ix[a].1, iy[b].1));
-                    }
-                }
-                i = nnx;
-            }
-            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
-            let _a = protect(ans);
-            let ansx = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
-            let ansy = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
-            for (k, (xv, yv)) in pairs.iter().enumerate() {
-                set_integer_checked(ansx, (k) as R_xlen_t, *xv);
-                set_integer_checked(ansy, (k) as R_xlen_t, *yv);
-            }
-            SET_VECTOR_ELT(ans, 0, ansx);
-            SET_VECTOR_ELT(ans, 1, ansy);
-            if all_x {
-                let lone = Rf_allocVector3(SEXPTYPE::INTSXP, nx_lone as R_xlen_t);
-                for k in 0..nx_lone {
-                    set_integer_checked(lone, (k) as R_xlen_t, ix[k].1);
-                }
-                SET_VECTOR_ELT(ans, 2, lone);
-            }
-            if all_y {
-                let lone = Rf_allocVector3(SEXPTYPE::INTSXP, ny_lone as R_xlen_t);
-                for k in 0..ny_lone {
-                    set_integer_checked(lone, (k) as R_xlen_t, iy[k].1);
-                }
-                SET_VECTOR_ELT(ans, 3, lone);
-            }
-            let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
-            for (k, name) in ["xi", "yi", "x.alone", "y.alone"].iter().enumerate() {
-                let c = std::ffi::CString::new(*name).unwrap_or_default();
-                crate::sexp::accessors::SET_STRING_ELT(
-                    nms,
-                    k as R_xlen_t,
-                    crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
-                );
-            }
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                nms,
-            );
-            return ans;
-        }
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    if TYPEOF(x) == SEXPTYPE::INTSXP && TYPEOF(y) == SEXPTYPE::INTSXP {
+        let nx = XLENGTH(x) as usize;
+        let ny = XLENGTH(y) as usize;
+        if nx == 0 || ny == 0 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "'by' must specify one or more columns as numbers, names or logical",
+                "invalid 'xinds' argument",
             );
         }
-        let xnames =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        let ynames =
-            crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut by: Vec<String> = Vec::new();
-        let mut x_by: Vec<usize> = Vec::new();
-        let mut y_by: Vec<usize> = Vec::new();
-        let by_x = merge_named_value(args, "by.x");
-        let by_y = merge_named_value(args, "by.y");
-        if TYPEOF(by_x) == SEXPTYPE::STRSXP
-            && TYPEOF(by_y) == SEXPTYPE::STRSXP
-            && XLENGTH(by_x) > 0
-            && XLENGTH(by_x) == XLENGTH(by_y)
-        {
-            for k in 0..XLENGTH(by_x) {
-                let xn = elt_to_string(by_x, k);
-                let yn = elt_to_string(by_y, k);
-                let xi = (0..XLENGTH(xnames)).find(|&i| elt_to_string(xnames, i) == xn);
-                let yi = (0..XLENGTH(ynames)).find(|&i| elt_to_string(ynames, i) == yn);
-                if let (Some(xi), Some(yi)) = (xi, yi) {
-                    by.push(xn);
-                    x_by.push(xi as usize);
-                    y_by.push(yi as usize);
+        let all = CAR(CDR(CDR(args)));
+        let ally = CAR(CDR(CDR(CDR(args))));
+        let all_x = !all.is_null()
+            && TYPEOF(all) == SEXPTYPE::LGLSXP
+            && XLENGTH(all) > 0
+            && integer_elt_checked(all, 0) == TRUE;
+        let all_y = !ally.is_null()
+            && TYPEOF(ally) == SEXPTYPE::LGLSXP
+            && XLENGTH(ally) > 0
+            && integer_elt_checked(ally, 0) == TRUE;
+        let mut ix: Vec<(i32, i32)> = (0..nx)
+            .map(|i| (integer_elt_checked(x, (i) as R_xlen_t), (i as i32) + 1))
+            .collect();
+        let mut iy: Vec<(i32, i32)> = (0..ny)
+            .map(|i| (integer_elt_checked(y, (i) as R_xlen_t), (i as i32) + 1))
+            .collect();
+        ix.sort_by_key(|p| p.0);
+        iy.sort_by_key(|p| p.0);
+        let nx_lone = ix.iter().position(|p| p.0 > 0).unwrap_or(nx);
+        let ny_lone = iy.iter().position(|p| p.0 > 0).unwrap_or(ny);
+        let mut pairs: Vec<(i32, i32)> = Vec::new();
+        let mut i = nx_lone;
+        let mut j = ny_lone;
+        while i < nx {
+            let tmp = ix[i].0;
+            let mut nnx = i;
+            while nnx < nx && ix[nnx].0 == tmp {
+                nnx += 1;
+            }
+            while j < ny && iy[j].0 < tmp {
+                j += 1;
+            }
+            let j0 = j;
+            while j < ny && iy[j].0 == tmp {
+                j += 1;
+            }
+            for a in i..nnx {
+                for b in j0..j {
+                    pairs.push((ix[a].1, iy[b].1));
                 }
             }
-        } else if TYPEOF(xnames) == SEXPTYPE::STRSXP && TYPEOF(ynames) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(xnames) {
-                let n = elt_to_string(xnames, i);
-                for j in 0..XLENGTH(ynames) {
-                    if n == elt_to_string(ynames, j) {
-                        by.push(n.clone());
-                        x_by.push(i as usize);
-                        y_by.push(j as usize);
-                    }
-                }
-            }
+            i = nnx;
         }
-        let nx = if XLENGTH(x) > 0 {
-            XLENGTH(VECTOR_ELT(x, 0))
-        } else {
-            0
-        };
-        let ny = if XLENGTH(y) > 0 {
-            XLENGTH(VECTOR_ELT(y, 0))
-        } else {
-            0
-        };
-        let mut pairs: Vec<(i64, i64)> = Vec::new();
-        for i in 0..nx {
-            for j in 0..ny {
-                let mut ok = true;
-                for k in 0..by.len() {
-                    if !merge_keys_equal(
-                        VECTOR_ELT(x, x_by[k] as i64),
-                        i,
-                        VECTOR_ELT(y, y_by[k] as i64),
-                        j,
-                    ) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if ok {
-                    pairs.push((i, j));
-                }
-            }
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+        let _a = protect(ans);
+        let ansx = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
+        let ansy = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
+        for (k, (xv, yv)) in pairs.iter().enumerate() {
+            set_integer_checked(ansx, (k) as R_xlen_t, *xv);
+            set_integer_checked(ansy, (k) as R_xlen_t, *yv);
         }
-        let all_flag = merge_named_true(args, "all");
-        let all_x = all_flag || merge_named_true(args, "all.x");
-        let all_y = all_flag || merge_named_true(args, "all.y");
+        SET_VECTOR_ELT(ans, 0, ansx);
+        SET_VECTOR_ELT(ans, 1, ansy);
         if all_x {
-            for i in 0..nx {
-                if !pairs.iter().any(|p| p.0 == i) {
-                    pairs.push((i, -1));
-                }
+            let lone = Rf_allocVector3(SEXPTYPE::INTSXP, nx_lone as R_xlen_t);
+            for k in 0..nx_lone {
+                set_integer_checked(lone, (k) as R_xlen_t, ix[k].1);
             }
+            SET_VECTOR_ELT(ans, 2, lone);
         }
         if all_y {
-            for j in 0..ny {
-                if !pairs.iter().any(|p| p.1 == j) {
-                    pairs.push((-1, j));
+            let lone = Rf_allocVector3(SEXPTYPE::INTSXP, ny_lone as R_xlen_t);
+            for k in 0..ny_lone {
+                set_integer_checked(lone, (k) as R_xlen_t, iy[k].1);
+            }
+            SET_VECTOR_ELT(ans, 3, lone);
+        }
+        let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+        for (k, name) in ["xi", "yi", "x.alone", "y.alone"].iter().enumerate() {
+            let c = std::ffi::CString::new(*name).unwrap_or_default();
+            crate::sexp::accessors::SET_STRING_ELT(
+                nms,
+                k as R_xlen_t,
+                mk_char_cstr(&c),
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            nms,
+        );
+        return ans;
+    }
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'by' must specify one or more columns as numbers, names or logical",
+        );
+    }
+    let xnames =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let ynames =
+        crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut by: Vec<String> = Vec::new();
+    let mut x_by: Vec<usize> = Vec::new();
+    let mut y_by: Vec<usize> = Vec::new();
+    let by_x = merge_named_value(args, "by.x");
+    let by_y = merge_named_value(args, "by.y");
+    if TYPEOF(by_x) == SEXPTYPE::STRSXP
+        && TYPEOF(by_y) == SEXPTYPE::STRSXP
+        && XLENGTH(by_x) > 0
+        && XLENGTH(by_x) == XLENGTH(by_y)
+    {
+        for k in 0..XLENGTH(by_x) {
+            let xn = elt_to_string(by_x, k);
+            let yn = elt_to_string(by_y, k);
+            let xi = (0..XLENGTH(xnames)).find(|&i| elt_to_string(xnames, i) == xn);
+            let yi = (0..XLENGTH(ynames)).find(|&i| elt_to_string(ynames, i) == yn);
+            if let (Some(xi), Some(yi)) = (xi, yi) {
+                by.push(xn);
+                x_by.push(xi as usize);
+                y_by.push(yi as usize);
+            }
+        }
+    } else if TYPEOF(xnames) == SEXPTYPE::STRSXP && TYPEOF(ynames) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(xnames) {
+            let n = elt_to_string(xnames, i);
+            for j in 0..XLENGTH(ynames) {
+                if n == elt_to_string(ynames, j) {
+                    by.push(n.clone());
+                    x_by.push(i as usize);
+                    y_by.push(j as usize);
                 }
             }
         }
-        let sort_arg = merge_named_value(args, "sort");
-        let do_sort = sort_arg.is_null()
-            || sort_arg == R_NilValue()
-            || sort_arg == crate::sexp::globals::R_MissingArg()
-            || merge_named_true(args, "sort");
-        if do_sort && !by.is_empty() {
-            let xkey = VECTOR_ELT(x, x_by[0] as i64);
-            let ykey = VECTOR_ELT(y, y_by[0] as i64);
-            let key_of = |idx: i64, col: SEXP| -> String {
-                if idx < 0 {
-                    String::new()
-                } else {
-                    elt_to_string(col, idx)
-                }
-            };
-            pairs.sort_by(|a, b| {
-                let ka = if a.0 >= 0 {
-                    key_of(a.0, xkey)
-                } else {
-                    key_of(a.1, ykey)
-                };
-                let kb = if b.0 >= 0 {
-                    key_of(b.0, xkey)
-                } else {
-                    key_of(b.1, ykey)
-                };
-                ka.cmp(&kb)
-            });
-        }
-        let nout = pairs.len() as i64;
-        let x_extra: Vec<usize> = (0..XLENGTH(x) as usize)
-            .filter(|i| !x_by.contains(i))
-            .collect();
-        let y_extra: Vec<usize> = (0..XLENGTH(y) as usize)
-            .filter(|i| !y_by.contains(i))
-            .collect();
-        let ncols = by.len() + x_extra.len() + y_extra.len();
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as i64);
-        let _result = protect(result);
-        let mut names: Vec<String> = Vec::new();
-        let mut col = 0i64;
-        for (k, name) in by.iter().enumerate() {
-            let src = VECTOR_ELT(x, x_by[k] as i64);
-            let out = Rf_allocVector3(TYPEOF(src), nout);
-            for (dst, (xi, yr)) in pairs.iter().enumerate() {
-                if *xi < 0 {
-                    let ysrc = VECTOR_ELT(y, y_by[k] as i64);
-                    copy_elt(ysrc, *yr, out, dst as i64);
-                } else {
-                    copy_elt(src, *xi, out, dst as i64);
+    }
+    let nx = if XLENGTH(x) > 0 {
+        XLENGTH(VECTOR_ELT(x, 0))
+    } else {
+        0
+    };
+    let ny = if XLENGTH(y) > 0 {
+        XLENGTH(VECTOR_ELT(y, 0))
+    } else {
+        0
+    };
+    let mut pairs: Vec<(i64, i64)> = Vec::new();
+    for i in 0..nx {
+        for j in 0..ny {
+            let mut ok = true;
+            for k in 0..by.len() {
+                if !merge_keys_equal(
+                    VECTOR_ELT(x, x_by[k] as i64),
+                    i,
+                    VECTOR_ELT(y, y_by[k] as i64),
+                    j,
+                ) {
+                    ok = false;
+                    break;
                 }
             }
-            SET_VECTOR_ELT(result, col, out);
-            names.push(name.clone());
-            col += 1;
-        }
-        for &xi in &x_extra {
-            let src = VECTOR_ELT(x, xi as i64);
-            let out = Rf_allocVector3(TYPEOF(src), nout);
-            for (dst, (xr, _)) in pairs.iter().enumerate() {
-                if *xr < 0 {
-                    store_na(out, dst as i64);
-                } else {
-                    copy_elt(src, *xr, out, dst as i64);
-                }
+            if ok {
+                pairs.push((i, j));
             }
-            SET_VECTOR_ELT(result, col, out);
-            names.push(format!("\u{0}x:{}", elt_to_string(xnames, xi as i64)));
-            col += 1;
         }
-        for &yi in &y_extra {
-            let src = VECTOR_ELT(y, yi as i64);
-            let out = Rf_allocVector3(TYPEOF(src), nout);
-            for (dst, (_, yr)) in pairs.iter().enumerate() {
-                if *yr < 0 {
-                    store_na(out, dst as i64);
-                } else {
-                    copy_elt(src, *yr, out, dst as i64);
-                }
+    }
+    let all_flag = merge_named_true(args, "all");
+    let all_x = all_flag || merge_named_true(args, "all.x");
+    let all_y = all_flag || merge_named_true(args, "all.y");
+    if all_x {
+        for i in 0..nx {
+            if !pairs.iter().any(|p| p.0 == i) {
+                pairs.push((i, -1));
             }
-            SET_VECTOR_ELT(result, col, out);
-            names.push(format!("\u{0}y:{}", elt_to_string(ynames, yi as i64)));
-            col += 1;
         }
-        let bare_of = |tag: &str| -> String {
-            if let Some(rest) = tag.strip_prefix('\u{0}') {
-                rest.split_once(':')
-                    .map(|(_, b)| b.to_string())
-                    .unwrap_or_else(|| tag.to_string())
+    }
+    if all_y {
+        for j in 0..ny {
+            if !pairs.iter().any(|p| p.1 == j) {
+                pairs.push((-1, j));
+            }
+        }
+    }
+    let sort_arg = merge_named_value(args, "sort");
+    let do_sort = sort_arg.is_null()
+        || sort_arg == R_NilValue()
+        || sort_arg == crate::sexp::globals::R_MissingArg()
+        || merge_named_true(args, "sort");
+    if do_sort && !by.is_empty() {
+        let xkey = VECTOR_ELT(x, x_by[0] as i64);
+        let ykey = VECTOR_ELT(y, y_by[0] as i64);
+        let key_of = |idx: i64, col: SEXP| -> String {
+            if idx < 0 {
+                String::new()
             } else {
-                tag.to_string()
+                elt_to_string(col, idx)
             }
         };
-        let raw: Vec<String> = names.iter().map(|n| bare_of(n)).collect();
-        let mut fixed = Vec::with_capacity(names.len());
-        for (i, tag) in names.iter().enumerate() {
-            let bare = if let Some(rest) = tag.strip_prefix('\u{0}') {
-                rest.split_once(':').map(|(_, b)| b).unwrap_or(tag)
+        pairs.sort_by(|a, b| {
+            let ka = if a.0 >= 0 {
+                key_of(a.0, xkey)
             } else {
-                tag.as_str()
+                key_of(a.1, ykey)
             };
-            let dup = raw.iter().filter(|r| r.as_str() == bare).count() > 1;
-            if dup && tag.starts_with('\u{0}') {
-                let side = if tag.as_bytes().get(1) == Some(&b'x') {
-                    ".x"
-                } else {
-                    ".y"
-                };
-                fixed.push(format!("{bare}{side}"));
+            let kb = if b.0 >= 0 {
+                key_of(b.0, xkey)
             } else {
-                fixed.push(bare.to_string());
+                key_of(b.1, ykey)
+            };
+            ka.cmp(&kb)
+        });
+    }
+    let nout = pairs.len() as i64;
+    let x_extra: Vec<usize> = (0..XLENGTH(x) as usize)
+        .filter(|i| !x_by.contains(i))
+        .collect();
+    let y_extra: Vec<usize> = (0..XLENGTH(y) as usize)
+        .filter(|i| !y_by.contains(i))
+        .collect();
+    let ncols = by.len() + x_extra.len() + y_extra.len();
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as i64);
+    let _result = protect(result);
+    let mut names: Vec<String> = Vec::new();
+    let mut col = 0i64;
+    for (k, name) in by.iter().enumerate() {
+        let src = VECTOR_ELT(x, x_by[k] as i64);
+        let out = Rf_allocVector3(TYPEOF(src), nout);
+        for (dst, (xi, yr)) in pairs.iter().enumerate() {
+            if *xi < 0 {
+                let ysrc = VECTOR_ELT(y, y_by[k] as i64);
+                copy_elt(ysrc, *yr, out, dst as i64);
+            } else {
+                copy_elt(src, *xi, out, dst as i64);
             }
         }
-        names = fixed;
-        set_string_names(result, &names);
-        set_compact_row_names(result, nout);
-        set_data_frame_class(result);
-        result
+        SET_VECTOR_ELT(result, col, out);
+        names.push(name.clone());
+        col += 1;
     }
+    for &xi in &x_extra {
+        let src = VECTOR_ELT(x, xi as i64);
+        let out = Rf_allocVector3(TYPEOF(src), nout);
+        for (dst, (xr, _)) in pairs.iter().enumerate() {
+            if *xr < 0 {
+                store_na(out, dst as i64);
+            } else {
+                copy_elt(src, *xr, out, dst as i64);
+            }
+        }
+        SET_VECTOR_ELT(result, col, out);
+        names.push(format!("\u{0}x:{}", elt_to_string(xnames, xi as i64)));
+        col += 1;
+    }
+    for &yi in &y_extra {
+        let src = VECTOR_ELT(y, yi as i64);
+        let out = Rf_allocVector3(TYPEOF(src), nout);
+        for (dst, (_, yr)) in pairs.iter().enumerate() {
+            if *yr < 0 {
+                store_na(out, dst as i64);
+            } else {
+                copy_elt(src, *yr, out, dst as i64);
+            }
+        }
+        SET_VECTOR_ELT(result, col, out);
+        names.push(format!("\u{0}y:{}", elt_to_string(ynames, yi as i64)));
+        col += 1;
+    }
+    let bare_of = |tag: &str| -> String {
+        if let Some(rest) = tag.strip_prefix('\u{0}') {
+            rest.split_once(':')
+                .map(|(_, b)| b.to_string())
+                .unwrap_or_else(|| tag.to_string())
+        } else {
+            tag.to_string()
+        }
+    };
+    let raw: Vec<String> = names.iter().map(|n| bare_of(n)).collect();
+    let mut fixed = Vec::with_capacity(names.len());
+    for (i, tag) in names.iter().enumerate() {
+        let bare = if let Some(rest) = tag.strip_prefix('\u{0}') {
+            rest.split_once(':').map(|(_, b)| b).unwrap_or(tag)
+        } else {
+            tag.as_str()
+        };
+        let dup = raw.iter().filter(|r| r.as_str() == bare).count() > 1;
+        if dup && tag.starts_with('\u{0}') {
+            let side = if tag.as_bytes().get(1) == Some(&b'x') {
+                ".x"
+            } else {
+                ".y"
+            };
+            fixed.push(format!("{bare}{side}"));
+        } else {
+            fixed.push(bare.to_string());
+        }
+    }
+    names = fixed;
+    set_string_names(result, &names);
+    set_compact_row_names(result, nout);
+    set_data_frame_class(result);
+    result
 }
 
 pub(super) fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
@@ -487,28 +485,24 @@ pub(crate) fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
 }
 
 pub(crate) fn set_data_frame_class(x: SEXP) {
-    unsafe {
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if class_vec.is_null() {
-            return;
-        }
-        let _class_guard = protect(class_vec);
-        SET_STRING_ELT(class_vec, 0, Rf_mkChar(c"data.frame".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if class_vec.is_null() {
+        return;
     }
+    let _class_guard = protect(class_vec);
+    SET_STRING_ELT(class_vec, 0, mk_char_cstr(c"data.frame"));
+    crate::sexp::attrib_core::setAttrib(x, install_str("class"), class_vec);
 }
 
 pub(crate) fn set_summary_default_class(x: SEXP) {
-    unsafe {
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if class_vec.is_null() {
-            return;
-        }
-        let _class_guard = protect(class_vec);
-        SET_STRING_ELT(class_vec, 0, Rf_mkChar(c"summaryDefault".as_ptr()));
-        SET_STRING_ELT(class_vec, 1, Rf_mkChar(c"table".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if class_vec.is_null() {
+        return;
     }
+    let _class_guard = protect(class_vec);
+    SET_STRING_ELT(class_vec, 0, mk_char_cstr(c"summaryDefault"));
+    SET_STRING_ELT(class_vec, 1, mk_char_cstr(c"table"));
+    crate::sexp::attrib_core::setAttrib(x, install_str("class"), class_vec);
 }
 
 pub(super) fn repair_data_frame_names(names: &mut [String]) {

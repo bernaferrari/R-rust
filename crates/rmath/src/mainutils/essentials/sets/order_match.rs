@@ -145,7 +145,7 @@ pub fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return do_cut_POSIXt(_call, _op, args, _rho);
         }
         if sexp_has_class(x, "dendrogram") {
-            let sym = Rf_install(c"cut.dendrogram".as_ptr());
+            let sym = install_str("cut.dendrogram");
             let fun = crate::eval::eval::Rf_eval(sym, crate::sexp::globals::R_BaseEnv());
             if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::CLOSXP {
                 return crate::eval::closure::applyClosure(_call, fun, args, _rho, _rho, 0);
@@ -534,27 +534,25 @@ pub fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
-    unsafe {
-        if result.is_null() || result == R_NilValue() {
-            return;
-        }
-        if sexp_has_class(source, "Date") {
-            set_datetime_class_from(result, source, DatetimeVectorClass::Date);
-        } else if sexp_has_class(source, "POSIXct") || sexp_has_class(source, "POSIXt") {
-            set_datetime_class_from(result, source, DatetimeVectorClass::Posixct);
-        } else if sexp_has_class(source, "difftime") {
-            let units = crate::sexp::attrib_core::getAttrib(
-                source,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+    if result.is_null() || result == R_NilValue() {
+        return;
+    }
+    if sexp_has_class(source, "Date") {
+        set_datetime_class_from(result, source, DatetimeVectorClass::Date);
+    } else if sexp_has_class(source, "POSIXct") || sexp_has_class(source, "POSIXt") {
+        set_datetime_class_from(result, source, DatetimeVectorClass::Posixct);
+    } else if sexp_has_class(source, "difftime") {
+        let units = crate::sexp::attrib_core::getAttrib(
+            source,
+            install_str("units"),
+        );
+        set_single_class(result, "difftime");
+        if !units.is_null() && units != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                install_str("units"),
+                units,
             );
-            set_single_class(result, "difftime");
-            if !units.is_null() && units != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-                    units,
-                );
-            }
         }
     }
 }
@@ -730,7 +728,7 @@ pub(crate) fn copy_atomic_element(
                 let text = elt_to_string(src, src_index);
                 let cstr = CString::new(text).unwrap_or_default();
                 // SAFETY: cstr is a live NUL-terminated buffer for the call.
-                let charsxp = unsafe { crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()) };
+                let charsxp = mk_char_cstr(&cstr);
                 owner
                     .sexp(charsxp)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
@@ -781,226 +779,224 @@ pub(crate) fn copy_atomic_element(
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
 fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x) as usize;
-        let t = TYPEOF(x);
-        #[derive(Clone, Copy)]
-        enum Kind {
-            Int,
-            Real,
-            Str,
-            Cplx,
-            Raw,
-        }
-        let kind = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            Kind::Int
-        } else if t == SEXPTYPE::REALSXP {
-            Kind::Real
-        } else if t == SEXPTYPE::STRSXP {
-            Kind::Str
-        } else if t == SEXPTYPE::CPLXSXP {
-            Kind::Cplx
-        } else if t == SEXPTYPE::RAWSXP {
-            Kind::Raw
-        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "'x' must be atomic".to_string(),
-            });
-        } else {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "unimplemented type 'unknown' in 'orderVector1'".to_string(),
-            });
-        };
-        let owner = active_owner();
-        let x_owned = owner_sexp(owner, x);
-        let is_na = |i: usize| -> bool {
-            let i = i as R_xlen_t;
-            match kind {
-                Kind::Int => integer_like_elt(&x_owned, i) == NA_INTEGER,
-                Kind::Real => ISNAN(
-                    x_owned
-                        .try_real_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                ),
-                Kind::Str => {
-                    let elt = x_owned
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    charsxp_is_na(elt.as_raw())
-                }
-                Kind::Cplx => {
-                    let z = x_owned
-                        .try_complex_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    ISNAN(z.r) || ISNAN(z.i)
-                }
-                Kind::Raw => false,
-            }
-        };
-        let cmp = |a: usize, b: usize| -> std::cmp::Ordering {
-            let (a, b) = (a as R_xlen_t, b as R_xlen_t);
-            let ord = match kind {
-                Kind::Int => integer_like_elt(&x_owned, a).cmp(&integer_like_elt(&x_owned, b)),
-                Kind::Real => {
-                    let av = x_owned
-                        .try_real_elt(a)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let bv = x_owned
-                        .try_real_elt(b)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal)
-                }
-                Kind::Str => {
-                    let ea = x_owned
-                        .try_string_elt(a)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let eb = x_owned
-                        .try_string_elt(b)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    compare_charsxp_for_sort(ea.as_raw(), eb.as_raw())
-                }
-                Kind::Cplx => {
-                    let za = x_owned
-                        .try_complex_elt(a)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let zb = x_owned
-                        .try_complex_elt(b)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    za.r.partial_cmp(&zb.r)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then(za.i.partial_cmp(&zb.i).unwrap_or(std::cmp::Ordering::Equal))
-                }
-                Kind::Raw => {
-                    let av = x_owned
-                        .try_raw_elt(a)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let bv = x_owned
-                        .try_raw_elt(b)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    av.cmp(&bv)
-                }
-            };
-            if decreasing { ord.reverse() } else { ord }
-        };
-        let mut kept = Vec::new();
-        let mut missing = Vec::new();
-        for i in 0..n {
-            if is_na(i) {
-                missing.push(i);
-            } else {
-                kept.push(i);
-            }
-        }
-        kept.sort_by(|&a, &b| cmp(a, b));
-        let mut idx = Vec::new();
-        if na_placement == SortNaPlacement::First {
-            idx.extend_from_slice(&missing);
-        }
-        idx.extend_from_slice(&kept);
-        if na_placement == SortNaPlacement::Last {
-            idx.extend_from_slice(&missing);
-        }
-        let out_n = idx.len() as i64;
-        let values = Rf_allocVector3(t, out_n);
-        let _values = protect(values);
-        let index = Rf_allocVector3(SEXPTYPE::INTSXP, out_n);
-        let _index = protect(index);
-        let mut index_mut = owner
-            .sexp(index)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut values_mut = owner
-            .sexp(values)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (j, &i) in idx.iter().enumerate() {
-            index_mut
-                .try_set_integer_elt(j as R_xlen_t, (i as i32) + 1)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            match kind {
-                Kind::Int => {
-                    let v = integer_like_elt(&x_owned, i as R_xlen_t);
-                    let written = if t == SEXPTYPE::LGLSXP {
-                        values_mut.try_set_logical_elt(j as R_xlen_t, v)
-                    } else {
-                        values_mut.try_set_integer_elt(j as R_xlen_t, v)
-                    };
-                    written
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-                Kind::Real => {
-                    let v = x_owned
-                        .try_real_elt(i as R_xlen_t)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    values_mut
-                        .try_set_real_elt(j as R_xlen_t, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-                Kind::Str => {
-                    let elt = x_owned
-                        .try_string_elt(i as R_xlen_t)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    values_mut
-                        .try_set_string_elt(j as R_xlen_t, elt)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-                Kind::Cplx => {
-                    let v = x_owned
-                        .try_complex_elt(i as R_xlen_t)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    values_mut
-                        .try_set_complex_elt(j as R_xlen_t, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-                Kind::Raw => {
-                    let v = x_owned
-                        .try_raw_elt(i as R_xlen_t)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    values_mut
-                        .try_set_raw_elt(j as R_xlen_t, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _result = protect(result);
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let values_owned = owner
-            .sexp(values)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let index_owned = owner
-            .sexp(index)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        result_mut
-            .try_set_vector_elt(0, values_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        result_mut
-            .try_set_vector_elt(1, index_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let x_name = Rf_mkChar(c"x".as_ptr());
-        let _x_name = protect(x_name);
-        let ix_name = Rf_mkChar(c"ix".as_ptr());
-        let _ix_name = protect(ix_name);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _names = protect(names);
-        if let (Ok(mut names_mut), Ok(x_charsxp), Ok(ix_charsxp)) = (
-            owner.sexp(names).and_then(SexpMut::try_from_checked),
-            owner.sexp(x_name),
-            owner.sexp(ix_name),
-        ) {
-            let _ = names_mut.try_set_string_elt(0, x_charsxp);
-            let _ = names_mut.try_set_string_elt(1, ix_charsxp);
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
-        result
+    let n = XLENGTH(x) as usize;
+    let t = TYPEOF(x);
+    #[derive(Clone, Copy)]
+    enum Kind {
+        Int,
+        Real,
+        Str,
+        Cplx,
+        Raw,
     }
+    let kind = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        Kind::Int
+    } else if t == SEXPTYPE::REALSXP {
+        Kind::Real
+    } else if t == SEXPTYPE::STRSXP {
+        Kind::Str
+    } else if t == SEXPTYPE::CPLXSXP {
+        Kind::Cplx
+    } else if t == SEXPTYPE::RAWSXP {
+        Kind::Raw
+    } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "'x' must be atomic".to_string(),
+        });
+    } else {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "unimplemented type 'unknown' in 'orderVector1'".to_string(),
+        });
+    };
+    let owner = active_owner();
+    let x_owned = owner_sexp(owner, x);
+    let is_na = |i: usize| -> bool {
+        let i = i as R_xlen_t;
+        match kind {
+            Kind::Int => integer_like_elt(&x_owned, i) == NA_INTEGER,
+            Kind::Real => ISNAN(
+                x_owned
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            ),
+            Kind::Str => {
+                let elt = x_owned
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                charsxp_is_na(elt.as_raw())
+            }
+            Kind::Cplx => {
+                let z = x_owned
+                    .try_complex_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                ISNAN(z.r) || ISNAN(z.i)
+            }
+            Kind::Raw => false,
+        }
+    };
+    let cmp = |a: usize, b: usize| -> std::cmp::Ordering {
+        let (a, b) = (a as R_xlen_t, b as R_xlen_t);
+        let ord = match kind {
+            Kind::Int => integer_like_elt(&x_owned, a).cmp(&integer_like_elt(&x_owned, b)),
+            Kind::Real => {
+                let av = x_owned
+                    .try_real_elt(a)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let bv = x_owned
+                    .try_real_elt(b)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                av.partial_cmp(&bv).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            Kind::Str => {
+                let ea = x_owned
+                    .try_string_elt(a)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let eb = x_owned
+                    .try_string_elt(b)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                compare_charsxp_for_sort(ea.as_raw(), eb.as_raw())
+            }
+            Kind::Cplx => {
+                let za = x_owned
+                    .try_complex_elt(a)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let zb = x_owned
+                    .try_complex_elt(b)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                za.r.partial_cmp(&zb.r)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(za.i.partial_cmp(&zb.i).unwrap_or(std::cmp::Ordering::Equal))
+            }
+            Kind::Raw => {
+                let av = x_owned
+                    .try_raw_elt(a)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let bv = x_owned
+                    .try_raw_elt(b)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                av.cmp(&bv)
+            }
+        };
+        if decreasing { ord.reverse() } else { ord }
+    };
+    let mut kept = Vec::new();
+    let mut missing = Vec::new();
+    for i in 0..n {
+        if is_na(i) {
+            missing.push(i);
+        } else {
+            kept.push(i);
+        }
+    }
+    kept.sort_by(|&a, &b| cmp(a, b));
+    let mut idx = Vec::new();
+    if na_placement == SortNaPlacement::First {
+        idx.extend_from_slice(&missing);
+    }
+    idx.extend_from_slice(&kept);
+    if na_placement == SortNaPlacement::Last {
+        idx.extend_from_slice(&missing);
+    }
+    let out_n = idx.len() as i64;
+    let values = Rf_allocVector3(t, out_n);
+    let _values = protect(values);
+    let index = Rf_allocVector3(SEXPTYPE::INTSXP, out_n);
+    let _index = protect(index);
+    let mut index_mut = owner
+        .sexp(index)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut values_mut = owner
+        .sexp(values)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (j, &i) in idx.iter().enumerate() {
+        index_mut
+            .try_set_integer_elt(j as R_xlen_t, (i as i32) + 1)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        match kind {
+            Kind::Int => {
+                let v = integer_like_elt(&x_owned, i as R_xlen_t);
+                let written = if t == SEXPTYPE::LGLSXP {
+                    values_mut.try_set_logical_elt(j as R_xlen_t, v)
+                } else {
+                    values_mut.try_set_integer_elt(j as R_xlen_t, v)
+                };
+                written
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            Kind::Real => {
+                let v = x_owned
+                    .try_real_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                values_mut
+                    .try_set_real_elt(j as R_xlen_t, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            Kind::Str => {
+                let elt = x_owned
+                    .try_string_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                values_mut
+                    .try_set_string_elt(j as R_xlen_t, elt)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            Kind::Cplx => {
+                let v = x_owned
+                    .try_complex_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                values_mut
+                    .try_set_complex_elt(j as R_xlen_t, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            Kind::Raw => {
+                let v = x_owned
+                    .try_raw_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                values_mut
+                    .try_set_raw_elt(j as R_xlen_t, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+        }
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _result = protect(result);
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let values_owned = owner
+        .sexp(values)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let index_owned = owner
+        .sexp(index)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    result_mut
+        .try_set_vector_elt(0, values_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    result_mut
+        .try_set_vector_elt(1, index_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let x_name = mk_char_cstr(c"x");
+    let _x_name = protect(x_name);
+    let ix_name = mk_char_cstr(c"ix");
+    let _ix_name = protect(ix_name);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _names = protect(names);
+    if let (Ok(mut names_mut), Ok(x_charsxp), Ok(ix_charsxp)) = (
+        owner.sexp(names).and_then(SexpMut::try_from_checked),
+        owner.sexp(x_name),
+        owner.sexp(ix_name),
+    ) {
+        let _ = names_mut.try_set_string_elt(0, x_charsxp);
+        let _ = names_mut.try_set_string_elt(1, ix_charsxp);
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        names,
+    );
+    result
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.

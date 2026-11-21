@@ -80,7 +80,7 @@ pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let attr = crate::sexp::attrib_core::getAttrib(
                 CAR(cell),
-                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                install_str("tzone"),
             );
             let this = if !attr.is_null()
                 && attr != R_NilValue()
@@ -113,15 +113,15 @@ pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         drop_empty_names(r);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _class = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
         crate::sexp::attrib_core::setAttrib(r, crate::sexp::attrib_core::R_ClassSymbol(), class);
         if let Some(tz) = tz {
             let tzone = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
             let _t = protect(tzone);
             crate::sexp::attrib_core::setAttrib(
                 r,
-                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                install_str("tzone"),
                 tzone,
             );
         }
@@ -297,7 +297,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if any_tag && XLENGTH(ct) > 0 {
             let nm = Rf_allocVector3(SEXPTYPE::STRSXP, XLENGTH(ct));
             let _nm = protect(nm);
-            let blank = Rf_mkChar(c"".as_ptr());
+            let blank = mk_char_cstr(c"");
             let mut i: i64 = 0;
             let mut cell = rev;
             while !cell.is_null() && cell != R_NilValue() && i < XLENGTH(ct) {
@@ -398,58 +398,56 @@ pub fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `diff.Date(x)`.
 pub fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-            let _e = protect(empty);
-            set_single_class(empty, "difftime");
-            crate::sexp::attrib_core::setAttrib(
-                empty,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-                Rf_mkString(c"days".as_ptr()),
-            );
-            return empty;
-        }
-        let n = XLENGTH(x);
-        if n < 2 {
-            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-            let _e = protect(empty);
-            set_single_class(empty, "difftime");
-            crate::sexp::attrib_core::setAttrib(
-                empty,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-                Rf_mkString(c"days".as_ptr()),
-            );
-            return empty;
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n - 1);
-        let _r = protect(result);
-        for i in 0..(n - 1) {
-            let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
-            } else {
-                0.0
-            };
-            let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i + 1) as R_xlen_t)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                integer_elt_checked(x, (i + 1) as R_xlen_t) as f64
-            } else {
-                0.0
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, b - a);
-        }
-        set_single_class(result, "difftime");
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _e = protect(empty);
+        set_single_class(empty, "difftime");
         crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-            Rf_mkString(c"days".as_ptr()),
+            empty,
+            install_str("units"),
+            mk_string_cstr(c"days"),
         );
-        result
+        return empty;
     }
+    let n = XLENGTH(x);
+    if n < 2 {
+        let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _e = protect(empty);
+        set_single_class(empty, "difftime");
+        crate::sexp::attrib_core::setAttrib(
+            empty,
+            install_str("units"),
+            mk_string_cstr(c"days"),
+        );
+        return empty;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n - 1);
+    let _r = protect(result);
+    for i in 0..(n - 1) {
+        let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
+        } else {
+            0.0
+        };
+        let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i + 1) as R_xlen_t)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            integer_elt_checked(x, (i + 1) as R_xlen_t) as f64
+        } else {
+            0.0
+        };
+        set_real_checked(result, (i as usize) as R_xlen_t, b - a);
+    }
+    set_single_class(result, "difftime");
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("units"),
+        mk_string_cstr(c"days"),
+    );
+    result
 }
 
 /// GNU `.Date(xx, cl = "Date")` — `class<-`(xx, cl).
@@ -464,7 +462,7 @@ pub fn do_dot_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             || cl_arg == R_NilValue()
             || cl_arg == crate::sexp::globals::R_MissingArg()
         {
-            Rf_mkString(c"Date".as_ptr())
+            mk_string_cstr(c"Date")
         } else {
             cl_arg
         };

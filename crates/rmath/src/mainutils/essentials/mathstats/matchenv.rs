@@ -178,7 +178,7 @@ pub fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _result = protect(result);
         for (i, hit) in hits.iter().enumerate() {
             let cstr = std::ffi::CString::new(hit.as_str()).unwrap_or_default();
-            SET_STRING_ELT(result, i as i64, Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(result, i as i64, mk_char_cstr(&cstr));
         }
         result
     }
@@ -322,181 +322,179 @@ pub fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `type.convert(x, ...)` — convert to appropriate type.
 pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
-            return x;
-        }
-        let tagged = |name: &str| -> SEXP {
-            let mut cell = args;
-            while !cell.is_null() && cell != R_NilValue() {
-                let tag = TAG(cell);
-                if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                    let pname = PRINTNAME(tag);
-                    if !pname.is_null() {
-                        let label = charsxp_text(pname).unwrap_or_default();
-                        if label == name {
-                            return CAR(cell);
-                        }
-                    }
-                }
-                cell = CDR(cell);
-            }
-            R_NilValue()
-        };
-        let numerals = {
-            let spec = tagged("numerals");
-            if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
-                elt_to_string(spec, 0)
-            } else {
-                "allow.loss".to_string()
-            }
-        };
-        let as_is = {
-            let spec = tagged("as.is");
-            if spec.is_null() || spec == R_NilValue() {
-                true
-            } else {
-                crate::mainutils::coerce::asLogical(spec) != 0
-            }
-        };
-        let n = XLENGTH(x);
-        let mut all_i32 = n > 0;
-        let mut all_real = n > 0;
-        let mut exact_real = true;
-        let mut loss = false;
-        let mut values = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            if let Ok(v) = s.parse::<i64>() {
-                if let Ok(v) = i32::try_from(v) {
-                    values.push(v as f64);
-                    continue;
-                }
-            }
-            all_i32 = false;
-            let plain_int = {
-                let body = s.trim_start_matches(['+', '-']);
-                !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit())
-            };
-            if let Some(v) = crate::mainutils::coerce::parse_double_str(&s) {
-                if plain_int {
-                    let digits = s.trim_start_matches(['+', '-']).trim_start_matches('0');
-                    let digits = if digits.is_empty() { "0" } else { digits };
-                    let shown = format!("{v:.0}");
-                    let shown = shown.trim_start_matches('-');
-                    if shown != digits {
-                        exact_real = false;
-                        loss = true;
-                    }
-                }
-                values.push(v);
-            } else {
-                all_real = false;
-                values.push(f64::NAN);
-            }
-        }
-        let keep_real = all_real && (numerals != "no.loss" || exact_real);
-        if all_i32 {
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            let _p = protect(result);
-            for (i, v) in values.iter().enumerate() {
-                set_integer_checked(result, (i) as R_xlen_t, *v as c_int);
-            }
-            return result;
-        }
-        if keep_real {
-            if numerals == "warn.loss" && loss {
-                let msg = format!(
-                    "accuracy loss in conversion from \"{}\" to numeric",
-                    elt_to_string(x, 0)
-                );
-                let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-                crate::mainutils::errors::Rf_warning(cmsg.as_ptr());
-            }
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            let _p = protect(result);
-            for (i, v) in values.iter().enumerate() {
-                set_real_checked(result, (i) as R_xlen_t, *v);
-            }
-            return result;
-        }
-        if as_is {
-            let na_spec = tagged("na.strings");
-            if na_spec.is_null() || na_spec == R_NilValue() || TYPEOF(na_spec) != SEXPTYPE::STRSXP {
-                return x;
-            }
-            let out = crate::mainutils::duplicate::duplicate(x);
-            let _o = protect(out);
-            for i in 0..n {
-                let s = elt_to_string(x, i);
-                for k in 0..XLENGTH(na_spec) {
-                    if s == elt_to_string(na_spec, k) {
-                        SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
-                        break;
+    let x = CAR(args);
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
+        return x;
+    }
+    let tagged = |name: &str| -> SEXP {
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let pname = PRINTNAME(tag);
+                if !pname.is_null() {
+                    let label = charsxp_text(pname).unwrap_or_default();
+                    if label == name {
+                        return CAR(cell);
                     }
                 }
             }
-            return out;
+            cell = CDR(cell);
         }
-        let na_spec = tagged("na.strings");
-        let mut na_strings: Vec<String> = Vec::new();
-        if na_spec.is_null() || na_spec == R_NilValue() {
-            na_strings.push("NA".to_string());
-        } else if TYPEOF(na_spec) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(na_spec) {
-                na_strings.push(elt_to_string(na_spec, i));
-            }
+        R_NilValue()
+    };
+    let numerals = {
+        let spec = tagged("numerals");
+        if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+            elt_to_string(spec, 0)
+        } else {
+            "allow.loss".to_string()
         }
-        let mut levels_v: Vec<String> = Vec::new();
-        let mut is_na = vec![false; n as usize];
-        for i in 0..n {
-            let ch = STRING_ELT(x, i);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                is_na[i as usize] = true;
+    };
+    let as_is = {
+        let spec = tagged("as.is");
+        if spec.is_null() || spec == R_NilValue() {
+            true
+        } else {
+            crate::mainutils::coerce::asLogical(spec) != 0
+        }
+    };
+    let n = XLENGTH(x);
+    let mut all_i32 = n > 0;
+    let mut all_real = n > 0;
+    let mut exact_real = true;
+    let mut loss = false;
+    let mut values = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        if let Ok(v) = s.parse::<i64>() {
+            if let Ok(v) = i32::try_from(v) {
+                values.push(v as f64);
                 continue;
             }
-            let s = elt_to_string(x, i);
-            if na_strings.iter().any(|n| n == &s) {
-                is_na[i as usize] = true;
-                continue;
-            }
-            if !levels_v.iter().any(|l| l == &s) {
-                levels_v.push(s);
-            }
         }
-        levels_v.sort();
+        all_i32 = false;
+        let plain_int = {
+            let body = s.trim_start_matches(['+', '-']);
+            !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit())
+        };
+        if let Some(v) = crate::mainutils::coerce::parse_double_str(&s) {
+            if plain_int {
+                let digits = s.trim_start_matches(['+', '-']).trim_start_matches('0');
+                let digits = if digits.is_empty() { "0" } else { digits };
+                let shown = format!("{v:.0}");
+                let shown = shown.trim_start_matches('-');
+                if shown != digits {
+                    exact_real = false;
+                    loss = true;
+                }
+            }
+            values.push(v);
+        } else {
+            all_real = false;
+            values.push(f64::NAN);
+        }
+    }
+    let keep_real = all_real && (numerals != "no.loss" || exact_real);
+    if all_i32 {
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         let _p = protect(result);
+        for (i, v) in values.iter().enumerate() {
+            set_integer_checked(result, (i) as R_xlen_t, *v as c_int);
+        }
+        return result;
+    }
+    if keep_real {
+        if numerals == "warn.loss" && loss {
+            let msg = format!(
+                "accuracy loss in conversion from \"{}\" to numeric",
+                elt_to_string(x, 0)
+            );
+            let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
+            crate::mainutils::errors::Rf_warning(cmsg.as_ptr());
+        }
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _p = protect(result);
+        for (i, v) in values.iter().enumerate() {
+            set_real_checked(result, (i) as R_xlen_t, *v);
+        }
+        return result;
+    }
+    if as_is {
+        let na_spec = tagged("na.strings");
+        if na_spec.is_null() || na_spec == R_NilValue() || TYPEOF(na_spec) != SEXPTYPE::STRSXP {
+            return x;
+        }
+        let out = crate::mainutils::duplicate::duplicate(x);
+        let _o = protect(out);
         for i in 0..n {
-            if is_na[i as usize] {
-                set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
-            } else {
-                let s = elt_to_string(x, i);
-                let code = levels_v.iter().position(|l| l == &s).unwrap_or(0) as c_int + 1;
-                set_integer_checked(result, (i as usize) as R_xlen_t, code);
+            let s = elt_to_string(x, i);
+            for k in 0..XLENGTH(na_spec) {
+                if s == elt_to_string(na_spec, k) {
+                    SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+                    break;
+                }
             }
         }
-        let levels = Rf_allocVector3(SEXPTYPE::STRSXP, levels_v.len() as i64);
-        let _l = protect(levels);
-        for (i, level) in levels_v.iter().enumerate() {
-            let c = std::ffi::CString::new(level.as_str()).unwrap_or_default();
-            SET_STRING_ELT(levels, i as i64, Rf_mkChar(c.as_ptr()));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
-            levels,
-        );
-        let class = Rf_mkString(c"factor".as_ptr());
-        let _c = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        return out;
     }
+    let na_spec = tagged("na.strings");
+    let mut na_strings: Vec<String> = Vec::new();
+    if na_spec.is_null() || na_spec == R_NilValue() {
+        na_strings.push("NA".to_string());
+    } else if TYPEOF(na_spec) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(na_spec) {
+            na_strings.push(elt_to_string(na_spec, i));
+        }
+    }
+    let mut levels_v: Vec<String> = Vec::new();
+    let mut is_na = vec![false; n as usize];
+    for i in 0..n {
+        let ch = STRING_ELT(x, i);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            is_na[i as usize] = true;
+            continue;
+        }
+        let s = elt_to_string(x, i);
+        if na_strings.iter().any(|n| n == &s) {
+            is_na[i as usize] = true;
+            continue;
+        }
+        if !levels_v.iter().any(|l| l == &s) {
+            levels_v.push(s);
+        }
+    }
+    levels_v.sort();
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    let _p = protect(result);
+    for i in 0..n {
+        if is_na[i as usize] {
+            set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
+        } else {
+            let s = elt_to_string(x, i);
+            let code = levels_v.iter().position(|l| l == &s).unwrap_or(0) as c_int + 1;
+            set_integer_checked(result, (i as usize) as R_xlen_t, code);
+        }
+    }
+    let levels = Rf_allocVector3(SEXPTYPE::STRSXP, levels_v.len() as i64);
+    let _l = protect(levels);
+    for (i, level) in levels_v.iter().enumerate() {
+        let c = std::ffi::CString::new(level.as_str()).unwrap_or_default();
+        SET_STRING_ELT(levels, i as i64, mk_char_cstr(&c));
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("levels"),
+        levels,
+    );
+    let class = mk_string_cstr(c"factor");
+    let _c = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// R's `as.environment(x)` — convert to environment.
@@ -674,16 +672,14 @@ pub(crate) fn search_path_entries() -> Vec<(String, SEXP)> {
 }
 
 fn search_env_label(env: SEXP) -> String {
-    unsafe {
-        let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
-        if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
-            let value = STRING_ELT(name, 0);
-            if !value.is_null() && value != R_NilValue() {
-                return charsxp_text(value).unwrap_or_default();
-            }
+    let name = crate::sexp::attrib_core::getAttrib(env, install_str("name"));
+    if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
+        let value = STRING_ELT(name, 0);
+        if !value.is_null() && value != R_NilValue() {
+            return charsxp_text(value).unwrap_or_default();
         }
-        "(unknown)".to_string()
     }
+    "(unknown)".to_string()
 }
 
 /// R's `searchpaths()` — filesystem/search labels for entries on the search path.
@@ -788,7 +784,7 @@ pub fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         if !dim.is_null() {
             set_integer_checked(dim, 0, nx as c_int);
             set_integer_checked(dim, (1) as R_xlen_t, ny as c_int);
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
+            crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
         }
         result
     }

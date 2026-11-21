@@ -63,70 +63,68 @@ pub fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `is(x, class2)` — type/class check.
 pub fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let class2_arg = CAR(CDR(args));
-        if x.is_null() || class2_arg.is_null() || class2_arg == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let class2 = elt_to_string(class2_arg, 0);
-        if x == R_NilValue() {
-            return Rf_ScalarLogical(if class2 == "NULL" { TRUE } else { FALSE });
-        }
-        // Get the type of x
-        let type_name = match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => "logical",
-            t if t == SEXPTYPE::INTSXP => "integer",
-            t if t == SEXPTYPE::REALSXP => "double",
-            t if t == SEXPTYPE::CPLXSXP => "complex",
-            t if t == SEXPTYPE::STRSXP => "character",
-            t if t == SEXPTYPE::VECSXP => "list",
-            t if t == SEXPTYPE::LISTSXP => "pairlist",
-            t if t == SEXPTYPE::LANGSXP => "language",
-            t if t == SEXPTYPE::SYMSXP => "symbol",
-            t if t == SEXPTYPE::CLOSXP => "closure",
-            t if t == SEXPTYPE::ENVSXP => "environment",
-            _ => "any",
-        };
-        // Check S3 class
-        let class_sym = Rf_install(c"class".as_ptr());
-        let class_val = crate::sexp::attrib_core::getAttrib(x, class_sym);
-        if !class_val.is_null()
-            && class_val != R_NilValue()
-            && TYPEOF(class_val) == SEXPTYPE::STRSXP
-        {
-            let n = LENGTH(class_val);
-            let class_val_owned = owner_sexp(active_owner(), class_val);
-            for i in 0..n {
-                if let Ok(Some(text)) = class_val_owned.try_string_value_elt(i as R_xlen_t) {
-                    if text == class2 {
-                        return Rf_ScalarLogical(TRUE);
-                    }
-                    if crate::mainutils::objects::isS4(x) == TRUE
-                        && crate::mainutils::objects::s4_class_extends(&text, &class2)
-                    {
-                        return Rf_ScalarLogical(TRUE);
-                    }
+    let x = CAR(args);
+    let class2_arg = CAR(CDR(args));
+    if x.is_null() || class2_arg.is_null() || class2_arg == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let class2 = elt_to_string(class2_arg, 0);
+    if x == R_NilValue() {
+        return Rf_ScalarLogical(if class2 == "NULL" { TRUE } else { FALSE });
+    }
+    // Get the type of x
+    let type_name = match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP => "logical",
+        t if t == SEXPTYPE::INTSXP => "integer",
+        t if t == SEXPTYPE::REALSXP => "double",
+        t if t == SEXPTYPE::CPLXSXP => "complex",
+        t if t == SEXPTYPE::STRSXP => "character",
+        t if t == SEXPTYPE::VECSXP => "list",
+        t if t == SEXPTYPE::LISTSXP => "pairlist",
+        t if t == SEXPTYPE::LANGSXP => "language",
+        t if t == SEXPTYPE::SYMSXP => "symbol",
+        t if t == SEXPTYPE::CLOSXP => "closure",
+        t if t == SEXPTYPE::ENVSXP => "environment",
+        _ => "any",
+    };
+    // Check S3 class
+    let class_sym = install_str("class");
+    let class_val = crate::sexp::attrib_core::getAttrib(x, class_sym);
+    if !class_val.is_null()
+        && class_val != R_NilValue()
+        && TYPEOF(class_val) == SEXPTYPE::STRSXP
+    {
+        let n = LENGTH(class_val);
+        let class_val_owned = owner_sexp(active_owner(), class_val);
+        for i in 0..n {
+            if let Ok(Some(text)) = class_val_owned.try_string_value_elt(i as R_xlen_t) {
+                if text == class2 {
+                    return Rf_ScalarLogical(TRUE);
+                }
+                if crate::mainutils::objects::isS4(x) == TRUE
+                    && crate::mainutils::objects::s4_class_extends(&text, &class2)
+                {
+                    return Rf_ScalarLogical(TRUE);
                 }
             }
         }
-        // Check type name
-        let is_match = type_name == class2
-            || (class2 == "numeric" && (type_name == "double" || type_name == "integer"))
-            || (class2 == "vector"
-                && (type_name == "logical"
-                    || type_name == "integer"
-                    || type_name == "double"
-                    || type_name == "character"
-                    || type_name == "complex"))
-            || (class2 == "atomic"
-                && type_name != "list"
-                && type_name != "pairlist"
-                && type_name != "language"
-                && type_name != "closure"
-                && type_name != "environment");
-        Rf_ScalarLogical(if is_match { TRUE } else { FALSE })
     }
+    // Check type name
+    let is_match = type_name == class2
+        || (class2 == "numeric" && (type_name == "double" || type_name == "integer"))
+        || (class2 == "vector"
+            && (type_name == "logical"
+                || type_name == "integer"
+                || type_name == "double"
+                || type_name == "character"
+                || type_name == "complex"))
+        || (class2 == "atomic"
+            && type_name != "list"
+            && type_name != "pairlist"
+            && type_name != "language"
+            && type_name != "closure"
+            && type_name != "environment");
+    Rf_ScalarLogical(if is_match { TRUE } else { FALSE })
 }
 
 fn list_tag_name(cell: SEXP) -> Option<String> {
@@ -305,19 +303,17 @@ fn s4_contains_from_args(args: SEXP) -> Vec<String> {
 }
 
 fn string_vector_from_values(values: &[String]) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-        let owner = active_owner();
-        if let Ok(mut result_mut) = owner.sexp(result).and_then(SexpMut::try_from_checked) {
-            for (i, value) in values.iter().enumerate() {
-                let cstr = CString::new(value.as_str()).unwrap_or_default();
-                if let Ok(charsxp) = owner.sexp(Rf_mkChar(cstr.as_ptr())) {
-                    let _ = result_mut.try_set_string_elt(i as R_xlen_t, charsxp);
-                }
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+    let owner = active_owner();
+    if let Ok(mut result_mut) = owner.sexp(result).and_then(SexpMut::try_from_checked) {
+        for (i, value) in values.iter().enumerate() {
+            let cstr = CString::new(value.as_str()).unwrap_or_default();
+            if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cstr)) {
+                let _ = result_mut.try_set_string_elt(i as R_xlen_t, charsxp);
             }
         }
-        result
     }
+    result
 }
 
 fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
@@ -375,11 +371,11 @@ fn s4_class_generator(class_name: &str) -> SEXP {
         SETTAG(formals, dots);
         let class_str = {
             let cstr = CString::new(class_name).unwrap_or_default();
-            Rf_mkString(cstr.as_ptr())
+            mk_string_cstr(&cstr)
         };
         let _class_str = protect(class_str);
         let body =
-            crate::sexp::constructors::Rf_lang3(Rf_install(c"new".as_ptr()), class_str, dots);
+            crate::sexp::constructors::Rf_lang3(install_str("new"), class_str, dots);
         let _body = protect(body);
         crate::mainutils::dstruct::mkCLOSXP(formals, body, crate::sexp::globals::R_BaseEnv())
     }
@@ -427,7 +423,7 @@ fn ensure_methods_namespace() -> Option<SEXP> {
 fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
     unsafe {
         let namespace = ensure_methods_namespace()?;
-        let symbol = Rf_install(name.as_ptr());
+        let symbol = install_cstr(&name);
         let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
             return None;
@@ -567,13 +563,13 @@ pub fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     let _ = result_mut.try_set_vector_elt(i as R_xlen_t, val_owned);
                 }
                 let cstr = CString::new(name.as_str()).unwrap_or_default();
-                if let Ok(charsxp) = owner.sexp(crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()))
+                if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cstr))
                 {
                     let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
                 }
             }
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
         let finished = finish_s4_object(result, &class_name);
         drop(proto_guards);
         finished
@@ -581,27 +577,25 @@ pub fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
-    unsafe {
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class_vec.is_null() {
-            let _class_guard = protect(class_vec);
-            let cstr = CString::new(class_name).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            let owner = active_owner();
-            if let (Ok(mut class_mut), Ok(charsxp)) = (
-                owner.sexp(class_vec).and_then(SexpMut::try_from_checked),
-                owner.sexp(charsxp),
-            ) {
-                let _ = class_mut.try_set_string_elt(0, charsxp);
-            }
-            crate::sexp::attrib_core::setAttrib(
-                object,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class_vec,
-            );
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if !class_vec.is_null() {
+        let _class_guard = protect(class_vec);
+        let cstr = CString::new(class_name).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        let owner = active_owner();
+        if let (Ok(mut class_mut), Ok(charsxp)) = (
+            owner.sexp(class_vec).and_then(SexpMut::try_from_checked),
+            owner.sexp(charsxp),
+        ) {
+            let _ = class_mut.try_set_string_elt(0, charsxp);
         }
-        crate::mainutils::objects::asS4(object, TRUE, 0)
+        crate::sexp::attrib_core::setAttrib(
+            object,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class_vec,
+        );
     }
+    crate::mainutils::objects::asS4(object, TRUE, 0)
 }
 
 /// GNU `validObject(object)` — run the class validity method if present.
@@ -688,7 +682,7 @@ pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
-        let class_sym = Rf_install(c"class".as_ptr());
+        let class_sym = install_str("class");
         let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
         let class_name = if !class_val.is_null()
             && class_val != R_NilValue()
@@ -724,7 +718,7 @@ pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if TYPEOF(object) == SEXPTYPE::VECSXP {
             let n = XLENGTH(object);
-            let names_sym = Rf_install(c"names".as_ptr());
+            let names_sym = install_str("names");
             let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
             let owner = active_owner();
             let object_owned = owner_sexp(owner, object);
@@ -788,38 +782,36 @@ fn is_basic_show_class(name: &str) -> bool {
 /// GNU `data_part()`: `getDataPart(obj, TRUE)` then `UNSET_S4_OBJECT`.
 /// The data part is a base vector/closure, not an S4 object.
 fn strip_s4_data_part(value: SEXP) -> SEXP {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return value;
-        }
-        let data = crate::mainutils::duplicate::Rf_duplicate(value);
-        crate::sexp::accessors::UNSET_S4_OBJECT(data);
-        let dim =
-            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
-        let keep_dim = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2;
-        if keep_dim {
-            // GNU getDataPart for matrix/array: drop slots/class, keep dim.
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                Rf_install(c"className".as_ptr()),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                data,
-                Rf_install(c"package".as_ptr()),
-                R_NilValue(),
-            );
-        } else {
-            // GNU getDataPart for numeric/integer/...: attributes(object) <- NULL
-            crate::sexp::accessors::SET_ATTRIB(data, R_NilValue());
-        }
-        data
+    if value.is_null() || value == R_NilValue() {
+        return value;
     }
+    let data = crate::mainutils::duplicate::Rf_duplicate(value);
+    crate::sexp::accessors::UNSET_S4_OBJECT(data);
+    let dim =
+        crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
+    let keep_dim = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2;
+    if keep_dim {
+        // GNU getDataPart for matrix/array: drop slots/class, keep dim.
+        crate::sexp::attrib_core::setAttrib(
+            data,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            data,
+            install_str("className"),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            data,
+            install_str("package"),
+            R_NilValue(),
+        );
+    } else {
+        // GNU getDataPart for numeric/integer/...: attributes(object) <- NULL
+        crate::sexp::accessors::SET_ATTRIB(data, R_NilValue());
+    }
+    data
 }
 
 fn R_data_part(obj: SEXP) -> SEXP {
@@ -866,97 +858,93 @@ thread_local! {
 }
 
 fn r_data_part_fallback(obj: SEXP) -> SEXP {
-    unsafe {
-        let data_sym = Rf_install(c".Data".as_ptr());
-        let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
-        if !attr.is_null() && attr != R_NilValue() {
-            return strip_s4_data_part(unmap_slot_pseudo_null(attr));
+    let data_sym = install_str(".Data");
+    let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
+    if !attr.is_null() && attr != R_NilValue() {
+        return strip_s4_data_part(unmap_slot_pseudo_null(attr));
+    }
+    if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
+        if let Some(value) = s4_named_slot(obj, ".Data") {
+            return strip_s4_data_part(unmap_slot_pseudo_null(value));
         }
-        if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
-            if let Some(value) = s4_named_slot(obj, ".Data") {
-                return strip_s4_data_part(unmap_slot_pseudo_null(value));
-            }
-            if TYPEOF(obj) != SEXPTYPE::OBJSXP {
+        if TYPEOF(obj) != SEXPTYPE::OBJSXP {
+            return strip_s4_data_part(obj);
+        }
+        let xdata = crate::sexp::attrib_core::getAttrib(obj, install_str(".xData"));
+        if !xdata.is_null() && xdata != R_NilValue() {
+            return strip_s4_data_part(unmap_slot_pseudo_null(xdata));
+        }
+        let class_val =
+            crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
+        if TYPEOF(class_val) == SEXPTYPE::STRSXP && XLENGTH(class_val) > 0 {
+            let class_name = elt_to_string(class_val, 0);
+            if crate::mainutils::objects::s4_class(&class_name).is_some_and(|class_def| {
+                class_def.contains.iter().any(|parent| {
+                    matches!(
+                        parent.as_str(),
+                        "list"
+                            | "expression"
+                            | "formula"
+                            | "integer"
+                            | "numeric"
+                            | "double"
+                            | "character"
+                            | "logical"
+                            | "raw"
+                            | "complex"
+                            | "language"
+                            | "vector"
+                            | "function"
+                    )
+                })
+            }) {
                 return strip_s4_data_part(obj);
             }
-            let xdata = crate::sexp::attrib_core::getAttrib(obj, Rf_install(c".xData".as_ptr()));
-            if !xdata.is_null() && xdata != R_NilValue() {
-                return strip_s4_data_part(unmap_slot_pseudo_null(xdata));
-            }
-            let class_val =
-                crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
-            if TYPEOF(class_val) == SEXPTYPE::STRSXP && XLENGTH(class_val) > 0 {
-                let class_name = elt_to_string(class_val, 0);
-                if crate::mainutils::objects::s4_class(&class_name).is_some_and(|class_def| {
-                    class_def.contains.iter().any(|parent| {
-                        matches!(
-                            parent.as_str(),
-                            "list"
-                                | "expression"
-                                | "formula"
-                                | "integer"
-                                | "numeric"
-                                | "double"
-                                | "character"
-                                | "logical"
-                                | "raw"
-                                | "complex"
-                                | "language"
-                                | "vector"
-                                | "function"
-                        )
-                    })
-                }) {
-                    return strip_s4_data_part(obj);
-                }
-            }
-            return R_NilValue();
         }
-        obj
+        return R_NilValue();
     }
+    obj
 }
 
 /// R's `slotNames(Class)` — get the names of slots of an S4 class.
 pub fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let class_arg = CAR(args);
-        if class_arg.is_null() || class_arg == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    let class_arg = CAR(args);
+    if class_arg.is_null() || class_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+    if TYPEOF(class_arg) == SEXPTYPE::STRSXP {
+        if let Some(slots) =
+            crate::mainutils::objects::s4_all_slots(&elt_to_string(class_arg, 0))
+        {
+            return string_vector_from_values(&slots);
         }
-        if TYPEOF(class_arg) == SEXPTYPE::STRSXP {
+    }
+    if crate::mainutils::objects::isS4(class_arg) == TRUE {
+        let class_sym = install_str("class");
+        let class_val = crate::sexp::attrib_core::getAttrib(class_arg, class_sym);
+        if !class_val.is_null()
+            && class_val != R_NilValue()
+            && TYPEOF(class_val) == SEXPTYPE::STRSXP
+            && LENGTH(class_val) > 0
+        {
             if let Some(slots) =
-                crate::mainutils::objects::s4_all_slots(&elt_to_string(class_arg, 0))
+                crate::mainutils::objects::s4_all_slots(&elt_to_string(class_val, 0))
             {
                 return string_vector_from_values(&slots);
             }
         }
-        if crate::mainutils::objects::isS4(class_arg) == TRUE {
-            let class_sym = Rf_install(c"class".as_ptr());
-            let class_val = crate::sexp::attrib_core::getAttrib(class_arg, class_sym);
-            if !class_val.is_null()
-                && class_val != R_NilValue()
-                && TYPEOF(class_val) == SEXPTYPE::STRSXP
-                && LENGTH(class_val) > 0
-            {
-                if let Some(slots) =
-                    crate::mainutils::objects::s4_all_slots(&elt_to_string(class_val, 0))
-                {
-                    return string_vector_from_values(&slots);
-                }
-            }
-        }
-        // If it's an object with names, return names
-        let names_sym = Rf_install(c"names".as_ptr());
-        let names_val = crate::sexp::attrib_core::getAttrib(class_arg, names_sym);
-        if !names_val.is_null()
-            && names_val != R_NilValue()
-            && TYPEOF(names_val) == SEXPTYPE::STRSXP
-        {
-            return names_val;
-        }
-        // If it's a string, treat as class name - return empty
-        Rf_allocVector3(SEXPTYPE::STRSXP, 0)
     }
+    // If it's an object with names, return names
+    let names_sym = install_str("names");
+    let names_val = crate::sexp::attrib_core::getAttrib(class_arg, names_sym);
+    if !names_val.is_null()
+        && names_val != R_NilValue()
+        && TYPEOF(names_val) == SEXPTYPE::STRSXP
+    {
+        return names_val;
+    }
+    // If it's a string, treat as class name - return empty
+    Rf_allocVector3(SEXPTYPE::STRSXP, 0)
 }
 
 /// R's `slot(object, name)` — `.Call(C_R_get_slot, object, name)`.
@@ -976,31 +964,29 @@ pub fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Look up a slot stored as a named vector element (port S4
 /// representation). Exact, non-partial name matching.
 fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
-        if obj.is_null() || TYPEOF(obj) != SEXPTYPE::VECSXP {
-            return None;
-        }
-        let names_sym = Rf_install(c"names".as_ptr());
-        let names = crate::sexp::attrib_core::getAttrib(obj, names_sym);
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let n = LENGTH(names);
-        let owner = active_owner();
-        let names_owned = owner_sexp(owner, names);
-        let obj_owned = owner_sexp(owner, obj);
-        for i in 0..n {
-            if let Ok(Some(current)) = names_owned.try_string_value_elt(i as R_xlen_t)
-                && current.as_bytes() == name.as_bytes()
-            {
-                return obj_owned
-                    .try_vector_elt(i as R_xlen_t)
-                    .map(|elt| elt.as_raw())
-                    .ok();
-            }
-        }
-        None
+    if obj.is_null() || TYPEOF(obj) != SEXPTYPE::VECSXP {
+        return None;
     }
+    let names_sym = install_str("names");
+    let names = crate::sexp::attrib_core::getAttrib(obj, names_sym);
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let n = LENGTH(names);
+    let owner = active_owner();
+    let names_owned = owner_sexp(owner, names);
+    let obj_owned = owner_sexp(owner, obj);
+    for i in 0..n {
+        if let Ok(Some(current)) = names_owned.try_string_value_elt(i as R_xlen_t)
+            && current.as_bytes() == name.as_bytes()
+        {
+            return obj_owned
+                .try_vector_elt(i as R_xlen_t)
+                .map(|elt| elt.as_raw())
+                .ok();
+        }
+    }
+    None
 }
 
 /// Slot name as text: a symbol's print name, or a non-NA scalar string's
@@ -1104,7 +1090,7 @@ fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
 /// cannot store `R_NilValue`, so NULL slots use this sentinel. Pointer
 /// identity is enough because `Rf_install` interns.
 fn slot_pseudo_null() -> SEXP {
-    unsafe { Rf_install(c"\x01NULL\x01".as_ptr()) }
+    install_str("\x01NULL\x01")
 }
 
 fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
@@ -1419,14 +1405,14 @@ pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 .try_set_vector_elt(idx, arg_owned)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if let Ok(charsxp) = owner.sexp(charsxp) {
                 let _ = names_mut.try_set_string_elt(idx as R_xlen_t, charsxp);
             }
             idx += 1;
             current = CDR(current);
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
         result
     }
 }
@@ -1598,9 +1584,9 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
         let _generic_root = protect(generic);
         let generic_env = crate::sexp::accessors::CLOENV(generic);
         let table =
-            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".AllMTable".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".AllMTable"));
         let sigargs =
-            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".SigArgs".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".SigArgs"));
         if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
             return Rf_ScalarLogical(FALSE);
         }
@@ -1617,7 +1603,7 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
         }
         if !inherit && signature != R_NilValue() {
             let names =
-                crate::sexp::attrib_core::getAttrib(signature, Rf_install(c"names".as_ptr()));
+                crate::sexp::attrib_core::getAttrib(signature, install_str("names"));
             if TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) == targets.len() as i32 {
                 let mut reordered = vec!["ANY".to_string(); n];
                 let mut seen = vec![false; n];
@@ -1688,8 +1674,8 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let _generic_root = protect(generic);
         let env = crate::sexp::accessors::CLOENV(generic);
-        let table = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".AllMTable".as_ptr()));
-        let sigargs = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".SigArgs".as_ptr()));
+        let table = crate::sexp::envir::R_findVarInFrame(env, install_str(".AllMTable"));
+        let sigargs = crate::sexp::envir::R_findVarInFrame(env, install_str(".SigArgs"));
         if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
             fail("no generic function found")
         }
@@ -1742,10 +1728,10 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 value,
             );
         }
-        let class = Rf_mkString(c"MethodDefinition".as_ptr());
+        let class = mk_string_cstr(c"MethodDefinition");
         let _class_root = protect(class);
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c".Data".as_ptr()), method);
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
+        crate::sexp::attrib_core::setAttrib(result, install_str(".Data"), method);
         crate::sexp::accessors::SET_S4_OBJECT(result);
         result
     }

@@ -6,6 +6,8 @@ use crate::sexp::object::{Sexp, SexpMut};
 use crate::sexp::owner::OwnerToken;
 use std::os::raw::c_double;
 
+pub(crate) use crate::sexp::symbol::install_str;
+
 /// Capture the active original owner for checked element access.
 ///
 /// SAFETY: these translated helpers run inside the evaluator on the active
@@ -1096,4 +1098,93 @@ mod grep_indices_memory_tests {
         drop(iter);
         assert_eq!(ledger.workspace_bytes_for_test(), 0);
     }
+}
+
+/// Scalar `CHARSXP` from a borrowed C string (`Rf_mkChar`).
+///
+/// Taking `&CStr` keeps the pointer contract on the type: the borrow is a
+/// live, NUL-terminated buffer for the whole call.
+pub(crate) fn mk_char_cstr(text: &std::ffi::CStr) -> SEXP {
+    // SAFETY: `text` is a live NUL-terminated borrow for the duration of the
+    // call; `Rf_mkChar` only copies the bytes before the terminator.
+    unsafe { Rf_mkChar(text.as_ptr()) }
+}
+
+/// Scalar `STRSXP` from a borrowed C string (`Rf_mkString`).
+pub(crate) fn mk_string_cstr(text: &std::ffi::CStr) -> SEXP {
+    // SAFETY: `text` is a live NUL-terminated borrow for the duration of the
+    // call; `Rf_mkString` only copies the bytes before the terminator.
+    unsafe { Rf_mkString(text.as_ptr()) }
+}
+
+/// Intern a borrowed C string as a symbol (`Rf_install`); non-UTF-8 names
+/// yield a null SEXP exactly like `Rf_install`.
+pub(crate) fn install_cstr(name: &std::ffi::CStr) -> SEXP {
+    match name.to_str() {
+        Ok(name) => crate::sexp::symbol::install_str(name),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Frame-local lookup (`R_findVarInFrame`), `R_UnboundValue` when absent.
+pub(crate) fn find_var_in_frame(rho: SEXP, symbol: SEXP) -> SEXP {
+    let unbound = R_UnboundValue();
+    if rho.is_null() || symbol.is_null() {
+        return unbound;
+    }
+    let owner = active_owner();
+    match (owner.sexp(rho), owner.sexp(symbol)) {
+        (Ok(rho), Ok(symbol)) => crate::sexp::envir::find_var_in_frame_safe(rho, symbol)
+            .map(|value| value.as_raw())
+            .unwrap_or(unbound),
+        _ => unbound,
+    }
+}
+
+/// Inherited variable lookup (`R_findVar`), `R_UnboundValue` when absent.
+pub(crate) fn find_var(symbol: SEXP, rho: SEXP) -> SEXP {
+    let unbound = R_UnboundValue();
+    if symbol.is_null() {
+        return unbound;
+    }
+    let owner = active_owner();
+    match (owner.sexp(symbol), owner.sexp(rho)) {
+        (Ok(symbol), Ok(rho)) => crate::sexp::envir::find_var_safe(symbol, rho)
+            .map(|value| value.as_raw())
+            .unwrap_or(unbound),
+        _ => unbound,
+    }
+}
+
+/// Function lookup (`findFun`), `R_UnboundValue` when absent.
+pub(crate) fn find_fun(symbol: SEXP, rho: SEXP) -> SEXP {
+    let unbound = R_UnboundValue();
+    if symbol.is_null() {
+        return unbound;
+    }
+    let owner = active_owner();
+    match (owner.sexp(symbol), owner.sexp(rho)) {
+        (Ok(symbol), Ok(rho)) => crate::sexp::envir::find_fun_safe(symbol, rho)
+            .map(|value| value.as_raw())
+            .unwrap_or(unbound),
+        _ => unbound,
+    }
+}
+
+/// Force a promise (`forcePromise`), `R_NilValue` for null/invalid input.
+pub(crate) fn force_promise(prom: SEXP) -> SEXP {
+    if prom.is_null() {
+        return R_NilValue();
+    }
+    match active_owner().sexp(prom) {
+        Ok(prom) => crate::sexp::envir::force_promise_safe(prom)
+            .map(|value| value.as_raw())
+            .unwrap_or_else(R_NilValue),
+        Err(_) => R_NilValue(),
+    }
+}
+
+/// Bind `symbol` to `value` in `rho`'s frame (`defineVar`).
+pub(crate) fn define_var(symbol: SEXP, value: SEXP, rho: SEXP) {
+    let _ = crate::sexp::envir::define_var_updates(symbol, value, rho);
 }

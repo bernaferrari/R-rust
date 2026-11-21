@@ -80,7 +80,7 @@ pub(crate) fn namespace_exports_contains(
             let Ok(name) = CString::new(name) else {
                 return false;
             };
-            let value = crate::sexp::envir::R_findVarInFrame(exports, Rf_install(name.as_ptr()));
+            let value = crate::sexp::envir::R_findVarInFrame(exports, install_cstr(&name));
             return !value.is_null() && value != crate::sexp::globals::R_UnboundValue();
         }
         let Some(directives) = cached_namespace_directives(package_dir) else {
@@ -99,7 +99,7 @@ pub(crate) fn namespace_exports_contains(
             return false;
         }
         let c_name = CString::new(name).unwrap_or_else(|_| CString::new("").unwrap());
-        let value = crate::sexp::envir::R_findVarInFrame(package_env, Rf_install(c_name.as_ptr()));
+        let value = crate::sexp::envir::R_findVarInFrame(package_env, install_cstr(&c_name));
         !value.is_null() && value != crate::sexp::globals::R_UnboundValue()
     }
 }
@@ -253,7 +253,7 @@ pub(crate) fn register_namespace_s3_methods(
                     package, method_name
                 ));
             };
-            let method_sym = Rf_install(method_cstr.as_ptr());
+            let method_sym = install_cstr(&method_cstr);
             let method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
             if method_value.is_null()
                 || method_value == R_NilValue()
@@ -285,7 +285,7 @@ pub(crate) fn register_namespace_s3_methods(
             // GNU registerS3method: methods for a closure generic live in
             // environment(fdef); primitives use .BaseNamespaceEnv.
             if let Ok(generic_cstr) = CString::new(local_generic) {
-                let generic_sym = Rf_install(generic_cstr.as_ptr());
+                let generic_sym = install_cstr(&generic_cstr);
                 let fdef = crate::sexp::envir::findFun(generic_sym, package_env);
                 if is_function_value(fdef) {
                     let defenv = if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
@@ -530,7 +530,7 @@ pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
     unsafe {
         let mut info = crate::sexp::envir::R_findVarInFrame(
             package_env,
-            Rf_install(c".__NAMESPACE__.".as_ptr()),
+            install_str(".__NAMESPACE__."),
         );
         if TYPEOF(info) == SEXPTYPE::PROMSXP {
             info = crate::sexp::envir::forcePromise(info);
@@ -542,7 +542,7 @@ pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
             return None;
         }
         let mut exports =
-            crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"exports".as_ptr()));
+            crate::sexp::envir::R_findVarInFrame(info, install_str("exports"));
         if TYPEOF(exports) == SEXPTYPE::PROMSXP {
             exports = crate::sexp::envir::forcePromise(exports);
         }
@@ -720,7 +720,7 @@ pub(super) fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEX
             let Ok(cname) = CString::new(name.as_str()) else {
                 continue;
             };
-            let symbol = Rf_install(cname.as_ptr());
+            let symbol = install_cstr(&cname);
             let value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
             if value.is_null()
                 || value == R_NilValue()

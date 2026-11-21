@@ -2,69 +2,67 @@ use super::*;
 
 /// GNU `julian.Date(x, origin=as.Date("1970-01-01"))`.
 pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+    } else {
+        x
+    };
+    let _x = protect(x);
+    let posix = sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt");
+    let mut origin_val = 0.0;
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let origin = CAR(rest);
+        if !origin.is_null()
+            && origin != R_NilValue()
+            && TYPEOF(origin) == SEXPTYPE::REALSXP
+            && XLENGTH(origin) > 0
+        {
+            origin_val = real_elt_checked(origin, 0);
         }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
-            do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
         } else {
-            x
+            NA_REAL
         };
-        let _x = protect(x);
-        let posix = sexp_has_class(x, "POSIXct") || sexp_has_class(x, "POSIXt");
-        let mut origin_val = 0.0;
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let origin = CAR(rest);
-            if !origin.is_null()
-                && origin != R_NilValue()
-                && TYPEOF(origin) == SEXPTYPE::REALSXP
-                && XLENGTH(origin) > 0
-            {
-                origin_val = real_elt_checked(origin, 0);
-            }
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            } else {
-                NA_REAL
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, if posix {
-                (v - origin_val) / 86_400.0
-            } else {
-                v - origin_val
-            });
-        }
-        let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-        let _o = protect(origin);
-        set_real_checked(origin, 0, origin_val);
-        if posix {
-            set_posixct_class(origin, "GMT");
-            set_single_class(result, "difftime");
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-                Rf_mkString(c"days".as_ptr()),
-            );
+        set_real_checked(result, (i as usize) as R_xlen_t, if posix {
+            (v - origin_val) / 86_400.0
         } else {
-            set_single_class(origin, "Date");
-        }
+            v - origin_val
+        });
+    }
+    let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+    let _o = protect(origin);
+    set_real_checked(origin, 0, origin_val);
+    if posix {
+        set_posixct_class(origin, "GMT");
+        set_single_class(result, "difftime");
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::symbol::Rf_install(c"origin".as_ptr()),
-            origin,
+            install_str("units"),
+            mk_string_cstr(c"days"),
         );
-        result
+    } else {
+        set_single_class(origin, "Date");
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("origin"),
+        origin,
+    );
+    result
 }
 
 fn difftime_seconds(x: SEXP) -> f64 {
@@ -207,7 +205,7 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            install_str("units"),
             u,
         );
         result
@@ -284,10 +282,10 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let u = Rf_mkString(std::ffi::CString::new(units).unwrap_or_default().as_ptr());
             crate::sexp::attrib_core::setAttrib(
                 result,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                install_str("units"),
                 u,
             );
-            let class = Rf_mkString(c"difftime".as_ptr());
+            let class = mk_string_cstr(c"difftime");
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -346,7 +344,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            install_str("units"),
             u,
         );
         result
@@ -355,10 +353,8 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `units(x)` is attr(x, "units").
 pub fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::attrib_core::getAttrib(
-            CAR(args),
-            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-        )
-    }
+    crate::sexp::attrib_core::getAttrib(
+        CAR(args),
+        install_str("units"),
+    )
 }

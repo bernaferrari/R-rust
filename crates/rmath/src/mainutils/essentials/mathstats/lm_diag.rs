@@ -203,7 +203,7 @@ pub fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let name = CString::new(name).map_err(|_| "invalid arithmetic symbol")?;
                     access
                         .with_native(|original| {
-                            let symbol = Rf_install(name.as_ptr());
+                            let symbol = install_cstr(&name);
                             original.require_active()?;
                             original.sexp(symbol)?.into_owned()
                         })
@@ -386,7 +386,7 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let coef = list_named_elt(obj, "coefficients");
         let fitted = list_named_elt(obj, "fitted.values");
         if coef == R_NilValue() || XLENGTH(coef) < 2 || fitted == R_NilValue() {
-            let pc = crate::sexp::constructors::Rf_lang2(Rf_install(c"predict".as_ptr()), obj);
+            let pc = crate::sexp::constructors::Rf_lang2(install_str("predict"), obj);
             let _pc = protect(pc);
             return crate::eval::eval::Rf_eval(pc, rho);
         }
@@ -424,10 +424,10 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_integer_checked(rn, (1) as R_xlen_t, -(n as i32));
         crate::sexp::attrib_core::setAttrib(
             df,
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            install_str("row.names"),
             rn,
         );
-        let dfc = Rf_mkString(c"data.frame".as_ptr());
+        let dfc = mk_string_cstr(c"data.frame");
         let _dc = protect(dfc);
         crate::sexp::attrib_core::setAttrib(df, crate::sexp::attrib_core::R_ClassSymbol(), dfc);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
@@ -443,7 +443,7 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::essentials::set_string_names(result, &[tname]);
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(c"constant".as_ptr()),
+            install_str("constant"),
             Rf_ScalarReal(b0 + b1 * meanx),
         );
         result
@@ -558,14 +558,14 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_real_checked(ctab, (7) as R_xlen_t, p1);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
-        SET_STRING_ELT(rn, 1, Rf_mkChar(c"x".as_ptr()));
+        SET_STRING_ELT(rn, 0, mk_char_cstr(c"(Intercept)"));
+        SET_STRING_ELT(rn, 1, mk_char_cstr(c"x"));
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(c"Estimate".as_ptr()));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(c"Std. Error".as_ptr()));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(c"t value".as_ptr()));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(c"Pr(>|t|)".as_ptr()));
+        SET_STRING_ELT(cn, 0, mk_char_cstr(c"Estimate"));
+        SET_STRING_ELT(cn, 1, mk_char_cstr(c"Std. Error"));
+        SET_STRING_ELT(cn, 2, mk_char_cstr(c"t value"));
+        SET_STRING_ELT(cn, 3, mk_char_cstr(c"Pr(>|t|)"));
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _dn = protect(dn);
         SET_VECTOR_ELT(dn, 0, rn);
@@ -601,7 +601,7 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "fstatistic".to_string(),
             ],
         );
-        let class = Rf_mkString(c"summary.lm".as_ptr());
+        let class = mk_string_cstr(c"summary.lm");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -619,88 +619,86 @@ pub fn do_summary_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `anova(lm)` one-term table.
 pub fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let resid = list_named_elt(obj, "residuals");
-        let fitted = list_named_elt(obj, "fitted.values");
-        let dfr = list_named_elt(obj, "df.residual");
-        let rank = list_named_elt(obj, "rank");
-        if resid == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(resid) as usize;
-        let df_res = if dfr != R_NilValue() {
-            elt_real_safe(dfr, 0)
-        } else {
-            (n as f64) - 2.0
-        };
-        let df_mod = if rank != R_NilValue() {
-            (elt_real_safe(rank, 0) - 1.0).max(1.0)
-        } else {
-            (n as f64 - 1.0 - df_res).max(1.0)
-        };
-        let mut sse = 0.0;
-        let mut ysum = 0.0;
-        let mut ys = Vec::with_capacity(n);
-        for i in 0..n {
-            let e = elt_real_safe(resid, i as i64);
-            let f = if fitted != R_NilValue() {
-                elt_real_safe(fitted, i as i64)
-            } else {
-                0.0
-            };
-            let y = f + e;
-            ys.push(y);
-            ysum += y;
-            sse += e * e;
-        }
-        let ybar = ysum / n as f64;
-        let sst: f64 = ys.iter().map(|y| (y - ybar) * (y - ybar)).sum();
-        let ssr = sst - sse;
-        let msr = ssr / df_mod;
-        let mse = if df_res > 0.0 { sse / df_res } else { f64::NAN };
-        let f = if mse > 0.0 { msr / mse } else { f64::NAN };
-        let p = crate::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
-        let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _t = protect(tab);
-        let dfcol = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _df = protect(dfcol);
-        set_integer_checked(dfcol, 0, df_mod as i32);
-        set_integer_checked(dfcol, (1) as R_xlen_t, df_res as i32);
-        let col = |vals: [f64; 2]| {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            set_real_checked(v, 0, vals[0]);
-            set_real_checked(v, (1) as R_xlen_t, vals[1]);
-            v
-        };
-        SET_VECTOR_ELT(tab, 0, dfcol);
-        SET_VECTOR_ELT(tab, 1, col([ssr, sse]));
-        SET_VECTOR_ELT(tab, 2, col([msr, mse]));
-        SET_VECTOR_ELT(tab, 3, col([f, NA_REAL]));
-        SET_VECTOR_ELT(tab, 4, col([p, NA_REAL]));
-
-        crate::mainutils::essentials::set_string_names(
-            tab,
-            &[
-                "Df".to_string(),
-                "Sum Sq".to_string(),
-                "Mean Sq".to_string(),
-                "F value".to_string(),
-                "Pr(>F)".to_string(),
-            ],
-        );
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, Rf_mkChar(c"x".as_ptr()));
-        SET_STRING_ELT(rn, 1, Rf_mkChar(c"Residuals".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"anova".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"data.frame".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        tab
+    let obj = CAR(args);
+    let resid = list_named_elt(obj, "residuals");
+    let fitted = list_named_elt(obj, "fitted.values");
+    let dfr = list_named_elt(obj, "df.residual");
+    let rank = list_named_elt(obj, "rank");
+    if resid == R_NilValue() {
+        return R_NilValue();
     }
+    let n = XLENGTH(resid) as usize;
+    let df_res = if dfr != R_NilValue() {
+        elt_real_safe(dfr, 0)
+    } else {
+        (n as f64) - 2.0
+    };
+    let df_mod = if rank != R_NilValue() {
+        (elt_real_safe(rank, 0) - 1.0).max(1.0)
+    } else {
+        (n as f64 - 1.0 - df_res).max(1.0)
+    };
+    let mut sse = 0.0;
+    let mut ysum = 0.0;
+    let mut ys = Vec::with_capacity(n);
+    for i in 0..n {
+        let e = elt_real_safe(resid, i as i64);
+        let f = if fitted != R_NilValue() {
+            elt_real_safe(fitted, i as i64)
+        } else {
+            0.0
+        };
+        let y = f + e;
+        ys.push(y);
+        ysum += y;
+        sse += e * e;
+    }
+    let ybar = ysum / n as f64;
+    let sst: f64 = ys.iter().map(|y| (y - ybar) * (y - ybar)).sum();
+    let ssr = sst - sse;
+    let msr = ssr / df_mod;
+    let mse = if df_res > 0.0 { sse / df_res } else { f64::NAN };
+    let f = if mse > 0.0 { msr / mse } else { f64::NAN };
+    let p = crate::dist::f_dist::pf_inner(f, df_mod, df_res, false, false);
+    let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _t = protect(tab);
+    let dfcol = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _df = protect(dfcol);
+    set_integer_checked(dfcol, 0, df_mod as i32);
+    set_integer_checked(dfcol, (1) as R_xlen_t, df_res as i32);
+    let col = |vals: [f64; 2]| {
+        let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        set_real_checked(v, 0, vals[0]);
+        set_real_checked(v, (1) as R_xlen_t, vals[1]);
+        v
+    };
+    SET_VECTOR_ELT(tab, 0, dfcol);
+    SET_VECTOR_ELT(tab, 1, col([ssr, sse]));
+    SET_VECTOR_ELT(tab, 2, col([msr, mse]));
+    SET_VECTOR_ELT(tab, 3, col([f, NA_REAL]));
+    SET_VECTOR_ELT(tab, 4, col([p, NA_REAL]));
+
+    crate::mainutils::essentials::set_string_names(
+        tab,
+        &[
+            "Df".to_string(),
+            "Sum Sq".to_string(),
+            "Mean Sq".to_string(),
+            "F value".to_string(),
+            "Pr(>F)".to_string(),
+        ],
+    );
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _rn = protect(rn);
+    SET_STRING_ELT(rn, 0, mk_char_cstr(c"x"));
+    SET_STRING_ELT(rn, 1, mk_char_cstr(c"Residuals"));
+    crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _cl = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"anova"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"data.frame"));
+    crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    tab
 }
 
 /// GNU `model.tables(aov, type="means")` — fitted cell means.
@@ -742,26 +740,24 @@ pub fn do_print_coefmat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// GNU `summary.aov` — list of one anova table.
 pub fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let tab = do_anova_lm(call, op, args, rho);
-        if tab.is_null() || tab == R_NilValue() {
-            return tab;
-        }
-        let _t = protect(tab);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, tab);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"summary.aov".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"listof".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let tab = do_anova_lm(call, op, args, rho);
+    if tab.is_null() || tab == R_NilValue() {
+        return tab;
     }
+    let _t = protect(tab);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, tab);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _cl = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"summary.aov"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"listof"));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn lm_n_p_rss(obj: SEXP) -> Option<(f64, f64, f64)> {
@@ -802,53 +798,51 @@ fn add1_drop1_table(
     alt_rss: f64,
     alt_aic: f64,
 ) -> SEXP {
-    unsafe {
-        let col = |a: f64, b: f64| {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            set_real_checked(v, 0, a);
-            set_real_checked(v, (1) as R_xlen_t, b);
-            v
-        };
-        let dfv = col(f64::NAN, df);
-        let _d = protect(dfv);
-        let ssqv = col(f64::NAN, ssq);
-        let _s = protect(ssqv);
-        let rssv = col(none_rss, alt_rss);
-        let _r = protect(rssv);
-        let aicv = col(none_aic, alt_aic);
-        let _a = protect(aicv);
-        let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
-        let _t = protect(tab);
-        SET_VECTOR_ELT(tab, 0, dfv);
-        SET_VECTOR_ELT(tab, 1, ssqv);
-        SET_VECTOR_ELT(tab, 2, rssv);
-        SET_VECTOR_ELT(tab, 3, aicv);
-        set_string_names(
-            tab,
-            &[
-                "Df".to_string(),
-                "Sum of Sq".to_string(),
-                "RSS".to_string(),
-                "AIC".to_string(),
-            ],
-        );
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, Rf_mkChar(c"<none>".as_ptr()));
-        let c = CString::new(term).unwrap_or_default();
-        SET_STRING_ELT(rn, 1, Rf_mkChar(c.as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            tab,
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
-            rn,
-        );
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _cl = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"anova".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"data.frame".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        tab
-    }
+    let col = |a: f64, b: f64| {
+        let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        set_real_checked(v, 0, a);
+        set_real_checked(v, (1) as R_xlen_t, b);
+        v
+    };
+    let dfv = col(f64::NAN, df);
+    let _d = protect(dfv);
+    let ssqv = col(f64::NAN, ssq);
+    let _s = protect(ssqv);
+    let rssv = col(none_rss, alt_rss);
+    let _r = protect(rssv);
+    let aicv = col(none_aic, alt_aic);
+    let _a = protect(aicv);
+    let tab = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+    let _t = protect(tab);
+    SET_VECTOR_ELT(tab, 0, dfv);
+    SET_VECTOR_ELT(tab, 1, ssqv);
+    SET_VECTOR_ELT(tab, 2, rssv);
+    SET_VECTOR_ELT(tab, 3, aicv);
+    set_string_names(
+        tab,
+        &[
+            "Df".to_string(),
+            "Sum of Sq".to_string(),
+            "RSS".to_string(),
+            "AIC".to_string(),
+        ],
+    );
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _rn = protect(rn);
+    SET_STRING_ELT(rn, 0, mk_char_cstr(c"<none>"));
+    let c = CString::new(term).unwrap_or_default();
+    SET_STRING_ELT(rn, 1, mk_char_cstr(&c));
+    crate::sexp::attrib_core::setAttrib(
+        tab,
+        install_str("row.names"),
+        rn,
+    );
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _cl = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"anova"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"data.frame"));
+    crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    tab
 }
 
 /// GNU `drop1(lm)` — intercept-only vs fitted model.
@@ -895,71 +889,69 @@ pub fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `add1(lm, scope)` — add one extra numeric term.
 pub fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let Some((n, p, rss)) = lm_n_p_rss(obj) else {
-            return R_NilValue();
-        };
-        let scope = CAR(CDR(args));
-        let form =
-            crate::library::stats::filter::do_formula(call, op, Rf_cons(obj, R_NilValue()), rho);
-        let _f = protect(form);
-        let extra = crate::library::stats::filter::do_add_scope(
-            call,
-            op,
-            Rf_cons(form, Rf_cons(scope, R_NilValue())),
-            rho,
-        );
-        let _e = protect(extra);
-        let term = if TYPEOF(extra) == SEXPTYPE::STRSXP && XLENGTH(extra) > 0 {
-            charsxp_text(STRING_ELT(extra, 0)).unwrap_or_default()
-        } else {
-            return R_NilValue();
-        };
-        let t0 =
-            crate::library::stats::filter::do_terms(call, op, Rf_cons(form, R_NilValue()), rho);
-        let _t0 = protect(t0);
-        let old = crate::sexp::attrib_core::getAttrib(
-            t0,
-            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
-        );
-        let nlab = if TYPEOF(old) == SEXPTYPE::STRSXP {
-            XLENGTH(old)
-        } else {
-            0
-        };
-        let kept = Rf_allocVector3(SEXPTYPE::STRSXP, nlab + 1);
-        let _k = protect(kept);
-        for i in 0..nlab {
-            SET_STRING_ELT(kept, i, STRING_ELT(old, i));
-        }
-        let tc = CString::new(term.as_str()).unwrap_or_default();
-        SET_STRING_ELT(kept, nlab, Rf_mkChar(tc.as_ptr()));
-        let resp = Rf_mkString(c"y".as_ptr());
-        let _rs = protect(resp);
-        let bigf = crate::library::stats::filter::do_reformulate(
-            call,
-            op,
-            Rf_cons(kept, Rf_cons(resp, R_NilValue())),
-            rho,
-        );
-        let _bf = protect(bigf);
-        let bigger = do_lm(call, op, Rf_cons(bigf, R_NilValue()), rho);
-        let _b = protect(bigger);
-        let Some((n2, p2, rss2)) = lm_n_p_rss(bigger) else {
-            return R_NilValue();
-        };
-        let _ = n2;
-        add1_drop1_table(
-            rss,
-            lm_aic(n, p, rss),
-            &term,
-            1.0,
-            rss - rss2,
-            rss2,
-            lm_aic(n, p2, rss2),
-        )
+    let obj = CAR(args);
+    let Some((n, p, rss)) = lm_n_p_rss(obj) else {
+        return R_NilValue();
+    };
+    let scope = CAR(CDR(args));
+    let form =
+        crate::library::stats::filter::do_formula(call, op, Rf_cons(obj, R_NilValue()), rho);
+    let _f = protect(form);
+    let extra = crate::library::stats::filter::do_add_scope(
+        call,
+        op,
+        Rf_cons(form, Rf_cons(scope, R_NilValue())),
+        rho,
+    );
+    let _e = protect(extra);
+    let term = if TYPEOF(extra) == SEXPTYPE::STRSXP && XLENGTH(extra) > 0 {
+        charsxp_text(STRING_ELT(extra, 0)).unwrap_or_default()
+    } else {
+        return R_NilValue();
+    };
+    let t0 =
+        crate::library::stats::filter::do_terms(call, op, Rf_cons(form, R_NilValue()), rho);
+    let _t0 = protect(t0);
+    let old = crate::sexp::attrib_core::getAttrib(
+        t0,
+        install_str("term.labels"),
+    );
+    let nlab = if TYPEOF(old) == SEXPTYPE::STRSXP {
+        XLENGTH(old)
+    } else {
+        0
+    };
+    let kept = Rf_allocVector3(SEXPTYPE::STRSXP, nlab + 1);
+    let _k = protect(kept);
+    for i in 0..nlab {
+        SET_STRING_ELT(kept, i, STRING_ELT(old, i));
     }
+    let tc = CString::new(term.as_str()).unwrap_or_default();
+    SET_STRING_ELT(kept, nlab, mk_char_cstr(&tc));
+    let resp = mk_string_cstr(c"y");
+    let _rs = protect(resp);
+    let bigf = crate::library::stats::filter::do_reformulate(
+        call,
+        op,
+        Rf_cons(kept, Rf_cons(resp, R_NilValue())),
+        rho,
+    );
+    let _bf = protect(bigf);
+    let bigger = do_lm(call, op, Rf_cons(bigf, R_NilValue()), rho);
+    let _b = protect(bigger);
+    let Some((n2, p2, rss2)) = lm_n_p_rss(bigger) else {
+        return R_NilValue();
+    };
+    let _ = n2;
+    add1_drop1_table(
+        rss,
+        lm_aic(n, p, rss),
+        &term,
+        1.0,
+        rss - rss2,
+        rss2,
+        lm_aic(n, p2, rss2),
+    )
 }
 
 /// GNU `step(lm, trace=0)` — keep the fit when dropping raises AIC.
@@ -982,249 +974,243 @@ pub fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU two-sample `power.t.test(n, delta)`.
 pub fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut n = NA_REAL;
-        let mut delta = NA_REAL;
-        let mut sd = 1.0;
-        let mut sig_level = 0.05;
-        let mut cell = args;
-        let mut pos = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let v = CAR(cell);
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let val = if !v.is_null() && v != R_NilValue() {
-                elt_real_safe(v, 0)
-            } else {
-                NA_REAL
-            };
-            if name == "n" || (name.is_empty() && pos == 0) {
-                n = val;
-            } else if name == "delta" || (name.is_empty() && pos == 1) {
-                delta = val;
-            } else if name == "sd" || (name.is_empty() && pos == 2) {
-                if val.is_finite() {
-                    sd = val;
-                }
-            } else if name == "sig.level" || (name.is_empty() && pos == 3) {
-                if val.is_finite() {
-                    sig_level = val;
-                }
+    let mut n = NA_REAL;
+    let mut delta = NA_REAL;
+    let mut sd = 1.0;
+    let mut sig_level = 0.05;
+    let mut cell = args;
+    let mut pos = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let v = CAR(cell);
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let val = if !v.is_null() && v != R_NilValue() {
+            elt_real_safe(v, 0)
+        } else {
+            NA_REAL
+        };
+        if name == "n" || (name.is_empty() && pos == 0) {
+            n = val;
+        } else if name == "delta" || (name.is_empty() && pos == 1) {
+            delta = val;
+        } else if name == "sd" || (name.is_empty() && pos == 2) {
+            if val.is_finite() {
+                sd = val;
             }
-            if name.is_empty() {
-                pos += 1;
+        } else if name == "sig.level" || (name.is_empty() && pos == 3) {
+            if val.is_finite() {
+                sig_level = val;
             }
-            cell = CDR(cell);
         }
-        let nu = (n - 1.0).max(1e-7) * 2.0;
-        let qu = crate::dist::t_dist::qt_inner(sig_level / 2.0, nu, false, false);
-        let ncp = (n / 2.0).sqrt() * delta.abs() / sd;
-        let power = crate::dist::nt_dist::pnt_inner(qu, nu, ncp, false, false);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(delta));
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(sd));
-        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(sig_level));
-        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(power));
-        SET_VECTOR_ELT(result, 5, Rf_mkString(c"two.sided".as_ptr()));
-        SET_VECTOR_ELT(
-            result,
-            6,
-            Rf_mkString(c"n is number in *each* group".as_ptr()),
-        );
-        SET_VECTOR_ELT(
-            result,
-            7,
-            Rf_mkString(c"Two-sample t test power calculation".as_ptr()),
-        );
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "n".to_string(),
-                "delta".to_string(),
-                "sd".to_string(),
-                "sig.level".to_string(),
-                "power".to_string(),
-                "alternative".to_string(),
-                "note".to_string(),
-                "method".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"power.htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        if name.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
     }
+    let nu = (n - 1.0).max(1e-7) * 2.0;
+    let qu = crate::dist::t_dist::qt_inner(sig_level / 2.0, nu, false, false);
+    let ncp = (n / 2.0).sqrt() * delta.abs() / sd;
+    let power = crate::dist::nt_dist::pnt_inner(qu, nu, ncp, false, false);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(delta));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(sd));
+    SET_VECTOR_ELT(result, 3, Rf_ScalarReal(sig_level));
+    SET_VECTOR_ELT(result, 4, Rf_ScalarReal(power));
+    SET_VECTOR_ELT(result, 5, mk_string_cstr(c"two.sided"));
+    SET_VECTOR_ELT(
+        result,
+        6,
+        mk_string_cstr(c"n is number in *each* group"),
+    );
+    SET_VECTOR_ELT(
+        result,
+        7,
+        mk_string_cstr(c"Two-sample t test power calculation"),
+    );
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "n".to_string(),
+            "delta".to_string(),
+            "sd".to_string(),
+            "sig.level".to_string(),
+            "power".to_string(),
+            "alternative".to_string(),
+            "note".to_string(),
+            "method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"power.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU two-sample `power.prop.test(n, p1, p2)`.
 pub fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut n = NA_REAL;
-        let mut p1 = NA_REAL;
-        let mut p2 = NA_REAL;
-        let mut sig_level = 0.05;
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let v = CAR(cell);
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let val = if !v.is_null() && v != R_NilValue() {
-                elt_real_safe(v, 0)
-            } else {
-                NA_REAL
-            };
-            match name.as_str() {
-                "n" => n = val,
-                "p1" => p1 = val,
-                "p2" => p2 = val,
-                "sig.level" => {
-                    if val.is_finite() {
-                        sig_level = val;
-                    }
+    let mut n = NA_REAL;
+    let mut p1 = NA_REAL;
+    let mut p2 = NA_REAL;
+    let mut sig_level = 0.05;
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let v = CAR(cell);
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let val = if !v.is_null() && v != R_NilValue() {
+            elt_real_safe(v, 0)
+        } else {
+            NA_REAL
+        };
+        match name.as_str() {
+            "n" => n = val,
+            "p1" => p1 = val,
+            "p2" => p2 = val,
+            "sig.level" => {
+                if val.is_finite() {
+                    sig_level = val;
                 }
-                _ => {}
             }
-            cell = CDR(cell);
+            _ => {}
         }
-        let qu = crate::dist::normal::qnorm5_inner(sig_level / 2.0, 0.0, 1.0, false, false);
-        let num = n.sqrt() * (p1 - p2).abs() - qu * ((p1 + p2) * (1.0 - (p1 + p2) / 2.0)).sqrt();
-        let den = (p1 * (1.0 - p1) + p2 * (1.0 - p2)).sqrt();
-        let power = crate::dist::normal::pnorm5_inner(num / den, 0.0, 1.0, true, false);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(p1));
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(p2));
-        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(sig_level));
-        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(power));
-        SET_VECTOR_ELT(result, 5, Rf_mkString(c"two.sided".as_ptr()));
-        SET_VECTOR_ELT(
-            result,
-            6,
-            Rf_mkString(c"n is number in *each* group".as_ptr()),
-        );
-        SET_VECTOR_ELT(
-            result,
-            7,
-            Rf_mkString(c"Two-sample comparison of proportions power calculation".as_ptr()),
-        );
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "n".to_string(),
-                "p1".to_string(),
-                "p2".to_string(),
-                "sig.level".to_string(),
-                "power".to_string(),
-                "alternative".to_string(),
-                "note".to_string(),
-                "method".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"power.htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        cell = CDR(cell);
     }
+    let qu = crate::dist::normal::qnorm5_inner(sig_level / 2.0, 0.0, 1.0, false, false);
+    let num = n.sqrt() * (p1 - p2).abs() - qu * ((p1 + p2) * (1.0 - (p1 + p2) / 2.0)).sqrt();
+    let den = (p1 * (1.0 - p1) + p2 * (1.0 - p2)).sqrt();
+    let power = crate::dist::normal::pnorm5_inner(num / den, 0.0, 1.0, true, false);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(n));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(p1));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(p2));
+    SET_VECTOR_ELT(result, 3, Rf_ScalarReal(sig_level));
+    SET_VECTOR_ELT(result, 4, Rf_ScalarReal(power));
+    SET_VECTOR_ELT(result, 5, mk_string_cstr(c"two.sided"));
+    SET_VECTOR_ELT(
+        result,
+        6,
+        mk_string_cstr(c"n is number in *each* group"),
+    );
+    SET_VECTOR_ELT(
+        result,
+        7,
+        mk_string_cstr(c"Two-sample comparison of proportions power calculation"),
+    );
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "n".to_string(),
+            "p1".to_string(),
+            "p2".to_string(),
+            "sig.level".to_string(),
+            "power".to_string(),
+            "alternative".to_string(),
+            "note".to_string(),
+            "method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"power.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU balanced one-way `power.anova.test`.
 pub fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut groups = NA_REAL;
-        let mut n = NA_REAL;
-        let mut between_var = NA_REAL;
-        let mut within_var = NA_REAL;
-        let mut sig_level = 0.05;
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let v = CAR(cell);
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let val = if !v.is_null() && v != R_NilValue() {
-                elt_real_safe(v, 0)
-            } else {
-                NA_REAL
-            };
-            match name.as_str() {
-                "groups" => groups = val,
-                "n" => n = val,
-                "between.var" => between_var = val,
-                "within.var" => within_var = val,
-                "sig.level" => {
-                    if val.is_finite() {
-                        sig_level = val;
-                    }
+    let mut groups = NA_REAL;
+    let mut n = NA_REAL;
+    let mut between_var = NA_REAL;
+    let mut within_var = NA_REAL;
+    let mut sig_level = 0.05;
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let v = CAR(cell);
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let val = if !v.is_null() && v != R_NilValue() {
+            elt_real_safe(v, 0)
+        } else {
+            NA_REAL
+        };
+        match name.as_str() {
+            "groups" => groups = val,
+            "n" => n = val,
+            "between.var" => between_var = val,
+            "within.var" => within_var = val,
+            "sig.level" => {
+                if val.is_finite() {
+                    sig_level = val;
                 }
-                _ => {}
             }
-            cell = CDR(cell);
+            _ => {}
         }
-        let df1 = groups - 1.0;
-        let df2 = (n - 1.0) * groups;
-        let lambda = df1 * n * (between_var / within_var);
-        let crit = crate::dist::f_dist::qf_inner(sig_level, df1, df2, false, false);
-        let power = crate::dist::nf_dist::pnf_inner(crit, df1, df2, lambda, false, false);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(groups));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(n));
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(between_var));
-        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(within_var));
-        SET_VECTOR_ELT(result, 4, Rf_ScalarReal(sig_level));
-        SET_VECTOR_ELT(result, 5, Rf_ScalarReal(power));
-        SET_VECTOR_ELT(
-            result,
-            6,
-            Rf_mkString(c"n is number in each group".as_ptr()),
-        );
-        SET_VECTOR_ELT(
-            result,
-            7,
-            Rf_mkString(c"Balanced one-way analysis of variance power calculation".as_ptr()),
-        );
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "groups".to_string(),
-                "n".to_string(),
-                "between.var".to_string(),
-                "within.var".to_string(),
-                "sig.level".to_string(),
-                "power".to_string(),
-                "note".to_string(),
-                "method".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"power.htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        cell = CDR(cell);
     }
+    let df1 = groups - 1.0;
+    let df2 = (n - 1.0) * groups;
+    let lambda = df1 * n * (between_var / within_var);
+    let crit = crate::dist::f_dist::qf_inner(sig_level, df1, df2, false, false);
+    let power = crate::dist::nf_dist::pnf_inner(crit, df1, df2, lambda, false, false);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(groups));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(n));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(between_var));
+    SET_VECTOR_ELT(result, 3, Rf_ScalarReal(within_var));
+    SET_VECTOR_ELT(result, 4, Rf_ScalarReal(sig_level));
+    SET_VECTOR_ELT(result, 5, Rf_ScalarReal(power));
+    SET_VECTOR_ELT(
+        result,
+        6,
+        mk_string_cstr(c"n is number in each group"),
+    );
+    SET_VECTOR_ELT(
+        result,
+        7,
+        mk_string_cstr(c"Balanced one-way analysis of variance power calculation"),
+    );
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "groups".to_string(),
+            "n".to_string(),
+            "between.var".to_string(),
+            "within.var".to_string(),
+            "sig.level".to_string(),
+            "power".to_string(),
+            "note".to_string(),
+            "method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"power.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }

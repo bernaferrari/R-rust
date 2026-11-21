@@ -195,7 +195,7 @@ pub fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for (i, (name, val)) in columns.into_iter().enumerate() {
             SET_VECTOR_ELT(result, i as R_xlen_t, val);
             let c = CString::new(name).unwrap_or_default();
-            SET_STRING_ELT(out_names, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(out_names, i as R_xlen_t, mk_char_cstr(&c));
         }
         crate::sexp::attrib_core::setAttrib(
             result,

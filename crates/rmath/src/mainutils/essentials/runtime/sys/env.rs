@@ -2,11 +2,9 @@ use super::*;
 
 /// R's `R.home()` — R home directory (simplified).
 pub fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let home = std::env::var("R_HOME").unwrap_or_else(|_| discover_installed_r_home());
-        let s = CString::new(home).unwrap_or_default();
-        Rf_mkString(s.as_ptr())
-    }
+    let home = std::env::var("R_HOME").unwrap_or_else(|_| discover_installed_r_home());
+    let s = CString::new(home).unwrap_or_default();
+    mk_string_cstr(&s)
 }
 
 fn discover_installed_r_home() -> String {
@@ -67,7 +65,7 @@ pub fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _ans_guard = protect(ans);
             for (i, var) in vars.iter().enumerate() {
                 let c_str = CString::new(var.as_str()).unwrap_or_default();
-                SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
+                SET_STRING_ELT(ans, i as R_xlen_t, mk_char_cstr(&c_str));
             }
             return ans;
         }
@@ -100,7 +98,7 @@ pub fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..n {
                 SET_STRING_ELT(names, i, STRING_ELT(x, i));
             }
-            let names_sym = Rf_install(c"names".as_ptr());
+            let names_sym = install_str("names");
             crate::sexp::attrib_core::setAttrib(result, names_sym, names);
         }
         result

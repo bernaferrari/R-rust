@@ -75,7 +75,7 @@ pub(crate) fn populate_package_namespace(
                         format!("browser package '{package}' has an invalid export")
                     })?;
                     let value =
-                        crate::sexp::envir::R_findVarInFrame(exports, Rf_install(key.as_ptr()));
+                        crate::sexp::envir::R_findVarInFrame(exports, install_cstr(&key));
                     if value == crate::sexp::globals::R_UnboundValue() {
                         return Err(format!(
                             "browser package '{package}' is missing export '{name}'"
@@ -165,7 +165,7 @@ pub(super) fn bind_cached_builtin_imports(
             let Ok(symbol_name) = CString::new(name.as_str()) else {
                 continue;
             };
-            let symbol = Rf_install(symbol_name.as_ptr());
+            let symbol = install_cstr(&symbol_name);
             let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
             if value.is_null()
                 || value == R_NilValue()
@@ -269,7 +269,7 @@ fn bind_namespace_imports(
                 missing.push(name);
                 continue;
             };
-            let symbol = Rf_install(symbol_name.as_ptr());
+            let symbol = install_cstr(&symbol_name);
             let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
             if value.is_null()
                 || value == R_NilValue()
@@ -297,7 +297,7 @@ fn bind_namespace_imports(
 pub(super) fn namespace_imports_env(package_env: SEXP) -> SEXP {
     unsafe {
         let parent = crate::sexp::accessors::ENCLOS(package_env);
-        let marker = Rf_install(c".__imports__.".as_ptr());
+        let marker = install_str(".__imports__.");
         if !parent.is_null()
             && parent != R_NilValue()
             && TYPEOF(parent) == SEXPTYPE::ENVSXP
@@ -406,7 +406,7 @@ pub(super) fn make_package_attach_env_inner(
                 }
                 continue;
             };
-            let symbol = Rf_install(symbol_name.as_ptr());
+            let symbol = install_cstr(&symbol_name);
             let mut value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
             if value.is_null()
                 || value == R_NilValue()

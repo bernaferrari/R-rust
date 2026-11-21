@@ -75,7 +75,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let size_attr = crate::sexp::attrib_core::getAttrib(
             d,
-            crate::sexp::symbol::Rf_install(c"Size".as_ptr()),
+            install_str("Size"),
         );
         let n = if !size_attr.is_null()
             && size_attr != R_NilValue()
@@ -162,7 +162,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let labels = crate::sexp::attrib_core::getAttrib(
             d,
-            crate::sexp::symbol::Rf_install(c"Labels".as_ptr()),
+            install_str("Labels"),
         );
         let method_s = Rf_mkString(
             std::ffi::CString::new(METHODS[i_meth])
@@ -172,7 +172,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _ms = protect(method_s);
         let dist_method = crate::sexp::attrib_core::getAttrib(
             d,
-            crate::sexp::symbol::Rf_install(c"method".as_ptr()),
+            install_str("method"),
         );
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let _r = protect(result);
@@ -211,7 +211,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "dist.method".to_string(),
             ],
         );
-        let class = Rf_mkString(c"hclust".as_ptr());
+        let class = mk_string_cstr(c"hclust");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -352,227 +352,217 @@ pub(super) fn class_contains(x: SEXP, name: &str) -> bool {
 
 /// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
 pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        if class_contains(obj, "dendrogram") {
-            return obj;
-        }
-        let merge = list_named_elt(obj, "merge");
-        let height = list_named_elt(obj, "height");
-        let labels = list_named_elt(obj, "labels");
-        if merge == R_NilValue() || height == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
-        }
-        let dim =
-            crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
-        let n_merge = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
-            integer_elt_checked(dim, 0) as usize
-        } else {
-            0
-        };
-        if n_merge == 0 || XLENGTH(height) as usize != n_merge {
-            crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
-        }
-        let hang = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            -1.0
-        } else {
-            elt_real_safe(CADR(args), 0)
-        };
-        let hmax = elt_real_safe(height, (n_merge as i64) - 1);
-        let z = Rf_allocVector3(SEXPTYPE::VECSXP, n_merge as i64);
-        let _z = protect(z);
-
-        let member_of = |node: SEXP| -> i32 {
-            let m = crate::sexp::attrib_core::getAttrib(
-                node,
-                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
-            );
-            if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
-                1
-            } else {
-                elt_real_safe(m, 0) as i32
-            }
-        };
-        let mid_of = |node: SEXP| -> f64 {
-            let m = crate::sexp::attrib_core::getAttrib(
-                node,
-                crate::sexp::symbol::Rf_install(c"midpoint".as_ptr()),
-            );
-            if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
-                0.0
-            } else {
-                elt_real_safe(m, 0)
-            }
-        };
-        let make_leaf = |id: i32, h0: f64| -> SEXP {
-            let leaf = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            set_integer_checked(leaf, 0, id);
-            let _leaf = protect(leaf);
-            let members_v = Rf_ScalarInteger(1);
-            let height_v = Rf_ScalarReal(h0);
-            let isleaf_v = Rf_ScalarLogical(crate::sexp::ffi::TRUE);
-            let _g1 = protect(members_v);
-            let _g2 = protect(height_v);
-            let _g3 = protect(isleaf_v);
-            crate::sexp::attrib_core::setAttrib(
-                leaf,
-                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
-                members_v,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                leaf,
-                crate::sexp::symbol::Rf_install(c"height".as_ptr()),
-                height_v,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                leaf,
-                crate::sexp::symbol::Rf_install(c"leaf".as_ptr()),
-                isleaf_v,
-            );
-
-            if !labels.is_null()
-                && labels != R_NilValue()
-                && TYPEOF(labels) == SEXPTYPE::STRSXP
-                && id >= 1
-                && (id as i64) <= XLENGTH(labels)
-            {
-                let s = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                SET_STRING_ELT(s, 0, STRING_ELT(labels, (id as i64) - 1));
-                let _s = protect(s);
-                crate::sexp::attrib_core::setAttrib(
-                    leaf,
-                    crate::sexp::symbol::Rf_install(c"label".as_ptr()),
-                    s,
-                );
-            }
-            leaf
-        };
-        let set_node = |node: SEXP, members: i32, midpoint: f64, h: f64| {
-            let m_v = Rf_ScalarInteger(members);
-            let mp_v = Rf_ScalarReal(midpoint);
-            let hh_v = Rf_ScalarReal(h);
-            let _g1 = protect(m_v);
-            let _g2 = protect(mp_v);
-            let _g3 = protect(hh_v);
-            crate::sexp::attrib_core::setAttrib(
-                node,
-                crate::sexp::symbol::Rf_install(c"members".as_ptr()),
-                m_v,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                node,
-                crate::sexp::symbol::Rf_install(c"midpoint".as_ptr()),
-                mp_v,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                node,
-                crate::sexp::symbol::Rf_install(c"height".as_ptr()),
-                hh_v,
-            );
-        };
-
-        for k in 0..n_merge {
-            let x0 = integer_elt_checked(merge, (k) as R_xlen_t);
-            let x1 = integer_elt_checked(merge, (k + n_merge) as R_xlen_t);
-            let hk = elt_real_safe(height, k as i64);
-            let h0 = if hang < 0.0 {
-                0.0
-            } else {
-                (hk - hang * hmax).max(0.0)
-            };
-            let node = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            let _node = protect(node);
-            if x0 < 0 && x1 < 0 {
-                SET_VECTOR_ELT(node, 0, make_leaf(-x0, h0));
-                SET_VECTOR_ELT(node, 1, make_leaf(-x1, h0));
-                set_node(node, 2, 0.5, hk);
-            } else if x0 < 0 || x1 < 0 {
-                let (leaf_id, internal) = if x0 < 0 { (-x0, x1) } else { (-x1, x0) };
-                let internal_node = VECTOR_ELT(z, (internal as i64) - 1);
-                let leaf = make_leaf(leaf_id, h0);
-                if x0 < 0 {
-                    SET_VECTOR_ELT(node, 0, leaf);
-                    SET_VECTOR_ELT(node, 1, internal_node);
-                } else {
-                    SET_VECTOR_ELT(node, 0, internal_node);
-                    SET_VECTOR_ELT(node, 1, leaf);
-                }
-                let left = VECTOR_ELT(node, 0);
-                let members = member_of(internal_node) + 1;
-                let midpoint = (member_of(left) as f64 + mid_of(internal_node)) / 2.0;
-                set_node(node, members, midpoint, hk);
-            } else {
-                let left = VECTOR_ELT(z, (x0 as i64) - 1);
-                let right = VECTOR_ELT(z, (x1 as i64) - 1);
-                SET_VECTOR_ELT(node, 0, left);
-                SET_VECTOR_ELT(node, 1, right);
-                let ml = member_of(left);
-                let midpoint = (ml as f64 + mid_of(left) + mid_of(right)) / 2.0;
-                set_node(node, ml + member_of(right), midpoint, hk);
-            }
-            SET_VECTOR_ELT(z, k as i64, node);
-        }
-        let result = VECTOR_ELT(z, (n_merge as i64) - 1);
-        let class = Rf_mkString(c"dendrogram".as_ptr());
-        let _c = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let obj = CAR(args);
+    if class_contains(obj, "dendrogram") {
+        return obj;
     }
+    let merge = list_named_elt(obj, "merge");
+    let height = list_named_elt(obj, "height");
+    let labels = list_named_elt(obj, "labels");
+    if merge == R_NilValue() || height == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
+    }
+    let dim =
+        crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
+    let n_merge = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
+        integer_elt_checked(dim, 0) as usize
+    } else {
+        0
+    };
+    if n_merge == 0 || XLENGTH(height) as usize != n_merge {
+        crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
+    }
+    let hang = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        -1.0
+    } else {
+        elt_real_safe(CADR(args), 0)
+    };
+    let hmax = elt_real_safe(height, (n_merge as i64) - 1);
+    let z = Rf_allocVector3(SEXPTYPE::VECSXP, n_merge as i64);
+    let _z = protect(z);
+
+    let member_of = |node: SEXP| -> i32 {
+        let m = crate::sexp::attrib_core::getAttrib(
+            node,
+            install_str("members"),
+        );
+        if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
+            1
+        } else {
+            elt_real_safe(m, 0) as i32
+        }
+    };
+    let mid_of = |node: SEXP| -> f64 {
+        let m = crate::sexp::attrib_core::getAttrib(
+            node,
+            install_str("midpoint"),
+        );
+        if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
+            0.0
+        } else {
+            elt_real_safe(m, 0)
+        }
+    };
+    let make_leaf = |id: i32, h0: f64| -> SEXP {
+        let leaf = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        set_integer_checked(leaf, 0, id);
+        let _leaf = protect(leaf);
+        let members_v = Rf_ScalarInteger(1);
+        let height_v = Rf_ScalarReal(h0);
+        let isleaf_v = Rf_ScalarLogical(crate::sexp::ffi::TRUE);
+        let _g1 = protect(members_v);
+        let _g2 = protect(height_v);
+        let _g3 = protect(isleaf_v);
+        crate::sexp::attrib_core::setAttrib(
+            leaf,
+            install_str("members"),
+            members_v,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            leaf,
+            install_str("height"),
+            height_v,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            leaf,
+            install_str("leaf"),
+            isleaf_v,
+        );
+
+        if !labels.is_null()
+            && labels != R_NilValue()
+            && TYPEOF(labels) == SEXPTYPE::STRSXP
+            && id >= 1
+            && (id as i64) <= XLENGTH(labels)
+        {
+            let s = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            SET_STRING_ELT(s, 0, STRING_ELT(labels, (id as i64) - 1));
+            let _s = protect(s);
+            crate::sexp::attrib_core::setAttrib(
+                leaf,
+                install_str("label"),
+                s,
+            );
+        }
+        leaf
+    };
+    let set_node = |node: SEXP, members: i32, midpoint: f64, h: f64| {
+        let m_v = Rf_ScalarInteger(members);
+        let mp_v = Rf_ScalarReal(midpoint);
+        let hh_v = Rf_ScalarReal(h);
+        let _g1 = protect(m_v);
+        let _g2 = protect(mp_v);
+        let _g3 = protect(hh_v);
+        crate::sexp::attrib_core::setAttrib(
+            node,
+            install_str("members"),
+            m_v,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            node,
+            install_str("midpoint"),
+            mp_v,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            node,
+            install_str("height"),
+            hh_v,
+        );
+    };
+
+    for k in 0..n_merge {
+        let x0 = integer_elt_checked(merge, (k) as R_xlen_t);
+        let x1 = integer_elt_checked(merge, (k + n_merge) as R_xlen_t);
+        let hk = elt_real_safe(height, k as i64);
+        let h0 = if hang < 0.0 {
+            0.0
+        } else {
+            (hk - hang * hmax).max(0.0)
+        };
+        let node = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _node = protect(node);
+        if x0 < 0 && x1 < 0 {
+            SET_VECTOR_ELT(node, 0, make_leaf(-x0, h0));
+            SET_VECTOR_ELT(node, 1, make_leaf(-x1, h0));
+            set_node(node, 2, 0.5, hk);
+        } else if x0 < 0 || x1 < 0 {
+            let (leaf_id, internal) = if x0 < 0 { (-x0, x1) } else { (-x1, x0) };
+            let internal_node = VECTOR_ELT(z, (internal as i64) - 1);
+            let leaf = make_leaf(leaf_id, h0);
+            if x0 < 0 {
+                SET_VECTOR_ELT(node, 0, leaf);
+                SET_VECTOR_ELT(node, 1, internal_node);
+            } else {
+                SET_VECTOR_ELT(node, 0, internal_node);
+                SET_VECTOR_ELT(node, 1, leaf);
+            }
+            let left = VECTOR_ELT(node, 0);
+            let members = member_of(internal_node) + 1;
+            let midpoint = (member_of(left) as f64 + mid_of(internal_node)) / 2.0;
+            set_node(node, members, midpoint, hk);
+        } else {
+            let left = VECTOR_ELT(z, (x0 as i64) - 1);
+            let right = VECTOR_ELT(z, (x1 as i64) - 1);
+            SET_VECTOR_ELT(node, 0, left);
+            SET_VECTOR_ELT(node, 1, right);
+            let ml = member_of(left);
+            let midpoint = (ml as f64 + mid_of(left) + mid_of(right)) / 2.0;
+            set_node(node, ml + member_of(right), midpoint, hk);
+        }
+        SET_VECTOR_ELT(z, k as i64, node);
+    }
+    let result = VECTOR_ELT(z, (n_merge as i64) - 1);
+    let class = mk_string_cstr(c"dendrogram");
+    let _c = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
-    unsafe {
-        let attr = crate::sexp::attrib_core::getAttrib(
-            node,
-            crate::sexp::symbol::Rf_install(name.as_ptr()),
-        );
-        !attr.is_null()
-            && attr != R_NilValue()
-            && TYPEOF(attr) == SEXPTYPE::LGLSXP
-            && XLENGTH(attr) >= 1
-            && logical_elt_checked(attr, 0) == crate::sexp::ffi::TRUE
-    }
+    let attr = crate::sexp::attrib_core::getAttrib(
+        node,
+        install_cstr(&name),
+    );
+    !attr.is_null()
+        && attr != R_NilValue()
+        && TYPEOF(attr) == SEXPTYPE::LGLSXP
+        && XLENGTH(attr) >= 1
+        && logical_elt_checked(attr, 0) == crate::sexp::ffi::TRUE
 }
 
 fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 {
-    unsafe {
-        let attr = crate::sexp::attrib_core::getAttrib(
-            node,
-            crate::sexp::symbol::Rf_install(name.as_ptr()),
-        );
-        if attr.is_null() || attr == R_NilValue() || XLENGTH(attr) < 1 {
-            default
-        } else {
-            elt_real_safe(attr, 0)
-        }
+    let attr = crate::sexp::attrib_core::getAttrib(
+        node,
+        install_cstr(&name),
+    );
+    if attr.is_null() || attr == R_NilValue() || XLENGTH(attr) < 1 {
+        default
+    } else {
+        elt_real_safe(attr, 0)
     }
 }
 fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
-    unsafe {
-        let scalar = Rf_ScalarReal(value);
-        let _scalar = protect(scalar);
-        crate::sexp::attrib_core::setAttrib(
-            node,
-            crate::sexp::symbol::Rf_install(name.as_ptr()),
-            scalar,
-        );
-    }
+    let scalar = Rf_ScalarReal(value);
+    let _scalar = protect(scalar);
+    crate::sexp::attrib_core::setAttrib(
+        node,
+        install_cstr(&name),
+        scalar,
+    );
 }
 
 fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
-    unsafe {
-        let scalar = Rf_ScalarInteger(value);
-        let _scalar = protect(scalar);
-        crate::sexp::attrib_core::setAttrib(
-            node,
-            crate::sexp::symbol::Rf_install(name.as_ptr()),
-            scalar,
-        );
-    }
+    let scalar = Rf_ScalarInteger(value);
+    let _scalar = protect(scalar);
+    crate::sexp::attrib_core::setAttrib(
+        node,
+        install_cstr(&name),
+        scalar,
+    );
 }
 
 fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
@@ -593,18 +583,16 @@ fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
 }
 
 fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
-    unsafe {
-        let value = crate::sexp::attrib_core::getAttrib(
-            src,
-            crate::sexp::symbol::Rf_install(name.as_ptr()),
+    let value = crate::sexp::attrib_core::getAttrib(
+        src,
+        install_cstr(&name),
+    );
+    if !value.is_null() && value != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            dst,
+            install_cstr(&name),
+            value,
         );
-        if !value.is_null() && value != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                dst,
-                crate::sexp::symbol::Rf_install(name.as_ptr()),
-                value,
-            );
-        }
     }
 }
 
@@ -788,9 +776,9 @@ pub fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "'x' must have at least 2 rows and 2 columns",
             );
         }
-        let dist_sym = Rf_install(c"dist".as_ptr());
-        let hclust_sym = Rf_install(c"hclust".as_ptr());
-        let t_sym = Rf_install(c"t".as_ptr());
+        let dist_sym = install_str("dist");
+        let hclust_sym = install_str("hclust");
+        let t_sym = install_str("t");
         let crow = crate::sexp::constructors::Rf_lang2(dist_sym, x);
         let _crow = protect(crow);
         let drow = crate::eval::eval::Rf_eval(crow, rho);
@@ -893,7 +881,7 @@ pub fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 &format!("k must be between 2 and {nh}"),
             );
         }
-        let rect_sym = Rf_install(c"rect".as_ptr());
+        let rect_sym = install_str("rect");
         let rc = crate::sexp::constructors::Rf_lang2(rect_sym, Rf_ScalarReal(0.0));
         let _rc = protect(rc);
         crate::eval::eval::Rf_eval(rc, rho)

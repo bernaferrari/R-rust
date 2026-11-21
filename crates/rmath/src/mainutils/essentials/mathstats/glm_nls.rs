@@ -277,7 +277,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .require_active()
                     .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             }
-            let class = Rf_mkString(c"lm".as_ptr());
+            let class = mk_string_cstr(c"lm");
             let _cl = protect(class);
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -401,7 +401,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .require_active()
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         }
-        let class = Rf_mkString(c"lm".as_ptr());
+        let class = mk_string_cstr(c"lm");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -411,7 +411,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x_is_factor {
             let lev = crate::sexp::attrib_core::getAttrib(
                 x,
-                crate::sexp::symbol::Rf_install(c"levels".as_ptr()),
+                install_str("levels"),
             );
             if !lev.is_null() && TYPEOF(lev) == SEXPTYPE::STRSXP {
                 let xl = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
@@ -420,7 +420,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 crate::mainutils::essentials::set_string_names(xl, std::slice::from_ref(&xname));
                 crate::sexp::attrib_core::setAttrib(
                     result,
-                    crate::sexp::symbol::Rf_install(c"xlevels".as_ptr()),
+                    install_str("xlevels"),
                     xl,
                 );
             }
@@ -1054,7 +1054,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
         crate::mainutils::essentials::set_string_names(result, &["coefficients".to_string()]);
-        let class = Rf_mkString(c"nls".as_ptr());
+        let class = mk_string_cstr(c"nls");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,

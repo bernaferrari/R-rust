@@ -20,7 +20,6 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 mod atomic_printers;
 mod data_frame;

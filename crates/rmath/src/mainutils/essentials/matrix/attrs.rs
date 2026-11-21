@@ -96,35 +96,31 @@ pub fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     row_names_stored(CAR(args))
 }
 pub fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dimnames = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
-        if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 1 {
-            return VECTOR_ELT(dimnames, 0);
-        }
-        if is_data_frame_like(x) {
-            return string_vector(&data_frame_row_names(x));
-        }
-        crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr()))
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dimnames = crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"));
+    if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 1 {
+        return VECTOR_ELT(dimnames, 0);
+    }
+    if is_data_frame_like(x) {
+        return string_vector(&data_frame_row_names(x));
+    }
+    crate::sexp::attrib_core::getAttrib(x, install_str("row.names"))
 }
 
 /// R's `colnames(x)` — get column names attribute.
 pub fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dimnames = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
-        if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 2 {
-            VECTOR_ELT(dimnames, 1)
-        } else {
-            R_NilValue()
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let dimnames = crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"));
+    if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 2 {
+        VECTOR_ELT(dimnames, 1)
+    } else {
+        R_NilValue()
     }
 }
 
@@ -237,7 +233,7 @@ pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             namesgets_pairlist(x, value);
         } else {
-            crate::sexp::attrib_core::setAttrib(x, Rf_install(c"names".as_ptr()), value);
+            crate::sexp::attrib_core::setAttrib(x, install_str("names"), value);
         }
         owner
             .require_active()
@@ -248,33 +244,31 @@ pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn namesgets_pairlist(list: SEXP, value: SEXP) {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            let mut cell = list;
-            while !cell.is_null() && cell != R_NilValue() {
-                SETTAG(cell, R_NilValue());
-                cell = CDR(cell);
-            }
-            return;
-        }
-        let n = XLENGTH(value);
+    if value.is_null() || value == R_NilValue() {
         let mut cell = list;
-        let mut i: R_xlen_t = 0;
         while !cell.is_null() && cell != R_NilValue() {
-            if i >= n {
-                SETTAG(cell, R_NilValue());
-            } else {
-                let label = crate::mainutils::essentials::elt_to_string(value, i);
-                if label.is_empty() || is_string_na(value, i) {
-                    SETTAG(cell, R_NilValue());
-                } else {
-                    let c_name = std::ffi::CString::new(label).unwrap_or_default();
-                    SETTAG(cell, Rf_install(c_name.as_ptr()));
-                }
-            }
-            i += 1;
+            SETTAG(cell, R_NilValue());
             cell = CDR(cell);
         }
+        return;
+    }
+    let n = XLENGTH(value);
+    let mut cell = list;
+    let mut i: R_xlen_t = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        if i >= n {
+            SETTAG(cell, R_NilValue());
+        } else {
+            let label = crate::mainutils::essentials::elt_to_string(value, i);
+            if label.is_empty() || is_string_na(value, i) {
+                SETTAG(cell, R_NilValue());
+            } else {
+                let c_name = std::ffi::CString::new(label).unwrap_or_default();
+                SETTAG(cell, install_cstr(&c_name));
+            }
+        }
+        i += 1;
+        cell = CDR(cell);
     }
 }
 
@@ -359,115 +353,113 @@ fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
 /// contract.  In particular, axis labels are character vectors regardless of
 /// the vector type supplied by the caller.
 pub(super) fn set_array_dimnames(x: SEXP, value: SEXP) {
-    unsafe {
-        let dimnames_sym = R_DimNamesSymbol();
-        if value.is_null() || value == R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
-            return;
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
-            std::panic::panic_any(RError {
-                message: "'dimnames' applied to non-array".to_string(),
-            });
-        }
-        if TYPEOF(value) != SEXPTYPE::VECSXP && TYPEOF(value) != SEXPTYPE::LISTSXP {
-            std::panic::panic_any(RError {
-                message: "'dimnames' must be a list".to_string(),
-            });
-        }
+    let dimnames_sym = R_DimNamesSymbol();
+    if value.is_null() || value == R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
+        return;
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+        std::panic::panic_any(RError {
+            message: "'dimnames' applied to non-array".to_string(),
+        });
+    }
+    if TYPEOF(value) != SEXPTYPE::VECSXP && TYPEOF(value) != SEXPTYPE::LISTSXP {
+        std::panic::panic_any(RError {
+            message: "'dimnames' must be a list".to_string(),
+        });
+    }
 
-        let rank = XLENGTH(dim);
-        let supplied = XLENGTH(value);
-        if supplied > rank {
+    let rank = XLENGTH(dim);
+    let supplied = XLENGTH(value);
+    if supplied > rank {
+        std::panic::panic_any(RError {
+            message: format!(
+                "length of 'dimnames' [{}] must match that of 'dims' [{}]",
+                supplied, rank
+            ),
+        });
+    }
+    if supplied == 0 {
+        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
+        return;
+    }
+
+    // Always build a fresh list: coercing a shared list in place would also
+    // change the caller's object (`dn <- list(1:2); dimnames(x) <- dn`).
+    let normalized = Rf_allocVector3(SEXPTYPE::VECSXP, rank);
+    let _normalized_guard = protect(normalized);
+    let mut pair = value;
+    for axis in 0..rank {
+        let labels = if axis >= supplied {
+            R_NilValue()
+        } else if TYPEOF(value) == SEXPTYPE::VECSXP {
+            VECTOR_ELT(value, axis)
+        } else {
+            let labels = CAR(pair);
+            pair = CDR(pair);
+            labels
+        };
+
+        if labels.is_null() || labels == R_NilValue() {
+            SET_VECTOR_ELT(normalized, axis, R_NilValue());
+            continue;
+        }
+        if crate::sexp::constructors::Rf_isVector(labels) == 0 {
             std::panic::panic_any(RError {
                 message: format!(
-                    "length of 'dimnames' [{}] must match that of 'dims' [{}]",
-                    supplied, rank
+                    "invalid type ({}) for 'dimnames' (must be a vector)",
+                    TYPEOF(labels)
                 ),
             });
         }
-        if supplied == 0 {
-            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
-            return;
+        let label_count = XLENGTH(labels);
+        let extent = INTEGER_ELT(dim, axis as c_int) as R_xlen_t;
+        if label_count != 0 && label_count != extent {
+            std::panic::panic_any(RError {
+                message: format!(
+                    "length of 'dimnames' [{}] not equal to array extent",
+                    axis + 1
+                ),
+            });
         }
 
-        // Always build a fresh list: coercing a shared list in place would also
-        // change the caller's object (`dn <- list(1:2); dimnames(x) <- dn`).
-        let normalized = Rf_allocVector3(SEXPTYPE::VECSXP, rank);
-        let _normalized_guard = protect(normalized);
-        let mut pair = value;
-        for axis in 0..rank {
-            let labels = if axis >= supplied {
-                R_NilValue()
-            } else if TYPEOF(value) == SEXPTYPE::VECSXP {
-                VECTOR_ELT(value, axis)
-            } else {
-                let labels = CAR(pair);
-                pair = CDR(pair);
-                labels
-            };
-
-            if labels.is_null() || labels == R_NilValue() {
-                SET_VECTOR_ELT(normalized, axis, R_NilValue());
-                continue;
-            }
-            if crate::sexp::constructors::Rf_isVector(labels) == 0 {
-                std::panic::panic_any(RError {
-                    message: format!(
-                        "invalid type ({}) for 'dimnames' (must be a vector)",
-                        TYPEOF(labels)
-                    ),
-                });
-            }
-            let label_count = XLENGTH(labels);
-            let extent = INTEGER_ELT(dim, axis as c_int) as R_xlen_t;
-            if label_count != 0 && label_count != extent {
-                std::panic::panic_any(RError {
-                    message: format!(
-                        "length of 'dimnames' [{}] not equal to array extent",
-                        axis + 1
-                    ),
-                });
-            }
-
-            let labels = if label_count == 0 {
-                R_NilValue()
-            } else if inherits_class(labels, "factor") {
-                crate::mainutils::coerce::asCharacterFactor(labels)
-            } else if TYPEOF(labels) == SEXPTYPE::STRSXP {
-                labels
-            } else {
-                let coerced =
-                    crate::mainutils::coerce::coerceVector(labels, SEXPTYPE::STRSXP.as_c_int());
-                crate::sexp::accessors::SET_ATTRIB(coerced, R_NilValue());
-                crate::sexp::accessors::SET_OBJECT(coerced, FALSE);
-                coerced
-            };
-            SET_VECTOR_ELT(normalized, axis, labels);
-        }
-
-        // `lengthgets()` retains names on a new-list dimnames value and pads
-        // them with empty strings when fewer names than dimensions were given.
-        if TYPEOF(value) == SEXPTYPE::VECSXP {
-            let names = crate::sexp::attrib_core::getAttrib(value, R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                let normalized_names = Rf_allocVector3(SEXPTYPE::STRSXP, rank);
-                let _normalized_names_guard = protect(normalized_names);
-                for axis in 0..rank {
-                    let name = if axis < XLENGTH(names) {
-                        STRING_ELT(names, axis)
-                    } else {
-                        Rf_mkChar(c"".as_ptr())
-                    };
-                    SET_STRING_ELT(normalized_names, axis, name);
-                }
-                crate::sexp::attrib_core::setAttrib(normalized, R_NamesSymbol(), normalized_names);
-            }
-        }
-
-        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, normalized);
+        let labels = if label_count == 0 {
+            R_NilValue()
+        } else if inherits_class(labels, "factor") {
+            crate::mainutils::coerce::asCharacterFactor(labels)
+        } else if TYPEOF(labels) == SEXPTYPE::STRSXP {
+            labels
+        } else {
+            let coerced =
+                crate::mainutils::coerce::coerceVector(labels, SEXPTYPE::STRSXP.as_c_int());
+            crate::sexp::accessors::SET_ATTRIB(coerced, R_NilValue());
+            crate::sexp::accessors::SET_OBJECT(coerced, FALSE);
+            coerced
+        };
+        SET_VECTOR_ELT(normalized, axis, labels);
     }
+
+    // `lengthgets()` retains names on a new-list dimnames value and pads
+    // them with empty strings when fewer names than dimensions were given.
+    if TYPEOF(value) == SEXPTYPE::VECSXP {
+        let names = crate::sexp::attrib_core::getAttrib(value, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let normalized_names = Rf_allocVector3(SEXPTYPE::STRSXP, rank);
+            let _normalized_names_guard = protect(normalized_names);
+            for axis in 0..rank {
+                let name = if axis < XLENGTH(names) {
+                    STRING_ELT(names, axis)
+                } else {
+                    mk_char_cstr(c"")
+                };
+                SET_STRING_ELT(normalized_names, axis, name);
+            }
+            crate::sexp::attrib_core::setAttrib(normalized, R_NamesSymbol(), normalized_names);
+        }
+    }
+
+    crate::sexp::attrib_core::setAttrib(x, dimnames_sym, normalized);
 }
 
 /// R's `rownames(x) <- value` — set matrix row names through dimnames[[1]].
@@ -481,39 +473,37 @@ pub fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let dimnames_sym = Rf_install(c"dimnames".as_ptr());
-        let mut dimnames = crate::sexp::attrib_core::getAttrib(x, dimnames_sym);
-        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-            dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            if dimnames.is_null() {
-                return x;
-            }
-            let _dimnames_guard = protect(dimnames);
-            SET_VECTOR_ELT(dimnames, 0, R_NilValue());
-            SET_VECTOR_ELT(dimnames, 1, R_NilValue());
-            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, dimnames);
-        }
-
-        if LENGTH(dimnames) > axis as i32 {
-            SET_VECTOR_ELT(dimnames, axis, value);
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+
+    let dimnames_sym = install_str("dimnames");
+    let mut dimnames = crate::sexp::attrib_core::getAttrib(x, dimnames_sym);
+    if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if dimnames.is_null() {
+            return x;
+        }
+        let _dimnames_guard = protect(dimnames);
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+        SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, dimnames);
+    }
+
+    if LENGTH(dimnames) > axis as i32 {
+        SET_VECTOR_ELT(dimnames, axis, value);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 pub fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(c"NULL".as_ptr());
+            return mk_string_cstr(c"NULL");
         }
         crate::eval::attrib_core::R_data_class(x)
     }
@@ -953,7 +943,7 @@ pub fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn comment_symbol() -> SEXP {
-    unsafe { Rf_install(c"comment".as_ptr()) }
+    install_str("comment")
 }
 
 fn force_namespace_value(value: SEXP) -> SEXP {
@@ -985,7 +975,7 @@ pub fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     unsafe {
         let ns_arg = CAR(args);
         let base = crate::sexp::envir::R_BaseNamespace();
-        let info_symbol = Rf_install(c".__NAMESPACE__.".as_ptr());
+        let info_symbol = install_str(".__NAMESPACE__.");
         let namespace = if ns_arg == base
             || (TYPEOF(ns_arg) == SEXPTYPE::ENVSXP
                 && TYPEOF(crate::sexp::envir::R_findVarInFrame(ns_arg, info_symbol))
@@ -1043,17 +1033,17 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
         }
         let info = crate::sexp::envir::R_findVarInFrame(
             namespace,
-            Rf_install(c".__NAMESPACE__.".as_ptr()),
+            install_str(".__NAMESPACE__."),
         );
         let _info = protect(info);
-        let lazy = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"lazydata".as_ptr()));
+        let lazy = crate::sexp::envir::R_findVarInFrame(info, install_str("lazydata"));
         if TYPEOF(lazy) == SEXPTYPE::ENVSXP {
             let value = crate::sexp::envir::R_findVarInFrame(lazy, name);
             if value != R_UnboundValue() {
                 return force_namespace_value(value);
             }
         }
-        let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+        let spec = crate::sexp::envir::R_findVarInFrame(info, install_str("spec"));
         package_error(format!(
             "'{}' is not an exported object from 'namespace:{}'",
             symbol_name(name).unwrap_or_default(),
@@ -1121,7 +1111,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for (i, value) in values.iter().enumerate() {
                     let c_value =
                         CString::new(*value).expect("static language element has no NUL byte");
-                    SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+                    SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
                 }
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                 return result;
@@ -1138,7 +1128,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _result_guard = protect(result);
                 for (i, value) in values.iter().enumerate() {
                     let c_value = CString::new(*value).expect("static field name has no NUL byte");
-                    SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+                    SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
                 }
                 crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                 return result;
@@ -1472,10 +1462,10 @@ mod tests {
             .expect("test namespace should be created")
             .into_owned()
             .expect("namespace root should be owned");
-        session.with_active(|| unsafe {
+        session.with_active(|| {
             let owner = session.owner_token().expect("active owner");
             let value =
-                super::namespace_value(namespace.as_raw(), Rf_install(c"plot".as_ptr()), true);
+                super::namespace_value(namespace.as_raw(), crate::sexp::symbol::install_str("plot"), true);
             let value = owner
                 .node_factory()
                 .wrap(value)

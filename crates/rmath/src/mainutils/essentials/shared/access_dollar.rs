@@ -26,20 +26,18 @@ pub(crate) fn leading_datetime_class(args: SEXP) -> Option<(DatetimeVectorClass,
 }
 
 pub(crate) fn posixct_tzone_string(source: SEXP) -> String {
-    unsafe {
-        let tzone = crate::sexp::attrib_core::getAttrib(source, Rf_install(c"tzone".as_ptr()));
-        if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
-            return String::new();
-        }
-        if XLENGTH(tzone) == 0 {
-            return String::new();
-        }
-        owner_sexp(active_owner(), tzone)
-            .try_string_value_elt(0)
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+    let tzone = crate::sexp::attrib_core::getAttrib(source, install_str("tzone"));
+    if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
+        return String::new();
     }
+    if XLENGTH(tzone) == 0 {
+        return String::new();
+    }
+    owner_sexp(active_owner(), tzone)
+        .try_string_value_elt(0)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
 pub(crate) fn set_datetime_class_from(result: SEXP, source: SEXP, class: DatetimeVectorClass) {
@@ -118,7 +116,7 @@ pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return do_xtfrm_Date(call, op, args, rho);
         }
         // GNU sort.c do_xtfrm: DispatchOrEval miss → xtfrm.default.
-        let fn_ = crate::sexp::envir::findFun(Rf_install(c"xtfrm.default".as_ptr()), rho);
+        let fn_ = crate::sexp::envir::findFun(install_str("xtfrm.default"), rho);
         if !fn_.is_null()
             && fn_ != crate::sexp::globals::R_UnboundValue()
             && (TYPEOF(fn_) == SEXPTYPE::CLOSXP
@@ -304,46 +302,44 @@ pub(super) fn is_data_frame_object(x: SEXP) -> bool {
 }
 
 pub(super) fn frame_row_count(df: SEXP) -> i64 {
-    unsafe {
-        let owner = active_owner();
-        let rn_sym = owner_sexp(
-            owner,
-            crate::sexp::constructors::Rf_mkString(c"row.names".as_ptr()),
-        )
-        .try_string_elt(0)
-        .map(|elt| elt.as_raw())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let rn = crate::sexp::attrib_core::getAttrib(
-            df,
-            crate::mainutils::subset::installTrChar(rn_sym),
-        );
-        let rn_owned = owner_sexp(owner, rn);
-        // compact row.names: c(NA_integer_, -n)
-        if !rn.is_null()
-            && rn != R_NilValue()
-            && TYPEOF(rn) == crate::sexp::ffi::SEXPTYPE::INTSXP
-            && XLENGTH(rn) == 2
-            && rn_owned
-                .try_integer_elt(1)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                < 0
-        {
-            -(rn_owned
-                .try_integer_elt(1)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                as i64)
-        } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
-            XLENGTH(rn)
-        } else if XLENGTH(df) > 0 {
-            // fall back to the first column's length
-            let first = owner_sexp(owner, df)
-                .try_vector_elt(0)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            XLENGTH(first)
-        } else {
-            0
-        }
+    let owner = active_owner();
+    let rn_sym = owner_sexp(
+        owner,
+        mk_string_cstr(c"row.names"),
+    )
+    .try_string_elt(0)
+    .map(|elt| elt.as_raw())
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let rn = crate::sexp::attrib_core::getAttrib(
+        df,
+        crate::mainutils::subset::installTrChar(rn_sym),
+    );
+    let rn_owned = owner_sexp(owner, rn);
+    // compact row.names: c(NA_integer_, -n)
+    if !rn.is_null()
+        && rn != R_NilValue()
+        && TYPEOF(rn) == crate::sexp::ffi::SEXPTYPE::INTSXP
+        && XLENGTH(rn) == 2
+        && rn_owned
+            .try_integer_elt(1)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            < 0
+    {
+        -(rn_owned
+            .try_integer_elt(1)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            as i64)
+    } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
+        XLENGTH(rn)
+    } else if XLENGTH(df) > 0 {
+        // fall back to the first column's length
+        let first = owner_sexp(owner, df)
+            .try_vector_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        XLENGTH(first)
+    } else {
+        0
     }
 }
 
@@ -405,7 +401,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // method. The custom path below is for ordinary/S3 values.
                 let primitive = crate::sexp::envir::R_findVarInFrame(
                     crate::sexp::globals::R_BaseEnv(),
-                    Rf_install(c"$<-".as_ptr()),
+                    install_str("$<-"),
                 );
                 let _primitive_guard = protect(primitive);
                 return crate::mainutils::subassign::do_subassign3(_call, primitive, args, rho);
@@ -577,7 +573,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _out_guard = protect(out);
         let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n + 1);
         let _names_guard = protect(out_names);
-        let blank = Rf_mkChar(c"".as_ptr());
+        let blank = mk_char_cstr(c"");
 
         if let (Ok(mut out_mut), Ok(mut out_names_mut), Ok(blank_owned)) = (
             owner.sexp(out).and_then(SexpMut::try_from_checked),

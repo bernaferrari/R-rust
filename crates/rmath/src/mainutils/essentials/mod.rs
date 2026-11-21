@@ -142,7 +142,7 @@ pub fn register_essentials_builtins(env: SEXP) {
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             crate::sexp::accessors::SET_SYMVALUE(sym, prim);
         }
-        let pi_sym = Rf_install(c"pi".as_ptr());
+        let pi_sym = install_str("pi");
         let pi_value = Rf_ScalarReal(std::f64::consts::PI);
         let _pi_value_guard = protect(pi_value);
         let pi_cell = Rf_cons(pi_value, chain);
@@ -155,7 +155,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         ]);
         let _letters_guard = protect(letters_value);
         let letters_cell = Rf_cons(letters_value, chain);
-        crate::sexp::accessors::SETTAG(letters_cell, Rf_install(c"letters".as_ptr()));
+        crate::sexp::accessors::SETTAG(letters_cell, install_str("letters"));
         chain = letters_cell;
 
         let letters_upper_value = static_string_vector(&[
@@ -164,7 +164,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         ]);
         let _letters_upper_guard = protect(letters_upper_value);
         let letters_upper_cell = Rf_cons(letters_upper_value, chain);
-        crate::sexp::accessors::SETTAG(letters_upper_cell, Rf_install(c"LETTERS".as_ptr()));
+        crate::sexp::accessors::SETTAG(letters_upper_cell, install_str("LETTERS"));
         chain = letters_upper_cell;
 
         let padjust_methods = static_string_vector(&[
@@ -179,7 +179,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         ]);
         let _padjust_guard = protect(padjust_methods);
         let padjust_cell = Rf_cons(padjust_methods, chain);
-        crate::sexp::accessors::SETTAG(padjust_cell, Rf_install(c"p.adjust.methods".as_ptr()));
+        crate::sexp::accessors::SETTAG(padjust_cell, install_str("p.adjust.methods"));
         chain = padjust_cell;
 
         let month_abb = static_string_vector(&[
@@ -187,7 +187,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         ]);
         let _month_abb_guard = protect(month_abb);
         let month_abb_cell = Rf_cons(month_abb, chain);
-        crate::sexp::accessors::SETTAG(month_abb_cell, Rf_install(c"month.abb".as_ptr()));
+        crate::sexp::accessors::SETTAG(month_abb_cell, install_str("month.abb"));
         chain = month_abb_cell;
 
         let month_name = static_string_vector(&[
@@ -206,7 +206,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         ]);
         let _month_name_guard = protect(month_name);
         let month_name_cell = Rf_cons(month_name, chain);
-        crate::sexp::accessors::SETTAG(month_name_cell, Rf_install(c"month.name".as_ptr()));
+        crate::sexp::accessors::SETTAG(month_name_cell, install_str("month.name"));
         chain = month_name_cell;
 
         let version_value = do_R_version(
@@ -230,7 +230,7 @@ pub fn register_essentials_builtins(env: SEXP) {
             env,
         );
         let _version_string_guard = protect(version_string);
-        let sym = Rf_install(c"R.version.string".as_ptr());
+        let sym = install_str("R.version.string");
         let cell = Rf_cons(version_string, chain);
         crate::sexp::accessors::SETTAG(cell, sym);
         chain = cell;
@@ -248,6 +248,6 @@ pub fn register_essentials_builtins(env: SEXP) {
         .expect("base Recall wrapper parses");
         let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
         let _recall = protect(recall);
-        crate::sexp::envir::defineVar(Rf_install(c"Recall".as_ptr()), recall, env);
+        crate::sexp::envir::defineVar(install_str("Recall"), recall, env);
     }
 }

@@ -16,7 +16,7 @@ pub fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let x = CAR(args);
         let tz = crate::sexp::attrib_core::getAttrib(
             x,
-            crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+            install_str("tzone"),
         );
         let mut tz_s = "UTC".to_string();
         if !tz.is_null() && tz != R_NilValue() && TYPEOF(tz) == SEXPTYPE::STRSXP && XLENGTH(tz) > 0
@@ -92,8 +92,8 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             set_single_class(empty, "difftime");
             crate::sexp::attrib_core::setAttrib(
                 empty,
-                crate::sexp::symbol::Rf_install(c"units".as_ptr()),
-                Rf_mkString(c"secs".as_ptr()),
+                install_str("units"),
+                mk_string_cstr(c"secs"),
             );
             return empty;
         }
@@ -155,7 +155,7 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_single_class(result, "difftime");
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+            install_str("units"),
             Rf_mkString(CString::new(units).unwrap_or_default().as_ptr()),
         );
         result

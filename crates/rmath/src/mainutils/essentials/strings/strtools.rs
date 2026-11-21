@@ -56,64 +56,62 @@ pub fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `str_pad(x, width, side="left", pad=" ")` — pad strings to a width.
 pub fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let width_arg = CAR(CDR(args));
-        let side_arg = CAR(CDR(CDR(args)));
-        let pad_arg = CAR(CDR(CDR(CDR(args))));
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let width = if width_arg.is_null() || width_arg == R_NilValue() {
-            1usize
-        } else {
-            real_or_default(width_arg, 1.0).max(0.0) as usize
-        };
-        let side = if side_arg.is_null() || side_arg == R_NilValue() {
-            "left".to_string()
-        } else {
-            elt_to_string(side_arg, 0)
-        };
-        let pad_char = if pad_arg.is_null() || pad_arg == R_NilValue() {
-            " ".to_string()
-        } else {
-            elt_to_string(pad_arg, 0)
-        };
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let slen = s.chars().count();
-            let padded = if slen >= width {
-                s
-            } else {
-                let diff = width - slen;
-                let pad_str: String = pad_char.chars().cycle().take(diff).collect();
-                match side.as_str() {
-                    "left" => format!("{}{}", pad_str, s),
-                    "right" => format!("{}{}", s, pad_str),
-                    "both" => {
-                        let left = diff / 2;
-                        let right = diff - left;
-                        let lp: String = pad_char.chars().cycle().take(left).collect();
-                        let rp: String = pad_char.chars().cycle().take(right).collect();
-                        format!("{}{}{}", lp, s, rp)
-                    }
-                    _ => format!("{}{}", pad_str, s),
-                }
-            };
-            let cstr = CString::new(padded).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let x = CAR(args);
+    let width_arg = CAR(CDR(args));
+    let side_arg = CAR(CDR(CDR(args)));
+    let pad_arg = CAR(CDR(CDR(CDR(args))));
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let width = if width_arg.is_null() || width_arg == R_NilValue() {
+        1usize
+    } else {
+        real_or_default(width_arg, 1.0).max(0.0) as usize
+    };
+    let side = if side_arg.is_null() || side_arg == R_NilValue() {
+        "left".to_string()
+    } else {
+        elt_to_string(side_arg, 0)
+    };
+    let pad_char = if pad_arg.is_null() || pad_arg == R_NilValue() {
+        " ".to_string()
+    } else {
+        elt_to_string(pad_arg, 0)
+    };
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let slen = s.chars().count();
+        let padded = if slen >= width {
+            s
+        } else {
+            let diff = width - slen;
+            let pad_str: String = pad_char.chars().cycle().take(diff).collect();
+            match side.as_str() {
+                "left" => format!("{}{}", pad_str, s),
+                "right" => format!("{}{}", s, pad_str),
+                "both" => {
+                    let left = diff / 2;
+                    let right = diff - left;
+                    let lp: String = pad_char.chars().cycle().take(left).collect();
+                    let rp: String = pad_char.chars().cycle().take(right).collect();
+                    format!("{}{}{}", lp, s, rp)
+                }
+                _ => format!("{}{}", pad_str, s),
+            }
+        };
+        let cstr = CString::new(padded).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// R's `str_count(x, pattern)` — count occurrences of pattern in strings.
@@ -186,39 +184,37 @@ pub fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R-like `str_extract(x, pattern)` — extracts first occurrence of pattern from each element.
 pub fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let pattern_arg = CAR(CDR(args));
+    let x = CAR(args);
+    let pattern_arg = CAR(CDR(args));
 
-        if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue()
-        {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-
-        let pattern_str = elt_to_string(pattern_arg, 0);
-        let n = XLENGTH(x).max(1);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let extracted = if let Some(start) = s.find(&pattern_str) {
-                let end = start + pattern_str.len();
-                &s[start..end]
-            } else {
-                "NA"
-            };
-            let cs = CString::new(extracted).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue()
+    {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+
+    let pattern_str = elt_to_string(pattern_arg, 0);
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let extracted = if let Some(start) = s.find(&pattern_str) {
+            let end = start + pattern_str.len();
+            &s[start..end]
+        } else {
+            "NA"
+        };
+        let cs = CString::new(extracted).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cs);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +227,7 @@ pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let string_arg = CAR(args);
         let values_arg = CAR(CDR(args));
         if string_arg.is_null() || string_arg == R_NilValue() {
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
         let fmt = elt_to_string(string_arg, 0);
         if values_arg.is_null() || values_arg == R_NilValue() {
@@ -259,7 +255,7 @@ pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fun = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_BaseEnv(),
-            crate::sexp::symbol::Rf_install(c"strwrap".as_ptr()),
+            install_str("strwrap"),
         );
         let _fun_guard = crate::sexp::protect::protect(fun);
         // Rebuild the call with the already-evaluated arguments and their
@@ -371,7 +367,7 @@ pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if must_work {
                 package_error(format!("no file found for package '{}'", package));
             }
-            return Rf_mkString(c"".as_ptr());
+            return mk_string_cstr(c"");
         }
 
         let parts = system_file_parts(args);
@@ -411,7 +407,7 @@ pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     package
                 ));
             }
-            Rf_mkString(c"".as_ptr())
+            mk_string_cstr(c"")
         }
     }
 }

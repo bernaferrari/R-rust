@@ -94,163 +94,161 @@ pub(crate) fn apply_s3_closure_method(
 
 /// R's `methods(generic)` — list methods known to the Rust runtime.
 pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut class_arg = R_NilValue();
-        let mut generic_arg = R_NilValue();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if tag.is_null() || tag == R_NilValue() {
-                String::new()
-            } else {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            };
-            if name == "class" {
-                class_arg = CAR(cell);
-            } else if name.is_empty() && generic_arg == R_NilValue() {
-                generic_arg = CAR(cell);
-            }
-            cell = CDR(cell);
-        }
-        if !class_arg.is_null() && class_arg != R_NilValue() {
-            if XLENGTH(class_arg) > 1 {
-                crate::mainutils::errors::Rf_warning(
-                    c"'class' is of length > 1; only the first element will be used".as_ptr(),
-                );
-            }
-            let class_name = elt_to_string(class_arg, 0);
-            let suffix = format!(".{class_name}");
-            let mut methods = all_runtime_method_names()
-                .into_iter()
-                .filter(|name| name.ends_with(&suffix))
-                .collect::<Vec<_>>();
-            methods.sort();
-            let ans = methods_function(string_vector(&methods));
-            let info = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-            let info_class = Rf_mkString(c"data.frame".as_ptr());
-            crate::sexp::attrib_core::setAttrib(
-                info,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                info_class,
-            );
-            let info_names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-            crate::sexp::attrib_core::setAttrib(
-                info,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                info_names,
-            );
-            let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-            crate::sexp::attrib_core::setAttrib(
-                info,
-                crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
-                row_names,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                crate::sexp::symbol::Rf_install(c"info".as_ptr()),
-                info,
-            );
-            return ans;
-        }
-        if generic_arg.is_null() || generic_arg == R_NilValue() {
-            return methods_function(string_vector(&all_runtime_method_names()));
-        }
-        let mut generic = String::new();
-        if TYPEOF(generic_arg) == SEXPTYPE::STRSXP {
-            generic = elt_to_string(generic_arg, 0);
+    let mut class_arg = R_NilValue();
+    let mut generic_arg = R_NilValue();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if tag.is_null() || tag == R_NilValue() {
+            String::new()
         } else {
-            let mut call_cell = CDR(call);
-            while !call_cell.is_null() && call_cell != R_NilValue() {
-                let tag = TAG(call_cell);
-                let tagged = !tag.is_null() && tag != R_NilValue();
-                if !tagged {
-                    let expr = CAR(call_cell);
-                    if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-                        let pname = PRINTNAME(expr);
-                        if !pname.is_null() {
-                            generic = charsxp_text(pname).unwrap_or_default();
-                        }
-                    }
-                    break;
-                }
-                call_cell = CDR(call_cell);
-            }
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        };
+        if name == "class" {
+            class_arg = CAR(cell);
+        } else if name.is_empty() && generic_arg == R_NilValue() {
+            generic_arg = CAR(cell);
         }
-        let prefix = format!("{generic}.");
+        cell = CDR(cell);
+    }
+    if !class_arg.is_null() && class_arg != R_NilValue() {
+        if XLENGTH(class_arg) > 1 {
+            crate::mainutils::errors::Rf_warning(
+                c"'class' is of length > 1; only the first element will be used".as_ptr(),
+            );
+        }
+        let class_name = elt_to_string(class_arg, 0);
+        let suffix = format!(".{class_name}");
         let mut methods = all_runtime_method_names()
             .into_iter()
-            .filter(|name| name.starts_with(&prefix))
+            .filter(|name| name.ends_with(&suffix))
             .collect::<Vec<_>>();
-        let base = crate::eval::runtime::base_env();
-        if !base.is_null() {
-            for name in crate::mainutils::essentials::shared::frame_binding_names(base, true) {
-                if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
-                    methods.push(name);
-                }
-            }
-        }
         methods.sort();
         let ans = methods_function(string_vector(&methods));
-        let n = methods.len() as i64;
-        let info = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let from = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let visible = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let rows = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let owner = active_owner();
-        if let (Ok(mut from_mut), Ok(mut visible_mut), Ok(mut rows_mut)) = (
-            owner.sexp(from).and_then(SexpMut::try_from_checked),
-            owner.sexp(visible).and_then(SexpMut::try_from_checked),
-            owner.sexp(rows).and_then(SexpMut::try_from_checked),
-        ) {
-            for i in 0..n {
-                if let Ok(charsxp) = owner.sexp(Rf_mkChar(c"base".as_ptr())) {
-                    let _ = from_mut.try_set_string_elt(i, charsxp);
-                }
-                let _ = visible_mut.try_set_logical_elt(i, 1);
-                let cname =
-                    std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
-                if let Ok(charsxp) = owner.sexp(Rf_mkChar(cname.as_ptr())) {
-                    let _ = rows_mut.try_set_string_elt(i, charsxp);
-                }
-            }
-        }
-        if let Ok(mut info_mut) = owner.sexp(info).and_then(SexpMut::try_from_checked) {
-            for (i, value) in [from, visible].into_iter().enumerate() {
-                if let Ok(value) = owner.sexp(value) {
-                    let _ = info_mut.try_set_vector_elt(i as R_xlen_t, value);
-                }
-            }
-        }
-        let inames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if let Ok(mut inames_mut) = owner.sexp(inames).and_then(SexpMut::try_from_checked) {
-            for (i, text) in [c"from", c"visible"].into_iter().enumerate() {
-                if let Ok(charsxp) = owner.sexp(Rf_mkChar(text.as_ptr())) {
-                    let _ = inames_mut.try_set_string_elt(i as R_xlen_t, charsxp);
-                }
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            info,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            inames,
-        );
+        let info = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        let info_class = mk_string_cstr(c"data.frame");
         crate::sexp::attrib_core::setAttrib(
             info,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"data.frame".as_ptr()),
+            info_class,
         );
+        let info_names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         crate::sexp::attrib_core::setAttrib(
             info,
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
-            rows,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            info_names,
+        );
+        let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        crate::sexp::attrib_core::setAttrib(
+            info,
+            install_str("row.names"),
+            row_names,
         );
         crate::sexp::attrib_core::setAttrib(
             ans,
-            crate::sexp::symbol::Rf_install(c"info".as_ptr()),
+            install_str("info"),
             info,
         );
-        ans
+        return ans;
     }
+    if generic_arg.is_null() || generic_arg == R_NilValue() {
+        return methods_function(string_vector(&all_runtime_method_names()));
+    }
+    let mut generic = String::new();
+    if TYPEOF(generic_arg) == SEXPTYPE::STRSXP {
+        generic = elt_to_string(generic_arg, 0);
+    } else {
+        let mut call_cell = CDR(call);
+        while !call_cell.is_null() && call_cell != R_NilValue() {
+            let tag = TAG(call_cell);
+            let tagged = !tag.is_null() && tag != R_NilValue();
+            if !tagged {
+                let expr = CAR(call_cell);
+                if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                    let pname = PRINTNAME(expr);
+                    if !pname.is_null() {
+                        generic = charsxp_text(pname).unwrap_or_default();
+                    }
+                }
+                break;
+            }
+            call_cell = CDR(call_cell);
+        }
+    }
+    let prefix = format!("{generic}.");
+    let mut methods = all_runtime_method_names()
+        .into_iter()
+        .filter(|name| name.starts_with(&prefix))
+        .collect::<Vec<_>>();
+    let base = crate::eval::runtime::base_env();
+    if !base.is_null() {
+        for name in crate::mainutils::essentials::shared::frame_binding_names(base, true) {
+            if name.starts_with(&prefix) && !methods.iter().any(|m| m == &name) {
+                methods.push(name);
+            }
+        }
+    }
+    methods.sort();
+    let ans = methods_function(string_vector(&methods));
+    let n = methods.len() as i64;
+    let info = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let from = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let visible = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let rows = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let owner = active_owner();
+    if let (Ok(mut from_mut), Ok(mut visible_mut), Ok(mut rows_mut)) = (
+        owner.sexp(from).and_then(SexpMut::try_from_checked),
+        owner.sexp(visible).and_then(SexpMut::try_from_checked),
+        owner.sexp(rows).and_then(SexpMut::try_from_checked),
+    ) {
+        for i in 0..n {
+            if let Ok(charsxp) = owner.sexp(mk_char_cstr(c"base")) {
+                let _ = from_mut.try_set_string_elt(i, charsxp);
+            }
+            let _ = visible_mut.try_set_logical_elt(i, 1);
+            let cname =
+                std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
+            if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cname)) {
+                let _ = rows_mut.try_set_string_elt(i, charsxp);
+            }
+        }
+    }
+    if let Ok(mut info_mut) = owner.sexp(info).and_then(SexpMut::try_from_checked) {
+        for (i, value) in [from, visible].into_iter().enumerate() {
+            if let Ok(value) = owner.sexp(value) {
+                let _ = info_mut.try_set_vector_elt(i as R_xlen_t, value);
+            }
+        }
+    }
+    let inames = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if let Ok(mut inames_mut) = owner.sexp(inames).and_then(SexpMut::try_from_checked) {
+        for (i, text) in [c"from", c"visible"].into_iter().enumerate() {
+            if let Ok(charsxp) = owner.sexp(mk_char_cstr(&text)) {
+                let _ = inames_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+            }
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(
+        info,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        inames,
+    );
+    crate::sexp::attrib_core::setAttrib(
+        info,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(c"data.frame"),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        info,
+        install_str("row.names"),
+        rows,
+    );
+    crate::sexp::attrib_core::setAttrib(
+        ans,
+        install_str("info"),
+        info,
+    );
+    ans
 }
 
 fn all_runtime_method_names() -> Vec<String> {
@@ -263,12 +261,10 @@ fn all_runtime_method_names() -> Vec<String> {
     methods
 }
 fn methods_function(ans: SEXP) -> SEXP {
-    unsafe {
-        let class = Rf_mkString(c"MethodsFunction".as_ptr());
-        let _g = protect(class);
-        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        ans
-    }
+    let class = mk_string_cstr(c"MethodsFunction");
+    let _g = protect(class);
+    crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -508,20 +504,18 @@ pub(crate) fn context_index_arg(args: SEXP, default: c_int) -> c_int {
 
 /// R's `getwd()` — get working directory.
 pub fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::mainutils::browser_files;
-        if browser_files::enabled() {
-            let path = CString::new(browser_files::getcwd_current()).unwrap_or_default();
-            return Rf_mkString(path.as_ptr());
+    use crate::mainutils::browser_files;
+    if browser_files::enabled() {
+        let path = CString::new(browser_files::getcwd_current()).unwrap_or_default();
+        return mk_string_cstr(&path);
+    }
+    match std::env::current_dir() {
+        Ok(path) => {
+            let s = path.to_string_lossy();
+            let cstr = CString::new(s.as_ref()).unwrap_or_default();
+            mk_string_cstr(&cstr)
         }
-        match std::env::current_dir() {
-            Ok(path) => {
-                let s = path.to_string_lossy();
-                let cstr = CString::new(s.as_ref()).unwrap_or_default();
-                Rf_mkString(cstr.as_ptr())
-            }
-            Err(_) => R_NilValue(),
-        }
+        Err(_) => R_NilValue(),
     }
 }
 
@@ -565,7 +559,7 @@ pub fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         crate::sexp::globals::set_R_Visible(FALSE);
         let path = CString::new(previous).unwrap_or_default();
-        Rf_mkString(path.as_ptr())
+        mk_string_cstr(&path)
     }
 }
 
@@ -574,8 +568,8 @@ mod host_state_tests {
     #[test]
     fn setwd_is_denied_without_host_environment_capability() {
         let session = crate::sexp::session::RSession::new();
-        let denied = session.with_active(|| unsafe {
-            let path = crate::sexp::constructors::Rf_mkString(c".".as_ptr());
+        let denied = session.with_active(|| {
+            let path = super::mk_string_cstr(c".");
             let _path = crate::sexp::protect::protect(path);
             let args = crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -854,79 +848,77 @@ pub(crate) fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
 }
 
 fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
-    unsafe {
-        let owner = active_owner();
-        let dim_owned = owner_sexp(owner, dim);
-        let nrow = dim_owned
-            .try_integer_elt(0)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            as R_xlen_t;
-        let ncol = dim_owned
-            .try_integer_elt(1)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
-        if result.is_null() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for column in 0..ncol {
-            let value = matrix_column(x, nrow, column);
-            let _value_guard = protect(value);
-            let value_owned = owner
-                .sexp(value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_vector_elt(column, value_owned)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-
-        let dimnames =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        let dimnames_owned = owner_sexp(owner, dimnames);
-        let row_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 1 {
-            dimnames_owned
-                .try_vector_elt(0)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        } else {
-            R_NilValue()
-        };
-        if !row_names.is_null() && row_names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(c"row.names".as_ptr()),
-                row_names,
-            );
-        } else {
-            set_compact_row_names(result, nrow);
-        }
-
-        let column_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 2 {
-            dimnames_owned
-                .try_vector_elt(1)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        } else {
-            R_NilValue()
-        };
-        if !column_names.is_null() && column_names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                column_names,
-            );
-        } else {
-            let names = (1..=ncol).map(|i| format!("V{i}")).collect::<Vec<_>>();
-            set_string_names(result, &names);
-        }
-        set_data_frame_class(result);
-        result
+    let owner = active_owner();
+    let dim_owned = owner_sexp(owner, dim);
+    let nrow = dim_owned
+        .try_integer_elt(0)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        as R_xlen_t;
+    let ncol = dim_owned
+        .try_integer_elt(1)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        as R_xlen_t;
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
+    if result.is_null() {
+        return result;
     }
+    let _result_guard = protect(result);
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for column in 0..ncol {
+        let value = matrix_column(x, nrow, column);
+        let _value_guard = protect(value);
+        let value_owned = owner
+            .sexp(value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(column, value_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+
+    let dimnames =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let dimnames_owned = owner_sexp(owner, dimnames);
+    let row_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 1 {
+        dimnames_owned
+            .try_vector_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    } else {
+        R_NilValue()
+    };
+    if !row_names.is_null() && row_names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            install_str("row.names"),
+            row_names,
+        );
+    } else {
+        set_compact_row_names(result, nrow);
+    }
+
+    let column_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 2 {
+        dimnames_owned
+            .try_vector_elt(1)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    } else {
+        R_NilValue()
+    };
+    if !column_names.is_null() && column_names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            column_names,
+        );
+    } else {
+        let names = (1..=ncol).map(|i| format!("V{i}")).collect::<Vec<_>>();
+        set_string_names(result, &names);
+    }
+    set_data_frame_class(result);
+    result
 }
 
 fn list_as_data_frame(x: SEXP) -> SEXP {
@@ -988,140 +980,136 @@ fn list_as_data_frame(x: SEXP) -> SEXP {
 
 /// R's `as.data.frame(x)` — convert to data.frame.
 pub fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
+    let mut x = CAR(args);
 
-        if x.is_null() || x == R_NilValue() {
-            return empty_data_frame();
-        }
-        // If already a data.frame, return as-is
-        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
-        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-            let cls_name = elt_to_string(class, 0);
-            if cls_name == "data.frame" {
-                return x;
-            }
-        }
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-            && TYPEOF(x) == SEXPTYPE::VECSXP
-        {
-            let ct = crate::mainutils::essentials::do_as_POSIXct(
-                _call,
-                _op,
-                Rf_cons(x, R_NilValue()),
-                _rho,
-            );
-            let _ct = protect(ct);
-            x = ct;
-        }
-        if crate::mainutils::essentials::sexp_has_class(x, "table") {
-            return crate::mainutils::essentials::functional::melt_table(x);
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
-            // GNU `as.data.frame.AsIs` for a 2-D object calls
-            // `as.data.frame.model.matrix`: keep the matrix as one list column.
-            if crate::mainutils::essentials::sexp_has_class(x, "AsIs")
-                || crate::mainutils::essentials::sexp_has_class(x, "model.matrix")
-            {
-                return asis_matrix_as_data_frame(x, dim);
-            }
-            return matrix_as_data_frame(x, dim);
-        }
-        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
-            x = crate::mainutils::duplicate::shallow_duplicate(x);
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_DimSymbol(),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                R_NilValue(),
-            );
-        }
-
-        if TYPEOF(x) == SEXPTYPE::VECSXP
-            && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
-        {
-            return list_as_data_frame(x);
-        }
-
-        // Wrap in a single-element list and set class
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let owner = active_owner();
-        if let (Ok(mut result_mut), Ok(x_owned)) = (
-            owner.sexp(result).and_then(SexpMut::try_from_checked),
-            owner.sexp(x),
-        ) {
-            let _ = result_mut.try_set_vector_elt(0, x_owned);
-        }
-
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class_vec.is_null() {
-            let _class_guard = protect(class_vec);
-            let cstr = c"data.frame";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if let (Ok(mut class_mut), Ok(charsxp)) = (
-                owner.sexp(class_vec).and_then(SexpMut::try_from_checked),
-                owner.sexp(charsxp),
-            ) {
-                let _ = class_mut.try_set_string_elt(0, charsxp);
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
-        }
-
-        // Set row.names
-        let nrow = XLENGTH(x);
-        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !rn.is_null() {
-            let _row_names_guard = protect(rn);
-            if let Ok(mut rn_mut) = owner.sexp(rn).and_then(SexpMut::try_from_checked) {
-                let _ = rn_mut.try_set_integer_elt(0, NA_INTEGER);
-                let _ = rn_mut.try_set_integer_elt(1, -(nrow as i32));
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), rn);
-        }
-
-        // Set column name to "x"
-        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !names_vec.is_null() {
-            let _names_guard = protect(names_vec);
-            let cstr = c"x";
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if let (Ok(mut names_mut), Ok(charsxp)) = (
-                owner.sexp(names_vec).and_then(SexpMut::try_from_checked),
-                owner.sexp(charsxp),
-            ) {
-                let _ = names_mut.try_set_string_elt(0, charsxp);
-            }
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
-        }
-
-        result
+    if x.is_null() || x == R_NilValue() {
+        return empty_data_frame();
     }
+    // If already a data.frame, return as-is
+    let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+        let cls_name = elt_to_string(class, 0);
+        if cls_name == "data.frame" {
+            return x;
+        }
+    }
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        && TYPEOF(x) == SEXPTYPE::VECSXP
+    {
+        let ct = crate::mainutils::essentials::do_as_POSIXct(
+            _call,
+            _op,
+            Rf_cons(x, R_NilValue()),
+            _rho,
+        );
+        let _ct = protect(ct);
+        x = ct;
+    }
+    if crate::mainutils::essentials::sexp_has_class(x, "table") {
+        return crate::mainutils::essentials::functional::melt_table(x);
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+        // GNU `as.data.frame.AsIs` for a 2-D object calls
+        // `as.data.frame.model.matrix`: keep the matrix as one list column.
+        if crate::mainutils::essentials::sexp_has_class(x, "AsIs")
+            || crate::mainutils::essentials::sexp_has_class(x, "model.matrix")
+        {
+            return asis_matrix_as_data_frame(x, dim);
+        }
+        return matrix_as_data_frame(x, dim);
+    }
+    if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+        x = crate::mainutils::duplicate::shallow_duplicate(x);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+    }
+
+    if TYPEOF(x) == SEXPTYPE::VECSXP
+        && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+    {
+        return list_as_data_frame(x);
+    }
+
+    // Wrap in a single-element list and set class
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let owner = active_owner();
+    if let (Ok(mut result_mut), Ok(x_owned)) = (
+        owner.sexp(result).and_then(SexpMut::try_from_checked),
+        owner.sexp(x),
+    ) {
+        let _ = result_mut.try_set_vector_elt(0, x_owned);
+    }
+
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if !class_vec.is_null() {
+        let _class_guard = protect(class_vec);
+        let cstr = c"data.frame";
+        let charsxp = mk_char_cstr(&cstr);
+        if let (Ok(mut class_mut), Ok(charsxp)) = (
+            owner.sexp(class_vec).and_then(SexpMut::try_from_checked),
+            owner.sexp(charsxp),
+        ) {
+            let _ = class_mut.try_set_string_elt(0, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
+    }
+
+    // Set row.names
+    let nrow = XLENGTH(x);
+    let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if !rn.is_null() {
+        let _row_names_guard = protect(rn);
+        if let Ok(mut rn_mut) = owner.sexp(rn).and_then(SexpMut::try_from_checked) {
+            let _ = rn_mut.try_set_integer_elt(0, NA_INTEGER);
+            let _ = rn_mut.try_set_integer_elt(1, -(nrow as i32));
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), rn);
+    }
+
+    // Set column name to "x"
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if !names_vec.is_null() {
+        let _names_guard = protect(names_vec);
+        let cstr = c"x";
+        let charsxp = mk_char_cstr(&cstr);
+        if let (Ok(mut names_mut), Ok(charsxp)) = (
+            owner.sexp(names_vec).and_then(SexpMut::try_from_checked),
+            owner.sexp(charsxp),
+        ) {
+            let _ = names_mut.try_set_string_elt(0, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
+    }
+
+    result
 }
 
 /// GNU `as.data.frame(NULL)`: zero columns and zero rows.
 fn empty_data_frame() -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        let _p = protect(result);
-        crate::mainutils::essentials::set_data_frame_class(result);
-        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _r = protect(rn);
-        if let Ok(mut rn_mut) = active_owner().sexp(rn).and_then(SexpMut::try_from_checked) {
-            let _ = rn_mut.try_set_integer_elt(0, crate::sexp::ffi::NA_INTEGER);
-            let _ = rn_mut.try_set_integer_elt(1, 0);
-        }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), rn);
-        result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+    let _p = protect(result);
+    crate::mainutils::essentials::set_data_frame_class(result);
+    let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _r = protect(rn);
+    if let Ok(mut rn_mut) = active_owner().sexp(rn).and_then(SexpMut::try_from_checked) {
+        let _ = rn_mut.try_set_integer_elt(0, crate::sexp::ffi::NA_INTEGER);
+        let _ = rn_mut.try_set_integer_elt(1, 0);
     }
+    crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), rn);
+    result
 }
 
 fn asis_matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
@@ -1398,7 +1386,7 @@ fn set_na_action_attribute(source: SEXP, result: SEXP, dropped: &[R_xlen_t], act
                 class,
             );
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"na.action".as_ptr()), action);
+        crate::sexp::attrib_core::setAttrib(result, install_str("na.action"), action);
     }
 }
 
@@ -1581,7 +1569,7 @@ fn data_frame_columns(x: SEXP) -> Vec<SEXP> {
 }
 
 fn data_frame_row_names_attr(x: SEXP) -> SEXP {
-    unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr())) }
+    crate::sexp::attrib_core::getAttrib(x, install_str("row.names"))
 }
 
 pub(crate) fn data_frame_row_names(x: SEXP) -> Vec<String> {
@@ -1648,44 +1636,42 @@ pub(crate) fn condition_message_text(args: SEXP, option_names: &[&str]) -> Strin
 }
 
 fn build_data_frame(columns: Vec<SEXP>, names: Vec<String>, row_names: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, column) in columns.into_iter().enumerate() {
-            let column = owner
-                .sexp(column)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_vector_elt(i as R_xlen_t, column)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            string_vector(&names),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(c"class".as_ptr()),
-            Rf_mkString(c"data.frame".as_ptr()),
-        );
-        if !row_names.is_null() && row_names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(c"row.names".as_ptr()),
-                row_names,
-            );
-        }
-        result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, column) in columns.into_iter().enumerate() {
+        let column = owner
+            .sexp(column)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(i as R_xlen_t, column)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        string_vector(&names),
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("class"),
+        mk_string_cstr(c"data.frame"),
+    );
+    if !row_names.is_null() && row_names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            install_str("row.names"),
+            row_names,
+        );
+    }
+    result
 }
 
 fn data_frame_error(message: impl Into<String>) -> ! {
@@ -1806,39 +1792,37 @@ fn first_constructor_arg(args: SEXP, name: &str, position: usize) -> SEXP {
 }
 
 fn allocate_initialized_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(sexptype, length);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _guard = protect(result);
-        match sexptype {
-            t if t == SEXPTYPE::STRSXP => {
-                let owner = active_owner();
-                if let (Ok(mut result_mut), Ok(empty)) = (
-                    owner.sexp(result).and_then(SexpMut::try_from_checked),
-                    owner.sexp(Rf_mkChar(c"".as_ptr())),
-                ) {
-                    for i in 0..length {
-                        let _ = result_mut.try_set_string_elt(i, empty.clone());
-                    }
-                }
-            }
-            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                let owner = active_owner();
-                if let (Ok(mut result_mut), Ok(nil)) = (
-                    owner.sexp(result).and_then(SexpMut::try_from_checked),
-                    owner.sexp(R_NilValue()),
-                ) {
-                    for i in 0..length {
-                        let _ = result_mut.try_set_vector_elt(i, nil.clone());
-                    }
-                }
-            }
-            _ => {}
-        }
-        result
+    let result = Rf_allocVector3(sexptype, length);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _guard = protect(result);
+    match sexptype {
+        t if t == SEXPTYPE::STRSXP => {
+            let owner = active_owner();
+            if let (Ok(mut result_mut), Ok(empty)) = (
+                owner.sexp(result).and_then(SexpMut::try_from_checked),
+                owner.sexp(mk_char_cstr(c"")),
+            ) {
+                for i in 0..length {
+                    let _ = result_mut.try_set_string_elt(i, empty.clone());
+                }
+            }
+        }
+        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+            let owner = active_owner();
+            if let (Ok(mut result_mut), Ok(nil)) = (
+                owner.sexp(result).and_then(SexpMut::try_from_checked),
+                owner.sexp(R_NilValue()),
+            ) {
+                for i in 0..length {
+                    let _ = result_mut.try_set_vector_elt(i, nil.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+    result
 }
 
 fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
@@ -1866,18 +1850,16 @@ pub fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// R's legacy `single(length = 0)` constructor.
 pub fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let result = do_typed_vector_constructor(args, SEXPTYPE::REALSXP);
-        if result.is_null() || result == R_NilValue() {
-            return result;
-        }
-
-        let _result_guard = protect(result);
-        let marker = Rf_ScalarLogical(TRUE);
-        let _marker_guard = protect(marker);
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"Csingle".as_ptr()), marker);
-        result
+    let result = do_typed_vector_constructor(args, SEXPTYPE::REALSXP);
+    if result.is_null() || result == R_NilValue() {
+        return result;
     }
+
+    let _result_guard = protect(result);
+    let marker = Rf_ScalarLogical(TRUE);
+    let _marker_guard = protect(marker);
+    crate::sexp::attrib_core::setAttrib(result, install_str("Csingle"), marker);
+    result
 }
 
 /// R's `complex(length.out = 0, real = numeric(), imaginary = numeric(),
@@ -2457,7 +2439,7 @@ pub fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if !is_function_value(method) {
             let composed = format!("{generic}.{class}");
             if let Ok(cname) = CString::new(composed) {
-                let sym = Rf_install(cname.as_ptr());
+                let sym = install_cstr(&cname);
                 let mut bound = crate::sexp::envir::R_findVarInFrame(target_env, sym);
                 if TYPEOF(bound) == SEXPTYPE::PROMSXP {
                     crate::sexp::envir::forcePromise(bound);
@@ -2470,7 +2452,7 @@ pub fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         }
         let gen_sym = {
             let cname = CString::new(generic.clone()).unwrap_or_default();
-            Rf_install(cname.as_ptr())
+            install_cstr(&cname)
         };
         let genfun = crate::sexp::envir::findFun(gen_sym, target_env);
         let defenv = if TYPEOF(genfun) == SEXPTYPE::CLOSXP {
@@ -2587,7 +2569,7 @@ fn initialize_generic_dispatch_tables(generic: SEXP) {
             return;
         }
 
-        let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
+        let all_mtable_sym = install_str(".AllMTable");
         let existing_mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
         if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
             let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
@@ -2597,8 +2579,8 @@ fn initialize_generic_dispatch_tables(generic: SEXP) {
             }
         }
 
-        let sig_args_sym = Rf_install(c".SigArgs".as_ptr());
-        let sig_length_sym = Rf_install(c".SigLength".as_ptr());
+        let sig_args_sym = install_str(".SigArgs");
+        let sig_length_sym = install_str(".SigLength");
         let existing_sig_args = crate::sexp::envir::R_findVarInFrame(f_env, sig_args_sym);
         if existing_sig_args != R_UnboundValue() {
             return;
@@ -2696,13 +2678,13 @@ pub fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
             if let Some(name) = name_sexp.filter(|n| !n.is_empty()) {
                 let cname = CString::new(name.clone()).unwrap_or_default();
-                let name_sym = Rf_install(cname.as_ptr());
-                let name_str = Rf_mkString(cname.as_ptr());
+                let name_sym = install_cstr(&cname);
+                let name_str = mk_string_cstr(&cname);
                 let _name_guard = protect(name_str);
 
                 // Mark the closure as a generic function object: attribute
                 // "generic" = the generic's name, plus the OBJECT bit.
-                let generic_sym = Rf_install(c"generic".as_ptr());
+                let generic_sym = install_str("generic");
                 crate::eval::attrib_core::setAttrib(generic, generic_sym, name_str);
                 crate::sexp::accessors::SET_OBJECT(generic, 1);
 
@@ -2810,7 +2792,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return definition;
         }
 
-        let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
+        let all_mtable_sym = install_str(".AllMTable");
         let existing = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
         let mtable = if !existing.is_null()
             && existing != R_UnboundValue()
@@ -2832,10 +2814,10 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if TYPEOF(signature_arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(signature_arg);
             let names =
-                crate::eval::attrib_core::getAttrib(signature_arg, Rf_install(c"names".as_ptr()));
+                crate::eval::attrib_core::getAttrib(signature_arg, install_str("names"));
             if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
                 let sigargs =
-                    crate::sexp::envir::R_findVarInFrame(f_env, Rf_install(c".SigArgs".as_ptr()));
+                    crate::sexp::envir::R_findVarInFrame(f_env, install_str(".SigArgs"));
                 if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
                     base_error("generic has no valid signature arguments");
                 }
@@ -2874,7 +2856,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 ordered.join("#")
             } else {
                 let sigargs =
-                    crate::sexp::envir::R_findVarInFrame(f_env, Rf_install(c".SigArgs".as_ptr()));
+                    crate::sexp::envir::R_findVarInFrame(f_env, install_str(".SigArgs"));
                 if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
                     base_error("generic has no valid signature arguments");
                 }

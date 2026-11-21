@@ -381,7 +381,7 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     crate::mainutils::relop::NA_STRING()
                 } else {
                     let cstr = CString::new(value.as_str()).unwrap_or_default();
-                    crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                    mk_char_cstr(&cstr)
                 };
                 SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
@@ -424,7 +424,7 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             crate::mainutils::relop::NA_STRING()
                         } else {
                             let cstr = CString::new(text).unwrap_or_default();
-                            crate::sexp::constructors::Rf_mkChar(cstr.as_ptr())
+                            mk_char_cstr(&cstr)
                         };
                         SET_STRING_ELT(col, r, charsxp);
                     } else if ty == SEXPTYPE::REALSXP {
@@ -524,7 +524,7 @@ pub fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 output.push_str("\"\"\n");
             }
             // Write header with column names
-            let names_sym = Rf_install(c"names".as_ptr());
+            let names_sym = install_str("names");
             let names = crate::sexp::attrib_core::getAttrib(x_arg, names_sym);
             if ncols > 0
                 && !names.is_null()
@@ -606,7 +606,7 @@ pub fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut file_arg = R_NilValue();
         let mut append_arg = Rf_ScalarLogical(FALSE);
-        let mut type_arg = Rf_mkString(c"output".as_ptr());
+        let mut type_arg = mk_string_cstr(c"output");
         let mut split_arg = Rf_ScalarLogical(FALSE);
         let mut positional = 0usize;
         let mut current = args;
@@ -685,22 +685,20 @@ pub fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `sink.number(type)` — report output or message sink depth.
 pub fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let type_arg = if args.is_null() || args == R_NilValue() {
-            Rf_mkString(c"output".as_ptr())
-        } else {
-            CAR(args)
-        };
-        let is_message_sink = !type_arg.is_null()
-            && type_arg != R_NilValue()
-            && TYPEOF(type_arg) == SEXPTYPE::STRSXP
-            && elt_to_string(type_arg, 0) == "message";
-        let normalized = Rf_cons(
-            Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
-            R_NilValue(),
-        );
-        crate::mainutils::connections::do_sinkNumber(_call, _op, normalized, _rho)
-    }
+    let type_arg = if args.is_null() || args == R_NilValue() {
+        mk_string_cstr(c"output")
+    } else {
+        CAR(args)
+    };
+    let is_message_sink = !type_arg.is_null()
+        && type_arg != R_NilValue()
+        && TYPEOF(type_arg) == SEXPTYPE::STRSXP
+        && elt_to_string(type_arg, 0) == "message";
+    let normalized = Rf_cons(
+        Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
+        R_NilValue(),
+    );
+    crate::mainutils::connections::do_sinkNumber(_call, _op, normalized, _rho)
 }
 
 fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {

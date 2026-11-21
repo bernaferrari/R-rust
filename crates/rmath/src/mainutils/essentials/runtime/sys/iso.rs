@@ -22,8 +22,8 @@ fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, t
             let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
             set_real_checked(na, 0, f64::NAN);
             let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+            SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
             crate::sexp::attrib_core::setAttrib(
                 na,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -32,7 +32,7 @@ fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, t
             let tzone = Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr());
             crate::sexp::attrib_core::setAttrib(
                 na,
-                crate::sexp::symbol::Rf_install(c"tzone".as_ptr()),
+                install_str("tzone"),
                 tzone,
             );
             return na;
@@ -47,7 +47,7 @@ fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, t
         let _z = protect(tz_s);
         let args = Rf_cons(text, Rf_cons(tz_s, R_NilValue()));
         let _a = protect(args);
-        SETTAG(CDR(args), Rf_install(c"tz".as_ptr()));
+        SETTAG(CDR(args), install_str("tz"));
         do_as_POSIXct(R_NilValue(), R_NilValue(), args, R_NilValue())
     }
 }

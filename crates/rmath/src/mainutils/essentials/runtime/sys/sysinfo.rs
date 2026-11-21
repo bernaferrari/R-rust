@@ -90,20 +90,18 @@ fn sys_info_user() -> String {
 
 /// R's `Sys.time()` — current time as REALSXP (seconds since epoch).
 pub fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let secs = crate::mainutils::times::currentTime();
-        let result = Rf_ScalarReal(secs);
-        let _result = protect(result);
-        // Set class to c("POSIXct", "POSIXt").
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !class.is_null() {
-            let _p2 = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
-        }
-        result
+    let secs = crate::mainutils::times::currentTime();
+    let result = Rf_ScalarReal(secs);
+    let _result = protect(result);
+    // Set class to c("POSIXct", "POSIXt").
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if !class.is_null() {
+        let _p2 = protect(class);
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
     }
+    result
 }
 
 /// R's `Sys.sleep(time)` — sleep for specified seconds.

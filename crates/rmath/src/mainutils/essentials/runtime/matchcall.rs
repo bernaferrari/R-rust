@@ -48,7 +48,7 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for name in [c"envir", c"expand.dots", c"call", c"definition"] {
             controls = Rf_cons(R_MissingArg(), controls);
             roots.push(protect(controls));
-            SETTAG(controls, Rf_install(name.as_ptr()));
+            SETTAG(controls, install_cstr(&name));
         }
         let supplied = crate::mainutils::duplicate::shallow_duplicate(args);
         let _supplied = protect(supplied);
@@ -139,7 +139,7 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             base_error("'envir' must be an environment");
         }
         let _envir = protect(envir);
-        let dots_symbol = Rf_install(c"...".as_ptr());
+        let dots_symbol = install_str("...");
         let mut actuals = R_NilValue();
         let mut tail = R_NilValue();
         // Every allocated cell stays rooted until the final call is built.
@@ -203,7 +203,7 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             || expr_type == SEXPTYPE::NILSXP
                         {
                             let name = CString::new(format!("..{index}")).unwrap();
-                            expr = Rf_install(name.as_ptr());
+                            expr = install_cstr(&name);
                         }
                         append(&mut actuals, &mut tail, expr, TAG(dots));
                         dots = CDR(dots);

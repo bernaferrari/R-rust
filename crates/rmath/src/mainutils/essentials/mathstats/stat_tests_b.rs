@@ -4,421 +4,411 @@ use super::*;
 
 /// GNU 2x2 `mcnemar.test(x, correct=TRUE)`.
 pub fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
-            return R_NilValue();
-        }
-        let mut correct = true;
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let c = CAR(rest);
-            if TYPEOF(c) == SEXPTYPE::LGLSXP && XLENGTH(c) > 0 {
-                correct = integer_elt_checked(c, 0) != 0;
-            }
-        }
-        let a12 = elt_real_safe(x, 2);
-        let a21 = elt_real_safe(x, 1);
-        let off = a12 + a21;
-        let y = if correct && (a12 - a21).abs() > 0.0 {
-            (a12 - a21).abs() - 1.0
-        } else {
-            a12 - a21
-        };
-        let stat = if off > 0.0 { y * y / off } else { 0.0 };
-        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
-        let method = if correct && (a12 - a21).abs() > 0.0 {
-            "McNemar's Chi-squared test with continuity correction"
-        } else {
-            "McNemar's Chi-squared test"
-        };
-        let statistic = Rf_ScalarReal(stat);
-        let _st = protect(statistic);
-        set_string_names(statistic, &["McNemar's chi-squared".to_string()]);
-        let parameter = Rf_ScalarReal(1.0);
-        let _pa = protect(parameter);
-        set_string_names(parameter, &["df".to_string()]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, statistic);
-        SET_VECTOR_ELT(result, 1, parameter);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-        let m = CString::new(method).unwrap_or_default();
-        SET_VECTOR_ELT(result, 3, Rf_mkString(m.as_ptr()));
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "statistic".to_string(),
-                "parameter".to_string(),
-                "p.value".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
+        return R_NilValue();
     }
+    let mut correct = true;
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let c = CAR(rest);
+        if TYPEOF(c) == SEXPTYPE::LGLSXP && XLENGTH(c) > 0 {
+            correct = integer_elt_checked(c, 0) != 0;
+        }
+    }
+    let a12 = elt_real_safe(x, 2);
+    let a21 = elt_real_safe(x, 1);
+    let off = a12 + a21;
+    let y = if correct && (a12 - a21).abs() > 0.0 {
+        (a12 - a21).abs() - 1.0
+    } else {
+        a12 - a21
+    };
+    let stat = if off > 0.0 { y * y / off } else { 0.0 };
+    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let method = if correct && (a12 - a21).abs() > 0.0 {
+        "McNemar's Chi-squared test with continuity correction"
+    } else {
+        "McNemar's Chi-squared test"
+    };
+    let statistic = Rf_ScalarReal(stat);
+    let _st = protect(statistic);
+    set_string_names(statistic, &["McNemar's chi-squared".to_string()]);
+    let parameter = Rf_ScalarReal(1.0);
+    let _pa = protect(parameter);
+    set_string_names(parameter, &["df".to_string()]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, statistic);
+    SET_VECTOR_ELT(result, 1, parameter);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+    let m = CString::new(method).unwrap_or_default();
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(&m));
+    SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "statistic".to_string(),
+            "parameter".to_string(),
+            "p.value".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU 2x2 `fisher.test(x)`.
 pub fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let tab = CAR(args);
-        if tab.is_null() || tab == R_NilValue() || XLENGTH(tab) < 4 {
-            return R_NilValue();
-        }
-
-        let a11 = elt_real_safe(tab, 0);
-        let a21 = elt_real_safe(tab, 1);
-        let a12 = elt_real_safe(tab, 2);
-        let a22 = elt_real_safe(tab, 3);
-        let m = a11 + a21;
-        let n = a12 + a22;
-        let k = a11 + a12;
-        let x = a11;
-        let lo = 0.0_f64.max(k - n);
-        let hi = k.min(m);
-        let dobs = crate::dist::hypergeometric::dhyper_inner(x, m, n, k, false);
-        let mut pval = 0.0;
-        let mut t = lo;
-        while t <= hi + 0.5 {
-            let dt = crate::dist::hypergeometric::dhyper_inner(t, m, n, k, false);
-            if dt <= dobs * (1.0 + 1e-7) {
-                pval += dt;
-            }
-            t += 1.0;
-        }
-        pval = pval.min(1.0);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(pval));
-        let nv = Rf_ScalarReal(1.0);
-        let _nv = protect(nv);
-        set_string_names(nv, &["odds ratio".to_string()]);
-        SET_VECTOR_ELT(result, 1, nv);
-        SET_VECTOR_ELT(result, 2, Rf_mkString(c"two.sided".as_ptr()));
-        SET_VECTOR_ELT(
-            result,
-            3,
-            Rf_mkString(c"Fisher's Exact Test for Count Data".as_ptr()),
-        );
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "p.value".to_string(),
-                "null.value".to_string(),
-                "alternative".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let tab = CAR(args);
+    if tab.is_null() || tab == R_NilValue() || XLENGTH(tab) < 4 {
+        return R_NilValue();
     }
+
+    let a11 = elt_real_safe(tab, 0);
+    let a21 = elt_real_safe(tab, 1);
+    let a12 = elt_real_safe(tab, 2);
+    let a22 = elt_real_safe(tab, 3);
+    let m = a11 + a21;
+    let n = a12 + a22;
+    let k = a11 + a12;
+    let x = a11;
+    let lo = 0.0_f64.max(k - n);
+    let hi = k.min(m);
+    let dobs = crate::dist::hypergeometric::dhyper_inner(x, m, n, k, false);
+    let mut pval = 0.0;
+    let mut t = lo;
+    while t <= hi + 0.5 {
+        let dt = crate::dist::hypergeometric::dhyper_inner(t, m, n, k, false);
+        if dt <= dobs * (1.0 + 1e-7) {
+            pval += dt;
+        }
+        t += 1.0;
+    }
+    pval = pval.min(1.0);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(pval));
+    let nv = Rf_ScalarReal(1.0);
+    let _nv = protect(nv);
+    set_string_names(nv, &["odds ratio".to_string()]);
+    SET_VECTOR_ELT(result, 1, nv);
+    SET_VECTOR_ELT(result, 2, mk_string_cstr(c"two.sided"));
+    SET_VECTOR_ELT(
+        result,
+        3,
+        mk_string_cstr(c"Fisher's Exact Test for Count Data"),
+    );
+    SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "p.value".to_string(),
+            "null.value".to_string(),
+            "alternative".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU unreplicated-block `friedman.test(x)`.
 pub fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (n, k) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
-        } else {
-            return R_NilValue();
-        };
-        if n < 2 || k < 2 {
-            return R_NilValue();
-        }
-        let mut ranks = vec![0.0; n * k];
-        let mut tie_sum = 0.0;
-        for i in 0..n {
-            let mut row = Vec::with_capacity(k);
-            for j in 0..k {
-                row.push(elt_real_safe(x, (j * n + i) as i64));
-            }
-            let rr = rank_average(&row);
-            let mut counts: Vec<(f64, i32)> = Vec::new();
-            for (j, &r) in rr.iter().enumerate() {
-                ranks[j * n + i] = r;
-                if let Some(c) = counts.iter_mut().find(|(v, _)| *v == r) {
-                    c.1 += 1;
-                } else {
-                    counts.push((r, 1));
-                }
-            }
-            for (_, u) in counts {
-                let uf = u as f64;
-                tie_sum += uf * uf * uf - uf;
-            }
-        }
-        let expect = n as f64 * (k as f64 + 1.0) / 2.0;
-        let mut ss = 0.0;
-        for j in 0..k {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += ranks[j * n + i];
-            }
-            let d = s - expect;
-            ss += d * d;
-        }
-        let denom = (n * k * (k + 1)) as f64 - tie_sum / (k as f64 - 1.0);
-        let stat = if denom > 0.0 { 12.0 * ss / denom } else { 0.0 };
-        let df = (k - 1) as f64;
-        let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
-        let statistic = Rf_ScalarReal(stat);
-        let _st = protect(statistic);
-        set_string_names(statistic, &["Friedman chi-squared".to_string()]);
-        let parameter = Rf_ScalarReal(df);
-        let _pa = protect(parameter);
-        set_string_names(parameter, &["df".to_string()]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, statistic);
-        SET_VECTOR_ELT(result, 1, parameter);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Friedman rank sum test".as_ptr()));
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "statistic".to_string(),
-                "parameter".to_string(),
-                "p.value".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (n, k) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+    } else {
+        return R_NilValue();
+    };
+    if n < 2 || k < 2 {
+        return R_NilValue();
+    }
+    let mut ranks = vec![0.0; n * k];
+    let mut tie_sum = 0.0;
+    for i in 0..n {
+        let mut row = Vec::with_capacity(k);
+        for j in 0..k {
+            row.push(elt_real_safe(x, (j * n + i) as i64));
+        }
+        let rr = rank_average(&row);
+        let mut counts: Vec<(f64, i32)> = Vec::new();
+        for (j, &r) in rr.iter().enumerate() {
+            ranks[j * n + i] = r;
+            if let Some(c) = counts.iter_mut().find(|(v, _)| *v == r) {
+                c.1 += 1;
+            } else {
+                counts.push((r, 1));
+            }
+        }
+        for (_, u) in counts {
+            let uf = u as f64;
+            tie_sum += uf * uf * uf - uf;
+        }
+    }
+    let expect = n as f64 * (k as f64 + 1.0) / 2.0;
+    let mut ss = 0.0;
+    for j in 0..k {
+        let mut s = 0.0;
+        for i in 0..n {
+            s += ranks[j * n + i];
+        }
+        let d = s - expect;
+        ss += d * d;
+    }
+    let denom = (n * k * (k + 1)) as f64 - tie_sum / (k as f64 - 1.0);
+    let stat = if denom > 0.0 { 12.0 * ss / denom } else { 0.0 };
+    let df = (k - 1) as f64;
+    let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
+    let statistic = Rf_ScalarReal(stat);
+    let _st = protect(statistic);
+    set_string_names(statistic, &["Friedman chi-squared".to_string()]);
+    let parameter = Rf_ScalarReal(df);
+    let _pa = protect(parameter);
+    set_string_names(parameter, &["df".to_string()]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, statistic);
+    SET_VECTOR_ELT(result, 1, parameter);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(c"Friedman rank sum test"));
+    SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "statistic".to_string(),
+            "parameter".to_string(),
+            "p.value".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU unreplicated-block `quade.test(x)`.
 pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (b, k) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
-        } else {
-            return R_NilValue();
-        };
-        if b < 2 || k < 2 {
-            return R_NilValue();
-        }
-        let mid = (k as f64 + 1.0) / 2.0;
-        let mut ranges = vec![0.0; b];
-        let mut s = vec![0.0; b * k];
-        for i in 0..b {
-            let mut row = Vec::with_capacity(k);
-            for j in 0..k {
-                row.push(elt_real_safe(x, (j * b + i) as i64));
-            }
-            let rr = rank_average(&row);
-            let mut mn = f64::INFINITY;
-            let mut mx = f64::NEG_INFINITY;
-            for &v in &row {
-                mn = mn.min(v);
-                mx = mx.max(v);
-            }
-            ranges[i] = mx - mn;
-            for j in 0..k {
-                s[j * b + i] = rr[j] - mid;
-            }
-        }
-        let q = rank_average(&ranges);
-        let mut a = 0.0;
-        let mut col = vec![0.0; k];
-        for i in 0..b {
-            for j in 0..k {
-                let v = q[i] * s[j * b + i];
-                s[j * b + i] = v;
-                a += v * v;
-                col[j] += v;
-            }
-        }
-        let mut bss = 0.0;
-        for c in col {
-            bss += c * c;
-        }
-        let bb = bss / (b as f64);
-        let stat = if (a - bb).abs() < 1e-15 {
-            f64::NAN
-        } else {
-            (b as f64 - 1.0) * bb / (a - bb)
-        };
-        let df1 = (k - 1) as f64;
-        let df2 = ((b - 1) * (k - 1)) as f64;
-        let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
-        let statistic = Rf_ScalarReal(stat);
-        let _st = protect(statistic);
-        set_string_names(statistic, &["Quade F".to_string()]);
-        let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-        let _pa = protect(parameter);
-        set_real_checked(parameter, 0, df1);
-        set_real_checked(parameter, (1) as R_xlen_t, df2);
-        set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, statistic);
-        SET_VECTOR_ELT(result, 1, parameter);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-        SET_VECTOR_ELT(result, 3, Rf_mkString(c"Quade test".as_ptr()));
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "statistic".to_string(),
-                "parameter".to_string(),
-                "p.value".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (b, k) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+    } else {
+        return R_NilValue();
+    };
+    if b < 2 || k < 2 {
+        return R_NilValue();
+    }
+    let mid = (k as f64 + 1.0) / 2.0;
+    let mut ranges = vec![0.0; b];
+    let mut s = vec![0.0; b * k];
+    for i in 0..b {
+        let mut row = Vec::with_capacity(k);
+        for j in 0..k {
+            row.push(elt_real_safe(x, (j * b + i) as i64));
+        }
+        let rr = rank_average(&row);
+        let mut mn = f64::INFINITY;
+        let mut mx = f64::NEG_INFINITY;
+        for &v in &row {
+            mn = mn.min(v);
+            mx = mx.max(v);
+        }
+        ranges[i] = mx - mn;
+        for j in 0..k {
+            s[j * b + i] = rr[j] - mid;
+        }
+    }
+    let q = rank_average(&ranges);
+    let mut a = 0.0;
+    let mut col = vec![0.0; k];
+    for i in 0..b {
+        for j in 0..k {
+            let v = q[i] * s[j * b + i];
+            s[j * b + i] = v;
+            a += v * v;
+            col[j] += v;
+        }
+    }
+    let mut bss = 0.0;
+    for c in col {
+        bss += c * c;
+    }
+    let bb = bss / (b as f64);
+    let stat = if (a - bb).abs() < 1e-15 {
+        f64::NAN
+    } else {
+        (b as f64 - 1.0) * bb / (a - bb)
+    };
+    let df1 = (k - 1) as f64;
+    let df2 = ((b - 1) * (k - 1)) as f64;
+    let pval = crate::dist::f_dist::pf_inner(stat, df1, df2, false, false);
+    let statistic = Rf_ScalarReal(stat);
+    let _st = protect(statistic);
+    set_string_names(statistic, &["Quade F".to_string()]);
+    let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+    let _pa = protect(parameter);
+    set_real_checked(parameter, 0, df1);
+    set_real_checked(parameter, (1) as R_xlen_t, df2);
+    set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, statistic);
+    SET_VECTOR_ELT(result, 1, parameter);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(c"Quade test"));
+    SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "statistic".to_string(),
+            "parameter".to_string(),
+            "p.value".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU 2x2xK `mantelhaen.test(x)` (asymptotic, two-sided).
 pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if dim.is_null()
-            || dim == R_NilValue()
-            || TYPEOF(dim) != SEXPTYPE::INTSXP
-            || XLENGTH(dim) < 3
-        {
-            return R_NilValue();
-        }
-        let i = integer_elt_checked(dim, 0) as usize;
-        let j = integer_elt_checked(dim, (1) as R_xlen_t) as usize;
-        let k = integer_elt_checked(dim, (2) as R_xlen_t) as usize;
-        if i != 2 || j != 2 || k < 1 {
-            return R_NilValue();
-        }
-        let mut delta = 0.0;
-        let mut varsum = 0.0;
-        let mut s_diag = 0.0;
-        let mut s_offd = 0.0;
-        for s in 0..k {
-            let a = elt_real_safe(x, (s * 4) as i64);
-            let b = elt_real_safe(x, (s * 4 + 1) as i64);
-            let c = elt_real_safe(x, (s * 4 + 2) as i64);
-            let d = elt_real_safe(x, (s * 4 + 3) as i64);
-            let n = a + b + c + d;
-            if n <= 1.0 {
-                continue;
-            }
-            let sx1 = a + c;
-            let sx2 = b + d;
-            let sy1 = a + b;
-            let sy2 = c + d;
-            delta += a - sx1 * sy1 / n;
-            varsum += sx1 * sx2 * sy1 * sy2 / (n * n * (n - 1.0));
-            s_diag += a * d / n;
-            s_offd += c * b / n;
-        }
-        let yates = if delta.abs() >= 0.5 { 0.5 } else { 0.0 };
-        let stat = if varsum > 0.0 {
-            let num = delta.abs() - yates;
-            num * num / varsum
-        } else {
-            0.0
-        };
-        let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
-        let estimate = if s_offd > 0.0 {
-            s_diag / s_offd
-        } else {
-            f64::INFINITY
-        };
-        let statistic = Rf_ScalarReal(stat);
-        let _st = protect(statistic);
-        set_string_names(statistic, &["Mantel-Haenszel X-squared".to_string()]);
-        let parameter = Rf_ScalarReal(1.0);
-        let _pa = protect(parameter);
-        set_string_names(parameter, &["df".to_string()]);
-        let est = Rf_ScalarReal(estimate);
-        let _es = protect(est);
-        set_string_names(est, &["common odds ratio".to_string()]);
-        let method_s = if yates > 0.0 {
-            Rf_mkString(c"Mantel-Haenszel chi-squared test with continuity correction".as_ptr())
-        } else {
-            Rf_mkString(c"Mantel-Haenszel chi-squared test without continuity correction".as_ptr())
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, statistic);
-        SET_VECTOR_ELT(result, 1, parameter);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-        SET_VECTOR_ELT(result, 3, est);
-        SET_VECTOR_ELT(result, 4, method_s);
-        SET_VECTOR_ELT(result, 5, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "statistic".to_string(),
-                "parameter".to_string(),
-                "p.value".to_string(),
-                "estimate".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if dim.is_null()
+        || dim == R_NilValue()
+        || TYPEOF(dim) != SEXPTYPE::INTSXP
+        || XLENGTH(dim) < 3
+    {
+        return R_NilValue();
+    }
+    let i = integer_elt_checked(dim, 0) as usize;
+    let j = integer_elt_checked(dim, (1) as R_xlen_t) as usize;
+    let k = integer_elt_checked(dim, (2) as R_xlen_t) as usize;
+    if i != 2 || j != 2 || k < 1 {
+        return R_NilValue();
+    }
+    let mut delta = 0.0;
+    let mut varsum = 0.0;
+    let mut s_diag = 0.0;
+    let mut s_offd = 0.0;
+    for s in 0..k {
+        let a = elt_real_safe(x, (s * 4) as i64);
+        let b = elt_real_safe(x, (s * 4 + 1) as i64);
+        let c = elt_real_safe(x, (s * 4 + 2) as i64);
+        let d = elt_real_safe(x, (s * 4 + 3) as i64);
+        let n = a + b + c + d;
+        if n <= 1.0 {
+            continue;
+        }
+        let sx1 = a + c;
+        let sx2 = b + d;
+        let sy1 = a + b;
+        let sy2 = c + d;
+        delta += a - sx1 * sy1 / n;
+        varsum += sx1 * sx2 * sy1 * sy2 / (n * n * (n - 1.0));
+        s_diag += a * d / n;
+        s_offd += c * b / n;
+    }
+    let yates = if delta.abs() >= 0.5 { 0.5 } else { 0.0 };
+    let stat = if varsum > 0.0 {
+        let num = delta.abs() - yates;
+        num * num / varsum
+    } else {
+        0.0
+    };
+    let pval = crate::dist::chisq::pchisq_inner(stat, 1.0, false, false);
+    let estimate = if s_offd > 0.0 {
+        s_diag / s_offd
+    } else {
+        f64::INFINITY
+    };
+    let statistic = Rf_ScalarReal(stat);
+    let _st = protect(statistic);
+    set_string_names(statistic, &["Mantel-Haenszel X-squared".to_string()]);
+    let parameter = Rf_ScalarReal(1.0);
+    let _pa = protect(parameter);
+    set_string_names(parameter, &["df".to_string()]);
+    let est = Rf_ScalarReal(estimate);
+    let _es = protect(est);
+    set_string_names(est, &["common odds ratio".to_string()]);
+    let method_s = if yates > 0.0 {
+        mk_string_cstr(c"Mantel-Haenszel chi-squared test with continuity correction")
+    } else {
+        mk_string_cstr(c"Mantel-Haenszel chi-squared test without continuity correction")
+    };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, statistic);
+    SET_VECTOR_ELT(result, 1, parameter);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+    SET_VECTOR_ELT(result, 3, est);
+    SET_VECTOR_ELT(result, 4, method_s);
+    SET_VECTOR_ELT(result, 5, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "statistic".to_string(),
+            "parameter".to_string(),
+            "p.value".to_string(),
+            "estimate".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `pairwise.t.test(x, g)` with pooled SD.
@@ -513,12 +503,12 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_mkString(c"t tests with pooled SD".as_ptr()));
+        SET_VECTOR_ELT(result, 0, mk_string_cstr(c"t tests with pooled SD"));
         SET_VECTOR_ELT(result, 1, pmat);
         let meth = if method == "none" {
-            Rf_mkString(c"none".as_ptr())
+            mk_string_cstr(c"none")
         } else {
-            Rf_mkString(c"holm".as_ptr())
+            mk_string_cstr(c"holm")
         };
         SET_VECTOR_ELT(result, 2, meth);
         crate::mainutils::essentials::set_string_names(
@@ -529,7 +519,7 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 "p.adjust.method".to_string(),
             ],
         );
-        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let class = mk_string_cstr(c"pairwise.htest");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -622,13 +612,13 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         SET_VECTOR_ELT(
             result,
             0,
-            Rf_mkString(c"Pairwise comparison of proportions".as_ptr()),
+            mk_string_cstr(c"Pairwise comparison of proportions"),
         );
         SET_VECTOR_ELT(result, 1, pmat);
         let meth = if method == "none" {
-            Rf_mkString(c"none".as_ptr())
+            mk_string_cstr(c"none")
         } else {
-            Rf_mkString(c"holm".as_ptr())
+            mk_string_cstr(c"holm")
         };
         SET_VECTOR_ELT(result, 2, meth);
         crate::mainutils::essentials::set_string_names(
@@ -639,7 +629,7 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 "p.adjust.method".to_string(),
             ],
         );
-        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let class = mk_string_cstr(c"pairwise.htest");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -770,13 +760,13 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         SET_VECTOR_ELT(
             result,
             0,
-            Rf_mkString(c"Wilcoxon rank sum test with continuity correction".as_ptr()),
+            mk_string_cstr(c"Wilcoxon rank sum test with continuity correction"),
         );
         SET_VECTOR_ELT(result, 1, pmat);
         let meth = if method == "none" {
-            Rf_mkString(c"none".as_ptr())
+            mk_string_cstr(c"none")
         } else {
-            Rf_mkString(c"holm".as_ptr())
+            mk_string_cstr(c"holm")
         };
         SET_VECTOR_ELT(result, 2, meth);
         crate::mainutils::essentials::set_string_names(
@@ -787,7 +777,7 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 "p.adjust.method".to_string(),
             ],
         );
-        let class = Rf_mkString(c"pairwise.htest".as_ptr());
+        let class = mk_string_cstr(c"pairwise.htest");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -840,130 +830,128 @@ fn approx_rule2(xs: &[f64], ys: &[f64], x: f64) -> f64 {
 
 /// GNU `PP.test(x)` Phillips-Perron unit-root test.
 pub fn do_pp_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
-            return R_NilValue();
-        }
-        let n0 = XLENGTH(x) as usize;
-        let mut xs = Vec::with_capacity(n0);
-        for i in 0..n0 {
-            xs.push(elt_real_safe(x, i as i64));
-        }
-        let n = n0 - 1;
-        let mut xtx = [[0.0; 3]; 3];
-        let mut xty = [0.0; 3];
-        let mut yt1s = Vec::with_capacity(n);
-        let mut yts = Vec::with_capacity(n);
-        for i in 0..n {
-            let yt = xs[i + 1];
-            let yt1 = xs[i];
-            let u = (i as f64 + 1.0) - (n as f64) / 2.0;
-            let row = [1.0, u, yt1];
-            yts.push(yt);
-            yt1s.push(yt1);
-            for a in 0..3 {
-                xty[a] += row[a] * yt;
-                for b in 0..3 {
-                    xtx[a][b] += row[a] * row[b];
-                }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) < 4 {
+        return R_NilValue();
+    }
+    let n0 = XLENGTH(x) as usize;
+    let mut xs = Vec::with_capacity(n0);
+    for i in 0..n0 {
+        xs.push(elt_real_safe(x, i as i64));
+    }
+    let n = n0 - 1;
+    let mut xtx = [[0.0; 3]; 3];
+    let mut xty = [0.0; 3];
+    let mut yt1s = Vec::with_capacity(n);
+    let mut yts = Vec::with_capacity(n);
+    for i in 0..n {
+        let yt = xs[i + 1];
+        let yt1 = xs[i];
+        let u = (i as f64 + 1.0) - (n as f64) / 2.0;
+        let row = [1.0, u, yt1];
+        yts.push(yt);
+        yt1s.push(yt1);
+        for a in 0..3 {
+            xty[a] += row[a] * yt;
+            for b in 0..3 {
+                xtx[a][b] += row[a] * row[b];
             }
         }
-        let Some(inv) = invert3(xtx) else {
-            return R_NilValue();
-        };
-        let mut beta = [0.0; 3];
-        for i in 0..3 {
-            beta[i] = inv[i][0] * xty[0] + inv[i][1] * xty[1] + inv[i][2] * xty[2];
-        }
-        let mut resid = vec![0.0; n];
-        let mut sse = 0.0;
-        for i in 0..n {
-            let u = (i as f64 + 1.0) - (n as f64) / 2.0;
-            let fit = beta[0] + beta[1] * u + beta[2] * yt1s[i];
-            let e = yts[i] - fit;
-            resid[i] = e;
-            sse += e * e;
-        }
-        let sigma2 = sse / ((n - 3) as f64);
-        let se = (sigma2 * inv[2][2]).sqrt();
-        let tstat = (beta[2] - 1.0) / se;
-        let ssqru = sse / (n as f64);
-        let l = (4.0 * (n as f64 / 100.0).powf(0.25)).trunc() as i32;
-        let ssqrtl = ssqru + crate::library::stats::ppsum::r_pp_sum(&resid, l);
-        let n_f = n as f64;
-        let n2 = n_f * n_f;
-        let mut sum_yt1_2 = 0.0;
-        let mut sum_yt1_t = 0.0;
-        let mut sum_yt1 = 0.0;
-        for i in 0..n {
-            let t = (i as f64) + 1.0;
-            sum_yt1_2 += yt1s[i] * yt1s[i];
-            sum_yt1_t += yt1s[i] * t;
-            sum_yt1 += yt1s[i];
-        }
-        let trm1 = n2 * (n2 - 1.0) * sum_yt1_2 / 12.0;
-        let trm2 = n_f * sum_yt1_t * sum_yt1_t;
-        let trm3 = n_f * (n_f + 1.0) * sum_yt1_t * sum_yt1;
-        let trm4 = (n_f * (n_f + 1.0) * (2.0 * n_f + 1.0) * sum_yt1 * sum_yt1) / 6.0;
-        let dx = trm1 - trm2 + trm3 - trm4;
-        let stat = ssqru.sqrt() / ssqrtl.sqrt() * tstat
-            - (n_f * n_f * n_f) / (4.0 * 3.0_f64.sqrt() * dx.sqrt() * ssqrtl.sqrt())
-                * (ssqrtl - ssqru);
-        let table_t = [25.0, 50.0, 100.0, 250.0, 500.0, 1e5];
-        let table = [
-            [4.38, 4.15, 4.04, 3.99, 3.98, 3.96],
-            [3.95, 3.80, 3.73, 3.69, 3.68, 3.66],
-            [3.60, 3.50, 3.45, 3.43, 3.42, 3.41],
-            [3.24, 3.18, 3.15, 3.13, 3.13, 3.12],
-            [1.14, 1.19, 1.22, 1.23, 1.24, 1.25],
-            [0.80, 0.87, 0.90, 0.92, 0.93, 0.94],
-            [0.50, 0.58, 0.62, 0.64, 0.65, 0.66],
-            [0.15, 0.24, 0.28, 0.31, 0.32, 0.33],
-        ];
-        let tablep = [0.01, 0.025, 0.05, 0.1, 0.9, 0.95, 0.975, 0.99];
-        let mut tableipl = [0.0; 8];
-        for i in 0..8 {
-            let col: Vec<f64> = table[i].iter().map(|v| -v).collect();
-            tableipl[i] = approx_rule2(&table_t, &col, n_f);
-        }
-        let pval = approx_rule2(&tableipl, &tablep, stat);
-        let statistic = Rf_ScalarReal(stat);
-        let _st = protect(statistic);
-        set_string_names(statistic, &["Dickey-Fuller".to_string()]);
-        let parameter = Rf_ScalarReal(l as f64);
-        let _pa = protect(parameter);
-        set_string_names(parameter, &["Truncation lag parameter".to_string()]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, statistic);
-        SET_VECTOR_ELT(result, 1, parameter);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-        SET_VECTOR_ELT(
-            result,
-            3,
-            Rf_mkString(c"Phillips-Perron Unit Root Test".as_ptr()),
-        );
-        SET_VECTOR_ELT(result, 4, Rf_mkString(c"x".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "statistic".to_string(),
-                "parameter".to_string(),
-                "p.value".to_string(),
-                "method".to_string(),
-                "data.name".to_string(),
-            ],
-        );
-        let class = Rf_mkString(c"htest".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
     }
+    let Some(inv) = invert3(xtx) else {
+        return R_NilValue();
+    };
+    let mut beta = [0.0; 3];
+    for i in 0..3 {
+        beta[i] = inv[i][0] * xty[0] + inv[i][1] * xty[1] + inv[i][2] * xty[2];
+    }
+    let mut resid = vec![0.0; n];
+    let mut sse = 0.0;
+    for i in 0..n {
+        let u = (i as f64 + 1.0) - (n as f64) / 2.0;
+        let fit = beta[0] + beta[1] * u + beta[2] * yt1s[i];
+        let e = yts[i] - fit;
+        resid[i] = e;
+        sse += e * e;
+    }
+    let sigma2 = sse / ((n - 3) as f64);
+    let se = (sigma2 * inv[2][2]).sqrt();
+    let tstat = (beta[2] - 1.0) / se;
+    let ssqru = sse / (n as f64);
+    let l = (4.0 * (n as f64 / 100.0).powf(0.25)).trunc() as i32;
+    let ssqrtl = ssqru + crate::library::stats::ppsum::r_pp_sum(&resid, l);
+    let n_f = n as f64;
+    let n2 = n_f * n_f;
+    let mut sum_yt1_2 = 0.0;
+    let mut sum_yt1_t = 0.0;
+    let mut sum_yt1 = 0.0;
+    for i in 0..n {
+        let t = (i as f64) + 1.0;
+        sum_yt1_2 += yt1s[i] * yt1s[i];
+        sum_yt1_t += yt1s[i] * t;
+        sum_yt1 += yt1s[i];
+    }
+    let trm1 = n2 * (n2 - 1.0) * sum_yt1_2 / 12.0;
+    let trm2 = n_f * sum_yt1_t * sum_yt1_t;
+    let trm3 = n_f * (n_f + 1.0) * sum_yt1_t * sum_yt1;
+    let trm4 = (n_f * (n_f + 1.0) * (2.0 * n_f + 1.0) * sum_yt1 * sum_yt1) / 6.0;
+    let dx = trm1 - trm2 + trm3 - trm4;
+    let stat = ssqru.sqrt() / ssqrtl.sqrt() * tstat
+        - (n_f * n_f * n_f) / (4.0 * 3.0_f64.sqrt() * dx.sqrt() * ssqrtl.sqrt())
+            * (ssqrtl - ssqru);
+    let table_t = [25.0, 50.0, 100.0, 250.0, 500.0, 1e5];
+    let table = [
+        [4.38, 4.15, 4.04, 3.99, 3.98, 3.96],
+        [3.95, 3.80, 3.73, 3.69, 3.68, 3.66],
+        [3.60, 3.50, 3.45, 3.43, 3.42, 3.41],
+        [3.24, 3.18, 3.15, 3.13, 3.13, 3.12],
+        [1.14, 1.19, 1.22, 1.23, 1.24, 1.25],
+        [0.80, 0.87, 0.90, 0.92, 0.93, 0.94],
+        [0.50, 0.58, 0.62, 0.64, 0.65, 0.66],
+        [0.15, 0.24, 0.28, 0.31, 0.32, 0.33],
+    ];
+    let tablep = [0.01, 0.025, 0.05, 0.1, 0.9, 0.95, 0.975, 0.99];
+    let mut tableipl = [0.0; 8];
+    for i in 0..8 {
+        let col: Vec<f64> = table[i].iter().map(|v| -v).collect();
+        tableipl[i] = approx_rule2(&table_t, &col, n_f);
+    }
+    let pval = approx_rule2(&tableipl, &tablep, stat);
+    let statistic = Rf_ScalarReal(stat);
+    let _st = protect(statistic);
+    set_string_names(statistic, &["Dickey-Fuller".to_string()]);
+    let parameter = Rf_ScalarReal(l as f64);
+    let _pa = protect(parameter);
+    set_string_names(parameter, &["Truncation lag parameter".to_string()]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, statistic);
+    SET_VECTOR_ELT(result, 1, parameter);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
+    SET_VECTOR_ELT(
+        result,
+        3,
+        mk_string_cstr(c"Phillips-Perron Unit Root Test"),
+    );
+    SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "statistic".to_string(),
+            "parameter".to_string(),
+            "p.value".to_string(),
+            "method".to_string(),
+            "data.name".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn matmul_p2(x: &[f64], tt: [[f64; 2]; 2], p: usize) -> Vec<f64> {
@@ -1110,7 +1098,7 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..(p * 2) {
             set_real_checked(loadings, (i) as R_xlen_t, z[i]);
         }
-        let class = Rf_mkString(c"loadings".as_ptr());
+        let class = mk_string_cstr(c"loadings");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             loadings,
@@ -1223,7 +1211,7 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..(p * 2) {
             set_real_checked(loadings, (i) as R_xlen_t, z[i]);
         }
-        let class = Rf_mkString(c"loadings".as_ptr());
+        let class = mk_string_cstr(c"loadings");
         let _cl = protect(class);
         crate::sexp::attrib_core::setAttrib(
             loadings,

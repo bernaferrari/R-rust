@@ -127,15 +127,15 @@ pub fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
     unsafe {
-        let sr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"srcref".as_ptr()));
+        let sr = crate::sexp::attrib_core::getAttrib(x, install_str("srcref"));
         if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP || XLENGTH(sr) < 3 {
             return None;
         }
-        let srcfile = crate::sexp::attrib_core::getAttrib(sr, Rf_install(c"srcfile".as_ptr()));
+        let srcfile = crate::sexp::attrib_core::getAttrib(sr, install_str("srcfile"));
         if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return None;
         }
-        let lines = crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()));
+        let lines = crate::sexp::envir::R_findVarInFrame(srcfile, install_str("lines"));
         if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
             return None;
         }

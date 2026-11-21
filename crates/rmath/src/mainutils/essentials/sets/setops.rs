@@ -1003,298 +1003,296 @@ pub fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// - `MARGIN`: which margin to check (1=rows, 2=cols, etc.)
 /// - `fromLast`: if TRUE, last occurrence is original
 pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+    }
 
-        // Primitive call supplies (x, MARGIN) or (x, MARGIN, fromLast).
-        let margin = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                1i32
-            } else {
-                real_or_default(CAR(rest), 1.0) as i32
-            }
-        };
-        let from_last = {
-            let rest = CDR(CDR(args));
-            if rest.is_null() || rest == R_NilValue() {
-                false
-            } else {
-                real_or_default(CAR(rest), 0.0) != 0.0
-            }
-        };
-
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-
-        // Get dimensions
-        let dim = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-
-        if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
-            // Not really an array — fall back to regular duplicated
-            let mut new_args = R_NilValue();
-            // push nmax as NA
-            new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-            new_args = Rf_cons(
-                Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
-                new_args,
-            );
-            new_args = Rf_cons(R_NilValue(), new_args); // incomparables
-            new_args = Rf_cons(x, new_args);
-            return do_duplicated(_call, _op, new_args, _rho);
-        }
-
-        let dims_len = XLENGTH(dim);
-        let owner = active_owner();
-        let dim_owned = owner_sexp(owner, dim);
-        let dim_elt = |i: R_xlen_t| -> c_int {
-            dim_owned
-                .try_integer_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let nrows = dim_elt(0) as usize;
-        let ncols = if dims_len >= 2 {
-            dim_elt(1) as usize
+    // Primitive call supplies (x, MARGIN) or (x, MARGIN, fromLast).
+    let margin = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            1i32
         } else {
-            1
-        };
+            real_or_default(CAR(rest), 1.0) as i32
+        }
+    };
+    let from_last = {
+        let rest = CDR(CDR(args));
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            real_or_default(CAR(rest), 0.0) != 0.0
+        }
+    };
 
-        if margin == 0 {
-            let flat = crate::mainutils::duplicate::Rf_duplicate(x);
-            let _f = protect(flat);
-            crate::sexp::attrib_core::setAttrib(flat, Rf_install(c"dim".as_ptr()), R_NilValue());
-            crate::sexp::attrib_core::setAttrib(
-                flat,
-                Rf_install(c"dimnames".as_ptr()),
-                R_NilValue(),
+    let n = XLENGTH(x);
+    if n == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+    }
+
+    // Get dimensions
+    let dim = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+
+    if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
+        // Not really an array — fall back to regular duplicated
+        let mut new_args = R_NilValue();
+        // push nmax as NA
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
+        new_args = Rf_cons(R_NilValue(), new_args); // incomparables
+        new_args = Rf_cons(x, new_args);
+        return do_duplicated(_call, _op, new_args, _rho);
+    }
+
+    let dims_len = XLENGTH(dim);
+    let owner = active_owner();
+    let dim_owned = owner_sexp(owner, dim);
+    let dim_elt = |i: R_xlen_t| -> c_int {
+        dim_owned
+            .try_integer_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let nrows = dim_elt(0) as usize;
+    let ncols = if dims_len >= 2 {
+        dim_elt(1) as usize
+    } else {
+        1
+    };
+
+    if margin == 0 {
+        let flat = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _f = protect(flat);
+        crate::sexp::attrib_core::setAttrib(flat, install_str("dim"), R_NilValue());
+        crate::sexp::attrib_core::setAttrib(
+            flat,
+            install_str("dimnames"),
+            R_NilValue(),
+        );
+
+        let new_args = Rf_cons(flat, R_NilValue());
+        let _n = protect(new_args);
+        let result = do_duplicated(_call, _op, new_args, _rho);
+        let attrs = crate::sexp::accessors::ATTRIB(x);
+        if !attrs.is_null() && attrs != R_NilValue() {
+            crate::sexp::accessors::SET_ATTRIB(
+                result,
+                crate::mainutils::duplicate::Rf_duplicate(attrs),
             );
+        }
+        return result;
+    }
 
-            let new_args = Rf_cons(flat, R_NilValue());
-            let _n = protect(new_args);
-            let result = do_duplicated(_call, _op, new_args, _rho);
-            let attrs = crate::sexp::accessors::ATTRIB(x);
-            if !attrs.is_null() && attrs != R_NilValue() {
-                crate::sexp::accessors::SET_ATTRIB(
-                    result,
-                    crate::mainutils::duplicate::Rf_duplicate(attrs),
-                );
+    // For 2D arrays, support MARGIN=1 (rows) and MARGIN=2 (columns)
+    if margin == 1 && dims_len == 2 {
+        // Duplicate rows
+        let total = nrows;
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, total as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+
+        // Hash each row as a string
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let t = TYPEOF(x);
+
+        if from_last {
+            // First pass collect, second pass mark
+            let mut row_strings: Vec<String> = Vec::with_capacity(total);
+            for row in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows; // column-major
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                row_strings.push(parts.join("\x01"));
             }
-            return result;
+            // Collect from end
+            let mut unique_from_end: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for row in (0..total).rev() {
+                unique_from_end.insert(row_strings[row].clone());
+            }
+            // Mark from start
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for row in 0..total {
+                if encountered.contains(&row_strings[row]) {
+                    dst.try_set_logical_elt(row as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    encountered.insert(row_strings[row].clone());
+                    dst.try_set_logical_elt(row as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                }
+            }
+        } else {
+            for row in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows; // column-major
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    dst.try_set_logical_elt(row as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    seen.insert(key);
+                    dst.try_set_logical_elt(row as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                }
+            }
         }
 
-        // For 2D arrays, support MARGIN=1 (rows) and MARGIN=2 (columns)
-        if margin == 1 && dims_len == 2 {
-            // Duplicate rows
-            let total = nrows;
-            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, total as R_xlen_t);
-            if result.is_null() {
-                return R_NilValue();
+        result
+    } else if margin == 2 && dims_len == 2 {
+        // Duplicate columns
+        let total = ncols;
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, total as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+        if from_last {
+            let mut col_strings: Vec<String> = Vec::with_capacity(total);
+            for col in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                col_strings.push(parts.join("\x01"));
             }
-            let _result_guard = protect(result);
-            let mut dst = owner
-                .sexp(result)
-                .and_then(SexpMut::try_from_checked)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-
-            // Hash each row as a string
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            let t = TYPEOF(x);
-
-            if from_last {
-                // First pass collect, second pass mark
-                let mut row_strings: Vec<String> = Vec::with_capacity(total);
-                for row in 0..total {
-                    let mut parts: Vec<String> = Vec::with_capacity(ncols);
-                    for col in 0..ncols {
-                        let idx = row + col * nrows; // column-major
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    row_strings.push(parts.join("\x01"));
-                }
-                // Collect from end
-                let mut unique_from_end: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for row in (0..total).rev() {
-                    unique_from_end.insert(row_strings[row].clone());
-                }
-                // Mark from start
-                let mut encountered: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for row in 0..total {
-                    if encountered.contains(&row_strings[row]) {
-                        dst.try_set_logical_elt(row as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        encountered.insert(row_strings[row].clone());
-                        dst.try_set_logical_elt(row as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
-                }
-            } else {
-                for row in 0..total {
-                    let mut parts: Vec<String> = Vec::with_capacity(ncols);
-                    for col in 0..ncols {
-                        let idx = row + col * nrows; // column-major
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    let key = parts.join("\x01");
-                    if seen.contains(&key) {
-                        dst.try_set_logical_elt(row as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        seen.insert(key);
-                        dst.try_set_logical_elt(row as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for col in 0..total {
+                if encountered.contains(&col_strings[col]) {
+                    dst.try_set_logical_elt(col as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    encountered.insert(col_strings[col].clone());
+                    dst.try_set_logical_elt(col as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                 }
             }
-
-            result
-        } else if margin == 2 && dims_len == 2 {
-            // Duplicate columns
-            let total = ncols;
-            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, total as R_xlen_t);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _result_guard = protect(result);
-            let mut dst = owner
-                .sexp(result)
-                .and_then(SexpMut::try_from_checked)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-
-            if from_last {
-                let mut col_strings: Vec<String> = Vec::with_capacity(total);
-                for col in 0..total {
-                    let mut parts: Vec<String> = Vec::with_capacity(nrows);
-                    for row in 0..nrows {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    col_strings.push(parts.join("\x01"));
-                }
-                let mut encountered: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for col in 0..total {
-                    if encountered.contains(&col_strings[col]) {
-                        dst.try_set_logical_elt(col as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        encountered.insert(col_strings[col].clone());
-                        dst.try_set_logical_elt(col as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
-                }
-            } else {
-                for col in 0..total {
-                    let mut parts: Vec<String> = Vec::with_capacity(nrows);
-                    for row in 0..nrows {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    let key = parts.join("\x01");
-                    if seen.contains(&key) {
-                        dst.try_set_logical_elt(col as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        seen.insert(key);
-                        dst.try_set_logical_elt(col as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
-                }
-            }
-
-            result
         } else {
-            let m = (margin as usize).saturating_sub(1);
-            if m >= dims_len as usize {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "MARGIN out of range".to_string(),
-                });
+            for col in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    dst.try_set_logical_elt(col as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    seen.insert(key);
+                    dst.try_set_logical_elt(col as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                }
             }
-            let mut before: usize = 1;
-            for i in 0..m {
-                before *= dim_elt(i as R_xlen_t) as usize;
+        }
+
+        result
+    } else {
+        let m = (margin as usize).saturating_sub(1);
+        if m >= dims_len as usize {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "MARGIN out of range".to_string(),
+            });
+        }
+        let mut before: usize = 1;
+        for i in 0..m {
+            before *= dim_elt(i as R_xlen_t) as usize;
+        }
+        let n_slices = dim_elt(m as R_xlen_t) as usize;
+        let mut after: usize = 1;
+        for i in (m + 1)..dims_len as usize {
+            after *= dim_elt(i as R_xlen_t) as usize;
+        }
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n_slices as R_xlen_t);
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut keys: Vec<String> = Vec::with_capacity(n_slices);
+        let stride = before * n_slices;
+        for s in 0..n_slices {
+            let mut parts = Vec::with_capacity(before * after);
+            for b in 0..after {
+                for a in 0..before {
+                    let idx = a + s * before + b * stride;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
             }
-            let n_slices = dim_elt(m as R_xlen_t) as usize;
-            let mut after: usize = 1;
-            for i in (m + 1)..dims_len as usize {
-                after *= dim_elt(i as R_xlen_t) as usize;
+            keys.push(parts.join("\x01"));
+        }
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if from_last {
+            for s in (0..n_slices).rev() {
+                if seen.contains(&keys[s]) {
+                    dst.try_set_logical_elt(s as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    seen.insert(keys[s].clone());
+                    dst.try_set_logical_elt(s as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                }
             }
-            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n_slices as R_xlen_t);
-            let mut dst = owner
-                .sexp(result)
-                .and_then(SexpMut::try_from_checked)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let mut keys: Vec<String> = Vec::with_capacity(n_slices);
-            let stride = before * n_slices;
+        } else {
             for s in 0..n_slices {
-                let mut parts = Vec::with_capacity(before * after);
-                for b in 0..after {
-                    for a in 0..before {
-                        let idx = a + s * before + b * stride;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                }
-                keys.push(parts.join("\x01"));
-            }
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            if from_last {
-                for s in (0..n_slices).rev() {
-                    if seen.contains(&keys[s]) {
-                        dst.try_set_logical_elt(s as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        seen.insert(keys[s].clone());
-                        dst.try_set_logical_elt(s as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
-                }
-            } else {
-                for s in 0..n_slices {
-                    if seen.contains(&keys[s]) {
-                        dst.try_set_logical_elt(s as R_xlen_t, TRUE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    } else {
-                        seen.insert(keys[s].clone());
-                        dst.try_set_logical_elt(s as R_xlen_t, FALSE)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                    }
+                if seen.contains(&keys[s]) {
+                    dst.try_set_logical_elt(s as R_xlen_t, TRUE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                } else {
+                    seen.insert(keys[s].clone());
+                    dst.try_set_logical_elt(s as R_xlen_t, FALSE)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                 }
             }
-            result
         }
+        result
     }
 }
 
@@ -1304,159 +1302,157 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// R's `anyDuplicated.array(x, MARGIN, fromLast)` — returns index of first duplicate in array (0 if none).
 pub fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarInteger(0);
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+
+    // Parse MARGIN (default = 1)
+    let margin = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            1i32
+        } else {
+            real_or_default(CAR(rest), 1.0) as i32
         }
+    };
 
-        // Parse MARGIN (default = 1)
-        let margin = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                1i32
-            } else {
-                real_or_default(CAR(rest), 1.0) as i32
-            }
-        };
-
-        // Parse fromLast (default = FALSE)
-        let from_last = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
+    // Parse fromLast (default = FALSE)
+    let from_last = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
                 false
             } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    false
+                let v = real_or_default(CAR(rest2), 0.0);
+                v != 0.0
+            }
+        }
+    };
+
+    // Get dimensions
+    let dim = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+
+    if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
+        // Not really an array — fall back to regular anyDuplicated
+        let mut new_args = R_NilValue();
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
+        new_args = Rf_cons(R_NilValue(), new_args);
+        new_args = Rf_cons(x, new_args);
+        return do_anyDuplicated(_call, _op, new_args, _rho);
+    }
+
+    let dims_len = XLENGTH(dim);
+    let owner = active_owner();
+    let dim_owned = owner_sexp(owner, dim);
+    let dim_elt = |i: R_xlen_t| -> c_int {
+        dim_owned
+            .try_integer_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let nrows = dim_elt(0) as usize;
+    let ncols = if dims_len >= 2 {
+        dim_elt(1) as usize
+    } else {
+        1
+    };
+
+    if margin == 1 && dims_len == 2 {
+        // Check duplicate rows
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if from_last {
+            let mut row_strings: Vec<String> = Vec::with_capacity(nrows);
+            for row in 0..nrows {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                row_strings.push(parts.join("\x01"));
+            }
+            let mut result_idx = 0i32;
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for row in (0..nrows).rev() {
+                if encountered.contains(&row_strings[row]) {
+                    result_idx = (row + 1) as c_int; // R 1-indexed
                 } else {
-                    let v = real_or_default(CAR(rest2), 0.0);
-                    v != 0.0
+                    encountered.insert(row_strings[row].clone());
                 }
             }
-        };
-
-        // Get dimensions
-        let dim = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
-
-        if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
-            // Not really an array — fall back to regular anyDuplicated
-            let mut new_args = R_NilValue();
-            new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-            new_args = Rf_cons(
-                Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
-                new_args,
-            );
-            new_args = Rf_cons(R_NilValue(), new_args);
-            new_args = Rf_cons(x, new_args);
-            return do_anyDuplicated(_call, _op, new_args, _rho);
-        }
-
-        let dims_len = XLENGTH(dim);
-        let owner = active_owner();
-        let dim_owned = owner_sexp(owner, dim);
-        let dim_elt = |i: R_xlen_t| -> c_int {
-            dim_owned
-                .try_integer_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let nrows = dim_elt(0) as usize;
-        let ncols = if dims_len >= 2 {
-            dim_elt(1) as usize
+            Rf_ScalarInteger(result_idx)
         } else {
-            1
-        };
-
-        if margin == 1 && dims_len == 2 {
-            // Check duplicate rows
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            if from_last {
-                let mut row_strings: Vec<String> = Vec::with_capacity(nrows);
-                for row in 0..nrows {
-                    let mut parts: Vec<String> = Vec::with_capacity(ncols);
-                    for col in 0..ncols {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    row_strings.push(parts.join("\x01"));
-                }
-                let mut result_idx = 0i32;
-                let mut encountered: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for row in (0..nrows).rev() {
-                    if encountered.contains(&row_strings[row]) {
-                        result_idx = (row + 1) as c_int; // R 1-indexed
-                    } else {
-                        encountered.insert(row_strings[row].clone());
-                    }
-                }
-                Rf_ScalarInteger(result_idx)
-            } else {
-                for row in 0..nrows {
-                    let mut parts: Vec<String> = Vec::with_capacity(ncols);
-                    for col in 0..ncols {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    let key = parts.join("\x01");
-                    if seen.contains(&key) {
-                        return Rf_ScalarInteger((row + 1) as c_int);
-                    }
-                    seen.insert(key);
-                }
-                Rf_ScalarInteger(0)
-            }
-        } else if margin == 2 && dims_len == 2 {
-            // Check duplicate columns
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            if from_last {
-                let mut col_strings: Vec<String> = Vec::with_capacity(ncols);
+            for row in 0..nrows {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
                 for col in 0..ncols {
-                    let mut parts: Vec<String> = Vec::with_capacity(nrows);
-                    for row in 0..nrows {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    col_strings.push(parts.join("\x01"));
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
                 }
-                let mut result_idx = 0i32;
-                let mut encountered: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for col in (0..ncols).rev() {
-                    if encountered.contains(&col_strings[col]) {
-                        result_idx = (col + 1) as c_int;
-                    } else {
-                        encountered.insert(col_strings[col].clone());
-                    }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    return Rf_ScalarInteger((row + 1) as c_int);
                 }
-                Rf_ScalarInteger(result_idx)
-            } else {
-                for col in 0..ncols {
-                    let mut parts: Vec<String> = Vec::with_capacity(nrows);
-                    for row in 0..nrows {
-                        let idx = row + col * nrows;
-                        parts.push(elt_to_string(x, idx as R_xlen_t));
-                    }
-                    let key = parts.join("\x01");
-                    if seen.contains(&key) {
-                        return Rf_ScalarInteger((col + 1) as c_int);
-                    }
-                    seen.insert(key);
-                }
-                Rf_ScalarInteger(0)
+                seen.insert(key);
             }
-        } else {
-            // Generic fallback
-            let mut new_args = R_NilValue();
-            new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-            new_args = Rf_cons(
-                Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
-                new_args,
-            );
-            new_args = Rf_cons(R_NilValue(), new_args);
-            new_args = Rf_cons(x, new_args);
-            do_anyDuplicated(_call, _op, new_args, _rho)
+            Rf_ScalarInteger(0)
         }
+    } else if margin == 2 && dims_len == 2 {
+        // Check duplicate columns
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if from_last {
+            let mut col_strings: Vec<String> = Vec::with_capacity(ncols);
+            for col in 0..ncols {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                col_strings.push(parts.join("\x01"));
+            }
+            let mut result_idx = 0i32;
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for col in (0..ncols).rev() {
+                if encountered.contains(&col_strings[col]) {
+                    result_idx = (col + 1) as c_int;
+                } else {
+                    encountered.insert(col_strings[col].clone());
+                }
+            }
+            Rf_ScalarInteger(result_idx)
+        } else {
+            for col in 0..ncols {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    return Rf_ScalarInteger((col + 1) as c_int);
+                }
+                seen.insert(key);
+            }
+            Rf_ScalarInteger(0)
+        }
+    } else {
+        // Generic fallback
+        let mut new_args = R_NilValue();
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
+        new_args = Rf_cons(R_NilValue(), new_args);
+        new_args = Rf_cons(x, new_args);
+        do_anyDuplicated(_call, _op, new_args, _rho)
     }
 }
 

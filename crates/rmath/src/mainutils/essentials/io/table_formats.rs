@@ -73,116 +73,114 @@ pub fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
             let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
             }
         }
 
         // Set names
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
         // Set class to data.frame
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _p3 = protect(class_vec);
         let cstr = c"data.frame";
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        let charsxp = mk_char_cstr(&cstr);
         if !charsxp.is_null() {
             crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
         result
     }
 }
 
 /// R's `write.csv2(x, file, ...)` — European CSV writer (semicolons, comma decimal).
 pub fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let file_arg = CAR(CDR(args));
-        let file_path = elt_to_string(file_arg, 0);
+    let x = CAR(args);
+    let file_arg = CAR(CDR(args));
+    let file_path = elt_to_string(file_arg, 0);
 
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let ncols = XLENGTH(x) as usize;
+
+    // Get names if available
+    let names_attr = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+
+    let mut out = String::new();
+    if ncols == 0 {
+        out.push_str("\"\"\n");
+    }
+
+    // Header
+    if ncols > 0 && !names_attr.is_null() && names_attr != R_NilValue() {
+        let mut headers: Vec<String> = Vec::new();
+        for j in 0..ncols {
+            let nm = elt_to_string(names_attr, j as R_xlen_t);
+            headers.push(format!("\"{}\"", nm));
         }
+        out.push_str(&headers.join(";"));
+        out.push('\n');
+    }
 
-        let ncols = XLENGTH(x) as usize;
-
-        // Get names if available
-        let names_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
-
-        let mut out = String::new();
-        if ncols == 0 {
-            out.push_str("\"\"\n");
-        }
-
-        // Header
-        if ncols > 0 && !names_attr.is_null() && names_attr != R_NilValue() {
-            let mut headers: Vec<String> = Vec::new();
-            for j in 0..ncols {
-                let nm = elt_to_string(names_attr, j as R_xlen_t);
-                headers.push(format!("\"{}\"", nm));
+    let t = TYPEOF(x);
+    // Data rows — dispatch on type exactly like do_write_csv:
+    // only VECSXP payloads are column pointers; atomic vectors are
+    // formatted as a single column; anything else is an error.
+    if ncols > 0 {
+        // TYPEOF returns c_int; only a VECSXP payload may be read as
+        // column pointers. Atomic vectors format as a single column.
+        let nrows = if t == SEXPTYPE::VECSXP {
+            let col = crate::sexp::accessors::VECTOR_ELT(x, 0);
+            if !col.is_null() {
+                XLENGTH(col) as usize
+            } else {
+                0
             }
-            out.push_str(&headers.join(";"));
+        } else if t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::STRSXP
+        {
+            XLENGTH(x) as usize
+        } else {
+            std::panic::panic_any(RError {
+                message: format!("cannot handle 'x' of type {:?}", t),
+            });
+        };
+
+        for i in 0..nrows {
+            let mut row: Vec<String> = Vec::new();
+            for j in 0..ncols {
+                let val = if t == SEXPTYPE::VECSXP {
+                    let col = crate::sexp::accessors::VECTOR_ELT(x, j as R_xlen_t);
+                    if !col.is_null() {
+                        elt_to_string(col, i as R_xlen_t)
+                    } else {
+                        "NA".to_string()
+                    }
+                } else {
+                    elt_to_string(x, i as R_xlen_t)
+                };
+                // Use comma as decimal separator for European format
+                let eu_val = val.replace('.', ",");
+                row.push(format!("\"{}\"", eu_val));
+            }
+            out.push_str(&row.join(";"));
             out.push('\n');
         }
-
-        let t = TYPEOF(x);
-        // Data rows — dispatch on type exactly like do_write_csv:
-        // only VECSXP payloads are column pointers; atomic vectors are
-        // formatted as a single column; anything else is an error.
-        if ncols > 0 {
-            // TYPEOF returns c_int; only a VECSXP payload may be read as
-            // column pointers. Atomic vectors format as a single column.
-            let nrows = if t == SEXPTYPE::VECSXP {
-                let col = crate::sexp::accessors::VECTOR_ELT(x, 0);
-                if !col.is_null() {
-                    XLENGTH(col) as usize
-                } else {
-                    0
-                }
-            } else if t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::STRSXP
-            {
-                XLENGTH(x) as usize
-            } else {
-                std::panic::panic_any(RError {
-                    message: format!("cannot handle 'x' of type {:?}", t),
-                });
-            };
-
-            for i in 0..nrows {
-                let mut row: Vec<String> = Vec::new();
-                for j in 0..ncols {
-                    let val = if t == SEXPTYPE::VECSXP {
-                        let col = crate::sexp::accessors::VECTOR_ELT(x, j as R_xlen_t);
-                        if !col.is_null() {
-                            elt_to_string(col, i as R_xlen_t)
-                        } else {
-                            "NA".to_string()
-                        }
-                    } else {
-                        elt_to_string(x, i as R_xlen_t)
-                    };
-                    // Use comma as decimal separator for European format
-                    let eu_val = val.replace('.', ",");
-                    row.push(format!("\"{}\"", eu_val));
-                }
-                out.push_str(&row.join(";"));
-                out.push('\n');
-            }
-        }
-
-        // Write to file
-        if let Err(e) =
-            crate::mainutils::browser_files::write_text_or_host(&file_path, out.as_bytes())
-        {
-            base_error(format!("cannot write file '{}': {}", file_path, e));
-        }
-
-        R_NilValue()
     }
+
+    // Write to file
+    if let Err(e) =
+        crate::mainutils::browser_files::write_text_or_host(&file_path, out.as_bytes())
+    {
+        base_error(format!("cannot write file '{}': {}", file_path, e));
+    }
+
+    R_NilValue()
 }
 
 /// R's `read.delim(file, ...)` — delimited file reader.
@@ -263,21 +261,21 @@ pub fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
             let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            let charsxp = mk_char_cstr(&cstr);
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
             }
         }
 
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _p3 = protect(class_vec);
         let cstr = c"data.frame";
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        let charsxp = mk_char_cstr(&cstr);
         if !charsxp.is_null() {
             crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
         result
     }
 }
@@ -438,7 +436,7 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !col.is_null() {
                     for (i, text) in col_text[j].iter().enumerate() {
                         let cstr = CString::new(text.as_str()).unwrap_or_default();
-                        SET_STRING_ELT(col, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                        SET_STRING_ELT(col, i as R_xlen_t, mk_char_cstr(&cstr));
                     }
                 }
                 col
@@ -449,18 +447,18 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .cloned()
                 .unwrap_or_else(|| format!("V{}", j + 1));
             let cstr = CString::new(label).unwrap_or_default();
-            SET_STRING_ELT(names_vec, j as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(names_vec, j as R_xlen_t, mk_char_cstr(&cstr));
         }
 
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _p3 = protect(class_vec);
         let cstr = c"data.frame";
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        let charsxp = mk_char_cstr(&cstr);
         if !charsxp.is_null() {
             crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
         result
     }
 }

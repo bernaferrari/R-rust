@@ -164,13 +164,13 @@ pub(crate) fn namespace_version(namespace: SEXP) -> Option<String> {
         let _namespace = protect(namespace);
         let metadata = crate::sexp::envir::R_findVarInFrame(
             namespace,
-            Rf_install(c".__NAMESPACE__.".as_ptr()),
+            install_str(".__NAMESPACE__."),
         );
         if TYPEOF(metadata) != SEXPTYPE::ENVSXP {
             return None;
         }
         let _metadata = protect(metadata);
-        let spec = crate::sexp::envir::R_findVarInFrame(metadata, Rf_install(c"spec".as_ptr()));
+        let spec = crate::sexp::envir::R_findVarInFrame(metadata, install_str("spec"));
         if TYPEOF(spec) != SEXPTYPE::STRSXP || XLENGTH(spec) != 2 {
             return None;
         }

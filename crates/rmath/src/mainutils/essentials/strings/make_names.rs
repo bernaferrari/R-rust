@@ -4,63 +4,61 @@ use super::*;
 
 /// GNU `.Internal(make.unique(names, sep))`.
 pub fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let names = CAR(args);
-        if names.is_null() || names == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let n = XLENGTH(names);
-        let mut sep = ".".to_string();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let s = CAR(rest);
-            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) > 0 {
-                let ch = STRING_ELT(s, 0);
-                if !ch.is_null() {
-                    sep = charsxp_text(ch).unwrap_or_default();
-                }
+    let names = CAR(args);
+    if names.is_null() || names == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+    let n = XLENGTH(names);
+    let mut sep = ".".to_string();
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let s = CAR(rest);
+        if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) > 0 {
+            let ch = STRING_ELT(s, 0);
+            if !ch.is_null() {
+                sep = charsxp_text(ch).unwrap_or_default();
             }
         }
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _o = protect(out);
-        let mut bases: Vec<String> = Vec::with_capacity(n as usize);
-        let mut seen = std::collections::HashSet::<String>::new();
-        for i in 0..n {
-            let ch = if TYPEOF(names) == SEXPTYPE::STRSXP {
-                STRING_ELT(names, i)
-            } else {
-                std::ptr::null_mut()
-            };
-            let base = if ch.is_null() {
-                String::new()
-            } else {
-                charsxp_text(ch).unwrap_or_default()
-            };
-            seen.insert(base.clone());
-            bases.push(base);
-        }
-        let mut kept = std::collections::HashSet::<String>::new();
-        let mut next = std::collections::HashMap::<String, u32>::new();
-        for (i, base) in bases.into_iter().enumerate() {
-            let unique = if kept.insert(base.clone()) {
-                next.entry(base.clone()).or_insert(1);
-                base
-            } else {
-                let mut k = next.get(&base).copied().unwrap_or(1);
-                loop {
-                    let cand = format!("{base}{sep}{k}");
-                    k += 1;
-                    if seen.insert(cand.clone()) {
-                        next.insert(base, k);
-                        break cand;
-                    }
-                }
-            };
-            let c = CString::new(unique).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
-        }
-        out
     }
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _o = protect(out);
+    let mut bases: Vec<String> = Vec::with_capacity(n as usize);
+    let mut seen = std::collections::HashSet::<String>::new();
+    for i in 0..n {
+        let ch = if TYPEOF(names) == SEXPTYPE::STRSXP {
+            STRING_ELT(names, i)
+        } else {
+            std::ptr::null_mut()
+        };
+        let base = if ch.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ch).unwrap_or_default()
+        };
+        seen.insert(base.clone());
+        bases.push(base);
+    }
+    let mut kept = std::collections::HashSet::<String>::new();
+    let mut next = std::collections::HashMap::<String, u32>::new();
+    for (i, base) in bases.into_iter().enumerate() {
+        let unique = if kept.insert(base.clone()) {
+            next.entry(base.clone()).or_insert(1);
+            base
+        } else {
+            let mut k = next.get(&base).copied().unwrap_or(1);
+            loop {
+                let cand = format!("{base}{sep}{k}");
+                k += 1;
+                if seen.insert(cand.clone()) {
+                    next.insert(base, k);
+                    break cand;
+                }
+            }
+        };
+        let c = CString::new(unique).unwrap_or_else(|_| CString::new("").unwrap());
+        SET_STRING_ELT(out, i as R_xlen_t, mk_char_cstr(&c));
+    }
+    out
 }
 
 const MAKE_NAMES_KEYWORDS: &[&str] = &[
@@ -119,17 +117,15 @@ fn make_names_is_valid(name: &str) -> bool {
 /// positional order `(names, unique, allow_)`. Tag the second evaluated
 /// argument so both shapes resolve identically.
 pub fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let second = CDR(args);
-        if !second.is_null() && second != R_NilValue() {
-            let cstring = std::ffi::CString::new("allow_").unwrap_or_default();
-            crate::sexp::accessors::SETTAG(
-                second,
-                crate::sexp::symbol::Rf_install(cstring.as_ptr()),
-            );
-        }
-        do_make_names(call, op, args, rho)
+    let second = CDR(args);
+    if !second.is_null() && second != R_NilValue() {
+        let cstring = std::ffi::CString::new("allow_").unwrap_or_default();
+        crate::sexp::accessors::SETTAG(
+            second,
+            install_cstr(&cstring),
+        );
     }
+    do_make_names(call, op, args, rho)
 }
 /// GNU `make.names(names, unique=FALSE, allow_=TRUE)`.
 pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -235,9 +231,9 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for (j, &i) in order.iter().enumerate() {
                 let c =
                     CString::new(results[i].as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-                SET_STRING_ELT(tmp, j as i64, Rf_mkChar(c.as_ptr()));
+                SET_STRING_ELT(tmp, j as i64, mk_char_cstr(&c));
             }
-            let sep = Rf_mkString(c".".as_ptr());
+            let sep = mk_string_cstr(c".");
             let _s = protect(sep);
             let uargs = Rf_cons(tmp, Rf_cons(sep, R_NilValue()));
             let _u = protect(uargs);
@@ -255,7 +251,7 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         for (i, s) in results.iter().enumerate() {
             let c = CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(c.as_ptr()));
+            SET_STRING_ELT(out, i as i64, mk_char_cstr(&c));
         }
         out
     }

@@ -377,14 +377,14 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..n {
                 match valid_scalar(code(i)) {
                     Some('\0') => {
-                        SET_STRING_ELT(out, i, Rf_mkChar(c"".as_ptr()));
+                        SET_STRING_ELT(out, i, mk_char_cstr(c""));
                     }
                     Some(ch) => {
                         let mut buf = [0u8; 8];
                         let encoded = ch.encode_utf8(&mut buf);
                         let c = CString::new(encoded.as_bytes())
                             .unwrap_or_else(|_| CString::new("").unwrap());
-                        SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
+                        SET_STRING_ELT(out, i, mk_char_cstr(&c));
                     }
                     None => {
                         SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());

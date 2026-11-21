@@ -67,11 +67,11 @@ mod methods_startup_tests {
             let table = factory
                 .wrap(crate::sexp::envir::R_findVarInFrame(
                     namespace.as_raw(),
-                    Rf_install(c".__S3MethodsTable__.".as_ptr()),
+                    install_str(".__S3MethodsTable__."),
                 ))
                 .unwrap();
             assert_eq!(table.typeof_(), SEXPTYPE::ENVSXP);
-            let method_symbol = factory.wrap(Rf_install(c"predict.lm".as_ptr())).unwrap();
+            let method_symbol = factory.wrap(install_str("predict.lm")).unwrap();
             let method =
                 crate::sexp::envir::find_var_in_frame_result(table.clone(), method_symbol.clone())
                     .unwrap()
@@ -202,7 +202,7 @@ mod methods_startup_tests {
         session.with_active(|| unsafe {
             let ns = cached_namespace_by_name("methods").expect("default methods namespace loaded");
             let raw =
-                crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c"cacheMetaData".as_ptr()));
+                crate::sexp::envir::R_findVarInFrame(ns, install_str("cacheMetaData"));
             let raw = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
                 crate::sexp::envir::forcePromise(raw)
             } else {

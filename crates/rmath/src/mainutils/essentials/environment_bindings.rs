@@ -111,11 +111,11 @@ pub fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut saw_x = false;
         let mut hash_flag: Option<bool> = None;
         let mut size_flag: Option<i32> = None;
-        let envir_tag = Rf_install(c"envir".as_ptr());
-        let parent_tag = Rf_install(c"parent".as_ptr());
-        let x_tag = Rf_install(c"x".as_ptr());
-        let hash_tag = Rf_install(c"hash".as_ptr());
-        let size_tag = Rf_install(c"size".as_ptr());
+        let envir_tag = install_str("envir");
+        let parent_tag = install_str("parent");
+        let x_tag = install_str("x");
+        let hash_tag = install_str("hash");
+        let size_tag = install_str("size");
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let val = CAR(cell);
@@ -197,7 +197,7 @@ pub fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let Ok(name_cstr) = CString::new(name) else {
                     base_error("'x' must be a named list or pairlist");
                 };
-                let sym = Rf_install(name_cstr.as_ptr());
+                let sym = install_cstr(&name_cstr);
                 crate::sexp::envir::defineVar(
                     sym,
                     crate::mainutils::duplicate::duplicate(VECTOR_ELT(x, i)),
@@ -236,18 +236,16 @@ fn environment_arg(value: SEXP) -> SEXP {
 }
 
 fn binding_symbol_arg(value: SEXP) -> SEXP {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            base_error("invalid symbol");
+    if value.is_null() || value == R_NilValue() {
+        base_error("invalid symbol");
+    }
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::SYMSXP.as_c_int() => value,
+        t if t == SEXPTYPE::STRSXP.as_c_int() && XLENGTH(value) > 0 => {
+            let name = elt_to_string(value, 0);
+            let c_name = CString::new(name).unwrap_or_default();
+            install_cstr(&c_name)
         }
-        match TYPEOF(value) {
-            t if t == SEXPTYPE::SYMSXP.as_c_int() => value,
-            t if t == SEXPTYPE::STRSXP.as_c_int() && XLENGTH(value) > 0 => {
-                let name = elt_to_string(value, 0);
-                let c_name = CString::new(name).unwrap_or_default();
-                Rf_install(c_name.as_ptr())
-            }
-            _ => base_error("invalid symbol"),
-        }
+        _ => base_error("invalid symbol"),
     }
 }
