@@ -109,23 +109,23 @@ pub const GRID_ARROWTYPE: c_int = 3;
 
 /// uValue macro equivalent: get the numeric value of a unit.
 #[inline]
-pub unsafe fn uValue(x: SEXP) -> c_double {
-    use crate::sexp::accessors::{REAL, VECTOR_ELT};
-    unsafe { *REAL(VECTOR_ELT(x, 0)).add(0) }
+pub fn uValue(x: SEXP) -> c_double {
+    use crate::library::grid::{real_elt, vector_elt};
+    real_elt(vector_elt(x, 0), 0)
 }
 
 /// uData macro equivalent: get the data component of a unit.
 #[inline]
-pub unsafe fn uData(x: SEXP) -> SEXP {
-    use crate::sexp::accessors::VECTOR_ELT;
-    unsafe { VECTOR_ELT(x, 1) }
+pub fn uData(x: SEXP) -> SEXP {
+    use crate::library::grid::vector_elt;
+    vector_elt(x, 1)
 }
 
 /// uUnit macro equivalent: get the integer unit type of a unit.
 #[inline]
-pub unsafe fn uUnit(x: SEXP) -> c_int {
-    use crate::sexp::accessors::{INTEGER, VECTOR_ELT};
-    unsafe { *INTEGER(VECTOR_ELT(x, 2)).add(0) }
+pub fn uUnit(x: SEXP) -> c_int {
+    use crate::library::grid::{integer_elt, vector_elt};
+    integer_elt(vector_elt(x, 2), 0)
 }
 
 /* ==================== Type aliases ==================== */
