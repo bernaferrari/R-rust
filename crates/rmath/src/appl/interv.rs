@@ -186,7 +186,12 @@ pub fn findInterval2(
 
 /// Fortran-compatible entry point (F77_SUB(interv)).
 /// Maps to findInterval with int parameters instead of bool.
-pub extern "C" fn F77_SUB_interv(
+///
+/// # Safety
+///
+/// `n`, `x`, `rightmost_closed`, `all_inside`, `ilo` must be valid for one read and `mflag` for one
+/// write; `xt` must be valid for reads of `*n` doubles.
+pub unsafe extern "C" fn F77_SUB_interv(
     xt: *const f64,
     n: *mut std::os::raw::c_int,
     x: *mut f64,
@@ -195,7 +200,8 @@ pub extern "C" fn F77_SUB_interv(
     ilo: *mut std::os::raw::c_int,
     mflag: *mut std::os::raw::c_int,
 ) -> std::os::raw::c_int {
-    // Raw Fortran pointers: valid for `*n` doubles and one flag cell.
+    // SAFETY: the caller guarantees `*n` readable doubles behind `xt` and one
+    // valid cell behind every scalar pointer (see `# Safety`).
     unsafe {
         let (index, flag) = findInterval(
             std::slice::from_raw_parts(xt, *n as usize),

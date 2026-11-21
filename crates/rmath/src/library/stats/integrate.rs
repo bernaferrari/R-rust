@@ -233,7 +233,7 @@ pub fn call_dqags(args: SEXP) -> SEXP {
     // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
     // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
     // live `IntStruct` the `Rintfn` trampoline reads.
-    {
+    unsafe {
         Rdqags(
             Rintfn,
             &mut is as *mut IntStruct as *mut std::ffi::c_void,
@@ -301,7 +301,7 @@ pub fn call_dqagi(args: SEXP) -> SEXP {
     // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
     // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
     // live `IntStruct` the `Rintfn` trampoline reads.
-    {
+    unsafe {
         Rdqagi(
             Rintfn,
             &mut is as *mut IntStruct as *mut std::ffi::c_void,

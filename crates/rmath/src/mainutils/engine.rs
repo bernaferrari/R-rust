@@ -13,7 +13,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
 
-use crate::appl::pretty::R_pretty;
+use crate::appl::pretty::r_pretty;
 use crate::library::grdevices::device_registry;
 use crate::mainutils::errors::Rf_error;
 use crate::mainutils::graphics_ffi::{
@@ -1402,7 +1402,9 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     let mut ns = lo_value;
     let mut nu = up_value;
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
-    let unit = R_pretty(&mut ns, &mut nu, ndiv, 1, 0.25, high_u_fact.as_ptr(), 2, 0);
+    // SAFETY: `ndiv` is non-null (checked above) and valid per this
+    // function's contract.
+    let unit = r_pretty(&mut ns, &mut nu, unsafe { &mut *ndiv }, 1, 0.25, &high_u_fact, 2, 0);
     const ROUNDING_EPS: f64 = 1e-10;
     if nu >= ns + 1.0 {
         let mut modified = false;

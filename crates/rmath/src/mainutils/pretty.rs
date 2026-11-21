@@ -4,7 +4,7 @@
 //! public frontend is kept here so callers of `pretty()` receive the same
 //! bounds and sequence contract as base R instead of a second approximation.
 
-use crate::appl::pretty::R_pretty;
+use crate::appl::pretty::r_pretty;
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error};
 use crate::sexp::accessors::{REAL, XLENGTH};
@@ -137,13 +137,13 @@ pub unsafe fn pretty_values(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut up = finite.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let mut ndiv = n;
         let high_u_fact = [high_u_bias, u5_bias, f_min];
-        let unit = R_pretty(
+        let unit = r_pretty(
             &mut lo,
             &mut up,
             &mut ndiv,
             min_n,
             shrink,
-            high_u_fact.as_ptr(),
+            &high_u_fact,
             eps,
             if bounds { 1 } else { 0 },
         );
@@ -251,13 +251,13 @@ pub unsafe fn dot_pretty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         );
         let mut ndiv = n;
         let high_u_fact = [high_u_bias, u5_bias, f_min];
-        let unit = R_pretty(
+        let unit = r_pretty(
             &mut lo,
             &mut up,
             &mut ndiv,
             min_n,
             shrink,
-            high_u_fact.as_ptr(),
+            &high_u_fact,
             eps,
             if bounds { 1 } else { 0 },
         );

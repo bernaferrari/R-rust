@@ -24,7 +24,13 @@ const ROUNDING_EPS: f64 = 1e-10;
 ///
 /// # Returns
 /// The unit (spacing) used for the pretty values.
-pub extern "C" fn R_pretty(
+///
+/// # Safety
+///
+/// `lo`, `up` and `ndiv` must each be valid for reads and writes of one value
+/// (and not alias each other); `high_u_fact` must be valid for reads of three
+/// `f64`s. Rust callers should use the safe [`r_pretty`].
+pub unsafe extern "C" fn R_pretty(
     lo: *mut f64,
     up: *mut f64,
     ndiv: *mut std::os::raw::c_int,
@@ -34,7 +40,8 @@ pub extern "C" fn R_pretty(
     eps_correction: std::os::raw::c_int,
     return_bounds: std::os::raw::c_int,
 ) -> f64 {
-    // Raw Fortran pointers: one scalar each, and three high_u_fact factors.
+    // SAFETY: the caller guarantees one valid, unaliased scalar behind each of
+    // `lo`/`up`/`ndiv` and three readable factors behind `high_u_fact`.
     unsafe {
         pretty_impl(
             &mut *lo,
@@ -49,6 +56,33 @@ pub extern "C" fn R_pretty(
             return_bounds,
         )
     }
+}
+
+/// Safe Rust entry point for [`R_pretty`]: identical semantics, with the
+/// in/out scalars as references and `high_u_fact` as `[h, h5, f_min]`.
+#[allow(clippy::too_many_arguments)]
+pub fn r_pretty(
+    lo: &mut f64,
+    up: &mut f64,
+    ndiv: &mut std::os::raw::c_int,
+    min_n: std::os::raw::c_int,
+    shrink_sml: f64,
+    high_u_fact: &[f64; 3],
+    eps_correction: std::os::raw::c_int,
+    return_bounds: std::os::raw::c_int,
+) -> f64 {
+    pretty_impl(
+        lo,
+        up,
+        ndiv,
+        min_n,
+        shrink_sml,
+        high_u_fact[0],
+        high_u_fact[1],
+        high_u_fact[2],
+        eps_correction,
+        return_bounds,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

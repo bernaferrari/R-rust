@@ -1,6 +1,6 @@
 //! Portable base plotting: owned coordinate/style state, ordinary R dispatch,
 //! and device drawing. R values are decoded before a renderer is borrowed.
-use crate::appl::pretty::R_pretty;
+use crate::appl::pretty::r_pretty;
 use crate::library::graphics::par::{ParValue, parameter, set_plot_parameter};
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
 use crate::sexp::{
@@ -1886,13 +1886,13 @@ fn pretty_linear_ticks(mut lo: f64, mut hi: f64, requested: f64) -> Vec<f64> {
     }
     let mut intervals = requested as c_int;
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
-    let unit = R_pretty(
+    let unit = r_pretty(
         &mut lo,
         &mut hi,
         &mut intervals,
         1,
         0.25,
-        high_u_fact.as_ptr(),
+        &high_u_fact,
         2,
         0,
     );
