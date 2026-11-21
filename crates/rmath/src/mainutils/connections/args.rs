@@ -30,7 +30,7 @@ use crate::sexp::protect::*;
 // ---------------------------------------------------------------------------
 
 /// Extract a C string from a CHARSXP.
-pub unsafe fn charsxp_to_string(s: SEXP) -> String {
+pub fn charsxp_to_string(s: SEXP) -> String {
     unsafe {
         if s.is_null() {
             return String::new();
@@ -45,7 +45,7 @@ pub unsafe fn charsxp_to_string(s: SEXP) -> String {
 }
 
 /// Extract a string from the first element of a STRSXP.
-pub unsafe fn string_elt(s: SEXP, i: R_xlen_t) -> String {
+pub fn string_elt(s: SEXP, i: R_xlen_t) -> String {
     unsafe {
         if s.is_null() {
             return String::new();
@@ -56,7 +56,7 @@ pub unsafe fn string_elt(s: SEXP, i: R_xlen_t) -> String {
 }
 
 /// Check if an SEXP is a string vector and get its first element.
-pub unsafe fn check_string_arg(arg: SEXP, name: &str) -> String {
+pub fn check_string_arg(arg: SEXP, name: &str) -> String {
     unsafe {
         if arg.is_null() {
             r_error(&format!("invalid '{}' argument", name));
@@ -77,7 +77,7 @@ pub unsafe fn check_string_arg(arg: SEXP, name: &str) -> String {
     }
 }
 
-pub unsafe fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
+pub fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
     unsafe {
         let tag = TAG(cell);
         if tag.is_null() || tag == R_NilValue() {
@@ -96,7 +96,7 @@ pub unsafe fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
 }
 
 /// Extract an integer from an SEXP (length-1 INTSXP or similar scalar).
-pub unsafe fn as_integer(arg: SEXP) -> c_int {
+pub fn as_integer(arg: SEXP) -> c_int {
     unsafe {
         if arg.is_null() {
             return NA_INTEGER;
@@ -127,7 +127,7 @@ pub unsafe fn as_integer(arg: SEXP) -> c_int {
 }
 
 /// Extract a double from an SEXP.
-pub unsafe fn as_real(arg: SEXP) -> c_double {
+pub fn as_real(arg: SEXP) -> c_double {
     unsafe {
         if arg.is_null() {
             return NA_REAL;
@@ -153,7 +153,7 @@ pub unsafe fn as_real(arg: SEXP) -> c_double {
 }
 
 /// Extract a logical value from an SEXP.
-pub unsafe fn as_logical(arg: SEXP) -> c_int {
+pub fn as_logical(arg: SEXP) -> c_int {
     unsafe {
         if arg.is_null() {
             return NA_INTEGER;
@@ -172,7 +172,7 @@ pub unsafe fn as_logical(arg: SEXP) -> c_int {
 }
 
 /// Check that a logical argument is valid (not NA).
-pub unsafe fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
+pub fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
     unsafe {
         let v = as_logical(arg);
         if v == NA_INTEGER {
@@ -203,7 +203,7 @@ pub fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn arg_by_name_or_position(
+pub fn arg_by_name_or_position(
     args: SEXP,
     position: usize,
     names: &[&str],
@@ -255,7 +255,7 @@ pub fn r_error(msg: &str) -> ! {
 
 /// Check if an SEXP inherits from a given class name.
 /// Simplified check: looks at the class attribute.
-pub unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
+pub fn inherits_class(x: SEXP, class_name: &str) -> bool {
     unsafe {
         if x.is_null() {
             return false;
@@ -313,7 +313,7 @@ pub unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
 }
 
 /// Set the class attribute on an SEXP to a two-element vector.
-pub unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
+pub fn set_connection_class(ans: SEXP, specific_class: &str) {
     unsafe {
         let class_sym = crate::eval::attrib_core::R_ClassSymbol();
         if class_sym.is_null() {

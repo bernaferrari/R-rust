@@ -5,7 +5,7 @@ use crate::sexp::{
     object::{PairlistBuilder, SessionNodeFactory},
 };
 
-unsafe fn text_connection<'s>(f: &SessionNodeFactory<'s>, name: &str) -> Sexp<'s> {
+fn text_connection<'s>(f: &SessionNodeFactory<'s>, name: &str) -> Sexp<'s> {
     let mut args = PairlistBuilder::from_factory(f.clone());
     for value in [
         f.strings(&[name]).unwrap(),
@@ -26,7 +26,7 @@ unsafe fn text_connection<'s>(f: &SessionNodeFactory<'s>, name: &str) -> Sexp<'s
         .unwrap()
     }
 }
-unsafe fn set_sink(f: &SessionNodeFactory<'_>, connection: &Sexp<'_>, message: bool) {
+fn set_sink(f: &SessionNodeFactory<'_>, connection: &Sexp<'_>, message: bool) {
     let mut args = PairlistBuilder::from_factory(f.clone());
     for value in [
         connection.clone(),

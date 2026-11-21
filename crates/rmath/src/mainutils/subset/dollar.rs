@@ -44,7 +44,7 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
 
 /// The `$` subset operator. Evaluates only the first argument; the second
 /// is a symbol to be matched, not evaluated.
-pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
         let _ = op;
@@ -84,7 +84,7 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// partial match of `input` to `target`), gated on
 /// `options(warnPartialMatchDollar = TRUE)`.
 #[inline(always)]
-unsafe fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: SEXP) {
+fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: SEXP) {
     unsafe {
         if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchDollar") {
             return;
@@ -98,7 +98,7 @@ unsafe fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: S
 
 /// Default method for `$`. Performs partial matching on pair-list and
 /// vector-list names, and also handles environment subsetting.
-pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
+pub fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let _input_guard = protect(input);
         let mut x = x;

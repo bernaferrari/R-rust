@@ -21,7 +21,7 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 /// Build a combined name "base.tag" for recursive name extraction.
-pub unsafe fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
+pub fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
     unsafe {
         let base = EnsureString(base);
         let tag = EnsureString(tag);
@@ -63,7 +63,7 @@ pub unsafe fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Build an element name from base, tag, sequence number, and count.
-pub unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP {
+pub fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP {
     unsafe {
         let base = EnsureString(base);
         let tag = EnsureString(tag);
@@ -114,7 +114,7 @@ pub unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> S
 
 /// Look up `names[i]`; return the CHARSXP if it is non-empty, otherwise
 /// `R_NilValue`.  Also used in coerce.c.
-pub unsafe fn ItemName(names: SEXP, i: R_xlen_t) -> SEXP {
+pub fn ItemName(names: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if names.is_null() || names == R_NilValue() {
             return R_NilValue();

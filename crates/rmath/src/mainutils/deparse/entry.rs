@@ -80,7 +80,7 @@ pub unsafe fn deparse2(what: SEXP, svec: SEXP, d: *mut LocalParseData) {
 /// Equivalent to C's `deparse1WithCutoff()`. If abbrev is true, returns a
 /// single string with at most 13 characters (for plot labelling).
 #[allow(clippy::field_reassign_with_default)]
-pub unsafe fn deparse1WithCutoff(
+pub fn deparse1WithCutoff(
     call: SEXP,
     abbrev: bool,
     cutoff: c_int,
@@ -238,7 +238,7 @@ pub unsafe fn deparse1WithCutoff(
 ///
 /// This is the equivalent of R's `do_deparse()` from deparse.c.
 /// It converts an R expression to a character vector representation.
-pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let parsed = deparse_call_args(args);
@@ -261,7 +261,7 @@ struct DeparseCallArgs {
     nlines: c_int,
 }
 
-unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
+fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
     unsafe {
         let mut expr = crate::sexp::globals::R_NilValue();
         let mut cutoff = DEFAULT_CUTOFF;
@@ -387,7 +387,7 @@ fn deparse_default_backtick(expr: SEXP) -> bool {
 ///
 /// Writes a deparsed representation of an R object to a file or connection.
 /// Port of `do_dput` in deparse.c.
-pub unsafe fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { super::owned_dput::do_dput(call, op, args, rho) }
 }
 
@@ -395,7 +395,7 @@ pub unsafe fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Writes deparsed representations of named R objects to a file or connection.
 /// Port of `do_dump` in deparse.c.
-pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::relop::checkArity(_op, args);
         let names = CAR(args);
@@ -472,7 +472,7 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Deparse an expression with default cutoff (60), no line limit.
 ///
 /// Used in bind.c, builtin.c, coerce.c, match.c, relop.c, and do_dput/do_dump.
-pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
+pub fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
         let token = OwnerToken::current().unwrap_or_else(|_| {
             buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
@@ -493,7 +493,7 @@ pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// showAttributes. `backtick` selects symbol-name quoting — format.default
 /// deparses calls/expressions with backtick=TRUE and names with
 /// backtick=FALSE, while str.default's deParse always uses the default.
-pub unsafe fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
+pub fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
     unsafe {
         deparse1WithCutoff(
             call,
@@ -513,7 +513,7 @@ pub unsafe fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
 /// Deparse with default cutoff, respecting getOption("deparse.max.lines").
 ///
 /// Unimplemented: requires getOption infrastructure.
-pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
+pub fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
         let allocation_error =
             || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
@@ -561,7 +561,7 @@ pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// Deparse for printing language objects (uses R_print.cutoff, nlines = -1).
 ///
 /// Used in print.c for PrintLanguage, PrintClosure, PrintExpression.
-pub unsafe fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
+pub fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
         // Use DEFAULT_CUTOFF since R_print.cutoff is not yet available as a global
         deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, -1)
@@ -576,7 +576,7 @@ pub unsafe fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 ///
 /// Used for non-trivial list entries in as.character(<list>) and in
 /// terms.formula where a term label must be a single line.
-pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
+pub fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
     unsafe {
         let temp = deparse1WithCutoff(call, abbrev, MAX_CUTOFF, true, SIMPLEDEPARSE, -1);
         let _temp_guard = protect(temp);
@@ -634,7 +634,7 @@ pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
 /// Deparse for error/warning messages (single line, default deparse options).
 ///
 /// Used in errors.c for warningcall_dflt() and PrintWarnings().
-pub unsafe fn deparse1s(call: SEXP) -> SEXP {
+pub fn deparse1s(call: SEXP) -> SEXP {
     unsafe { deparse1WithCutoff(call, false, DEFAULT_CUTOFF, true, DEFAULTDEPARSE, 1) }
 }
 

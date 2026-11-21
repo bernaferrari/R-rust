@@ -24,7 +24,7 @@ use crate::sexp::protect::protect;
 ///
 /// `PRIMVAL(op) == 1` selects `cbind`, otherwise `rbind`.
 /// This is a special `.Internal`.
-pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
         let input_args = if args.is_null() {
@@ -178,7 +178,7 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// the `cbind` internal helper.
-pub unsafe fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }
 
@@ -187,7 +187,7 @@ pub unsafe fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// the `rbind` internal helper.
-pub unsafe fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }
 
@@ -196,7 +196,7 @@ pub unsafe fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Assign `x` as the row names component of `dimnames`.
-pub unsafe fn SetRowNames(dimnames: SEXP, x: SEXP) {
+pub fn SetRowNames(dimnames: SEXP, x: SEXP) {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() {
             return;
@@ -215,7 +215,7 @@ pub unsafe fn SetRowNames(dimnames: SEXP, x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Assign `x` as the column names component of `dimnames`.
-pub unsafe fn SetColNames(dimnames: SEXP, x: SEXP) {
+pub fn SetColNames(dimnames: SEXP, x: SEXP) {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() {
             return;
@@ -234,7 +234,7 @@ pub unsafe fn SetColNames(dimnames: SEXP, x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Retrieve row names from a dimnames attribute (vector-based list).
-pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
+pub fn GetRowNames(dimnames: SEXP) -> SEXP {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() {
             return R_NilValue();
@@ -251,7 +251,7 @@ pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
 }
 
 /// Retrieve column names from a dimnames attribute (vector-based list).
-pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
+pub fn GetColNames(dimnames: SEXP) -> SEXP {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() {
             return R_NilValue();
@@ -273,7 +273,7 @@ pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
 
 /// Default `cbind` implementation.  Binds objects as columns, checking
 /// conformability of matrix and vector arguments, and building dimnames.
-pub unsafe fn cbind(
+pub fn cbind(
     call: SEXP,
     args: SEXP,
     mode: SEXPTYPE,
@@ -638,7 +638,7 @@ pub unsafe fn cbind(
 /// Default `rbind` implementation.  Binds objects as rows, checking
 /// conformability of matrix and vector arguments, and building dimnames.
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn rbind(
+pub fn rbind(
     call: SEXP,
     args: SEXP,
     mode: SEXPTYPE,

@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// The `[` subset operator -- the most general form of subsetting.
-unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
+fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
     unsafe {
         let ncomp = XLENGTH(x);
         if TYPEOF(j) == SEXPTYPE::STRSXP && XLENGTH(j) > 0 {
@@ -48,7 +48,7 @@ unsafe fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn posixlt_index_preserves_balance(
+pub(crate) fn posixlt_index_preserves_balance(
     x: SEXP,
     i: SEXP,
     n: R_xlen_t,
@@ -102,7 +102,7 @@ pub(crate) unsafe fn posixlt_index_preserves_balance(
     }
 }
 
-unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
+fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let ncomp = XLENGTH(x);
         let mut n: R_xlen_t = 0;
@@ -143,7 +143,7 @@ unsafe fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP)
     }
 }
 
-pub(crate) unsafe fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
+pub(crate) fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut idx = i;
         if TYPEOF(i) == SEXPTYPE::STRSXP && XLENGTH(i) > 0 {
@@ -195,7 +195,7 @@ pub(crate) unsafe fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, 
     }
 }
 
-pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -253,7 +253,7 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `ans` is the evaluated argument list with `x` first; a tagged `drop`
 /// argument is honored (it matches the `[.factor` formal whose default is
 /// `drop = FALSE`).
-pub unsafe fn subset_default_after_failed_dispatch(
+pub fn subset_default_after_failed_dispatch(
     call: SEXP,
     op: SEXP,
     ans: SEXP,
@@ -331,7 +331,7 @@ pub unsafe fn subset_default_after_failed_dispatch(
     }
 }
 
-pub unsafe fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
+pub fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if !has_class_factor(target)
             || TYPEOF(target) != SEXPTYPE::INTSXP
@@ -378,7 +378,7 @@ pub unsafe fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) ->
 /// to the shrunken level set; NA codes stay NA. Other attributes set by
 /// the fixup survive except contrasts, which the upstream factor()
 /// rebuild drops.
-unsafe fn drop_unused_factor_levels(result: SEXP, levels: SEXP) {
+fn drop_unused_factor_levels(result: SEXP, levels: SEXP) {
     unsafe {
         let n_levels = XLENGTH(levels);
         // Which level codes appear in the subset (1-based)?
@@ -437,7 +437,7 @@ unsafe fn drop_unused_factor_levels(result: SEXP, levels: SEXP) {
     }
 }
 
-pub(crate) unsafe fn has_class_factor(x: SEXP) -> bool {
+pub(crate) fn has_class_factor(x: SEXP) -> bool {
     unsafe {
         if x.is_null() {
             return false;
@@ -462,7 +462,7 @@ pub(crate) unsafe fn has_class_factor(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Default method for `[`. Handles vector, matrix, and array subsetting.
-unsafe fn language_subscript_keeps_all(x: SEXP, sub: SEXP) -> bool {
+fn language_subscript_keeps_all(x: SEXP, sub: SEXP) -> bool {
     unsafe {
         if sub.is_null() || sub == R_NilValue() || TYPEOF(sub) != SEXPTYPE::INTSXP {
             return false;
@@ -480,7 +480,7 @@ unsafe fn language_subscript_keeps_all(x: SEXP, sub: SEXP) -> bool {
     }
 }
 
-pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (op, rho);
         let _args_guard = protect(args);
@@ -549,14 +549,14 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         /// Whether to take the `[.data.frame` emulation path: a data.frame with
         /// exactly two `[` subscripts (`df[i, j]`).
-        unsafe fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
+        fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
             unsafe { nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP }
         }
 
         /// GNU `.row_names_info(x, 2L)`: compact `c(NA, ±n)` stores nrow in
         /// `|n|`. A 2-D AsIs column has length nrow*ncol, so `length(x[[1]])`
         /// is the wrong unit.
-        unsafe fn data_frame_nrows(x: SEXP, first: SEXP) -> c_int {
+        fn data_frame_nrows(x: SEXP, first: SEXP) -> c_int {
             unsafe {
                 let rownames = getAttrib(x, sym_RowNames());
                 if TYPEOF(rownames) == SEXPTYPE::INTSXP
@@ -575,7 +575,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 length_int(first)
             }
         }
-        unsafe fn fix_na_row_names(rows: SEXP) -> SEXP {
+        fn fix_na_row_names(rows: SEXP) -> SEXP {
             unsafe {
                 if rows.is_null() || TYPEOF(rows) != SEXPTYPE::STRSXP {
                     return rows;
@@ -662,7 +662,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         /// `if (length(dim(xj)) != 2L) xj[i] else xj[i, , drop = FALSE]`.
         /// `[.factor` / `[.POSIXct` / `[.AsIs` restore class plus levels/tzone;
         /// `copyMostAttrib` is that transfer (names/dim/dimnames already set).
-        unsafe fn subset_frame_column(col: SEXP, sr: SEXP, call: SEXP) -> SEXP {
+        fn subset_frame_column(col: SEXP, sr: SEXP, call: SEXP) -> SEXP {
             unsafe {
                 let result = if isMatrix(col) {
                     let jcell = Rf_cons(R_MissingArg(), R_NilValue());
@@ -683,7 +683,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         /// automatic form `c(NA_integer_, -n)` the way stock does: a contiguous
         /// `1..k` selection keeps the compact form, anything else expands to the
         /// selected row numbers as strings.
-        unsafe fn subset_frame_rownames(rownames: SEXP, sr: SEXP, _nrows: c_int) -> SEXP {
+        fn subset_frame_rownames(rownames: SEXP, sr: SEXP, _nrows: c_int) -> SEXP {
             unsafe {
                 if TYPEOF(rownames) == SEXPTYPE::INTSXP
                     && length_int(rownames) == 2

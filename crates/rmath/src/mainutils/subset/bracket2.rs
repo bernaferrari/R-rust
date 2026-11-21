@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// The `[[` subset operator. Designed to be fast for extracting single elements.
-pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -44,7 +44,7 @@ pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Port of `vectorIndex()` from subscript.c — used by `[[` with a vector of
 /// indices of length > 1. Recursively descends into list/pairlist elements
 /// from level `start` to level `stop - 1`.
-unsafe fn vectorIndex(
+fn vectorIndex(
     mut x: SEXP,
     thesub: SEXP,
     start: c_int,
@@ -92,7 +92,7 @@ unsafe fn vectorIndex(
     }
 }
 
-pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _args_guard = protect(args);
 
@@ -382,7 +382,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 /// Dispatch the `[[` operator on an object. If `x` is an object, uses
 /// `do_subset2`; otherwise extracts the element directly.
-pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> SEXP {
+pub fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if isObject(x) {
             let args = list2(x, Rf_ScalarReal(i as c_double + 1.0));

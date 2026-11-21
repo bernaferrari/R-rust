@@ -122,7 +122,7 @@ fn sym_RowNames() -> SEXP {
     unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
-pub(crate) unsafe fn is_data_frame(x: SEXP) -> bool {
+pub(crate) fn is_data_frame(x: SEXP) -> bool {
     unsafe {
         let class = getAttrib(x, sym_Class());
         if isNull(class) || TYPEOF(class) != SEXPTYPE::STRSXP {
@@ -186,7 +186,7 @@ fn isLanguage(x: SEXP) -> bool {
 }
 
 /// Names of a pairlist/language object from cell tags, like names().
-unsafe fn pairlist_tag_names(x: SEXP) -> SEXP {
+fn pairlist_tag_names(x: SEXP) -> SEXP {
     unsafe {
         let n = xlength(x);
         if n <= 0 {
@@ -263,7 +263,7 @@ fn isObject(x: SEXP) -> bool {
 }
 
 /// Check if x is a matrix (has "dim" attribute of length 2).
-unsafe fn isMatrix(x: SEXP) -> bool {
+fn isMatrix(x: SEXP) -> bool {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         !isNull(dim) && LENGTH(dim) == 2
@@ -271,7 +271,7 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 /// Check if x is an array (has "dim" attribute of length >= 1).
-unsafe fn isArray(x: SEXP) -> bool {
+fn isArray(x: SEXP) -> bool {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         !isNull(dim) && LENGTH(dim) >= 1
@@ -279,7 +279,7 @@ unsafe fn isArray(x: SEXP) -> bool {
 }
 
 /// Get the number of rows of x (assumes matrix).
-unsafe fn nrows(x: SEXP) -> c_int {
+fn nrows(x: SEXP) -> c_int {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         if isNull(dim) {
@@ -290,7 +290,7 @@ unsafe fn nrows(x: SEXP) -> c_int {
 }
 
 /// Get the number of columns of x (assumes matrix).
-unsafe fn ncols(x: SEXP) -> c_int {
+fn ncols(x: SEXP) -> c_int {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         if isNull(dim) {
@@ -306,7 +306,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
 
 /// Get extended length of x.
 #[inline]
-unsafe fn xlength(x: SEXP) -> R_xlen_t {
+fn xlength(x: SEXP) -> R_xlen_t {
     unsafe {
         if isPairList(x) || isLanguage(x) {
             crate::sexp::constructors::Rf_length(x) as R_xlen_t
@@ -318,7 +318,7 @@ unsafe fn xlength(x: SEXP) -> R_xlen_t {
 
 /// Get the length as c_int.
 #[inline]
-unsafe fn length_int(x: SEXP) -> c_int {
+fn length_int(x: SEXP) -> c_int {
     unsafe { crate::sexp::constructors::Rf_length(x) }
 }
 
@@ -328,7 +328,7 @@ unsafe fn length_int(x: SEXP) -> c_int {
 
 /// Raise the NAMED level of x to at least v (like RAISE_NAMED in C).
 #[inline]
-unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
+fn RAISE_NAMED(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() {
             let cur = NAMED(x);
@@ -341,7 +341,7 @@ unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
 
 /// Set NAMED to NAMEDMAX (2).
 #[inline]
-unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
+fn ENSURE_NAMEDMAX(x: SEXP) {
     unsafe {
         if !x.is_null() {
             SET_NAMED(x, 2);
@@ -418,7 +418,7 @@ fn r_error(msg: &str) {
 // ---------------------------------------------------------------------------
 
 /// Convert SEXP to logical value (NA -> NA_LOGICAL, length-0 -> NA_LOGICAL).
-unsafe fn asLogical(x: SEXP) -> c_int {
+fn asLogical(x: SEXP) -> c_int {
     unsafe {
         if isNull(x) {
             return NA_LOGICAL;
@@ -455,7 +455,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Create a 2-element list: list2(a, b).
-unsafe fn list2(a: SEXP, b: SEXP) -> SEXP {
+fn list2(a: SEXP, b: SEXP) -> SEXP {
     unsafe {
         let cdr = Rf_cons(b, R_NilValue());
         Rf_cons(a, cdr)
@@ -488,7 +488,7 @@ fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 /// surviving dimension becomes a scalar. Attribute-only mutation is safe
 /// because callers pass freshly allocated subset results (dropping a
 /// singleton dimension never reorders column-major data).
-unsafe fn DropDims(x: SEXP) -> SEXP {
+fn DropDims(x: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
             return x;
@@ -618,7 +618,7 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Extract row names from a dimnames list.
-unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
+fn GetRowNames(dimnames: SEXP) -> SEXP {
     unsafe {
         if isNull(dimnames) {
             return R_NilValue();
@@ -636,7 +636,7 @@ unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get the dimnames attribute of x.
-unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
+fn GetArrayDimnames(x: SEXP) -> SEXP {
     unsafe { getAttrib(x, sym_DimNames()) }
 }
 
@@ -645,7 +645,7 @@ unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Install a symbol from a CHARSXP (translate character).
-pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
+pub(crate) fn installTrChar(input: SEXP) -> SEXP {
     unsafe {
         if isNull(input) {
             return R_NilValue();
@@ -671,7 +671,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// Check that the number of arguments matches the function arity.
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
@@ -701,7 +701,7 @@ enum pmatch {
 ///
 /// Returns EXACT_MATCH if strings are identical, PARTIAL_MATCH if target
 /// starts with the input prefix, NO_MATCH otherwise.
-unsafe fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
+fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
     unsafe {
         if isNull(target) {
             return pmatch::NO_MATCH;
@@ -747,7 +747,7 @@ unsafe fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
 // ---------------------------------------------------------------------------
 
 /// If RHS (container or element) has NAMED > 0, set NAMED = NAMEDMAX.
-unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
+fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         let val = VECTOR_ELT(y, i);
         if NAMED(y) != 0 || NAMED(val) != 0 {

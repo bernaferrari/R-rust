@@ -10,7 +10,7 @@ use super::*;
 /// Pinned GNU `[<-.POSIXlt` (R-devel): floor `$sec` before `as.POSIXct`,
 /// drop fractions when `|ct| >= 2^53`, convert to `tz`, then add the
 /// fraction back onto the converted `$sec`.
-unsafe fn posixlt_convert_tz(value: SEXP, value_tz: &str, x_tz: &str) -> SEXP {
+fn posixlt_convert_tz(value: SEXP, value_tz: &str, x_tz: &str) -> SEXP {
     unsafe {
         let orig_sec = VECTOR_ELT(value, 0);
         if orig_sec.is_null() || TYPEOF(orig_sec) != SEXPTYPE::REALSXP {
@@ -75,7 +75,7 @@ unsafe fn posixlt_convert_tz(value: SEXP, value_tz: &str, x_tz: &str) -> SEXP {
     }
 }
 
-unsafe fn subassign_posixlt_time(
+fn subassign_posixlt_time(
     x: SEXP,
     i: SEXP,
     value: SEXP,
@@ -201,7 +201,7 @@ unsafe fn subassign_posixlt_time(
     }
 }
 
-pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -297,7 +297,7 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// The `[[<-` assignment operator.
-pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -341,7 +341,7 @@ pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// The `$<-` assignment operator.
-pub unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 

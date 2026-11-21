@@ -10,7 +10,7 @@ use super::*;
 
 /// Check if s is a list whose first element is a curly brace ({).
 /// Used for correct if-then-else formatting.
-pub unsafe fn curlyahead(s: SEXP) -> bool {
+pub fn curlyahead(s: SEXP) -> bool {
     unsafe {
         if (isList(s) || isLanguage(s)) && isSymbol(CAR(s)) {
             CAR(s) == R_BraceSymbol()
@@ -29,7 +29,7 @@ pub unsafe fn curlyahead(s: SEXP) -> bool {
 /// mainop_kind, mainop_prec, mainop_rightassoc describe the outer operator.
 /// arg is an argument to it, on the left if left == 1.
 /// deepLeft is the precedence from further up the left side.
-pub unsafe fn needsparens(
+pub fn needsparens(
     mainop_kind: c_int,
     mainop_prec: c_int,
     mainop_rightassoc: c_int,
@@ -128,7 +128,7 @@ pub unsafe fn needsparens(
 
 /// Check if the character vector x contains no NA_character_ or all "",
 /// or if isAtomic, does not contain "recursive" or "use.names".
-pub unsafe fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
+pub fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
     unsafe {
         if !isString(x) {
             return true;
@@ -169,7 +169,7 @@ pub unsafe fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
 
 /// Check if a function caller needs to be parenthesized.
 /// For example: `(f+g)(z)` needs parens, but `x$f(z)` does not.
-pub unsafe fn parenthesizeCaller(s: SEXP) -> bool {
+pub fn parenthesizeCaller(s: SEXP) -> bool {
     unsafe {
         if TYPEOF(s) != SEXPTYPE::LANGSXP {
             return false;

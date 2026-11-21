@@ -23,7 +23,7 @@ use crate::sexp::protect::protect;
 // rep2: rep.int(x, times) for a vector times
 // ---------------------------------------------------------------------------
 
-pub unsafe fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
+pub fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
     unsafe {
         let nc = XLENGTH(ncopy);
         let t: SEXP;
@@ -212,7 +212,7 @@ pub unsafe fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
 // rep3: rep_len(x, len), also used for rep.int() with scalar times
 // ---------------------------------------------------------------------------
 
-pub unsafe fn rep3(s: SEXP, ns: R_xlen_t, na: R_xlen_t) -> SEXP {
+pub fn rep3(s: SEXP, ns: R_xlen_t, na: R_xlen_t) -> SEXP {
     unsafe {
         let a = Rf_allocVector(TYPEOF(s), na as c_int);
 
@@ -590,7 +590,7 @@ macro_rules! rep4_switch_loop_int {
 // rep4: rep() allowing for both times and each
 // ---------------------------------------------------------------------------
 
-pub unsafe fn rep4(x: SEXP, times: SEXP, len: R_xlen_t, each: R_xlen_t, nt: R_xlen_t) -> SEXP {
+pub fn rep4(x: SEXP, times: SEXP, len: R_xlen_t, each: R_xlen_t, nt: R_xlen_t) -> SEXP {
     unsafe {
         let lx = XLENGTH(x);
 
@@ -664,7 +664,7 @@ pub unsafe fn rep4(x: SEXP, times: SEXP, len: R_xlen_t, each: R_xlen_t, nt: R_xl
 
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -778,7 +778,7 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_rep_len: .Internal(rep_len(x, length.out))
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -899,7 +899,7 @@ pub unsafe fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_rep: rep() primitive
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = ptr::null_mut();

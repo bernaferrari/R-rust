@@ -20,7 +20,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 // do_sequence: sequence()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         checkArity(op, args);
