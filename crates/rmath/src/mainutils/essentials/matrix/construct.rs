@@ -1943,21 +1943,16 @@ pub fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
 pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m =
-            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "r", "symmetric"]);
+    let m = match_formals(call, args, &["x", "r", "symmetric"]);
         let x = m[0];
         if x.is_null() || x == R_NilValue() {
             crate::mainutils::errors::errorcall_str(call, "'x' is not a vector");
         }
         let n = XLENGTH(x) as isize;
         let r = m[1];
-        let r_absent =
-            r.is_null() || r == R_NilValue() || r == crate::sexp::globals::R_MissingArg();
-        let symmetric = if m[2].is_null()
-            || m[2] == R_NilValue()
-            || m[2] == crate::sexp::globals::R_MissingArg()
-        {
+    let r_absent = r.is_null() || r == R_NilValue() || r == crate::sexp::globals::R_MissingArg();
+    let symmetric =
+        if m[2].is_null() || m[2] == R_NilValue() || m[2] == crate::sexp::globals::R_MissingArg() {
             r_absent
         } else {
             real_or_default(m[2], 0.0) != 0.0
@@ -1998,7 +1993,6 @@ pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         ans
-    }
 }
 
 fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {

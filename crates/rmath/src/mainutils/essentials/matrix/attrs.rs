@@ -1033,7 +1033,6 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
 }
 
 pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let package = CAR(args);
         let name = CAR(CDR(args));
         if package.is_null() || name.is_null() || package == R_NilValue() || name == R_NilValue() {
@@ -1114,10 +1113,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return result;
             }
             if lookup_name == "file_ext" || lookup_name == "file_path_sans_ext" {
-                let probe = crate::eval::primitive::make_primitive_binding(
-                    &lookup_name,
-                    SEXPTYPE::BUILTINSXP,
-                );
+            let probe = primitive_binding(&lookup_name, SEXPTYPE::BUILTINSXP);
                 if !probe.is_null() && probe != R_NilValue() {
                     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                     return probe;
@@ -1157,9 +1153,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 || crate::eval::builtin::PRIMNAME(op) == ":::";
             if !private_lookup
                 && (namespace == crate::sexp::envir::R_BaseNamespace()
-                    || crate::mainutils::essentials::shared::namespace_export_environment(
-                        namespace,
-                    )
+                || crate::mainutils::essentials::shared::namespace_export_environment(namespace)
                     .is_some())
             {
                 return namespace_value(namespace, name, true);
@@ -1174,8 +1168,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     )
                 };
                 if !exported {
-                    if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name)
-                    {
+                if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name) {
                         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                         return value;
                     }
@@ -1196,9 +1189,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 });
             }
             let mut value = find_var_in_frame(namespace, name);
-            if !private_lookup
-                && (value == crate::sexp::globals::R_UnboundValue() || value.is_null())
-            {
+        if !private_lookup && (value == crate::sexp::globals::R_UnboundValue() || value.is_null()) {
                 let parent = crate::sexp::accessors::ENCLOS(namespace);
                 if !parent.is_null() && parent != R_NilValue() {
                     value = find_var_in_frame(parent, name);
@@ -1212,7 +1203,6 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
             return force_namespace_value(value);
         }
-    }
 }
 
 fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {

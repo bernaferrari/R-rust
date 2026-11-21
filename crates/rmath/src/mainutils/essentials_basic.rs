@@ -400,11 +400,7 @@ fn is_internal_cat_args(args: SEXP) -> bool {
 
 pub fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
-        // SAFETY: `call` and `args` are live SEXPs handed down by the
-        // evaluator; the returned slots borrow the same argument graph.
-        let m = unsafe {
-            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits", "..."])
-        };
+        let m = crate::mainutils::essentials::match_formals(call, args, &["x", "digits", "..."]);
 
         let x = *m.first().unwrap_or(&R_NilValue());
         if x.is_null() || x == R_NilValue() {

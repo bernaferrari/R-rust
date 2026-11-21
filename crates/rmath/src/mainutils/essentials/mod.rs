@@ -106,7 +106,7 @@ pub fn register_essentials_builtins(env: SEXP) {
                 _ => SEXPTYPE::BUILTINSXP,
             };
 
-            let prim = crate::eval::primitive::make_primitive_binding(name, kind);
+            let prim = primitive_binding(name, kind);
             let _p = protect(prim);
             let sym = install_cstr(&CString::new(name).unwrap_or_default());
             // GNU baseenv lists only FunTab primitives. Extra rport builtins
@@ -136,7 +136,7 @@ pub fn register_essentials_builtins(env: SEXP) {
             // GNU datetime.R binds difftime as a closure. Keep the builtin
             // callable through the symbol value without listing it in baseenv.
             let name = "difftime";
-            let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            let prim = primitive_binding(name, SEXPTYPE::BUILTINSXP);
             let _p = protect(prim);
             let sym = install_cstr(&CString::new(name).unwrap_or_default());
             crate::sexp::accessors::SET_SYMVALUE(sym, prim);

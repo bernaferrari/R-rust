@@ -633,7 +633,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        let m = crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits"]);
+        let m = match_formals(call, args, &["x", "digits"]);
         let missing = crate::sexp::globals::R_MissingArg();
         let force = |v: SEXP| -> SEXP {
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {

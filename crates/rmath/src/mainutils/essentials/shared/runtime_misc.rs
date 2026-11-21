@@ -1319,3 +1319,26 @@ pub(crate) fn primname_cstr(op: SEXP) -> &'static std::ffi::CStr {
         .and_then(|entry| std::ffi::CStr::from_bytes_until_nul(entry.name).ok())
         .unwrap_or(c"")
 }
+
+/// Elementwise complex map (`complex_unary_vec`) over a live CPLXSXP.
+pub(crate) fn complex_unary(
+    x: SEXP,
+    f: fn(crate::sexp::ffi::Rcomplex) -> crate::sexp::ffi::Rcomplex,
+) -> SEXP {
+    // SAFETY: `x` is a live SEXP; complex_unary_vec reads it through checked
+    // cells and allocates the result in the active owner.
+    unsafe { crate::eval::complex_arith::complex_unary_vec(x, f) }
+}
+
+/// Closure-style argument matching against `names` (`match_formal_slots`).
+pub(crate) fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
+    // SAFETY: `call` and `args` are live SEXPs supplied by the dispatcher;
+    // matching only reads them and allocates the formals pairlist.
+    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
+}
+
+/// Primitive binding for `name` (`make_primitive_binding`).
+pub(crate) fn primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEXP {
+    // SAFETY: allocates a fresh PRIMSXP (or fallback) for a safe name.
+    unsafe { crate::eval::primitive::make_primitive_binding(name, fallback_kind) }
+}

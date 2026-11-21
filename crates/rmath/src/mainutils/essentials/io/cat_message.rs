@@ -148,11 +148,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                     table[slot].as_ref().expect("validated connection").isopen
                 };
                 if !is_open {
-                    let mode = Rf_mkString(if append_file {
-                        c"a".as_ptr()
-                    } else {
-                        c"w".as_ptr()
-                    });
+                    let mode = mk_string_cstr(if append_file { c"a" } else { c"w" });
                     let _mode = protect(mode);
                     let tail = Rf_cons(mode, R_NilValue());
                     let _tail = protect(tail);
@@ -163,11 +159,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                 }
                 index
             } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
-                let mode = Rf_mkString(if append_file {
-                    c"a".as_ptr()
-                } else {
-                    c"w".as_ptr()
-                });
+                let mode = mk_string_cstr(if append_file { c"a" } else { c"w" });
                 let _mode = protect(mode);
                 let tail = Rf_cons(mode, R_NilValue());
                 let _tail = protect(tail);

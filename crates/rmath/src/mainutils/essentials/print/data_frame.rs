@@ -331,10 +331,8 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String
 }
 
 pub(crate) fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
-    unsafe {
         if !call.is_null() && call != R_NilValue() {
-            let matched =
-                crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "..."]);
+        let matched = match_formals(call, args, &["x", "..."]);
             if let Some(&x) = matched.first()
                 && !x.is_null()
                 && x != R_NilValue()
@@ -352,7 +350,6 @@ pub(crate) fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
             p = CDR(p);
         }
         CAR(args)
-    }
 }
 
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.

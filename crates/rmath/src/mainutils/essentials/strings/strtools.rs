@@ -3,9 +3,7 @@
 use super::*;
 
 pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let m =
-            crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits", "nsmall"]);
+    let m = match_formals(call, args, &["x", "digits", "nsmall"]);
         let missing = crate::sexp::globals::R_MissingArg();
         let force = |v: SEXP| -> SEXP {
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
@@ -38,7 +36,6 @@ pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let normalized_args = Rf_cons(x, middle);
         let _args_guard = protect(normalized_args);
         crate::mainutils::paste_impl::do_formatinfo(call, op, normalized_args, rho)
-    }
 }
 
 // ---------------------------------------------------------------------------

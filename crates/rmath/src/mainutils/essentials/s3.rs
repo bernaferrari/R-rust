@@ -339,7 +339,10 @@ unsafe fn find_exec_context(
 /// frames from the promise-creating frame, not identical's). The promise
 /// context's cloenv names that home environment directly; resolve to the
 /// first function context executing in it.
-pub(crate) unsafe fn sys_query_context() -> *mut crate::sexp::context::RCNTXT {
+pub(crate) fn sys_query_context() -> *mut crate::sexp::context::RCNTXT {
+    // SAFETY: R_GlobalContext returns null or the live top of the active
+    // instance's context stack, which stays valid while this builtin runs;
+    // only its plain fields are read here.
     unsafe {
         let top = crate::sexp::context::R_GlobalContext();
         if top.is_null() {
@@ -443,19 +446,6 @@ pub fn do_sys_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             crate::eval::context::R_sysframe(which, top)
         }
-    }
-}
-
-pub(crate) unsafe fn current_function_context() -> Option<*mut crate::sexp::context::RCNTXT> {
-    unsafe {
-        let mut context = crate::sexp::context::R_GlobalContext();
-        while !context.is_null() {
-            if (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
-                return Some(context);
-            }
-            context = (*context).nextcontext;
-        }
-        None
     }
 }
 

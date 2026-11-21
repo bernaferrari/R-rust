@@ -109,9 +109,9 @@ pub fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if name_elt == crate::sexp::globals::R_NaString() {
                     SETTAG(cell, install_str("NA"));
                 } else {
-                    let chars = CHAR(name_elt);
-                    if !chars.is_null() && *chars != 0 {
-                        SETTAG(cell, Rf_install(chars));
+                    let chars = charsxp_text_of(name_elt);
+                    if !chars.is_null() && !chars.as_cstr().is_empty() {
+                        SETTAG(cell, install_cstr(chars.as_cstr()));
                     }
                 }
             }
@@ -222,11 +222,8 @@ pub(super) fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {
             if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
                 return R_NilValue();
             }
-            let name = CHAR(charsxp);
-            if name.is_null() {
-                return R_NilValue();
-            }
-            return crate::eval::eval::Rf_eval(Rf_install(name), rho);
+            let name = charsxp_cstring(charsxp);
+            return crate::eval::eval::Rf_eval(install_cstr(&name), rho);
         }
         if vt == SEXPTYPE::SYMSXP {
             return crate::eval::eval::Rf_eval(val, rho);

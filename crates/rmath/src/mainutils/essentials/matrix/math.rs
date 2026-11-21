@@ -222,53 +222,38 @@ pub fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `acosh(x)` — inverse hyperbolic cosine.
 pub fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
         let x = CAR(args);
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_acosh,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_acosh);
         }
         real_math1(call, op, args, rho, f64::acosh)
-    }
 }
 
 /// R's `asinh(x)` — inverse hyperbolic sine.
 pub fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
         let x = CAR(args);
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_asinh,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_asinh);
         }
         real_math1(call, op, args, rho, f64::asinh)
-    }
 }
 
 /// R's `atanh(x)` — inverse hyperbolic tangent.
 pub fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
         let x = CAR(args);
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_atanh,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_atanh);
         }
         real_math1(call, op, args, rho, f64::atanh)
-    }
 }
 
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
@@ -288,7 +273,6 @@ pub fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `sin(x)` — sine function.
 pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if args.is_null() || args == R_NilValue() {
             crate::mainutils::errors::errorcall_str(
                 call,
@@ -309,10 +293,7 @@ pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_sin,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_sin);
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -338,12 +319,10 @@ pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `cos(x)` — cosine function.
 pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
@@ -355,10 +334,7 @@ pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_cos,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_cos);
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -384,12 +360,10 @@ pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `tan(x)` — tangent function.
 pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
@@ -401,10 +375,7 @@ pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_tan,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_tan);
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -430,12 +401,10 @@ pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `asin(x)` — arc sine function.
 pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
@@ -447,10 +416,7 @@ pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_asin,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_asin);
         }
 
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
@@ -477,12 +443,10 @@ pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `acos(x)` — arc cosine function.
 pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
@@ -495,10 +459,7 @@ pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_acos,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_acos);
         }
 
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
@@ -525,12 +486,10 @@ pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `atan(x)` — arc tangent function.
 pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
         }
@@ -543,10 +502,7 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let t = TYPEOF(x);
         if t == SEXPTYPE::CPLXSXP {
-            return crate::eval::complex_arith::complex_unary_vec(
-                x,
-                crate::eval::complex_arith::complex_atan,
-            );
+        return complex_unary(x, crate::eval::complex_arith::complex_atan);
         }
 
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
@@ -573,7 +529,6 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
         result
-    }
 }
 
 /// R's `atan2(y, x)` — two-argument arc tangent function.

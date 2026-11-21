@@ -822,8 +822,8 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let si = si_cstr.to_string_lossy();
                 let sj_cstr = charsxp_cstring(lj);
                 let sj = sj_cstr.to_string_lossy();
-                let lab = format!("{sj}-{si}\0");
-                SET_STRING_ELT(rn, row as i64, Rf_mkChar(lab.as_ptr() as *const _));
+                let lab = std::ffi::CString::new(format!("{sj}-{si}")).unwrap_or_default();
+                SET_STRING_ELT(rn, row as i64, mk_char_cstr(&lab));
                 row += 1;
             }
         }

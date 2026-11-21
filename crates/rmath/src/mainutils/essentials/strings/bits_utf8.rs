@@ -288,8 +288,7 @@ pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
 pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let matched = crate::mainutils::match_mod::match_formal_slots(
+    let matched = match_formals(
             crate::mainutils::errors::R_getCurrentCall(),
             args,
             &["x", "multiple", "allow_surrogate_pairs"],
@@ -446,7 +445,6 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             out
         }
-    }
 }
 
 fn utf8_bytes_valid(s: SEXP) -> bool {
