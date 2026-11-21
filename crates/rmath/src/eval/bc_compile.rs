@@ -521,11 +521,11 @@ impl BytecodeCompiler {
     /// Flat replacement assigns the modified object but returns the original
     /// RHS. Evaluate RHS first; retain other arguments as expressions/promises.
     fn compile_replacement(&mut self, lhs: SEXP, rhs: SEXP) -> bool {
-        unsafe {
-            let function = own_operand(CAR(lhs));
-            let Some(name) = symbol_name_from_sexp(function.as_raw()) else {
-                return false;
-            };
+        
+        let function = own_operand(CAR(lhs));
+        let Some(name) = symbol_name_from_sexp(function.as_raw()) else {
+            return false;
+        };
             let mut cells = Vec::new();
             let mut current = CDR(lhs);
             let mut seen = std::collections::HashSet::new();
@@ -554,9 +554,7 @@ impl BytecodeCompiler {
             {
                 return false;
             }
-            let setter_name = std::ffi::CString::new(format!("{name}<-"))
-                .unwrap_or_else(|_| compiler_error("invalid replacement function name"));
-            let setter = own_operand(crate::sexp::symbol::Rf_install(setter_name.as_ptr()));
+            let setter = own_operand(crate::sexp::symbol::install_str(&format!("{name}<-")));
             let rhs_expr_idx = self.add_const(rhs);
             if !self.compile_expr(rhs) {
                 return false;
@@ -587,7 +585,7 @@ impl BytecodeCompiler {
             );
             self.emit(rhs_expr_idx);
             true
-        }
+        
     }
 
     /// Snapshot a finite syntax spine before compilation can run callbacks.
@@ -694,10 +692,10 @@ impl BytecodeCompiler {
     /// the runtime can resolve it in the original owner. Other callable heads
     /// stay on the source path.
     fn replacement_setter_head(getter: &Sexp<'static>) -> Option<Sexp<'static>> {
-        unsafe {
-            let name = if getter.typeof_() == SEXPTYPE::SYMSXP {
-                symbol_name_from_sexp(getter.as_raw())?
-            } else {
+        
+        let name = if getter.typeof_() == SEXPTYPE::SYMSXP {
+            symbol_name_from_sexp(getter.as_raw())?
+        } else {
                 if getter.typeof_() != SEXPTYPE::LANGSXP {
                     return None;
                 }
@@ -731,9 +729,7 @@ impl BytecodeCompiler {
                 }
                 symbol_name_from_sexp(member)?
             };
-            let setter_name = std::ffi::CString::new(format!("{name}<-"))
-                .unwrap_or_else(|_| compiler_error("invalid replacement setter name"));
-            let setter_symbol = crate::sexp::symbol::Rf_install(setter_name.as_ptr());
+            let setter_symbol = crate::sexp::symbol::install_str(&format!("{name}<-"));
             if getter.typeof_() == SEXPTYPE::SYMSXP {
                 return Some(own_operand(setter_symbol));
             }
@@ -743,18 +739,18 @@ impl BytecodeCompiler {
                 setter_symbol,
             );
             Some(own_operand(setter))
-        }
+        
     }
 
     /// Select a bounded replacement path after evaluating its RHS. The opcode
     /// owns the selected root and child; indices stay original lazy syntax.
     fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
-        unsafe {
-            let lhs = own_operand(CAR(CDR(expr)));
-            let rhs = own_operand(CAR(CDR(CDR(expr))));
-            if lhs.typeof_() != SEXPTYPE::LANGSXP {
-                return false;
-            }
+        
+        let lhs = own_operand(CAR(CDR(expr)));
+        let rhs = own_operand(CAR(CDR(CDR(expr))));
+        if lhs.typeof_() != SEXPTYPE::LANGSXP {
+            return false;
+        }
             let setter_name = match symbol_name_from_sexp(CAR(lhs.as_raw())).as_deref() {
                 Some("[") => c"[<-",
                 Some("[[") => c"[[<-",
@@ -808,7 +804,9 @@ impl BytecodeCompiler {
             } else {
                 return false;
             };
-            let setter = own_operand(crate::sexp::symbol::Rf_install(setter_name.as_ptr()));
+            let setter = own_operand(crate::sexp::symbol::install_str(
+                setter_name.to_str().unwrap(),
+            ));
             let rhs_expression = self.add_const(rhs.as_raw());
             if !self.compile_expr(rhs.as_raw()) {
                 return false;
@@ -835,7 +833,7 @@ impl BytecodeCompiler {
             );
             self.emit(rhs_expression);
             true
-        }
+        
     }
 
     /// `<<-`: compile the value, then store into the enclosing frame via
@@ -1218,7 +1216,7 @@ pub fn compile_closure(fun: SEXP) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::INTEGER;
+    use crate::sexp::accessors::{INTEGER, INTEGER_ELT};
     use crate::sexp::constructors::{Rf_ScalarInteger, Rf_cons};
     use crate::sexp::envir::defineVar;
     use crate::sexp::session::RSession;

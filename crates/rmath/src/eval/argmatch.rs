@@ -429,8 +429,7 @@ mod tests {
                 if name == "..." {
                     return R_DotsSymbol();
                 }
-                let c_name = CString::new(name).unwrap();
-                Rf_install(c_name.as_ptr())
+                crate::sexp::symbol::install_str(name)
             }
         }
 

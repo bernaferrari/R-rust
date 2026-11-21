@@ -359,7 +359,7 @@ fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
         ] {
             let mut bound = crate::sexp::envir::R_findVarInFrame(
                 methods,
-                crate::sexp::symbol::Rf_install(name.as_ptr()),
+                crate::sexp::symbol::install_str(name.to_str().unwrap()),
             );
             if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
                 continue;
@@ -1235,7 +1235,7 @@ mod owned_matcher_tests {
         let mut arguments = PairlistBuilder::from_factory(factory.clone());
         for (name, number) in [(c"first", 10), (c"second", 20), (c"third", 30)] {
             let tag = factory
-                .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })
+                .wrap(crate::sexp::symbol::install_str(name.to_str().unwrap()))
                 .unwrap();
             formals.push(factory.missing(), Some(tag)).unwrap();
             let value = factory
@@ -1332,7 +1332,7 @@ mod owned_matcher_tests {
             .unwrap();
         let symbol = |name: &CStr| {
             factory
-                .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })
+                .wrap(crate::sexp::symbol::install_str(name.to_str().unwrap()))
                 .unwrap()
         };
         let function_name = symbol(c"f");

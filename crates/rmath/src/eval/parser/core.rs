@@ -118,9 +118,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     }
 
     pub(crate) fn install_symbol(&self, name: &str) -> Result<SEXP, ParseError> {
-        let c_name =
-            CString::new(name).map_err(|_| ParseError(format!("symbol contains NUL: {name:?}")))?;
-        let symbol = unsafe { Rf_install(c_name.as_ptr()) };
+        let symbol = crate::sexp::symbol::install_str(name);
         if symbol.is_null() {
             Err(self.allocation_error())
         } else {

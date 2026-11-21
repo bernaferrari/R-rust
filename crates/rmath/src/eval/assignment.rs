@@ -983,10 +983,7 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
         let Ok(s) = std::ffi::CStr::from_ptr(name).to_str() else {
             return R_NilValue();
         };
-        let assign_name = format!("{}<-", s);
-        let c_name = std::ffi::CString::new(assign_name)
-            .expect("assignment symbol derived from a CStr cannot contain NUL");
-        crate::sexp::symbol::Rf_install(c_name.as_ptr())
+        crate::sexp::symbol::install_str(&format!("{s}<-"))
     }
 }
 

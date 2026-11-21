@@ -7,7 +7,6 @@ use crate::sexp::{
     constructors::*,
     ffi::{SEXP, SEXPTYPE},
     protect::protect,
-    symbol::Rf_install,
 };
 
 // Enum order from the pinned r-source/src/main/eval.c, shared with the width table.
@@ -169,8 +168,7 @@ fn expand(code: SEXP, depth: usize) -> SEXP {
         let mut pc = 1;
         while pc < words.len() {
             let opcode = words[pc] as usize;
-            let name = std::ffi::CString::new(GNU_NAMES[opcode]).unwrap();
-            SET_VECTOR_ELT(decoded, pc as _, Rf_install(name.as_ptr()));
+            SET_VECTOR_ELT(decoded, pc as _, crate::sexp::symbol::install_str(GNU_NAMES[opcode]));
             let width = bytecode::GNU_BC_OPERAND_WIDTHS[opcode] as usize;
             for offset in 1..=width {
                 SET_VECTOR_ELT(

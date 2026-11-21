@@ -23,7 +23,6 @@
 //! - R_initEvalSymbols: initialize eval symbols
 //! - Various helper functions
 
-use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -561,7 +560,7 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
 
         let srcfile = getAttrib(sref, R_SrcFileSymbol());
         if !srcfile.is_null() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP {
-            let filename_sym = Rf_install(b"filename\x00".as_ptr() as *const c_char);
+            let filename_sym = crate::sexp::symbol::install_str("filename");
             let filename = R_findVarInFrame(srcfile, filename_sym);
             if TYPEOF(filename) == SEXPTYPE::STRSXP && LENGTH(filename) > 0 {
                 let fname_elt = STRING_ELT(filename, 0);
@@ -680,7 +679,7 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             ".Methods",
             ".nextMethod",
         ] {
-            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let symbol = crate::sexp::symbol::install_str(name);
             let value = R_findVarInFrame(rho, symbol);
             if value != R_UnboundValue() {
                 let cell = Rf_cons(value, frame_vars);
@@ -823,42 +822,42 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
 /// Ported from R's `replaceCall()` in eval.c. Constructs a call like:
 ///   fun(target, indices..., value = rhs)
 pub fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
-    unsafe {
-        let nargs = if !args.is_null() && args != R_NilValue() {
-            LENGTH(args)
-        } else {
-            0
-        };
-        let total = nargs + 3;
+    
+    let nargs = if !args.is_null() && args != R_NilValue() {
+        LENGTH(args)
+    } else {
+        0
+    };
+    let total = nargs + 3;
 
-        let _fun_guard = protect(fun);
-        let _args_guard = protect(args);
-        let _rhs_guard = protect(rhs);
-        let _val_guard = protect(val);
+    let _fun_guard = protect(fun);
+    let _args_guard = protect(args);
+    let _rhs_guard = protect(rhs);
+    let _val_guard = protect(val);
 
-        let tmp = allocLang(total);
-        let _tmp_guard = protect(tmp);
-        let mut ptmp = tmp;
+    let tmp = allocLang(total);
+    let _tmp_guard = protect(tmp);
+    let mut ptmp = tmp;
 
-        SETCAR(ptmp, fun);
+    SETCAR(ptmp, fun);
+    ptmp = CDR(ptmp);
+    SETCAR(ptmp, val);
+    ptmp = CDR(ptmp);
+
+    let mut a = args;
+    while !a.is_null() && a != R_NilValue() {
+        SETCAR(ptmp, CAR(a));
+        SETTAG(ptmp, TAG(a));
         ptmp = CDR(ptmp);
-        SETCAR(ptmp, val);
-        ptmp = CDR(ptmp);
-
-        let mut a = args;
-        while !a.is_null() && a != R_NilValue() {
-            SETCAR(ptmp, CAR(a));
-            SETTAG(ptmp, TAG(a));
-            ptmp = CDR(ptmp);
-            a = CDR(a);
-        }
-
-        SETCAR(ptmp, rhs);
-        let value_sym = Rf_install(b"value\x00".as_ptr() as *const c_char);
-        SETTAG(ptmp, value_sym);
-
-        tmp
+        a = CDR(a);
     }
+
+    SETCAR(ptmp, rhs);
+    let value_sym = crate::sexp::symbol::install_str("value");
+    SETTAG(ptmp, value_sym);
+
+    tmp
+
 }
 
 // ---------------------------------------------------------------------------
@@ -895,31 +894,17 @@ pub  fn unpromiseArgs(pargs: SEXP) {
 /// the bytecode interpreter encounters a missing argument in a context
 /// where one is required.
 pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
-    unsafe {
-        let msg = if arg_sym.is_null() {
-            "argument is missing, with no default".to_string()
-        } else {
-            let pname = PRINTNAME(arg_sym);
-            let name = if !pname.is_null() {
-                let s = CHAR(pname);
-                if !s.is_null() {
-                    std::ffi::CStr::from_ptr(s)
-                        .to_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|_| "???".to_string())
-                } else {
-                    "???".to_string()
-                }
-            } else {
-                "???".to_string()
-            };
-            format!("argument \"{name}\" is missing, with no default")
-        };
-        crate::mainutils::errors::errorcall_cpy(
-            call,
-            std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
-        );
-    }
+    let msg = if arg_sym.is_null() {
+        "argument is missing, with no default".to_string()
+    } else {
+        let name = crate::sexp::symbol::symbol_name_from_ptr(arg_sym)
+            .unwrap_or_else(|| "???".to_string());
+        format!("argument \"{name}\" is missing, with no default")
+    };
+    crate::mainutils::errors::errorcall_cpy(
+        call,
+        std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,41 +1090,41 @@ pub fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `R_initEvalSymbols()` in eval.c. Installs symbols
 /// for assignment operators and other special forms.
 pub fn R_initEvalSymbols() {
-    unsafe {
-        // Assignment operator symbols
-        Rf_install(b":=\x00".as_ptr() as *const c_char);
-        Rf_install(b"<-\x00".as_ptr() as *const c_char);
-        Rf_install(b"<<-\x00".as_ptr() as *const c_char);
-        Rf_install(b"=\x00".as_ptr() as *const c_char);
+    
+    // Assignment operator symbols
+    crate::sexp::symbol::install_str(":=");
+    crate::sexp::symbol::install_str("<-");
+    crate::sexp::symbol::install_str("<<-");
+    crate::sexp::symbol::install_str("=");
 
-        // Subset and subassign symbols
-        Rf_install(b"[\x00".as_ptr() as *const c_char);
-        Rf_install(b"[<-\x00".as_ptr() as *const c_char);
-        Rf_install(b"[[\x00".as_ptr() as *const c_char);
-        Rf_install(b"[[<-\x00".as_ptr() as *const c_char);
-        Rf_install(b"$<-\x00".as_ptr() as *const c_char);
-        Rf_install(b"value\x00".as_ptr() as *const c_char);
+    // Subset and subassign symbols
+    crate::sexp::symbol::install_str("[");
+    crate::sexp::symbol::install_str("[<-");
+    crate::sexp::symbol::install_str("[[");
+    crate::sexp::symbol::install_str("[[<-");
+    crate::sexp::symbol::install_str("$<-");
+    crate::sexp::symbol::install_str("value");
 
-        // Control flow symbols
-        Rf_install(b"if\x00".as_ptr() as *const c_char);
-        Rf_install(b"while\x00".as_ptr() as *const c_char);
-        Rf_install(b"for\x00".as_ptr() as *const c_char);
-        Rf_install(b"repeat\x00".as_ptr() as *const c_char);
-        Rf_install(b"break\x00".as_ptr() as *const c_char);
-        Rf_install(b"next\x00".as_ptr() as *const c_char);
-        Rf_install(b"return\x00".as_ptr() as *const c_char);
-        Rf_install(b"function\x00".as_ptr() as *const c_char);
-        Rf_install(b"quote\x00".as_ptr() as *const c_char);
-        Rf_install(b"missing\x00".as_ptr() as *const c_char);
-        Rf_install(b"on.exit\x00".as_ptr() as *const c_char);
+    // Control flow symbols
+    crate::sexp::symbol::install_str("if");
+    crate::sexp::symbol::install_str("while");
+    crate::sexp::symbol::install_str("for");
+    crate::sexp::symbol::install_str("repeat");
+    crate::sexp::symbol::install_str("break");
+    crate::sexp::symbol::install_str("next");
+    crate::sexp::symbol::install_str("return");
+    crate::sexp::symbol::install_str("function");
+    crate::sexp::symbol::install_str("quote");
+    crate::sexp::symbol::install_str("missing");
+    crate::sexp::symbol::install_str("on.exit");
 
-        // Initialize JIT
-        super::jit::R_init_jit_enabled();
-        super::jit::init_exec_token();
+    // Initialize JIT
+    super::jit::R_init_jit_enabled();
+    super::jit::init_exec_token();
 
-        // Initialize eval symbols from symbols.rs
-        super::symbols::R_initEvalSymbols();
-    }
+    // Initialize eval symbols from symbols.rs
+    super::symbols::R_initEvalSymbols();
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,11 +1139,11 @@ pub fn R_initEvalSymbols() {
 pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
-            eprintln!("Error: invalid (NULL) left side of assignment");
-            std::panic::panic_any(RError {
-                message: "invalid (NULL) left side of assignment".to_string(),
-            });
-        }
+        eprintln!("Error: invalid (NULL) left side of assignment");
+        std::panic::panic_any(RError {
+            message: "invalid (NULL) left side of assignment".to_string(),
+        });
+    }
 
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             // Simple symbol -- the target variable

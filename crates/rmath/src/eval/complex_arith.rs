@@ -5,7 +5,7 @@
 //! and complex constructors.
 
 #[cfg(test)]
-use crate::sexp::accessors::{COMPLEX, REAL};
+use crate::sexp::accessors::{COMPLEX, COMPLEX_ELT, REAL, REAL_ELT};
 use crate::sexp::accessors::{TYPEOF, XLENGTH};
 #[allow(unused_imports)]
 use crate::sexp::constructors::{Rf_ScalarComplex, Rf_allocVector3};

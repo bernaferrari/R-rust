@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::accessors::INTEGER_ELT;
 use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
 
 fn frame(name: &str) -> crate::sexp::context::ContextGuard {
@@ -12,8 +13,7 @@ fn frame_in(
     unsafe {
         let owner = OwnerToken::current().unwrap();
         let factory = owner.node_factory();
-        let symbol = std::ffi::CString::new(name).unwrap();
-        let symbol = factory.wrap(Rf_install(symbol.as_ptr())).unwrap();
+        let symbol = factory.wrap(crate::sexp::symbol::install_str(name)).unwrap();
         let call = factory.call(&symbol, &factory.nil()).unwrap();
         crate::sexp::context::begin_context_guard(
             ctxt_flags::CTXT_FUNCTION,

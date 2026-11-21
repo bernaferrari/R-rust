@@ -972,7 +972,7 @@ pub fn register_special_forms(env: SEXP) {
         for op_name in special_forms {
             let prim =
                 crate::eval::primitive::make_primitive_binding(op_name, SEXPTYPE::SPECIALSXP);
-            let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
+            let sym = crate::sexp::symbol::install_str(op_name);
             let cell = Rf_cons(prim, chain);
             SETTAG(cell, sym);
             chain = cell;

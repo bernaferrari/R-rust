@@ -5,11 +5,9 @@
 //! Pre-interns all the symbols used by the evaluator for operator
 //! recognition and special form dispatch.
 
-use std::ffi::CString;
-
 use crate::sexp::ffi::SEXP;
 use crate::sexp::symbol::{
-    R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol, Rf_install,
+    R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol,
 };
 
 /// Install and cache commonly used operator symbols.
@@ -81,8 +79,5 @@ pub fn R_initEvalSymbols() {
 
 /// Helper to install a symbol by name.
 fn Rf_install_sym(name: &str) -> SEXP {
-    unsafe {
-        let cs = CString::new(name).unwrap_or_default();
-        Rf_install(cs.as_ptr())
-    }
+    crate::sexp::symbol::install_str(name)
 }

@@ -142,7 +142,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::INTEGER;
+    use crate::sexp::accessors::{INTEGER, INTEGER_ELT};
     use crate::sexp::constructors::Rf_ScalarInteger;
     use crate::sexp::session::RSession;
     use std::panic::{AssertUnwindSafe, catch_unwind};

@@ -27,7 +27,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
+use crate::sexp::symbol::R_DotsSymbol;
 
 use super::builtin::PRIMNAME;
 use super::eval::Rf_eval;
@@ -58,7 +58,7 @@ fn choose_ops_method(
             (c"cl", call),
             (c"rev", reverse_value),
         ] {
-            let symbol = Rf_install(name.as_ptr());
+            let symbol = crate::sexp::symbol::install_str(name.to_str().unwrap());
             crate::sexp::envir::defineVar(symbol, value, newrho);
             let named = crate::sexp::accessors::NAMED(value);
             if named < 2 {
@@ -190,7 +190,7 @@ fn try_summary_method_arguments<'s>(
         Some(value) => value,
         None => factory.wrap(crate::mainutils::relop::R_FalseValue())?,
     };
-    let default_tag = factory.wrap(unsafe { Rf_install(b"na.rm\0".as_ptr() as *const c_char) })?;
+    let default_tag = factory.wrap(crate::sexp::symbol::install_str("na.rm"))?;
     builder.push(na_rm_value, Some(default_tag))?;
     factory.require_active()?;
     builder.finish()
@@ -1784,7 +1784,7 @@ mod owned_argument_tests {
             let value = factory.wrap(unsafe { Rf_ScalarInteger(number) }).unwrap();
             unsafe {
                 crate::sexp::envir::defineVar(
-                    Rf_install(name.as_ptr()),
+                    crate::sexp::symbol::install_str(name.to_str().unwrap()),
                     value.as_raw(),
                     environment.as_raw(),
                 );

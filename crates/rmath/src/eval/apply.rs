@@ -496,17 +496,11 @@ fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP) {
 fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
     unsafe {
         let base = crate::sexp::globals::R_BaseEnv();
-        let Ok(name_c) = std::ffi::CString::new(op_name) else {
-            return None;
-        };
-        let symbol = crate::sexp::symbol::Rf_install(name_c.as_ptr());
+        let symbol = crate::sexp::symbol::install_str(op_name);
         for registry in [".GenericArgsEnv", ".ArgsEnv"] {
-            let Ok(reg_c) = std::ffi::CString::new(registry) else {
-                continue;
-            };
             let env = crate::sexp::envir::R_findVarInFrame(
                 base,
-                crate::sexp::symbol::Rf_install(reg_c.as_ptr()),
+                crate::sexp::symbol::install_str(registry),
             );
             if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
                 continue;

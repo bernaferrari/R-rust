@@ -1015,10 +1015,10 @@ pub fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     let head = CAR(call);
                     !head.is_null()
                         && TYPEOF(head) == SEXPTYPE::SYMSXP
-                        && crate::sexp::symbol::symbol_name_bytes_equal(head, {
-                            static EXEC: &[u8] = b"Exec\0";
-                            crate::sexp::symbol::Rf_install(EXEC.as_ptr() as *const c_char)
-                        })
+                        && crate::sexp::symbol::symbol_name_bytes_equal(
+                            head,
+                            crate::sexp::symbol::install_str("Exec"),
+                        )
                 });
 
         if is_exec {
@@ -1076,14 +1076,10 @@ mod tests {
                 .try_set_vector_elt(0, expression)
                 .unwrap();
             let expression_name = factory
-                .wrap(crate::sexp::symbol::Rf_install(
-                    c"exec_expressions".as_ptr(),
-                ))
+                .wrap(crate::sexp::symbol::install_str("exec_expressions"))
                 .unwrap();
             let environment_name = factory
-                .wrap(crate::sexp::symbol::Rf_install(
-                    c"exec_environment".as_ptr(),
-                ))
+                .wrap(crate::sexp::symbol::install_str("exec_environment"))
                 .unwrap();
             let target_name = factory
                 .wrap(crate::sexp::symbol::install_str("exec_target"))

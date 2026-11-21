@@ -436,8 +436,7 @@ pub(crate) fn set_string_attribute(result: SEXP, name: &str, value: &str) {
         let _attr_guard = protect(attr);
         let cvalue = CString::new(value).unwrap_or_default();
         SET_STRING_ELT(attr, 0, Rf_mkChar(cvalue.as_ptr()));
-        let cname = CString::new(name).unwrap_or_default();
-        setAttrib(result, Rf_install(cname.as_ptr()), attr);
+        setAttrib(result, crate::sexp::symbol::install_str(name), attr);
     }
 }
 
@@ -535,7 +534,7 @@ pub(crate)  fn coerce_summary_posixlt_args(
 
 pub(crate) fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
     unsafe {
-        let attr = getAttrib(source, Rf_install(name.as_ptr()));
+        let attr = getAttrib(source, crate::sexp::symbol::install_str(name.to_str().unwrap()));
         let attr = Sexp::from_raw(attr)?;
         if attr.clone().typeof_() != SEXPTYPE::STRSXP || attr.clone().len() == 0 {
             return None;

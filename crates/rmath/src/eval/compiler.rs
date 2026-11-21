@@ -17,7 +17,6 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 /// Public names implemented by the portable compiler namespace.
 pub(crate) const EXPORTS: &[&str] = &["cmpfun", "compile", "enableJIT", "disassemble"];
@@ -189,7 +188,7 @@ fn new_compiler_environment() -> SEXP {
             }
         }
         for name in EXPORTS {
-            let symbol = Rf_install(std::ffi::CString::new(*name).unwrap().as_ptr());
+            let symbol = crate::sexp::symbol::install_str(name);
             let value = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
             let _value_guard = protect(value);
             defineVar(symbol, value, env);

@@ -12,7 +12,7 @@ fn run_assignment(session: &mut RSession, source: &str, assignment: &str, supera
     fn value(environment: &Sexp<'static>, name: &std::ffi::CStr) -> Sexp<'static> {
         unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(name.as_ptr()),
+                crate::sexp::symbol::install_str(name.to_str().unwrap()),
                 environment.as_raw(),
             ))
         }

@@ -38,7 +38,6 @@ use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::numeric::NumericVector;
 use crate::sexp::object::{Sexp, SexpMut};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 mod binop;
 mod comparison;

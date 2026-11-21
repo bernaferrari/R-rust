@@ -924,7 +924,7 @@ pub(crate) fn eval_gnu_adapter(
                         };
                         let result = with_stack_rooted(&stack, value, || {
                             let op = R_findVar(
-                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                crate::sexp::symbol::install_str(symbol.to_str().unwrap()),
                                 super::super::runtime::base_env(),
                             );
                             let args = Rf_cons(value, R_NilValue());
@@ -951,7 +951,7 @@ pub(crate) fn eval_gnu_adapter(
                         };
                         let result = with_stack_rooted(&stack, value, || {
                             let fun = crate::sexp::envir::findFun(
-                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                crate::sexp::symbol::install_str(symbol.to_str().unwrap()),
                                 super::super::runtime::base_env(),
                             );
                             let expression = Rf_lang2(fun, value);
@@ -1035,9 +1035,7 @@ pub(crate) fn eval_gnu_adapter(
                     let Some(name) = names.get(math_index as usize).copied() else {
                         bc_error(format!("GNU MATH1 function index {math_index} is invalid"));
                     };
-                    // Rf_install reads the bytes; keep CString alive across the call.
-                    let cname = std::ffi::CString::new(name).unwrap();
-                    let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
+                    let symbol = crate::sexp::symbol::install_str(name);
                     if CAR(call) != symbol {
                         bc_error("math1 compiler/interpreter mismatch");
                     }
@@ -1255,7 +1253,7 @@ pub(crate) fn eval_gnu_adapter(
                                 c"seq_len"
                             };
                             let op = crate::sexp::envir::findFun(
-                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                crate::sexp::symbol::install_str(symbol.to_str().unwrap()),
                                 super::super::runtime::base_env(),
                             );
                             let args = Rf_cons(value, R_NilValue());

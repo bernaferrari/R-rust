@@ -42,7 +42,7 @@ pub(crate) fn eval_gnu_lexical_generic(
     rho: SEXP,
 ) -> Option<SEXP> {
     unsafe {
-        let symbol = crate::sexp::symbol::Rf_install(generic.as_ptr());
+        let symbol = crate::sexp::symbol::install_str(generic.to_str().unwrap());
         let lexical = crate::sexp::envir::findFun(symbol, rho);
         if lexical.is_null()
             || lexical == R_UnboundValue()

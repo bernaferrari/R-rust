@@ -35,7 +35,6 @@ use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::memory::RArena;
 use crate::sexp::object::{NodeDomain, SessionNodeFactory, Sexp};
-use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
