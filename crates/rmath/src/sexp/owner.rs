@@ -129,6 +129,31 @@ impl OwnerPin {
             Err(SexpError::RootUnavailable)
         }
     }
+
+    /// Lend this owner's output-capture cell for a strictly-local update.
+    ///
+    /// P1/P2: `f` must not run any ambient-capable call (allocation, protect,
+    /// collection, eval) while the lend is live.
+    pub(crate) fn with_output_capture<R>(
+        &self,
+        f: impl FnOnce(&std::cell::RefCell<super::output::OutputCaptureState>) -> R,
+    ) -> R {
+        // SAFETY: the pin retains the original live allocation; this is a
+        // strictly-local single-field lend under the contract above.
+        unsafe { f(&(*self.as_ptr()).output_capture) }
+    }
+
+    /// Lend this owner's connection-table state for a strictly-local update.
+    ///
+    /// Same strictly-local lend contract as [`Self::with_output_capture`].
+    pub(crate) fn with_connections_state<R>(
+        &self,
+        f: impl FnOnce(&crate::mainutils::connections::ConnectionsState) -> R,
+    ) -> R {
+        // SAFETY: the pin retains the original live allocation; this is a
+        // strictly-local single-field lend under the contract above.
+        unsafe { f(&(*self.as_ptr()).connections_state) }
+    }
 }
 
 /// Execution authority exists only inside `with_runtime`. It cannot be cloned
@@ -452,6 +477,30 @@ impl<'session> OwnerToken<'session> {
     /// Validate and root a pointer in this owner, even if another is active.
     pub(crate) fn sexp(self, pointer: SEXP) -> SexpResult<Sexp<'session>> {
         Sexp::from_owner_raw(pointer, self)
+    }
+
+    /// Lend the token owner's output-capture cell for a strictly-local update.
+    ///
+    /// P1/P2: `f` must not run any ambient-capable call (allocation, protect,
+    /// collection, eval) while the lend is live.
+    pub(crate) fn with_output_capture<R>(
+        self,
+        f: impl FnOnce(&std::cell::RefCell<super::output::OutputCaptureState>) -> R,
+    ) -> R {
+        // SAFETY: the token's lifetime retains the owner; this is a
+        // strictly-local single-field lend under the contract above.
+        unsafe { f(&(*self.as_ptr()).output_capture) }
+    }
+
+    /// Lend the token owner's connection-table state for a strictly-local
+    /// update. Same contract as [`Self::with_output_capture`].
+    pub(crate) fn with_connections_state<R>(
+        self,
+        f: impl FnOnce(&crate::mainutils::connections::ConnectionsState) -> R,
+    ) -> R {
+        // SAFETY: the token's lifetime retains the owner; this is a
+        // strictly-local single-field lend under the contract above.
+        unsafe { f(&(*self.as_ptr()).connections_state) }
     }
 
     /// Collection callbacks use ambient R dispatch, so require this owner active.

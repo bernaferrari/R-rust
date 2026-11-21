@@ -317,7 +317,7 @@ impl OutputCaptureGuard {
     pub(crate) fn start() -> Self {
         let owner = Self::owner();
         start_capture_in(owner.as_ptr());
-        let frame = unsafe { (*owner.as_ptr()).output_capture.borrow().current.id };
+        let frame = owner.with_output_capture(|capture| capture.borrow().current.id);
         Self {
             owner,
             active: true,
@@ -326,14 +326,13 @@ impl OutputCaptureGuard {
     }
     pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
         let owner = Self::owner();
-        let instance = owner.as_ptr();
-        unsafe {
-            let depth = (*instance).connections_state.sink.sink_number;
-            let mut capture = (*instance).output_capture.borrow_mut();
+        let depth = owner.with_connections_state(|state| state.sink.sink_number);
+        owner.with_output_capture(|cell| {
+            let mut capture = cell.borrow_mut();
             capture.start_with_options(stdout, stderr, split);
             capture.current.sink_depth_at_start = depth;
-        }
-        let frame = unsafe { (*instance).output_capture.borrow().current.id };
+        });
+        let frame = owner.with_output_capture(|capture| capture.borrow().current.id);
         Self {
             owner,
             active: true,
@@ -344,38 +343,31 @@ impl OutputCaptureGuard {
         self.owner
             .require_live()
             .expect("output capture runtime was closed");
-        unsafe {
-            (*self.owner.as_ptr())
-                .output_capture
+        let owner_ptr = self.owner.as_ptr();
+        self.owner.with_output_capture(|capture| {
+            capture
                 .borrow_mut()
                 .frame_mut(self.frame)
                 .expect("original capture frame unavailable")
-                .connection = Some((self.owner.as_ptr(), index));
-        }
+                .connection = Some((owner_ptr, index));
+        });
     }
     pub(crate) fn finish(mut self) -> RCapturedOutput {
         self.active = false;
-        unsafe {
-            (*self.owner.as_ptr())
-                .output_capture
-                .borrow_mut()
-                .take_frame(self.frame)
-        }
-        .unwrap_or_else(|| {
-            super::super::context::r_error("original capture frame is no longer available")
-        })
+        self.owner
+            .with_output_capture(|capture| capture.borrow_mut().take_frame(self.frame))
+            .unwrap_or_else(|| {
+                super::super::context::r_error("original capture frame is no longer available")
+            })
     }
 }
 
 impl Drop for OutputCaptureGuard {
     fn drop(&mut self) {
         if self.active {
-            unsafe {
-                let _ = (*self.owner.as_ptr())
-                    .output_capture
-                    .borrow_mut()
-                    .take_frame(self.frame);
-            }
+            self.owner.with_output_capture(|capture| {
+                let _ = capture.borrow_mut().take_frame(self.frame);
+            });
         }
     }
 }
@@ -418,15 +410,16 @@ fn route_runtime(
     msg: &[u8],
 ) -> bool {
     let instance = owner.as_ptr();
-    let mut id = unsafe { (*instance).output_capture.borrow().current.id };
-    let mut depth = unsafe { (*instance).connections_state.sink.sink_number };
+    let mut id = owner.with_output_capture(|capture| capture.borrow().current.id);
+    let mut depth = owner.with_connections_state(|state| state.sink.sink_number);
     while id != 0 {
-        let plan = unsafe { (*instance).output_capture.borrow().plan(id, stream, depth) }
+        let plan = owner
+            .with_output_capture(|capture| capture.borrow().plan(id, stream, depth))
             .unwrap_or_else(|| {
                 super::super::context::r_error("original capture frame is no longer available")
             });
         let still_present = || {
-            if unsafe { (*instance).output_capture.borrow().frame(plan.id).is_none() } {
+            if owner.with_output_capture(|capture| capture.borrow().frame(plan.id).is_none()) {
                 super::super::context::r_error("original capture frame is no longer available");
             }
         };
@@ -457,12 +450,17 @@ fn route_runtime(
                     return true;
                 }
             } else {
-                let mut capture = unsafe { (*instance).output_capture.borrow_mut() };
-                let limit = capture.max_bytes;
-                let frame = capture.frame_mut(plan.id).unwrap_or_else(|| {
-                    super::super::context::r_error("original capture frame is no longer available")
+                let written = owner.with_output_capture(|cell| {
+                    let mut capture = cell.borrow_mut();
+                    let limit = capture.max_bytes;
+                    let frame = capture.frame_mut(plan.id).unwrap_or_else(|| {
+                        super::super::context::r_error(
+                            "original capture frame is no longer available",
+                        )
+                    });
+                    frame.write(stream, msg, limit)
                 });
-                if frame.write(stream, msg, limit) {
+                if written {
                     return true;
                 }
             }
@@ -537,7 +535,7 @@ fn capture_error_bytes_in(inst: *mut RInstance, stream: OutputStream, msg: &str)
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
-    let error_con = unsafe { (*inst).connections_state.sink.error_con };
+    let error_con = owner.with_connections_state(|state| state.sink.error_con);
     if error_con != 2 {
         call_native(owner, || {
             crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes())
