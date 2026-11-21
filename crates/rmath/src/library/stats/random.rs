@@ -17,13 +17,24 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::object::SexpMut;
 use crate::sexp::protect::*;
 
-// Registered .Call entry points keep the raw ABI edge: the trampoline macro
-// writes the unsafe declaration and dispatch once for every handler instead of
-// repeating it per routine. Each generated function forwards its SEXP
-// arguments to a `pub unsafe fn` handler that owns the ABI contract.
+// Registered .Call entry points keep the raw ABI edge: the trampoline macros
+// write the unsafe declaration and dispatch once for every handler instead of
+// repeating it per routine. `call_trampoline!` forwards to a safe handler that
+// owns argument validation under the held runtime lock; `call_trampoline_raw!`
+// forwards to a `pub unsafe fn` handler that still owns the raw SEXP contract.
 macro_rules! call_trampoline {
+    ($name:ident, ($($arg:ident),*) => $handler:expr) => {
+        // SAFETY: this is a registered .Call routine; the interpreter holds the
+        // runtime lock across dispatch and the callee owns argument validation.
+        unsafe extern "C-unwind" fn $name($($arg: SEXP),*) -> SEXP {
+            $handler
+        }
+    };
+}
+macro_rules! call_trampoline_raw {
     ($name:ident, ($($arg:ident),*) => $handler:expr) => {
         // SAFETY: this is a registered .Call routine; the interpreter holds the
         // runtime lock across dispatch and the callee owns the raw SEXP
@@ -34,135 +45,51 @@ macro_rules! call_trampoline {
     };
 }
 
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rchisq(n: SEXP, a: SEXP) -> SEXP {
-    do_rchisq(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rexp(n: SEXP, a: SEXP) -> SEXP {
-    do_rexp(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rgeom(n: SEXP, a: SEXP) -> SEXP {
-    do_rgeom(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rpois(n: SEXP, a: SEXP) -> SEXP {
-    do_rpois(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rt(n: SEXP, a: SEXP) -> SEXP {
-    do_rt(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rsignrank(n: SEXP, a: SEXP) -> SEXP {
-    do_rsignrank(n, a)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rbeta(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rbeta(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rbinom(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rcauchy(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rcauchy(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rf(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rf(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rgamma(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rgamma(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rlnorm(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rlnorm(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rlogis(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rlogis(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rnbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rnbinom(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rnorm(n: SEXP, mu: SEXP, sd: SEXP) -> SEXP {
-    do_rnorm(n, mu, sd)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_runif(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_runif(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rweibull(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rweibull(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rwilcox(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rwilcox(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rnchisq(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rnchisq(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rnbinom_mu(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    do_rnbinom_mu(n, a, b)
-}
-// SAFETY: registered .Call routine; the safe sampling kernel owns
-// argument validation under the held runtime lock.
-unsafe extern "C-unwind" fn c_rhyper(n: SEXP, a: SEXP, b: SEXP, c: SEXP) -> SEXP {
-    do_rhyper(n, a, b, c)
-}
+call_trampoline!(c_rchisq, (n, a) => do_rchisq(n, a));
+call_trampoline!(c_rexp, (n, a) => do_rexp(n, a));
+call_trampoline!(c_rgeom, (n, a) => do_rgeom(n, a));
+call_trampoline!(c_rpois, (n, a) => do_rpois(n, a));
+call_trampoline!(c_rt, (n, a) => do_rt(n, a));
+call_trampoline!(c_rsignrank, (n, a) => do_rsignrank(n, a));
+call_trampoline!(c_rbeta, (n, a, b) => do_rbeta(n, a, b));
+call_trampoline!(c_rbinom, (n, a, b) => do_rbinom(n, a, b));
+call_trampoline!(c_rcauchy, (n, a, b) => do_rcauchy(n, a, b));
+call_trampoline!(c_rf, (n, a, b) => do_rf(n, a, b));
+call_trampoline!(c_rgamma, (n, a, b) => do_rgamma(n, a, b));
+call_trampoline!(c_rlnorm, (n, a, b) => do_rlnorm(n, a, b));
+call_trampoline!(c_rlogis, (n, a, b) => do_rlogis(n, a, b));
+call_trampoline!(c_rnbinom, (n, a, b) => do_rnbinom(n, a, b));
+call_trampoline!(c_rnorm, (n, mu, sd) => do_rnorm(n, mu, sd));
+call_trampoline!(c_runif, (n, a, b) => do_runif(n, a, b));
+call_trampoline!(c_rweibull, (n, a, b) => do_rweibull(n, a, b));
+call_trampoline!(c_rwilcox, (n, a, b) => do_rwilcox(n, a, b));
+call_trampoline!(c_rnchisq, (n, a, b) => do_rnchisq(n, a, b));
+call_trampoline!(c_rnbinom_mu, (n, a, b) => do_rnbinom_mu(n, a, b));
+call_trampoline!(c_rhyper, (n, a, b, c) => do_rhyper(n, a, b, c));
 call_trampoline!(c_rmultinom, (n, size, prob) => do_rmultinom(n, size, prob));
 call_trampoline!(c_r2dtable, (n, r, c) => { let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int()); let _n = protect(n_i); let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int()); let _r = protect(r_i); let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int()); let _c = protect(c_i); r2dtable(n_i, r_i, c_i) });
-call_trampoline!(c_termsform, (args) => super::filter::termsform(args));
-call_trampoline!(c_call_dqags, (args) => super::integrate::call_dqags(args));
-call_trampoline!(c_call_dqagi, (args) => super::integrate::call_dqagi(args));
-call_trampoline!(c_modelframe, (call, op, args, env) => super::filter::modelframe(call, op, args, env));
-call_trampoline!(c_modelmatrix, (call, op, args, env) => super::filter::modelmatrix(call, op, args, env));
-call_trampoline!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
-call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
-call_trampoline!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
-call_trampoline!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
-call_trampoline!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
-call_trampoline!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
-call_trampoline!(c_nextn, (n, f) => super::fourier::nextn(n, f));
-call_trampoline!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
-call_trampoline!(c_do_d, (args) => super::deriv::do_d(args));
-call_trampoline!(c_deriv, (args) => super::deriv::do_deriv(args));
-call_trampoline!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
-call_trampoline!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
-call_trampoline!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
-call_trampoline!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
-call_trampoline!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
-call_trampoline!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
-call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
+call_trampoline_raw!(c_termsform, (args) => super::filter::termsform(args));
+call_trampoline_raw!(c_call_dqags, (args) => super::integrate::call_dqags(args));
+call_trampoline_raw!(c_call_dqagi, (args) => super::integrate::call_dqagi(args));
+call_trampoline_raw!(c_modelframe, (call, op, args, env) => super::filter::modelframe(call, op, args, env));
+call_trampoline_raw!(c_modelmatrix, (call, op, args, env) => super::filter::modelmatrix(call, op, args, env));
+call_trampoline_raw!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
+call_trampoline_raw!(c_compcases, (args) => super::complete_cases::compcases(args));
+call_trampoline_raw!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
+call_trampoline_raw!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
+call_trampoline_raw!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
+call_trampoline_raw!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
+call_trampoline_raw!(c_nextn, (n, f) => super::fourier::nextn(n, f));
+call_trampoline_raw!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
+call_trampoline_raw!(c_do_d, (args) => super::deriv::do_d(args));
+call_trampoline_raw!(c_deriv, (args) => super::deriv::do_deriv(args));
+call_trampoline_raw!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
+call_trampoline_raw!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
+call_trampoline_raw!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
+call_trampoline_raw!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
+call_trampoline_raw!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
+call_trampoline_raw!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
+call_trampoline_raw!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
 pub(super) fn reject_var_on_factor(x: SEXP) {
     {
@@ -324,36 +251,36 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_pkolmogorov_two_exact",
 ];
 
-call_trampoline!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
+call_trampoline_raw!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
 
-call_trampoline!(c_isoreg, (y) => super::isoreg::isoreg(y));
+call_trampoline_raw!(c_isoreg, (y) => super::isoreg::isoreg(y));
 
-call_trampoline!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
+call_trampoline_raw!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
 
-call_trampoline!(c_qansari, (p, m, n) => super::ansari::qAnsari(p, m, n));
+call_trampoline_raw!(c_qansari, (p, m, n) => super::ansari::qAnsari(p, m, n));
 
-call_trampoline!(c_intgrt_vec, (x, xi, lag) => super::ppsum::intgrt_vec(x, xi, lag));
+call_trampoline_raw!(c_intgrt_vec, (x, xi, lag) => super::ppsum::intgrt_vec(x, xi, lag));
 
-call_trampoline!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
+call_trampoline_raw!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
 
-call_trampoline!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma, lag_max));
+call_trampoline_raw!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma, lag_max));
 
-call_trampoline!(c_burg, (x, order) => super::burg::Burg(x, order));
+call_trampoline_raw!(c_burg, (x, order) => super::burg::Burg(x, order));
 
-call_trampoline!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
+call_trampoline_raw!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
 
-call_trampoline!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv, v));
+call_trampoline_raw!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv, v));
 
 #[allow(clippy::too_many_arguments)]
-call_trampoline!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
+call_trampoline_raw!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
 
-call_trampoline!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
+call_trampoline_raw!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
 
-call_trampoline!(c_pkolmogorov_two_limit, (sq, lower, tol) => super::ks::pkolmogorov_two_limit(sq, lower, tol));
+call_trampoline_raw!(c_pkolmogorov_two_limit, (sq, lower, tol) => super::ks::pkolmogorov_two_limit(sq, lower, tol));
 
-call_trampoline!(c_pkolmogorov_two_exact, (sq, sn) => super::ks::pkolmogorov_two_exact(sq, sn));
+call_trampoline_raw!(c_pkolmogorov_two_exact, (sq, sn) => super::ks::pkolmogorov_two_exact(sq, sn));
 
-call_trampoline!(c_swilk, (x) => super::swilk::SWilk(x));
+call_trampoline_raw!(c_swilk, (x) => super::swilk::SWilk(x));
 
 /// Routines whose real signature is `.External2` `(call, op, args, env)`.
 /// `.External` must not transmute a `.Call` pointer from `lookup_call`.
@@ -794,7 +721,9 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
     }
 }
 
-pub unsafe fn install_stats_call_symbols(env: SEXP) {
+pub fn install_stats_call_symbols(env: SEXP) {
+    // SAFETY: registration runs under the held runtime lock; `env` is a live
+    // environment and each symbol/string allocation is a fresh, valid SEXP.
     unsafe {
         for name in RAND_CALL_NAMES
             .iter()
@@ -809,22 +738,6 @@ pub unsafe fn install_stats_call_symbols(env: SEXP) {
             );
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Type aliases for random number generator function pointers
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Helper: fill vector with NAs
-// ---------------------------------------------------------------------------
-
-fn fill_with_nas_int(values: &mut [c_int]) {
-    values.fill(NA_INTEGER);
-}
-
-fn fill_with_nas_real(values: &mut [c_double]) {
-    values.fill(NA_REAL);
 }
 
 // ---------------------------------------------------------------------------
@@ -882,75 +795,75 @@ fn isNumeric(x: SEXP) -> bool {
 // Helper: asReal
 // ---------------------------------------------------------------------------
 
-unsafe fn as_real(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
+fn as_real(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> c_double {
+    if x.is_null() {
+        return NA_REAL;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::REALSXP {
+        return checked(owner.sexp(x)).real_elt(0).unwrap_or(NA_REAL);
+    }
+    if t == SEXPTYPE::INTSXP {
+        let v = checked(owner.sexp(x)).integer_elt(0).unwrap_or(NA_INTEGER);
+        if v == NA_INTEGER {
             return NA_REAL;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP {
-            return *REAL(x);
-        }
-        if t == SEXPTYPE::INTSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return v as c_double;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return if v != 0 { 1.0 } else { 0.0 };
-        }
-        NA_REAL
+        return v as c_double;
     }
+    if t == SEXPTYPE::LGLSXP {
+        let v = checked(owner.sexp(x)).logical_elt(0).unwrap_or(NA_INTEGER);
+        if v == NA_INTEGER {
+            return NA_REAL;
+        }
+        return if v != 0 { 1.0 } else { 0.0 };
+    }
+    NA_REAL
 }
 
 // ---------------------------------------------------------------------------
 // Helper: asInteger
 // ---------------------------------------------------------------------------
 
-unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
+fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP {
+        return checked(owner.sexp(x)).integer_elt(0).unwrap_or(NA_INTEGER);
+    }
+    if t == SEXPTYPE::REALSXP {
+        let v = checked(owner.sexp(x)).real_elt(0).unwrap_or(NA_REAL);
+        if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
             return NA_INTEGER;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
+        return v as c_int;
     }
+    if t == SEXPTYPE::LGLSXP {
+        return checked(owner.sexp(x)).logical_elt(0).unwrap_or(NA_INTEGER);
+    }
+    NA_INTEGER
 }
 
 // ---------------------------------------------------------------------------
 // External declarations
 // ---------------------------------------------------------------------------
 
-unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(sexptype, nrow * ncol);
-        let _ans_guard = protect(ans);
-        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        let _dim_guard = protect(dim);
-        *INTEGER(dim) = nrow;
-        *INTEGER(dim).add(1) = ncol;
-        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        ans
-    }
+fn allocMatrix(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    sexptype: c_int,
+    nrow: c_int,
+    ncol: c_int,
+) -> SEXP {
+    let ans = Rf_allocVector(sexptype, nrow * ncol);
+    let _ans_guard = protect(ans);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    let _dim_guard = protect(dim);
+    let mut dim_out = checked(SexpMut::try_from_checked(checked(owner.sexp(dim))));
+    checked(dim_out.try_set_integer_elt(0, nrow));
+    checked(dim_out.try_set_integer_elt(1, ncol));
+    crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
+    ans
 }
 
 use crate::library::stats::rcont::rcont2_slices;
@@ -965,8 +878,6 @@ fn random_n<const K: usize>(
     sample: impl Fn([c_double; K]) -> c_double,
     type_: SEXPTYPE,
 ) -> SEXP {
-    use crate::sexp::object::SexpMut;
-
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
     let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
     for argument in sargs {
@@ -988,18 +899,18 @@ fn random_n<const K: usize>(
         .iter()
         .any(|argument| checked(owner.sexp(*argument)).len() < 1)
     {
-        // SAFETY: the owner is active; the fresh vector is protected while its
+        // The owner is active; the fresh vector is protected while its
         // payload is filled for the checked extent n.
-        let x = unsafe {
-            let x = Rf_allocVector3(type_, n);
-            let _x_guard = protect(x);
+        let x = Rf_allocVector3(type_, n);
+        let _x_guard = protect(x);
+        let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
+        for i in 0..n {
             if type_ == SEXPTYPE::INTSXP {
-                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
+                checked(output.try_set_integer_elt(i, NA_INTEGER));
             } else {
-                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
+                checked(output.try_set_real_elt(i, NA_REAL));
             }
-            x
-        };
+        }
         // SAFETY: the warning is dispatched under the active runtime.
         {
             crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr())
@@ -1360,112 +1271,123 @@ fn fixup_prob(p: &mut [c_double]) {
 // do_rmultinom -- multinomial random sampling
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
-    unsafe {
-        let n = as_integer(sn);
-        let size = as_integer(ssize);
-        if n == NA_INTEGER || n < 0 {
-            Rf_error(b"invalid first argument 'n'\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-        if size == NA_INTEGER || size < 0 {
-            Rf_error(b"invalid second argument 'size'\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-        let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
-        let k = LENGTH(prob);
-        let _prob_guard = protect(prob);
-        let prob_slice = std::slice::from_raw_parts_mut(REAL(prob), k as usize);
-        fixup_prob(prob_slice);
-
-        GetRNGstate();
-        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), k, n);
-        let _ans_guard = protect(ans);
-        let cells = std::slice::from_raw_parts_mut(INTEGER(ans), (k * n) as usize);
-        let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
-        for i in 0..n as usize {
-            crate::nmath::dist::multinom::rmultinom_inner(size, prob_slice, &mut rn_buf);
-            // Copy f64 results to integer output
-            for j in 0..k as usize {
-                cells[i * k as usize + j] = rn_buf[j] as c_int;
-            }
-        }
-        PutRNGstate();
-
-        let nms = getAttrib(prob, R_NamesSymbol());
-        if Rf_isNull(nms) == 0 {
-            let dimnms = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            let _dimnms_guard = protect(dimnms);
-            SET_VECTOR_ELT(dimnms, 0, nms);
-            setAttrib(ans, R_DimNamesSymbol(), dimnms);
-        }
-        ans
+pub fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let n = as_integer(owner, sn);
+    let size = as_integer(owner, ssize);
+    if n == NA_INTEGER || n < 0 {
+        Rf_error(b"invalid first argument 'n'\0".as_ptr() as *const _);
+        return R_NilValue();
     }
+    if size == NA_INTEGER || size < 0 {
+        Rf_error(b"invalid second argument 'size'\0".as_ptr() as *const _);
+        return R_NilValue();
+    }
+    let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
+    let k = LENGTH(prob);
+    let _prob_guard = protect(prob);
+    let prob_sexp = checked(owner.sexp(prob));
+    let mut prob_buf = vec![0.0; k as usize];
+    for (i, value) in prob_buf.iter_mut().enumerate() {
+        *value = checked(prob_sexp.try_real_elt(i as R_xlen_t));
+    }
+    fixup_prob(&mut prob_buf);
+
+    GetRNGstate();
+    let ans = allocMatrix(owner, SEXPTYPE::INTSXP.into(), k, n);
+    let _ans_guard = protect(ans);
+    let mut cells = checked(SexpMut::try_from_checked(checked(owner.sexp(ans))));
+    let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
+    for i in 0..n as usize {
+        crate::nmath::dist::multinom::rmultinom_inner(size, &prob_buf, &mut rn_buf);
+        // Copy f64 results to integer output
+        for j in 0..k as usize {
+            checked(cells.try_set_integer_elt((i * k as usize + j) as R_xlen_t, rn_buf[j] as c_int));
+        }
+    }
+    PutRNGstate();
+
+    let nms = getAttrib(prob, R_NamesSymbol());
+    if Rf_isNull(nms) == 0 {
+        let dimnms = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _dimnms_guard = protect(dimnms);
+        SET_VECTOR_ELT(dimnms, 0, nms);
+        setAttrib(ans, R_DimNamesSymbol(), dimnms);
+    }
+    ans
 }
 
 // ---------------------------------------------------------------------------
 // r2dtable -- random 2-way tables with given marginals
 // ---------------------------------------------------------------------------
 
-pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
-    unsafe {
-        let nr = LENGTH(r);
-        let nc = LENGTH(c);
+pub fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let nr = LENGTH(r);
+    let nc = LENGTH(c);
 
-        if TYPEOF(n) != SEXPTYPE::INTSXP
-            || LENGTH(n) == 0
-            || TYPEOF(r) != SEXPTYPE::INTSXP
-            || nr <= 1
-            || TYPEOF(c) != SEXPTYPE::INTSXP
-            || nc <= 1
-        {
-            Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let n_of_samples = *INTEGER(n);
-        let row_sums = std::slice::from_raw_parts(INTEGER(r), nr as usize);
-        let col_sums = std::slice::from_raw_parts(INTEGER(c), nc as usize);
-
-        // Compute total cases as sum of row sums
-        let mut n_of_cases: c_int = 0;
-        for value in row_sums {
-            n_of_cases += *value;
-        }
-
-        // Log-factorials
-        let mut fact = vec![0.0f64; (n_of_cases + 1) as usize];
-        for i in 1..=n_of_cases as usize {
-            fact[i] = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
-        }
-
-        let mut jwork = vec![0; nc as usize];
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
-        let _ans_guard = protect(ans);
-
-        GetRNGstate();
-
-        for i in 0..n_of_samples {
-            let tmp = allocMatrix(SEXPTYPE::INTSXP.into(), nr, nc);
-            let _tmp_guard = protect(tmp);
-            // Buffers satisfy the dimension contract; degenerate margins are
-            // rejected by the checked wrapper instead of producing garbage.
-            let _ = rcont2_slices(
-                nr,
-                nc,
-                row_sums,
-                col_sums,
-                n_of_cases,
-                &fact,
-                &mut jwork,
-                std::slice::from_raw_parts_mut(INTEGER(tmp), (nr * nc) as usize),
-            );
-            SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
-        }
-
-        PutRNGstate();
-        ans
+    if TYPEOF(n) != SEXPTYPE::INTSXP
+        || LENGTH(n) == 0
+        || TYPEOF(r) != SEXPTYPE::INTSXP
+        || nr <= 1
+        || TYPEOF(c) != SEXPTYPE::INTSXP
+        || nc <= 1
+    {
+        Rf_error(b"invalid arguments\0".as_ptr() as *const _);
+        return R_NilValue();
     }
+
+    let n_of_samples = checked(owner.sexp(n)).integer_elt(0).unwrap_or(NA_INTEGER);
+    let r_sexp = checked(owner.sexp(r));
+    let c_sexp = checked(owner.sexp(c));
+    let row_sums: Vec<c_int> = r_sexp.clone().iter_integer().collect();
+    let col_sums: Vec<c_int> = c_sexp.clone().iter_integer().collect();
+
+    // Compute total cases as sum of row sums
+    let mut n_of_cases: c_int = 0;
+    for value in &row_sums {
+        n_of_cases += *value;
+    }
+
+    // Log-factorials
+    let mut fact = vec![0.0f64; (n_of_cases + 1) as usize];
+    for i in 1..=n_of_cases as usize {
+        fact[i] = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
+    }
+
+    let mut jwork = vec![0; nc as usize];
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
+    let _ans_guard = protect(ans);
+
+    GetRNGstate();
+
+    for i in 0..n_of_samples {
+        let tmp = allocMatrix(owner, SEXPTYPE::INTSXP.into(), nr, nc);
+        let _tmp_guard = protect(tmp);
+        // Buffers satisfy the dimension contract; degenerate margins are
+        // rejected by the checked wrapper instead of producing garbage.
+        let mut table = vec![0; (nr * nc) as usize];
+        let _ = rcont2_slices(
+            nr,
+            nc,
+            &row_sums,
+            &col_sums,
+            n_of_cases,
+            &fact,
+            &mut jwork,
+            &mut table,
+        );
+        let mut tmp_out = checked(SexpMut::try_from_checked(checked(owner.sexp(tmp))));
+        for (index, value) in table.iter().enumerate() {
+            checked(tmp_out.try_set_integer_elt(index as R_xlen_t, *value));
+        }
+        SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
+    }
+
+    PutRNGstate();
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1486,7 +1408,9 @@ fn missing_required(call: SEXP, name: &str) -> ! {
 }
 
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
-unsafe fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
+fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
+    // SAFETY: the raw ABI caller retains the active runtime; the matcher only
+    // inspects the argument list and returns borrowed slots.
     unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
 }
 
@@ -1499,73 +1423,74 @@ fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
 
 /// `x` or a ScalarReal(default) when the argument is absent; freshly
 /// allocated defaults are protected via `guards` for the adapter's scope.
-unsafe fn with_default(
+fn with_default(
     x: SEXP,
     default: c_double,
     guards: &mut Vec<crate::sexp::protect::ProtectGuard>,
 ) -> SEXP {
-    {
-        if adapter_absent(x) {
-            let s = Rf_ScalarReal(default);
-            guards.push(protect(s));
-            s
-        } else {
-            x
-        }
+    if adapter_absent(x) {
+        let s = Rf_ScalarReal(default);
+        guards.push(protect(s));
+        s
+    } else {
+        x
     }
 }
 
 /// Vectorized `1/x` (the `rexp` closure's `1/rate`), with R's Inf/NA rules.
-unsafe fn reciprocal_vector(x: SEXP) -> SEXP {
-    unsafe {
-        let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-        let _v_guard = protect(v);
-        let n = XLENGTH(v) as usize;
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
-        let _out_guard = protect(out);
-        let src = std::slice::from_raw_parts(REAL(v), n);
-        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
-        for i in 0..n {
-            dst[i] = 1.0 / src[i];
-        }
-        out
+fn reciprocal_vector(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> SEXP {
+    let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+    let _v_guard = protect(v);
+    let src = checked(owner.sexp(v));
+    let n = src.len();
+    let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+    let _out_guard = protect(out);
+    let mut dst = checked(SexpMut::try_from_checked(checked(owner.sexp(out))));
+    for i in 0..n {
+        checked(dst.try_set_real_elt(i, 1.0 / checked(src.try_real_elt(i))));
     }
+    out
 }
 
 /// Elementwise `s * x` for a numeric vector (e.g. rbeta's `2 * shape1`).
-unsafe fn scaled_vector(x: SEXP, s: c_double) -> SEXP {
-    unsafe {
-        let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-        let _v_guard = protect(v);
-        let n = XLENGTH(v) as usize;
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
-        let _out_guard = protect(out);
-        let src = std::slice::from_raw_parts(REAL(v), n);
-        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
-        for i in 0..n {
-            dst[i] = s * src[i];
-        }
-        out
+fn scaled_vector(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP, s: c_double) -> SEXP {
+    let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+    let _v_guard = protect(v);
+    let src = checked(owner.sexp(v));
+    let n = src.len();
+    let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+    let _out_guard = protect(out);
+    let mut dst = checked(SexpMut::try_from_checked(checked(owner.sexp(out))));
+    for i in 0..n {
+        checked(dst.try_set_real_elt(i, s * checked(src.try_real_elt(i))));
     }
+    out
 }
 
 /// Elementwise binary op on two REALSXP results with stock recycling of the
 /// shorter operand (used by the ncp composition closures).
-unsafe fn vector_binop(a: SEXP, b: SEXP, f: fn(c_double, c_double) -> c_double) -> SEXP {
-    unsafe {
-        let na = XLENGTH(a) as usize;
-        let nb = XLENGTH(b) as usize;
-        let n = na.max(nb);
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
-        let _out_guard = protect(out);
-        let pa = std::slice::from_raw_parts(REAL(a), na);
-        let pb = std::slice::from_raw_parts(REAL(b), nb);
-        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
-        for i in 0..n {
-            dst[i] = f(pa[i % na], pb[i % nb]);
-        }
-        out
+fn vector_binop(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    a: SEXP,
+    b: SEXP,
+    f: fn(c_double, c_double) -> c_double,
+) -> SEXP {
+    let lhs = checked(owner.sexp(a));
+    let rhs = checked(owner.sexp(b));
+    let na = lhs.len() as usize;
+    let nb = rhs.len() as usize;
+    let n = na.max(nb);
+    let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+    let _out_guard = protect(out);
+    let mut dst = checked(SexpMut::try_from_checked(checked(owner.sexp(out))));
+    for i in 0..n {
+        let value = f(
+            checked(lhs.try_real_elt((i % na) as R_xlen_t)),
+            checked(rhs.try_real_elt((i % nb) as R_xlen_t)),
+        );
+        checked(dst.try_set_real_elt(i as R_xlen_t, value));
     }
+    out
 }
 
 fn div(a: c_double, b: c_double) -> c_double {
@@ -1577,335 +1502,301 @@ fn add(a: c_double, b: c_double) -> c_double {
 }
 
 /// Elementwise sqrt on a REALSXP vector.
-unsafe fn sqrt_vector(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x) as usize;
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
-        let _out_guard = protect(out);
-        let src = std::slice::from_raw_parts(REAL(x), n);
-        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
-        for i in 0..n {
-            dst[i] = src[i].sqrt();
-        }
-        out
+fn sqrt_vector(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> SEXP {
+    let src = checked(owner.sexp(x));
+    let n = src.len();
+    let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+    let _out_guard = protect(out);
+    let mut dst = checked(SexpMut::try_from_checked(checked(owner.sexp(out))));
+    for i in 0..n {
+        checked(dst.try_set_real_elt(i, checked(src.try_real_elt(i)).sqrt()));
     }
+    out
 }
 
 pub unsafe fn do_rchisq_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "df", "ncp"]);
-        let n = require_slot(call, m[0], "n");
-        let df = require_slot(call, m[1], "df");
-        if adapter_absent(m[2]) {
-            do_rchisq(n, df)
-        } else {
-            do_rnchisq(n, df, m[2])
-        }
+    let m = match_formals(call, args, &["n", "df", "ncp"]);
+    let n = require_slot(call, m[0], "n");
+    let df = require_slot(call, m[1], "df");
+    if adapter_absent(m[2]) {
+        do_rchisq(n, df)
+    } else {
+        do_rnchisq(n, df, m[2])
     }
 }
 
 pub unsafe fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "rate"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        let scale = reciprocal_vector(with_default(m[1], 1.0, &mut guards));
-        do_rexp(n, scale)
-    }
+    // SAFETY: builtin dispatch holds the runtime lock across this call.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let m = match_formals(call, args, &["n", "rate"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    let scale = reciprocal_vector(owner, with_default(m[1], 1.0, &mut guards));
+    do_rexp(n, scale)
 }
 
 pub unsafe fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "prob"]);
-        do_rgeom(
-            require_slot(call, m[0], "n"),
-            require_slot(call, m[1], "prob"),
-        )
-    }
+    let m = match_formals(call, args, &["n", "prob"]);
+    do_rgeom(
+        require_slot(call, m[0], "n"),
+        require_slot(call, m[1], "prob"),
+    )
 }
 
 pub unsafe fn do_rpois_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "lambda"]);
-        do_rpois(
-            require_slot(call, m[0], "n"),
-            require_slot(call, m[1], "lambda"),
-        )
-    }
+    let m = match_formals(call, args, &["n", "lambda"]);
+    do_rpois(
+        require_slot(call, m[0], "n"),
+        require_slot(call, m[1], "lambda"),
+    )
 }
 
 pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "df", "ncp"]);
-        let n = require_slot(call, m[0], "n");
-        let df = require_slot(call, m[1], "df");
-        let ncp = m[2];
-        if adapter_absent(ncp) {
-            do_rt(n, df)
-        } else {
-            // rnorm(n, ncp)/sqrt(rchisq(n, df)/df): two full passes, in the
-            // stock closure's draw order (normals first, then chisq).
-            let mut guards = Vec::new();
-            let one = with_default(R_NilValue(), 1.0, &mut guards);
-            let z = do_rnorm(n, ncp, one);
-            let _z_guard = protect(z);
-            let chi = do_rchisq(n, df);
-            let _chi_guard = protect(chi);
-            let ratio = vector_binop(chi, df, div);
-            let _ratio_guard = protect(ratio);
-            let root = sqrt_vector(ratio);
-            let _root_guard = protect(root);
-            vector_binop(z, root, div)
-        }
+    // SAFETY: builtin dispatch holds the runtime lock across this call.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let m = match_formals(call, args, &["n", "df", "ncp"]);
+    let n = require_slot(call, m[0], "n");
+    let df = require_slot(call, m[1], "df");
+    let ncp = m[2];
+    if adapter_absent(ncp) {
+        do_rt(n, df)
+    } else {
+        // rnorm(n, ncp)/sqrt(rchisq(n, df)/df): two full passes, in the
+        // stock closure's draw order (normals first, then chisq).
+        let mut guards = Vec::new();
+        let one = with_default(R_NilValue(), 1.0, &mut guards);
+        let z = do_rnorm(n, ncp, one);
+        let _z_guard = protect(z);
+        let chi = do_rchisq(n, df);
+        let _chi_guard = protect(chi);
+        let ratio = vector_binop(owner, chi, df, div);
+        let _ratio_guard = protect(ratio);
+        let root = sqrt_vector(owner, ratio);
+        let _root_guard = protect(root);
+        vector_binop(owner, z, root, div)
     }
 }
 
 pub unsafe fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["nn", "n"]);
-        do_rsignrank(
-            require_slot(call, m[0], "nn"),
-            require_slot(call, m[1], "n"),
-        )
-    }
+    let m = match_formals(call, args, &["nn", "n"]);
+    do_rsignrank(
+        require_slot(call, m[0], "nn"),
+        require_slot(call, m[1], "n"),
+    )
 }
 
 pub unsafe fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "shape1", "shape2", "ncp"]);
-        let n = require_slot(call, m[0], "n");
-        let shape1 = require_slot(call, m[1], "shape1");
-        let shape2 = require_slot(call, m[2], "shape2");
-        let ncp = m[3];
-        if adapter_absent(ncp) {
-            do_rbeta(n, shape1, shape2)
-        } else {
-            // X <- rchisq(n, 2*shape1, ncp); X/(X + rchisq(n, 2*shape2))
-            let df1 = scaled_vector(shape1, 2.0);
-            let _df1_guard = protect(df1);
-            let x = do_rnchisq(n, df1, ncp);
-            let _x_guard = protect(x);
-            let df2 = scaled_vector(shape2, 2.0);
-            let _df2_guard = protect(df2);
-            let y = do_rchisq(n, df2);
-            let _y_guard = protect(y);
-            let sum = vector_binop(x, y, add);
-            let _sum_guard = protect(sum);
-            vector_binop(x, sum, div)
-        }
+    // SAFETY: builtin dispatch holds the runtime lock across this call.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let m = match_formals(call, args, &["n", "shape1", "shape2", "ncp"]);
+    let n = require_slot(call, m[0], "n");
+    let shape1 = require_slot(call, m[1], "shape1");
+    let shape2 = require_slot(call, m[2], "shape2");
+    let ncp = m[3];
+    if adapter_absent(ncp) {
+        do_rbeta(n, shape1, shape2)
+    } else {
+        // X <- rchisq(n, 2*shape1, ncp); X/(X + rchisq(n, 2*shape2))
+        let df1 = scaled_vector(owner, shape1, 2.0);
+        let _df1_guard = protect(df1);
+        let x = do_rnchisq(n, df1, ncp);
+        let _x_guard = protect(x);
+        let df2 = scaled_vector(owner, shape2, 2.0);
+        let _df2_guard = protect(df2);
+        let y = do_rchisq(n, df2);
+        let _y_guard = protect(y);
+        let sum = vector_binop(owner, x, y, add);
+        let _sum_guard = protect(sum);
+        vector_binop(owner, x, sum, div)
     }
 }
 
 pub unsafe fn do_rbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "size", "prob"]);
-        do_rbinom(
-            require_slot(call, m[0], "n"),
-            require_slot(call, m[1], "size"),
-            require_slot(call, m[2], "prob"),
-        )
-    }
+    let m = match_formals(call, args, &["n", "size", "prob"]);
+    do_rbinom(
+        require_slot(call, m[0], "n"),
+        require_slot(call, m[1], "size"),
+        require_slot(call, m[2], "prob"),
+    )
 }
 
 pub unsafe fn do_rmultinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "size", "prob"]);
-        do_rmultinom(
-            require_slot(call, m[0], "n"),
-            require_slot(call, m[1], "size"),
-            require_slot(call, m[2], "prob"),
-        )
-    }
+    let m = match_formals(call, args, &["n", "size", "prob"]);
+    do_rmultinom(
+        require_slot(call, m[0], "n"),
+        require_slot(call, m[1], "size"),
+        require_slot(call, m[2], "prob"),
+    )
 }
 
 pub unsafe fn do_r2dtable_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "r", "c"]);
-        let n = require_slot(call, m[0], "n");
-        let r = require_slot(call, m[1], "r");
-        let c = require_slot(call, m[2], "c");
-        let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
-        let _n = protect(n_i);
-        let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
-        let _r = protect(r_i);
-        let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int());
-        let _c = protect(c_i);
-        r2dtable(n_i, r_i, c_i)
-    }
+    let m = match_formals(call, args, &["n", "r", "c"]);
+    let n = require_slot(call, m[0], "n");
+    let r = require_slot(call, m[1], "r");
+    let c = require_slot(call, m[2], "c");
+    let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
+    let _n = protect(n_i);
+    let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
+    let _r = protect(r_i);
+    let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int());
+    let _c = protect(c_i);
+    r2dtable(n_i, r_i, c_i)
 }
 
 pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "location", "scale"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        do_rcauchy(
-            n,
-            with_default(m[1], 0.0, &mut guards),
-            with_default(m[2], 1.0, &mut guards),
-        )
-    }
+    let m = match_formals(call, args, &["n", "location", "scale"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    do_rcauchy(
+        n,
+        with_default(m[1], 0.0, &mut guards),
+        with_default(m[2], 1.0, &mut guards),
+    )
 }
 
 pub unsafe fn do_rf_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "df1", "df2", "ncp"]);
-        let n = require_slot(call, m[0], "n");
-        let df1 = require_slot(call, m[1], "df1");
-        let df2 = require_slot(call, m[2], "df2");
-        if adapter_absent(m[3]) {
-            do_rf(n, df1, df2)
-        } else {
-            // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
-            let num0 = do_rnchisq(n, df1, m[3]);
-            let _num0_guard = protect(num0);
-            let num = vector_binop(num0, df1, div);
-            let _num_guard = protect(num);
-            let den0 = do_rchisq(n, df2);
-            let _den0_guard = protect(den0);
-            let den = vector_binop(den0, df2, div);
-            let _den_guard = protect(den);
-            vector_binop(num, den, div)
-        }
+    // SAFETY: builtin dispatch holds the runtime lock across this call.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let m = match_formals(call, args, &["n", "df1", "df2", "ncp"]);
+    let n = require_slot(call, m[0], "n");
+    let df1 = require_slot(call, m[1], "df1");
+    let df2 = require_slot(call, m[2], "df2");
+    if adapter_absent(m[3]) {
+        do_rf(n, df1, df2)
+    } else {
+        // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
+        let num0 = do_rnchisq(n, df1, m[3]);
+        let _num0_guard = protect(num0);
+        let num = vector_binop(owner, num0, df1, div);
+        let _num_guard = protect(num);
+        let den0 = do_rchisq(n, df2);
+        let _den0_guard = protect(den0);
+        let den = vector_binop(owner, den0, df2, div);
+        let _den_guard = protect(den);
+        vector_binop(owner, num, den, div)
     }
 }
 
 pub unsafe fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "shape", "rate", "scale"]);
-        let n = require_slot(call, m[0], "n");
-        let shape = require_slot(call, m[1], "shape");
-        let rate = m[2];
-        let scale = m[3];
-        let mut guards = Vec::new();
-        let rate_present = !adapter_absent(rate);
-        let scale_present = !adapter_absent(scale);
-        if rate_present && scale_present {
-            // |rate * scale - 1| < 1e-15 -> warning, else error (stock)
-            let rv = coerceVector(rate, SEXPTYPE::REALSXP.as_c_int());
-            let _rv_guard = protect(rv);
-            let sv = coerceVector(scale, SEXPTYPE::REALSXP.as_c_int());
-            let _sv_guard = protect(sv);
-            let r0 = *REAL(rv).add(0);
-            let s0 = *REAL(sv).add(0);
-            if (r0 * s0 - 1.0).abs() < 1e-15 {
-                let msg = c"specify 'rate' or 'scale' but not both";
-                crate::main::errors::Rf_warningcall1(call, msg.as_ptr());
-            } else {
-                crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
-            }
-        }
-        let scale_arg = if scale_present {
-            scale
+    // SAFETY: builtin dispatch holds the runtime lock across this call.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let m = match_formals(call, args, &["n", "shape", "rate", "scale"]);
+    let n = require_slot(call, m[0], "n");
+    let shape = require_slot(call, m[1], "shape");
+    let rate = m[2];
+    let scale = m[3];
+    let mut guards = Vec::new();
+    let rate_present = !adapter_absent(rate);
+    let scale_present = !adapter_absent(scale);
+    if rate_present && scale_present {
+        // |rate * scale - 1| < 1e-15 -> warning, else error (stock)
+        let rv = coerceVector(rate, SEXPTYPE::REALSXP.as_c_int());
+        let _rv_guard = protect(rv);
+        let sv = coerceVector(scale, SEXPTYPE::REALSXP.as_c_int());
+        let _sv_guard = protect(sv);
+        let r0 = checked(owner.sexp(rv)).real_elt(0).unwrap_or(NA_REAL);
+        let s0 = checked(owner.sexp(sv)).real_elt(0).unwrap_or(NA_REAL);
+        if (r0 * s0 - 1.0).abs() < 1e-15 {
+            let msg = c"specify 'rate' or 'scale' but not both";
+            crate::main::errors::Rf_warningcall1(call, msg.as_ptr());
         } else {
-            reciprocal_vector(with_default(rate, 1.0, &mut guards))
-        };
-        do_rgamma(n, shape, scale_arg)
+            crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
+        }
     }
+    let scale_arg = if scale_present {
+        scale
+    } else {
+        reciprocal_vector(owner, with_default(rate, 1.0, &mut guards))
+    };
+    do_rgamma(n, shape, scale_arg)
 }
 
 pub unsafe fn do_rlnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "meanlog", "sdlog"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        do_rlnorm(
-            n,
-            with_default(m[1], 0.0, &mut guards),
-            with_default(m[2], 1.0, &mut guards),
-        )
-    }
+    let m = match_formals(call, args, &["n", "meanlog", "sdlog"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    do_rlnorm(
+        n,
+        with_default(m[1], 0.0, &mut guards),
+        with_default(m[2], 1.0, &mut guards),
+    )
 }
 
 pub unsafe fn do_rlogis_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "location", "scale"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        do_rlogis(
-            n,
-            with_default(m[1], 0.0, &mut guards),
-            with_default(m[2], 1.0, &mut guards),
-        )
-    }
+    let m = match_formals(call, args, &["n", "location", "scale"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    do_rlogis(
+        n,
+        with_default(m[1], 0.0, &mut guards),
+        with_default(m[2], 1.0, &mut guards),
+    )
 }
 
 pub unsafe fn do_rnbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "size", "prob", "mu"]);
-        let n = require_slot(call, m[0], "n");
-        let size = require_slot(call, m[1], "size");
-        let prob = m[2];
-        let mu = m[3];
-        if !adapter_absent(mu) {
-            if !adapter_absent(prob) {
-                crate::main::errors::errorcall_str(call, "'prob' and 'mu' both specified");
-            }
-            do_rnbinom_mu(n, size, mu)
-        } else {
-            if adapter_absent(prob) {
-                missing_required(call, "prob");
-            }
-            do_rnbinom(n, size, prob)
+    let m = match_formals(call, args, &["n", "size", "prob", "mu"]);
+    let n = require_slot(call, m[0], "n");
+    let size = require_slot(call, m[1], "size");
+    let prob = m[2];
+    let mu = m[3];
+    if !adapter_absent(mu) {
+        if !adapter_absent(prob) {
+            crate::main::errors::errorcall_str(call, "'prob' and 'mu' both specified");
         }
+        do_rnbinom_mu(n, size, mu)
+    } else {
+        if adapter_absent(prob) {
+            missing_required(call, "prob");
+        }
+        do_rnbinom(n, size, prob)
     }
 }
 
 pub unsafe fn do_rnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "mean", "sd"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        do_rnorm(
-            n,
-            with_default(m[1], 0.0, &mut guards),
-            with_default(m[2], 1.0, &mut guards),
-        )
-    }
+    let m = match_formals(call, args, &["n", "mean", "sd"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    do_rnorm(
+        n,
+        with_default(m[1], 0.0, &mut guards),
+        with_default(m[2], 1.0, &mut guards),
+    )
 }
 
 pub unsafe fn do_runif_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "min", "max"]);
-        let n = require_slot(call, m[0], "n");
-        let mut guards = Vec::new();
-        do_runif(
-            n,
-            with_default(m[1], 0.0, &mut guards),
-            with_default(m[2], 1.0, &mut guards),
-        )
-    }
+    let m = match_formals(call, args, &["n", "min", "max"]);
+    let n = require_slot(call, m[0], "n");
+    let mut guards = Vec::new();
+    do_runif(
+        n,
+        with_default(m[1], 0.0, &mut guards),
+        with_default(m[2], 1.0, &mut guards),
+    )
 }
 
 pub unsafe fn do_rweibull_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["n", "shape", "scale"]);
-        let n = require_slot(call, m[0], "n");
-        let shape = require_slot(call, m[1], "shape");
-        let mut guards = Vec::new();
-        do_rweibull(n, shape, with_default(m[2], 1.0, &mut guards))
-    }
+    let m = match_formals(call, args, &["n", "shape", "scale"]);
+    let n = require_slot(call, m[0], "n");
+    let shape = require_slot(call, m[1], "shape");
+    let mut guards = Vec::new();
+    do_rweibull(n, shape, with_default(m[2], 1.0, &mut guards))
 }
 
 pub unsafe fn do_rwilcox_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["nn", "m", "n"]);
-        do_rwilcox(
-            require_slot(call, m[0], "nn"),
-            require_slot(call, m[1], "m"),
-            require_slot(call, m[2], "n"),
-        )
-    }
+    let m = match_formals(call, args, &["nn", "m", "n"]);
+    do_rwilcox(
+        require_slot(call, m[0], "nn"),
+        require_slot(call, m[1], "m"),
+        require_slot(call, m[2], "n"),
+    )
 }
 
 pub unsafe fn do_rhyper_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let m = match_formals(call, args, &["nn", "m", "n", "k"]);
-        do_rhyper(
-            require_slot(call, m[0], "nn"),
-            require_slot(call, m[1], "m"),
-            require_slot(call, m[2], "n"),
-            require_slot(call, m[3], "k"),
-        )
-    }
+    let m = match_formals(call, args, &["nn", "m", "n", "k"]);
+    do_rhyper(
+        require_slot(call, m[0], "nn"),
+        require_slot(call, m[1], "m"),
+        require_slot(call, m[2], "n"),
+        require_slot(call, m[3], "k"),
+    )
 }
