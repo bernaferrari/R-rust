@@ -161,11 +161,13 @@ struct ZeroinCtx<'session> {
 }
 
 impl<'session> ZeroinCtx<'session> {
-    unsafe fn new(
+    fn new(
         fun: crate::sexp::ffi::SEXP,
         rho: crate::sexp::ffi::SEXP,
         kind: ScalarCallbackKind,
     ) -> Self {
+        // SAFETY: called while the interpreter dispatches the enclosing
+        // builtin under the runtime lock; the owner is captured per call.
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         owner
@@ -251,6 +253,8 @@ impl<'session> ZeroinCtx<'session> {
 }
 
 unsafe extern "C-unwind" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
+    // SAFETY: `info` is the live ZeroinCtx reference installed by the caller
+    // for the duration of the Brent iteration.
     let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
     ctx.evaluate(x)
 }
@@ -277,39 +281,40 @@ pub unsafe fn do_uniroot(
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+    {
+        use crate::sexp::accessors::{
+            CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
+        };
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
         let fun = CAR(args);
         let interval = CAR(CDR(args));
         let ax = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            *REAL(interval)
+            REAL_ELT(interval, 0)
         } else {
-            *INTEGER(interval) as f64
+            INTEGER_ELT(interval, 0) as f64
         };
         let bx = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            *REAL(interval).add(1)
+            REAL_ELT(interval, 1)
         } else {
-            *INTEGER(interval).add(1) as f64
+            INTEGER_ELT(interval, 1) as f64
         };
         let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Zeroin);
-        let fa = zeroin_call(ax, &mut ctx as *mut _ as *mut core::ffi::c_void);
-        let fb = zeroin_call(bx, &mut ctx as *mut _ as *mut core::ffi::c_void);
+        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
+        // SAFETY: `ctx` is a live ZeroinCtx on this stack frame for the full
+        // duration of every zeroin_call/R_zeroin2 invocation below.
+        let eval = |z: f64| unsafe { zeroin_call(z, info) };
+        let fa = eval(ax);
+        let fb = eval(bx);
         let mut tol = 1e-8;
         let mut maxit: core::ffi::c_int = 1000;
-        let root = R_zeroin2(
-            ax,
-            bx,
-            fa,
-            fb,
-            zeroin_call,
-            &mut ctx as *mut _ as *mut core::ffi::c_void,
-            &mut tol,
-            &mut maxit,
-        );
-        let froot = zeroin_call(root, &mut ctx as *mut _ as *mut core::ffi::c_void);
+        // SAFETY: `info` points to the live `ctx` above; `tol`/`maxit` are
+        // valid out-parameters for the duration of the call.
+        let root = unsafe {
+            R_zeroin2(ax, bx, fa, fb, zeroin_call, info, &mut tol, &mut maxit)
+        };
+        let froot = eval(root);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarReal(root));
@@ -329,47 +334,50 @@ pub unsafe fn do_optimize(
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF};
+    {
+        use crate::sexp::accessors::{CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF};
         use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::protect;
         let fun = CAR(args);
         let interval = CAR(CDR(args));
         let mut lo = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            *REAL(interval)
+            REAL_ELT(interval, 0)
         } else {
-            *INTEGER(interval) as f64
+            INTEGER_ELT(interval, 0) as f64
         };
         let mut hi = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            *REAL(interval).add(1)
+            REAL_ELT(interval, 1)
         } else {
-            *INTEGER(interval).add(1) as f64
+            INTEGER_ELT(interval, 1) as f64
         };
         let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
+        // SAFETY: `info` points at the live `ctx` for the whole golden-section
+        // loop below; every evaluation runs under the runtime lock.
+        let eval = |z: f64| unsafe { zeroin_call(z, info) };
         let gr = (5.0f64.sqrt() - 1.0) / 2.0;
         let mut x1 = hi - gr * (hi - lo);
         let mut x2 = lo + gr * (hi - lo);
-        let mut f1 = zeroin_call(x1, info);
-        let mut f2 = zeroin_call(x2, info);
+        let mut f1 = eval(x1);
+        let mut f2 = eval(x2);
         for _ in 0..80 {
             if f1 < f2 {
                 hi = x2;
                 x2 = x1;
                 f2 = f1;
                 x1 = hi - gr * (hi - lo);
-                f1 = zeroin_call(x1, info);
+                f1 = eval(x1);
             } else {
                 lo = x1;
                 x1 = x2;
                 f1 = f2;
                 x2 = lo + gr * (hi - lo);
-                f2 = zeroin_call(x2, info);
+                f2 = eval(x2);
             }
         }
         let xmin = 0.5 * (lo + hi);
-        let fmin = zeroin_call(xmin, info);
+        let fmin = eval(xmin);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
@@ -481,11 +489,11 @@ fn nlm_ft_lookup(n: usize, x: &[f64], state: &NlmState) -> Option<usize> {
 
 /// Read a `gradient`/`hessian` attribute as doubles (GNU does
 /// `REAL(coerceVector(getAttrib(...), REALSXP))`).
-unsafe fn nlm_attr_real(v: crate::sexp::ffi::SEXP, len: usize) -> Vec<f64> {
-    use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
+fn nlm_attr_real(v: crate::sexp::ffi::SEXP, len: usize) -> Vec<f64> {
+    use crate::sexp::accessors::{REAL_ELT, TYPEOF, XLENGTH};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
-    unsafe {
+    {
         let mut out = vec![0.0f64; len];
         if v.is_null() || v == R_NilValue() {
             return out;
@@ -499,7 +507,7 @@ unsafe fn nlm_attr_real(v: crate::sexp::ffi::SEXP, len: usize) -> Vec<f64> {
             return out;
         }
         for i in 0..len {
-            out[i] = *REAL(vr).add(i);
+            out[i] = REAL_ELT(vr, i as c_int);
         }
         out
     }
@@ -513,7 +521,7 @@ unsafe extern "C" fn nlm_fcn(
     arg_state: *mut core::ffi::c_void,
 ) {
     unsafe {
-        use crate::sexp::accessors::{CDR, INTEGER, REAL, SETCAR, TYPEOF, XLENGTH};
+        use crate::sexp::accessors::{CDR, INTEGER_ELT, REAL_ELT, SETCAR, TYPEOF, XLENGTH};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_lang2};
         use crate::sexp::ffi::{ISNAN, NA_INTEGER, SEXPTYPE};
         use crate::sexp::protect::protect;
@@ -534,7 +542,7 @@ unsafe extern "C" fn nlm_fcn(
                     "non-finite value supplied by 'nlm'",
                 );
             }
-            *REAL(s).add(i) = xs[i];
+            crate::sexp::accessors::SET_REAL_ELT(s, i as c_int, xs[i]);
         }
         SETCAR(CDR(state.r_fcall), s);
         let value = crate::eval::eval::Rf_eval(state.r_fcall, state.r_env);
@@ -544,7 +552,7 @@ unsafe extern "C" fn nlm_fcn(
                 if XLENGTH(value) != 1 {
                     nlm_bad_value();
                 }
-                let iv = *INTEGER(value);
+                let iv = INTEGER_ELT(value, 0);
                 if iv == NA_INTEGER {
                     crate::mainutils::errors::Rf_warning1(
                         c"NA replaced by maximum positive value".as_ptr(),
@@ -558,7 +566,7 @@ unsafe extern "C" fn nlm_fcn(
                 if XLENGTH(value) != 1 {
                     nlm_bad_value();
                 }
-                let rv = *REAL(value);
+                let rv = REAL_ELT(value, 0);
                 if !rv.is_finite() {
                     if rv == f64::NEG_INFINITY {
                         // keep sign for root finding !
@@ -600,7 +608,7 @@ unsafe extern "C" fn nlm_fcn(
     }
 }
 
-unsafe fn nlm_bad_value() -> ! {
+fn nlm_bad_value() -> ! {
     crate::mainutils::errors::errorcall_str(
         crate::mainutils::errors::R_getCurrentCall(),
         "invalid function value in 'nlm' optimizer",
@@ -672,10 +680,10 @@ unsafe extern "C" fn nlm_d2fcn(
 }
 
 /// fixparam from optimize.c: check/extract a numeric parameter vector.
-unsafe fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
-    use crate::sexp::accessors::{INTEGER, REAL, TYPEOF, XLENGTH};
+fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
+    use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, TYPEOF, XLENGTH};
     use crate::sexp::ffi::SEXPTYPE;
-    unsafe {
+    {
         let bad = |msg: &str| -> ! {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
@@ -701,18 +709,20 @@ unsafe fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
         match t {
             t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
                 for i in 0..*n {
-                    if *INTEGER(p).add(i) == crate::sexp::ffi::NA_INTEGER {
+                    let iv = INTEGER_ELT(p, i as c_int);
+                    if iv == crate::sexp::ffi::NA_INTEGER {
                         bad("missing value in parameter");
                     }
-                    x[i] = *INTEGER(p).add(i) as f64;
+                    x[i] = iv as f64;
                 }
             }
             t if t == SEXPTYPE::REALSXP => {
                 for i in 0..*n {
-                    if !(*REAL(p).add(i)).is_finite() {
+                    let rv = REAL_ELT(p, i as c_int);
+                    if !rv.is_finite() {
                         bad("missing value in parameter");
                     }
-                    x[i] = *REAL(p).add(i);
+                    x[i] = rv;
                 }
             }
             _ => bad("invalid parameter type"),
@@ -722,7 +732,7 @@ unsafe fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
 }
 
 /// Fatal errors — we don't deliver an answer (opterror in optimize.c).
-unsafe fn nlm_opterror(nerr: i32) -> ! {
+fn nlm_opterror(nerr: i32) -> ! {
     let msg = match nerr {
         -1 => "non-positive number of parameters in nlm",
         -2 => "nlm is inefficient for 1-d problems",
@@ -767,7 +777,9 @@ pub unsafe fn do_nlm(
 ) -> crate::sexp::ffi::SEXP {
     unsafe {
         use crate::appl::uncmin::{fdhess, optif9};
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+        use crate::sexp::accessors::{
+            CAR, CDR, SET_INTEGER_ELT, SET_REAL_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
+        };
         use crate::sexp::constructors::{
             Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_lang2,
         };
@@ -887,7 +899,7 @@ pub unsafe fn do_nlm(
         let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _px = protect(xv);
         for i in 0..n {
-            *REAL(xv).add(i) = x[i];
+            SET_REAL_ELT(xv, i as c_int, x[i]);
         }
         crate::sexp::accessors::SETCAR(crate::sexp::accessors::CDR(r_fcall), xv);
         let value = crate::eval::eval::Rf_eval(r_fcall, state.r_env);
@@ -991,7 +1003,7 @@ pub unsafe fn do_nlm(
                 a.as_mut_ptr(),
                 n as core::ffi::c_int,
                 wrk.as_mut_ptr(),
-                wrk.as_mut_ptr().add(n),
+                wrk[n..].as_mut_ptr(),
                 ndigit,
                 typsiz.as_ptr(),
             );
@@ -1005,12 +1017,12 @@ pub unsafe fn do_nlm(
             let hess = Rf_allocVector3(SEXPTYPE::REALSXP, (n * n) as i64);
             let _h = protect(hess);
             for i in 0..n * n {
-                *REAL(hess).add(i) = a[i];
+                SET_REAL_ELT(hess, i as c_int, a[i]);
             }
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _d = protect(dim);
-            *INTEGER(dim) = n as i32;
-            *INTEGER(dim).add(1) = n as i32;
+            SET_INTEGER_ELT(dim, 0, n as i32);
+            SET_INTEGER_ELT(dim, 1, n as i32);
             crate::sexp::attrib_core::setAttrib(
                 hess,
                 crate::sexp::symbol::Rf_install(b"dim\0".as_ptr() as *const _),
@@ -1032,14 +1044,14 @@ pub unsafe fn do_nlm(
         let est = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _e = protect(est);
         for i in 0..n {
-            *REAL(est).add(i) = xpls[i];
+            SET_REAL_ELT(est, i as c_int, xpls[i]);
         }
         SET_VECTOR_ELT(result, 1, est);
 
         let gr = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _g = protect(gr);
         for i in 0..n {
-            *REAL(gr).add(i) = gpls[i];
+            SET_REAL_ELT(gr, i as c_int, gpls[i]);
         }
         SET_VECTOR_ELT(result, 2, gr);
 
@@ -1083,8 +1095,8 @@ pub unsafe fn do_nlminb(
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, REAL, SET_VECTOR_ELT, VECTOR_ELT, XLENGTH};
+    {
+        use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT, SET_VECTOR_ELT, VECTOR_ELT, XLENGTH};
         use crate::sexp::constructors::{
             Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
         };
@@ -1097,7 +1109,7 @@ pub unsafe fn do_nlminb(
         let typsiz = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i64);
         let _t = protect(typsiz);
         for i in 0..n {
-            *REAL(typsiz).add(i) = 1.0;
+            SET_REAL_ELT(typsiz, i as c_int, 1.0);
         }
         // .External2 payload with nlm()'s R-level defaults:
         // hessian=FALSE, typsize, fscale=1, msg=9, ndigit=12, gradtol=1e-6,
@@ -1134,7 +1146,9 @@ pub unsafe fn do_nlminb(
             ),
         );
         let _na = protect(nlm_args);
-        let nlm = do_nlm(call, op, nlm_args, rho);
+        // SAFETY: do_nlm retains the registered builtin SEXP contract; the
+        // freshly constructed argument list is rooted by _na above.
+        let nlm = unsafe { do_nlm(call, op, nlm_args, rho) };
         let _n = protect(nlm);
         let result = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -1149,6 +1163,8 @@ pub unsafe fn do_nlminb(
 }
 
 unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
+    // SAFETY: `info` is the live ZeroinCtx reference installed by the caller
+    // for the duration of the Brent iteration.
     let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
     ctx.evaluate(x)
 }
@@ -1160,10 +1176,10 @@ pub unsafe fn zeroin2(
     args: crate::sexp::ffi::SEXP,
     env: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    use crate::sexp::accessors::{CAR, CDR, REAL};
+    use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT};
     use crate::sexp::constructors::Rf_allocVector;
     use crate::sexp::ffi::SEXPTYPE;
-    unsafe {
+    {
         let mut a = CDR(args);
         let f = CAR(a);
         a = CDR(a);
@@ -1179,20 +1195,24 @@ pub unsafe fn zeroin2(
         a = CDR(a);
         let mut maxit = crate::mainutils::coerce::asInteger(CAR(a));
         let info = ZeroinCtx::new(f, env, ScalarCallbackKind::Zeroin);
-        let root = R_zeroin2(
-            lower,
-            upper,
-            fa,
-            fb,
-            zeroin_r_fn,
-            &info as *const ZeroinCtx<'_> as *mut c_void,
-            &mut tol,
-            &mut maxit,
-        );
+        // SAFETY: `info` is a live ZeroinCtx on this stack frame; `tol` and
+        // `maxit` are valid out-parameters for the duration of the call.
+        let root = unsafe {
+            R_zeroin2(
+                lower,
+                upper,
+                fa,
+                fb,
+                zeroin_r_fn,
+                &info as *const ZeroinCtx<'_> as *mut c_void,
+                &mut tol,
+                &mut maxit,
+            )
+        };
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 3);
-        *REAL(out) = root;
-        *REAL(out).add(1) = maxit as f64;
-        *REAL(out).add(2) = tol;
+        SET_REAL_ELT(out, 0, root);
+        SET_REAL_ELT(out, 1, maxit as f64);
+        SET_REAL_ELT(out, 2, tol);
         out
     }
 }
@@ -1302,8 +1322,8 @@ pub unsafe fn do_fmin(
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, REAL};
+    {
+        use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT};
         use crate::sexp::constructors::Rf_allocVector;
         use crate::sexp::ffi::SEXPTYPE;
         let mut a = CDR(args);
@@ -1318,7 +1338,7 @@ pub unsafe fn do_fmin(
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
         let x = brent_fmin(xmin, xmax, info, tol);
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        *REAL(out) = x;
+        SET_REAL_ELT(out, 0, x);
         out
     }
 }
