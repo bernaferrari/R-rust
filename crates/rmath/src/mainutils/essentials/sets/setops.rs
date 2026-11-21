@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::object::SexpMut;
 
 /// R's `setdiff(x, y)` — elements in x but not in y.
 pub fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -16,13 +17,19 @@ pub fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             XLENGTH(y)
         };
         let t = TYPEOF(x);
+        let owner = active_owner();
         if t == SEXPTYPE::VECSXP {
             let key_of = |obj: SEXP, i: R_xlen_t| {
-                let elt = VECTOR_ELT(obj, i);
-                if elt.is_null() || elt == R_NilValue() {
+                let obj_owned = owner_sexp(owner, obj);
+                let elt = obj_owned
+                    .try_vector_elt(i)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
+                if elt.as_raw().is_null() || elt.as_raw() == R_NilValue() {
                     "NULL".to_string()
                 } else {
-                    elt_to_string(elt, 0)
+                    elt_to_string(elt.as_raw(), 0)
                 }
             };
             let mut y_keys = std::collections::BTreeSet::new();
@@ -39,8 +46,22 @@ pub fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let result = Rf_allocVector3(SEXPTYPE::VECSXP, result_indices.len() as R_xlen_t);
             let _g = protect(result);
+            let x_owned = owner_sexp(owner, x);
+            let mut result_mut = owner
+                .sexp(result)
+                .and_then(SexpMut::try_from_checked)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             for (out, &src) in result_indices.iter().enumerate() {
-                SET_VECTOR_ELT(result, out as R_xlen_t, VECTOR_ELT(x, src));
+                let elt = x_owned
+                    .try_vector_elt(src)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
+                result_mut
+                    .try_set_vector_elt(out as R_xlen_t, elt)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
             }
             return result;
         }
@@ -243,9 +264,14 @@ pub fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = INTEGER(result);
+        let owner = active_owner();
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         for (i, &orig_idx) in ordered_indices.iter().enumerate() {
-            *dst.add(i) = (orig_idx + 1) as c_int;
+            dst.try_set_integer_elt(i as R_xlen_t, (orig_idx + 1) as c_int)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         result
     }
@@ -319,41 +345,65 @@ fn multi_key_indices(
 }
 
 fn order_key_is_na(key: SEXP, i: usize) -> bool {
-    unsafe {
-        match TYPEOF(key) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                *INTEGER(key).add(i) == NA_INTEGER
-            }
-            t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(key).add(i)),
-            t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(key, i as R_xlen_t)),
-            t if t == SEXPTYPE::RAWSXP => false,
-            _ => ISNAN(elt_real_safe(key, i as R_xlen_t)),
+    let t = unsafe { TYPEOF(key) };
+    let owner = active_owner();
+    let key_owned = owner_sexp(owner, key);
+    let i = i as R_xlen_t;
+    match t {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            integer_like_elt(&key_owned, i) == NA_INTEGER
         }
+        t if t == SEXPTYPE::REALSXP => ISNAN(
+            key_owned
+                .try_real_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+        ),
+        t if t == SEXPTYPE::STRSXP => charsxp_is_na(
+            key_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw(),
+        ),
+        t if t == SEXPTYPE::RAWSXP => false,
+        _ => ISNAN(elt_real_safe(key, i)),
     }
 }
 
 fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
-    unsafe {
-        match TYPEOF(key) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                (*INTEGER(key).add(i)).cmp(&*INTEGER(key).add(j))
-            }
-            t if t == SEXPTYPE::REALSXP => (*REAL(key).add(i))
-                .partial_cmp(&*REAL(key).add(j))
-                .unwrap_or(std::cmp::Ordering::Equal),
-            t if t == SEXPTYPE::STRSXP => compare_charsxp_for_sort(
-                STRING_ELT(key, i as R_xlen_t),
-                STRING_ELT(key, j as R_xlen_t),
-            ),
-            t if t == SEXPTYPE::RAWSXP => {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "unimplemented type 'raw' in 'listgreater'\n".to_string(),
-                });
-            }
-            _ => elt_real_safe(key, i as R_xlen_t)
-                .partial_cmp(&elt_real_safe(key, j as R_xlen_t))
-                .unwrap_or(std::cmp::Ordering::Equal),
+    let t = unsafe { TYPEOF(key) };
+    let owner = active_owner();
+    let key_owned = owner_sexp(owner, key);
+    let (i, j) = (i as R_xlen_t, j as R_xlen_t);
+    match t {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            integer_like_elt(&key_owned, i).cmp(&integer_like_elt(&key_owned, j))
         }
+        t if t == SEXPTYPE::REALSXP => {
+            let a = key_owned
+                .try_real_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let b = key_owned
+                .try_real_elt(j)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            let a = key_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let b = key_owned
+                .try_string_elt(j)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            compare_charsxp_for_sort(a.as_raw(), b.as_raw())
+        }
+        t if t == SEXPTYPE::RAWSXP => {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "unimplemented type 'raw' in 'listgreater'\n".to_string(),
+            });
+        }
+        _ => elt_real_safe(key, i)
+            .partial_cmp(&elt_real_safe(key, j))
+            .unwrap_or(std::cmp::Ordering::Equal),
     }
 }
 
@@ -377,12 +427,19 @@ pub(crate) fn ordered_atomic_indices(
         }
         reject_unorderable(x);
         let n = XLENGTH(x);
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ordered_indices: Vec<R_xlen_t> = match TYPEOF(x) {
             t if t == SEXPTYPE::STRSXP => {
                 let mut values: Vec<(SEXP, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    let value = STRING_ELT(x, i);
+                    let value = x_owned
+                        .try_string_elt(i)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        })
+                        .as_raw();
                     if charsxp_is_na(value) {
                         missing_indices.push(i);
                     } else {
@@ -402,7 +459,7 @@ pub(crate) fn ordered_atomic_indices(
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 let mut values: Vec<(c_int, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    let value = *INTEGER(x).add(i as usize);
+                    let value = integer_like_elt(&x_owned, i);
                     if value == NA_INTEGER {
                         missing_indices.push(i);
                     } else {
@@ -422,7 +479,11 @@ pub(crate) fn ordered_atomic_indices(
             t if t == SEXPTYPE::REALSXP => {
                 let mut values: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    let value = *REAL(x).add(i as usize);
+                    let value = x_owned
+                        .try_real_elt(i)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                     if ISNAN(value) {
                         missing_indices.push(i);
                     } else {
@@ -442,7 +503,14 @@ pub(crate) fn ordered_atomic_indices(
             t if t == SEXPTYPE::RAWSXP => {
                 let mut values: Vec<(u8, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    values.push((*RAW(x).add(i as usize), i));
+                    values.push((
+                        x_owned
+                            .try_raw_elt(i)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            }),
+                        i,
+                    ));
                 }
                 values.sort_by(|a, b| {
                     let ordering = a.0.cmp(&b.0);
@@ -497,20 +565,30 @@ pub(crate) fn order_na_placement(args: SEXP, position: usize) -> SortNaPlacement
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             return SortNaPlacement::Last;
         }
+        let owner = active_owner();
+        let arg_owned = owner_sexp(owner, arg);
         if TYPEOF(arg) == SEXPTYPE::STRSXP {
-            let s = STRING_ELT(arg, 0);
-            if !s.is_null() {
-                let bytes = std::ffi::CStr::from_ptr(CHAR(s)).to_bytes();
-                if bytes == b"keep" {
+            let s = arg_owned
+                .try_string_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if !s.as_raw().is_null() {
+                let is_keep = s
+                    .header()
+                    .char_bytes()
+                    .map(|bytes| bytes == b"keep")
+                    .unwrap_or(false);
+                if is_keep {
                     return SortNaPlacement::Keep;
                 }
             }
             return SortNaPlacement::Last;
         }
         let raw = if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
-            *INTEGER(arg)
+            integer_like_elt(&arg_owned, 0)
         } else if TYPEOF(arg) == SEXPTYPE::REALSXP {
-            let value = *REAL(arg);
+            let value = arg_owned
+                .try_real_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if ISNAN(value) {
                 NA_LOGICAL
             } else {
@@ -545,6 +623,8 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
         let na_placement = order_na_placement(args, 1);
         let ties_method = rank_ties_method(args);
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ranks = vec![NA_REAL; n as usize];
 
@@ -552,7 +632,12 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             t if t == SEXPTYPE::STRSXP => {
                 let mut values: Vec<(SEXP, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    let value = STRING_ELT(x, i);
+                    let value = x_owned
+                        .try_string_elt(i)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        })
+                        .as_raw();
                     if charsxp_is_na(value) {
                         missing_indices.push(i);
                     } else {
@@ -567,7 +652,14 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             t if t == SEXPTYPE::RAWSXP => {
                 let mut values: Vec<(u8, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    values.push((*RAW(x).add(i as usize), i));
+                    values.push((
+                        x_owned
+                            .try_raw_elt(i)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            }),
+                        i,
+                    ));
                 }
                 values.sort_by(|a, b| a.0.cmp(&b.0));
                 assign_tied_ranks(&mut ranks, &values, ties_method, 0, |a, b| a.0 == b.0);
@@ -575,7 +667,7 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 let mut values: Vec<(c_int, R_xlen_t)> = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    let value = *INTEGER(x).add(i as usize);
+                    let value = integer_like_elt(&x_owned, i);
                     if value == NA_INTEGER {
                         missing_indices.push(i);
                     } else {
@@ -634,13 +726,17 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let mut out = 0usize;
         for i in 0..n as usize {
             if na_placement == SortNaPlacement::Remove && is_missing[i] {
                 continue;
             }
-            *dst.add(out) = ranks[i];
+            dst.try_set_real_elt(out as R_xlen_t, ranks[i])
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             out += 1;
         }
         let names =
@@ -652,12 +748,26 @@ pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         {
             let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, output_len as R_xlen_t);
             let _on = protect(out_names);
+            let names_owned = owner_sexp(owner, names);
+            let mut names_mut = owner
+                .sexp(out_names)
+                .and_then(SexpMut::try_from_checked)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let mut out = 0i64;
             for i in 0..n {
                 if na_placement == SortNaPlacement::Remove && is_missing[i as usize] {
                     continue;
                 }
-                SET_STRING_ELT(out_names, out, STRING_ELT(names, i));
+                let elt = names_owned
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
+                names_mut
+                    .try_set_string_elt(out, elt)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
                 out += 1;
             }
             crate::sexp::attrib_core::setAttrib(
@@ -784,7 +894,15 @@ pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = LOGICAL(result);
+        let owner = active_owner();
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let put = |dst: &mut SexpMut<'_>, i: R_xlen_t, value: c_int| {
+            dst.try_set_logical_elt(i, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        };
 
         // Compute nmax limit
         let effective_nmax: usize = if nmax == NA_INTEGER || nmax <= 0 {
@@ -797,22 +915,22 @@ pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // Scan from last to first; last occurrence is original, earlier are duplicates
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             for i in 0..n {
-                *dst.add(i as usize) = FALSE;
+                put(&mut dst, i, FALSE);
             }
             for i in (0..n).rev() {
                 let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if incomparable_set.contains(&s) {
-                    *dst.add(i as usize) = FALSE;
+                    put(&mut dst, i, FALSE);
                 } else if seen.contains(&s) {
-                    *dst.add(i as usize) = TRUE;
+                    put(&mut dst, i, TRUE);
                 } else {
                     seen.insert(s);
-                    *dst.add(i as usize) = FALSE;
+                    put(&mut dst, i, FALSE);
                     if seen.len() >= effective_nmax {
                         for j in 0..i {
                             let sj = duplicated_key(x, j, SEXPTYPE(TYPEOF(x)));
                             if !incomparable_set.contains(&sj) {
-                                *dst.add(j as usize) = TRUE;
+                                put(&mut dst, j, TRUE);
                             }
                         }
                         break;
@@ -825,20 +943,20 @@ pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..n {
                 let s = duplicated_key(x, i, SEXPTYPE(TYPEOF(x)));
                 if incomparable_set.contains(&s) {
-                    *dst.add(i as usize) = FALSE;
+                    put(&mut dst, i, FALSE);
                 } else if seen.contains(&s) {
-                    *dst.add(i as usize) = TRUE;
+                    put(&mut dst, i, TRUE);
                 } else {
                     seen.insert(s);
-                    *dst.add(i as usize) = FALSE;
+                    put(&mut dst, i, FALSE);
                     if seen.len() >= effective_nmax {
                         // Everything remaining is a duplicate
                         for j in (i + 1)..n {
                             let sj = duplicated_key(x, j, SEXPTYPE(TYPEOF(x)));
                             if incomparable_set.contains(&sj) {
-                                *dst.add(j as usize) = FALSE;
+                                put(&mut dst, j, FALSE);
                             } else {
-                                *dst.add(j as usize) = TRUE;
+                                put(&mut dst, j, TRUE);
                             }
                         }
                         break;
@@ -980,13 +1098,15 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
 
         let dims_len = XLENGTH(dim);
-        let dim_vals = INTEGER(dim);
-        let nrows = *dim_vals as usize;
-        let ncols = if dims_len >= 2 {
-            (*dim_vals.add(1)) as usize
-        } else {
-            1
+        let owner = active_owner();
+        let dim_owned = owner_sexp(owner, dim);
+        let dim_elt = |i: R_xlen_t| -> c_int {
+            dim_owned
+                .try_integer_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         };
+        let nrows = dim_elt(0) as usize;
+        let ncols = if dims_len >= 2 { dim_elt(1) as usize } else { 1 };
 
         if margin == 0 {
             let flat = crate::mainutils::duplicate::Rf_duplicate(x);
@@ -1020,7 +1140,10 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let dst = LOGICAL(result);
+            let mut dst = owner
+                .sexp(result)
+                .and_then(SexpMut::try_from_checked)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
             // Hash each row as a string
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -1048,10 +1171,16 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     std::collections::BTreeSet::new();
                 for row in 0..total {
                     if encountered.contains(&row_strings[row]) {
-                        *dst.add(row) = TRUE;
+                        dst.try_set_logical_elt(row as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         encountered.insert(row_strings[row].clone());
-                        *dst.add(row) = FALSE;
+                        dst.try_set_logical_elt(row as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             } else {
@@ -1063,10 +1192,16 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     }
                     let key = parts.join("\x01");
                     if seen.contains(&key) {
-                        *dst.add(row) = TRUE;
+                        dst.try_set_logical_elt(row as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         seen.insert(key);
-                        *dst.add(row) = FALSE;
+                        dst.try_set_logical_elt(row as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             }
@@ -1080,7 +1215,10 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let dst = LOGICAL(result);
+            let mut dst = owner
+                .sexp(result)
+                .and_then(SexpMut::try_from_checked)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
@@ -1098,10 +1236,16 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     std::collections::BTreeSet::new();
                 for col in 0..total {
                     if encountered.contains(&col_strings[col]) {
-                        *dst.add(col) = TRUE;
+                        dst.try_set_logical_elt(col as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         encountered.insert(col_strings[col].clone());
-                        *dst.add(col) = FALSE;
+                        dst.try_set_logical_elt(col as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             } else {
@@ -1113,10 +1257,16 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     }
                     let key = parts.join("\x01");
                     if seen.contains(&key) {
-                        *dst.add(col) = TRUE;
+                        dst.try_set_logical_elt(col as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         seen.insert(key);
-                        *dst.add(col) = FALSE;
+                        dst.try_set_logical_elt(col as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             }
@@ -1131,15 +1281,18 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
             let mut before: usize = 1;
             for i in 0..m {
-                before *= *dim_vals.add(i) as usize;
+                before *= dim_elt(i as R_xlen_t) as usize;
             }
-            let n_slices = *dim_vals.add(m) as usize;
+            let n_slices = dim_elt(m as R_xlen_t) as usize;
             let mut after: usize = 1;
             for i in (m + 1)..dims_len as usize {
-                after *= *dim_vals.add(i) as usize;
+                after *= dim_elt(i as R_xlen_t) as usize;
             }
             let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n_slices as R_xlen_t);
-            let dst = LOGICAL(result);
+            let mut dst = owner
+                .sexp(result)
+                .and_then(SexpMut::try_from_checked)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let mut keys: Vec<String> = Vec::with_capacity(n_slices);
             let stride = before * n_slices;
             for s in 0..n_slices {
@@ -1156,19 +1309,31 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             if from_last {
                 for s in (0..n_slices).rev() {
                     if seen.contains(&keys[s]) {
-                        *dst.add(s) = TRUE;
+                        dst.try_set_logical_elt(s as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         seen.insert(keys[s].clone());
-                        *dst.add(s) = FALSE;
+                        dst.try_set_logical_elt(s as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             } else {
                 for s in 0..n_slices {
                     if seen.contains(&keys[s]) {
-                        *dst.add(s) = TRUE;
+                        dst.try_set_logical_elt(s as R_xlen_t, TRUE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     } else {
                         seen.insert(keys[s].clone());
-                        *dst.add(s) = FALSE;
+                        dst.try_set_logical_elt(s as R_xlen_t, FALSE)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
             }
@@ -1232,13 +1397,15 @@ pub fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
 
         let dims_len = XLENGTH(dim);
-        let dim_vals = INTEGER(dim);
-        let nrows = *dim_vals as usize;
-        let ncols = if dims_len >= 2 {
-            (*dim_vals.add(1)) as usize
-        } else {
-            1
+        let owner = active_owner();
+        let dim_owned = owner_sexp(owner, dim);
+        let dim_elt = |i: R_xlen_t| -> c_int {
+            dim_owned
+                .try_integer_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         };
+        let nrows = dim_elt(0) as usize;
+        let ncols = if dims_len >= 2 { dim_elt(1) as usize } else { 1 };
 
         if margin == 1 && dims_len == 2 {
             // Check duplicate rows
@@ -1351,8 +1518,12 @@ pub fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let x_lt = crate::mainutils::essentials::sexp_has_class(x, "POSIXlt");
         let table_lt = crate::mainutils::essentials::sexp_has_class(table, "POSIXlt");
+        let owner = active_owner();
         let n = if x_lt && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
-            XLENGTH(VECTOR_ELT(x, 0))
+            let first = owner_sexp(owner, x)
+                .try_vector_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            XLENGTH(first.as_raw())
         } else {
             XLENGTH(x)
         };
@@ -1361,7 +1532,10 @@ pub fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = INTEGER(result);
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 
         let common_type = match_common_type(x, table);
         let mut incomparable_set = BTreeSet::new();
@@ -1374,7 +1548,10 @@ pub fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut lookup: BTreeMap<MatchKey, c_int> = BTreeMap::new();
         if !table.is_null() && table != R_NilValue() {
             let tn = if table_lt && TYPEOF(table) == SEXPTYPE::VECSXP && XLENGTH(table) > 0 {
-                XLENGTH(VECTOR_ELT(table, 0))
+                let first = owner_sexp(owner, table)
+                    .try_vector_elt(0)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                XLENGTH(first.as_raw())
             } else {
                 XLENGTH(table)
             };
@@ -1393,11 +1570,13 @@ pub fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 match_key(x, i, common_type)
             };
-            *dst.add(i as usize) = if incomparable_set.contains(&key) {
+            let value = if incomparable_set.contains(&key) {
                 nomatch
             } else {
                 *lookup.get(&key).unwrap_or(&nomatch)
             };
+            dst.try_set_integer_elt(i, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         result
     }
@@ -1407,8 +1586,13 @@ fn posixlt_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     unsafe {
         let mut parts = String::new();
         let ncomp = XLENGTH(x);
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         for c in 0..ncomp {
-            let col = VECTOR_ELT(x, c);
+            let col = x_owned
+                .try_vector_elt(c)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
             parts.push('\u{1f}');
             if col.is_null() || XLENGTH(col) == 0 {
                 continue;
@@ -1425,19 +1609,25 @@ fn integer_scalar_or(arg: SEXP, default: c_int) -> c_int {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return default;
         }
+        let owner = active_owner();
+        let arg_owned = owner_sexp(owner, arg);
         match SEXPTYPE(TYPEOF(arg)) {
             SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
                 if XLENGTH(arg) < 1 {
                     default
                 } else {
-                    INTEGER_ELT(arg, 0)
+                    integer_like_elt(&arg_owned, 0)
                 }
             }
             SEXPTYPE::REALSXP => {
                 if XLENGTH(arg) < 1 {
                     default
                 } else {
-                    let value = REAL_ELT(arg, 0);
+                    let value = arg_owned
+                        .try_real_elt(0)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                     if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                         default
                     } else {
@@ -1484,14 +1674,22 @@ fn match_common_type(x: SEXP, table: SEXP) -> SEXPTYPE {
 
 fn complex_match_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     unsafe {
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         let z = match TYPEOF(x) {
-            t if t == SEXPTYPE::CPLXSXP => crate::sexp::accessors::COMPLEX_ELT(x, index as c_int),
+            t if t == SEXPTYPE::CPLXSXP => x_owned
+                .try_complex_elt(index)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
             t if t == SEXPTYPE::REALSXP => {
-                let r = REAL_ELT(x, index as c_int);
+                let r = x_owned
+                    .try_real_elt(index)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
                 crate::sexp::ffi::Rcomplex { r, i: 0.0 }
             }
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                let v = INTEGER_ELT(x, index as c_int);
+                let v = integer_like_elt(&x_owned, index);
                 let r = if v == NA_INTEGER { NA_REAL } else { v as f64 };
                 crate::sexp::ffi::Rcomplex { r, i: 0.0 }
             }
@@ -1518,24 +1716,42 @@ fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
         if x.is_null() || x == R_NilValue() {
             return MatchKey::Missing;
         }
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         match common_type {
             SEXPTYPE::STRSXP => {
                 let missing = match TYPEOF(x) {
                     t if t == SEXPTYPE::STRSXP => {
-                        STRING_ELT(x, index) == crate::sexp::globals::R_NaString()
+                        x_owned
+                            .try_string_elt(index)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            })
+                            .as_raw()
+                            == crate::sexp::globals::R_NaString()
                     }
                     t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                        INTEGER_ELT(x, index as c_int) == NA_INTEGER
+                        integer_like_elt(&x_owned, index) == NA_INTEGER
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        REAL_ELT(x, index as c_int).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        x_owned
+                            .try_real_elt(index)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            })
+                            .to_bits()
+                            == crate::sexp::ffi::R_NA_BIT_PATTERN
                     }
                     _ => false,
                 };
                 if missing {
                     MatchKey::Missing
                 } else if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
-                    let days = REAL_ELT(x, index as c_int);
+                    let days = x_owned
+                        .try_real_elt(index)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                     MatchKey::String(
                         super::shared::date_days_to_iso(days).unwrap_or_else(|| "NA".to_string()),
                     )
@@ -1546,9 +1762,13 @@ fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
             SEXPTYPE::CPLXSXP => complex_match_key(x, index),
             SEXPTYPE::REALSXP => {
                 let value = match TYPEOF(x) {
-                    t if t == SEXPTYPE::REALSXP => REAL_ELT(x, index as c_int),
+                    t if t == SEXPTYPE::REALSXP => x_owned
+                        .try_real_elt(index)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
                     t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                        let value = INTEGER_ELT(x, index as c_int);
+                        let value = integer_like_elt(&x_owned, index);
                         if value == NA_INTEGER {
                             NA_REAL
                         } else {
@@ -1568,10 +1788,14 @@ fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
             _ => {
                 let value = match TYPEOF(x) {
                     t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                        INTEGER_ELT(x, index as c_int)
+                        integer_like_elt(&x_owned, index)
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        let value = REAL_ELT(x, index as c_int);
+                        let value = x_owned
+                            .try_real_elt(index)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                         if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                             NA_INTEGER
                         } else {
