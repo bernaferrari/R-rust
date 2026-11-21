@@ -438,7 +438,7 @@ pub fn do_RGB2hsv(rgb: SEXP) -> SEXP {
         let n = INTEGER_ELT(dd, 1) as usize;
 
         // SAFETY: allocation runs on the R session thread that owns `rgb`.
-        let ans = unsafe { allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int) };
+        let ans = allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int);
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
@@ -507,7 +507,7 @@ pub fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
 
         let n = LENGTH(colors) as usize;
         // SAFETY: allocation runs on the R session thread that owns `colors`.
-        let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int) };
+        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int);
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
