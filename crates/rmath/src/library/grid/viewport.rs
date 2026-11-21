@@ -115,15 +115,14 @@ unsafe fn lang1(fn_: SEXP) -> SEXP {
 // Local helper: allocMatrix
 // ---------------------------------------------------------------------------
 
-unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
-        let dims = alloc_vector(SEXPTYPE::INTSXP, 2);
-        set_integer_elt(dims, 0, nrow);
-        set_integer_elt(dims, 1, ncol);
-        let result = Rf_allocVector(sexptype, nrow * ncol);
-        crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims);
-        result
-    }
+fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
+    let dims = alloc_vector(SEXPTYPE::INTSXP, 2);
+    set_integer_elt(dims, 0, nrow);
+    set_integer_elt(dims, 1, ncol);
+    let result = alloc_vector(sexptype, nrow * ncol);
+    // SAFETY: `result` and `dims` are live objects allocated above.
+    unsafe { crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims) };
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +324,7 @@ pub fn copyViewportContext(vpc1: LViewportContext, vpc2: &mut LViewportContext) 
 // gcontextFromViewport — delegate through gpar context resolution.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
+pub fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     let gpar = viewportgpar(vp);
     if gpar.is_null() || Rf_isNull(gpar) != 0 {
         return;
@@ -338,132 +337,130 @@ pub unsafe fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     gcontextFromgpar(gpar, 0, gc, dd);
 }
 
-pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
-    unsafe {
-        let parent_context = if parent.is_null() || Rf_isNull(parent) != 0 {
-            LViewportContext {
-                xscalemin: 0.0,
-                xscalemax: 1.0,
-                yscalemin: 0.0,
-                yscalemax: 1.0,
-            }
-        } else {
-            LViewportContext {
-                xscalemin: viewportXScaleMin(parent),
-                xscalemax: viewportXScaleMax(parent),
-                yscalemin: viewportYScaleMin(parent),
-                yscalemax: viewportYScaleMax(parent),
-            }
-        };
-        let unit_parent_context = UnitViewportContext {
-            xscalemin: parent_context.xscalemin,
-            xscalemax: parent_context.xscalemax,
-            yscalemin: parent_context.yscalemin,
-            yscalemax: parent_context.yscalemax,
-        };
-
-        let mut parent_width_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
-            scalar_real_or(viewportDevWidthCM(vp), 1.0)
-        } else {
-            scalar_real_or(
-                viewportWidthCM(parent),
-                scalar_real_or(viewportDevWidthCM(parent), 1.0),
-            )
-        };
-        let mut parent_height_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
-            scalar_real_or(viewportDevHeightCM(vp), 1.0)
-        } else {
-            scalar_real_or(
-                viewportHeightCM(parent),
-                scalar_real_or(viewportDevHeightCM(parent), 1.0),
-            )
-        };
-        if !parent_width_cm.is_finite() || parent_width_cm <= 0.0 {
-            parent_width_cm = 1.0;
+pub fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
+    let parent_context = if parent.is_null() || Rf_isNull(parent) != 0 {
+        LViewportContext {
+            xscalemin: 0.0,
+            xscalemax: 1.0,
+            yscalemin: 0.0,
+            yscalemax: 1.0,
         }
-        if !parent_height_cm.is_finite() || parent_height_cm <= 0.0 {
-            parent_height_cm = 1.0;
+    } else {
+        LViewportContext {
+            xscalemin: viewportXScaleMin(parent),
+            xscalemax: viewportXScaleMax(parent),
+            yscalemin: viewportYScaleMin(parent),
+            yscalemax: viewportYScaleMax(parent),
         }
+    };
+    let unit_parent_context = UnitViewportContext {
+        xscalemin: parent_context.xscalemin,
+        xscalemax: parent_context.xscalemax,
+        yscalemin: parent_context.yscalemin,
+        yscalemax: parent_context.yscalemax,
+    };
 
-        let gc_buf: [u8; 256] = [0; 256];
-        let gc = gc_buf.as_ptr() as pGEcontext;
-        gcontextFromViewport(vp, gc, dd);
-        let dd = dd as pGEDevDesc;
+    let mut parent_width_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
+        scalar_real_or(viewportDevWidthCM(vp), 1.0)
+    } else {
+        scalar_real_or(
+            viewportWidthCM(parent),
+            scalar_real_or(viewportDevWidthCM(parent), 1.0),
+        )
+    };
+    let mut parent_height_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
+        scalar_real_or(viewportDevHeightCM(vp), 1.0)
+    } else {
+        scalar_real_or(
+            viewportHeightCM(parent),
+            scalar_real_or(viewportDevHeightCM(parent), 1.0),
+        )
+    };
+    if !parent_width_cm.is_finite() || parent_width_cm <= 0.0 {
+        parent_width_cm = 1.0;
+    }
+    if !parent_height_cm.is_finite() || parent_height_cm <= 0.0 {
+        parent_height_cm = 1.0;
+    }
 
-        let width_in = transformWidthtoINCHES(
-            viewportWidth(vp),
-            0,
-            unit_parent_context,
-            gc,
+    let gc_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_ptr() as pGEcontext;
+    gcontextFromViewport(vp, gc, dd);
+    let dd = dd as pGEDevDesc;
+
+    let width_in = transformWidthtoINCHES(
+        viewportWidth(vp),
+        0,
+        unit_parent_context,
+        gc,
+        parent_width_cm,
+        parent_height_cm,
+        dd,
+    );
+    let height_in = transformHeighttoINCHES(
+        viewportHeight(vp),
+        0,
+        unit_parent_context,
+        gc,
+        parent_width_cm,
+        parent_height_cm,
+        dd,
+    );
+    let x_in = transformXtoINCHES(
+        viewportX(vp),
+        0,
+        unit_parent_context,
+        gc,
+        parent_width_cm,
+        parent_height_cm,
+        dd,
+    );
+    let y_in = transformYtoINCHES(
+        viewportY(vp),
+        0,
+        unit_parent_context,
+        gc,
+        parent_width_cm,
+        parent_height_cm,
+        dd,
+    );
+
+    let left_in = justifyX(x_in, width_in, viewportHJust(vp));
+    let bottom_in = justifyY(y_in, height_in, viewportVJust(vp));
+    let width_cm = width_in * 2.54;
+    let height_cm = height_in * 2.54;
+
+    set_vector_elt(vp, PVP_WIDTHCM as R_xlen_t, ScalarReal(width_cm));
+    set_vector_elt(vp, PVP_HEIGHTCM as R_xlen_t, ScalarReal(height_cm));
+    set_vector_elt(vp, PVP_ROTATION as R_xlen_t, ScalarReal(viewportAngle(vp)));
+
+    let transform = allocMatrix(SEXPTYPE::REALSXP, 3, 3);
+    for i in 0..9usize {
+        set_real_elt(transform, i as R_xlen_t, 0.0);
+    }
+    set_real_elt(transform, 0, 1.0);
+    set_real_elt(transform, 4, 1.0);
+    set_real_elt(transform, 8, 1.0);
+    set_real_elt(transform, 6, left_in);
+    set_real_elt(transform, 7, bottom_in);
+    set_vector_elt(vp, PVP_TRANS as R_xlen_t, transform);
+
+    let clip = alloc_vector(SEXPTYPE::REALSXP, 4);
+    set_real_elt(clip, 0, left_in);
+    set_real_elt(clip, 1, bottom_in);
+    set_real_elt(clip, 2, left_in + width_in);
+    set_real_elt(clip, 3, bottom_in + height_in);
+    set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, clip);
+
+    if Rf_isNull(viewportLayout(vp)) == 0 {
+        calcViewportLayout(
+            vp,
             parent_width_cm,
             parent_height_cm,
+            parent_context,
+            gc_buf.as_ptr() as pGEcontext,
             dd,
         );
-        let height_in = transformHeighttoINCHES(
-            viewportHeight(vp),
-            0,
-            unit_parent_context,
-            gc,
-            parent_width_cm,
-            parent_height_cm,
-            dd,
-        );
-        let x_in = transformXtoINCHES(
-            viewportX(vp),
-            0,
-            unit_parent_context,
-            gc,
-            parent_width_cm,
-            parent_height_cm,
-            dd,
-        );
-        let y_in = transformYtoINCHES(
-            viewportY(vp),
-            0,
-            unit_parent_context,
-            gc,
-            parent_width_cm,
-            parent_height_cm,
-            dd,
-        );
-
-        let left_in = justifyX(x_in, width_in, viewportHJust(vp));
-        let bottom_in = justifyY(y_in, height_in, viewportVJust(vp));
-        let width_cm = width_in * 2.54;
-        let height_cm = height_in * 2.54;
-
-        set_vector_elt(vp, PVP_WIDTHCM as R_xlen_t, ScalarReal(width_cm));
-        set_vector_elt(vp, PVP_HEIGHTCM as R_xlen_t, ScalarReal(height_cm));
-        set_vector_elt(vp, PVP_ROTATION as R_xlen_t, ScalarReal(viewportAngle(vp)));
-
-        let transform = allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 3, 3);
-        for i in 0..9usize {
-            set_real_elt(transform, i as R_xlen_t, 0.0);
-        }
-        set_real_elt(transform, 0, 1.0);
-        set_real_elt(transform, 4, 1.0);
-        set_real_elt(transform, 8, 1.0);
-        set_real_elt(transform, 6, left_in);
-        set_real_elt(transform, 7, bottom_in);
-        set_vector_elt(vp, PVP_TRANS as R_xlen_t, transform);
-
-        let clip = Rf_allocVector(SEXPTYPE::REALSXP, 4);
-        set_real_elt(clip, 0, left_in);
-        set_real_elt(clip, 1, bottom_in);
-        set_real_elt(clip, 2, left_in + width_in);
-        set_real_elt(clip, 3, bottom_in + height_in);
-        set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, clip);
-
-        if Rf_isNull(viewportLayout(vp)) == 0 {
-            calcViewportLayout(
-                vp,
-                parent_width_cm,
-                parent_height_cm,
-                parent_context,
-                gc_buf.as_ptr() as pGEcontext,
-                dd,
-            );
-        }
     }
 }
 
@@ -471,36 +468,38 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
 // initVP — initialize the top-level viewport for the current device
 // ---------------------------------------------------------------------------
 
-pub unsafe fn initVP(dd: *const u8) {
-    unsafe {
-        let dd = dd as pGEDevDesc;
+pub fn initVP(dd: *const u8) {
+    let dd = dd as pGEDevDesc;
 
-        let vpfnname = install("grid.top.level.vp");
-        let _vpfnname_guard = protect(vpfnname);
-        let vpfn_env = grid_eval_env();
-        let vpfn = lang1(findFun(vpfnname, vpfn_env));
-        let _vpfn_guard = protect(vpfn);
-        let vp = Rf_eval(vpfn, R_GlobalEnv());
-        let _vp_guard = protect(vp);
+    let vpfnname = install("grid.top.level.vp");
+    let _vpfnname_guard = protect(vpfnname);
+    let vpfn_env = grid_eval_env();
+    // SAFETY: `vpfnname` is a live interned symbol in the grid eval env;
+    // `lang1` conses a live one-arg call.
+    let vpfn = unsafe { lang1(findFun(vpfnname, vpfn_env)) };
+    let _vpfn_guard = protect(vpfn);
+    // SAFETY: eval bridge — `vpfn` is the protected call built above.
+    let vp = unsafe { Rf_eval(vpfn, R_GlobalEnv()) };
+    let _vp_guard = protect(vp);
 
-        let (dev_width_cm, dev_height_cm) = getDeviceSize(dd);
+    // SAFETY: `dd` is the live device pointer passed by the caller.
+    let (dev_width_cm, dev_height_cm) = unsafe { getDeviceSize(dd) };
 
-        let xscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        let _xscale_guard = protect(xscale);
-        set_real_elt(xscale, 0, 0.0);
-        set_real_elt(xscale, 1, dev_width_cm);
-        set_vector_elt(vp, VP_XSCALE as R_xlen_t, xscale);
+    let xscale = alloc_vector(SEXPTYPE::REALSXP, 2);
+    let _xscale_guard = protect(xscale);
+    set_real_elt(xscale, 0, 0.0);
+    set_real_elt(xscale, 1, dev_width_cm);
+    set_vector_elt(vp, VP_XSCALE as R_xlen_t, xscale);
 
-        let yscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        let _yscale_guard = protect(yscale);
-        set_real_elt(yscale, 0, 0.0);
-        set_real_elt(yscale, 1, dev_height_cm);
-        set_vector_elt(vp, VP_YSCALE as R_xlen_t, yscale);
+    let yscale = alloc_vector(SEXPTYPE::REALSXP, 2);
+    let _yscale_guard = protect(yscale);
+    set_real_elt(yscale, 0, 0.0);
+    set_real_elt(yscale, 1, dev_height_cm);
+    set_vector_elt(vp, VP_YSCALE as R_xlen_t, yscale);
 
-        let currentgp = gridStateElement(dd, GSS_GPAR);
-        set_vector_elt(vp, PVP_GPAR as R_xlen_t, currentgp);
+    let currentgp = gridStateElement(dd, GSS_GPAR);
+    set_vector_elt(vp, PVP_GPAR as R_xlen_t, currentgp);
 
-        let vp = doSetViewport(vp, 1, 1, dd);
-        setGridStateElement(dd, GSS_VP, vp);
-    }
+    let vp = doSetViewport(vp, 1, 1, dd);
+    setGridStateElement(dd, GSS_VP, vp);
 }
