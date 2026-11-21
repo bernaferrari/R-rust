@@ -403,22 +403,19 @@ pub(super) fn truncate_bytes(s: &mut String, limit: usize) {
 // ---------------------------------------------------------------------------
 
 pub(super) fn findSimpleErrorHandler() -> SEXP {
-    unsafe {
-        let mut list = handler_stack();
-        while !list.is_null() && list != globals::R_NilValue() {
-            let entry = CAR(list);
-            let class_ptr = CHAR(ENTRY_CLASS(entry));
-            if !class_ptr.is_null() {
-                let class_str = CStr::from_ptr(class_ptr).to_bytes();
-                if class_str == b"simpleError" || class_str == b"error" || class_str == b"condition"
-                {
-                    return list;
-                }
+    let mut list = handler_stack();
+    while !list.is_null() && list != globals::R_NilValue() {
+        let entry = CAR(list);
+        let class_ptr = char_cstring(ENTRY_CLASS(entry));
+        if !class_ptr.is_none() {
+            let class_str = class_ptr.as_deref().unwrap_or_default().to_bytes();
+            if class_str == b"simpleError" || class_str == b"error" || class_str == b"condition" {
+                return list;
             }
-            list = CDR(list);
         }
-        globals::R_NilValue()
+        list = CDR(list);
     }
+    globals::R_NilValue()
 }
 
 pub(super) fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
@@ -461,14 +458,14 @@ pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
                     list = findSimpleErrorHandler();
                     continue;
                 }
-                let hooksym = Rf_install(b".handleSimpleError\0".as_ptr() as *const c_char);
+                let hooksym = crate::sexp::symbol::install_str(".handleSimpleError");
                 let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
                 let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
                 let _msg_guard = protect(msg_sexp);
                 // GNU .handleSimpleError takes (handler, message, call).
                 // The originating call is condition data, not an expression
                 // to evaluate while invoking the calling handler.
-                let quoted_call = Rf_lang2(Rf_install(c"quote".as_ptr()), call);
+                let quoted_call = Rf_lang2(crate::sexp::symbol::install_str("quote"), call);
                 let _call_guard = protect(quoted_call);
                 let hcall = Rf_lang4(hooksym, handler.as_raw(), msg_sexp, quoted_call);
                 let _hcall_guard = protect(hcall);
@@ -781,7 +778,9 @@ pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
             let expression = collection_checked(access.with_native(|_| {
                 access
                     .domain()
-                    .wrap(GetOption1(Rf_install(c"warning.expression".as_ptr())))
+                    .wrap(GetOption1(crate::sexp::symbol::install_str(
+                        "warning.expression",
+                    )))
             }));
             if !expression.is_nil() {
                 if !matches!(expression.typeof_(), SEXPTYPE::LANGSXP | SEXPTYPE::EXPRSXP) {
@@ -816,7 +815,7 @@ pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
             let mut w = collection_checked(access.with_native(|_| {
                 let option = access
                     .domain()
-                    .wrap(GetOption1(Rf_install(c"warn".as_ptr())))?;
+                    .wrap(GetOption1(crate::sexp::symbol::install_str("warn")))?;
                 Ok(crate::mainutils::coerce::asInteger(option.as_raw()))
             }));
             if w == crate::sexp::ffi::NA_INTEGER {
@@ -889,7 +888,7 @@ pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
                 out.push('\n');
                 if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
                     let tr = collection_checked(access.with_native(|_| {
-                        let sigsym = Rf_install(c".signalSimpleWarning".as_ptr());
+                        let sigsym = crate::sexp::symbol::install_str(".signalSimpleWarning");
                         access.require_active()?;
                         Ok(R_ConciseTraceback(
                             call,
@@ -1032,11 +1031,10 @@ pub(super) fn setup_warnings() {
             allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, capacity as i64))),
         );
         collection_checked(access.with_native(|_| {
-            unsafe {
-                let names_symbol = R_NamesSymbol();
-                access.require_active()?;
-                setAttrib_wrap(warnings.as_raw(), names_symbol, names.as_raw());
-            }
+            let names_symbol = R_NamesSymbol();
+            access.require_active()?;
+            setAttrib_wrap(warnings.as_raw(), names_symbol, names.as_raw());
+
             Ok(())
         }));
         collection_checked(access.require_active());
@@ -1126,14 +1124,14 @@ pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
                 std::panic::panic_any(crate::sexp::context::RSignal::Warning { message: msg });
             }
         }
-        let hooksym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
+        let hooksym = crate::sexp::symbol::install_str(".signalSimpleWarning");
         // A freshly interned port symbol carries a NULL value slot (C uses
         // R_UnboundValue), so treat NULL as unbound too: otherwise every
         // warning would take the hook path and be silently dropped.
         let hook = SYMVALUE(hooksym);
         if !hook.is_null() && hook != globals::R_UnboundValue() {
             let msg = if format.is_null() {
-                Rf_mkString(b"\0".as_ptr() as *const c_char)
+                mk_string("")
             } else {
                 Rf_mkString(format)
             };

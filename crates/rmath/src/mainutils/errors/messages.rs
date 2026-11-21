@@ -194,17 +194,15 @@ fn bindtextdomain_impl(
 }
 
 fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {
-    unsafe {
-        if isNull(value) != 0 {
-            return None;
-        }
-        if isString(value) == 0 || LENGTH(value) < 1 || isValidString(value) == 0 {
-            return Some(std::ffi::CString::default());
-        }
-        let ptr = CHAR(STRING_ELT(value, 0));
-        if ptr.is_null() {
-            return None;
-        }
-        Some(std::ffi::CString::new(CStr::from_ptr(ptr).to_bytes()).unwrap_or_default())
+    if isNull(value) != 0 {
+        return None;
     }
+    if isString(value) == 0 || LENGTH(value) < 1 || isValidString(value) == 0 {
+        return Some(std::ffi::CString::default());
+    }
+    let ptr = char_cstring(STRING_ELT(value, 0));
+    if ptr.is_none() {
+        return None;
+    }
+    Some(std::ffi::CString::new(ptr.as_deref().unwrap_or_default().to_bytes()).unwrap_or_default())
 }

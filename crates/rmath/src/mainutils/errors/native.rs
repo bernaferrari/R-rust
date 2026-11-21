@@ -83,10 +83,10 @@ pub(crate) fn raise_owned_diagnostic(
                     original.sexp(call)?.into_owned()?
                 };
                 let names = original
-                    .sexp(unsafe { crate::eval::attrib_core::R_NamesSymbol() })?
+                    .sexp(crate::sexp::attrib_core::R_NamesSymbol())?
                     .into_owned()?;
                 let class = original
-                    .sexp(unsafe { crate::eval::attrib_core::R_ClassSymbol() })?
+                    .sexp(crate::sexp::attrib_core::R_ClassSymbol())?
                     .into_owned()?;
                 original.require_active()?;
                 Ok((call, names, class))

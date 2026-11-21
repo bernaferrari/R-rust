@@ -29,11 +29,11 @@ use crate::sexp::instance::{self, ErrorState};
 
 // Re-export common accessors/constructors for convenience
 #[allow(unused_imports)]
-use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib};
-#[allow(unused_imports)]
 use crate::mainutils::coerce::coerceVector;
 #[allow(unused_imports)]
 use crate::sexp::accessors::*;
+#[allow(unused_imports)]
+use crate::sexp::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib};
 #[allow(unused_imports)]
 use crate::sexp::constructors::*;
 #[allow(unused_imports)]
@@ -45,6 +45,60 @@ pub use crate::special::mlutils::REprintf;
 // PRINTNAME is re-exported from inlined.rs
 #[allow(unused_imports)]
 use crate::mainutils::inlined::PRINTNAME;
+
+// ---------------------------------------------------------------------------
+// Checked CHARSXP text and string constructors
+// ---------------------------------------------------------------------------
+
+/// Raw CHAR bytes of a CHARSXP (GNU `CHAR(x)`).
+fn char_bytes(x: SEXP) -> Vec<u8> {
+    crate::mainutils::printutils::charsxp_bytes(x)
+}
+
+/// CHAR text of a CHARSXP as an owned C string (up to its first NUL);
+/// `None` for a null pointer, mirroring a null `CHAR(x)`.
+fn char_cstring(x: SEXP) -> Option<std::ffi::CString> {
+    if x.is_null() {
+        return None;
+    }
+    let mut bytes = char_bytes(x);
+    if let Some(nul) = bytes.iter().position(|&b| b == 0) {
+        bytes.truncate(nul);
+    }
+    std::ffi::CString::new(bytes).ok()
+}
+
+/// Lossy UTF-8 text of a CHARSXP's CHAR bytes.
+fn char_lossy(x: SEXP) -> String {
+    String::from_utf8_lossy(&char_bytes(x)).into_owned()
+}
+
+/// UTF-8 text of a CHARSXP's CHAR bytes, empty when invalid.
+fn char_utf8(x: SEXP) -> String {
+    String::from_utf8(char_bytes(x)).unwrap_or_default()
+}
+
+/// Checked CHARSXP for `text` on the active session heap. Like
+/// `Rf_mkChar(CString::new(text).unwrap_or_default())`, an interior NUL
+/// yields the empty string.
+fn mk_char(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .character(text)
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked STRSXP(1) for `text` (`Rf_mkString`); an interior NUL yields "".
+fn mk_string(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .strings(&[text])
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
 
 mod byte_buffer;
 #[cfg(test)]

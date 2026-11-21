@@ -152,7 +152,7 @@ pub(super) fn classgets(x: SEXP, klass: SEXP) -> SEXP {
 /// Wrapper for getAttrib using the real implementation.
 #[inline]
 pub(super) fn getAttrib_wrap(x: SEXP, which: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, which) }
+    crate::sexp::attrib_core::getAttrib(x, which)
 }
 
 /// Wrapper for setAttrib using the real implementation.

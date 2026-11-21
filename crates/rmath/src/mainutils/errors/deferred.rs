@@ -168,7 +168,7 @@ pub(crate) fn take_warnings_block() -> Option<String> {
         let domain = access.domain();
         let allocator = warning_checked(access.allocator(&domain));
         let symbol = warning_checked(
-            access.with_native(|_| domain.wrap(unsafe { Rf_install(c"last.warning".as_ptr()) })),
+            access.with_native(|_| domain.wrap(crate::sexp::symbol::install_str("last.warning"))),
         );
         let last = warning_checked(
             allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, count as i64))),
@@ -191,13 +191,12 @@ pub(crate) fn take_warnings_block() -> Option<String> {
         let last = last.freeze();
         let last_names = last_names.freeze();
         warning_checked(access.with_native(|_| {
-            unsafe {
-                let names_symbol = R_NamesSymbol();
-                access.require_active()?;
-                setAttrib_wrap(last.as_raw(), names_symbol, last_names.as_raw());
-                access.require_active()?;
-                SET_SYMVALUE(symbol.as_raw(), last.as_raw());
-            }
+            let names_symbol = R_NamesSymbol();
+            access.require_active()?;
+            setAttrib_wrap(last.as_raw(), names_symbol, last_names.as_raw());
+            access.require_active()?;
+            SET_SYMVALUE(symbol.as_raw(), last.as_raw());
+
             Ok(())
         }));
         warning_checked(access.require_active());

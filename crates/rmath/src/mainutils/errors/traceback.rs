@@ -113,7 +113,7 @@ pub fn R_GetTracebackOnly(skip: c_int) -> SEXP {
             let call = own_trace_value(instance, call);
             let source = trace_projection(frame.srcref.as_ref());
             if !source.is_null() && source != globals::R_NilValue() {
-                let symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                let symbol = crate::sexp::symbol::install_str("srcref");
                 crate::sexp::context::require_context_owner_live(pin.as_ref());
                 let source = crate::mainutils::duplicate::Rf_duplicate(source);
                 crate::sexp::context::require_context_owner_live(pin.as_ref());
@@ -151,7 +151,7 @@ fn publish_error_traceback(trace: SEXP) {
     let base = own(crate::eval::runtime::base_env());
     let namespace = own(crate::sexp::envir::R_BaseNamespace());
     let trace = own(trace);
-    let symbol = own(unsafe { crate::sexp::symbol::Rf_install(c".Traceback".as_ptr()) });
+    let symbol = own(crate::sexp::symbol::install_str(".Traceback"));
     let existing_binding = || {
         let mut frame = base
             .try_frame()

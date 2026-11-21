@@ -83,7 +83,7 @@ pub fn jump_to_top_ex(
             if old_in_error == 0 {
                 set_in_error(1);
             }
-            let err_opt = GetOption1(Rf_install(b"error\0".as_ptr() as *const c_char));
+            let err_opt = GetOption1(crate::sexp::symbol::install_str("error"));
             have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
             if have_handler {
                 let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP;
@@ -120,7 +120,7 @@ pub fn jump_to_top_ex(
         if traceback != 0 && old_in_error < 2 {
             set_in_error(2);
             let tb = R_GetTracebackOnly(0);
-            let sym = Rf_install(b".Traceback\0".as_ptr() as *const c_char);
+            let sym = crate::sexp::symbol::install_str(".Traceback");
             SET_SYMVALUE(sym, tb);
             set_in_error(old_in_error);
         }
@@ -133,24 +133,22 @@ pub fn jump_to_top_ex(
 }
 
 fn try_jump_to_restart() {
-    unsafe {
-        let mut list = restart_stack();
-        while !list.is_null() && list != globals::R_NilValue() {
-            let restart = CAR(list);
-            if TYPEOF(restart) == SEXPTYPE::VECSXP && LENGTH(restart) > 1 {
-                let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
-                if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-                    let cname = CHAR(STRING_ELT(name, 0));
-                    if !cname.is_null() {
-                        let bytes = CStr::from_ptr(cname).to_bytes();
-                        if bytes == b"browser" || bytes == b"tryRestart" || bytes == b"abort" {
-                            invokeRestart(restart, globals::R_NilValue());
-                        }
+    let mut list = restart_stack();
+    while !list.is_null() && list != globals::R_NilValue() {
+        let restart = CAR(list);
+        if TYPEOF(restart) == SEXPTYPE::VECSXP && LENGTH(restart) > 1 {
+            let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
+            if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+                let cname = char_cstring(STRING_ELT(name, 0));
+                if !cname.is_none() {
+                    let bytes = cname.as_deref().unwrap_or_default().to_bytes();
+                    if bytes == b"browser" || bytes == b"tryRestart" || bytes == b"abort" {
+                        invokeRestart(restart, globals::R_NilValue());
                     }
                 }
             }
-            list = CDR(list);
         }
+        list = CDR(list);
     }
 }
 
@@ -266,7 +264,7 @@ fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *cons
             globals::R_RestartToken()
         };
         let rho = (*cptr).cloenv.as_raw();
-        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
+        let klass = mk_char("error");
         let _klass_guard = protect(klass);
         let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
         let old_stack = handler_stack();
@@ -295,11 +293,7 @@ fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_c
             globals::R_NilValue(),
         );
         crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
-        crate::eval::attrib_core::setAttrib(
-            entry,
-            R_ClassSymbol(),
-            Rf_mkString(b"restart\0".as_ptr() as *const c_char),
-        );
+        crate::eval::attrib_core::setAttrib(entry, R_ClassSymbol(), mk_string("restart"));
         let old_stack = restart_stack();
         let new_top = Rf_cons(entry, old_stack);
         set_restart_stack(new_top);

@@ -21,29 +21,26 @@ pub fn mkHandlerEntry(
     result: SEXP,
     calling: c_int,
 ) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let factory = owner.node_factory();
+    let inputs = [klass, parentenv, handler, target, result].map(|pointer| {
+        factory
+            .wrap(pointer)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    });
+    let entry = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 5)))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut entry = crate::sexp::object::SexpMut::try_from_checked(entry)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (index, value) in inputs.into_iter().enumerate() {
+        entry
+            .try_set_vector_elt(index as _, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let inputs = [klass, parentenv, handler, target, result].map(|pointer| {
-            factory
-                .wrap(pointer)
-                .and_then(|value| value.into_owned())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        });
-        let entry = factory
-            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 5)))
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut entry = crate::sexp::object::SexpMut::try_from_checked(entry)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (index, value) in inputs.into_iter().enumerate() {
-            entry
-                .try_set_vector_elt(index as _, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        SETLEVELS(entry.as_raw(), calling);
-        entry.as_raw()
     }
+    SETLEVELS(entry.as_raw(), calling);
+    entry.as_raw()
 }
 
 /// IS_CALLING_ENTRY macro.
@@ -95,8 +92,7 @@ pub const RESULT_SIZE: usize = 4;
 pub fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let owner = crate::mainutils::essentials::active_owner();
         let _pin = owner
             .pin()
             .unwrap()
@@ -181,38 +177,36 @@ pub fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 fn findConditionHandler(cond: SEXP) -> SEXP {
-    unsafe {
-        let classes = getAttrib(cond, R_ClassSymbol());
-        if TYPEOF(classes) != SEXPTYPE::STRSXP {
-            return globals::R_NilValue();
-        }
-        let n_classes = LENGTH(classes);
-        let mut list = handler_stack();
-        while !list.is_null() && list != globals::R_NilValue() {
-            let entry = CAR(list);
-            let entry_class = ENTRY_CLASS(entry);
-            if !entry_class.is_null() {
-                let entry_bytes = CHAR(entry_class);
-                if !entry_bytes.is_null() {
-                    let entry_str = CStr::from_ptr(entry_bytes).to_bytes();
-                    for i in 0..n_classes {
-                        let cls = STRING_ELT(classes, i as R_xlen_t);
-                        if !cls.is_null() {
-                            let cls_bytes = CHAR(cls);
-                            if !cls_bytes.is_null() {
-                                let cls_str = CStr::from_ptr(cls_bytes).to_bytes();
-                                if entry_str == cls_str {
-                                    return list;
-                                }
+    let classes = getAttrib(cond, R_ClassSymbol());
+    if TYPEOF(classes) != SEXPTYPE::STRSXP {
+        return globals::R_NilValue();
+    }
+    let n_classes = LENGTH(classes);
+    let mut list = handler_stack();
+    while !list.is_null() && list != globals::R_NilValue() {
+        let entry = CAR(list);
+        let entry_class = ENTRY_CLASS(entry);
+        if !entry_class.is_null() {
+            let entry_bytes = char_cstring(entry_class);
+            if !entry_bytes.is_none() {
+                let entry_str = entry_bytes.as_deref().unwrap_or_default().to_bytes();
+                for i in 0..n_classes {
+                    let cls = STRING_ELT(classes, i as R_xlen_t);
+                    if !cls.is_null() {
+                        let cls_bytes = char_cstring(cls);
+                        if !cls_bytes.is_none() {
+                            let cls_str = cls_bytes.as_deref().unwrap_or_default().to_bytes();
+                            if entry_str == cls_str {
+                                return list;
                             }
                         }
                     }
                 }
             }
-            list = CDR(list);
         }
-        globals::R_NilValue()
+        list = CDR(list);
     }
+    globals::R_NilValue()
 }
 
 /// do_signalCondition — signal a condition through the handler stack.
@@ -403,15 +397,13 @@ pub(super) fn make_condition(
         let mut names = SexpMut::try_from_checked(names)?;
         names.try_set_string_elt(0, factory.character("message")?)?;
         names.try_set_string_elt(1, factory.character("call")?)?;
-        // SAFETY: both objects remain checked and rooted through allocation.
-        unsafe { setAttrib_wrap(condition.as_raw(), R_NamesSymbol(), names.as_raw()) };
+        setAttrib_wrap(condition.as_raw(), R_NamesSymbol(), names.as_raw());
         let classes = if subclass.is_empty() {
             factory.strings(&[class, category, "condition"])?
         } else {
             factory.strings(&[subclass, class, category, "condition"])?
         };
-        // SAFETY: both objects remain checked and rooted through allocation.
-        unsafe { setAttrib_wrap(condition.as_raw(), R_ClassSymbol(), classes.as_raw()) };
+        setAttrib_wrap(condition.as_raw(), R_ClassSymbol(), classes.as_raw());
         Ok(condition.freeze())
     };
     build()
@@ -558,11 +550,13 @@ pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
         let name = if pname.is_null() {
             String::from("???")
         } else {
-            let chars = CHAR(pname);
-            if chars.is_null() {
+            let chars = char_cstring(pname);
+            if chars.is_none() {
                 String::from("???")
             } else {
-                CStr::from_ptr(chars)
+                chars
+                    .as_deref()
+                    .unwrap_or_default()
                     .to_str()
                     .map(str::to_string)
                     .unwrap_or_else(|_| String::from("???"))
@@ -600,44 +594,44 @@ pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
 
 /// GNU `R_FunctionNotFoundError(sym, call)`.
 pub fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
-    unsafe {
-        let pname = PRINTNAME(sym);
-        let name = if pname.is_null() {
+    let pname = PRINTNAME(sym);
+    let name = if pname.is_null() {
+        String::from("???")
+    } else {
+        let chars = char_cstring(pname);
+        if chars.is_none() {
             String::from("???")
         } else {
-            let chars = CHAR(pname);
-            if chars.is_null() {
-                String::from("???")
-            } else {
-                CStr::from_ptr(chars)
-                    .to_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|_| String::from("???"))
-            }
-        };
-        let c_msg = std::ffi::CString::new(format!("could not find function \"{name}\""))
-            .unwrap_or_default();
-        let call = if call.is_null() {
-            crate::sexp::globals::R_NilValue()
-        } else {
-            call
-        };
-        let _call_guard = protect(call);
-        let cond = R_makeErrorCondition(
-            call,
-            c"objectNotFoundError".as_ptr(),
-            c"functionNotFoundError".as_ptr(),
-            2,
-            c_msg.as_ptr(),
-        );
-        let _cond_guard = protect(cond);
-        R_setConditionField(cond, 2, c"name".as_ptr(), sym);
-        let mode_sexp = Rf_mkString(c"function".as_ptr());
-        let _mode_guard = protect(mode_sexp);
-        R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
-        R_signalErrorCondition(cond, call);
-        unreachable!("R_signalErrorCondition does not return")
-    }
+            chars
+                .as_deref()
+                .unwrap_or_default()
+                .to_str()
+                .map(str::to_string)
+                .unwrap_or_else(|_| String::from("???"))
+        }
+    };
+    let c_msg =
+        std::ffi::CString::new(format!("could not find function \"{name}\"")).unwrap_or_default();
+    let call = if call.is_null() {
+        crate::sexp::globals::R_NilValue()
+    } else {
+        call
+    };
+    let _call_guard = protect(call);
+    let cond = R_makeErrorCondition(
+        call,
+        c"objectNotFoundError".as_ptr(),
+        c"functionNotFoundError".as_ptr(),
+        2,
+        c_msg.as_ptr(),
+    );
+    let _cond_guard = protect(cond);
+    R_setConditionField(cond, 2, c"name".as_ptr(), sym);
+    let mode_sexp = mk_string("function");
+    let _mode_guard = protect(mode_sexp);
+    R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
+    R_signalErrorCondition(cond, call);
+    unreachable!("R_signalErrorCondition does not return")
 }
 
 /// R_setConditionField — set a field in a condition object.
@@ -1090,25 +1084,23 @@ pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
 /// R_makeOutOfBoundsError — create an out-of-bounds error condition.
 /// Matches C's `SEXP R_makeOutOfBoundsError(SEXP x, int subscript, SEXP sindex, SEXP call)`
 pub fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP {
-            format!("{}", *REAL(sindex))
-        } else if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::INTSXP {
-            format!("{}", *INTEGER(sindex))
-        } else {
-            format!("{}", subscript)
-        };
-        let msg = format!("subscript out of bounds (index {} too large)", idx_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP {
+        format!("{}", REAL_ELT(sindex, 0))
+    } else if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::INTSXP {
+        format!("{}", INTEGER_ELT(sindex, 0))
+    } else {
+        format!("{}", subscript)
+    };
+    let msg = format!("subscript out of bounds (index {} too large)", idx_str);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        R_makeErrorCondition(
-            call,
-            b"simpleError\0".as_ptr() as *const c_char,
-            b"outOfBoundsError\0".as_ptr() as *const c_char,
-            0,
-            c_msg.as_ptr(),
-        )
-    }
+    R_makeErrorCondition(
+        call,
+        b"simpleError\0".as_ptr() as *const c_char,
+        b"outOfBoundsError\0".as_ptr() as *const c_char,
+        0,
+        c_msg.as_ptr(),
+    )
 }
 
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
