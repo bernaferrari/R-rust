@@ -432,6 +432,26 @@ impl<'session> OwnerToken<'session> {
         Ok(unsafe { Self::from_raw(pointer) })
     }
 
+    /// Run `operation` with a token for this thread's active runtime.
+    ///
+    /// Safe counterpart of [`current`](Self::current): the token's lifetime is
+    /// higher-ranked, so it cannot escape the callback through its result, and
+    /// the owner allocation stays pinned until the callback returns. Token
+    /// operations keep their own dynamic checks (liveness, active owner, arena
+    /// lend state).
+    pub(crate) fn with_current<T>(
+        operation: impl for<'operation> FnOnce(OwnerToken<'operation>) -> T,
+    ) -> SexpResult<T> {
+        let pointer = super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
+        // SAFETY: `pointer` is the registered active runtime. The token is only
+        // handed to a callback generic over its lifetime, and `_pin` keeps the
+        // owner allocation alive for the whole call.
+        let token = unsafe { Self::from_raw(pointer) };
+        let _pin = token.pin()?;
+        token.require_active()?;
+        Ok(operation(token))
+    }
+
     /// Lend the active owner's arena; callbacks and collection finish after
     /// this exclusive lend ends. The result cannot borrow from the arena.
     pub(crate) fn with_arena<T>(
