@@ -146,10 +146,7 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 
 /// Tag name of a pairlist cell; matches `CHAR(PRINTNAME(tag))`.
 fn tag_name(tag: SEXP) -> String {
-    // SAFETY: `tag` is a live symbol SEXP, so PRINTNAME yields a live CHARSXP
-    // and CHAR a NUL-terminated string valid for the borrow.
-    unsafe { std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))) }
-        .to_string_lossy()
+    String::from_utf8_lossy(&crate::mainutils::printutils::charsxp_bytes(PRINTNAME(tag)))
         .into_owned()
 }
 
@@ -906,7 +903,7 @@ fn device_y_to_user(c: &Coordinates, d: f64) -> f64 {
 /// clamped to the device region and the rectangle is stored normalized, as
 /// GESetClip does. The immediate device call also records the state change in
 /// the scene display list.
-pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
+pub(crate) fn native_clip(args: SEXP) -> SEXP {
     {
         let mut cell = args;
         let mut corners = [0f64; 4];
@@ -1203,7 +1200,7 @@ fn device_to_location(g: &ConversionGeometry, vertical: bool, code: i32, d: f64)
 /// GNU `C_convertX`/`C_convertY` — the engine behind `grconvertX` and
 /// `grconvertY`. Converts locations between the graphics coordinate systems
 /// through device space, like GConvertX/GConvertY.
-pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
+pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
     use crate::sexp::{
         object::{SexpError, SexpMut},
         owner::OwnerToken,
@@ -2460,7 +2457,7 @@ fn invisible() -> SEXP {
     R_NilValue()
 }
 
-pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
+pub(crate) fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
     {
         let (x, y) = xy(args);
         let style = style(args, point_size(args));
@@ -2494,7 +2491,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
     }
 }
 
-pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
+pub(crate) fn draw_builtin(name: &str, args: SEXP) -> SEXP {
     {
         if name == "plot.new" {
             // GNU plot.new calls GEcurrentDevice first. With no device open
@@ -2809,11 +2806,11 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
 }
 
 /// Decode all R arguments before borrowing the live renderer.
-pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
+pub(crate) fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
     raster_image_input(args, false)
 }
 
-pub(crate) unsafe fn native_raster_image(args: SEXP) -> SEXP {
+pub(crate) fn native_raster_image(args: SEXP) -> SEXP {
     raster_image_input(args, true)
 }
 
@@ -2847,4 +2844,3 @@ mod color_defaults_tests;
 #[cfg(all(test, feature = "renderplot-device"))]
 #[path = "portable_plot/limits_tests.rs"]
 mod limits_tests;
-

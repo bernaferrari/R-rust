@@ -1,8 +1,8 @@
 //! R-facing adapters for the owned, pointer-free LOESS numerical engine.
-use crate::eval::attrib_core::setAttrib;
-use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, R_NamesSymbol};
 use crate::library::stats::loess::{Config, Execution, Model};
 use crate::mainutils::essentials::{base_error, elt_to_string};
+use crate::sexp::attrib_core::setAttrib;
+use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, R_NamesSymbol};
 use crate::sexp::{
     accessors::*,
     constructors::*,
@@ -65,10 +65,9 @@ fn attribute(x: SEXP, symbol: SEXP) -> SEXP {
     crate::sexp::attrib_core::getAttrib(x, symbol)
 }
 
-/// Audited boundary: named-attribute write on a live object.
+/// Named-attribute write on a live object.
 fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
-    // SAFETY: setAttrib mutates one named slot of a live object.
-    unsafe { setAttrib(x, symbol, value) }
+    setAttrib(x, symbol, value)
 }
 
 /// Audited boundary: evaluate a live expression in a live environment.
@@ -77,10 +76,9 @@ fn eval_sexp(expr: SEXP, env: SEXP) -> SEXP {
     unsafe { crate::eval::eval::Rf_eval(expr, env) }
 }
 
-/// Audited boundary: bind one symbol in a live environment.
+/// Bind one symbol in a live environment (GNU `defineVar`).
 fn define_var(symbol: SEXP, value: SEXP, env: SEXP) {
-    // SAFETY: defineVar binds a value under the active runtime.
-    unsafe { crate::sexp::envir::defineVar(symbol, value, env) }
+    let _ = crate::sexp::envir::define_var_updates(symbol, value, env);
 }
 
 /// Audited boundary: evaluate a base wrapper function on live arguments.
@@ -91,13 +89,10 @@ fn apply_base(name: &'static str, source: &str, args: SEXP, env: SEXP, full: boo
 
 /// Audited boundary: read a live symbol's print name as Rust text.
 fn symbol_name(symbol: SEXP) -> String {
-    // SAFETY: PRINTNAME of a live SYMSXP yields a live CHARSXP whose CHAR data
-    // is NUL-terminated and immutable for the duration of the copy.
-    unsafe {
-        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
-            .to_string_lossy()
-            .into_owned()
-    }
+    String::from_utf8_lossy(&crate::mainutils::printutils::charsxp_bytes(PRINTNAME(
+        symbol,
+    )))
+    .into_owned()
 }
 
 /// Checked CHARSXP from Rust text; matches `Rf_mkChar` on the session heap.
@@ -151,10 +146,10 @@ fn set_names(x: SEXP, names: SEXP) {
     set_attribute(x, R_NamesSymbol(), names);
 }
 
-pub(crate) unsafe fn do_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     apply_base("loess", include_str!("loess.R"), args, rho, false)
 }
-pub(crate) unsafe fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     apply_base(
         "loess.control",
         r#"function(surface=c('interpolate','direct'), statistics=c('approximate','exact','none'), trace.hat=c('exact','approximate'), cell=0.2,iterations=4L,iterTrace=FALSE,...) {
@@ -166,7 +161,7 @@ pub(crate) unsafe fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP
         false,
     )
 }
-pub(crate) unsafe fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     apply_base(
         "predict",
         "function(object,...) UseMethod('predict')",
@@ -176,7 +171,7 @@ pub(crate) unsafe fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP
     )
 }
 
-pub(crate) unsafe fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::accessors::{CAR, CDR, TAG};
     use crate::sexp::constructors::Rf_cons;
     use crate::sexp::globals::R_NilValue;
@@ -200,7 +195,7 @@ pub(crate) unsafe fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
     }
     crate::mainutils::essentials::do_predict_lm(call, op, ev, rho)
 }
-pub(crate) unsafe fn do_predict_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_predict_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     apply_base(
         "predict.loess",
         r#"function(object,newdata=NULL,se=FALSE,na.action=na.pass,...) {
@@ -457,7 +452,7 @@ fn flags(x: SEXP, d: usize) -> Vec<bool> {
     v.iter().cycle().take(d).map(|x| *x != 0.).collect()
 }
 
-pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let a = positional(args);
         if a.len() != 15 {
@@ -467,10 +462,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(formula) != SEXPTYPE::LANGSXP || Rf_length(formula) != 3 {
             base_error("invalid LOESS formula");
         }
-        let parent = attribute(
-            formula,
-            crate::sexp::symbol::install_str(".Environment"),
-        );
+        let parent = attribute(formula, crate::sexp::symbol::install_str(".Environment"));
         let parent = if parent == R_NilValue() { rho } else { parent };
         let env = data_environment(a[1], parent);
         let _env = protect(env);
@@ -684,20 +676,13 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .unwrap_or_else(|error| r_error(error.to_string()));
                 let label = crate::mainutils::deparse::deparse1line(*expr, false);
                 names_mut
-                    .try_set_string_elt(
-                        j as R_xlen_t,
-                        wrapped(STRING_ELT(label, 0)),
-                    )
+                    .try_set_string_elt(j as R_xlen_t, wrapped(STRING_ELT(label, 0)))
                     .unwrap_or_else(|error| r_error(error.to_string()));
             }
             set_names(frame, names);
             set_attribute(frame, R_ClassSymbol(), mk_string("data.frame"));
             let rows = integers(&[i32::MIN, -(complete.len() as i32)]);
-            set_attribute(
-                frame,
-                crate::sexp::symbol::install_str("row.names"),
-                rows,
-            );
+            set_attribute(frame, crate::sexp::symbol::install_str("row.names"), rows);
             frame
         } else {
             R_NilValue()
@@ -800,7 +785,7 @@ fn model_to_r(
     }
 }
 
-pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let a = positional(args);
         if a.len() != 3 {
@@ -1040,9 +1025,7 @@ fn row_label(data: SEXP, response: SEXP, index: usize) -> String {
 
 fn is_exclude_action(action: SEXP) -> bool {
     let class = attribute(action, R_ClassSymbol());
-    TYPEOF(class) == SEXPTYPE::STRSXP
-        && XLENGTH(class) > 0
-        && elt_to_string(class, 0) == "exclude"
+    TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 && elt_to_string(class, 0) == "exclude"
 }
 
 fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
@@ -1093,7 +1076,7 @@ fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
 }
 
 /// GNU `loess.smooth(x, y, span, degree, evaluation)` — interpolate on a grid.
-pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -1170,8 +1153,7 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             } else {
                 x_sexp
                     .try_integer_elt(i as R_xlen_t)
-                    .unwrap_or_else(|error| r_error(error.to_string()))
-                    as f64
+                    .unwrap_or_else(|error| r_error(error.to_string())) as f64
             };
             let yv = if TYPEOF(y) == SEXPTYPE::REALSXP {
                 y_sexp
@@ -1180,8 +1162,7 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             } else {
                 y_sexp
                     .try_integer_elt(i as R_xlen_t)
-                    .unwrap_or_else(|error| r_error(error.to_string()))
-                    as f64
+                    .unwrap_or_else(|error| r_error(error.to_string())) as f64
             };
             if xv.is_finite() && yv.is_finite() {
                 xs.push(xv);

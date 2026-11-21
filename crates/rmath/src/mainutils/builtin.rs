@@ -13,7 +13,7 @@ use crate::sexp::accessors::{
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_allocVector, Rf_isEnvironment, Rf_isString, Rf_length};
 use crate::sexp::context::R_GlobalContext;
-use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun};
+use crate::sexp::envir::{R_findVarInFrame, findFun};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::{allocSExp, mkPROMISE};
@@ -96,11 +96,9 @@ fn installTrChar(x: SEXP) -> SEXP {
     }
 }
 
-/// Audited boundary: read a live CHARSXP's bytes.
+/// A live CHARSXP's bytes (GNU `CHAR(x)`).
 fn charsxp_bytes(x: SEXP) -> Vec<u8> {
-    // SAFETY: a live CHARSXP exposes NUL-terminated, immutable CHAR data for
-    // the duration of the copy.
-    unsafe { std::ffi::CStr::from_ptr(CHAR(x)).to_bytes().to_vec() }
+    crate::mainutils::printutils::charsxp_bytes(x)
 }
 
 /// Audited boundary: intern a live primitive's static name as a symbol.
@@ -116,10 +114,9 @@ fn eval_sexp(expr: SEXP, env: SEXP) -> SEXP {
     unsafe { crate::eval::eval::Rf_eval(expr, env) }
 }
 
-/// Audited boundary: bind one symbol in a live environment.
+/// Bind one symbol in a live environment (GNU `defineVar`).
 fn define_var(symbol: SEXP, value: SEXP, env: SEXP) {
-    // SAFETY: defineVar binds a value under the active runtime.
-    unsafe { defineVar(symbol, value, env) }
+    let _ = crate::sexp::envir::define_var_updates(symbol, value, env);
 }
 
 /// Audited boundary: function lookup in a live environment.
