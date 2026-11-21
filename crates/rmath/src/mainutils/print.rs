@@ -487,14 +487,6 @@ fn FixupWidth(width: SEXP, _warn: c_int) -> c_int {
     w
 }
 
-pub(crate) unsafe fn CHAR_OR_NULL(x: SEXP) -> *const c_char {
-    if x.is_null() {
-        return ptr::null();
-    }
-    // SAFETY: the caller passes a live CHARSXP.
-    unsafe { CHAR(x) }
-}
-
 // ---------------------------------------------------------------------------
 // PrintInit
 // ---------------------------------------------------------------------------

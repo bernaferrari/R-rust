@@ -198,50 +198,32 @@ const NB: usize = 1000;
 /// This is the fallback path when `R_print.digits >= DBL_DIG + 1` (i.e.
 /// >= 16 for IEEE 754 double).
 pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
+    let (k, n) = sprintf_scientific(r, d);
+    // SAFETY: the caller passes writable `kpower`/`nsig` outputs.
     unsafe {
-        // C's snprintf("%#.<d-1>e", r): mantissa with d significant digits
-        // (trailing zeros kept) plus a decimal exponent.
-        let text = format!("{:.*e}", (d - 1).max(0) as usize, r);
-        let (mantissa, exponent) = match text.split_once('e') {
-            Some(parts) => parts,
-            None => (&text[..], "0"),
-        };
-        *kpower = exponent.parse::<i64>().unwrap_or(0) as c_int;
-        // Significant digits: mantissa digits without '.', skipping
-        // trailing zeros but keeping at least one.
-        let digits: Vec<char> = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
-        let mut i = digits.len();
-        while i > 1 && digits[i - 1] == '0' {
-            i -= 1;
-        }
-        *nsig = i as c_int;
+        *kpower = k;
+        *nsig = n;
     }
 }
 
-/// Minimal snprintf shim for our format_via_sprintf.
-/// Writes into `buf` (up to `buf_size` bytes including NUL) using the
-/// C format string `fmt`.
-fn snprintf(
-    buf: &mut [core::ffi::c_char],
-    buf_size: usize,
-    fmt: *const core::ffi::c_char,
-    precision: usize,
-    value: f64,
-) -> i32 {
-    let fmt_cstr = unsafe { std::ffi::CStr::from_ptr(fmt) };
-    let fmt_str = fmt_cstr.to_str().unwrap_or("%.15e");
-    // We only support the specific "%#.*e" pattern used by format_via_sprintf.
-    let formatted = format!("{}{}", fmt_str.replace(".*", &precision.to_string()), value);
-    let bytes = formatted.as_bytes();
-    let copy_len = bytes.len().min(buf_size.saturating_sub(1));
-    buf[..copy_len].copy_from_slice(
-        &bytes[..copy_len]
-            .iter()
-            .map(|&b| b as core::ffi::c_char)
-            .collect::<Vec<core::ffi::c_char>>()[..copy_len],
-    );
-    buf[copy_len] = 0;
-    formatted.len() as i32
+/// `(kpower, nsig)` of `r` printed with C `%#.<d-1>e`.
+fn sprintf_scientific(r: c_double, d: c_int) -> (c_int, c_int) {
+    // C's snprintf("%#.<d-1>e", r): mantissa with d significant digits
+    // (trailing zeros kept) plus a decimal exponent.
+    let text = format!("{:.*e}", (d - 1).max(0) as usize, r);
+    let (mantissa, exponent) = match text.split_once('e') {
+        Some(parts) => parts,
+        None => (&text[..], "0"),
+    };
+    let kpower = exponent.parse::<i64>().unwrap_or(0) as c_int;
+    // Significant digits: mantissa digits without '.', skipping
+    // trailing zeros but keeping at least one.
+    let digits: Vec<char> = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut i = digits.len();
+    while i > 1 && digits[i - 1] == '0' {
+        i -= 1;
+    }
+    (kpower, i as c_int)
 }
 
 // ---------------------------------------------------------------------------
@@ -265,29 +247,36 @@ pub unsafe fn format_scientific(
     nsig: *mut c_int,
     roundingwidens: *mut bool,
 ) {
+    // SAFETY: the caller passes a readable `x` and writable outputs.
     unsafe {
+        let xv = *x;
         // Zero needs no print configuration and remains usable without an
         // active runtime, as in the original formatter.
-        let digits = if *x == 0.0 {
+        let digits = if xv == 0.0 {
             0
         } else {
             current_R_print().digits
         };
-        format_scientific_with_digits(x, neg, kpower, nsig, roundingwidens, digits);
+        format_scientific_with_digits(
+            xv,
+            &mut *neg,
+            &mut *kpower,
+            &mut *nsig,
+            &mut *roundingwidens,
+            digits,
+        );
     }
 }
 
-unsafe fn format_scientific_with_digits(
-    x: *const c_double,
-    neg: *mut c_int,
-    kpower: *mut c_int,
-    nsig: *mut c_int,
-    roundingwidens: *mut bool,
+fn format_scientific_with_digits(
+    xv: c_double,
+    neg: &mut c_int,
+    kpower: &mut c_int,
+    nsig: &mut c_int,
+    roundingwidens: &mut bool,
     digits: c_int,
 ) {
-    unsafe {
-        let xv = *x;
-
+    {
         if xv == 0.0 {
             *kpower = 0;
             *nsig = 1;
@@ -316,7 +305,7 @@ unsafe fn format_scientific_with_digits(
         // When digits >= DBL_DIG + 1 (16 for IEEE 754), use snprintf path.
         const DBL_DIG_CONST: c_int = 15;
         if digits > DBL_DIG_CONST {
-            format_via_sprintf(r, digits, kpower, nsig);
+            (*kpower, *nsig) = sprintf_scientific(r, digits);
             *roundingwidens = false;
             return;
         }
@@ -932,16 +921,14 @@ fn real_field_impl(
             let mut nsig: c_int = 0;
             let mut roundingwidens: bool = false;
 
-            unsafe {
-                format_scientific_with_digits(
-                    &xi,
-                    &mut neg_i,
-                    &mut kpower,
-                    &mut nsig,
-                    &mut roundingwidens,
-                    settings().digits,
-                );
-            }
+            format_scientific_with_digits(
+                xi,
+                &mut neg_i,
+                &mut kpower,
+                &mut nsig,
+                &mut roundingwidens,
+                settings().digits,
+            );
 
             let mut left = kpower + 1;
             if roundingwidens {

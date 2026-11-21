@@ -7,7 +7,7 @@
 //! dotted-pair list but using Rust-native storage.
 
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -15,6 +15,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
+#[cfg(test)]
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
@@ -547,8 +548,7 @@ fn options_pairlist<'s>(factory: &SessionNodeFactory<'s>) -> SexpResult<Sexp<'s>
     let entries = options_snapshot(factory)?;
     let mut result = PairlistBuilder::from_factory(factory.clone());
     for (name, value) in entries {
-        let name = CString::new(name).unwrap_or_default();
-        let tag = factory.wrap(unsafe { Rf_install(name.as_ptr()) })?;
+        let tag = factory.wrap(crate::sexp::symbol::install_str(&name))?;
         result.push(value, Some(tag))?;
     }
     result.finish()
@@ -611,7 +611,11 @@ fn refresh_options_binding(owner: OwnerToken<'_>) {
         if !replaced {
             // First bootstrap publication obeys normal environment admission.
             // Later internal updates use only the existing checked cell above.
-            unsafe { defineVar(symbol.as_raw(), options.as_raw(), base.as_raw()) };
+            let _ = crate::sexp::envir::define_var_updates(
+                symbol.as_raw(),
+                options.as_raw(),
+                base.as_raw(),
+            );
         }
     }));
     // Revocation takes precedence even if a construction callback panics.
@@ -983,31 +987,15 @@ fn define_platform_binding(factory: &SessionNodeFactory<'_>) -> SexpResult<()> {
     let keys: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
     let names = factory.strings(&keys)?;
     set_option_names(factory, &platform, names)?;
-    let symbol = factory.wrap(unsafe { Rf_install(c".Platform".as_ptr()) })?;
+    let symbol = factory.wrap(crate::sexp::symbol::install_str(".Platform"))?;
     factory.require_active()?;
-    unsafe {
-        defineVar(symbol.as_raw(), platform.as_raw(), R_BaseEnv());
-    }
+    let _ = crate::sexp::envir::define_var_updates(symbol.as_raw(), platform.as_raw(), R_BaseEnv());
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
 // Helper for validating TRUE/FALSE logical values
 // ---------------------------------------------------------------------------
-
-unsafe fn check_TRUE_FALSE(arg: SEXP, chname: *const c_char) {
-    unsafe {
-        let mut name_buf = [0u8; 256];
-        if !chname.is_null() {
-            let src = std::ffi::CStr::from_ptr(chname);
-            let bytes = src.to_bytes();
-            let len = bytes.len().min(255);
-            name_buf[..len].copy_from_slice(&bytes[..len]);
-            let name_str = std::str::from_utf8(&name_buf[..len]).unwrap_or("?");
-            r_error(&format!("invalid value for '{}'", name_str));
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // do_getOption -- C-level entry for getOption(name)

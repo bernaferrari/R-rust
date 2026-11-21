@@ -28,16 +28,15 @@ use std::ptr;
 #[cfg(test)]
 use std::rc::Rc;
 
-use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF, XLENGTH};
+#[cfg(test)]
+use crate::sexp::accessors::CHAR;
+use crate::sexp::accessors::{LENGTH, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::altseq::{unexpanded_int, unexpanded_real};
-use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{
     NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
 };
 
-use crate::mainutils::format::{
-    formatComplex, formatLogical, formatReal, integer_field_width, real_field, string_element_width,
-};
+use crate::mainutils::format::{integer_field_width, real_field, string_element_width};
 
 // ---------------------------------------------------------------------------
 // Optional console sink
@@ -633,74 +632,66 @@ pub unsafe fn EncodeRealDrop0(
     e: c_int,
     dec: *const c_char,
 ) -> *const c_char {
-    unsafe {
-        let dec_str = if dec.is_null() {
-            "."
-        } else {
-            CStr::from_ptr(dec).to_str().unwrap_or(".")
-        };
+    let dec_bytes: &[u8] = if dec.is_null() {
+        b"."
+    } else {
+        // SAFETY: the caller passes a live NUL-terminated separator.
+        unsafe { CStr::from_ptr(dec) }.to_bytes()
+    };
+    let text = encode_real_drop0_text(x, w, d, e, dec_bytes);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real_drop0, &text))
+}
 
-        // IEEE: normalize signed zero
-        let x = if x == 0.0 { 0.0 } else { x };
+/// Text of [`EncodeRealDrop0`] with decimal separator `dec`.
+pub(crate) fn encode_real_drop0_text(x: f64, w: c_int, d: c_int, e: c_int, dec: &[u8]) -> Vec<u8> {
+    let dec_str = std::str::from_utf8(dec).unwrap_or(".");
+    // IEEE: normalize signed zero
+    let x = if x == 0.0 { 0.0 } else { x };
 
-        let na = na_string_str();
-        let formatted = format_real_printf_style(x, w, d, e, false, &na);
+    let na = na_string_str();
+    let formatted = format_real_printf_style(x, w, d, e, false, &na);
 
-        // Drop trailing zeros after the decimal in the mantissa only — GNU
-        // EncodeRealDrop0 must not eat the exponent's units digit (`e-10`).
-        let mut trimmed: Vec<u8> = formatted.bytes().collect();
-        let exp_pos = trimmed.iter().position(|&b| b == b'e' || b == b'E');
-        let mantissa_end = exp_pos.unwrap_or(trimmed.len());
-        if let Some(dot_pos) = trimmed[..mantissa_end].iter().position(|&b| b == b'.') {
-            let mut last_nonzero = dot_pos + 1;
-            for (i, &ch) in trimmed[..mantissa_end].iter().enumerate().skip(dot_pos + 1) {
-                if ch != b'0' {
-                    last_nonzero = i + 1;
-                }
-            }
-            if last_nonzero == dot_pos + 1 {
-                let exp = trimmed[mantissa_end..].to_vec();
-                trimmed.truncate(dot_pos);
-                trimmed.extend_from_slice(&exp);
-            } else if last_nonzero < mantissa_end {
-                let exp = trimmed[mantissa_end..].to_vec();
-                trimmed.truncate(last_nonzero);
-                trimmed.extend_from_slice(&exp);
+    // Drop trailing zeros after the decimal in the mantissa only — GNU
+    // EncodeRealDrop0 must not eat the exponent's units digit (`e-10`).
+    let mut trimmed: Vec<u8> = formatted.bytes().collect();
+    let exp_pos = trimmed.iter().position(|&b| b == b'e' || b == b'E');
+    let mantissa_end = exp_pos.unwrap_or(trimmed.len());
+    if let Some(dot_pos) = trimmed[..mantissa_end].iter().position(|&b| b == b'.') {
+        let mut last_nonzero = dot_pos + 1;
+        for (i, &ch) in trimmed[..mantissa_end].iter().enumerate().skip(dot_pos + 1) {
+            if ch != b'0' {
+                last_nonzero = i + 1;
             }
         }
+        if last_nonzero == dot_pos + 1 {
+            let exp = trimmed[mantissa_end..].to_vec();
+            trimmed.truncate(dot_pos);
+            trimmed.extend_from_slice(&exp);
+        } else if last_nonzero < mantissa_end {
+            let exp = trimmed[mantissa_end..].to_vec();
+            trimmed.truncate(last_nonzero);
+            trimmed.extend_from_slice(&exp);
+        }
+    }
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_real_drop0;
-
-            // Replace "." with dec if needed
-            let out = if dec_str != "." {
-                let mut idx = 0usize;
-                for &byte in &trimmed {
-                    if byte == b'.' {
-                        for dc in dec_str.bytes() {
-                            if idx < 2 * NB - 1 {
-                                buf[idx] = dc;
-                                idx += 1;
-                            }
-                        }
-                    } else {
-                        if idx < 2 * NB - 1 {
-                            buf[idx] = byte;
-                            idx += 1;
-                        }
+    // Replace "." with dec if needed
+    if dec_str != "." {
+        let mut out = Vec::with_capacity(trimmed.len());
+        for &byte in &trimmed {
+            if byte == b'.' {
+                for dc in dec_str.bytes() {
+                    if out.len() < 2 * NB - 1 {
+                        out.push(dc);
                     }
                 }
-                buf[idx] = 0;
-                buf.as_ptr()
-            } else {
-                let len = trimmed.len().min(NB - 1);
-                buf[..len].copy_from_slice(&trimmed[..len]);
-                buf[len] = 0;
-                buf.as_ptr()
-            };
-
-            out as *const c_char
-        })
+            } else if out.len() < 2 * NB - 1 {
+                out.push(byte);
+            }
+        }
+        out
+    } else {
+        trimmed.truncate(trimmed.len().min(NB - 1));
+        trimmed
     }
 }
 
@@ -966,36 +957,39 @@ pub fn EncodeExtptr(_x: SEXP) -> *const c_char {
 /// Stock `StringFromReal` (printutils.c:310): `formatReal` for w/d/e, then
 /// `EncodeRealDrop0`; NA renders as NA_STRING. Callers embedding the result
 /// into a STRSXP (coerce.c's coerceToString) require a real CHARSXP here.
-pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
-    unsafe {
-        // Check for NA
-        if x.to_bits() == R_NA_BIT_PATTERN {
-            return crate::sexp::globals::R_NaString();
-        }
+pub fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
+    // Check for NA
+    if x.to_bits() == R_NA_BIT_PATTERN {
+        return crate::sexp::globals::R_NaString();
+    }
 
-        // Use formatReal to determine optimal w, d, e
-        let mut w: c_int = 0;
-        let mut d: c_int = 0;
-        let mut e: c_int = 0;
-        let mut mark = [b'.' as c_char, 0];
-        let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
-        if !opt.is_null()
-            && opt != crate::sexp::globals::R_NilValue()
-            && TYPEOF(opt) == SEXPTYPE::STRSXP
-            && LENGTH(opt) >= 1
+    // Use formatReal to determine optimal w, d, e
+    let mut mark: Vec<u8> = vec![b'.'];
+    let opt = crate::mainutils::options::GetOptionByName("OutDec");
+    if !opt.is_null()
+        && opt != crate::sexp::globals::R_NilValue()
+        && TYPEOF(opt) == SEXPTYPE::STRSXP
+        && LENGTH(opt) >= 1
+    {
+        let ch = STRING_ELT(opt, 0);
+        if !ch.is_null()
+            && let Some(&first) = charsxp_bytes(ch).first()
         {
-            let ch = STRING_ELT(opt, 0);
-            if !ch.is_null() {
-                let p = CHAR(ch);
-                if !p.is_null() && *p != 0 {
-                    mark[0] = *p;
-                }
-            }
+            mark = vec![first];
         }
-        formatReal(&x, 1, &mut w, &mut d, &mut e, 0);
-        let x = if x == 0.0 { 0.0 } else { x };
-        let s = EncodeRealDrop0(x, w, d, e, mark.as_ptr());
-        Rf_mkChar(s)
+    }
+    let fmt = real_field(1, 0, |_| x);
+    let x = if x == 0.0 { 0.0 } else { x };
+    let text = encode_real_drop0_text(x, fmt.w, fmt.d, fmt.e, &mark);
+    mk_char_bytes(&text)
+}
+
+/// GNU `mkChar` of `bytes` (no embedded NUL).
+fn mk_char_bytes(bytes: &[u8]) -> SEXP {
+    let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    // SAFETY: `bytes` is live for `len` bytes; mkCharLen copies them.
+    unsafe {
+        crate::sexp::constructors::Rf_mkCharLen(bytes.as_ptr() as *const c_char, len as c_int)
     }
 }
 
@@ -1113,16 +1107,11 @@ pub fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *cons
 ///
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
 /// The `cdec` parameter is the decimal separator character.
-pub unsafe fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) -> *const c_char {
-    unsafe {
-        let dec_buf = [cdec as u8, 0u8];
-        EncodeElement0(
-            x,
-            indx as R_xlen_t,
-            quote,
-            dec_buf.as_ptr() as *const c_char,
-        )
-    }
+pub fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) -> *const c_char {
+    // GNU passes `{cdec, '\0'}`: a NUL separator reads as the empty string.
+    let dec = [cdec as u8];
+    let dec: &[u8] = if cdec == 0 { &[] } else { &dec };
+    encode_element(x, indx as R_xlen_t, quote, dec)
 }
 
 fn element_in_range(x: SEXP, indx: R_xlen_t) -> bool {
@@ -1192,50 +1181,51 @@ pub unsafe fn EncodeElement0(
     quote: c_int,
     dec: *const c_char,
 ) -> *const c_char {
-    unsafe {
-        let sexptype = TYPEOF(x);
+    let dec_bytes: &[u8] = if dec.is_null() {
+        b"."
+    } else {
+        // SAFETY: the caller passes a live NUL-terminated separator.
+        unsafe { CStr::from_ptr(dec) }.to_bytes()
+    };
+    encode_element(x, indx, quote, dec_bytes)
+}
 
-        match SEXPTYPE(sexptype) {
-            SEXPTYPE::LGLSXP => {
-                let val = one_logical(x, indx);
-                let mut w: c_int = 0;
-                formatLogical(&val, 1, &mut w);
-                EncodeLogical(val, w)
-            }
-            SEXPTYPE::INTSXP => {
-                let val = one_integer(x, indx);
-                let w = integer_field_width(1, |_| val);
-                EncodeInteger(val, w)
-            }
-            SEXPTYPE::REALSXP => {
-                let val = one_real(x, indx);
-                let fmt = real_field(1, 0, |_| val);
-                EncodeReal0(val, fmt.w, fmt.d, fmt.e, dec)
-            }
-            SEXPTYPE::STRSXP => {
-                let elt = one_string(x, indx);
-                let w = string_element_width(elt, quote);
-                EncodeString(elt, w, quote, Rprt_adj::left)
-            }
-            SEXPTYPE::CPLXSXP => {
-                let val = one_complex(x, indx);
-                let mut wr: c_int = 0;
-                let mut dr: c_int = 0;
-                let mut er: c_int = 0;
-                let mut wi: c_int = 0;
-                let mut di: c_int = 0;
-                let mut ei: c_int = 0;
-                formatComplex(
-                    &val, 1, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-                );
-                EncodeComplex(val, wr, dr, er, wi, di, ei, dec)
-            }
-            SEXPTYPE::RAWSXP => {
-                let val = one_raw(x, indx);
-                EncodeRaw(val, b"\0".as_ptr() as *const c_char)
-            }
-            _ => b"\0".as_ptr() as *const c_char,
+/// Safe body of [`EncodeElement0`] with decimal separator `dec`.
+fn encode_element(x: SEXP, indx: R_xlen_t, quote: c_int, dec: &[u8]) -> *const c_char {
+    let sexptype = TYPEOF(x);
+    match SEXPTYPE(sexptype) {
+        SEXPTYPE::LGLSXP => {
+            let val = one_logical(x, indx);
+            let w = crate::mainutils::format::logical_field_width([val]);
+            EncodeLogical(val, w)
         }
+        SEXPTYPE::INTSXP => {
+            let val = one_integer(x, indx);
+            let w = integer_field_width(1, |_| val);
+            EncodeInteger(val, w)
+        }
+        SEXPTYPE::REALSXP => {
+            let val = one_real(x, indx);
+            let fmt = real_field(1, 0, |_| val);
+            let text = encode_real0_text(val, fmt.w, fmt.d, fmt.e, dec);
+            with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
+        }
+        SEXPTYPE::STRSXP => {
+            let elt = one_string(x, indx);
+            let w = string_element_width(elt, quote);
+            EncodeString(elt, w, quote, Rprt_adj::left)
+        }
+        SEXPTYPE::CPLXSXP => {
+            let val = one_complex(x, indx);
+            let f = crate::mainutils::format::complex_field(&[val], 0);
+            EncodeComplex(val, f.wr, f.dr, f.er, f.wi, f.di, f.ei, ptr::null())
+        }
+        SEXPTYPE::RAWSXP => {
+            let val = one_raw(x, indx);
+            let text = encode_raw_text(val, b"");
+            with_encode_buffers(|buffers| store_text(&mut buffers.encode_raw, &text))
+        }
+        _ => b"\0".as_ptr() as *const c_char,
     }
 }
 
