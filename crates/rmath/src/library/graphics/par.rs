@@ -1893,13 +1893,7 @@ pub fn RunregisterBase() -> SEXP {
     R_NilValue()
 }
 
-/* ---- gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */
-
-/// gpptr -- get the current GPar pointer (graphics parameters).
-pub fn gpptr(dd: pGEDevDesc) -> *mut c_void {
-    with_device_gpar_entry(dd, |entry| &mut entry.gp as *mut GPar as *mut c_void)
-        .unwrap_or(std::ptr::null_mut())
-}
+/* ---- GPar access / Rf_setBaseDevice ---- */
 
 /// Copy of the device's current GPar (`*gpptr(dd)`); `None` for a null key.
 pub(crate) fn gpar_get(dd: pGEDevDesc) -> Option<GPar> {
@@ -1917,16 +1911,10 @@ pub(crate) fn with_gpar_mut<T>(dd: pGEDevDesc, f: impl FnOnce(&mut GPar) -> T) -
     with_device_gpar_entry(dd, |entry| f(&mut entry.gp))
 }
 
-/// dpptr -- get the display GPar pointer (display parameters).
-pub fn dpptr(dd: pGEDevDesc) -> *mut c_void {
-    with_device_gpar_entry(dd, |entry| &mut entry.dp as *mut GPar as *mut c_void)
-        .unwrap_or(std::ptr::null_mut())
-}
-
-/// dpSavedptr -- get the saved display GPar pointer.
-pub fn dpSavedptr(dd: pGEDevDesc) -> *mut c_void {
-    with_device_gpar_entry(dd, |entry| &mut entry.dp_saved as *mut GPar as *mut c_void)
-        .unwrap_or(std::ptr::null_mut())
+/// Update the device's display GPar in place; same contract as
+/// [`with_gpar_mut`].
+pub(crate) fn with_dpar_mut<T>(dd: pGEDevDesc, f: impl FnOnce(&mut GPar) -> T) -> Option<T> {
+    with_device_gpar_entry(dd, |entry| f(&mut entry.dp))
 }
 
 /// Rf_setBaseDevice -- mark the device as "dirty" (has received base output).

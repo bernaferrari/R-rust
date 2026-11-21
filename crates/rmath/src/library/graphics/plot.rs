@@ -58,7 +58,7 @@ use super::graphics::{
     GRestorePars, GSavePars, GScale, GSetState, GStrHeight, GStrWidth, GSymbol, GText, xNPCtoUsr,
     yNPCtoUsr,
 };
-use super::par::{GPar, ProcessInlinePars, dpptr, gpptr};
+use super::par::{GPar, ProcessInlinePars};
 
 /* ========================================================================
  * Local type and constant definitions
@@ -783,13 +783,13 @@ fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
  * ======================================================================== */
 
 fn ComputeAtValueFromAdj(adj: c_double, side: c_int, outer: Rboolean, dd: pGEDevDesc) -> c_double {
-        let at: c_double;
-        if side % 2 == 0 {
-            at = if outer != 0 { adj } else { yNPCtoUsr(adj, dd) };
-        } else {
-            at = if outer != 0 { adj } else { xNPCtoUsr(adj, dd) };
-        }
-        at
+    let at: c_double;
+    if side % 2 == 0 {
+        at = if outer != 0 { adj } else { yNPCtoUsr(adj, dd) };
+    } else {
+        at = if outer != 0 { adj } else { xNPCtoUsr(adj, dd) };
+    }
+    at
 }
 
 fn ComputeAtValue(
@@ -800,97 +800,79 @@ fn ComputeAtValue(
     outer: Rboolean,
     dd: pGEDevDesc,
 ) -> c_double {
-        if R_FINITE(at) == 0 {
-            match las {
-                0 => {
-                    /* parallel to axis */
-                    return ComputeAtValueFromAdj(adj, side, outer, dd);
-                }
-                1 => {
-                    /* horizontal */
-                    match side {
-                        1 | 3 => {
-                            return ComputeAtValueFromAdj(adj, side, outer, dd);
-                        }
-                        2 | 4 => {
-                            return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
-                        }
-                        _ => {} // intentionally unhandled: invalid side value
-                    }
-                }
-                2 => {
-                    /* perpendicular to axis */
-                    match side {
-                        1 | 3 => {
-                            return if outer != 0 { 0.5 } else { xNPCtoUsr(0.5, dd) };
-                        }
-                        2 | 4 => {
-                            return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
-                        }
-                        _ => {} // intentionally unhandled: invalid side value
-                    }
-                }
-                3 => {
-                    /* vertical */
-                    match side {
-                        1 | 3 => {
-                            return if outer != 0 { 0.5 } else { xNPCtoUsr(0.5, dd) };
-                        }
-                        2 | 4 => {
-                            return ComputeAtValueFromAdj(adj, side, outer, dd);
-                        }
-                        _ => {} // intentionally unhandled: invalid side value
-                    }
-                }
-                _ => {} // intentionally unhandled: unknown position code
+    if R_FINITE(at) == 0 {
+        match las {
+            0 => {
+                /* parallel to axis */
+                return ComputeAtValueFromAdj(adj, side, outer, dd);
             }
+            1 => {
+                /* horizontal */
+                match side {
+                    1 | 3 => {
+                        return ComputeAtValueFromAdj(adj, side, outer, dd);
+                    }
+                    2 | 4 => {
+                        return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
+                    }
+                    _ => {} // intentionally unhandled: invalid side value
+                }
+            }
+            2 => {
+                /* perpendicular to axis */
+                match side {
+                    1 | 3 => {
+                        return if outer != 0 { 0.5 } else { xNPCtoUsr(0.5, dd) };
+                    }
+                    2 | 4 => {
+                        return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
+                    }
+                    _ => {} // intentionally unhandled: invalid side value
+                }
+            }
+            3 => {
+                /* vertical */
+                match side {
+                    1 | 3 => {
+                        return if outer != 0 { 0.5 } else { xNPCtoUsr(0.5, dd) };
+                    }
+                    2 | 4 => {
+                        return ComputeAtValueFromAdj(adj, side, outer, dd);
+                    }
+                    _ => {} // intentionally unhandled: invalid side value
+                }
+            }
+            _ => {} // intentionally unhandled: unknown position code
         }
-        at
+    }
+    at
 }
 
 /* ========================================================================
  * getxlimits / getylimits -- get clipping limits based on xpd
  * ======================================================================== */
 
-unsafe fn getxlimits(x: *mut c_double, dd: pGEDevDesc) {
-    unsafe {
-        let gp = gpptr(dd) as *mut GPar;
-        match (*gp).xpd {
-            0 => {
-                *x.add(0) = (*gp).usr[0];
-                *x.add(1) = (*gp).usr[1];
-            }
-            1 => {
-                *x.add(0) = GConvertX(0.0, NFC, USER, dd);
-                *x.add(1) = GConvertX(1.0, NFC, USER, dd);
-            }
-            2 => {
-                *x.add(0) = GConvertX(0.0, NDC, USER, dd);
-                *x.add(1) = GConvertX(1.0, NDC, USER, dd);
-            }
-            _ => {} // intentionally unhandled: invalid axis value
-        }
+fn getxlimits(x: &mut [c_double; 2], dd: pGEDevDesc) {
+    let Some(gp) = super::par::gpar_get(dd) else {
+        return;
+    };
+    match gp.xpd {
+        0 => *x = [gp.usr[0], gp.usr[1]],
+        1 => *x = [GConvertX(0.0, NFC, USER, dd), GConvertX(1.0, NFC, USER, dd)],
+        2 => *x = [GConvertX(0.0, NDC, USER, dd), GConvertX(1.0, NDC, USER, dd)],
+        _ => {} // intentionally unhandled: invalid axis value
     }
 }
 
-unsafe fn getylimits(y: *mut c_double, dd: pGEDevDesc) {
-    unsafe {
-        let gp = gpptr(dd) as *mut GPar;
-        match (*gp).xpd {
-            0 => {
-                *y.add(0) = (*gp).usr[2];
-                *y.add(1) = (*gp).usr[3];
-            }
-            1 => {
-                *y.add(0) = GConvertY(0.0, NFC, USER, dd);
-                *y.add(1) = GConvertY(1.0, NFC, USER, dd);
-            }
-            2 => {
-                *y.add(0) = GConvertY(0.0, NDC, USER, dd);
-                *y.add(1) = GConvertY(1.0, NDC, USER, dd);
-            }
-            _ => {} // intentionally unhandled: invalid axis value
-        }
+fn getylimits(y: &mut [c_double; 2], dd: pGEDevDesc) {
+    let Some(gp) = super::par::gpar_get(dd) else {
+        return;
+    };
+    match gp.xpd {
+        0 => *y = [gp.usr[2], gp.usr[3]],
+        1 => *y = [GConvertY(0.0, NFC, USER, dd), GConvertY(1.0, NFC, USER, dd)],
+        2 => *y = [GConvertY(0.0, NDC, USER, dd), GConvertY(1.0, NDC, USER, dd)],
+        _ => {} // intentionally unhandled: invalid axis value
     }
 }
 
@@ -992,14 +974,14 @@ fn drawPointsLines(
     first: c_int,
     dd: pGEDevDesc,
 ) {
-        if type_ == b'p' || type_ == b'o' {
+    if type_ == b'p' || type_ == b'o' {
         if let Some(gp) = super::par::gpar_get(dd) {
             GSymbol(xp, yp, DEVICE, gp.pch, dd);
         }
-        }
-        if (type_ == b'l' || type_ == b'o') && first == 0 {
-            GLine(xold, yold, xp, yp, DEVICE, dd);
-        }
+    }
+    if (type_ == b'l' || type_ == b'o') && first == 0 {
+        GLine(xold, yold, xp, yp, DEVICE, dd);
+    }
 }
 
 /* ========================================================================
@@ -1015,39 +997,39 @@ fn drawLabel(
     enc: cetype_t,
     dd: pGEDevDesc,
 ) {
-        let mut xi = xi;
-        let mut yi = yi;
-        match pos {
-            4 => {
+    let mut xi = xi;
+    let mut yi = yi;
+    match pos {
+        4 => {
             xi += offset;
-                GText(xi, yi, INCHES, l, enc, 0.0, dd_dev_yCharOffset(dd), 0.0, dd);
-            }
-            2 => {
-            xi -= offset;
-                GText(xi, yi, INCHES, l, enc, 1.0, dd_dev_yCharOffset(dd), 0.0, dd);
-            }
-            3 => {
-            yi += offset;
-                GText(xi, yi, INCHES, l, enc, 0.5, 0.0, 0.0, dd);
-            }
-            1 => {
-            yi -= offset;
-                GText(
-                    xi,
-                    yi,
-                    INCHES,
-                    l,
-                    enc,
-                    0.5,
-                    1.0 - (0.5 - dd_dev_yCharOffset(dd)),
-                    0.0,
-                    dd,
-                );
-            }
-        _ => {
-                GText(xi, yi, INCHES, l, enc, 0.0, 0.0, 0.0, dd);
-            }
+            GText(xi, yi, INCHES, l, enc, 0.0, dd_dev_yCharOffset(dd), 0.0, dd);
         }
+        2 => {
+            xi -= offset;
+            GText(xi, yi, INCHES, l, enc, 1.0, dd_dev_yCharOffset(dd), 0.0, dd);
+        }
+        3 => {
+            yi += offset;
+            GText(xi, yi, INCHES, l, enc, 0.5, 0.0, 0.0, dd);
+        }
+        1 => {
+            yi -= offset;
+            GText(
+                xi,
+                yi,
+                INCHES,
+                l,
+                enc,
+                0.5,
+                1.0 - (0.5 - dd_dev_yCharOffset(dd)),
+                0.0,
+                dd,
+            );
+        }
+        _ => {
+            GText(xi, yi, INCHES, l, enc, 0.0, 0.0, 0.0, dd);
+        }
+    }
 }
 
 /* Stub for dd->dev->yCharOffset */
@@ -1200,33 +1182,33 @@ pub fn labelformat(labels: SEXP) -> SEXP {
  * ======================================================================== */
 
 pub fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let dd = GEcurrentDevice();
-        if dd.is_null() {
-            Rf_error_cstr(c"no active graphics device");
-        }
-        let recording = GRecording(call, dd);
-        let dd = GNewPlot(recording);
-        if dd.is_null() {
-            Rf_error_cstr(c"no active graphics device");
-        }
-        let dp = dpptr(dd) as *mut GPar;
-        let gp = gpptr(dd) as *mut GPar;
-        (*dp).xlog = 0;
-        (*gp).xlog = 0;
-        (*dp).ylog = 0;
-        (*gp).ylog = 0;
-
-        GScale(0.0, 1.0, 1, dd);
-        GScale(0.0, 1.0, 2, dd);
-        GMapWin2Fig(dd);
-        GSetState(1, dd);
-
-        if GRecording(call, dd) != 0 {
-            GErecordGraphicOperation(op, args, dd);
-        }
-        R_NilValue()
+    let dd = GEcurrentDevice();
+    if dd.is_null() {
+        Rf_error_cstr(c"no active graphics device");
     }
+    let recording = GRecording(call, dd);
+    let dd = GNewPlot(recording);
+    if dd.is_null() {
+        Rf_error_cstr(c"no active graphics device");
+    }
+    super::par::with_dpar_mut(dd, |dp| {
+        dp.xlog = 0;
+        dp.ylog = 0;
+    });
+    super::par::with_gpar_mut(dd, |gp| {
+        gp.xlog = 0;
+        gp.ylog = 0;
+    });
+
+    GScale(0.0, 1.0, 1, dd);
+    GScale(0.0, 1.0, 2, dd);
+    GMapWin2Fig(dd);
+    GSetState(1, dd);
+
+    if GRecording(call, dd) != 0 {
+        GErecordGraphicOperation(op, args, dd);
+    }
+    R_NilValue()
 }
 
 /* ========================================================================
@@ -1290,12 +1272,15 @@ pub fn C_path(args: SEXP) -> SEXP {
             }
         }
 
-        let gp = gpptr(dd) as *mut GPar;
-        if INTEGER(lty).add(0).read() == NA_INTEGER {
-            (*gp).lty = (*(dpptr(dd) as *mut GPar)).lty;
-        } else {
-            (*gp).lty = INTEGER(lty).add(0).read();
-        }
+        let lty = INTEGER(lty).add(0).read();
+        let display_lty = super::par::dpar_get(dd).map(|dp| dp.lty);
+        super::par::with_gpar_mut(dd, |gp| {
+            gp.lty = if lty == NA_INTEGER {
+                display_lty.unwrap_or(gp.lty)
+            } else {
+                lty
+            };
+        });
 
         GPath(
             xx,
@@ -1508,16 +1493,17 @@ pub fn C_dend(args: SEXP) -> SEXP {
 
         GSavePars(dd);
         ProcessInlinePars(args, dd);
-        let gp = gpptr(dd) as *mut GPar;
-        (*gp).cex = (*gp).cexbase * (*gp).cex;
+        super::par::with_gpar_mut(dd, |gp| gp.cex *= gp.cexbase);
         let offset = GConvertYUnits(GStrWidth(Some(c"m"), CE_ANY, INCHES, dd), INCHES, USER, dd);
         with_dendrogram_state(|state| {
             state.offset = offset;
         });
 
-        if (*gp).xpd < 1 {
-            (*gp).xpd = 1;
-        }
+        super::par::with_gpar_mut(dd, |gp| {
+            if gp.xpd < 1 {
+                gp.xpd = 1;
+            }
+        });
 
         GMode(1, dd);
         drawdend(n, &mut x, &mut y, dnd_llabels, dd);
@@ -1587,8 +1573,7 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
 
         GSavePars(dd);
         ProcessInlinePars(args, dd);
-        let gp = gpptr(dd) as *mut GPar;
-        (*gp).cex = (*gp).cexbase * (*gp).cex;
+        super::par::with_gpar_mut(dd, |gp| gp.cex *= gp.cexbase);
         let offset = GStrWidth(Some(c"m"), CE_ANY, INCHES, dd);
         with_dendrogram_state(|state| {
             state.offset = offset;
@@ -1613,7 +1598,7 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
                 ymin = m;
             }
         }
-        pin = (*gp).pin[1];
+        pin = super::par::gpar_get(dd).map_or(0.0, |gp| gp.pin[1]);
 
         for i in 0..=(n as usize) {
             str = STRING_ELT(llabels, i as R_xlen_t);
@@ -1771,10 +1756,10 @@ mod tests {
     fn trunk_r90451_empty_colour_is_treated_as_na() {
         let _session = RSession::new();
 
-            let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-            assert_eq!(isNAcol(empty, 0, 0), 1);
-            assert_eq!(isNAcol(crate::sexp::globals::R_NilValue(), 0, 0), 1);
-        }
+        let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        assert_eq!(isNAcol(empty, 0, 0), 1);
+        assert_eq!(isNAcol(crate::sexp::globals::R_NilValue(), 0, 0), 1);
+    }
 
     #[test]
     fn dendrogram_state_is_session_local_on_same_thread() {
