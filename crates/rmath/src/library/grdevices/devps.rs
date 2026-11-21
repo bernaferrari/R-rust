@@ -1306,7 +1306,7 @@ fn makeCIDFont() -> cidfontinfo {
     Box::into_raw(Box::new(CIDFontInfo { name: [0; 50] }))
 }
 
-unsafe fn makeType1Font() -> type1fontinfo {
+fn makeType1Font() -> type1fontinfo {
     unsafe {
         // calloc-equivalent: callers fill the metric fields they care about.
         Box::into_raw(Box::new(std::mem::zeroed::<Type1FontInfo>()))
@@ -1331,7 +1331,7 @@ unsafe fn freeType1Font(font: type1fontinfo) {
     }
 }
 
-unsafe fn makeEncoding() -> encodinginfo {
+fn makeEncoding() -> encodinginfo {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<EncodingInfo>())) }
 }
 
@@ -1343,11 +1343,11 @@ unsafe fn freeEncoding(enc: encodinginfo) {
     }
 }
 
-unsafe fn makeCIDFontFamily() -> cidfontfamily {
+fn makeCIDFontFamily() -> cidfontfamily {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<CIDFontFamily>())) }
 }
 
-unsafe fn makeFontFamily() -> type1fontfamily {
+fn makeFontFamily() -> type1fontfamily {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<T1FontFamily>())) }
 }
 
@@ -1382,11 +1382,11 @@ unsafe fn freeFontFamily(family: type1fontfamily) {
     }
 }
 
-unsafe fn makeCIDFontList() -> cidfontlist {
+fn makeCIDFontList() -> cidfontlist {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<CIDFontList>())) }
 }
 
-unsafe fn makeFontList() -> type1fontlist {
+fn makeFontList() -> type1fontlist {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<T1FontList>())) }
 }
 
@@ -1428,7 +1428,7 @@ unsafe fn freeDeviceFontList(fl: type1fontlist) {
     }
 }
 
-unsafe fn makeEncList() -> encodinglist {
+fn makeEncList() -> encodinglist {
     unsafe { Box::into_raw(Box::new(std::mem::zeroed::<EncList>())) }
 }
 
@@ -1603,7 +1603,7 @@ fn getFont(_family: *const c_char, _fontdbname: *const c_char) -> SEXP {
     R_NilValue()
 }
 
-unsafe fn fontMetricsFileName(
+fn fontMetricsFileName(
     _family: *const c_char,
     _faceIndex: c_int,
     _fontdbname: *const c_char,
@@ -1611,7 +1611,7 @@ unsafe fn fontMetricsFileName(
     ptr::null()
 }
 
-unsafe fn getFontType(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
+fn getFontType(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
     ptr::null()
 }
 
@@ -1649,23 +1649,23 @@ unsafe fn isCIDFont(
     }
 }
 
-unsafe fn getFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
+fn getFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn getFontName(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
+fn getFontName(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn getFontCMap(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
+fn getFontCMap(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn getCIDFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
+fn getCIDFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn getCIDFontPDFResource(_family: *const c_char) -> *const c_char {
+fn getCIDFontPDFResource(_family: *const c_char) -> *const c_char {
     ptr::null()
 }
 
@@ -2134,7 +2134,7 @@ struct PDFCurrent {
 
 /// Check whether a Type 1 font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
-pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
+pub fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asLogical;
         use crate::sexp::constructors::Rf_ScalarLogical;
@@ -2151,7 +2151,7 @@ pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 
 /// Check whether a CID font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
-pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
+pub fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asLogical;
         use crate::sexp::constructors::Rf_ScalarLogical;
@@ -2170,14 +2170,16 @@ pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 /// Opens the requested file and registers the device. Drawing commands are
 /// not written; like [`PDF`] this mirrors GNU device bookkeeping so the
 /// interpreter's device state tracks the open postscript() device.
-pub unsafe extern "C-unwind" fn PostScript(args: SEXP) -> SEXP {
+pub fn PostScript(args: SEXP) -> SEXP {
     unsafe {
         if !args.is_null() && args != R_NilValue() {
             let file = CADR(args);
             if !file.is_null() && TYPEOF(file) == SEXPTYPE::STRSXP && LENGTH(file) > 0 {
-                let chars = CHAR(STRING_ELT(file, 0));
-                if !chars.is_null() {
-                    if let Ok(path) = CStr::from_ptr(chars).to_str() {
+                let chars = STRING_ELT(file, 0);
+                if chars != crate::sexp::globals::R_NaString() {
+                    if let Ok(path) =
+                        String::from_utf8(crate::sexp::accessors::charsxp_as_utf8(chars))
+                    {
                         if !path.is_empty() {
                             let _ = std::fs::write(path, b"%!PS-Adobe-3.0\n%%Pages: 1\n");
                         }
@@ -2229,7 +2231,7 @@ pub unsafe extern "C-unwind" fn PostScript(args: SEXP) -> SEXP {
 }
 
 /// Open the ordinary grDevices PDF with a device-owned recording.
-pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
+pub fn PDF(args: SEXP) -> SEXP {
     use crate::sexp::context::r_error;
     let mut args = if args.is_null() {
         R_NilValue()
@@ -2330,8 +2332,8 @@ pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe fn pdf_string(value: SEXP, default: &str) -> String {
-    unsafe {
+fn pdf_string(value: SEXP, default: &str) -> String {
+    {
         if value == R_NilValue() {
             return default.to_owned();
         }
@@ -2341,10 +2343,8 @@ unsafe fn pdf_string(value: SEXP, default: &str) -> String {
         {
             crate::sexp::context::r_error("invalid PDF device argument");
         }
-        CStr::from_ptr(CHAR(STRING_ELT(value, 0)))
-            .to_str()
+        String::from_utf8(crate::sexp::accessors::charsxp_as_utf8(STRING_ELT(value, 0)))
             .unwrap_or_else(|_| crate::sexp::context::r_error("invalid PDF argument encoding"))
-            .to_owned()
     }
 }
 
@@ -2444,7 +2444,7 @@ mod tests {
     #[test]
     fn pdf_device_opens_without_error() {
         let _session = RSession::new();
-        let result = unsafe { PDF(R_NilValue()) };
-        assert!(result.is_null() || result == unsafe { R_NilValue() });
+        let result = PDF(R_NilValue());
+        assert!(result.is_null() || result == R_NilValue());
     }
 }

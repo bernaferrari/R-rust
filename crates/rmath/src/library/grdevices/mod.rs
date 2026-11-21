@@ -20,10 +20,10 @@ mod stubs;
 pub(crate) mod target;
 
 unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devps::PDF(args) }
+    devps::PDF(args)
 }
 unsafe extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devps::PostScript(args) }
+    devps::PostScript(args)
 }
 unsafe extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     init::cairoProps(which)
