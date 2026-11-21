@@ -232,7 +232,7 @@ pub fn countFilenames(strbuf: *const c_char) -> c_int {
     let mut offset = 0usize;
     loop {
         // Step through the caller's multi-NUL-terminated buffer.
-        let current = unsafe { strbuf.add(offset) };
+        let current = strbuf.wrapping_add(offset);
         let Some(segment) = cstr(current) else {
             break;
         };

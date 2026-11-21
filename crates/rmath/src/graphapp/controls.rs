@@ -25,7 +25,10 @@ fn list_length(list: *const *const c_char) -> c_int {
     }
     let mut len = 0;
     loop {
-        let item = unsafe { *list.add(len as usize) };
+        // Walk the caller's NULL-terminated pointer array.
+        let item = ptr_ref(list.wrapping_add(len as usize))
+            .copied()
+            .unwrap_or(ptr::null());
         if item.is_null() {
             break;
         }
