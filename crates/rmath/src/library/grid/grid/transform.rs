@@ -1,10 +1,13 @@
 use super::*;
+use crate::library::grid::{
+    alloc_vector, duplicate, integer_elt, logical_elt, protect, real_elt, set_real_elt,
+    set_vector_elt,
+};
 
-pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64, LTransform, f64) {
-    use crate::sexp::accessors::REAL_ELT;
-
-    unsafe {
-        let (device_width, device_height) = getDeviceSize(dd);
+pub fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64, LTransform, f64) {
+    {
+        // SAFETY: `dd` is the live device pointer passed by the caller.
+        let (device_width, device_height) = unsafe { getDeviceSize(dd) };
         if deviceChanged(device_width, device_height, currentvp) {
             calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
         }
@@ -16,7 +19,7 @@ pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64
 
         let real_or = |value, fallback| {
             if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
-                REAL_ELT(value, 0)
+                real_elt(value, 0)
             } else {
                 fallback
             }
@@ -29,7 +32,7 @@ pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64
         if TYPEOF(matrix) == SEXPTYPE::REALSXP && XLENGTH(matrix) >= 9 {
             for column in 0..3 {
                 for (row, output_row) in transform.iter_mut().enumerate() {
-                    output_row[column] = REAL_ELT(matrix, (column * 3 + row) as c_int);
+                    output_row[column] = real_elt(matrix, (column * 3 + row) as R_xlen_t);
                 }
             }
         }
@@ -41,11 +44,12 @@ pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64
  * L_convert
  * ============================== */
 
-pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
@@ -61,23 +65,23 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         let nx = unitLength(x);
-        let answer = Rf_allocVector(SEXPTYPE::REALSXP, nx);
+        let answer = alloc_vector(SEXPTYPE::REALSXP, nx);
         let _answer_guard = protect(answer);
         let unitto_len = LENGTH(unitto).max(1);
         let from_axis = if LENGTH(whatfrom) > 0 {
-            *INTEGER(whatfrom).add(0)
+            integer_elt(whatfrom, 0)
         } else {
             0
         };
         let to_axis = if LENGTH(whatto) > 0 {
-            *INTEGER(whatto).add(0)
+            integer_elt(whatto, 0)
         } else {
             0
         };
 
         for i in 0..nx {
             updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
-            let to_unit = *INTEGER(unitto).add((i % unitto_len) as usize);
+            let to_unit = integer_elt(unitto, (i % unitto_len) as R_xlen_t);
             let mut rel_convert = (unitUnit(x, i) == L_NATIVE || unitUnit(x, i) == L_NPC)
                 && (to_unit == L_NATIVE || to_unit == L_NPC)
                 && ((from_axis == to_axis)
@@ -210,7 +214,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
                 _ => value_in,
             };
 
-            *REAL(answer).add(i as usize) = value_in;
+            set_real_elt(answer, i as R_xlen_t, value_in);
         }
 
         answer
@@ -221,11 +225,12 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
  * L_devLoc
  * ============================== */
 
-pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
@@ -238,14 +243,14 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         gcontextFromgpar(currentgp, 0, gc, dd);
 
         let maxn = unitLength(x).max(unitLength(y));
-        let devx = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let devx = alloc_vector(SEXPTYPE::REALSXP, maxn);
         let _devx_guard = protect(devx);
-        let devy = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let devy = alloc_vector(SEXPTYPE::REALSXP, maxn);
         let _devy_guard = protect(devy);
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let result = alloc_vector(SEXPTYPE::VECSXP, 2);
         let _result_guard = protect(result);
         let as_device =
-            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
+            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && logical_elt(device, 0) != 0;
 
         for i in 0..maxn {
             let mut xx: c_double;
@@ -259,15 +264,19 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
                 vpHeightCM,
                 dd, &transform);
             if as_device {
-                xx = toDeviceX(xx, GE_INCHES, dd);
-                yy = toDeviceY(yy, GE_INCHES, dd);
+                // SAFETY: `dd` is the live device; `toDevice*` are engine
+                // coordinate bridges over the device state.
+                unsafe {
+                    xx = toDeviceX(xx, GE_INCHES, dd);
+                    yy = toDeviceY(yy, GE_INCHES, dd);
+                }
             }
-            *REAL(devx).add(i as usize) = xx;
-            *REAL(devy).add(i as usize) = yy;
+            set_real_elt(devx, i as R_xlen_t, xx);
+            set_real_elt(devy, i as R_xlen_t, yy);
         }
 
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
+        set_vector_elt(result, 0 as R_xlen_t, devx);
+        set_vector_elt(result, 1 as R_xlen_t, devy);
         result
     }
 }
@@ -276,11 +285,12 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * L_devDim
  * ============================== */
 
-pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
@@ -293,14 +303,14 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         gcontextFromgpar(currentgp, 0, gc, dd);
 
         let maxn = unitLength(x).max(unitLength(y));
-        let devx = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let devx = alloc_vector(SEXPTYPE::REALSXP, maxn);
         let _devx_guard = protect(devx);
-        let devy = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let devy = alloc_vector(SEXPTYPE::REALSXP, maxn);
         let _devy_guard = protect(devy);
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let result = alloc_vector(SEXPTYPE::VECSXP, 2);
         let _result_guard = protect(result);
         let as_device =
-            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
+            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && logical_elt(device, 0) != 0;
 
         for i in 0..maxn {
             let mut xx: c_double;
@@ -315,15 +325,19 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
                 dd,
                 rotationAngle);
             if as_device {
-                xx = toDeviceWidth(xx, GE_INCHES, dd);
-                yy = toDeviceHeight(yy, GE_INCHES, dd);
+                // SAFETY: `dd` is the live device; `toDevice*` are engine
+                // coordinate bridges over the device state.
+                unsafe {
+                    xx = toDeviceWidth(xx, GE_INCHES, dd);
+                    yy = toDeviceHeight(yy, GE_INCHES, dd);
+                }
             }
-            *REAL(devx).add(i as usize) = xx;
-            *REAL(devy).add(i as usize) = yy;
+            set_real_elt(devx, i as R_xlen_t, xx);
+            set_real_elt(devy, i as R_xlen_t, yy);
         }
 
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
+        set_vector_elt(result, 0 as R_xlen_t, devx);
+        set_vector_elt(result, 1 as R_xlen_t, devy);
         result
     }
 }
@@ -332,9 +346,10 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * L_layoutRegion
  * ============================== */
 
-pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
         if isNull(viewportLayout(currentvp)) {
             return R_NilValue();
@@ -355,7 +370,7 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
             && TYPEOF(viewportWidthCM(currentvp)) == SEXPTYPE::REALSXP
             && LENGTH(viewportWidthCM(currentvp)) > 0
         {
-            *REAL(viewportWidthCM(currentvp))
+            real_elt(viewportWidthCM(currentvp), 0)
         } else {
             1.0
         };
@@ -363,7 +378,7 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
             && TYPEOF(viewportHeightCM(currentvp)) == SEXPTYPE::REALSXP
             && LENGTH(viewportHeightCM(currentvp)) > 0
         {
-            *REAL(viewportHeightCM(currentvp))
+            real_elt(viewportHeightCM(currentvp), 0)
         } else {
             1.0
         };
@@ -377,12 +392,12 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
         let h_cm =
             transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
 
-        let answer = Rf_allocVector(SEXPTYPE::REALSXP, 4);
+        let answer = alloc_vector(SEXPTYPE::REALSXP, 4);
         let _answer_guard = protect(answer);
-        *REAL(answer).add(0) = x_cm;
-        *REAL(answer).add(1) = y_cm;
-        *REAL(answer).add(2) = w_cm;
-        *REAL(answer).add(3) = h_cm;
+        set_real_elt(answer, 0, x_cm);
+        set_real_elt(answer, 1, y_cm);
+        set_real_elt(answer, 2, w_cm);
+        set_real_elt(answer, 3, h_cm);
         answer
     }
 }
