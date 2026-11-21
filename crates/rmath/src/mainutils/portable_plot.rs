@@ -113,6 +113,46 @@ fn transparent() -> Color {
         a: 0,
     }
 }
+
+// ---------------------------------------------------------------------------
+// Checked SEXP boundary helpers
+// ---------------------------------------------------------------------------
+
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: plotting helpers only run inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    )
+}
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+fn mutable_vector(x: SEXP) -> crate::sexp::object::SexpMut<'static> {
+    node_factory()
+        .wrap(x)
+        .and_then(crate::sexp::object::SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Tag name of a pairlist cell; matches `CHAR(PRINTNAME(tag))`.
+fn tag_name(tag: SEXP) -> String {
+    // SAFETY: `tag` is a live symbol SEXP, so PRINTNAME yields a live CHARSXP
+    // and CHAR a NUL-terminated string valid for the borrow.
+    unsafe { std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn par_color(name: &str, default: Color) -> Color {
     // Decode owned parameter values without allocating R objects while a device
     // is borrowed. Numeric colors are palette indices, never packed RGBA.
@@ -159,8 +199,8 @@ fn par_numbers(name: &str) -> Vec<f64> {
         _ => vec![],
     }
 }
-unsafe fn values(x: SEXP) -> Vec<f64> {
-    unsafe {
+fn values(x: SEXP) -> Vec<f64> {
+    {
         if x == R_NilValue() {
             return vec![];
         }
@@ -170,15 +210,16 @@ unsafe fn values(x: SEXP) -> Vec<f64> {
         ) {
             base_error("plot data must be numeric");
         }
-        (0..XLENGTH(x))
+        let x = wrapped(x);
+        (0..x.len())
             .map(|i| {
-                if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
+                if x.typeof_() == SEXPTYPE::REALSXP {
+                    checked(x.try_real_elt(i))
                 } else {
-                    let v = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                        *INTEGER(x).add(i as usize)
+                    let v = if x.typeof_() == SEXPTYPE::INTSXP {
+                        checked(x.try_integer_elt(i))
                     } else {
-                        *LOGICAL(x).add(i as usize)
+                        checked(x.try_logical_elt(i))
                     };
                     if v == i32::MIN { f64::NAN } else { v as f64 }
                 }
@@ -186,8 +227,8 @@ unsafe fn values(x: SEXP) -> Vec<f64> {
             .collect()
     }
 }
-unsafe fn bindings(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
-    unsafe {
+fn bindings(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
+    {
         let mut slots = vec![None; formals.len()];
         let mut positional = vec![];
         let mut p = args;
@@ -196,7 +237,7 @@ unsafe fn bindings(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
             if tag.is_null() || tag == R_NilValue() {
                 positional.push(CAR(p));
             } else {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                let name = tag_name(tag);
                 if let Some(i) = formals.iter().position(|x| *x == name) {
                     if slots[i].replace(CAR(p)).is_some() {
                         base_error("formal argument matched by multiple actual arguments");
@@ -220,8 +261,8 @@ unsafe fn bindings(args: SEXP, formals: &[&str]) -> Vec<SEXP> {
 fn arg(args: SEXP, name: &str) -> SEXP {
     arg_by_name_or_position(args, &[name], usize::MAX)
 }
-unsafe fn scalar(args: SEXP, name: &str, default: f64) -> f64 {
-    unsafe {
+fn scalar(args: SEXP, name: &str, default: f64) -> f64 {
+    {
         let x = arg(args, name);
         if x == R_NilValue() {
             return default;
@@ -233,8 +274,8 @@ unsafe fn scalar(args: SEXP, name: &str, default: f64) -> f64 {
         v[0]
     }
 }
-unsafe fn label(args: SEXP, name: &str) -> Option<String> {
-    unsafe {
+fn label(args: SEXP, name: &str) -> Option<String> {
+    {
         let x = arg(args, name);
         if x == R_NilValue() {
             None
@@ -245,8 +286,8 @@ unsafe fn label(args: SEXP, name: &str) -> Option<String> {
         }
     }
 }
-unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
-    unsafe {
+fn colors(x: SEXP, default: Color) -> Vec<Color> {
+    {
         if x == R_NilValue() {
             return vec![default];
         }
@@ -262,7 +303,11 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
         }
         (0..n)
             .map(|i| {
-                let c = crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff);
+                // SAFETY: `x` is a live atomic vector of the checked length;
+                // inRGBpar3 reads element `i` and returns a packed color.
+                let c = unsafe {
+                    crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff)
+                };
                 Color {
                     r: c as u8,
                     g: (c >> 8) as u8,
@@ -273,8 +318,8 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
             .collect()
     }
 }
-unsafe fn point_size(args: SEXP) -> f32 {
-    unsafe {
+fn point_size(args: SEXP) -> f32 {
+    {
         scalar(
             args,
             "cex",
@@ -329,8 +374,8 @@ fn line_type(name: &str) -> LineType {
         blank: name == "blank",
     }
 }
-unsafe fn style(args: SEXP, size: f32) -> Style {
-    unsafe {
+fn style(args: SEXP, size: f32) -> Style {
+    {
         let foreground = colors(arg(args, "col"), par_color("fg", Color::BLACK));
         let background = colors(arg(args, "bg"), par_color("bg", transparent()));
         let pch = arg(args, "pch");
@@ -370,7 +415,8 @@ unsafe fn style(args: SEXP, size: f32) -> Style {
             par_numbers("lwd")
         } else {
             let result = (|| {
-                let owner = crate::sexp::owner::OwnerToken::current()?;
+                // SAFETY: runs inside an evaluated R call with a live session.
+                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?;
                 let _pin = owner.pin()?;
                 let input = owner.sexp(lwd)?.into_owned()?;
                 let raw = crate::mainutils::coerce::coerceVector(
@@ -425,14 +471,14 @@ unsafe fn style(args: SEXP, size: f32) -> Style {
         }
     }
 }
-unsafe fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
-    unsafe {
+fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
+    {
         let a = bindings(args, &["x", "y"]);
         let mut x = a[0];
         let mut y = a[1];
         if y == R_NilValue() && TYPEOF(x) == SEXPTYPE::VECSXP {
             let names =
-                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             if names != R_NilValue() {
                 for i in 0..XLENGTH(x) {
                     match elt_to_string(names, i).as_str() {
@@ -444,22 +490,31 @@ unsafe fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
             }
         }
         if y == R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            let x = wrapped(x);
             return (
-                (0..XLENGTH(x))
-                    .map(|i| (*COMPLEX(x).add(i as usize)).r)
+                (0..x.len())
+                    .map(|i| checked(x.try_complex_elt(i)).r)
                     .collect(),
-                (0..XLENGTH(x))
-                    .map(|i| (*COMPLEX(x).add(i as usize)).i)
+                (0..x.len())
+                    .map(|i| checked(x.try_complex_elt(i)).i)
                     .collect(),
             );
         }
         let mut xv = coordinate_values(x);
         let yv = if y == R_NilValue() {
             let dim =
-                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
-            if dim != R_NilValue() && XLENGTH(dim) == 2 && *INTEGER(dim).add(1) == 2 {
-                let second = xv.split_off(*INTEGER(dim) as usize);
-                second
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if dim != R_NilValue() && XLENGTH(dim) == 2 {
+                let dimv = wrapped(dim);
+                let nrow = checked(dimv.try_integer_elt(0));
+                let ncol = checked(dimv.try_integer_elt(1));
+                if ncol == 2 {
+                    xv.split_off(nrow as usize)
+                } else {
+                    let y = xv;
+                    xv = (1..=y.len()).map(|i| i as f64).collect();
+                    y
+                }
             } else {
                 let y = xv;
                 xv = (1..=y.len()).map(|i| i as f64).collect();
@@ -476,13 +531,14 @@ unsafe fn xy(args: SEXP) -> (Vec<f64>, Vec<f64>) {
 }
 /// GNU xy.coords coerces character coordinates with as.double, preserving
 /// coercion warnings and letting the usual finite-limit check reject all NA.
-unsafe fn coordinate_values(value: SEXP) -> Vec<f64> {
-    unsafe {
+fn coordinate_values(value: SEXP) -> Vec<f64> {
+    {
         if TYPEOF(value) != SEXPTYPE::STRSXP {
             return values(value);
         }
         let result = (|| {
-            let owner = crate::sexp::owner::OwnerToken::current()?;
+            // SAFETY: runs inside an evaluated R call with a live session.
+            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?;
             let _pin = owner.pin()?;
             let input = owner.sexp(value)?.into_owned()?;
             let raw = crate::mainutils::coerce::coerceVector(
@@ -575,8 +631,8 @@ fn set_log_axp(name: &str, lo: f64, hi: f64, axis: usize) {
     let axp = crate::library::grdevices::axis_scales::axis_parameters([lo, hi], intervals, true);
     set_plot_parameter(name, ParValue::Real(axp.to_vec()));
 }
-unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, bool) {
-    unsafe {
+fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, bool) {
+    {
         let window_args = if new {
             None
         } else {
@@ -638,12 +694,10 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
                     if logs[axis] { "TRUE" } else { "F" }
                 ))
                 .unwrap_or_default();
-                unsafe {
-                    crate::mainutils::errors::warningcall(
-                        crate::sexp::globals::R_NilValue(),
-                        fmt.as_ptr(),
-                    );
-                }
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    fmt.as_ptr(),
+                );
                 let fix = |v: f64| {
                     if v.is_finite() {
                         v
@@ -795,12 +849,12 @@ fn clear_manual_clip() {
     });
 }
 
-unsafe fn clip_rect(c: Coordinates, args: SEXP) -> [f32; 4] {
+fn clip_rect(c: Coordinates, args: SEXP) -> [f32; 4] {
     let value = arg(args, "xpd");
-    let value = if value == unsafe { R_NilValue() } {
+    let value = if value == R_NilValue() {
         par_numbers("xpd").first().copied().unwrap_or(0.)
     } else {
-        unsafe { values(value).first().copied().unwrap_or(0.) }
+        values(value).first().copied().unwrap_or(0.)
     };
     let code = xpd_region_code(value);
     // GNU GClip: a manual clip() rectangle stays in force while the effective
@@ -853,7 +907,7 @@ fn device_y_to_user(c: &Coordinates, d: f64) -> f64 {
 /// GESetClip does. The immediate device call also records the state change in
 /// the scene display list.
 pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
-    unsafe {
+    {
         let mut cell = args;
         let mut corners = [0f64; 4];
         for (index, name) in ["x1", "x2", "y1", "y2"].into_iter().enumerate() {
@@ -1171,12 +1225,12 @@ pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
         let from_arg = rest.try_car()?;
         let to_cell = rest.try_cdr()?;
         let to_arg = to_cell.try_car()?;
-        let from = unsafe { crate::mainutils::coerce::asInteger(from_arg.as_raw()) };
+        let from = crate::mainutils::coerce::asInteger(from_arg.as_raw());
         owner.require_active()?;
         if from == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&from) {
             base_error("invalid 'from' argument");
         }
-        let to = unsafe { crate::mainutils::coerce::asInteger(to_arg.as_raw()) };
+        let to = crate::mainutils::coerce::asInteger(to_arg.as_raw());
         owner.require_active()?;
         if to == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&to) {
             base_error("invalid 'to' argument");
@@ -1835,20 +1889,16 @@ fn pretty_linear_ticks(mut lo: f64, mut hi: f64, requested: f64) -> Vec<f64> {
     }
     let mut intervals = requested as c_int;
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
-    // SAFETY: all three pointers refer to live local values, and R_pretty only
-    // writes those values according to the documented GEPretty contract.
-    let unit = unsafe {
-        R_pretty(
-            &mut lo,
-            &mut hi,
-            &mut intervals,
-            1,
-            0.25,
-            high_u_fact.as_ptr(),
-            2,
-            0,
-        )
-    };
+    let unit = R_pretty(
+        &mut lo,
+        &mut hi,
+        &mut intervals,
+        1,
+        0.25,
+        high_u_fact.as_ptr(),
+        2,
+        0,
+    );
     if !unit.is_finite() || unit <= 0. || !lo.is_finite() || !hi.is_finite() {
         base_error("automatic axis tick spacing is not finite");
     }
@@ -2287,12 +2337,14 @@ fn box_path(target: &mut dyn DrawTarget, c: Coordinates, color: Color) {
     path.stroke = Stroke::new(1., color);
     target.draw_path(&path);
 }
-unsafe fn title_labels(args: SEXP) -> Vec<Option<crate::mainutils::plotmath::Label>> {
-    unsafe {
+fn title_labels(args: SEXP) -> Vec<Option<crate::mainutils::plotmath::Label>> {
+    {
         ["main", "xlab", "ylab", "sub"]
             .iter()
             .map(|name| {
-                crate::mainutils::plotmath::labels(arg(args, name))
+                // SAFETY: `args` is the live argument list of an evaluated
+                // call; labels reads its elements without escaping them.
+                unsafe { crate::mainutils::plotmath::labels(arg(args, name)) }
                     .into_iter()
                     .next()
             })
@@ -2405,11 +2457,11 @@ fn titles(
 }
 fn invisible() -> SEXP {
     crate::sexp::globals::set_R_Visible(0);
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
-    unsafe {
+    {
         let (x, y) = xy(args);
         let style = style(args, point_size(args));
         let kind = label(args, "type").unwrap_or_else(|| "p".into());
@@ -2443,7 +2495,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
 }
 
 pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
-    unsafe {
+    {
         if name == "plot.new" {
             // GNU plot.new calls GEcurrentDevice first. With no device open
             // that evaluates options("device"); a closure that opens nothing
@@ -2452,7 +2504,9 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             // open the default pdf in the working directory.
             let backend_open = crate::library::grdevices::device_registry::has_active_target();
             if !backend_open {
-                let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
+                // SAFETY: GEcurrentDevice opens/queries the session's device
+                // registry during an evaluated graphics call.
+                let _dev = unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() };
             }
             let (c, clear) = coordinates(args, &[0., 1.], &[0., 1.], true);
             install(c);
@@ -2475,12 +2529,14 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
         set_plot_parameter("new", ParValue::Logical(vec![0]));
         // GNU graphics natives with dedicated portable implementations run
         // before the generic decode (erase must not require a plot frame).
-        if let Some(result) = graphics_natives::dispatch(name, args) {
+        // SAFETY: `args` is the live argument list of an evaluated call.
+        if let Some(result) = unsafe { graphics_natives::dispatch(name, args) } {
             return result;
         }
         let c = current();
         if name == "mtext" {
-            return mtext::draw(c, args);
+            // SAFETY: `args` is the live argument list of an evaluated call.
+            return unsafe { mtext::draw(c, args) };
         }
         if name == "title" {
             let labels = title_labels(args);
@@ -2674,14 +2730,17 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 if x.is_empty() || y.is_empty() || labels == R_NilValue() {
                     return invisible();
                 }
-                let text = crate::mainutils::plotmath::labels(labels);
+                // SAFETY: `labels` is a live element of the call's arguments.
+                let text = unsafe { crate::mainutils::plotmath::labels(labels) };
                 if text.is_empty() {
                     return invisible();
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
                 let count = x.len().max(y.len());
-                let parameters =
-                    crate::library::graphics::text_metrics::drawing_parameters(args, count);
+                // SAFETY: `args` is the live argument list of an evaluated call.
+                let parameters = unsafe {
+                    crate::library::graphics::text_metrics::drawing_parameters(args, count)
+                };
                 let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for (i, mut text_params) in parameters.into_iter().enumerate() {
@@ -2711,7 +2770,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                         vec![]
                     }
                 } else {
-                    crate::mainutils::plotmath::labels(a[2])
+                    // SAFETY: `a[2]` is a live element of the call's arguments.
+                    unsafe { crate::mainutils::plotmath::labels(a[2]) }
                 };
                 if !at.is_empty()
                     && !labels.is_empty()
@@ -2735,8 +2795,9 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 );
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, ticks.len() as R_xlen_t);
                 if !result.is_null() {
+                    let mut out = mutable_vector(result);
                     for (i, tick) in ticks.iter().enumerate() {
-                        *REAL(result).add(i) = *tick;
+                        checked(out.try_set_real_elt(i as R_xlen_t, *tick));
                     }
                 }
                 return result;
@@ -2749,19 +2810,20 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
 
 /// Decode all R arguments before borrowing the live renderer.
 pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
-    unsafe { raster_image_input(args, false) }
+    raster_image_input(args, false)
 }
 
 pub(crate) unsafe fn native_raster_image(args: SEXP) -> SEXP {
-    unsafe { raster_image_input(args, true) }
+    raster_image_input(args, true)
 }
 
-unsafe fn raster_image_input(args: SEXP, native_payload: bool) -> SEXP {
-    unsafe {
+fn raster_image_input(args: SEXP, native_payload: bool) -> SEXP {
+    {
+        // SAFETY: `args` is the live argument list of an evaluated call.
         let request = if native_payload {
-            crate::mainutils::graphics_raster::parse_native_raster_image(args)
+            unsafe { crate::mainutils::graphics_raster::parse_native_raster_image(args) }
         } else {
-            crate::mainutils::graphics_raster::parse_raster_image(args)
+            unsafe { crate::mainutils::graphics_raster::parse_raster_image(args) }
         };
         let coords = current();
         if coords.log.iter().any(|log| *log) {
@@ -2785,3 +2847,4 @@ mod color_defaults_tests;
 #[cfg(all(test, feature = "renderplot-device"))]
 #[path = "portable_plot/limits_tests.rs"]
 mod limits_tests;
+
