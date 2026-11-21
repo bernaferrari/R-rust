@@ -1878,7 +1878,7 @@ mod head_tail_n_tests {
     use crate::sexp::globals::{R_NaString, R_NilValue};
     use crate::sexp::protect::protect;
 
-    use super::{do_head, do_tail};
+    use super::{charsxp_text, do_head, do_tail};
 
     fn describe_sexp(value: SEXP) -> String {
         unsafe {
