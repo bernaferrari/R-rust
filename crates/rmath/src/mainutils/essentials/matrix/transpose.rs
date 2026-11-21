@@ -506,7 +506,7 @@ pub fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, String> {
-    unsafe {
+    {
         if !is_atomic_vector_type(TYPEOF(value)) {
             return Err("invalid second argument, must be vector or NULL".to_string());
         }
