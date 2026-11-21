@@ -553,7 +553,7 @@ pub fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `array(data, dim, dimnames)` — create an array with recycled data.
 pub fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let data = arg_by_name_or_position(args, &["data"], 0);
         let dim_arg = arg_by_name_or_position(args, &["dim"], 1);
         let dimnames = arg_by_name_or_position(args, &["dimnames"], 2);
