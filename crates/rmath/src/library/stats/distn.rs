@@ -111,7 +111,9 @@ fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, fro
     let attributes = source
         .try_attrib()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let copied = crate::main::duplicate::shallow_duplicate(attributes.as_raw());
+    // The owner is active; the checked attribute root keeps the source graph
+    // live across duplication and protection.
+    let copied = crate::mainutils::seq::shallow_duplicate(attributes.as_raw());
     let _copied = protect(copied);
     owner
         .require_active()
@@ -266,7 +268,7 @@ fn math_recycle<const N: usize, const F: usize>(
 
 fn math2_1(a: SEXP, b: SEXP, i: SEXP, compute: fn(c_double, c_double, bool) -> f64) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b], [i], |[a, b], [i]| compute(a, b, i))
 }
 
@@ -278,7 +280,7 @@ fn math2_2(
     compute: fn(c_double, c_double, bool, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b], [i, j], |[a, b], [i, j]| compute(a, b, i, j))
 }
 
@@ -290,7 +292,7 @@ fn math3_1(
     compute: fn(c_double, c_double, c_double, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b, c], [i], |[a, b, c], [i]| compute(a, b, c, i))
 }
 
@@ -303,7 +305,7 @@ fn math3_2(
     compute: fn(c_double, c_double, c_double, bool, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b, c], [i, j], |[a, b, c], [i, j]| {
         compute(a, b, c, i, j)
     })
@@ -318,7 +320,7 @@ fn math4_1(
     compute: fn(c_double, c_double, c_double, c_double, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b, c, d], [i], |[a, b, c, d], [i]| {
         compute(a, b, c, d, i)
     })
@@ -334,7 +336,7 @@ fn math4_2(
     compute: fn(c_double, c_double, c_double, c_double, bool, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    let owner = crate::library::stats::checked::current_owner();
     math_recycle(owner, [a, b, c, d], [i, j], |[a, b, c, d], [i, j]| {
         compute(a, b, c, d, i, j)
     })

@@ -797,7 +797,7 @@ pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn c_fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     // SAFETY: forwards the validated raw SEXP ABI contract of the registered
     // fexact routine unchanged.
-    unsafe { super::fexact::Fexact(x, pars, work, smult) }
+    super::fexact::Fexact(x, pars, work, smult)
 }
 
 #[cfg(test)]

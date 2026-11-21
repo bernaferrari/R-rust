@@ -43,44 +43,42 @@ struct Columns {
 }
 
 impl Columns {
-    unsafe fn read(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> Self {
-        unsafe {
-            let dim = crate::attrib_core::getAttrib(value, crate::attrib_core::R_DimSymbol());
-            let matrix = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2;
-            let (rows, count) = if matrix {
-                (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
-            } else {
-                (XLENGTH(value) as usize, 1)
-            };
-            // Copy while the converted vector is protected. No native span is
-            // retained across result allocation or a warning callback.
-            let view = owner.sexp(value).unwrap_or_else(|error| {
+    fn read(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> Self {
+        let dim = crate::attrib_core::getAttrib(value, crate::attrib_core::R_DimSymbol());
+        let matrix = TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2;
+        let (rows, count) = if matrix {
+            (INTEGER_ELT(dim, 0) as usize, INTEGER_ELT(dim, 1) as usize)
+        } else {
+            (XLENGTH(value) as usize, 1)
+        };
+        // Copy while the converted vector is protected. No native span is
+        // retained across result allocation or a warning callback.
+        let view = owner
+            .sexp(value)
+            .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error.to_string()));
+        let length = usize::try_from(view.len()).unwrap_or_else(|_| {
+            crate::mainutils::essentials::base_error(
+                "cov/cor workspace exceeds session allocation limit",
+            )
+        });
+        let mut values = Workspace::filled(owner, length, 0.0)
+            .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
+        for (index, slot) in values.iter_mut().enumerate() {
+            *slot = view.try_real_elt(index as i64).unwrap_or_else(|error| {
                 crate::mainutils::essentials::base_error(error.to_string())
             });
-            let length = usize::try_from(view.len()).unwrap_or_else(|_| {
-                crate::mainutils::essentials::base_error(
-                    "cov/cor workspace exceeds session allocation limit",
-                )
-            });
-            let mut values = Workspace::filled(owner, length, 0.0)
-                .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
-            for (index, slot) in values.iter_mut().enumerate() {
-                *slot = view.try_real_elt(index as i64).unwrap_or_else(|error| {
-                    crate::mainutils::essentials::base_error(error.to_string())
-                });
-            }
-            owner.require_active().unwrap_or_else(|error| {
-                crate::mainutils::essentials::base_error(error.to_string())
-            });
-            if rows.checked_mul(count) != Some(values.len()) {
-                crate::mainutils::essentials::base_error("incompatible dimensions");
-            }
-            Self {
-                values,
-                rows,
-                count,
-                matrix,
-            }
+        }
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error.to_string()));
+        if rows.checked_mul(count) != Some(values.len()) {
+            crate::mainutils::essentials::base_error("incompatible dimensions");
+        }
+        Self {
+            values,
+            rows,
+            count,
+            matrix,
         }
     }
 
@@ -92,80 +90,76 @@ impl Columns {
 /// The typed .Call descriptor retains its caller's runtime admission. Original
 /// arguments and both converted vectors stay protected through publication and
 /// condition delivery; numerical work uses independent copied values.
-pub(super) unsafe fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe { corcov(x, y, na_method, kendall, Statistic::Correlation) }
+pub(super) fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+    corcov(x, y, na_method, kendall, Statistic::Correlation)
 }
 
-pub(super) unsafe fn cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe { corcov(x, y, na_method, kendall, Statistic::Covariance) }
+pub(super) fn cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+    corcov(x, y, na_method, kendall, Statistic::Covariance)
 }
 
-unsafe fn corcov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP, statistic: Statistic) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error.to_string()));
-        if x.is_null() || x == R_NilValue() {
-            crate::mainutils::essentials::base_error("'x' is NULL");
-        }
-        super::random::reject_var_on_factor(x);
-        super::random::reject_var_on_factor(y);
-        let x = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into());
-        let _x = protect(x);
-        let y_null = y.is_null() || y == R_NilValue();
-        let y = if y_null {
-            x
-        } else {
-            crate::mainutils::coerce::coerceVector(y, SEXPTYPE::REALSXP.into())
-        };
-        let _y = protect(y);
-        let xs = Columns::read(x, owner);
-        let ys = if y_null {
-            None
-        } else {
-            Some(Columns::read(y, owner))
-        };
-        let ys = ys.as_ref().unwrap_or(&xs);
-        if xs.rows != ys.rows {
-            crate::mainutils::essentials::base_error("incompatible dimensions");
-        }
-        let policy = MissingRows::from_r(na_method);
-        let kendall = crate::mainutils::coerce::asBool(kendall);
-        let (values, zero_sd) = calculate(&xs, ys, y_null, policy, kendall != 0, statistic, owner);
-        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
-        let _ans = protect(ans);
-        for (index, value) in values.iter().copied().enumerate() {
-            SET_REAL_ELT(ans, index as i32, value);
-        }
-        if xs.matrix || ys.matrix {
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _dim = protect(dim);
-            SET_INTEGER_ELT(dim, 0, xs.count as i32);
-            SET_INTEGER_ELT(dim, 1, ys.count as i32);
-            crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-            let names = |value| {
-                let dn =
-                    crate::attrib_core::getAttrib(value, crate::attrib_core::R_DimNamesSymbol());
-                if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
-                    VECTOR_ELT(dn, 1)
-                } else {
-                    R_NilValue()
-                }
-            };
-            let xn = names(x);
-            let yn = names(y);
-            if xn != R_NilValue() || yn != R_NilValue() {
-                let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _dn = protect(dn);
-                SET_VECTOR_ELT(dn, 0, crate::mainutils::duplicate::duplicate(xn));
-                SET_VECTOR_ELT(dn, 1, crate::mainutils::duplicate::duplicate(yn));
-                crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimNamesSymbol(), dn);
-            }
-        }
-        if zero_sd {
-            crate::mainutils::errors::Rf_warning1(c"the standard deviation is zero".as_ptr());
-        }
-        ans
+fn corcov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP, statistic: Statistic) -> SEXP {
+    let owner = crate::library::stats::checked::current_owner();
+    if x.is_null() || x == R_NilValue() {
+        crate::mainutils::essentials::base_error("'x' is NULL");
     }
+    super::random::reject_var_on_factor(x);
+    super::random::reject_var_on_factor(y);
+    let x = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.into());
+    let _x = protect(x);
+    let y_null = y.is_null() || y == R_NilValue();
+    let y = if y_null {
+        x
+    } else {
+        crate::mainutils::coerce::coerceVector(y, SEXPTYPE::REALSXP.into())
+    };
+    let _y = protect(y);
+    let xs = Columns::read(x, owner);
+    let ys = if y_null {
+        None
+    } else {
+        Some(Columns::read(y, owner))
+    };
+    let ys = ys.as_ref().unwrap_or(&xs);
+    if xs.rows != ys.rows {
+        crate::mainutils::essentials::base_error("incompatible dimensions");
+    }
+    let policy = MissingRows::from_r(na_method);
+    let kendall = crate::mainutils::coerce::asBool(kendall);
+    let (values, zero_sd) = calculate(&xs, ys, y_null, policy, kendall != 0, statistic, owner);
+    let ans = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
+    let _ans = protect(ans);
+    for (index, value) in values.iter().copied().enumerate() {
+        SET_REAL_ELT(ans, index as i32, value);
+    }
+    if xs.matrix || ys.matrix {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dim = protect(dim);
+        SET_INTEGER_ELT(dim, 0, xs.count as i32);
+        SET_INTEGER_ELT(dim, 1, ys.count as i32);
+        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
+        let names = |value| {
+            let dn = crate::attrib_core::getAttrib(value, crate::attrib_core::R_DimNamesSymbol());
+            if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                VECTOR_ELT(dn, 1)
+            } else {
+                R_NilValue()
+            }
+        };
+        let xn = names(x);
+        let yn = names(y);
+        if xn != R_NilValue() || yn != R_NilValue() {
+            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dn = protect(dn);
+            SET_VECTOR_ELT(dn, 0, crate::mainutils::seq::Rf_duplicate(xn));
+            SET_VECTOR_ELT(dn, 1, crate::mainutils::seq::Rf_duplicate(yn));
+            crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimNamesSymbol(), dn);
+        }
+    }
+    if zero_sd {
+        crate::mainutils::errors::Rf_warning1(c"the standard deviation is zero".as_ptr());
+    }
+    ans
 }
 
 fn calculate(

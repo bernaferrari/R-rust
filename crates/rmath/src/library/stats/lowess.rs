@@ -620,10 +620,8 @@ pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         owner::{OwnerToken, RuntimeAccess, with_runtime},
     };
     let fail = |error: String| -> ! { crate::sexp::context::r_error(error) };
-    // SAFETY: this translated entry is activated by the original runtime.
-    let owner = unsafe { OwnerToken::current() }
-        .map_err(|e| e.to_string())
-        .unwrap_or_else(|e| fail(e));
+    // This translated entry is activated by the original runtime.
+    let owner = crate::library::stats::checked::current_owner();
     let original = owner
         .weak_owner()
         .ok_or_else(|| "supersmoother requires a managed runtime".to_owned())

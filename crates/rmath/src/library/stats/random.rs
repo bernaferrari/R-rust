@@ -20,27 +20,16 @@ use crate::sexp::globals::*;
 use crate::sexp::object::SexpMut;
 use crate::sexp::protect::*;
 
-// Registered .Call entry points keep the raw ABI edge: the trampoline macros
-// write the unsafe declaration and dispatch once for every handler instead of
-// repeating it per routine. `call_trampoline!` forwards to a safe handler that
-// owns argument validation under the held runtime lock; `call_trampoline_raw!`
-// forwards to a `pub fn` handler that still owns the raw SEXP contract.
+// Registered .Call entry points keep the raw ABI edge: the trampoline macro
+// writes the unsafe declaration once for every handler instead of repeating it
+// per routine. `call_trampoline!` forwards to a safe handler that owns
+// argument validation under the held runtime lock.
 macro_rules! call_trampoline {
     ($name:ident, ($($arg:ident),*) => $handler:expr) => {
         // SAFETY: this is a registered .Call routine; the interpreter holds the
         // runtime lock across dispatch and the callee owns argument validation.
         unsafe extern "C-unwind" fn $name($($arg: SEXP),*) -> SEXP {
             $handler
-        }
-    };
-}
-macro_rules! call_trampoline_raw {
-    ($name:ident, ($($arg:ident),*) => $handler:expr) => {
-        // SAFETY: this is a registered .Call routine; the interpreter holds the
-        // runtime lock across dispatch and the callee owns the raw SEXP
-        // contract for these arguments.
-        unsafe extern "C-unwind" fn $name($($arg: SEXP),*) -> SEXP {
-            unsafe { $handler }
         }
     };
 }
@@ -76,8 +65,8 @@ call_trampoline!(c_modelmatrix, (call, op, args, env) => super::filter::modelmat
 call_trampoline!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
 call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
 call_trampoline!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
-call_trampoline_raw!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
-call_trampoline_raw!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
+call_trampoline!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
+call_trampoline!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
 call_trampoline!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
 call_trampoline!(c_nextn, (n, f) => super::fourier::nextn(n, f));
 call_trampoline!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
@@ -88,8 +77,8 @@ call_trampoline!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
 call_trampoline!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
 call_trampoline!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
 call_trampoline!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
-call_trampoline_raw!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
-call_trampoline_raw!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
+call_trampoline!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
+call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
 pub(super) fn reject_var_on_factor(x: SEXP) {
     if !x.is_null()
@@ -251,7 +240,7 @@ const RAND_CALL_NAMES: &[&str] = &[
 
 call_trampoline!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
 
-call_trampoline_raw!(c_isoreg, (y) => super::isoreg::isoreg(y));
+call_trampoline!(c_isoreg, (y) => super::isoreg::isoreg(y));
 
 call_trampoline!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
 

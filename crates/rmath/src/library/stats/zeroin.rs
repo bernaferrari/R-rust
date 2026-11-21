@@ -166,10 +166,7 @@ impl<'session> ZeroinCtx<'session> {
         rho: crate::sexp::ffi::SEXP,
         kind: ScalarCallbackKind,
     ) -> Self {
-        // SAFETY: called while the interpreter dispatches the enclosing
-        // builtin under the runtime lock; the owner is captured per call.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let owner = crate::library::stats::checked::current_owner();
         owner
             .require_active()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -198,7 +195,7 @@ impl<'session> ZeroinCtx<'session> {
                 let call = crate::sexp::constructors::Rf_lang2(self.fun.as_raw(), xv);
                 owner.require_active()?;
                 let _call = crate::sexp::protect::protect(call);
-                let raw = unsafe { crate::eval::eval::Rf_eval(call, self.rho.as_raw()) };
+                let raw = crate::eval::eval::eval_inner(call, self.rho.as_raw());
                 owner.require_active()?;
                 let value = owner.sexp(raw)?;
                 let ty = value.typeof_();
@@ -275,119 +272,108 @@ fn finite_uniroot(v: f64) -> f64 {
 }
 
 /// GNU `uniroot(f, interval)`.
-pub unsafe fn do_uniroot(
+pub fn do_uniroot(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    {
-        use crate::sexp::accessors::{
-            CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
-        };
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::protect;
-        let fun = CAR(args);
-        let interval = CAR(CDR(args));
-        let ax = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            REAL_ELT(interval, 0)
-        } else {
-            INTEGER_ELT(interval, 0) as f64
-        };
-        let bx = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            REAL_ELT(interval, 1)
-        } else {
-            INTEGER_ELT(interval, 1) as f64
-        };
-        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Zeroin);
-        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
-        // SAFETY: `ctx` is a live ZeroinCtx on this stack frame for the full
-        // duration of every zeroin_call/R_zeroin2 invocation below.
-        let eval = |z: f64| unsafe { zeroin_call(z, info) };
-        let fa = eval(ax);
-        let fb = eval(bx);
-        let mut tol = 1e-8;
-        let mut maxit: core::ffi::c_int = 1000;
-        // SAFETY: `info` points to the live `ctx` above; `tol`/`maxit` are
-        // valid out-parameters for the duration of the call.
-        let root = unsafe {
-            R_zeroin2(ax, bx, fa, fb, zeroin_call, info, &mut tol, &mut maxit)
-        };
-        let froot = eval(root);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(root));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(froot));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["root".to_string(), "f.root".to_string()],
-        );
-        result
-    }
+    use crate::sexp::accessors::{
+        CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
+    };
+    use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::protect::protect;
+    let fun = CAR(args);
+    let interval = CAR(CDR(args));
+    let ax = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+        REAL_ELT(interval, 0)
+    } else {
+        INTEGER_ELT(interval, 0) as f64
+    };
+    let bx = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+        REAL_ELT(interval, 1)
+    } else {
+        INTEGER_ELT(interval, 1) as f64
+    };
+    let ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Zeroin);
+    let info = &ctx as *const ZeroinCtx<'_> as *mut core::ffi::c_void;
+    let eval = |z: f64| ctx.evaluate(z);
+    let fa = eval(ax);
+    let fb = eval(bx);
+    let mut tol = 1e-8;
+    let mut maxit: core::ffi::c_int = 1000;
+    // SAFETY: `info` points to the live `ctx` above; `tol`/`maxit` are
+    // valid out-parameters for the duration of the call.
+    let root = unsafe { R_zeroin2(ax, bx, fa, fb, zeroin_call, info, &mut tol, &mut maxit) };
+    let froot = eval(root);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(root));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(froot));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["root".to_string(), "f.root".to_string()],
+    );
+    result
 }
 
 /// GNU `optimize(f, interval)` golden-section min.
-pub unsafe fn do_optimize(
+pub fn do_optimize(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF};
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::protect;
-        let fun = CAR(args);
-        let interval = CAR(CDR(args));
-        let mut lo = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            REAL_ELT(interval, 0)
+    use crate::sexp::accessors::{CAR, CDR, INTEGER_ELT, REAL_ELT, SET_VECTOR_ELT, TYPEOF};
+    use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::protect::protect;
+    let fun = CAR(args);
+    let interval = CAR(CDR(args));
+    let mut lo = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+        REAL_ELT(interval, 0)
+    } else {
+        INTEGER_ELT(interval, 0) as f64
+    };
+    let mut hi = if TYPEOF(interval) == SEXPTYPE::REALSXP {
+        REAL_ELT(interval, 1)
+    } else {
+        INTEGER_ELT(interval, 1) as f64
+    };
+    let ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
+    let eval = |z: f64| ctx.evaluate(z);
+    let gr = (5.0f64.sqrt() - 1.0) / 2.0;
+    let mut x1 = hi - gr * (hi - lo);
+    let mut x2 = lo + gr * (hi - lo);
+    let mut f1 = eval(x1);
+    let mut f2 = eval(x2);
+    for _ in 0..80 {
+        if f1 < f2 {
+            hi = x2;
+            x2 = x1;
+            f2 = f1;
+            x1 = hi - gr * (hi - lo);
+            f1 = eval(x1);
         } else {
-            INTEGER_ELT(interval, 0) as f64
-        };
-        let mut hi = if TYPEOF(interval) == SEXPTYPE::REALSXP {
-            REAL_ELT(interval, 1)
-        } else {
-            INTEGER_ELT(interval, 1) as f64
-        };
-        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
-        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
-        // SAFETY: `info` points at the live `ctx` for the whole golden-section
-        // loop below; every evaluation runs under the runtime lock.
-        let eval = |z: f64| unsafe { zeroin_call(z, info) };
-        let gr = (5.0f64.sqrt() - 1.0) / 2.0;
-        let mut x1 = hi - gr * (hi - lo);
-        let mut x2 = lo + gr * (hi - lo);
-        let mut f1 = eval(x1);
-        let mut f2 = eval(x2);
-        for _ in 0..80 {
-            if f1 < f2 {
-                hi = x2;
-                x2 = x1;
-                f2 = f1;
-                x1 = hi - gr * (hi - lo);
-                f1 = eval(x1);
-            } else {
-                lo = x1;
-                x1 = x2;
-                f1 = f2;
-                x2 = lo + gr * (hi - lo);
-                f2 = eval(x2);
-            }
+            lo = x1;
+            x1 = x2;
+            f1 = f2;
+            x2 = lo + gr * (hi - lo);
+            f2 = eval(x2);
         }
-        let xmin = 0.5 * (lo + hi);
-        let fmin = eval(xmin);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fmin));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["minimum".to_string(), "objective".to_string()],
-        );
-        result
     }
+    let xmin = 0.5 * (lo + hi);
+    let fmin = eval(xmin);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(fmin));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["minimum".to_string(), "objective".to_string()],
+    );
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,53 +1075,49 @@ pub unsafe extern "C-unwind" fn c_nlm(
 
 /// GNU `nlminb(start, objective)` 1-d via nlm (rport fallback; the real
 /// nlminb dispatches to C_port_nlminb).
-pub unsafe fn do_nlminb(
+pub fn do_nlminb(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    {
-        use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT, SET_VECTOR_ELT, VECTOR_ELT, XLENGTH};
-        use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
-        };
-        use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::protect;
-        let start = CAR(args);
-        let fun = CAR(CDR(args));
-        let n = XLENGTH(start).max(1) as usize;
-        // typsize = rep(1, length(p)) — the R-level nlm() default
-        let typsiz = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i64);
-        let _t = protect(typsiz);
-        for i in 0..n {
-            SET_REAL_ELT(typsiz, i as c_int, 1.0);
-        }
-        // .External2 payload with nlm()'s R-level defaults:
-        // hessian=FALSE, typsize, fscale=1, msg=9, ndigit=12, gradtol=1e-6,
-        // stepmax=0 (auto), steptol=1e-6, iterlim=100
-        let nlm_args = Rf_cons(
-            fun,
+    use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT, SET_VECTOR_ELT, VECTOR_ELT, XLENGTH};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons};
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::protect;
+    let start = CAR(args);
+    let fun = CAR(CDR(args));
+    let n = XLENGTH(start).max(1) as usize;
+    // typsize = rep(1, length(p)) — the R-level nlm() default
+    let typsiz = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::REALSXP, n as i64);
+    let _t = protect(typsiz);
+    for i in 0..n {
+        SET_REAL_ELT(typsiz, i as c_int, 1.0);
+    }
+    // .External2 payload with nlm()'s R-level defaults:
+    // hessian=FALSE, typsize, fscale=1, msg=9, ndigit=12, gradtol=1e-6,
+    // stepmax=0 (auto), steptol=1e-6, iterlim=100
+    let nlm_args = Rf_cons(
+        fun,
+        Rf_cons(
+            start,
             Rf_cons(
-                start,
+                Rf_ScalarInteger(0),
                 Rf_cons(
-                    Rf_ScalarInteger(0),
+                    typsiz,
                     Rf_cons(
-                        typsiz,
+                        Rf_ScalarReal(1.0),
                         Rf_cons(
-                            Rf_ScalarReal(1.0),
+                            Rf_ScalarInteger(9),
                             Rf_cons(
-                                Rf_ScalarInteger(9),
+                                Rf_ScalarInteger(12),
                                 Rf_cons(
-                                    Rf_ScalarInteger(12),
+                                    Rf_ScalarReal(1e-6),
                                     Rf_cons(
-                                        Rf_ScalarReal(1e-6),
+                                        Rf_ScalarReal(0.0),
                                         Rf_cons(
-                                            Rf_ScalarReal(0.0),
-                                            Rf_cons(
-                                                Rf_ScalarReal(1e-6),
-                                                Rf_cons(Rf_ScalarInteger(100), R_NilValue()),
-                                            ),
+                                            Rf_ScalarReal(1e-6),
+                                            Rf_cons(Rf_ScalarInteger(100), R_NilValue()),
                                         ),
                                     ),
                                 ),
@@ -1144,22 +1126,22 @@ pub unsafe fn do_nlminb(
                     ),
                 ),
             ),
-        );
-        let _na = protect(nlm_args);
-        // SAFETY: do_nlm retains the registered builtin SEXP contract; the
-        // freshly constructed argument list is rooted by _na above.
-        let nlm = unsafe { do_nlm(call, op, nlm_args, rho) };
-        let _n = protect(nlm);
-        let result = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, VECTOR_ELT(nlm, 1));
-        SET_VECTOR_ELT(result, 1, VECTOR_ELT(nlm, 0));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["par".to_string(), "objective".to_string()],
-        );
-        result
-    }
+        ),
+    );
+    let _na = protect(nlm_args);
+    // SAFETY: do_nlm retains the registered builtin SEXP contract; the
+    // freshly constructed argument list is rooted by _na above.
+    let nlm = unsafe { do_nlm(call, op, nlm_args, rho) };
+    let _n = protect(nlm);
+    let result = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, VECTOR_ELT(nlm, 1));
+    SET_VECTOR_ELT(result, 1, VECTOR_ELT(nlm, 0));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["par".to_string(), "objective".to_string()],
+    );
+    result
 }
 
 unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
@@ -1170,7 +1152,7 @@ unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
 }
 
 /// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
-pub unsafe fn zeroin2(
+pub fn zeroin2(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
@@ -1217,7 +1199,7 @@ pub unsafe fn zeroin2(
     }
 }
 
-fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
+fn brent_fmin(ax: f64, bx: f64, ctx: &ZeroinCtx<'_>, tol: f64) -> f64 {
     let c = (3.0 - 5.0_f64.sqrt()) * 0.5;
     let mut eps = f64::EPSILON.sqrt();
     let mut a = ax;
@@ -1228,7 +1210,7 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
     let mut d: f64 = 0.0;
     let mut e: f64 = 0.0;
     let eval = |z: f64| {
-        let y = unsafe { zeroin_call(z, info) };
+        let y = ctx.evaluate(z);
         if y.is_finite() {
             y
         } else if y == f64::NEG_INFINITY {
@@ -1316,31 +1298,28 @@ fn brent_fmin(ax: f64, bx: f64, info: *mut core::ffi::c_void, tol: f64) -> f64 {
 }
 
 /// `.External2(C_do_fmin, f, lower, upper, tol)` — scalar minimizer.
-pub unsafe fn do_fmin(
+pub fn do_fmin(
     _call: crate::sexp::ffi::SEXP,
     _op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
     rho: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    {
-        use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT};
-        use crate::sexp::constructors::Rf_allocVector;
-        use crate::sexp::ffi::SEXPTYPE;
-        let mut a = CDR(args);
-        let fun = CAR(a);
-        a = CDR(a);
-        let xmin = crate::mainutils::coerce::asReal(CAR(a));
-        a = CDR(a);
-        let xmax = crate::mainutils::coerce::asReal(CAR(a));
-        a = CDR(a);
-        let tol = crate::mainutils::coerce::asReal(CAR(a));
-        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
-        let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
-        let x = brent_fmin(xmin, xmax, info, tol);
-        let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        SET_REAL_ELT(out, 0, x);
-        out
-    }
+    use crate::sexp::accessors::{CAR, CDR, SET_REAL_ELT};
+    use crate::sexp::constructors::Rf_allocVector;
+    use crate::sexp::ffi::SEXPTYPE;
+    let mut a = CDR(args);
+    let fun = CAR(a);
+    a = CDR(a);
+    let xmin = crate::mainutils::coerce::asReal(CAR(a));
+    a = CDR(a);
+    let xmax = crate::mainutils::coerce::asReal(CAR(a));
+    a = CDR(a);
+    let tol = crate::mainutils::coerce::asReal(CAR(a));
+    let ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
+    let x = brent_fmin(xmin, xmax, &ctx, tol);
+    let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+    SET_REAL_ELT(out, 0, x);
+    out
 }
 
 #[cfg(test)]

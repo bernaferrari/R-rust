@@ -54,26 +54,24 @@ fn prterr(icode: c_int, mes: &str) {
 }
 
 fn iwork(iwkmax: c_int, iwkpt: &mut c_int, number: c_int, itype: c_int) -> c_int {
-    {
-        let i_real: c_int = 4;
-        let i_int: c_int = 2;
+    let i_real: c_int = 4;
+    let i_int: c_int = 2;
 
-        let mut i = *iwkpt;
-        if itype == i_int || itype == 3 {
-            *iwkpt += number;
-        } else {
-            // double
-            if i % 2 != 0 {
-                i += 1;
-            }
-            *iwkpt += number << 1;
-            i /= 2;
+    let mut i = *iwkpt;
+    if itype == i_int || itype == 3 {
+        *iwkpt += number;
+    } else {
+        // double
+        if i % 2 != 0 {
+            i += 1;
         }
-        if *iwkpt > iwkmax {
-            prterr(40, "Out of workspace.");
-        }
-        i
+        *iwkpt += number << 1;
+        i /= 2;
     }
+    if *iwkpt > iwkmax {
+        prterr(40, "Out of workspace.");
+    }
+    i
 }
 
 unsafe fn isort_wrapper(n: c_int, ix: *mut c_int) {
@@ -2086,45 +2084,42 @@ pub unsafe fn fexact(
 }
 
 /// SEXP wrapper for Fisher's exact test.
-///
-/// # Safety
-/// x, pars, work, smult must be valid SEXP pointers.
-pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
+pub fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
+    let nr = crate::library::stats::checked::nrows(x);
+    let nc = crate::library::stats::checked::ncols(x);
+    let ws = crate::main::coerce::asInteger(work);
+    let mult = crate::main::coerce::asInteger(smult);
+
+    let pars = coerceVector(pars, SEXPTYPE::REALSXP.as_c_int());
+    let _pars_guard = protect(pars);
+
+    let mut p: c_double = 0.;
+    let mut prt: c_double = 0.;
+    let table = crate::library::stats::checked::int_vec(x);
+    let (expect, percnt, emin) = (REAL_ELT(pars, 0), REAL_ELT(pars, 1), REAL_ELT(pars, 2));
+
+    // SAFETY: `table` is a private copy of the `nr x nc` integer table with
+    // leading dimension `nr`, and `prt`/`p` are live out-parameters.
     unsafe {
-        let nr = crate::main::util_main::nrows(x as *const std::ffi::c_void);
-        let nc = crate::main::util_main::ncols(x as *const std::ffi::c_void);
-        fn asInteger_local(s: SEXP) -> c_int {
-            crate::main::coerce::asInteger(s)
-        }
-
-        let ws = asInteger_local(work);
-        let mult = asInteger_local(smult);
-
-        let pars = coerceVector(pars, SEXPTYPE::REALSXP.as_c_int());
-        let _pars_guard = protect(pars);
-
-        let mut p: c_double = 0.;
-        let mut prt: c_double = 0.;
-
         fexact(
             nr,
             nc,
-            INTEGER(x),
+            table.as_ptr(),
             nr,
-            REAL_ELT(pars, 0),
-            REAL_ELT(pars, 1),
-            REAL_ELT(pars, 2),
+            expect,
+            percnt,
+            emin,
             &mut prt,
             &mut p,
             ws,
             mult,
         );
-
-        // ScalarReal: allocate a 1-element REALSXP
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        SET_REAL_ELT(ans, 0, p);
-        ans
     }
+
+    // ScalarReal: allocate a 1-element REALSXP
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+    SET_REAL_ELT(ans, 0, p);
+    ans
 }
 
 #[cfg(test)]
