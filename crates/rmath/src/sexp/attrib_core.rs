@@ -1431,118 +1431,116 @@ unsafe fn normalize_tsp(x: SEXP, value: SEXP) -> super::object::Sexp<'static> {
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
 pub fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
-        if x.is_null() || which.is_null() {
-            return;
-        }
-        if try_set_pairlist_names(x, which, value) || try_set_atomic_names(x, which, value) {
-            return;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let kind = if t == SEXPTYPE::BUILTINSXP {
-                "builtin"
-            } else {
-                "special"
-            };
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: format!("cannot set an attribute on a '{kind}'"),
-            });
-        }
-        // Keep the target, parameters and original owner through checked
-        // publication. The attribute chain is selected after allocation.
-        if which == R_TspSymbol() && !value.is_null() {
-            run_tsp(
-                x,
-                value,
-                |_, _| None,
-                |access, object, input| {
-                    let name = access
-                        .with_native(|owner| owner.sexp(which)?.into_owned())
-                        .map_err(|error| error.to_string())?;
-                    let normalized = if input.is_nil() {
-                        input.clone()
-                    } else {
-                        tsp_parameters(access, object, input)?
-                    };
-                    super::tsp::install(access, object, &name, &normalized)
-                },
-            );
-            return;
-        }
-        // GNU classgets: empty/NULL class strips; non-string errors.
-        // GNU dimgets: coerce dims to INTSXP first.
-        let value = if which == R_ClassSymbol() {
-            classgets_normalize(x, value)
-        } else if which == R_DimSymbol()
-            && !value.is_null()
-            && value != R_NilValue()
-            && TYPEOF(value) != SEXPTYPE::INTSXP
-        {
-            crate::mainutils::coerce::coerceVector(value, SEXPTYPE::INTSXP.into())
+    if x.is_null() || which.is_null() {
+        return;
+    }
+    if try_set_pairlist_names(x, which, value) || try_set_atomic_names(x, which, value) {
+        return;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        let kind = if t == SEXPTYPE::BUILTINSXP {
+            "builtin"
         } else {
-            value
+            "special"
         };
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("cannot set an attribute on a '{kind}'"),
+        });
+    }
+    // Keep the target, parameters and original owner through checked
+    // publication. The attribute chain is selected after allocation.
+    if which == R_TspSymbol() && !value.is_null() {
+        run_tsp(
+            x,
+            value,
+            |_, _| None,
+            |access, object, input| {
+                let name = access
+                    .with_native(|owner| owner.sexp(which)?.into_owned())
+                    .map_err(|error| error.to_string())?;
+                let normalized = if input.is_nil() {
+                    input.clone()
+                } else {
+                    tsp_parameters(access, object, input)?
+                };
+                super::tsp::install(access, object, &name, &normalized)
+            },
+        );
+        return;
+    }
+    // GNU classgets: empty/NULL class strips; non-string errors.
+    // GNU dimgets: coerce dims to INTSXP first.
+    let value = if which == R_ClassSymbol() {
+        classgets_normalize(x, value)
+    } else if which == R_DimSymbol()
+        && !value.is_null()
+        && value != R_NilValue()
+        && TYPEOF(value) != SEXPTYPE::INTSXP
+    {
+        crate::mainutils::coerce::coerceVector(value, SEXPTYPE::INTSXP.into())
+    } else {
+        value
+    };
 
-        let attrib = ATTRIB(x);
+    let attrib = ATTRIB(x);
 
-        // Search for existing attribute
-        let mut previous = R_NilValue();
-        let mut current = attrib;
-        while !current.is_null() && current != R_NilValue() {
-            if TAG(current) == which {
-                if value.is_null() || value == R_NilValue() {
-                    let next = CDR(current);
-                    if previous.is_null() || previous == R_NilValue() {
-                        SET_ATTRIB(x, next);
-                    } else {
-                        SETCDR(previous, next);
-                    }
-                    if which == R_ClassSymbol() {
-                        super::accessors::SET_OBJECT(x, 0);
-                    }
-                    return;
+    // Search for existing attribute
+    let mut previous = R_NilValue();
+    let mut current = attrib;
+    while !current.is_null() && current != R_NilValue() {
+        if TAG(current) == which {
+            if value.is_null() || value == R_NilValue() {
+                let next = CDR(current);
+                if previous.is_null() || previous == R_NilValue() {
+                    SET_ATTRIB(x, next);
+                } else {
+                    SETCDR(previous, next);
                 }
-                // Found — replace value
-                SETCAR(current, value);
-                // Update OBJECT flag for "class" attribute
                 if which == R_ClassSymbol() {
-                    if value.is_null() || value == R_NilValue() {
-                        super::accessors::SET_OBJECT(x, 0);
-                    } else {
-                        super::accessors::SET_OBJECT(x, 1);
-                    }
+                    super::accessors::SET_OBJECT(x, 0);
                 }
                 return;
             }
-            previous = current;
-            current = CDR(current);
-        }
-
-        if value.is_null() || value == R_NilValue() {
+            // Found — replace value
+            SETCAR(current, value);
+            // Update OBJECT flag for "class" attribute
+            if which == R_ClassSymbol() {
+                if value.is_null() || value == R_NilValue() {
+                    super::accessors::SET_OBJECT(x, 0);
+                } else {
+                    super::accessors::SET_OBJECT(x, 1);
+                }
+            }
             return;
         }
+        previous = current;
+        current = CDR(current);
+    }
 
-        // Not found — append the new attribute. GNU R preserves attribute
-        // assignment order: replacing an existing value leaves it in place,
-        // while a new name is linked after the current tail.
-        let _x_guard = super::protect::protect(x);
-        let _which_guard = super::protect::protect(which);
-        let _value_guard = super::protect::protect(value);
-        let new_attr = Rf_cons(value, R_NilValue());
-        if !new_attr.is_null() {
-            super::accessors::SETTAG(new_attr, which);
-            if attrib.is_null() || attrib == R_NilValue() {
-                SET_ATTRIB(x, new_attr);
-            } else {
-                SETCDR(previous, new_attr);
-            }
-        }
+    if value.is_null() || value == R_NilValue() {
+        return;
+    }
 
-        // Set OBJECT flag if setting "class" to non-nil
-        if which == R_ClassSymbol() && !value.is_null() && value != R_NilValue() {
-            super::accessors::SET_OBJECT(x, 1);
+    // Not found — append the new attribute. GNU R preserves attribute
+    // assignment order: replacing an existing value leaves it in place,
+    // while a new name is linked after the current tail.
+    let _x_guard = super::protect::protect(x);
+    let _which_guard = super::protect::protect(which);
+    let _value_guard = super::protect::protect(value);
+    let new_attr = Rf_cons(value, R_NilValue());
+    if !new_attr.is_null() {
+        super::accessors::SETTAG(new_attr, which);
+        if attrib.is_null() || attrib == R_NilValue() {
+            SET_ATTRIB(x, new_attr);
+        } else {
+            SETCDR(previous, new_attr);
         }
+    }
+
+    // Set OBJECT flag if setting "class" to non-nil
+    if which == R_ClassSymbol() && !value.is_null() && value != R_NilValue() {
+        super::accessors::SET_OBJECT(x, 1);
     }
 }
 

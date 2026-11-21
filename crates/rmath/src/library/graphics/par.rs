@@ -1005,12 +1005,11 @@ fn apply_parameter(
         "mfg" => {
             for warning in state.layout.set_mfg(value, cexbase, mex, 1.0) {
                 let message = std::ffi::CString::new(warning).unwrap_or_default();
-                unsafe {
-                    crate::mainutils::errors::warningcall(
-                        crate::sexp::globals::R_NilValue(),
-                        message.as_ptr(),
-                    );
-                }
+
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    message.as_ptr(),
+                );
             }
             state
                 .overrides
@@ -1954,9 +1953,7 @@ pub fn registerBase() {
 pub fn unregisterBase() {
     let index = with_par_state(|state| state.base_register_index.take());
     if let Some(index) = index {
-        unsafe {
-            crate::mainutils::engine::GEunregisterSystem(index);
-        }
+        crate::mainutils::engine::GEunregisterSystem(index);
     }
 }
 

@@ -73,11 +73,9 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 break;
             }
             if byte == 0 {
-                unsafe {
-                    crate::mainutils::errors::Rf_warning(
-                        c"truncating string with embedded nuls".as_ptr(),
-                    )
-                };
+                crate::mainutils::errors::Rf_warning(
+                    c"truncating string with embedded nuls".as_ptr(),
+                );
                 break;
             }
             bytes.push(byte as u8);

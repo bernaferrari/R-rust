@@ -14,8 +14,8 @@ use crate::sexp::globals::R_NilValue;
 
 use super::types::*;
 use super::{
-    alloc_vector, install, integer_elt, mk_char, mk_string, protect, scalar_logical,
-    scalar_real, set_integer_elt, set_logical_elt, set_real_elt, set_vector_elt, vector_elt,
+    alloc_vector, install, integer_elt, mk_char, mk_string, protect, scalar_logical, scalar_real,
+    set_integer_elt, set_logical_elt, set_real_elt, set_vector_elt, vector_elt,
 };
 
 /* ==================== GE event constants ==================== */
@@ -104,10 +104,8 @@ unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
 
 #[inline]
 unsafe fn lang1(_sym: SEXP) -> SEXP {
-    unsafe {
-        // Stub: create a one-element call
-        crate::sexp::memory_ext::allocLang(1)
-    }
+    // Stub: create a one-element call
+    crate::sexp::memory_ext::allocLang(1)
 }
 
 /* ==================== Core state functions ==================== */
@@ -313,9 +311,8 @@ pub fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
             let _pkg_name_guard = protect(pkgName);
             // SAFETY: `result` and `pkgName` are live protected objects;
             // `install` returns a live interned symbol.
-            unsafe {
-                attrib_core::setAttrib(result, install("pkgName"), pkgName);
-            }
+
+            attrib_core::setAttrib(result, install("pkgName"), pkgName);
         }
         GE_RestoreSnapshotState => {
             // Stub: complex snapshot restoration logic deferred until GE is ported.

@@ -179,7 +179,7 @@ pub fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// the `cbind` internal helper.
 pub fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { do_bind(call, op, args, env) }
+    do_bind(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ pub fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// the `rbind` internal helper.
 pub fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { do_bind(call, op, args, env) }
+    do_bind(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -197,16 +197,14 @@ pub fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Assign `x` as the row names component of `dimnames`.
 pub fn SetRowNames(dimnames: SEXP, x: SEXP) {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() {
-            return;
-        }
-        let t = TYPEOF(dimnames);
-        if t == VECSXP_I {
-            SET_VECTOR_ELT(dimnames, 0, x);
-        } else if t == LISTSXP_I {
-            SETCAR(dimnames, x);
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() {
+        return;
+    }
+    let t = TYPEOF(dimnames);
+    if t == VECSXP_I {
+        SET_VECTOR_ELT(dimnames, 0, x);
+    } else if t == LISTSXP_I {
+        SETCAR(dimnames, x);
     }
 }
 
@@ -216,16 +214,14 @@ pub fn SetRowNames(dimnames: SEXP, x: SEXP) {
 
 /// Assign `x` as the column names component of `dimnames`.
 pub fn SetColNames(dimnames: SEXP, x: SEXP) {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() {
-            return;
-        }
-        let t = TYPEOF(dimnames);
-        if t == VECSXP_I {
-            SET_VECTOR_ELT(dimnames, 1, x);
-        } else if t == LISTSXP_I {
-            SETCADR(dimnames, x);
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() {
+        return;
+    }
+    let t = TYPEOF(dimnames);
+    if t == VECSXP_I {
+        SET_VECTOR_ELT(dimnames, 1, x);
+    } else if t == LISTSXP_I {
+        SETCADR(dimnames, x);
     }
 }
 
@@ -235,35 +231,31 @@ pub fn SetColNames(dimnames: SEXP, x: SEXP) {
 
 /// Retrieve row names from a dimnames attribute (vector-based list).
 pub fn GetRowNames(dimnames: SEXP) -> SEXP {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() {
-            return R_NilValue();
-        }
-        let t = TYPEOF(dimnames);
-        if t == VECSXP_I {
-            VECTOR_ELT(dimnames, 0)
-        } else if t == LISTSXP_I {
-            CAR(dimnames)
-        } else {
-            R_NilValue()
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(dimnames);
+    if t == VECSXP_I {
+        VECTOR_ELT(dimnames, 0)
+    } else if t == LISTSXP_I {
+        CAR(dimnames)
+    } else {
+        R_NilValue()
     }
 }
 
 /// Retrieve column names from a dimnames attribute (vector-based list).
 pub fn GetColNames(dimnames: SEXP) -> SEXP {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() {
-            return R_NilValue();
-        }
-        let t = TYPEOF(dimnames);
-        if t == VECSXP_I {
-            VECTOR_ELT(dimnames, 1)
-        } else if t == LISTSXP_I {
-            CADR(dimnames)
-        } else {
-            R_NilValue()
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(dimnames);
+    if t == VECSXP_I {
+        VECTOR_ELT(dimnames, 1)
+    } else if t == LISTSXP_I {
+        CADR(dimnames)
+    } else {
+        R_NilValue()
     }
 }
 
@@ -273,13 +265,7 @@ pub fn GetColNames(dimnames: SEXP) -> SEXP {
 
 /// Default `cbind` implementation.  Binds objects as columns, checking
 /// conformability of matrix and vector arguments, and building dimnames.
-pub fn cbind(
-    call: SEXP,
-    args: SEXP,
-    mode: SEXPTYPE,
-    rho: SEXP,
-    deparse_level: c_int,
-) -> SEXP {
+pub fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level: c_int) -> SEXP {
     unsafe {
         let mut have_rnames: bool = false;
         let mut have_cnames: bool = false;
@@ -638,13 +624,7 @@ pub fn cbind(
 /// Default `rbind` implementation.  Binds objects as rows, checking
 /// conformability of matrix and vector arguments, and building dimnames.
 #[allow(clippy::if_same_then_else)]
-pub fn rbind(
-    call: SEXP,
-    args: SEXP,
-    mode: SEXPTYPE,
-    rho: SEXP,
-    deparse_level: c_int,
-) -> SEXP {
+pub fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level: c_int) -> SEXP {
     unsafe {
         let mut have_rnames: bool = false;
         let mut have_cnames: bool = false;

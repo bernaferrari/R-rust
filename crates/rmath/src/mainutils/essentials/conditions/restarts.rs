@@ -3,7 +3,7 @@ use crate::sexp::object::SexpMut;
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
 pub fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     restart_stack_as_list() 
+    restart_stack_as_list()
 }
 
 /// R's `findRestart(name)` — find a restart by name.
@@ -20,7 +20,7 @@ pub fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `restarts()` — list available restarts.
 pub fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     restart_stack_as_list() 
+    restart_stack_as_list()
 }
 
 /// R's `invokeRestart(restart, ...)` — call a restart and return to its dynamic extent.
@@ -50,13 +50,11 @@ pub fn do_tryInvokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
 /// R's `isRestart(x)` — check for a restart object.
 pub fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        Rf_ScalarLogical(if is_restart_object(CAR(args)) {
-            TRUE
-        } else {
-            FALSE
-        })
-    }
+    Rf_ScalarLogical(if is_restart_object(CAR(args)) {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `restartDescription(r)` — return the restart description, if any.
@@ -205,20 +203,18 @@ pub(crate) fn consume_matching_restart(ticket: crate::sexp::transfer::TransferTi
 }
 
 fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let target_owned = restart_owned(restart);
-        let args_owned = restart_owned(args);
-        let restart = target_owned.as_raw();
-        let args = args_owned.as_raw();
-        if restart_name(restart).as_deref() == Some("abort")
-            && restart_field(restart, "exit", 1) == R_NilValue()
-        {
-            std::panic::panic_any(crate::sexp::context::RSignal::Abort);
-        }
-        std::panic::panic_any(crate::sexp::context::RSignal::Restart(
-            crate::sexp::context::restart_transfer(restart, args),
-        ));
+    let target_owned = restart_owned(restart);
+    let args_owned = restart_owned(args);
+    let restart = target_owned.as_raw();
+    let args = args_owned.as_raw();
+    if restart_name(restart).as_deref() == Some("abort")
+        && restart_field(restart, "exit", 1) == R_NilValue()
+    {
+        std::panic::panic_any(crate::sexp::context::RSignal::Abort);
     }
+    std::panic::panic_any(crate::sexp::context::RSignal::Restart(
+        crate::sexp::context::restart_transfer(restart, args),
+    ));
 }
 
 pub(crate) fn call_function_with_args(
@@ -426,7 +422,7 @@ fn restart_name(restart: SEXP) -> Option<String> {
 }
 
 pub(crate) fn restart_handler(restart: SEXP) -> SEXP {
-     restart_field(restart, "handler", 2) 
+    restart_field(restart, "handler", 2)
 }
 
 fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {
@@ -449,9 +445,7 @@ fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> S
                     return restart_owned
                         .try_vector_elt(index)
                         .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         }

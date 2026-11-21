@@ -3,184 +3,182 @@
 use super::*;
 
 fn collect_term_labels(expr: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>, sign: i32) {
-    unsafe {
-        if expr.is_null() || expr == R_NilValue() {
-            return;
-        }
-        let record = |name: String, node: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>| {
-            if sign < 0 {
-                if let Some(i) = out.iter().position(|s| s == &name) {
-                    out.remove(i);
-                    nodes.remove(i);
-                }
-            } else if !out.iter().any(|s| s == &name) {
-                out.push(name);
-                nodes.push(node);
+    if expr.is_null() || expr == R_NilValue() {
+        return;
+    }
+    let record = |name: String, node: SEXP, out: &mut Vec<String>, nodes: &mut Vec<SEXP>| {
+        if sign < 0 {
+            if let Some(i) = out.iter().position(|s| s == &name) {
+                out.remove(i);
+                nodes.remove(i);
             }
+        } else if !out.iter().any(|s| s == &name) {
+            out.push(name);
+            nodes.push(node);
+        }
+    };
+    if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+        let Some(name) = symbol_chars(expr) else {
+            return;
         };
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let Some(name) = symbol_chars(expr) else {
-                return;
-            };
-            if !matches!(
-                name.as_str(),
-                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+        if !matches!(
+            name.as_str(),
+            "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+        ) {
+            let stored = if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(
+                name.as_bytes(),
             ) {
-                let stored = if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(
-                    name.as_bytes(),
-                ) {
-                    name
-                } else {
-                    format!("`{name}`")
-                };
-                record(stored, expr, out, nodes);
-            }
-            return;
+                name
+            } else {
+                format!("`{name}`")
+            };
+            record(stored, expr, out, nodes);
         }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
-            let op = CAR(expr);
-            if let Some(name) = symbol_chars(op) {
-                if name == "offset" {
-                    return;
-                }
-                if name == "+" {
-                    let mut cell = CDR(expr);
-                    while !cell.is_null() && cell != R_NilValue() {
-                        collect_term_labels(CAR(cell), out, nodes, sign);
-                        cell = CDR(cell);
-                    }
-                    return;
-                }
-                if name == "-" {
-                    let n = crate::sexp::constructors::Rf_length(expr);
-                    if n == 2 {
-                        collect_term_labels(CADR(expr), out, nodes, -sign);
-                    } else {
-                        collect_term_labels(CADR(expr), out, nodes, sign);
-                        collect_term_labels(CADDR(expr), out, nodes, -sign);
-                    }
-                    return;
-                }
-                if name == "*" {
-                    let mut left_labels = Vec::new();
-                    let mut left_nodes = Vec::new();
-                    let mut right_labels = Vec::new();
-                    let mut right_nodes = Vec::new();
-                    collect_term_labels(CADR(expr), &mut left_labels, &mut left_nodes, 1);
-                    collect_term_labels(CADDR(expr), &mut right_labels, &mut right_nodes, 1);
-                    let mut combined_labels = Vec::new();
-                    let mut combined_nodes = Vec::new();
-                    for (label, node) in left_labels.iter().zip(left_nodes.iter().copied()) {
-                        combined_labels.push(label.clone());
-                        combined_nodes.push(node);
-                    }
-                    for (label, node) in right_labels.iter().zip(right_nodes.iter().copied()) {
-                        combined_labels.push(label.clone());
-                        combined_nodes.push(node);
-                    }
-                    for left in &left_labels {
-                        for right in &right_labels {
-                            combined_labels.push(format!("{left}:{right}"));
-                            combined_nodes.push(expr);
-                        }
-                    }
-                    for (label, node) in combined_labels.into_iter().zip(combined_nodes) {
-                        record(label, node, out, nodes);
-                    }
-                    return;
-                }
-                if name == "^" {
-                    // GNU cross power: `(a+b)^2` expands to the main
-                    // effects plus all interactions up to order 2.
-                    let exponent = formula_power_exponent(expr);
-                    let Some(k) = exponent else {
-                        // Non-numeric exponent (e.g. I()): keep operand
-                        // terms as-is like the generic recursion does.
-                        let mut cell = CDR(expr);
-                        while !cell.is_null() && cell != R_NilValue() {
-                            collect_term_labels(CAR(cell), out, nodes, sign);
-                            cell = CDR(cell);
-                        }
-                        return;
-                    };
-                    let mut base_labels = Vec::new();
-                    let mut base_nodes = Vec::new();
-                    collect_term_labels(CADR(expr), &mut base_labels, &mut base_nodes, 1);
-                    // Unique atomic factors, in first-appearance order.
-                    let mut atoms: Vec<&str> = Vec::new();
-                    let mut atom_nodes: Vec<SEXP> = Vec::new();
-                    for (label, node) in base_labels.iter().zip(base_nodes.iter().copied()) {
-                        for part in label.split(':') {
-                            if !atoms.contains(&part) {
-                                atoms.push(part);
-                                atom_nodes.push(node);
-                            }
-                        }
-                    }
-                    let k = (k as usize).min(atoms.len());
-                    for size in 1..=k {
-                        let mut combo: Vec<usize> = (0..size).collect();
-                        loop {
-                            let label = combo
-                                .iter()
-                                .map(|&i| atoms[i])
-                                .collect::<Vec<_>>()
-                                .join(":");
-                            // Main-effect rows keep their own variable
-                            // node so the variables list never sees the
-                            // synthetic `(...)^k` expression.
-                            let node = if size == 1 {
-                                atom_nodes[combo[0]]
-                            } else {
-                                expr
-                            };
-                            record(label, node, out, nodes);
-                            // Next combination, last index that can advance.
-                            let Some(advance) =
-                                (0..size).rev().find(|&i| combo[i] < atoms.len() - size + i)
-                            else {
-                                break;
-                            };
-                            combo[advance] += 1;
-                            for i in (advance + 1)..size {
-                                combo[i] = combo[i - 1] + 1;
-                            }
-                        }
-                    }
-                    return;
-                }
-                if matches!(name.as_str(), "/" | "(" | "~") {
-                    let mut cell = CDR(expr);
-                    while !cell.is_null() && cell != R_NilValue() {
-                        collect_term_labels(CAR(cell), out, nodes, sign);
-                        cell = CDR(cell);
-                    }
-                    return;
-                }
-                if name == ":" {
-                    let mut parts = Vec::new();
-                    collect_formula_symbols(CADR(expr), &mut parts);
-                    collect_formula_symbols(CADDR(expr), &mut parts);
-                    if !parts.is_empty() {
-                        let quoted: Vec<String> = parts
-                            .into_iter()
-                            .map(|name| {
-                                if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(
-                                    name.as_bytes(),
-                                ) {
-                                    name
-                                } else {
-                                    format!("`{name}`")
-                                }
-                            })
-                            .collect();
-                        record(quoted.join(":"), expr, out, nodes);
-                    }
-                    return;
-                }
-                record(deparse_call(expr), expr, out, nodes);
+        return;
+    }
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+        let op = CAR(expr);
+        if let Some(name) = symbol_chars(op) {
+            if name == "offset" {
                 return;
             }
+            if name == "+" {
+                let mut cell = CDR(expr);
+                while !cell.is_null() && cell != R_NilValue() {
+                    collect_term_labels(CAR(cell), out, nodes, sign);
+                    cell = CDR(cell);
+                }
+                return;
+            }
+            if name == "-" {
+                let n = crate::sexp::constructors::Rf_length(expr);
+                if n == 2 {
+                    collect_term_labels(CADR(expr), out, nodes, -sign);
+                } else {
+                    collect_term_labels(CADR(expr), out, nodes, sign);
+                    collect_term_labels(CADDR(expr), out, nodes, -sign);
+                }
+                return;
+            }
+            if name == "*" {
+                let mut left_labels = Vec::new();
+                let mut left_nodes = Vec::new();
+                let mut right_labels = Vec::new();
+                let mut right_nodes = Vec::new();
+                collect_term_labels(CADR(expr), &mut left_labels, &mut left_nodes, 1);
+                collect_term_labels(CADDR(expr), &mut right_labels, &mut right_nodes, 1);
+                let mut combined_labels = Vec::new();
+                let mut combined_nodes = Vec::new();
+                for (label, node) in left_labels.iter().zip(left_nodes.iter().copied()) {
+                    combined_labels.push(label.clone());
+                    combined_nodes.push(node);
+                }
+                for (label, node) in right_labels.iter().zip(right_nodes.iter().copied()) {
+                    combined_labels.push(label.clone());
+                    combined_nodes.push(node);
+                }
+                for left in &left_labels {
+                    for right in &right_labels {
+                        combined_labels.push(format!("{left}:{right}"));
+                        combined_nodes.push(expr);
+                    }
+                }
+                for (label, node) in combined_labels.into_iter().zip(combined_nodes) {
+                    record(label, node, out, nodes);
+                }
+                return;
+            }
+            if name == "^" {
+                // GNU cross power: `(a+b)^2` expands to the main
+                // effects plus all interactions up to order 2.
+                let exponent = formula_power_exponent(expr);
+                let Some(k) = exponent else {
+                    // Non-numeric exponent (e.g. I()): keep operand
+                    // terms as-is like the generic recursion does.
+                    let mut cell = CDR(expr);
+                    while !cell.is_null() && cell != R_NilValue() {
+                        collect_term_labels(CAR(cell), out, nodes, sign);
+                        cell = CDR(cell);
+                    }
+                    return;
+                };
+                let mut base_labels = Vec::new();
+                let mut base_nodes = Vec::new();
+                collect_term_labels(CADR(expr), &mut base_labels, &mut base_nodes, 1);
+                // Unique atomic factors, in first-appearance order.
+                let mut atoms: Vec<&str> = Vec::new();
+                let mut atom_nodes: Vec<SEXP> = Vec::new();
+                for (label, node) in base_labels.iter().zip(base_nodes.iter().copied()) {
+                    for part in label.split(':') {
+                        if !atoms.contains(&part) {
+                            atoms.push(part);
+                            atom_nodes.push(node);
+                        }
+                    }
+                }
+                let k = (k as usize).min(atoms.len());
+                for size in 1..=k {
+                    let mut combo: Vec<usize> = (0..size).collect();
+                    loop {
+                        let label = combo
+                            .iter()
+                            .map(|&i| atoms[i])
+                            .collect::<Vec<_>>()
+                            .join(":");
+                        // Main-effect rows keep their own variable
+                        // node so the variables list never sees the
+                        // synthetic `(...)^k` expression.
+                        let node = if size == 1 {
+                            atom_nodes[combo[0]]
+                        } else {
+                            expr
+                        };
+                        record(label, node, out, nodes);
+                        // Next combination, last index that can advance.
+                        let Some(advance) =
+                            (0..size).rev().find(|&i| combo[i] < atoms.len() - size + i)
+                        else {
+                            break;
+                        };
+                        combo[advance] += 1;
+                        for i in (advance + 1)..size {
+                            combo[i] = combo[i - 1] + 1;
+                        }
+                    }
+                }
+                return;
+            }
+            if matches!(name.as_str(), "/" | "(" | "~") {
+                let mut cell = CDR(expr);
+                while !cell.is_null() && cell != R_NilValue() {
+                    collect_term_labels(CAR(cell), out, nodes, sign);
+                    cell = CDR(cell);
+                }
+                return;
+            }
+            if name == ":" {
+                let mut parts = Vec::new();
+                collect_formula_symbols(CADR(expr), &mut parts);
+                collect_formula_symbols(CADDR(expr), &mut parts);
+                if !parts.is_empty() {
+                    let quoted: Vec<String> = parts
+                        .into_iter()
+                        .map(|name| {
+                            if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(
+                                name.as_bytes(),
+                            ) {
+                                name
+                            } else {
+                                format!("`{name}`")
+                            }
+                        })
+                        .collect();
+                    record(quoted.join(":"), expr, out, nodes);
+                }
+                return;
+            }
+            record(deparse_call(expr), expr, out, nodes);
+            return;
         }
     }
 }
@@ -266,91 +264,87 @@ fn formula_intercept(expr: SEXP) -> i32 {
 }
 
 fn note_formula_intercept(expr: SEXP, sign: i32, intercept: &mut i32) {
-    unsafe {
-        if let Some(value) = formula_constant(expr) {
-            if value == 1.0 {
-                *intercept = if sign < 0 { 0 } else { 1 };
-            } else if value == 0.0 && sign > 0 {
-                *intercept = 0;
-            }
-            return;
+    if let Some(value) = formula_constant(expr) {
+        if value == 1.0 {
+            *intercept = if sign < 0 { 0 } else { 1 };
+        } else if value == 0.0 && sign > 0 {
+            *intercept = 0;
         }
-        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
-            return;
+        return;
+    }
+    if expr.is_null() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
+        return;
+    }
+    let op = symbol_print_name(CAR(expr));
+    if op == "~" {
+        let mut cell = CDR(expr);
+        let mut last = R_NilValue();
+        while !cell.is_null() && cell != R_NilValue() {
+            last = CAR(cell);
+            cell = CDR(cell);
         }
-        let op = symbol_print_name(CAR(expr));
-        if op == "~" {
-            let mut cell = CDR(expr);
-            let mut last = R_NilValue();
-            while !cell.is_null() && cell != R_NilValue() {
-                last = CAR(cell);
-                cell = CDR(cell);
-            }
-            note_formula_intercept(last, sign, intercept);
-        } else if op == "+" {
-            let mut cell = CDR(expr);
-            while !cell.is_null() && cell != R_NilValue() {
-                note_formula_intercept(CAR(cell), sign, intercept);
-                cell = CDR(cell);
-            }
-        } else if op == "-" {
-            let n = crate::sexp::constructors::Rf_length(expr);
-            if n == 2 {
-                note_formula_intercept(CADR(expr), -sign, intercept);
-            } else if n >= 3 {
-                note_formula_intercept(CADR(expr), sign, intercept);
-                note_formula_intercept(CADDR(expr), -sign, intercept);
-            }
-        } else if op == "(" {
+        note_formula_intercept(last, sign, intercept);
+    } else if op == "+" {
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            note_formula_intercept(CAR(cell), sign, intercept);
+            cell = CDR(cell);
+        }
+    } else if op == "-" {
+        let n = crate::sexp::constructors::Rf_length(expr);
+        if n == 2 {
+            note_formula_intercept(CADR(expr), -sign, intercept);
+        } else if n >= 3 {
             note_formula_intercept(CADR(expr), sign, intercept);
+            note_formula_intercept(CADDR(expr), -sign, intercept);
         }
+    } else if op == "(" {
+        note_formula_intercept(CADR(expr), sign, intercept);
     }
 }
 
 fn formula_response_name(form: SEXP) -> String {
-    unsafe {
-        if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
-            return "y".to_string();
-        }
-        let rhs = CDR(form);
-        if rhs.is_null() || rhs == R_NilValue() {
-            return "y".to_string();
-        }
-        let lhs = CAR(rhs);
-        if lhs.is_null() || lhs == R_NilValue() {
-            return "y".to_string();
-        }
-        if TYPEOF(lhs) == SEXPTYPE::SYMSXP {
-            let name = symbol_print_name(lhs);
-            return if name.is_empty() {
-                "y".to_string()
-            } else {
-                name
-            };
-        }
-        // GNU terms.c names non-symbol responses (e.g. a cbind(...) LHS)
-        // by deparsing the expression.
-        let deparsed = crate::mainutils::deparse::deparse1WithCutoff(
-            lhs,
-            false,
-            500,
-            true,
-            crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
-            0,
-        );
-        if deparsed.is_null()
-            || deparsed == R_NilValue()
-            || TYPEOF(deparsed) != SEXPTYPE::STRSXP
-            || XLENGTH(deparsed) == 0
-        {
-            return "y".to_string();
-        }
-        let name = crate::mainutils::essentials::elt_to_string(deparsed, 0);
-        if name.is_empty() {
+    if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
+        return "y".to_string();
+    }
+    let rhs = CDR(form);
+    if rhs.is_null() || rhs == R_NilValue() {
+        return "y".to_string();
+    }
+    let lhs = CAR(rhs);
+    if lhs.is_null() || lhs == R_NilValue() {
+        return "y".to_string();
+    }
+    if TYPEOF(lhs) == SEXPTYPE::SYMSXP {
+        let name = symbol_print_name(lhs);
+        return if name.is_empty() {
             "y".to_string()
         } else {
             name
-        }
+        };
+    }
+    // GNU terms.c names non-symbol responses (e.g. a cbind(...) LHS)
+    // by deparsing the expression.
+    let deparsed = crate::mainutils::deparse::deparse1WithCutoff(
+        lhs,
+        false,
+        500,
+        true,
+        crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
+        0,
+    );
+    if deparsed.is_null()
+        || deparsed == R_NilValue()
+        || TYPEOF(deparsed) != SEXPTYPE::STRSXP
+        || XLENGTH(deparsed) == 0
+    {
+        return "y".to_string();
+    }
+    let name = crate::mainutils::essentials::elt_to_string(deparsed, 0);
+    if name.is_empty() {
+        "y".to_string()
+    } else {
+        name
     }
 }
 
@@ -413,67 +407,65 @@ fn mark_terms(form: SEXP, response: i32, specials: SEXP) -> SEXP {
             }
         }
         fn walk_vars(expr: SEXP, var_syms: &mut Vec<SEXP>) {
-            unsafe {
-                if expr.is_null() || expr == R_NilValue() {
-                    return;
-                }
-                if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-                    if !var_syms
-                        .iter()
-                        .any(|&s| s == expr || formula_vars_equal(s, expr))
-                    {
-                        var_syms.push(expr);
-                    }
-                    return;
-                }
-                if TYPEOF(expr) != SEXPTYPE::LANGSXP {
-                    return;
-                }
-                let name = symbol_print_name(CAR(expr));
-                if name == "-" {
-                    // `x - 1` / `x - 0` strips the intercept; the numeric
-                    // constant is not a variable.
-                    let mut cell = CDR(expr);
-                    while !cell.is_null() && cell != R_NilValue() {
-                        let arg = CAR(cell);
-                        let constant = (TYPEOF(arg) == SEXPTYPE::INTSXP
-                            || TYPEOF(arg) == SEXPTYPE::REALSXP
-                            || TYPEOF(arg) == SEXPTYPE::LGLSXP)
-                            && XLENGTH(arg) == 1;
-                        if !constant {
-                            walk_vars(arg, var_syms);
-                        }
-                        cell = CDR(cell);
-                    }
-                    return;
-                }
-                if name == "^" && formula_power_exponent(expr).is_some() {
-                    // Numeric cross power: only the base's atoms are
-                    // variables, never the whole `(...)^k` node.
-                    walk_vars(CADR(expr), var_syms);
-                    return;
-                }
-                if name == "~"
-                    || name == "+"
-                    || name == "*"
-                    || name == ":"
-                    || name == "/"
-                    || name == "%in%"
-                    || name == "("
-                {
-                    let mut cell = CDR(expr);
-                    while !cell.is_null() && cell != R_NilValue() {
-                        walk_vars(CAR(cell), var_syms);
-                        cell = CDR(cell);
-                    }
-                    return;
-                }
+            if expr.is_null() || expr == R_NilValue() {
+                return;
+            }
+            if TYPEOF(expr) == SEXPTYPE::SYMSXP {
                 if !var_syms
                     .iter()
                     .any(|&s| s == expr || formula_vars_equal(s, expr))
                 {
                     var_syms.push(expr);
                 }
+                return;
+            }
+            if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+                return;
+            }
+            let name = symbol_print_name(CAR(expr));
+            if name == "-" {
+                // `x - 1` / `x - 0` strips the intercept; the numeric
+                // constant is not a variable.
+                let mut cell = CDR(expr);
+                while !cell.is_null() && cell != R_NilValue() {
+                    let arg = CAR(cell);
+                    let constant = (TYPEOF(arg) == SEXPTYPE::INTSXP
+                        || TYPEOF(arg) == SEXPTYPE::REALSXP
+                        || TYPEOF(arg) == SEXPTYPE::LGLSXP)
+                        && XLENGTH(arg) == 1;
+                    if !constant {
+                        walk_vars(arg, var_syms);
+                    }
+                    cell = CDR(cell);
+                }
+                return;
+            }
+            if name == "^" && formula_power_exponent(expr).is_some() {
+                // Numeric cross power: only the base's atoms are
+                // variables, never the whole `(...)^k` node.
+                walk_vars(CADR(expr), var_syms);
+                return;
+            }
+            if name == "~"
+                || name == "+"
+                || name == "*"
+                || name == ":"
+                || name == "/"
+                || name == "%in%"
+                || name == "("
+            {
+                let mut cell = CDR(expr);
+                while !cell.is_null() && cell != R_NilValue() {
+                    walk_vars(CAR(cell), var_syms);
+                    cell = CDR(cell);
+                }
+                return;
+            }
+            if !var_syms
+                .iter()
+                .any(|&s| s == expr || formula_vars_equal(s, expr))
+            {
+                var_syms.push(expr);
             }
         }
         walk_vars(rhs, &mut var_syms);

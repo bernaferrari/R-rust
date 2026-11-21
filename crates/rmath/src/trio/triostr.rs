@@ -355,11 +355,7 @@ pub fn trio_to_long_double(source: &CStr) -> u64 {
 
 /// Apply a function to each character (up to NUL), writing results into
 /// `target`; NUL-terminates. Returns the number of characters processed.
-pub fn trio_span_function(
-    target: &mut [u8],
-    source: &CStr,
-    function: fn(c_int) -> c_int,
-) -> usize {
+pub fn trio_span_function(target: &mut [u8], source: &CStr, function: fn(c_int) -> c_int) -> usize {
     let bytes = source.to_bytes();
     let count = bytes.len().min(target.len().saturating_sub(1));
     for i in 0..count {

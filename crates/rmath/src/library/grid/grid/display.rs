@@ -137,7 +137,7 @@ pub fn L_newpage() -> SEXP {
         gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
         // SAFETY: `gc` is the opaque engine context buffer just filled by
         // `gcontextFromgpar`; `dd` is the live device returned above.
-        unsafe { GENewPage(gc.as_ptr() as pGEcontext, dd) };
+        GENewPage(gc.as_ptr() as pGEcontext, dd);
     }
     R_NilValue()
 }
@@ -147,16 +147,15 @@ pub fn L_clearDefinitions(clearGroups: SEXP) -> SEXP {
     let dd = unsafe { getDevice() };
     if !dd.is_null() {
         setGridStateElement(dd, GSS_RESOLVINGPATH, scalar_logical(0));
-        let clear_groups =
-            if TYPEOF(clearGroups) == SEXPTYPE::LGLSXP && LENGTH(clearGroups) > 0 {
-                if logical_elt(clearGroups, 0) != 0 {
-                    1
-                } else {
-                    0
-                }
+        let clear_groups = if TYPEOF(clearGroups) == SEXPTYPE::LGLSXP && LENGTH(clearGroups) > 0 {
+            if logical_elt(clearGroups, 0) != 0 {
+                1
             } else {
                 0
-            };
+            }
+        } else {
+            0
+        };
         // SAFETY: `dd` is the live device returned by `getDevice` above.
         unsafe { rmath_grid_release_definitions(dd, clear_groups) };
     }

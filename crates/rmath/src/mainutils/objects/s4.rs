@@ -257,12 +257,12 @@ pub fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 /// This is the equivalent of R's `R_allocObject()` — the constructor behind
 /// `.OBJSXP()`, as used e.g. by S7.
 pub fn R_allocObject() -> SEXP {
-    unsafe { crate::sexp::memory_ext::allocSExp(SEXPTYPE::OBJSXP) }
+    crate::sexp::memory_ext::allocSExp(SEXPTYPE::OBJSXP)
 }
 
 /// R's `.OBJSXP()` — a bare OBJSXP object without the S4 bit.
 pub fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-     R_allocObject()
+    R_allocObject()
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ pub fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-     {
+    {
         if args.is_null() {
             return R_NilValue();
         }

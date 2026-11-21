@@ -67,21 +67,19 @@ pub(crate) fn primitive_args_prototype(name: &str) -> Option<crate::sexp::ffi::S
 }
 
 pub(crate) fn format_primitive(x: Sexp<'_>) -> String {
-    unsafe {
-        let name = crate::eval::primitive::PRIMNAME(x.as_raw());
-        let primitive = format!(".Primitive(\"{name}\")");
-        let Some(proto) = primitive_args_prototype(name) else {
-            return primitive;
-        };
-        let text = crate::mainutils::deparse::deparse1m(
-            proto,
-            false,
-            crate::mainutils::deparse::DEFAULTDEPARSE,
-        );
-        match first_deparse_line(text) {
-            Some(line) if !line.is_empty() => format!("{line} {primitive}"),
-            _ => primitive,
-        }
+    let name = crate::eval::primitive::PRIMNAME(x.as_raw());
+    let primitive = format!(".Primitive(\"{name}\")");
+    let Some(proto) = primitive_args_prototype(name) else {
+        return primitive;
+    };
+    let text = crate::mainutils::deparse::deparse1m(
+        proto,
+        false,
+        crate::mainutils::deparse::DEFAULTDEPARSE,
+    );
+    match first_deparse_line(text) {
+        Some(line) if !line.is_empty() => format!("{line} {primitive}"),
+        _ => primitive,
     }
 }
 
@@ -265,11 +263,9 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
         }
         SEXPTYPE::VECSXP => {
             if has_class(x.clone(), "summary.warnings") {
-                return unsafe {
-                    crate::mainutils::essentials::format_summary_warnings(x.as_raw())
-                        .trim_end_matches('\n')
-                        .to_string()
-                };
+                return crate::mainutils::essentials::format_summary_warnings(x.as_raw())
+                    .trim_end_matches('\n')
+                    .to_string();
             }
             if has_class(x.clone(), "POSIXlt") {
                 return format_posixlt_vector(x);

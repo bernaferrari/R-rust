@@ -229,11 +229,7 @@ pub(crate) fn Sock_init() -> c_int {
 
 /// Sock_open - open a socket for listening (socket + bind + listen)
 /// Signature: int Sock_open(Sock_port_t port, int blocking, Sock_error_t perr)
-pub(crate) fn Sock_open(
-    port: Sock_port_t,
-    blocking: c_int,
-    perr: *mut Sock_error_t,
-) -> c_int {
+pub(crate) fn Sock_open(port: Sock_port_t, blocking: c_int, perr: *mut Sock_error_t) -> c_int {
     unsafe {
         let sock = socket(AF_INET, SOCK_STREAM, 0);
         if R_invalid_socket(sock) != 0 {

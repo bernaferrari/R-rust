@@ -58,7 +58,7 @@ fn closure(
 
 pub(super) fn materialize(owner: OwnerToken<'_>, index: i32) -> SexpResult<Sexp<'static>> {
     let factory = owner.node_factory();
-    let environment = factory.wrap(unsafe { crate::sexp::globals::R_BaseEnv() })?;
+    let environment = factory.wrap(crate::sexp::globals::R_BaseEnv())?;
     match index {
         3 => {
             let f = symbol(&factory, c"f")?;

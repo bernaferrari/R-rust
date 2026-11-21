@@ -166,12 +166,7 @@ fn tre_match(
 
 // ===== regcomp functions =====
 
-pub fn tre_regncomp(
-    preg: *mut regex_t,
-    regex: *const c_char,
-    n: usize,
-    cflags: c_int,
-) -> c_int {
+pub fn tre_regncomp(preg: *mut regex_t, regex: *const c_char, n: usize, cflags: c_int) -> c_int {
     unsafe {
         let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * (n + 1)) as *mut tre_char_t;
         if wregex.is_null() {
@@ -191,12 +186,7 @@ pub fn tre_regncomp(
     }
 }
 
-pub fn tre_regncompb(
-    preg: *mut regex_t,
-    regex: *const c_char,
-    n: usize,
-    cflags: c_int,
-) -> c_int {
+pub fn tre_regncompb(preg: *mut regex_t, regex: *const c_char, n: usize, cflags: c_int) -> c_int {
     unsafe {
         let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * n) as *mut tre_char_t;
         if wregex.is_null() {

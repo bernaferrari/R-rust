@@ -316,54 +316,48 @@ pub(crate) unsafe fn data_frame_column_operand(
 }
 
 pub(crate) unsafe fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) -> SEXP {
-    unsafe {
-        let source_len = XLENGTH(value);
-        let result = Rf_allocVector3(TYPEOF(value), len);
-        if source_len == 0 {
-            return result;
-        }
-        for i in 0..len {
-            let source = ((offset + i) % source_len) as i32;
-            let target = i as i32;
-            match TYPEOF(value) {
-                t if t == SEXPTYPE::LGLSXP => {
-                    SET_LOGICAL_ELT(result, target, LOGICAL_ELT(value, source))
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    SET_INTEGER_ELT(result, target, INTEGER_ELT(value, source))
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    SET_REAL_ELT(result, target, REAL_ELT(value, source))
-                }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    SET_COMPLEX_ELT(result, target, COMPLEX_ELT(value, source))
-                }
-                t if t == SEXPTYPE::STRSXP => {
-                    SET_STRING_ELT(result, i, STRING_ELT(value, source as R_xlen_t))
-                }
-                t if t == SEXPTYPE::RAWSXP => SET_RAW_ELT(result, target, RAW_ELT(value, source)),
-                _ => arithmetic_error("comparison of these types is not implemented"),
-            }
-        }
-        result
+    let source_len = XLENGTH(value);
+    let result = Rf_allocVector3(TYPEOF(value), len);
+    if source_len == 0 {
+        return result;
     }
+    for i in 0..len {
+        let source = ((offset + i) % source_len) as i32;
+        let target = i as i32;
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::LGLSXP => {
+                SET_LOGICAL_ELT(result, target, LOGICAL_ELT(value, source))
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                SET_INTEGER_ELT(result, target, INTEGER_ELT(value, source))
+            }
+            t if t == SEXPTYPE::REALSXP => SET_REAL_ELT(result, target, REAL_ELT(value, source)),
+            t if t == SEXPTYPE::CPLXSXP => {
+                SET_COMPLEX_ELT(result, target, COMPLEX_ELT(value, source))
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(result, i, STRING_ELT(value, source as R_xlen_t))
+            }
+            t if t == SEXPTYPE::RAWSXP => SET_RAW_ELT(result, target, RAW_ELT(value, source)),
+            _ => arithmetic_error("comparison of these types is not implemented"),
+        }
+    }
+    result
 }
 
 pub(crate) unsafe fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
-    unsafe {
-        // GNU Ops.data.frame keeps `rn <- NULL` unless
-        // `.row_names_info(e) > 0`: compact `c(NA, -n)` automatic row
-        // names stay NULL. `getAttrib` materializes them to `1:n`, so
-        // read the raw stored attribute like `row.names.stored` does.
-        let row_names = crate::mainutils::essentials::row_names_stored(frame);
-        let compact = !row_names.is_null()
-            && row_names != R_NilValue()
-            && TYPEOF(row_names) == SEXPTYPE::INTSXP
-            && XLENGTH(row_names) == 2
-            && INTEGER_ELT(row_names, 0) == NA_INTEGER
-            && INTEGER_ELT(row_names, 1) < 0;
-        if compact { R_NilValue() } else { row_names }
-    }
+    // GNU Ops.data.frame keeps `rn <- NULL` unless
+    // `.row_names_info(e) > 0`: compact `c(NA, -n)` automatic row
+    // names stay NULL. `getAttrib` materializes them to `1:n`, so
+    // read the raw stored attribute like `row.names.stored` does.
+    let row_names = crate::mainutils::essentials::row_names_stored(frame);
+    let compact = !row_names.is_null()
+        && row_names != R_NilValue()
+        && TYPEOF(row_names) == SEXPTYPE::INTSXP
+        && XLENGTH(row_names) == 2
+        && INTEGER_ELT(row_names, 0) == NA_INTEGER
+        && INTEGER_ELT(row_names, 1) < 0;
+    if compact { R_NilValue() } else { row_names }
 }
 
 /// Unary plus on a logical is an integer. Integer and real unary plus

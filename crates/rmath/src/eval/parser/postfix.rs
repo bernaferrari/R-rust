@@ -18,23 +18,21 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     let args = self.parse_arglist()?;
                     self.expect(&Token::RParen)?;
 
-                    unsafe {
-                        let nil = R_NilValue();
-                        let mut arg_list = nil;
-                        for (name, val) in args.into_iter().rev() {
-                            let cell = self.cons(val, arg_list)?;
-                            if let Some(n) = name {
-                                let sym = self.install_symbol(&n)?;
-                                crate::sexp::accessors::SETTAG(cell, sym);
-                            }
-                            arg_list = cell;
+                    let nil = R_NilValue();
+                    let mut arg_list = nil;
+                    for (name, val) in args.into_iter().rev() {
+                        let cell = self.cons(val, arg_list)?;
+                        if let Some(n) = name {
+                            let sym = self.install_symbol(&n)?;
+                            crate::sexp::accessors::SETTAG(cell, sym);
                         }
-                        let call = self.cons(expr, arg_list)?;
-                        if !call.is_null() {
-                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-                        }
-                        expr = call;
+                        arg_list = cell;
                     }
+                    let call = self.cons(expr, arg_list)?;
+                    if !call.is_null() {
+                        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+                    }
+                    expr = call;
                 }
                 // Subscript: x[i], x[i, j]; empty slots (leading/trailing/
                 // doubled commas) become missing arguments, like gram.y xxsub0.

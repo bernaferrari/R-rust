@@ -127,7 +127,7 @@ pub fn errorcall_never(call: SEXP, msg: &str) -> ! {
 }
 
 pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
-    unsafe { crate::mainutils::errors::warningcall(call, format) }
+    crate::mainutils::errors::warningcall(call, format)
 }
 
 /// `xlength()` — like `XLENGTH()`, but walks pairlists (counting cells) and
@@ -184,7 +184,7 @@ pub fn R_typeToChar(s: SEXP) -> *const c_char {
 }
 
 pub fn coerceVector(s: SEXP, t: c_int) -> SEXP {
-    unsafe { crate::mainutils::coerce::coerceVector(s, t) }
+    crate::mainutils::coerce::coerceVector(s, t)
 }
 
 pub unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
@@ -202,68 +202,57 @@ pub unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
 }
 
 pub fn R_PreserveObject(x: SEXP) {
-    unsafe { crate::sexp::protect::R_PreserveObject(x) }
+    crate::sexp::protect::R_PreserveObject(x)
 }
 
 /// Build a tagged pairlist of formal symbols for matchArgs_NR.
 pub fn allocFormalsList5(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
-    unsafe {
-        let c5 = crate::sexp::constructors::Rf_cons(a5, crate::sexp::globals::R_NilValue());
-        SETTAG(c5, a5);
-        let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
-        SETTAG(c4, a4);
-        let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
-        SETTAG(c3, a3);
-        let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
-        SETTAG(c2, a2);
-        let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
-        SETTAG(c1, a1);
-        c1
-    }
+    let c5 = crate::sexp::constructors::Rf_cons(a5, crate::sexp::globals::R_NilValue());
+    SETTAG(c5, a5);
+    let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
+    SETTAG(c4, a4);
+    let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
+    SETTAG(c3, a3);
+    let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
+    SETTAG(c2, a2);
+    let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
+    SETTAG(c1, a1);
+    c1
 }
 
 /// Build a tagged pairlist of formal symbols for matchArgs_NR.
 #[allow(clippy::too_many_arguments)]
-pub fn allocFormalsList6(
-    a1: SEXP,
-    a2: SEXP,
-    a3: SEXP,
-    a4: SEXP,
-    a5: SEXP,
-    a6: SEXP,
-) -> SEXP {
-    unsafe {
-        let c6 = crate::sexp::constructors::Rf_cons(a6, crate::sexp::globals::R_NilValue());
-        SETTAG(c6, a6);
-        let c5 = crate::sexp::constructors::Rf_cons(a5, c6);
-        SETTAG(c5, a5);
-        let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
-        SETTAG(c4, a4);
-        let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
-        SETTAG(c3, a3);
-        let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
-        SETTAG(c2, a2);
-        let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
-        SETTAG(c1, a1);
-        c1
-    }
+pub fn allocFormalsList6(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP, a6: SEXP) -> SEXP {
+    let c6 = crate::sexp::constructors::Rf_cons(a6, crate::sexp::globals::R_NilValue());
+    SETTAG(c6, a6);
+    let c5 = crate::sexp::constructors::Rf_cons(a5, c6);
+    SETTAG(c5, a5);
+    let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
+    SETTAG(c4, a4);
+    let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
+    SETTAG(c3, a3);
+    let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
+    SETTAG(c2, a2);
+    let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
+    SETTAG(c1, a1);
+    c1
 }
 
 pub fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
     unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) }
 }
 pub unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
-    unsafe { crate::mainutils::objects::inherits2(s, what) }
+    crate::mainutils::objects::inherits2(s, what)
 }
 
 // Use the runtime's scalar conversion for strings, complex values and empty
 // vectors too; a numeric-only shim silently treated other types as zero.
 pub fn asReal(x: SEXP) -> c_double {
-    unsafe { crate::mainutils::coerce::asReal(x) }
+    crate::mainutils::coerce::asReal(x)
 }
 
 pub fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 pub fn asLogical(x: SEXP) -> c_int {
@@ -332,11 +321,11 @@ pub fn R_LevelsSymbol() -> SEXP {
 }
 
 pub fn isObject(x: SEXP) -> c_int {
-    unsafe { crate::eval::attrib_core::isObject(x) }
+    crate::eval::attrib_core::isObject(x)
 }
 
 pub fn asBool2(x: SEXP, call: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asRbool(x, call) }
+    crate::mainutils::coerce::asRbool(x, call)
 }
 
 pub fn isVector(x: SEXP) -> c_int {
@@ -352,11 +341,11 @@ pub fn isReal(x: SEXP) -> c_int {
 }
 
 pub fn ScalarReal(x: c_double) -> SEXP {
-    unsafe { Rf_ScalarReal(x) }
+    Rf_ScalarReal(x)
 }
 
 pub fn ScalarInteger(x: c_int) -> SEXP {
-    unsafe { Rf_ScalarInteger(x) }
+    Rf_ScalarInteger(x)
 }
 
 pub fn SET_S4_OBJECT(_x: SEXP) {}
@@ -370,7 +359,7 @@ pub unsafe fn Rf_install_stub(name: *const c_char) -> SEXP {
 }
 
 pub fn R_DotsSymbol() -> SEXP {
-    unsafe { crate::sexp::symbol::R_DotsSymbol() }
+    crate::sexp::symbol::R_DotsSymbol()
 }
 
 // ---------------------------------------------------------------------------

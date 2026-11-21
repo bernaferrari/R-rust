@@ -63,7 +63,7 @@ pub fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         with_runtime(&weak, |access| {
             raw_to_char::evaluate(access, args, |value| {
                 access.with_native(|original| {
-                    let flag = unsafe { crate::mainutils::coerce::asLogical(value.as_raw()) };
+                    let flag = crate::mainutils::coerce::asLogical(value.as_raw());
                     original.require_active()?;
                     Ok(flag)
                 })
@@ -117,31 +117,27 @@ fn math_nonnum_error() -> ! {
 
 /// GNU math1: SHALLOW_DUPLICATE_ATTRIB copies dim/dimnames/names.
 fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
-            let dn = crate::sexp::attrib_core::getAttrib(
-                src,
+    let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let dn =
+            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                dst,
                 crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
             );
-            if !dn.is_null() && dn != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    dst,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    dn,
-                );
-            }
-        } else {
-            let names =
-                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    dst,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
+        }
+    } else {
+        let names =
+            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                dst,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
     }
 }
@@ -439,22 +435,22 @@ fn apply_binary_scalar_fn(
 }
 
 pub fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) 
+    apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn)
 }
 
 /// R's `gamma(x)` — gamma function.
 pub fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) 
+    apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn)
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
 pub fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) 
+    apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma)
 }
 
 /// R's `trigamma(x)` — trigamma function.
 pub fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) 
+    apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma)
 }
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
@@ -545,13 +541,8 @@ mod choose_checked;
 #[path = "choose_factor.rs"]
 mod choose_factor;
 
-fn checked_math2(
-    call: SEXP,
-    a: SEXP,
-    b: SEXP,
-    operation: choose_checked::Operation,
-) -> SEXP {
-     checked_math(call, a, b, None, operation, None, None, None) 
+fn checked_math2(call: SEXP, a: SEXP, b: SEXP, operation: choose_checked::Operation) -> SEXP {
+    checked_math(call, a, b, None, operation, None, None, None)
 }
 fn checked_math(
     call: SEXP,
@@ -655,18 +646,15 @@ fn checked_math(
         Err(payload) => std::panic::resume_unwind(payload),
     }
     if !a.is_empty() && !b.is_empty() && c.as_ref().is_none_or(|c| !c.is_empty()) {
-        let raw =
-            unsafe { crate::main::coerce::coerceVector(a.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        let raw = crate::main::coerce::coerceVector(a.as_raw(), SEXPTYPE::REALSXP.as_c_int());
         active();
         a = root(raw);
-        let raw =
-            unsafe { crate::main::coerce::coerceVector(b.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        let raw = crate::main::coerce::coerceVector(b.as_raw(), SEXPTYPE::REALSXP.as_c_int());
         active();
         b = root(raw);
         if let Some(value) = &mut c {
-            let raw = unsafe {
-                crate::main::coerce::coerceVector(value.as_raw(), SEXPTYPE::REALSXP.as_c_int())
-            };
+            let raw =
+                crate::main::coerce::coerceVector(value.as_raw(), SEXPTYPE::REALSXP.as_c_int());
             active();
             *value = root(raw);
         }
@@ -694,15 +682,15 @@ fn checked_math(
         let copied = unsafe { crate::mainutils::duplicate::shallow_duplicate(attributes.as_raw()) };
         active();
         let copied = root(copied);
-        unsafe {
-            SET_ATTRIB(output.as_raw(), copied.as_raw());
-            SET_OBJECT(output.as_raw(), OBJECT(source.as_raw()));
-            if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
-                SET_S4_OBJECT(output.as_raw());
-            } else {
-                UNSET_S4_OBJECT(output.as_raw());
-            }
+
+        SET_ATTRIB(output.as_raw(), copied.as_raw());
+        SET_OBJECT(output.as_raw(), OBJECT(source.as_raw()));
+        if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
+            SET_S4_OBJECT(output.as_raw());
+        } else {
+            UNSET_S4_OBJECT(output.as_raw());
         }
+
         active();
     }
     output.as_raw()
@@ -780,15 +768,13 @@ pub fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // equal the symbol's INTERNAL slot. The public fallback is the distinct base
 // binding; internal warnings use the enclosing call instead.
 fn bessel_internal_warning_call(op: SEXP, symbol: SEXP) -> Option<SEXP> {
-    unsafe {
-        if op.is_null()
-            || op == crate::sexp::globals::R_NilValue()
-            || crate::sexp::accessors::SYMVALUE(symbol) == op
-        {
-            return None;
-        }
-        Some(crate::mainutils::errors::condition_caller_call())
+    if op.is_null()
+        || op == crate::sexp::globals::R_NilValue()
+        || crate::sexp::accessors::SYMVALUE(symbol) == op
+    {
+        return None;
     }
+    Some(crate::mainutils::errors::condition_caller_call())
 }
 
 /// R's `besselJ(x, nu)` — Bessel function of the first kind.
@@ -898,18 +884,17 @@ fn bessel_scaled_entry(
             _ => "missing scaling argument to internal besselK",
         })
     }
-    unsafe {
-        checked_math(
-            call.as_raw(),
-            a.as_raw(),
-            b.as_raw(),
-            c.as_ref().map(Sexp::as_raw),
-            operation,
-            public.then_some(environment.as_raw()),
-            (!public).then(|| crate::mainutils::errors::condition_caller_call()),
-            None,
-        )
-    }
+
+    checked_math(
+        call.as_raw(),
+        a.as_raw(),
+        b.as_raw(),
+        c.as_ref().map(Sexp::as_raw),
+        operation,
+        public.then_some(environment.as_raw()),
+        (!public).then(|| crate::mainutils::errors::condition_caller_call()),
+        None,
+    )
 }
 
 /// R's `besselY(x, nu)` — Bessel function of the second kind.

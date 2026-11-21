@@ -180,29 +180,25 @@ pub(crate) fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
 
 /// Port of `EnlargeNames()` -- grows a names attribute vector.
 pub(crate) fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) -> SEXP {
-    unsafe {
-        if TYPEOF(names) != STRSXP || XLENGTH(names) != len {
-            // Error case - just return names unchanged
-            return names;
-        }
-        let newnames = EnlargeVector(names, newlen);
-        let _newnames_guard = protect(newnames);
-        for i in len..newlen {
-            SET_STRING_ELT(newnames, i, R_BlankString());
-        }
-        newnames
+    if TYPEOF(names) != STRSXP || XLENGTH(names) != len {
+        // Error case - just return names unchanged
+        return names;
     }
+    let newnames = EnlargeVector(names, newlen);
+    let _newnames_guard = protect(newnames);
+    for i in len..newlen {
+        SET_STRING_ELT(newnames, i, R_BlankString());
+    }
+    newnames
 }
 
 /// Port of `embedInVector()` -- embeds a non-vector in a list for
 /// SubassignTypeFix (used for S4 objects).
 pub(crate) fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector3(VECSXP, 1);
-        let _ans_guard = protect(ans);
-        SET_VECTOR_ELT(ans, 0, v);
-        ans
-    }
+    let ans = Rf_allocVector3(VECSXP, 1);
+    let _ans_guard = protect(ans);
+    SET_VECTOR_ELT(ans, 0, v);
+    ans
 }
 
 /// Port of `dispatch_asvector()` -- DispatchOrEval("as.vector") on *x.
@@ -376,17 +372,15 @@ pub(crate) fn SubassignTypeFix(
 
 /// Port of `gi()` -- gets an index value from an integer or real subscript vector.
 pub(crate) fn gi(indx: SEXP, i: R_xlen_t) -> R_xlen_t {
-    unsafe {
-        if TYPEOF(indx) == REALSXP {
-            let d = REAL_ELT(indx, i as c_int);
-            if R_FINITE(d) {
-                d as R_xlen_t
-            } else {
-                NA_INTEGER as R_xlen_t
-            }
+    if TYPEOF(indx) == REALSXP {
+        let d = REAL_ELT(indx, i as c_int);
+        if R_FINITE(d) {
+            d as R_xlen_t
         } else {
-            INTEGER_ELT(indx, i as c_int) as R_xlen_t
+            NA_INTEGER as R_xlen_t
         }
+    } else {
+        INTEGER_ELT(indx, i as c_int) as R_xlen_t
     }
 }
 
@@ -448,13 +442,11 @@ pub(crate) fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
 
 /// Port of `VECTOR_ELT_FIX_NAMED()` -- sets NAMED=NAMEDMAX if needed for PR15098.
 pub(crate) fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
-        let val = VECTOR_ELT(y, i);
-        if NAMED(y) != 0 || NAMED(val) != 0 {
-            ENSURE_NAMEDMAX(val);
-        }
-        val
+    let val = VECTOR_ELT(y, i);
+    if NAMED(y) != 0 || NAMED(val) != 0 {
+        ENSURE_NAMEDMAX(val);
     }
+    val
 }
 
 // ---------------------------------------------------------------------------

@@ -90,7 +90,7 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
 pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe { crate::sexp::attrib_core::getAttrib(x, which) }
+    crate::sexp::attrib_core::getAttrib(x, which)
 }
 
 // ---------------------------------------------------------------------------
@@ -99,34 +99,32 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 
 /// `names(x) <- pairlist("a","b","c")` stores `c("a","b","c")`.
 pub(crate) unsafe fn pairlist_to_names(value: SEXP) -> SEXP {
-    unsafe {
-        let mut n = 0i32;
-        let mut cell = value;
-        while !cell.is_null() && cell != R_NilValue() {
-            n += 1;
-            cell = CDR(cell);
-        }
-        let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
-        let _g = crate::sexp::protect::protect(out);
-        cell = value;
-        let mut i = 0i32;
-        while !cell.is_null() && cell != R_NilValue() && i < n {
-            let car = CAR(cell);
-            let ch = if TYPEOF(car) == SEXPTYPE::STRSXP && XLENGTH(car) > 0 {
-                STRING_ELT(car, 0)
-            } else if TYPEOF(car) == SEXPTYPE::CHARSXP {
-                car
-            } else if TYPEOF(car) == SEXPTYPE::SYMSXP {
-                PRINTNAME(car)
-            } else {
-                crate::sexp::globals::R_NaString()
-            };
-            SET_STRING_ELT(out, i as i64, ch);
-            i += 1;
-            cell = CDR(cell);
-        }
-        out
+    let mut n = 0i32;
+    let mut cell = value;
+    while !cell.is_null() && cell != R_NilValue() {
+        n += 1;
+        cell = CDR(cell);
     }
+    let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
+    let _g = crate::sexp::protect::protect(out);
+    cell = value;
+    let mut i = 0i32;
+    while !cell.is_null() && cell != R_NilValue() && i < n {
+        let car = CAR(cell);
+        let ch = if TYPEOF(car) == SEXPTYPE::STRSXP && XLENGTH(car) > 0 {
+            STRING_ELT(car, 0)
+        } else if TYPEOF(car) == SEXPTYPE::CHARSXP {
+            car
+        } else if TYPEOF(car) == SEXPTYPE::SYMSXP {
+            PRINTNAME(car)
+        } else {
+            crate::sexp::globals::R_NaString()
+        };
+        SET_STRING_ELT(out, i as i64, ch);
+        i += 1;
+        cell = CDR(cell);
+    }
+    out
 }
 
 /// Set an attribute on an object.

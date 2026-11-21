@@ -47,15 +47,11 @@ pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `startsWith(x, prefix)` — check if strings start with prefix.
 pub fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Prefix)
-    }
+    super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Prefix)
 }
 
 pub fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Suffix)
-    }
+    super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Suffix)
 }
 
 /// R's `str_pad(x, width, side="left", pad=" ")` — pad strings to a width.
@@ -151,7 +147,7 @@ pub fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `str_replace(x, pattern, replacement)` — alias for sub.
 pub fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_sub(_call, _op, args, _rho) 
+    do_sub(_call, _op, args, _rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -293,26 +289,23 @@ pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R-like `strwrap(x, width)` / `str_wrap(x, width)` — wrap text to width.
 pub fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        let width_arg = arg_by_name_or_position(args, &["width"], 1);
-        let width =
-            if width_arg.is_null() || width_arg == R_NilValue() || XLENGTH(width_arg) == 0 {
-                0
-            } else {
-                numeric_elt_as_count(width_arg, 0)
-            }
-            .max(1);
-
-        let mut lines = Vec::new();
-        for i in 0..XLENGTH(x) {
-            lines.extend(wrap_text_words(&elt_to_string(x, i), width));
-        }
-        string_vector(&lines)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    let width_arg = arg_by_name_or_position(args, &["width"], 1);
+    let width = if width_arg.is_null() || width_arg == R_NilValue() || XLENGTH(width_arg) == 0 {
+        0
+    } else {
+        numeric_elt_as_count(width_arg, 0)
+    }
+    .max(1);
+
+    let mut lines = Vec::new();
+    for i in 0..XLENGTH(x) {
+        lines.extend(wrap_text_words(&elt_to_string(x, i), width));
+    }
+    string_vector(&lines)
 }
 
 fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
@@ -342,22 +335,20 @@ fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
 
 /// R-like `path_package(package, ...)` — find package paths through the session library policy.
 pub fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let package_arg = arg_by_name_or_position(args, &["package"], 0);
-        if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-
-        let mut paths = Vec::new();
-        for i in 0..XLENGTH(package_arg) {
-            let package = elt_to_string(package_arg, i);
-            let path = public_package_path(&package);
-            if !path.is_empty() {
-                paths.push(path);
-            }
-        }
-        string_vector(&paths)
+    let package_arg = arg_by_name_or_position(args, &["package"], 0);
+    if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+
+    let mut paths = Vec::new();
+    for i in 0..XLENGTH(package_arg) {
+        let package = elt_to_string(package_arg, i);
+        let path = public_package_path(&package);
+        if !path.is_empty() {
+            paths.push(path);
+        }
+    }
+    string_vector(&paths)
 }
 
 /// R's `system.file(..., package)` — find files inside an installed package.
@@ -474,36 +465,32 @@ pub fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `str_locate_all(x, pattern)` — locate all occurrences (simplified).
 pub fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let _pattern = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        // Return empty matrix
-        Rf_allocVector3(SEXPTYPE::INTSXP, 0)
+    let x = CAR(args);
+    let _pattern = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    // Return empty matrix
+    Rf_allocVector3(SEXPTYPE::INTSXP, 0)
 }
 
 /// R's `str_sub(x, start, end)` — extract substring (alias for substr).
 pub fn do_str_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_substr(_call, _op, args, _rho) 
+    do_substr(_call, _op, args, _rho)
 }
 
 /// R's `str_sub_all(x, start, end)` — all substrings (simplified).
 pub fn do_str_sub_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        // Return input as list
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        SET_VECTOR_ELT(result, 0, x);
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    // Return input as list
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    SET_VECTOR_ELT(result, 0, x);
+    result
 }

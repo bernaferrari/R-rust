@@ -93,12 +93,12 @@ fn pkendall(len: c_int, q: &[c_double], p: &mut [c_double], n: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
-    let q = unsafe { coerceVector(q, SEXPTYPE::REALSXP.as_c_int()) };
-    let _q_guard = unsafe { protect_sexp(q) };
+    let q = coerceVector(q, SEXPTYPE::REALSXP.as_c_int());
+    let _q_guard = protect_sexp(q);
     let len = LENGTH(q);
-    let n = unsafe { asInteger(sn) };
-    let p = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, len) };
-    let _p_guard = unsafe { protect_sexp(p) };
+    let n = asInteger(sn);
+    let p = Rf_allocVector(SEXPTYPE::REALSXP, len);
+    let _p_guard = protect_sexp(p);
     let q_slice = unsafe { slice::from_raw_parts(REAL(q), len as usize) };
     let p_slice = unsafe { slice::from_raw_parts_mut(REAL(p), len as usize) };
 

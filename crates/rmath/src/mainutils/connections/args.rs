@@ -46,35 +46,31 @@ pub fn charsxp_to_string(s: SEXP) -> String {
 
 /// Extract a string from the first element of a STRSXP.
 pub fn string_elt(s: SEXP, i: R_xlen_t) -> String {
-    unsafe {
-        if s.is_null() {
-            return String::new();
-        }
-        let elt = STRING_ELT(s, i);
-        charsxp_to_string(elt)
+    if s.is_null() {
+        return String::new();
     }
+    let elt = STRING_ELT(s, i);
+    charsxp_to_string(elt)
 }
 
 /// Check if an SEXP is a string vector and get its first element.
 pub fn check_string_arg(arg: SEXP, name: &str) -> String {
-    unsafe {
-        if arg.is_null() {
-            r_error(&format!("invalid '{}' argument", name));
-        }
-        let t = TYPEOF(arg);
-        if t != SEXPTYPE::STRSXP {
-            r_error(&format!("invalid '{}' argument", name));
-        }
-        let len = LENGTH(arg);
-        if len < 1 {
-            r_error(&format!("invalid '{}' argument", name));
-        }
-        let elt = STRING_ELT(arg, 0);
-        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-            r_error(&format!("invalid '{}' argument", name));
-        }
-        string_elt(arg, 0)
+    if arg.is_null() {
+        r_error(&format!("invalid '{}' argument", name));
     }
+    let t = TYPEOF(arg);
+    if t != SEXPTYPE::STRSXP {
+        r_error(&format!("invalid '{}' argument", name));
+    }
+    let len = LENGTH(arg);
+    if len < 1 {
+        r_error(&format!("invalid '{}' argument", name));
+    }
+    let elt = STRING_ELT(arg, 0);
+    if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+        r_error(&format!("invalid '{}' argument", name));
+    }
+    string_elt(arg, 0)
 }
 
 pub fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
@@ -173,13 +169,11 @@ pub fn as_logical(arg: SEXP) -> c_int {
 
 /// Check that a logical argument is valid (not NA).
 pub fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
-    unsafe {
-        let v = as_logical(arg);
-        if v == NA_INTEGER {
-            r_error(&format!("invalid '{}' argument", name));
-        }
-        v
+    let v = as_logical(arg);
+    if v == NA_INTEGER {
+        r_error(&format!("invalid '{}' argument", name));
     }
+    v
 }
 
 pub fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
@@ -203,18 +197,27 @@ pub fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
     }
 }
 
-pub fn arg_by_name_or_position(
-    args: SEXP,
-    position: usize,
-    names: &[&str],
-    default: SEXP,
-) -> SEXP {
-    unsafe {
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if let Some(tag) = connection_arg_tag_name(cell)
-                && names.iter().any(|name| tag == *name)
-            {
+pub fn arg_by_name_or_position(args: SEXP, position: usize, names: &[&str], default: SEXP) -> SEXP {
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        if let Some(tag) = connection_arg_tag_name(cell)
+            && names.iter().any(|name| tag == *name)
+        {
+            let value = CAR(cell);
+            return if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+                default
+            } else {
+                value
+            };
+        }
+        cell = CDR(cell);
+    }
+
+    let mut untagged = 0usize;
+    cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        if connection_arg_tag_name(cell).is_none() {
+            if untagged == position {
                 let value = CAR(cell);
                 return if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
                     default
@@ -222,28 +225,12 @@ pub fn arg_by_name_or_position(
                     value
                 };
             }
-            cell = CDR(cell);
+            untagged += 1;
         }
-
-        let mut untagged = 0usize;
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if connection_arg_tag_name(cell).is_none() {
-                if untagged == position {
-                    let value = CAR(cell);
-                    return if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
-                        default
-                    } else {
-                        value
-                    };
-                }
-                untagged += 1;
-            }
-            cell = CDR(cell);
-        }
-
-        default
+        cell = CDR(cell);
     }
+
+    default
 }
 
 /// Raise an R error via panic.

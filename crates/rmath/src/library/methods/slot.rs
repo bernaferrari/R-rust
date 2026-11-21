@@ -18,16 +18,14 @@ use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
 
 fn slot_name_charsxp(name: SEXP) -> SEXP {
-    unsafe {
-        if name.is_null() || name == R_NilValue() {
-            return R_NilValue();
-        }
-        match TYPEOF(name) {
-            kind if kind == SEXPTYPE::CHARSXP.as_c_int() => name,
-            kind if kind == SEXPTYPE::STRSXP.as_c_int() && LENGTH(name) > 0 => STRING_ELT(name, 0),
-            kind if kind == SEXPTYPE::SYMSXP.as_c_int() => PRINTNAME(name),
-            _ => R_NilValue(),
-        }
+    if name.is_null() || name == R_NilValue() {
+        return R_NilValue();
+    }
+    match TYPEOF(name) {
+        kind if kind == SEXPTYPE::CHARSXP.as_c_int() => name,
+        kind if kind == SEXPTYPE::STRSXP.as_c_int() && LENGTH(name) > 0 => STRING_ELT(name, 0),
+        kind if kind == SEXPTYPE::SYMSXP.as_c_int() => PRINTNAME(name),
+        _ => R_NilValue(),
     }
 }
 

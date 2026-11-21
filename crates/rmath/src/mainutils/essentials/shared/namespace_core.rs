@@ -228,7 +228,7 @@ pub(crate) fn uncache_package_namespace(package: &str) {
 
 pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
     if package == "base" {
-        return Some(unsafe { crate::sexp::envir::R_BaseNamespace() });
+        return Some(crate::sexp::envir::R_BaseNamespace());
     }
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst)
@@ -491,10 +491,7 @@ pub(super) fn ensure_s3methods_slot(info: SEXP) {
     }
 }
 
-pub(super) fn record_namespace_s3_metadata(
-    package_env: SEXP,
-    directives: &NamespaceDirectives,
-) {
+pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &NamespaceDirectives) {
     unsafe {
         let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
         let info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);

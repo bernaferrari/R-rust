@@ -37,14 +37,12 @@ pub(super) unsafe fn save(
         bindings.push(value, Some(tag)).unwrap_or_else(fail);
     }
     let bindings = bindings.finish().unwrap_or_else(fail);
-    let plain = unsafe {
-        serialize::serialize_workspace_snapshot(
-            &owner,
-            bindings.as_raw(),
-            options.version,
-            options.ascii,
-        )
-    };
+    let plain = serialize::serialize_workspace_snapshot(
+        &owner,
+        bindings.as_raw(),
+        options.version,
+        options.ascii,
+    );
     let compressed = options.codec.map(|codec| {
         serialize::compress_container(&owner, &plain, codec)
             .unwrap_or_else(|error| fail(format!("cannot compress workspace: {error}")))
@@ -131,8 +129,8 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
         len += 1;
         cell = cell.try_cdr().unwrap_or_else(fail);
     }
-    let names = unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, len) };
-    let _names = unsafe { protect(names) };
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+    let _names = protect(names);
     let mut cell = bindings.clone();
     for index in 0..len {
         let tag = cell.try_tag().unwrap_or_else(fail);
@@ -144,7 +142,7 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
         {
             crate::sexp::context::r_error("invalid workspace binding name");
         }
-        unsafe { SET_STRING_ELT(names, index, name) };
+        SET_STRING_ELT(names, index, name);
         cell = cell.try_cdr().unwrap_or_else(fail);
     }
     if len != 0 {

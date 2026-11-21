@@ -134,11 +134,11 @@ pub(super) fn checkArity(op: SEXP, args: SEXP) {
 }
 
 pub(super) fn ScalarInteger(x: c_int) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(x) }
+    crate::sexp::constructors::Rf_ScalarInteger(x)
 }
 
 pub(super) fn ScalarLogical(x: c_int) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_ScalarLogical(x) }
+    crate::sexp::constructors::Rf_ScalarLogical(x)
 }
 
 /// Get/set class attribute (simplified).

@@ -410,7 +410,7 @@ fn strptime_internal(
                 // localtime_r replaces the tm contents, as in trunk.
                 let mut ctm: crate::tzone::stm = unsafe { std::mem::zeroed() };
                 let secs_t = secs as i64;
-                if unsafe { crate::tzone::R_localtime_r(&secs_t, &mut ctm) }.is_null() {
+                if crate::tzone::R_localtime_r(&secs_t, &mut ctm).is_null() {
                     return None;
                 }
                 tm.tm_sec = ctm.tm_sec;
@@ -513,11 +513,10 @@ fn strptime_internal(
                 }
                 // https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
                 if val > 1400 {
-                    unsafe {
-                        crate::mainutils::errors::Rf_warning1(
-                            c"values for %z outside +/-1400 are an error\n".as_ptr(),
-                        );
-                    }
+                    crate::mainutils::errors::Rf_warning1(
+                        c"values for %z outside +/-1400 are an error\n".as_ptr(),
+                    );
+
                     return None;
                 }
                 let mut off = (val * 3600) / 100;
@@ -632,9 +631,9 @@ fn strptime_internal(
                     yr
                 ))
                 .unwrap_or_default();
-                unsafe {
-                    crate::mainutils::errors::Rf_warning1(msg.as_ptr());
-                }
+
+                crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+
                 t_mon = 12; // this will give an invalid mday, so invalid tm
             } else {
                 while MON_YDAY[isleap(yr) as usize][t_mon] <= tm.tm_yday {
@@ -703,9 +702,9 @@ fn strptime_internal(
                         tm.tm_yday, yr
                     ))
                     .unwrap_or_default();
-                    unsafe {
-                        crate::mainutils::errors::Rf_warning1(msg.as_ptr());
-                    }
+
+                    crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+
                     t_mon = 12;
                 } else {
                     while MON_YDAY[isleap(yr) as usize][t_mon] <= tm.tm_yday {

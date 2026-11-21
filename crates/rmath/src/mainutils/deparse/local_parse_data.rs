@@ -186,7 +186,7 @@ pub fn isUserBinop(sym: SEXP) -> bool {
 
 /// Check if a string is a valid string (non-null, non-NA).
 pub fn isValidString(x: SEXP) -> bool {
-    unsafe { isString(x) && LENGTH(x) >= 1 && !STRING_ELT(x, 0).is_null() }
+    isString(x) && LENGTH(x) >= 1 && !STRING_ELT(x, 0).is_null()
 }
 
 /// Get PPinfo for a builtin/special function.
@@ -263,21 +263,19 @@ pub fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
 
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
 pub fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
-    unsafe {
-        if TYPEOF(arg) != SEXPTYPE::LANGSXP {
-            return None;
-        }
-        let op = CAR(arg);
-        if !isSymbol(op) {
-            return None;
-        }
-        let symval = SYMVALUE(op);
-        let t = TYPEOF(symval);
-        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
-            return getPPinfo_for_symbol(op);
-        }
-        Some(getPPinfo(symval))
+    if TYPEOF(arg) != SEXPTYPE::LANGSXP {
+        return None;
     }
+    let op = CAR(arg);
+    if !isSymbol(op) {
+        return None;
+    }
+    let symval = SYMVALUE(op);
+    let t = TYPEOF(symval);
+    if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+        return getPPinfo_for_symbol(op);
+    }
+    Some(getPPinfo(symval))
 }
 
 pub const S4_OBJECT_MASK: u16 = 1 << 4;
@@ -312,12 +310,12 @@ pub fn primname_c(op: SEXP) -> *const c_char {
 
 /// Extract integer from SEXP — delegates to canonical `coerce::asInteger`.
 pub fn Rf_asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 /// Extract logical from SEXP — delegates to canonical `coerce::asLogical`.
 pub fn Rf_asLogical(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asLogical(x) }
+    crate::mainutils::coerce::asLogical(x)
 }
 
 // ---------------------------------------------------------------------------

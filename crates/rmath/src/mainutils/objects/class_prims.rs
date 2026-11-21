@@ -181,39 +181,37 @@ pub fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
 
 /// R's inherits(x, what, which = FALSE) primitive.
 pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() {
-            return Rf_ScalarLogical(FALSE);
-        }
-
-        let x = CAR(args);
-        let what = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-            CADR(args)
-        } else {
-            R_NilValue()
-        };
-        let which = if !CDR(args).is_null()
-            && CDR(args) != R_NilValue()
-            && !CDDR(args).is_null()
-            && CDDR(args) != R_NilValue()
-        {
-            CAR(CDDR(args))
-        } else {
-            Rf_ScalarLogical(FALSE)
-        };
-
-        // If 'what' is an object (not a character vector), try nameOfClass
-        if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP {
-            let name = nameOfClass(what, env);
-            if name != R_NilValue() && !name.is_null() {
-                let _name_guard = protect(name);
-                let val = inherits3(x, name, which);
-                return val;
-            }
-        }
-
-        inherits3(x, what, which)
+    if args.is_null() {
+        return Rf_ScalarLogical(FALSE);
     }
+
+    let x = CAR(args);
+    let what = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+        CADR(args)
+    } else {
+        R_NilValue()
+    };
+    let which = if !CDR(args).is_null()
+        && CDR(args) != R_NilValue()
+        && !CDDR(args).is_null()
+        && CDDR(args) != R_NilValue()
+    {
+        CAR(CDDR(args))
+    } else {
+        Rf_ScalarLogical(FALSE)
+    };
+
+    // If 'what' is an object (not a character vector), try nameOfClass
+    if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP {
+        let name = nameOfClass(what, env);
+        if name != R_NilValue() && !name.is_null() {
+            let _name_guard = protect(name);
+            let val = inherits3(x, name, which);
+            return val;
+        }
+    }
+
+    inherits3(x, what, which)
 }
 
 // ---------------------------------------------------------------------------
@@ -242,13 +240,11 @@ pub(crate) fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 /// R's is.object() function. Returns TRUE if the object has an explicit class.
 /// Note: canonical version lives in attrib.rs
 pub(crate) fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let x = CAR(args);
-        Rf_ScalarLogical(isObject(x))
+    if args.is_null() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let x = CAR(args);
+    Rf_ScalarLogical(isObject(x))
 }
 
 // ---------------------------------------------------------------------------
@@ -300,13 +296,11 @@ pub fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 
 /// R's isS4() function. Returns TRUE if the object has the S4 bit set.
 pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let x = CAR(args);
-        Rf_ScalarLogical(IS_S4_OBJECT(x))
+    if args.is_null() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let x = CAR(args);
+    Rf_ScalarLogical(IS_S4_OBJECT(x))
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +309,7 @@ pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// R's asS4() function. Sets or unsets the S4 object bit.
 pub fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-     {
+    {
         if args.is_null() {
             error("invalid 'flag' argument");
         }
@@ -367,7 +361,7 @@ pub fn R_S4_method_dispatch(
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
-     error("S4 method dispatch is not available through this low-level entry point")
+    error("S4 method dispatch is not available through this low-level entry point")
 }
 
 // ---------------------------------------------------------------------------
@@ -380,12 +374,10 @@ pub fn R_S4_method_dispatch(
 /// `mainutils::essentials`; keep this symbol as a thin compatibility route so
 /// all class definitions land in the same session-local S4 registry.
 pub fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            error("'Class' must name an S4 class");
-        }
-        crate::mainutils::essentials::do_setClass(call, op, args, env)
+    if args.is_null() || args == R_NilValue() {
+        error("'Class' must name an S4 class");
     }
+    crate::mainutils::essentials::do_setClass(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +386,7 @@ pub fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// setRefClass() is an R-level function from the methods package.
 pub fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-     error("setRefClass is not implemented in this Rust runtime yet")
+    error("setRefClass is not implemented in this Rust runtime yet")
 }
 
 // ---------------------------------------------------------------------------
@@ -438,5 +430,5 @@ pub fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP)
 // ---------------------------------------------------------------------------
 
 pub fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
-     R_check_class_and_super(x, valid, ptr::null_mut())
+    R_check_class_and_super(x, valid, ptr::null_mut())
 }

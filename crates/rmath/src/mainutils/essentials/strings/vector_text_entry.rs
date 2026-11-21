@@ -40,9 +40,7 @@ pub(super) fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SEXP {
                             )
                         }
                     } else {
-                        unsafe {
-                            crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
-                        }
+                        crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
                     };
                     original.sexp(raw)?.into_owned()
                 })

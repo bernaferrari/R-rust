@@ -91,12 +91,11 @@ fn reduce(
             value.clone()
         } else {
             if value.typeof_() != SEXPTYPE::INTSXP {
-                unsafe {
-                    crate::mainutils::errors::Rf_warningcall1(
-                        call,
-                        coercion::warning(value.typeof_()).as_ptr(),
-                    );
-                }
+                crate::mainutils::errors::Rf_warningcall1(
+                    call,
+                    coercion::warning(value.typeof_()).as_ptr(),
+                );
+
                 check();
             }
             coercion::logical(value, f, check)

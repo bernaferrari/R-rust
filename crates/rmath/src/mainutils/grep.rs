@@ -89,7 +89,7 @@ pub(crate) fn regex_workspace() -> RegexWorkspace {
 
 #[inline(always)]
 fn NA_STRING() -> SEXP {
-     crate::mainutils::relop::NA_STRING() 
+    crate::mainutils::relop::NA_STRING()
 }
 
 #[inline(always)]
@@ -189,7 +189,7 @@ unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 /// ScalarString -- create scalar STRSXP.
 #[inline(always)]
 unsafe fn ScalarString(x: SEXP) -> SEXP {
-    unsafe { Rf_ScalarString(x) }
+    Rf_ScalarString(x)
 }
 
 /// mkChar -- create CHARSXP from C string.
@@ -203,7 +203,7 @@ unsafe fn allocVector<T: Into<crate::sexp::ffi::SEXPTYPE>>(
     sexptype: T,
     length: crate::sexp::ffi::R_xlen_t,
 ) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_allocVector3(sexptype, length) }
+    crate::sexp::constructors::Rf_allocVector3(sexptype, length)
 }
 
 #[inline(always)]
@@ -383,46 +383,45 @@ impl TreRegex {
 
     fn compile_mode(pattern: &str, ignore_case: bool, bytes: bool) -> Result<Self, String> {
         let workspace = regex_workspace();
-        unsafe {
-            let mut cflags = REG_EXTENDED;
-            if ignore_case {
-                cflags |= REG_ICASE;
-            }
-            let length = if bytes {
-                pattern.len()
-            } else {
-                pattern.chars().count()
-            };
-            let mut wide = workspace.buffer(length);
-            if bytes {
-                for byte in pattern.bytes() {
-                    wide.push(u32::from(byte));
-                }
-            } else {
-                for ch in pattern.chars() {
-                    wide.push(u32::from(ch));
-                }
-            }
-            let preg = crate::tre::compile::tre_compile_owned(
-                wide.as_ptr(),
-                wide.len(),
-                cflags,
-                workspace.clone(),
-            )
-            .map_err(|rc| {
-                // Option-based matching adapters may discard syntax failures, but
-                // exhaustion must follow the same typed error path as buffers.
-                if rc == crate::tre::ast::REG_ESPACE {
-                    workspace::memory_error();
-                }
-                format!("TRE compilation failed with code {rc}")
-            })?;
-            Ok(Self {
-                preg,
-                bytes,
-                workspace,
-            })
+
+        let mut cflags = REG_EXTENDED;
+        if ignore_case {
+            cflags |= REG_ICASE;
         }
+        let length = if bytes {
+            pattern.len()
+        } else {
+            pattern.chars().count()
+        };
+        let mut wide = workspace.buffer(length);
+        if bytes {
+            for byte in pattern.bytes() {
+                wide.push(u32::from(byte));
+            }
+        } else {
+            for ch in pattern.chars() {
+                wide.push(u32::from(ch));
+            }
+        }
+        let preg = crate::tre::compile::tre_compile_owned(
+            wide.as_ptr(),
+            wide.len(),
+            cflags,
+            workspace.clone(),
+        )
+        .map_err(|rc| {
+            // Option-based matching adapters may discard syntax failures, but
+            // exhaustion must follow the same typed error path as buffers.
+            if rc == crate::tre::ast::REG_ESPACE {
+                workspace::memory_error();
+            }
+            format!("TRE compilation failed with code {rc}")
+        })?;
+        Ok(Self {
+            preg,
+            bytes,
+            workspace,
+        })
     }
 
     fn captures(&self, text: &str) -> Option<RegexCaptures> {
@@ -432,61 +431,60 @@ impl TreRegex {
     fn captures_at(&self, original: &str, offset: usize) -> Option<RegexCaptures> {
         let text = if self.bytes { "" } else { &original[offset..] };
         let input = &original.as_bytes()[offset..];
-        unsafe {
-            let nmatch = self.preg.regex().re_nsub.saturating_add(1).max(1);
-            let mut pmatch = self.workspace.buffer(nmatch);
-            pmatch.resize(nmatch, regmatch_t::default());
-            let wide = if !self.bytes && !text.is_ascii() {
-                let mut wide = self.workspace.buffer(text.chars().count());
-                for ch in text.chars() {
-                    wide.push(u32::from(ch));
-                }
-                Some(wide)
+
+        let nmatch = self.preg.regex().re_nsub.saturating_add(1).max(1);
+        let mut pmatch = self.workspace.buffer(nmatch);
+        pmatch.resize(nmatch, regmatch_t::default());
+        let wide = if !self.bytes && !text.is_ascii() {
+            let mut wide = self.workspace.buffer(text.chars().count());
+            for ch in text.chars() {
+                wide.push(u32::from(ch));
+            }
+            Some(wide)
+        } else {
+            None
+        };
+        let flags = if offset == 0 {
+            0
+        } else {
+            crate::tre::ast::REG_NOTBOL
+        };
+        let status = if let Some(wide) = &wide {
+            crate::tre::regapi::tre_regwnexec(self.preg.regex(), wide, &mut pmatch, flags)
+        } else {
+            tre_regnexec(
+                self.preg.regex(),
+                input.as_ptr().cast(),
+                input.len(),
+                nmatch,
+                pmatch.as_mut_ptr(),
+                flags,
+            )
+        };
+        let byte_offset = |index: usize| {
+            if wide.is_some() {
+                text.char_indices()
+                    .nth(index)
+                    .map_or(text.len(), |(i, _)| i)
+            } else {
+                index
+            }
+        };
+        if status != REG_OK {
+            return None;
+        }
+        let mut captures = self.workspace.buffer(nmatch);
+        for m in pmatch.iter() {
+            captures.push(if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
+                Some(RegexMatch {
+                    start: offset + byte_offset(m.rm_so as usize),
+                    end: offset + byte_offset(m.rm_eo as usize),
+                })
             } else {
                 None
-            };
-            let flags = if offset == 0 {
-                0
-            } else {
-                crate::tre::ast::REG_NOTBOL
-            };
-            let status = if let Some(wide) = &wide {
-                crate::tre::regapi::tre_regwnexec(self.preg.regex(), wide, &mut pmatch, flags)
-            } else {
-                tre_regnexec(
-                    self.preg.regex(),
-                    input.as_ptr().cast(),
-                    input.len(),
-                    nmatch,
-                    pmatch.as_mut_ptr(),
-                    flags,
-                )
-            };
-            let byte_offset = |index: usize| {
-                if wide.is_some() {
-                    text.char_indices()
-                        .nth(index)
-                        .map_or(text.len(), |(i, _)| i)
-                } else {
-                    index
-                }
-            };
-            if status != REG_OK {
-                return None;
-            }
-            let mut captures = self.workspace.buffer(nmatch);
-            for m in pmatch.iter() {
-                captures.push(if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
-                    Some(RegexMatch {
-                        start: offset + byte_offset(m.rm_so as usize),
-                        end: offset + byte_offset(m.rm_eo as usize),
-                    })
-                } else {
-                    None
-                });
-            }
-            Some(captures)
+            });
         }
+        Some(captures)
     }
 
     fn find(&self, text: &str) -> Option<RegexMatch> {

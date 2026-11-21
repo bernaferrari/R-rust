@@ -718,28 +718,24 @@ fn legacy_length(reader: &mut Cursor<&[u8]>) -> io::Result<c_int> {
 }
 
 unsafe fn workspace_version(version: SEXP) -> c_int {
-    unsafe {
-        if version.is_null() || version == R_NilValue() {
-            return defaultSaveVersion();
-        }
-        let version = crate::mainutils::coerce::asInteger(version);
-        if !matches!(version, 2 | 3) {
-            error(&format!("version {version} not supported"));
-        }
-        version
+    if version.is_null() || version == R_NilValue() {
+        return defaultSaveVersion();
     }
+    let version = crate::mainutils::coerce::asInteger(version);
+    if !matches!(version, 2 | 3) {
+        error(&format!("version {version} not supported"));
+    }
+    version
 }
 
 unsafe fn workspace_flag(value: SEXP, default: bool) -> bool {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return default;
-        }
-        match crate::mainutils::coerce::asLogical(value) {
-            0 => false,
-            1 => true,
-            _ => error("NA in coercion to boolean"),
-        }
+    if value.is_null() || value == R_NilValue() {
+        return default;
+    }
+    match crate::mainutils::coerce::asLogical(value) {
+        0 => false,
+        1 => true,
+        _ => error("NA in coercion to boolean"),
     }
 }
 

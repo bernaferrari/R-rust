@@ -17,11 +17,10 @@ pub fn R_get_primname(object: SEXP) -> SEXP {
     let t = TYPEOF(object);
     if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
         let msg = c"'R_get_primname' called on a non-primitive";
-        unsafe {
-            Rf_error(msg.as_ptr());
-        }
+
+        Rf_error(msg.as_ptr());
     }
-    let name = unsafe { crate::main::names::getPRIMNAME(object) };
+    let name = crate::main::names::getPRIMNAME(object);
     if name.is_null() {
         let s = c"";
         unsafe { Rf_mkString(s.as_ptr()) }
@@ -34,14 +33,12 @@ pub fn R_get_primname(object: SEXP) -> SEXP {
 /// Registered as .Call in the methods package.
 /// Note: not #[no_mangle] to avoid conflict with graphapp::new_object.
 pub(crate) fn new_object(class_def: SEXP) -> SEXP {
-    unsafe { crate::mainutils::objects::R_do_new_object(class_def) }
+    crate::mainutils::objects::R_do_new_object(class_def)
 }
 
 /// GNU `Rf_allocS4Object()` — empty S4 object used as `.defaultPrototype`.
 pub fn Rf_allocS4Object() -> SEXP {
-    unsafe {
-        let s = allocSExp(SEXPTYPE::S4SXP);
-        SET_S4_OBJECT(s);
-        s
-    }
+    let s = allocSExp(SEXPTYPE::S4SXP);
+    SET_S4_OBJECT(s);
+    s
 }

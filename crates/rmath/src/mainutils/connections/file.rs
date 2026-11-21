@@ -67,7 +67,7 @@ fn file_logical(
     check_length: bool,
 ) -> crate::sexp::object::SexpResult<c_int> {
     access.domain().link(value)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         Ok(crate::mainutils::coerce::asLogical2(
             value.as_raw(),
             check_length as c_int,
@@ -94,7 +94,7 @@ fn connection_value(
     let mut ans = SexpMut::try_from_checked(ans)?;
     ans.try_set_attribute(&attrs)?;
     // Installing the attribute edge directly also requires GNU's class marker.
-    unsafe { SET_OBJECT(ans.as_raw(), 1) };
+    SET_OBJECT(ans.as_raw(), 1);
     Ok(ans)
 }
 
@@ -583,34 +583,32 @@ pub fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _enc = CAR(args);
+    let scmd = CAR(args);
+    args = CDR(args);
+    let sopen = CAR(args);
+    args = CDR(args);
+    let _enc = CAR(args);
 
-        let description = check_string_arg(scmd, "description");
-        let open = check_string_arg(sopen, "open");
-        let open_mode = if open.is_empty() {
-            "r".to_string()
-        } else {
-            open
-        };
+    let description = check_string_arg(scmd, "description");
+    let open = check_string_arg(sopen, "open");
+    let open_mode = if open.is_empty() {
+        "r".to_string()
+    } else {
+        open
+    };
 
-        let ncon = next_connection();
-        let mut conn = RConn::new("fifo", &description, &open_mode, ConnKind::Fifo);
-        conn.canseek = false;
+    let ncon = next_connection();
+    let mut conn = RConn::new("fifo", &description, &open_mode, ConnKind::Fifo);
+    conn.canseek = false;
 
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
+    let mut table = connection_table();
+    table[ncon] = Some(Box::new(conn));
+    drop(table);
 
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "fifo");
-        ans
-    }
+    let ans = Rf_ScalarInteger(ncon as c_int);
+    let _ans_guard = protect(ans);
+    set_connection_class(ans, "fifo");
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -618,49 +616,47 @@ pub fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _compression = CAR(args);
+    let scmd = CAR(args);
+    args = CDR(args);
+    let sopen = CAR(args);
+    args = CDR(args);
+    let _compression = CAR(args);
 
-        let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null()
-            || sopen == R_NilValue()
-            || sopen == crate::sexp::globals::R_MissingArg()
-        {
-            String::new()
-        } else {
-            check_string_arg(sopen, "open")
-        };
-        let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
+    let description = check_string_arg(scmd, "description");
+    let open = if sopen.is_null()
+        || sopen == R_NilValue()
+        || sopen == crate::sexp::globals::R_MissingArg()
+    {
+        String::new()
+    } else {
+        check_string_arg(sopen, "open")
+    };
+    let open_now = !open.is_empty();
+    let open_mode = if !open_now { "rb".to_string() } else { open };
 
-        if crate::mainutils::browser_files::enabled()
-            || crate::mainutils::browser_files::contains_current(&description)
-        {
-            return construct_browser_gzfile(&description, &open_mode, open_now);
-        }
-        let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
-        conn.browser_read_filter = BrowserReadFilter::Gzip;
-        conn.canseek = false;
-        conn.text = !open_mode.contains('b');
-
-        if open_now && let Err(e) = open_gz_conn(&mut conn, &open_mode) {
-            r_error(&format!("cannot open file '{}': {}", description, e));
-        }
-
-        let ncon = next_connection();
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
-
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "gzfile");
-        ans
+    if crate::mainutils::browser_files::enabled()
+        || crate::mainutils::browser_files::contains_current(&description)
+    {
+        return construct_browser_gzfile(&description, &open_mode, open_now);
     }
+    let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
+    conn.browser_read_filter = BrowserReadFilter::Gzip;
+    conn.canseek = false;
+    conn.text = !open_mode.contains('b');
+
+    if open_now && let Err(e) = open_gz_conn(&mut conn, &open_mode) {
+        r_error(&format!("cannot open file '{}': {}", description, e));
+    }
+
+    let ncon = next_connection();
+    let mut table = connection_table();
+    table[ncon] = Some(Box::new(conn));
+    drop(table);
+
+    let ans = Rf_ScalarInteger(ncon as c_int);
+    let _ans_guard = protect(ans);
+    set_connection_class(ans, "gzfile");
+    ans
 }
 
 fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SEXP {
@@ -690,41 +686,39 @@ fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SE
 }
 
 pub fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
-        if scon.is_null() || scon == R_NilValue() {
-            r_error("invalid connection");
-        }
-        let i = checked_connection_index(as_integer(scon));
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-        let path = Path::new(&conn.description);
-        let bytes = if path.is_file() {
-            std::fs::read(path).unwrap_or_default()
-        } else {
-            conn.raw_data.clone()
-        };
-        let inflated = if bytes.is_empty() {
-            Vec::new()
-        } else {
-            let mut out = Vec::new();
-            let mut decoder = MultiGzDecoder::new(&bytes[..]);
-            if decoder.read_to_end(&mut out).is_err() {
-                r_error("invalid compressed data");
-            }
-            out
-        };
-        conn.raw_data = inflated;
-        conn.raw_pos = 0;
-        conn.kind = ConnKind::GzFile;
-        conn.isopen = true;
-        conn.canread = true;
-        conn.text = false;
-        drop(table);
-        scon
+    let scon = CAR(args);
+    if scon.is_null() || scon == R_NilValue() {
+        r_error("invalid connection");
     }
+    let i = checked_connection_index(as_integer(scon));
+    let mut table = connection_table();
+    let Some(conn) = table[i].as_mut() else {
+        r_error("invalid connection");
+    };
+    let path = Path::new(&conn.description);
+    let bytes = if path.is_file() {
+        std::fs::read(path).unwrap_or_default()
+    } else {
+        conn.raw_data.clone()
+    };
+    let inflated = if bytes.is_empty() {
+        Vec::new()
+    } else {
+        let mut out = Vec::new();
+        let mut decoder = MultiGzDecoder::new(&bytes[..]);
+        if decoder.read_to_end(&mut out).is_err() {
+            r_error("invalid compressed data");
+        }
+        out
+    };
+    conn.raw_data = inflated;
+    conn.raw_pos = 0;
+    conn.kind = ConnKind::GzFile;
+    conn.isopen = true;
+    conn.canread = true;
+    conn.text = false;
+    drop(table);
+    scon
 }
 
 // ---------------------------------------------------------------------------
@@ -732,42 +726,40 @@ pub fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let original = args;
-        let scmd = CAR(args);
-        let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
-        let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null()
-            || sopen == R_NilValue()
-            || sopen == crate::sexp::globals::R_MissingArg()
-        {
-            String::new()
-        } else {
-            check_string_arg(sopen, "open")
-        };
-        let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
+    let original = args;
+    let scmd = CAR(args);
+    let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
+    let description = check_string_arg(scmd, "description");
+    let open = if sopen.is_null()
+        || sopen == R_NilValue()
+        || sopen == crate::sexp::globals::R_MissingArg()
+    {
+        String::new()
+    } else {
+        check_string_arg(sopen, "open")
+    };
+    let open_now = !open.is_empty();
+    let open_mode = if !open_now { "rb".to_string() } else { open };
 
-        let mut conn = RConn::new("bzfile", &description, &open_mode, ConnKind::BzFile);
-        conn.canseek = false;
-        conn.text = !open_mode.contains('b');
+    let mut conn = RConn::new("bzfile", &description, &open_mode, ConnKind::BzFile);
+    conn.canseek = false;
+    conn.text = !open_mode.contains('b');
 
-        if open_now {
-            if let Err(e) = open_bz_conn(&mut conn, &open_mode) {
-                r_error(&format!("cannot open file '{}': {}", description, e));
-            }
+    if open_now {
+        if let Err(e) = open_bz_conn(&mut conn, &open_mode) {
+            r_error(&format!("cannot open file '{}': {}", description, e));
         }
-
-        let ncon = next_connection();
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
-
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "bzfile");
-        ans
     }
+
+    let ncon = next_connection();
+    let mut table = connection_table();
+    table[ncon] = Some(Box::new(conn));
+    drop(table);
+
+    let ans = Rf_ScalarInteger(ncon as c_int);
+    let _ans_guard = protect(ans);
+    set_connection_class(ans, "bzfile");
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -775,41 +767,39 @@ pub fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let original = args;
-        let scmd = CAR(args);
-        let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
-        let description = check_string_arg(scmd, "description");
-        let open = if sopen.is_null()
-            || sopen == R_NilValue()
-            || sopen == crate::sexp::globals::R_MissingArg()
-        {
-            String::new()
-        } else {
-            check_string_arg(sopen, "open")
-        };
-        let open_now = !open.is_empty();
-        let open_mode = if !open_now { "rb".to_string() } else { open };
-        let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
-        conn.canseek = false;
-        conn.text = !open_mode.contains('b');
+    let original = args;
+    let scmd = CAR(args);
+    let sopen = arg_by_name_or_position(original, 1, &["open"], R_NilValue());
+    let description = check_string_arg(scmd, "description");
+    let open = if sopen.is_null()
+        || sopen == R_NilValue()
+        || sopen == crate::sexp::globals::R_MissingArg()
+    {
+        String::new()
+    } else {
+        check_string_arg(sopen, "open")
+    };
+    let open_now = !open.is_empty();
+    let open_mode = if !open_now { "rb".to_string() } else { open };
+    let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
+    conn.canseek = false;
+    conn.text = !open_mode.contains('b');
 
-        if open_now {
-            if let Err(e) = open_xz_conn(&mut conn, &open_mode) {
-                r_error(&format!("cannot open file '{}': {}", description, e));
-            }
+    if open_now {
+        if let Err(e) = open_xz_conn(&mut conn, &open_mode) {
+            r_error(&format!("cannot open file '{}': {}", description, e));
         }
-
-        let ncon = next_connection();
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
-
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "xzfile");
-        ans
     }
+
+    let ncon = next_connection();
+    let mut table = connection_table();
+    table[ncon] = Some(Box::new(conn));
+    drop(table);
+
+    let ans = Rf_ScalarInteger(ncon as c_int);
+    let _ans_guard = protect(ans);
+    set_connection_class(ans, "xzfile");
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -818,119 +808,117 @@ pub fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 #[allow(clippy::assigning_clones)]
 pub fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _block = if args.is_null() || args == R_NilValue() {
-            1
-        } else {
-            check_logical_arg(CAR(args), "blocking")
-        };
+    let scon = CAR(args);
+    args = CDR(args);
+    let sopen = CAR(args);
+    args = CDR(args);
+    let _block = if args.is_null() || args == R_NilValue() {
+        1
+    } else {
+        check_logical_arg(CAR(args), "blocking")
+    };
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = checked_connection_index(as_integer(scon));
-        if i < 3 {
-            r_error("cannot open standard connections");
-        }
-
-        let requested = if sopen.is_null() || sopen == R_NilValue() {
-            String::new()
-        } else {
-            check_string_arg(sopen, "open")
-        };
-
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-        if conn.isopen {
-            return R_NilValue();
-        }
-        // `con->mode` is `char[5]` (R_ext/Connections.h).
-        if requested.len() >= 5 {
-            r_error("invalid 'open' argument");
-        }
-
-        let open_mode = if requested.is_empty() {
-            if conn.mode.is_empty() {
-                "r".to_string()
-            } else {
-                conn.mode.clone()
-            }
-        } else {
-            requested
-        };
-        if matches!(conn.kind, ConnKind::BrowserFile)
-            || matches!(conn.kind, ConnKind::GzFile)
-                && matches!(conn.browser_read_filter, BrowserReadFilter::Gzip)
-                && crate::mainutils::browser_files::enabled()
-        {
-            open_browser_file(conn, &open_mode).unwrap_or_else(|message| r_error(&message));
-            return R_NilValue();
-        }
-        conn.mode = open_mode.clone();
-        conn.text = !open_mode.contains('b');
-        match &conn.kind {
-            ConnKind::File => {
-                if open_maybe_compressed(conn, &open_mode).is_err() {
-                    r_error("cannot open the connection");
-                }
-            }
-            ConnKind::GzFile => {
-                if let Err(e) = open_gz_conn(conn, &open_mode) {
-                    r_error(&format!("cannot open the connection: {}", e));
-                }
-            }
-            ConnKind::BzFile => {
-                if let Err(e) = open_bz_conn(conn, &open_mode) {
-                    r_error(&format!("cannot open the connection: {}", e));
-                }
-            }
-            ConnKind::XzFile => {
-                if let Err(e) = open_xz_conn(conn, &open_mode) {
-                    r_error(&format!("cannot open the connection: {}", e));
-                }
-            }
-            ConnKind::Pipe => {
-                let is_read = open_mode.starts_with('r');
-                let mut cmd = Command::new("sh");
-                cmd.arg("-c").arg(&conn.description);
-                if is_read {
-                    cmd.stdout(Stdio::piped());
-                    cmd.stderr(Stdio::null());
-                } else {
-                    cmd.stdin(Stdio::piped());
-                    cmd.stderr(Stdio::null());
-                }
-                match cmd.spawn() {
-                    Ok(child) => {
-                        conn.child = Some(child);
-                        conn.isopen = true;
-                        conn.canread = is_read;
-                        conn.canwrite = !is_read;
-                    }
-                    Err(e) => {
-                        r_error(&format!("cannot open pipe: {}", e));
-                    }
-                }
-            }
-            ConnKind::TextConnection => {
-                conn.isopen = true;
-            }
-            ConnKind::RawConnection => {
-                conn.isopen = true;
-            }
-            _ => {
-                r_error("cannot open this type of connection");
-            }
-        }
-
-        R_NilValue()
+    if !inherits_class(scon, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = checked_connection_index(as_integer(scon));
+    if i < 3 {
+        r_error("cannot open standard connections");
+    }
+
+    let requested = if sopen.is_null() || sopen == R_NilValue() {
+        String::new()
+    } else {
+        check_string_arg(sopen, "open")
+    };
+
+    let mut table = connection_table();
+    let Some(conn) = table[i].as_mut() else {
+        r_error("invalid connection");
+    };
+    if conn.isopen {
+        return R_NilValue();
+    }
+    // `con->mode` is `char[5]` (R_ext/Connections.h).
+    if requested.len() >= 5 {
+        r_error("invalid 'open' argument");
+    }
+
+    let open_mode = if requested.is_empty() {
+        if conn.mode.is_empty() {
+            "r".to_string()
+        } else {
+            conn.mode.clone()
+        }
+    } else {
+        requested
+    };
+    if matches!(conn.kind, ConnKind::BrowserFile)
+        || matches!(conn.kind, ConnKind::GzFile)
+            && matches!(conn.browser_read_filter, BrowserReadFilter::Gzip)
+            && crate::mainutils::browser_files::enabled()
+    {
+        open_browser_file(conn, &open_mode).unwrap_or_else(|message| r_error(&message));
+        return R_NilValue();
+    }
+    conn.mode = open_mode.clone();
+    conn.text = !open_mode.contains('b');
+    match &conn.kind {
+        ConnKind::File => {
+            if open_maybe_compressed(conn, &open_mode).is_err() {
+                r_error("cannot open the connection");
+            }
+        }
+        ConnKind::GzFile => {
+            if let Err(e) = open_gz_conn(conn, &open_mode) {
+                r_error(&format!("cannot open the connection: {}", e));
+            }
+        }
+        ConnKind::BzFile => {
+            if let Err(e) = open_bz_conn(conn, &open_mode) {
+                r_error(&format!("cannot open the connection: {}", e));
+            }
+        }
+        ConnKind::XzFile => {
+            if let Err(e) = open_xz_conn(conn, &open_mode) {
+                r_error(&format!("cannot open the connection: {}", e));
+            }
+        }
+        ConnKind::Pipe => {
+            let is_read = open_mode.starts_with('r');
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(&conn.description);
+            if is_read {
+                cmd.stdout(Stdio::piped());
+                cmd.stderr(Stdio::null());
+            } else {
+                cmd.stdin(Stdio::piped());
+                cmd.stderr(Stdio::null());
+            }
+            match cmd.spawn() {
+                Ok(child) => {
+                    conn.child = Some(child);
+                    conn.isopen = true;
+                    conn.canread = is_read;
+                    conn.canwrite = !is_read;
+                }
+                Err(e) => {
+                    r_error(&format!("cannot open pipe: {}", e));
+                }
+            }
+        }
+        ConnKind::TextConnection => {
+            conn.isopen = true;
+        }
+        ConnKind::RawConnection => {
+            conn.isopen = true;
+        }
+        _ => {
+            r_error("cannot open this type of connection");
+        }
+    }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,35 +1069,33 @@ pub fn close_connection_inner(conn: &mut RConn) {
 // ---------------------------------------------------------------------------
 
 pub fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
-        let rw = connection_rw_mode(arg_by_name_or_position(args, 1, &["rw"], R_NilValue()));
+    let scon = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
+    let rw = connection_rw_mode(arg_by_name_or_position(args, 1, &["rw"], R_NilValue()));
 
-        let i = as_integer(scon) as usize;
-        init_connections_table();
-        let table = connection_table();
-        if i >= table.len() || table[i].is_none() {
-            r_error("invalid connection");
-        }
-        let Some(conn) = table[i].as_ref() else {
-            r_error("invalid connection");
-        };
-        let mut res = if conn.isopen { 1 } else { 0 };
-        match rw {
-            1 => {
-                if !conn.canread {
-                    res = 0;
-                }
-            }
-            2 => {
-                if !conn.canwrite {
-                    res = 0;
-                }
-            }
-            _ => {} // intentionally unhandled: unknown connection open mode
-        }
-        Rf_ScalarLogical(res)
+    let i = as_integer(scon) as usize;
+    init_connections_table();
+    let table = connection_table();
+    if i >= table.len() || table[i].is_none() {
+        r_error("invalid connection");
     }
+    let Some(conn) = table[i].as_ref() else {
+        r_error("invalid connection");
+    };
+    let mut res = if conn.isopen { 1 } else { 0 };
+    match rw {
+        1 => {
+            if !conn.canread {
+                res = 0;
+            }
+        }
+        2 => {
+            if !conn.canwrite {
+                res = 0;
+            }
+        }
+        _ => {} // intentionally unhandled: unknown connection open mode
+    }
+    Rf_ScalarLogical(res)
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,22 +1103,20 @@ pub fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
+    let scon = CAR(args);
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(scon) as usize;
-        let table = connection_table();
-        if i >= table.len() || table[i].is_none() {
-            return Rf_ScalarLogical(0);
-        }
-        let Some(conn) = table[i].as_ref() else {
-            return Rf_ScalarLogical(0);
-        };
-        Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
+    if !inherits_class(scon, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = as_integer(scon) as usize;
+    let table = connection_table();
+    if i >= table.len() || table[i].is_none() {
+        return Rf_ScalarLogical(0);
+    }
+    let Some(conn) = table[i].as_ref() else {
+        return Rf_ScalarLogical(0);
+    };
+    Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
 }
 
 // ---------------------------------------------------------------------------
@@ -1140,22 +1124,20 @@ pub fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
+    let scon = CAR(args);
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(scon) as usize;
-        let table = connection_table();
-        if i >= table.len() || table[i].is_none() {
-            return Rf_ScalarLogical(0);
-        }
-        let Some(conn) = table[i].as_ref() else {
-            return Rf_ScalarLogical(0);
-        };
-        Rf_ScalarLogical(if conn.canseek { 1 } else { 0 })
+    if !inherits_class(scon, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = as_integer(scon) as usize;
+    let table = connection_table();
+    if i >= table.len() || table[i].is_none() {
+        return Rf_ScalarLogical(0);
+    }
+    let Some(conn) = table[i].as_ref() else {
+        return Rf_ScalarLogical(0);
+    };
+    Rf_ScalarLogical(if conn.canseek { 1 } else { 0 })
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,36 +1146,30 @@ pub fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// base::stdin() — standard input connection number (upstream: 0).
 pub fn do_stdin(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let ans = Rf_ScalarInteger(0);
-        let _g = protect(ans);
-        set_connection_class(ans, "terminal");
-        ans
-    }
+    let ans = Rf_ScalarInteger(0);
+    let _g = protect(ans);
+    set_connection_class(ans, "terminal");
+    ans
 }
 
 /// base::stdout() — standard output connection number (upstream: 1).
 pub fn do_stdout(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let ans = Rf_ScalarInteger(1);
-        let _g = protect(ans);
-        set_connection_class(ans, "terminal");
-        ans
-    }
+    let ans = Rf_ScalarInteger(1);
+    let _g = protect(ans);
+    set_connection_class(ans, "terminal");
+    ans
 }
 
 /// base::stderr() — standard error connection number (upstream: 2).
 pub fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let ans = Rf_ScalarInteger(2);
-        let _g = protect(ans);
-        set_connection_class(ans, "terminal");
-        ans
-    }
+    let ans = Rf_ScalarInteger(2);
+    let _g = protect(ans);
+    set_connection_class(ans, "terminal");
+    ans
 }
 
 pub fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+    Rf_ScalarLogical(0)
 }
 // ---------------------------------------------------------------------------
 // do_seek — seek(con, where = NA, origin = "start", rw = "")
@@ -1413,37 +1389,35 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
+    let scon = CAR(args);
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(scon) as usize;
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-
-        if conn.canwrite
-            && let Some(ref mut writer) = conn.writer
-        {
-            let _ = writer.flush();
-        }
-        if conn.canwrite {
-            let result = match conn.kind {
-                ConnKind::GzFile => flush_gz_conn(conn),
-                ConnKind::BzFile => flush_bz_conn(conn),
-                ConnKind::XzFile => flush_xz_conn(conn),
-                _ => Ok(()),
-            };
-            if let Err(e) = result {
-                r_error(&format!("error flushing connection: {}", e));
-            }
-        }
-
-        R_NilValue()
+    if !inherits_class(scon, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = as_integer(scon) as usize;
+    let mut table = connection_table();
+    let Some(conn) = table[i].as_mut() else {
+        r_error("invalid connection");
+    };
+
+    if conn.canwrite
+        && let Some(ref mut writer) = conn.writer
+    {
+        let _ = writer.flush();
+    }
+    if conn.canwrite {
+        let result = match conn.kind {
+            ConnKind::GzFile => flush_gz_conn(conn),
+            ConnKind::BzFile => flush_bz_conn(conn),
+            ConnKind::XzFile => flush_xz_conn(conn),
+            _ => Ok(()),
+        };
+        if let Err(e) = result {
+            r_error(&format!("error flushing connection: {}", e));
+        }
+    }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

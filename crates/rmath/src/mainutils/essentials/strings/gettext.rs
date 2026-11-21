@@ -4,16 +4,14 @@ use super::*;
 
 /// GNU `gettext(...)` without catalogs is identity.
 pub fn do_gettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            return x;
-        }
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
+        return x;
+    }
+    x
 }
 
 /// GNU `gettextf(fmt, ..., domain=, trim=)` — sprintf of untranslated fmt.

@@ -249,14 +249,12 @@ unsafe fn set_memory_traced(x: SEXP, on: bool) {
 }
 
 unsafe fn reject_traced_function(object: SEXP) {
-    unsafe {
-        if object.is_null() {
-            return;
-        }
-        let t = TYPEOF(object);
-        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            Rf_error(c"argument must not be a function".as_ptr() as *const _);
-        }
+    if object.is_null() {
+        return;
+    }
+    let t = TYPEOF(object);
+    if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        Rf_error(c"argument must not be a function".as_ptr() as *const _);
     }
 }
 
@@ -289,9 +287,7 @@ fn memory_profiling_enabled() -> bool {
 }
 
 unsafe fn reject_without_memory_profiling() {
-    unsafe {
-        Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
-    }
+    Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
 }
 
 /// R's `tracemem(x)` — mark `x` and return `"<address>"`.

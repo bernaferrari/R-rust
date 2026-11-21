@@ -329,12 +329,10 @@ pub(crate) unsafe fn encode_cstr(p: *const std::os::raw::c_char) -> String {
 /// (R_print.width, R_print.gap, R_print.max). Width comes from the
 /// active `print.default` data so `print(x, width = 120)` wraps like GNU.
 pub(crate) fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
-    unsafe {
-        let width = crate::mainutils::print::get_R_print_data().width;
-        let max = print_max_cells();
-        let gap = crate::mainutils::print::get_R_print_data().gap;
-        (width, gap, max as i64)
-    }
+    let width = crate::mainutils::print::get_R_print_data().width;
+    let max = print_max_cells();
+    let gap = crate::mainutils::print::get_R_print_data().gap;
+    (width, gap, max as i64)
 }
 
 /// Stock VectorIndex: right-justify "[i]" in `labwidth` columns.

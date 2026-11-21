@@ -424,41 +424,63 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let nil = R_NilValue();
             // alist = list1(R_MissingArg); SET_TAG(alist, var)
             let formal_cell = self.cons(crate::sexp::globals::R_MissingArg(), nil)?;
-            unsafe {
-                crate::sexp::accessors::SETTAG(formal_cell, var);
-            }
+
+            crate::sexp::accessors::SETTAG(formal_cell, var);
+
             // fun = lang4(function, alist, expr, R_NilValue)
             let body_cell = self.cons(body, nil)?;
             let formals_cell = self.cons(formal_cell, body_cell)?;
             let fun_sym = self.install_symbol("function")?;
             let fun = self.cons(fun_sym, formals_cell)?;
             if !fun.is_null() {
-                unsafe {
-                    crate::sexp::accessors::SET_TYPEOF(fun, SEXPTYPE::LANGSXP.as_c_int());
-                }
+                crate::sexp::accessors::SET_TYPEOF(fun, SEXPTYPE::LANGSXP.as_c_int());
             }
             // lang2(fun, lhs): call the fresh closure on the pipe LHS.
             return self.lang2(fun, lhs);
         }
 
         let placeholder = self.placeholder;
-        unsafe {
-            let fun = CAR(rhs);
 
-            // A placeholder in the function position is never substitutable.
-            if self.expr_contains_placeholder(fun) {
-                return Err(self.token_position_error(
-                    rhs_start,
-                    "pipe placeholder cannot be used in the RHS function",
-                ));
+        let fun = CAR(rhs);
+
+        // A placeholder in the function position is never substitutable.
+        if self.expr_contains_placeholder(fun) {
+            return Err(self.token_position_error(
+                rhs_start,
+                "pipe placeholder cannot be used in the RHS function",
+            ));
+        }
+
+        // Extractor chains: `x |> _[2]`, `d |> _$col`, ...
+        if let Some(phcell) = self.find_extractor_placeholder_cell(rhs) {
+            let nil = R_NilValue();
+            let mut rest = CDR(CDR(rhs));
+            while rest != nil {
+                if self.expr_contains_placeholder(CAR(rest)) {
+                    return Err(self
+                        .token_position_error(rhs_start, "pipe placeholder may only appear once"));
+                }
+                rest = CDR(rest);
             }
+            SETCAR(phcell, lhs);
+            return Ok(rhs);
+        }
 
-            // Extractor chains: `x |> _[2]`, `d |> _$col`, ...
-            if let Some(phcell) = self.find_extractor_placeholder_cell(rhs) {
-                let nil = R_NilValue();
-                let mut rest = CDR(CDR(rhs));
+        // A top-level placeholder argument marks the insertion point.
+        let nil = R_NilValue();
+        let mut cell = CDR(rhs);
+        while cell != nil {
+            if CAR(cell) == placeholder {
+                let tag = TAG(cell);
+                if tag.is_null() || tag == nil {
+                    return Err(self.token_position_error(
+                        rhs_start,
+                        "pipe placeholder can only be used as a named argument",
+                    ));
+                }
+                let mut rest = CDR(cell);
                 while rest != nil {
-                    if self.expr_contains_placeholder(CAR(rest)) {
+                    if CAR(rest) == placeholder {
                         return Err(self.token_position_error(
                             rhs_start,
                             "pipe placeholder may only appear once",
@@ -466,57 +488,30 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     }
                     rest = CDR(rest);
                 }
-                SETCAR(phcell, lhs);
+                SETCAR(cell, lhs);
                 return Ok(rhs);
             }
-
-            // A top-level placeholder argument marks the insertion point.
-            let nil = R_NilValue();
-            let mut cell = CDR(rhs);
-            while cell != nil {
-                if CAR(cell) == placeholder {
-                    let tag = TAG(cell);
-                    if tag.is_null() || tag == nil {
-                        return Err(self.token_position_error(
-                            rhs_start,
-                            "pipe placeholder can only be used as a named argument",
-                        ));
-                    }
-                    let mut rest = CDR(cell);
-                    while rest != nil {
-                        if CAR(rest) == placeholder {
-                            return Err(self.token_position_error(
-                                rhs_start,
-                                "pipe placeholder may only appear once",
-                            ));
-                        }
-                        rest = CDR(rest);
-                    }
-                    SETCAR(cell, lhs);
-                    return Ok(rhs);
-                }
-                cell = CDR(cell);
-            }
-
-            // Screen out syntactically special functions like `/` or `$`.
-            if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-                let name = symbol_name_string(fun);
-                if is_special_rhs_function(&name) {
-                    return Err(self.token_position_error(
-                        rhs_start,
-                        &format!("function '{name}' not supported in RHS call of a pipe"),
-                    ));
-                }
-            }
-
-            // Default: prepend the LHS as the first argument.
-            let args = self.cons(lhs, CDR(rhs))?;
-            let call = self.cons(fun, args)?;
-            if !call.is_null() {
-                crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-            }
-            Ok(call)
+            cell = CDR(cell);
         }
+
+        // Screen out syntactically special functions like `/` or `$`.
+        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+            let name = symbol_name_string(fun);
+            if is_special_rhs_function(&name) {
+                return Err(self.token_position_error(
+                    rhs_start,
+                    &format!("function '{name}' not supported in RHS call of a pipe"),
+                ));
+            }
+        }
+
+        // Default: prepend the LHS as the first argument.
+        let args = self.cons(lhs, CDR(rhs))?;
+        let call = self.cons(fun, args)?;
+        if !call.is_null() {
+            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+        }
+        Ok(call)
     }
 
     /// Find the argument cell whose CAR is the placeholder at the head of

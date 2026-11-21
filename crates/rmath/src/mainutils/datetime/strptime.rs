@@ -93,13 +93,11 @@ impl Drop for TzSetup {
 /// Decode a CHARSXP as UTF-8 text, mirroring trunk's multibyte-path
 /// validation in `R_strptime()` (mbstowcs failing is an error).
 pub(crate) fn charsxp_text(s: SEXP, what: &str) -> String {
-    wrapped(s)
-        .try_as_string()
-        .unwrap_or_else(|_| {
-            std::panic::panic_any(RError {
-                message: format!("invalid multibyte {} string", what),
-            })
+    wrapped(s).try_as_string().unwrap_or_else(|_| {
+        std::panic::panic_any(RError {
+            message: format!("invalid multibyte {} string", what),
         })
+    })
 }
 
 // ---------------------------------------------------------------------------

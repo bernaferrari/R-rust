@@ -190,12 +190,12 @@ impl<'session> ZeroinCtx<'session> {
                 // evaluation, ALTREP element access, and warning handlers.
                 let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
                 owner.require_active()?;
-                let xv = unsafe { crate::sexp::constructors::Rf_ScalarReal(x) };
+                let xv = crate::sexp::constructors::Rf_ScalarReal(x);
                 owner.require_active()?;
-                let _xv = unsafe { crate::sexp::protect::protect(xv) };
-                let call = unsafe { crate::sexp::constructors::Rf_lang2(self.fun.as_raw(), xv) };
+                let _xv = crate::sexp::protect::protect(xv);
+                let call = crate::sexp::constructors::Rf_lang2(self.fun.as_raw(), xv);
                 owner.require_active()?;
-                let _call = unsafe { crate::sexp::protect::protect(call) };
+                let _call = crate::sexp::protect::protect(call);
                 let raw = unsafe { crate::eval::eval::Rf_eval(call, self.rho.as_raw()) };
                 owner.require_active()?;
                 let value = owner.sexp(raw)?;
@@ -211,7 +211,7 @@ impl<'session> ZeroinCtx<'session> {
                         ScalarCallbackKind::Zeroin => "invalid function value in 'zeroin'",
                     };
                     crate::mainutils::errors::errorcall_str(
-                        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                        crate::mainutils::errors::R_getCurrentCall(),
                         message,
                     );
                 }
@@ -220,11 +220,9 @@ impl<'session> ZeroinCtx<'session> {
                     owner.require_active()?;
                     let number = number?;
                     if number == crate::sexp::ffi::NA_INTEGER {
-                        unsafe {
-                            crate::mainutils::errors::Rf_warning1(
-                                c"NA replaced by maximum positive value".as_ptr(),
-                            )
-                        };
+                        crate::mainutils::errors::Rf_warning1(
+                            c"NA replaced by maximum positive value".as_ptr(),
+                        );
                         owner.require_active()?;
                         f64::MAX
                     } else {
@@ -268,7 +266,7 @@ fn finite_uniroot(v: f64) -> f64 {
     };
     // GNU signals at the evaluation that produced the value.  In particular,
     // handlers may run nested optimizers or turn this warning into an error.
-    unsafe { crate::mainutils::errors::Rf_warning1(message.as_ptr()) };
+    crate::mainutils::errors::Rf_warning1(message.as_ptr());
     replacement
 }
 
@@ -603,12 +601,10 @@ unsafe extern "C" fn nlm_fcn(
 }
 
 unsafe fn nlm_bad_value() -> ! {
-    unsafe {
-        crate::mainutils::errors::errorcall_str(
-            crate::mainutils::errors::R_getCurrentCall(),
-            "invalid function value in 'nlm' optimizer",
-        )
-    }
+    crate::mainutils::errors::errorcall_str(
+        crate::mainutils::errors::R_getCurrentCall(),
+        "invalid function value in 'nlm' optimizer",
+    )
 }
 
 /// Handler for the analytic gradient (`Cd1fcn` in optimize.c).
@@ -681,12 +677,10 @@ unsafe fn nlm_fixparam(p: crate::sexp::ffi::SEXP, n: &mut usize) -> Vec<f64> {
     use crate::sexp::ffi::SEXPTYPE;
     unsafe {
         let bad = |msg: &str| -> ! {
-            unsafe {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    msg,
-                )
-            }
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                msg,
+            )
         };
         let t = TYPEOF(p);
         if !(t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP) {
@@ -741,9 +735,8 @@ unsafe fn nlm_opterror(nerr: i32) -> ! {
         -22 => "probable coding error in analytic Hessian",
         _ => "*** unknown error message (msg = %d) in nlm()\n*** should not happen!",
     };
-    unsafe {
-        crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), msg)
-    }
+
+    crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), msg)
 }
 
 /// Warnings — we return a value, but print a warning (optcode in optimize.c).

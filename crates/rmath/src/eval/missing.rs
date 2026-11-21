@@ -158,29 +158,27 @@ fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
 }
 
 unsafe fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
-    unsafe {
-        let mut nargs = 0;
-        let mut arg = args;
-        while !arg.is_null() && arg != R_NilValue() {
-            nargs += 1;
-            arg = CDR(arg);
-        }
-
-        let call = allocLang(nargs + 1);
-        let mut out = call;
-        SETCAR(out, head);
-        out = CDR(out);
-
-        arg = args;
-        while !arg.is_null() && arg != R_NilValue() {
-            SETCAR(out, CAR(arg));
-            SETTAG(out, TAG(arg));
-            out = CDR(out);
-            arg = CDR(arg);
-        }
-
-        call
+    let mut nargs = 0;
+    let mut arg = args;
+    while !arg.is_null() && arg != R_NilValue() {
+        nargs += 1;
+        arg = CDR(arg);
     }
+
+    let call = allocLang(nargs + 1);
+    let mut out = call;
+    SETCAR(out, head);
+    out = CDR(out);
+
+    arg = args;
+    while !arg.is_null() && arg != R_NilValue() {
+        SETCAR(out, CAR(arg));
+        SETTAG(out, TAG(arg));
+        out = CDR(out);
+        arg = CDR(arg);
+    }
+
+    call
 }
 
 pub unsafe fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
@@ -744,12 +742,10 @@ fn MAYBE_SHARED(x: SEXP) -> bool {
 
 /// Increment the NAMED field, capped at 2.
 unsafe fn INCREMENT_NAMED(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            let n = NAMED(x);
-            if n < 2 {
-                SET_NAMED(x, n + 1);
-            }
+    if !x.is_null() {
+        let n = NAMED(x);
+        if n < 2 {
+            SET_NAMED(x, n + 1);
         }
     }
 }
@@ -885,19 +881,17 @@ pub unsafe fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
 /// a closure execution to clean up promise arguments that are no longer
 /// needed. It clears the promise code and environment fields.
 pub unsafe fn unpromiseArgs(pargs: SEXP) {
-    unsafe {
-        let mut current = pargs;
-        while !current.is_null() && current != R_NilValue() {
-            let v = CAR(current);
-            if TYPEOF(v) == SEXPTYPE::PROMSXP {
-                // Clear the promise to allow GC
-                crate::sexp::accessors::SET_PRVALUE(v, R_UnboundValue());
-                crate::sexp::accessors::SET_PRENV(v, R_NilValue());
-                crate::sexp::accessors::SET_PRCODE(v, R_NilValue());
-            }
-            SETCAR(current, R_NilValue());
-            current = CDR(current);
+    let mut current = pargs;
+    while !current.is_null() && current != R_NilValue() {
+        let v = CAR(current);
+        if TYPEOF(v) == SEXPTYPE::PROMSXP {
+            // Clear the promise to allow GC
+            crate::sexp::accessors::SET_PRVALUE(v, R_UnboundValue());
+            crate::sexp::accessors::SET_PRENV(v, R_NilValue());
+            crate::sexp::accessors::SET_PRCODE(v, R_NilValue());
         }
+        SETCAR(current, R_NilValue());
+        current = CDR(current);
     }
 }
 
@@ -1409,12 +1403,10 @@ pub fn R_initialize_bcode_full() {
 ///
 /// Ported from the ENSURE_NAMED macro in eval.c.
 pub unsafe fn R_ensureNamed(x: SEXP, n: c_int) {
-    unsafe {
-        if !x.is_null() && x != R_NilValue() {
-            let current = crate::sexp::accessors::NAMED(x);
-            if current < n {
-                SET_NAMED(x, n);
-            }
+    if !x.is_null() && x != R_NilValue() {
+        let current = crate::sexp::accessors::NAMED(x);
+        if current < n {
+            SET_NAMED(x, n);
         }
     }
 }

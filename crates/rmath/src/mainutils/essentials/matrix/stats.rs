@@ -276,12 +276,12 @@ pub fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     return None;
                 }
                 let tsp_owned = owner_sexp(active_owner(), tsp);
-                let start = tsp_owned.try_real_elt(0).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
-                let freq = tsp_owned.try_real_elt(2).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
+                let start = tsp_owned
+                    .try_real_elt(0)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let freq = tsp_owned
+                    .try_real_elt(2)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 let scaled = start * freq;
                 Some((scaled - scaled.floor(), freq))
             };
@@ -612,197 +612,181 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// matched to the first frame by column name; vector/list arguments add one
 /// row and are matched by name when every element is named.
 fn rbind_data_frame(args: SEXP) -> SEXP {
-    unsafe {
-        let mut template_cell = args;
-        let mut template = force_bind_arg(template_cell);
-        while (template.is_null() || template == R_NilValue())
-            && !template_cell.is_null()
-            && template_cell != R_NilValue()
-        {
-            template_cell = CDR(template_cell);
-            if template_cell.is_null() || template_cell == R_NilValue() {
-                return R_NilValue();
-            }
-            template = force_bind_arg(template_cell);
+    let mut template_cell = args;
+    let mut template = force_bind_arg(template_cell);
+    while (template.is_null() || template == R_NilValue())
+        && !template_cell.is_null()
+        && template_cell != R_NilValue()
+    {
+        template_cell = CDR(template_cell);
+        if template_cell.is_null() || template_cell == R_NilValue() {
+            return R_NilValue();
         }
-        let ncols = XLENGTH(template);
-        let template_names = crate::sexp::attrib_core::getAttrib(
-            template,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        let column_names: Vec<String> = (0..ncols)
-            .map(|i| string_at_or_empty(template_names, i))
-            .collect();
+        template = force_bind_arg(template_cell);
+    }
+    let ncols = XLENGTH(template);
+    let template_names =
+        crate::sexp::attrib_core::getAttrib(template, crate::sexp::attrib_core::R_NamesSymbol());
+    let column_names: Vec<String> = (0..ncols)
+        .map(|i| string_at_or_empty(template_names, i))
+        .collect();
 
-        // A source vector and index for every result cell, grouped by column.
-        let mut cells: Vec<Vec<(SEXP, R_xlen_t)>> = vec![Vec::new(); ncols as usize];
-        let mut result_row_names = Vec::new();
-        let mut next_automatic_row = 1usize;
-        let mut current = args;
+    // A source vector and index for every result cell, grouped by column.
+    let mut cells: Vec<Vec<(SEXP, R_xlen_t)>> = vec![Vec::new(); ncols as usize];
+    let mut result_row_names = Vec::new();
+    let mut next_automatic_row = 1usize;
+    let mut current = args;
 
-        while !current.is_null() && current != R_NilValue() {
-            let value = force_bind_arg(current);
-            if value.is_null() || value == R_NilValue() {
-                current = CDR(current);
-                continue;
+    while !current.is_null() && current != R_NilValue() {
+        let value = force_bind_arg(current);
+        if value.is_null() || value == R_NilValue() {
+            current = CDR(current);
+            continue;
+        }
+
+        if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
+            if XLENGTH(value) != ncols {
+                base_error("numbers of columns of arguments do not match".to_string());
             }
-
-            if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
-                if XLENGTH(value) != ncols {
-                    base_error("numbers of columns of arguments do not match".to_string());
-                }
-                let value_names = crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                let source_columns: Vec<R_xlen_t> = column_names
-                    .iter()
-                    .enumerate()
-                    .map(|(fallback, wanted)| {
-                        (0..ncols)
-                            .find(|&j| string_at_or_empty(value_names, j) == *wanted)
-                            .unwrap_or(fallback as R_xlen_t)
-                    })
-                    .collect();
-                let nrows = data_frame_row_count(value);
-                let source_row_names = if nrows == 0 {
-                    Vec::new()
-                } else {
-                    data_frame_row_names(value)
-                };
-                let value_owned = owner_sexp(active_owner(), value);
-                for (out_col, &source_col) in source_columns.iter().enumerate() {
-                    let column = value_owned
-                        .try_vector_elt(source_col)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
-                    if XLENGTH(column) != nrows {
-                        base_error("invalid data frame column length".to_string());
-                    }
-                    for row in 0..nrows {
-                        cells[out_col].push((column, row));
-                    }
-                }
-                for row_name in source_row_names {
-                    result_row_names.push(row_name);
-                    next_automatic_row += 1;
-                }
+            let value_names = crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let source_columns: Vec<R_xlen_t> = column_names
+                .iter()
+                .enumerate()
+                .map(|(fallback, wanted)| {
+                    (0..ncols)
+                        .find(|&j| string_at_or_empty(value_names, j) == *wanted)
+                        .unwrap_or(fallback as R_xlen_t)
+                })
+                .collect();
+            let nrows = data_frame_row_count(value);
+            let source_row_names = if nrows == 0 {
+                Vec::new()
             } else {
-                let ni = XLENGTH(value);
-                if ni > 0 && ncols % ni != 0 {
-                    let msg = std::ffi::CString::new(format!(
+                data_frame_row_names(value)
+            };
+            let value_owned = owner_sexp(active_owner(), value);
+            for (out_col, &source_col) in source_columns.iter().enumerate() {
+                let column = value_owned
+                    .try_vector_elt(source_col)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if XLENGTH(column) != nrows {
+                    base_error("invalid data frame column length".to_string());
+                }
+                for row in 0..nrows {
+                    cells[out_col].push((column, row));
+                }
+            }
+            for row_name in source_row_names {
+                result_row_names.push(row_name);
+                next_automatic_row += 1;
+            }
+        } else {
+            let ni = XLENGTH(value);
+            if ni > 0 && ncols % ni != 0 {
+                let msg = std::ffi::CString::new(format!(
                         "number of columns of result, {ncols}, is not a multiple of vector length {ni} of arg"
                     ))
                     .unwrap_or_default();
-                    crate::mainutils::errors::warningcall(
-                        crate::sexp::globals::R_NilValue(),
-                        msg.as_ptr(),
-                    );
-                }
-                let value_names = crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    msg.as_ptr(),
                 );
-                let fully_named = TYPEOF(value_names) == SEXPTYPE::STRSXP
-                    && XLENGTH(value_names) == ncols
-                    && (0..ncols).all(|i| !string_at_or_empty(value_names, i).is_empty());
-                for (out_col, wanted) in column_names.iter().enumerate() {
-                    let source_col = if fully_named {
-                        (0..ncols)
-                            .find(|&j| string_at_or_empty(value_names, j) == *wanted)
-                            .unwrap_or(out_col as R_xlen_t)
-                    } else {
-                        if ni == 0 {
-                            0
-                        } else {
-                            (out_col as R_xlen_t) % ni
-                        }
-                    };
-                    cells[out_col].push((value, source_col));
-                }
-                let tag = tag_name(current).unwrap_or_default();
-                result_row_names.push(if tag.is_empty() {
-                    next_automatic_row.to_string()
-                } else {
-                    tag
-                });
-                next_automatic_row += 1;
             }
-            current = CDR(current);
+            let value_names = crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let fully_named = TYPEOF(value_names) == SEXPTYPE::STRSXP
+                && XLENGTH(value_names) == ncols
+                && (0..ncols).all(|i| !string_at_or_empty(value_names, i).is_empty());
+            for (out_col, wanted) in column_names.iter().enumerate() {
+                let source_col = if fully_named {
+                    (0..ncols)
+                        .find(|&j| string_at_or_empty(value_names, j) == *wanted)
+                        .unwrap_or(out_col as R_xlen_t)
+                } else {
+                    if ni == 0 {
+                        0
+                    } else {
+                        (out_col as R_xlen_t) % ni
+                    }
+                };
+                cells[out_col].push((value, source_col));
+            }
+            let tag = tag_name(current).unwrap_or_default();
+            result_row_names.push(if tag.is_empty() {
+                next_automatic_row.to_string()
+            } else {
+                tag
+            });
+            next_automatic_row += 1;
         }
+        current = CDR(current);
+    }
 
-        let nrows = result_row_names.len() as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols);
-        if result.is_null() {
+    let nrows = result_row_names.len() as R_xlen_t;
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (column_index, source_cells) in cells.iter().enumerate() {
+        let mut result_type = SEXPTYPE::LGLSXP;
+        for &(source, source_index) in source_cells {
+            let source_type = if TYPEOF(source) == SEXPTYPE::VECSXP {
+                let elt = owner_sexp(owner, source)
+                    .try_vector_elt(source_index)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                TYPEOF(elt)
+            } else {
+                TYPEOF(source)
+            };
+            result_type = bind_common_type(result_type, SEXPTYPE(source_type));
+        }
+        let column = Rf_allocVector3(result_type, nrows);
+        if column.is_null() {
             return R_NilValue();
         }
-        let _result_guard = protect(result);
-
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (column_index, source_cells) in cells.iter().enumerate() {
-            let mut result_type = SEXPTYPE::LGLSXP;
-            for &(source, source_index) in source_cells {
-                let source_type = if TYPEOF(source) == SEXPTYPE::VECSXP {
-                    let elt = owner_sexp(owner, source)
-                        .try_vector_elt(source_index)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
-                    TYPEOF(elt)
-                } else {
-                    TYPEOF(source)
-                };
-                result_type = bind_common_type(result_type, SEXPTYPE(source_type));
+        let column_guard = protect(column);
+        for (row, &(source, source_index)) in source_cells.iter().enumerate() {
+            if TYPEOF(source) == SEXPTYPE::VECSXP {
+                let elt = owner_sexp(owner, source)
+                    .try_vector_elt(source_index)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                copy_bind_value(column, row as R_xlen_t, result_type, elt, 0);
+            } else {
+                copy_bind_value(column, row as R_xlen_t, result_type, source, source_index);
             }
-            let column = Rf_allocVector3(result_type, nrows);
-            if column.is_null() {
-                return R_NilValue();
-            }
-            let column_guard = protect(column);
-            for (row, &(source, source_index)) in source_cells.iter().enumerate() {
-                if TYPEOF(source) == SEXPTYPE::VECSXP {
-                    let elt = owner_sexp(owner, source)
-                        .try_vector_elt(source_index)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
-                    copy_bind_value(
-                        column,
-                        row as R_xlen_t,
-                        result_type,
-                        elt,
-                        0,
-                    );
-                } else {
-                    copy_bind_value(column, row as R_xlen_t, result_type, source, source_index);
-                }
-            }
-            let column_owned = owner
-                .sexp(column)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_vector_elt(column_index as R_xlen_t, column_owned)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            drop(column_guard);
         }
-
-        set_string_names(result, &column_names);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
-            string_vector(&result_row_names),
-        );
-        set_data_frame_class(result);
-        result
+        let column_owned = owner
+            .sexp(column)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(column_index as R_xlen_t, column_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        drop(column_guard);
     }
+
+    set_string_names(result, &column_names);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_RowNamesSymbol(),
+        string_vector(&result_row_names),
+    );
+    set_data_frame_class(result);
+    result
 }
 
 pub fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
@@ -825,33 +809,29 @@ pub fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
 }
 
 pub fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
-    unsafe {
-        if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
-            let nc = XLENGTH(arg);
-            let nr = super::construct::data_frame_row_count(arg);
-            return (nr, nc);
-        }
-        let dim_attr =
-            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-            let dim_owned = owner_sexp(active_owner(), dim_attr);
-            (
-                dim_owned
-                    .try_integer_elt(0)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    }) as R_xlen_t,
-                dim_owned
-                    .try_integer_elt(1)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    }) as R_xlen_t,
-            )
-        } else if cbind {
-            (XLENGTH(arg), 1)
-        } else {
-            (1, XLENGTH(arg))
-        }
+    if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
+        let nc = XLENGTH(arg);
+        let nr = super::construct::data_frame_row_count(arg);
+        return (nr, nc);
+    }
+    let dim_attr =
+        crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
+        let dim_owned = owner_sexp(active_owner(), dim_attr);
+        (
+            dim_owned
+                .try_integer_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as R_xlen_t,
+            dim_owned
+                .try_integer_elt(1)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as R_xlen_t,
+        )
+    } else if cbind {
+        (XLENGTH(arg), 1)
+    } else {
+        (1, XLENGTH(arg))
     }
 }
 
@@ -915,33 +895,31 @@ fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
 
 /// GNU cbind/rbind names: tag always; else level 1 = symbol, level 2 = deparse.
 fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> String {
-    unsafe {
-        if let Some(name) = tag_name(eval_cell) {
-            if name != "deparse.level" && name != "..." {
-                return name;
-            }
+    if let Some(name) = tag_name(eval_cell) {
+        if name != "deparse.level" && name != "..." {
+            return name;
         }
-        if deparse_level <= 0 {
-            return String::new();
-        }
-        let expr = bind_label_expr(eval_cell, expr_cell);
-        if expr.is_null() {
-            return String::new();
-        }
-        if deparse_level == 1 {
-            if TYPEOF(expr) != SEXPTYPE::SYMSXP {
-                return String::new();
-            }
-            return symbol_printname(expr);
-        }
-        // deparse.level == 2
-        let lines = crate::mainutils::deparse::deparse1line(expr, true);
-        let _lines = protect(lines);
-        if lines.is_null() || TYPEOF(lines) != SEXPTYPE::STRSXP || XLENGTH(lines) < 1 {
-            return String::new();
-        }
-        crate::mainutils::essentials::elt_to_string(lines, 0)
     }
+    if deparse_level <= 0 {
+        return String::new();
+    }
+    let expr = bind_label_expr(eval_cell, expr_cell);
+    if expr.is_null() {
+        return String::new();
+    }
+    if deparse_level == 1 {
+        if TYPEOF(expr) != SEXPTYPE::SYMSXP {
+            return String::new();
+        }
+        return symbol_printname(expr);
+    }
+    // deparse.level == 2
+    let lines = crate::mainutils::deparse::deparse1line(expr, true);
+    let _lines = protect(lines);
+    if lines.is_null() || TYPEOF(lines) != SEXPTYPE::STRSXP || XLENGTH(lines) < 1 {
+        return String::new();
+    }
+    crate::mainutils::essentials::elt_to_string(lines, 0)
 }
 
 fn symbol_printname(sym: SEXP) -> String {
@@ -993,297 +971,248 @@ fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
     }
 }
 
-fn first_rbind_colnames(
-    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
-    ncols: R_xlen_t,
-) -> SEXP {
-    unsafe {
-        if ncols <= 0 {
-            return R_NilValue();
-        }
-        for &(arg, _, arg_ncol, _) in entries {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
-            if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2 {
-                let dn = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                );
-                if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
-                    let cols = owner_sexp(active_owner(), dn)
-                        .try_vector_elt(1)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
-                    if !cols.is_null()
-                        && cols != R_NilValue()
-                        && TYPEOF(cols) == SEXPTYPE::STRSXP
-                        && XLENGTH(cols) == ncols
-                    {
-                        return cols;
-                    }
-                }
-                continue;
-            }
-            if arg_ncol != ncols {
-                continue;
-            }
-            let names =
-                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == ncols
-            {
-                return names;
-            }
-        }
-        R_NilValue()
+fn first_rbind_colnames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], ncols: R_xlen_t) -> SEXP {
+    if ncols <= 0 {
+        return R_NilValue();
     }
-}
-
-fn first_vector_names(
-    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
-    nrows: R_xlen_t,
-) -> SEXP {
-    unsafe {
-        for &(arg, arg_nrow, arg_ncol, _) in entries {
-            if arg_ncol != 1 || arg_nrow != nrows {
-                continue;
-            }
-            let names =
-                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == nrows
-            {
-                return names;
-            }
-        }
-        R_NilValue()
-    }
-}
-
-fn is_bind_matrix(arg: SEXP) -> bool {
-    unsafe {
+    for &(arg, _, arg_ncol, _) in entries {
         let dim = crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
-        !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2
-    }
-}
-
-fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
-    unsafe {
-        let dn =
-            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimNamesSymbol());
-        if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) <= axis {
-            return None;
-        }
-        let labels = owner_sexp(active_owner(), dn)
-            .try_vector_elt(axis)
-            .map(|elt| elt.as_raw())
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if labels.is_null()
-            || labels == R_NilValue()
-            || TYPEOF(labels) != SEXPTYPE::STRSXP
-            || XLENGTH(labels) != expected
-        {
-            return None;
-        }
-        Some(
-            (0..expected)
-                .map(|i| string_at_or_empty(labels, i))
-                .collect(),
-        )
-    }
-}
-
-fn first_cbind_rownames(
-    entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
-    nrows: R_xlen_t,
-) -> SEXP {
-    unsafe {
-        for &(arg, arg_nrow, _, _) in entries {
-            if !is_bind_matrix(arg) || arg_nrow != nrows {
-                continue;
-            }
+        if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2 {
             let dn = crate::sexp::attrib_core::getAttrib(
                 arg,
                 crate::sexp::attrib_core::R_DimNamesSymbol(),
             );
-            if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) < 1 {
-                continue;
+            if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                let cols = owner_sexp(active_owner(), dn)
+                    .try_vector_elt(1)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if !cols.is_null()
+                    && cols != R_NilValue()
+                    && TYPEOF(cols) == SEXPTYPE::STRSXP
+                    && XLENGTH(cols) == ncols
+                {
+                    return cols;
+                }
             }
-            let rows = owner_sexp(active_owner(), dn)
-                .try_vector_elt(0)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
-            if !rows.is_null()
-                && rows != R_NilValue()
-                && TYPEOF(rows) == SEXPTYPE::STRSXP
-                && XLENGTH(rows) == nrows
-            {
-                return rows;
-            }
+            continue;
         }
-        first_vector_names(entries, nrows)
+        if arg_ncol != ncols {
+            continue;
+        }
+        let names =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == ncols
+        {
+            return names;
+        }
     }
+    R_NilValue()
+}
+
+fn first_vector_names(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nrows: R_xlen_t) -> SEXP {
+    for &(arg, arg_nrow, arg_ncol, _) in entries {
+        if arg_ncol != 1 || arg_nrow != nrows {
+            continue;
+        }
+        let names =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == nrows
+        {
+            return names;
+        }
+    }
+    R_NilValue()
+}
+
+fn is_bind_matrix(arg: SEXP) -> bool {
+    let dim = crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
+    !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2
+}
+
+fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
+    let dn = crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimNamesSymbol());
+    if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) <= axis {
+        return None;
+    }
+    let labels = owner_sexp(active_owner(), dn)
+        .try_vector_elt(axis)
+        .map(|elt| elt.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    if labels.is_null()
+        || labels == R_NilValue()
+        || TYPEOF(labels) != SEXPTYPE::STRSXP
+        || XLENGTH(labels) != expected
+    {
+        return None;
+    }
+    Some(
+        (0..expected)
+            .map(|i| string_at_or_empty(labels, i))
+            .collect(),
+    )
+}
+
+fn first_cbind_rownames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)], nrows: R_xlen_t) -> SEXP {
+    for &(arg, arg_nrow, _, _) in entries {
+        if !is_bind_matrix(arg) || arg_nrow != nrows {
+            continue;
+        }
+        let dn =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if dn.is_null() || TYPEOF(dn) != SEXPTYPE::VECSXP || XLENGTH(dn) < 1 {
+            continue;
+        }
+        let rows = owner_sexp(active_owner(), dn)
+            .try_vector_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if !rows.is_null()
+            && rows != R_NilValue()
+            && TYPEOF(rows) == SEXPTYPE::STRSXP
+            && XLENGTH(rows) == nrows
+        {
+            return rows;
+        }
+    }
+    first_vector_names(entries, nrows)
 }
 
 fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
-    unsafe {
-        let ty = TYPEOF(arg);
-        let out = Rf_allocVector3(ty, nrow);
-        if out.is_null() {
-            return out;
-        }
-        let _p = protect(out);
-        for i in 0..nrow {
-            copy_bind_value(out, i, SEXPTYPE(ty), arg, i + j * nrow);
-        }
-        out
+    let ty = TYPEOF(arg);
+    let out = Rf_allocVector3(ty, nrow);
+    if out.is_null() {
+        return out;
     }
+    let _p = protect(out);
+    for i in 0..nrow {
+        copy_bind_value(out, i, SEXPTYPE(ty), arg, i + j * nrow);
+    }
+    out
 }
 
 fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
-    unsafe {
-        let mut columns: Vec<SEXP> = Vec::new();
-        let mut names: Vec<String> = Vec::new();
-        let mut nrow: R_xlen_t = 0;
-        for &(arg, arg_nrow, arg_ncol, ref name) in entries {
-            if arg_nrow == 0 && arg_ncol == 0 {
-                continue;
-            }
-            nrow = nrow.max(arg_nrow);
-            if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
-                let inner = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
+    let mut columns: Vec<SEXP> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut nrow: R_xlen_t = 0;
+    for &(arg, arg_nrow, arg_ncol, ref name) in entries {
+        if arg_nrow == 0 && arg_ncol == 0 {
+            continue;
+        }
+        nrow = nrow.max(arg_nrow);
+        if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
+            let inner =
+                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
+            let arg_owned = owner_sexp(active_owner(), arg);
+            for j in 0..XLENGTH(arg) {
+                columns.push(
+                    arg_owned
+                        .try_vector_elt(j)
+                        .map(|elt| elt.as_raw())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                 );
-                let arg_owned = owner_sexp(active_owner(), arg);
-                for j in 0..XLENGTH(arg) {
-                    columns.push(
-                        arg_owned
-                            .try_vector_elt(j)
-                            .map(|elt| elt.as_raw())
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            }),
-                    );
-                    let child = string_at_or_empty(inner, j);
-                    names.push(if child.is_empty() {
+                let child = string_at_or_empty(inner, j);
+                names.push(if child.is_empty() {
+                    name.clone()
+                } else {
+                    child
+                });
+            }
+        } else if is_bind_matrix(arg) && arg_ncol > 1 {
+            let cn = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            let cnames = if !cn.is_null()
+                && cn != R_NilValue()
+                && TYPEOF(cn) == SEXPTYPE::VECSXP
+                && XLENGTH(cn) >= 2
+            {
+                owner_sexp(active_owner(), cn)
+                    .try_vector_elt(1)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            } else {
+                R_NilValue()
+            };
+            for j in 0..arg_ncol {
+                columns.push(matrix_column_vector(arg, j, arg_nrow));
+                let child = string_at_or_empty(cnames, j);
+                names.push(if child.is_empty() {
+                    if arg_ncol == 1 {
                         name.clone()
                     } else {
-                        child
-                    });
-                }
-            } else if is_bind_matrix(arg) && arg_ncol > 1 {
-                let cn = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                );
-                let cnames = if !cn.is_null()
-                    && cn != R_NilValue()
-                    && TYPEOF(cn) == SEXPTYPE::VECSXP
-                    && XLENGTH(cn) >= 2
-                {
-                    owner_sexp(active_owner(), cn)
-                        .try_vector_elt(1)
-                        .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        })
+                        format!("{name}{j}")
+                    }
                 } else {
-                    R_NilValue()
-                };
-                for j in 0..arg_ncol {
-                    columns.push(matrix_column_vector(arg, j, arg_nrow));
-                    let child = string_at_or_empty(cnames, j);
-                    names.push(if child.is_empty() {
-                        if arg_ncol == 1 {
-                            name.clone()
-                        } else {
-                            format!("{name}{j}")
-                        }
-                    } else {
-                        child
-                    });
-                }
-            } else if is_bind_matrix(arg) && arg_ncol == 1 {
-                columns.push(matrix_column_vector(arg, 0, arg_nrow));
-                names.push(name.clone());
-            } else {
-                columns.push(arg);
-                names.push(name.clone());
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
-        if result.is_null() {
-            return result;
-        }
-        let _r = protect(result);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, col) in columns.iter().enumerate() {
-            let recycled = recycle_column_if_needed(*col, nrow);
-            let recycled = owner
-                .sexp(recycled)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
+                    child
                 });
-            result_mut
-                .try_set_vector_elt(i as R_xlen_t, recycled)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
-        }
-        set_string_names(result, &names);
-        // GNU cbind on data.frames keeps the first explicit row names
-        // (anova.lmlist's dimnames<- followed by stat.anova's cbind rely
-        // on this so printCoefmat shows rows 1,2 without matrix brackets).
-        let mut explicit_rows: Option<SEXP> = None;
-        for &(arg, arg_nrow, _, _) in entries {
-            if arg_nrow == nrow
-                && sexp_has_class(arg, "data.frame")
-                && TYPEOF(arg) == SEXPTYPE::VECSXP
-            {
-                let rn = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    crate::sexp::attrib_core::R_RowNamesSymbol(),
-                );
-                if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrow {
-                    explicit_rows = Some(rn);
-                    break;
-                }
             }
-        }
-        if let Some(rn) = explicit_rows {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_RowNamesSymbol(),
-                rn,
-            );
+        } else if is_bind_matrix(arg) && arg_ncol == 1 {
+            columns.push(matrix_column_vector(arg, 0, arg_nrow));
+            names.push(name.clone());
         } else {
-            set_compact_row_names(result, nrow);
+            columns.push(arg);
+            names.push(name.clone());
         }
-        set_data_frame_class(result);
-        result
     }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+    if result.is_null() {
+        return result;
+    }
+    let _r = protect(result);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, col) in columns.iter().enumerate() {
+        let recycled = recycle_column_if_needed(*col, nrow);
+        let recycled = owner
+            .sexp(recycled)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(i as R_xlen_t, recycled)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    set_string_names(result, &names);
+    // GNU cbind on data.frames keeps the first explicit row names
+    // (anova.lmlist's dimnames<- followed by stat.anova's cbind rely
+    // on this so printCoefmat shows rows 1,2 without matrix brackets).
+    let mut explicit_rows: Option<SEXP> = None;
+    for &(arg, arg_nrow, _, _) in entries {
+        if arg_nrow == nrow && sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP
+        {
+            let rn = crate::sexp::attrib_core::getAttrib(
+                arg,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
+            if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrow {
+                explicit_rows = Some(rn);
+                break;
+            }
+        }
+    }
+    if let Some(rn) = explicit_rows {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+            rn,
+        );
+    } else {
+        set_compact_row_names(result, nrow);
+    }
+    set_data_frame_class(result);
+    result
 }
 
-pub fn copy_bind_value(
-    dst: SEXP,
-    dst_i: R_xlen_t,
-    dst_type: SEXPTYPE,
-    src: SEXP,
-    src_i: R_xlen_t,
-) {
+pub fn copy_bind_value(dst: SEXP, dst_i: R_xlen_t, dst_type: SEXPTYPE, src: SEXP, src_i: R_xlen_t) {
     unsafe {
         let owner = active_owner();
         let src_owned = owner_sexp(owner, src);
@@ -1302,15 +1231,11 @@ pub fn copy_bind_value(
                     let na = owner
                         .sexp(crate::sexp::globals::R_NaString())
                         .unwrap_or_else(fail);
-                    dst_mut
-                        .try_set_string_elt(dst_i, na)
-                        .unwrap_or_else(fail);
+                    dst_mut.try_set_string_elt(dst_i, na).unwrap_or_else(fail);
                 } else {
                     let value = elt_to_string(src, src_i);
                     let c_value = CString::new(value).unwrap_or_default();
-                    let charsxp = owner
-                        .sexp(Rf_mkChar(c_value.as_ptr()))
-                        .unwrap_or_else(fail);
+                    let charsxp = owner.sexp(Rf_mkChar(c_value.as_ptr())).unwrap_or_else(fail);
                     dst_mut
                         .try_set_string_elt(dst_i, charsxp)
                         .unwrap_or_else(fail);
@@ -1318,9 +1243,7 @@ pub fn copy_bind_value(
             }
             SEXPTYPE::CPLXSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::CPLXSXP => {
-                        src_owned.try_complex_elt(src_i).unwrap_or_else(fail)
-                    }
+                    SEXPTYPE::CPLXSXP => src_owned.try_complex_elt(src_i).unwrap_or_else(fail),
                     SEXPTYPE::REALSXP => Rcomplex {
                         r: src_owned.try_real_elt(src_i).unwrap_or_else(fail),
                         i: 0.0,
@@ -1351,9 +1274,7 @@ pub fn copy_bind_value(
             }
             SEXPTYPE::REALSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::REALSXP => {
-                        src_owned.try_real_elt(src_i).unwrap_or_else(fail)
-                    }
+                    SEXPTYPE::REALSXP => src_owned.try_real_elt(src_i).unwrap_or_else(fail),
                     SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
                         let value = integer_like_elt(&src_owned, src_i);
                         if value == NA_INTEGER {
@@ -1362,21 +1283,15 @@ pub fn copy_bind_value(
                             value as f64
                         }
                     }
-                    SEXPTYPE::RAWSXP => {
-                        src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64
-                    }
+                    SEXPTYPE::RAWSXP => src_owned.try_raw_elt(src_i).unwrap_or_else(fail) as f64,
                     _ => NA_REAL,
                 };
-                dst_mut
-                    .try_set_real_elt(dst_i, value)
-                    .unwrap_or_else(fail);
+                dst_mut.try_set_real_elt(dst_i, value).unwrap_or_else(fail);
             }
 
             SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
                 let value = match SEXPTYPE(TYPEOF(src)) {
-                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
-                        integer_like_elt(&src_owned, src_i)
-                    }
+                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => integer_like_elt(&src_owned, src_i),
                     SEXPTYPE::RAWSXP => {
                         let b = src_owned.try_raw_elt(src_i).unwrap_or_else(fail);
                         if dst_type == SEXPTYPE::LGLSXP {
@@ -1399,15 +1314,11 @@ pub fn copy_bind_value(
             }
             SEXPTYPE::VECSXP => {
                 let elt = if TYPEOF(src) == SEXPTYPE::VECSXP {
-                    src_owned
-                        .try_vector_elt(src_i)
-                        .unwrap_or_else(fail)
+                    src_owned.try_vector_elt(src_i).unwrap_or_else(fail)
                 } else {
                     owner.sexp(src).unwrap_or_else(fail)
                 };
-                dst_mut
-                    .try_set_vector_elt(dst_i, elt)
-                    .unwrap_or_else(fail);
+                dst_mut.try_set_vector_elt(dst_i, elt).unwrap_or_else(fail);
             }
 
             _ => {}
@@ -1455,260 +1366,30 @@ pub fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
 }
 /// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.
 pub fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(_call, "'x' is NULL");
-        }
-
-        let y = CAR(CDR(args));
-        let na_rm_arg = CAR(CDR(CDR(args)));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        if y.is_null() || y == R_NilValue() {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-            if !dim.is_null()
-                && dim != R_NilValue()
-                && TYPEOF(dim) == SEXPTYPE::INTSXP
-                && XLENGTH(dim) == 2
-            {
-                return var_matrix(x, dim, na_rm);
-            }
-            // Variance of x
-            let n = XLENGTH(x);
-            let mut sum = 0.0f64;
-            let mut sum_sq = 0.0f64;
-            let mut count = 0i64;
-
-            for i in 0..n {
-                let val = matrix_numeric_elt(x, i);
-
-                if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
-                    if !na_rm {
-                        return Rf_ScalarReal(NA_REAL);
-                    }
-                } else {
-                    sum += val;
-                    sum_sq += val * val;
-                    count += 1;
-                }
-            }
-
-            if count < 2 {
-                return Rf_ScalarReal(NA_REAL);
-            }
-
-            let mean = sum / count as f64;
-            let variance = (sum_sq - count as f64 * mean * mean) / (count - 1) as f64;
-            Rf_ScalarReal(variance)
-        } else {
-            // Covariance of x and y
-            let n = XLENGTH(x).min(XLENGTH(y));
-            let mut sum_x = 0.0f64;
-            let mut sum_y = 0.0f64;
-            let mut sum_xy = 0.0f64;
-            let mut count = 0i64;
-
-            for i in 0..n {
-                let val_x = matrix_numeric_elt(x, i);
-                let val_y = matrix_numeric_elt(y, i);
-
-                if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                    || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                    || val_x.is_nan()
-                    || val_y.is_nan()
-                {
-                    if !na_rm {
-                        return Rf_ScalarReal(NA_REAL);
-                    }
-                } else {
-                    sum_x += val_x;
-                    sum_y += val_y;
-                    sum_xy += val_x * val_y;
-                    count += 1;
-                }
-            }
-
-            if count < 2 {
-                return Rf_ScalarReal(NA_REAL);
-            }
-
-            let mean_x = sum_x / count as f64;
-            let mean_y = sum_y / count as f64;
-            let covariance = (sum_xy - count as f64 * mean_x * mean_y) / (count - 1) as f64;
-            Rf_ScalarReal(covariance)
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(_call, "'x' is NULL");
     }
-}
 
-fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
-    unsafe {
-        let dim_owned = owner_sexp(active_owner(), dim);
-        let nrow = dim_owned
-            .try_integer_elt(0)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            as R_xlen_t;
-        let ncol = dim_owned
-            .try_integer_elt(1)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, ncol.saturating_mul(ncol));
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if nrow < 2 || ncol == 0 {
-            for i in 0..ncol.saturating_mul(ncol) {
-                result_mut
-                    .try_set_real_elt(i, NA_REAL)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-            }
-            set_two_dim_attr(result, ncol, ncol);
-            return result;
-        }
-        let mut means = vec![0.0f64; ncol as usize];
-        for col in 0..ncol {
-            let mut sum = 0.0;
-            let mut count = 0i64;
-            for row in 0..nrow {
-                let val = matrix_numeric_elt(x, row + col * nrow);
-                if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
-                    if !na_rm {
-                        for i in 0..ncol.saturating_mul(ncol) {
-                            result_mut
-                                .try_set_real_elt(i, NA_REAL)
-                                .unwrap_or_else(|error| {
-                                    crate::sexp::context::r_error(error.to_string())
-                                });
-                        }
-                        set_two_dim_attr(result, ncol, ncol);
-                        return result;
-                    }
-                } else {
-                    sum += val;
-                    count += 1;
-                }
-            }
-            if count == 0 {
-                means[col as usize] = NA_REAL;
-            } else {
-                means[col as usize] = sum / count as f64;
-            }
-        }
-        for j in 0..ncol {
-            for i in 0..=j {
-                let mut sum = 0.0;
-                let mut count = 0i64;
-                for row in 0..nrow {
-                    let a = matrix_numeric_elt(x, row + i * nrow);
-                    let b = matrix_numeric_elt(x, row + j * nrow);
-                    if a.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                        || b.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                        || a.is_nan()
-                        || b.is_nan()
-                    {
-                        if !na_rm {
-                            for k in 0..ncol.saturating_mul(ncol) {
-                                result_mut
-                                    .try_set_real_elt(k, NA_REAL)
-                                    .unwrap_or_else(|error| {
-                                        crate::sexp::context::r_error(
-                                            error.to_string(),
-                                        )
-                                    });
-                            }
-                            set_two_dim_attr(result, ncol, ncol);
-                            return result;
-                        }
-                    } else {
-                        sum += (a - means[i as usize]) * (b - means[j as usize]);
-                        count += 1;
-                    }
-                }
-                let cov = if count < 2 {
-                    NA_REAL
-                } else {
-                    sum / (count - 1) as f64
-                };
-                result_mut
-                    .try_set_real_elt(i + j * ncol, cov)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-                result_mut
-                    .try_set_real_elt(j + i * ncol, cov)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-            }
-        }
-        set_two_dim_attr(result, ncol, ncol);
-        result
-    }
-}
+    let y = CAR(CDR(args));
+    let na_rm_arg = CAR(CDR(CDR(args)));
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
-fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
-    unsafe {
-        let x_owned = owner_sexp(active_owner(), x);
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => x_owned
-                .try_real_elt(index)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                }),
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                let v = integer_like_elt(&x_owned, index);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            }
-            _ => NA_REAL,
+    if y.is_null() || y == R_NilValue() {
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) == 2
+        {
+            return var_matrix(x, dim, na_rm);
         }
-    }
-}
-
-/// R's `sd(x, na.rm = FALSE)` — standard deviation.
-pub fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Call do_var to get variance
-        let var_args = Rf_cons(CAR(args), CDR(args));
-        let var_result = do_var(_call, _op, var_args, _rho);
-        if var_result.is_null() {
-            return R_NilValue();
-        }
-
-        let v = real_or_default(var_result, NA_REAL);
-        if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v < 0.0 {
-            Rf_ScalarReal(NA_REAL)
-        } else {
-            Rf_ScalarReal(libm::sqrt(v))
-        }
-    }
-}
-
-/// R's `median(x, na.rm = FALSE)` — median value.
-pub fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
+        // Variance of x
         let n = XLENGTH(x);
-        let mut vals: Vec<f64> = Vec::new();
+        let mut sum = 0.0f64;
+        let mut sum_sq = 0.0f64;
+        let mut count = 0i64;
 
         for i in 0..n {
             let val = matrix_numeric_elt(x, i);
@@ -1718,121 +1399,321 @@ pub fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return Rf_ScalarReal(NA_REAL);
                 }
             } else {
-                vals.push(val);
+                sum += val;
+                sum_sq += val * val;
+                count += 1;
             }
         }
 
-        if vals.is_empty() {
+        if count < 2 {
             return Rf_ScalarReal(NA_REAL);
         }
 
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let mid = vals.len() / 2;
-        if vals.len().is_multiple_of(2) {
-            Rf_ScalarReal((vals[mid - 1] + vals[mid]) / 2.0)
-        } else {
-            Rf_ScalarReal(vals[mid])
+        let mean = sum / count as f64;
+        let variance = (sum_sq - count as f64 * mean * mean) / (count - 1) as f64;
+        Rf_ScalarReal(variance)
+    } else {
+        // Covariance of x and y
+        let n = XLENGTH(x).min(XLENGTH(y));
+        let mut sum_x = 0.0f64;
+        let mut sum_y = 0.0f64;
+        let mut sum_xy = 0.0f64;
+        let mut count = 0i64;
+
+        for i in 0..n {
+            let val_x = matrix_numeric_elt(x, i);
+            let val_y = matrix_numeric_elt(y, i);
+
+            if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || val_x.is_nan()
+                || val_y.is_nan()
+            {
+                if !na_rm {
+                    return Rf_ScalarReal(NA_REAL);
+                }
+            } else {
+                sum_x += val_x;
+                sum_y += val_y;
+                sum_xy += val_x * val_y;
+                count += 1;
+            }
         }
+
+        if count < 2 {
+            return Rf_ScalarReal(NA_REAL);
+        }
+
+        let mean_x = sum_x / count as f64;
+        let mean_y = sum_y / count as f64;
+        let covariance = (sum_xy - count as f64 * mean_x * mean_y) / (count - 1) as f64;
+        Rf_ScalarReal(covariance)
+    }
+}
+
+fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
+    let dim_owned = owner_sexp(active_owner(), dim);
+    let nrow = dim_owned
+        .try_integer_elt(0)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        as R_xlen_t;
+    let ncol = dim_owned
+        .try_integer_elt(1)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        as R_xlen_t;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, ncol.saturating_mul(ncol));
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    if nrow < 2 || ncol == 0 {
+        for i in 0..ncol.saturating_mul(ncol) {
+            result_mut
+                .try_set_real_elt(i, NA_REAL)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        set_two_dim_attr(result, ncol, ncol);
+        return result;
+    }
+    let mut means = vec![0.0f64; ncol as usize];
+    for col in 0..ncol {
+        let mut sum = 0.0;
+        let mut count = 0i64;
+        for row in 0..nrow {
+            let val = matrix_numeric_elt(x, row + col * nrow);
+            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+                if !na_rm {
+                    for i in 0..ncol.saturating_mul(ncol) {
+                        result_mut
+                            .try_set_real_elt(i, NA_REAL)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                    }
+                    set_two_dim_attr(result, ncol, ncol);
+                    return result;
+                }
+            } else {
+                sum += val;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            means[col as usize] = NA_REAL;
+        } else {
+            means[col as usize] = sum / count as f64;
+        }
+    }
+    for j in 0..ncol {
+        for i in 0..=j {
+            let mut sum = 0.0;
+            let mut count = 0i64;
+            for row in 0..nrow {
+                let a = matrix_numeric_elt(x, row + i * nrow);
+                let b = matrix_numeric_elt(x, row + j * nrow);
+                if a.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                    || b.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                    || a.is_nan()
+                    || b.is_nan()
+                {
+                    if !na_rm {
+                        for k in 0..ncol.saturating_mul(ncol) {
+                            result_mut
+                                .try_set_real_elt(k, NA_REAL)
+                                .unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
+                        }
+                        set_two_dim_attr(result, ncol, ncol);
+                        return result;
+                    }
+                } else {
+                    sum += (a - means[i as usize]) * (b - means[j as usize]);
+                    count += 1;
+                }
+            }
+            let cov = if count < 2 {
+                NA_REAL
+            } else {
+                sum / (count - 1) as f64
+            };
+            result_mut
+                .try_set_real_elt(i + j * ncol, cov)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result_mut
+                .try_set_real_elt(j + i * ncol, cov)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+    }
+    set_two_dim_attr(result, ncol, ncol);
+    result
+}
+
+fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
+    let x_owned = owner_sexp(active_owner(), x);
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::REALSXP => x_owned
+            .try_real_elt(index)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            let v = integer_like_elt(&x_owned, index);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        }
+        _ => NA_REAL,
+    }
+}
+
+/// R's `sd(x, na.rm = FALSE)` — standard deviation.
+pub fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Call do_var to get variance
+    let var_args = Rf_cons(CAR(args), CDR(args));
+    let var_result = do_var(_call, _op, var_args, _rho);
+    if var_result.is_null() {
+        return R_NilValue();
+    }
+
+    let v = real_or_default(var_result, NA_REAL);
+    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v < 0.0 {
+        Rf_ScalarReal(NA_REAL)
+    } else {
+        Rf_ScalarReal(libm::sqrt(v))
+    }
+}
+
+/// R's `median(x, na.rm = FALSE)` — median value.
+pub fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let n = XLENGTH(x);
+    let mut vals: Vec<f64> = Vec::new();
+
+    for i in 0..n {
+        let val = matrix_numeric_elt(x, i);
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+            if !na_rm {
+                return Rf_ScalarReal(NA_REAL);
+            }
+        } else {
+            vals.push(val);
+        }
+    }
+
+    if vals.is_empty() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = vals.len() / 2;
+    if vals.len().is_multiple_of(2) {
+        Rf_ScalarReal((vals[mid - 1] + vals[mid]) / 2.0)
+    } else {
+        Rf_ScalarReal(vals[mid])
     }
 }
 
 /// R's `IQR(x, na.rm = FALSE)` — interquartile range using quantile type 7.
 pub fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        let n = XLENGTH(x);
-        let mut vals = Vec::new();
-
-        for i in 0..n {
-            let val = matrix_numeric_elt(x, i);
-
-            if val.to_bits() == R_NA_BIT_PATTERN || val.is_nan() {
-                if !na_rm {
-                    return Rf_ScalarReal(NA_REAL);
-                }
-            } else {
-                vals.push(val);
-            }
-        }
-
-        if vals.is_empty() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        Rf_ScalarReal(iqr_value(&mut vals))
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
     }
+
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let n = XLENGTH(x);
+    let mut vals = Vec::new();
+
+    for i in 0..n {
+        let val = matrix_numeric_elt(x, i);
+
+        if val.to_bits() == R_NA_BIT_PATTERN || val.is_nan() {
+            if !na_rm {
+                return Rf_ScalarReal(NA_REAL);
+            }
+        } else {
+            vals.push(val);
+        }
+    }
+
+    if vals.is_empty() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    Rf_ScalarReal(iqr_value(&mut vals))
 }
 
 /// GNU `quantile(x, probs)` type 7.
 pub fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-        }
-        let mut probs = vec![0.0, 0.25, 0.5, 0.75, 1.0];
-        let probs_arg = arg_by_name_or_position(args, &["probs"], 1);
-        if !probs_arg.is_null()
-            && probs_arg != R_NilValue()
-            && (TYPEOF(probs_arg) == SEXPTYPE::REALSXP || TYPEOF(probs_arg) == SEXPTYPE::INTSXP)
-            && XLENGTH(probs_arg) > 0
-        {
-            probs.clear();
-            for i in 0..XLENGTH(probs_arg) {
-                probs.push(elt_real_safe(probs_arg, i));
-            }
-        }
-        let n = XLENGTH(x);
-        let mut vals = Vec::new();
-        for i in 0..n {
-            let val = matrix_numeric_elt(x, i);
-            if val.to_bits() != R_NA_BIT_PATTERN && !val.is_nan() {
-                vals.push(val);
-            }
-        }
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, probs.len() as i64);
-        let _r = protect(result);
-        let mut result_mut = active_owner()
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut names = Vec::with_capacity(probs.len());
-        for (i, p) in probs.iter().copied().enumerate() {
-            result_mut
-                .try_set_real_elt(i as R_xlen_t, quantile_type7(&vals, p))
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
-            let pct = p * 100.0;
-            let name = if (pct - pct.round()).abs() < 1e-10 {
-                format!("{}%", pct.round() as i32)
-            } else {
-                format!("{pct}%")
-            };
-            names.push(name);
-        }
-        let names_arg = arg_by_name_or_position(args, &["names"], 3);
-        let keep_names = names_arg.is_null()
-            || names_arg == R_NilValue()
-            || names_arg == crate::sexp::globals::R_MissingArg()
-            || XLENGTH(names_arg) == 0
-            || real_or_default(names_arg, 1.0) != 0.0;
-        if keep_names {
-            set_string_names(result, &names);
-        }
-        result
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
     }
+    let mut probs = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+    let probs_arg = arg_by_name_or_position(args, &["probs"], 1);
+    if !probs_arg.is_null()
+        && probs_arg != R_NilValue()
+        && (TYPEOF(probs_arg) == SEXPTYPE::REALSXP || TYPEOF(probs_arg) == SEXPTYPE::INTSXP)
+        && XLENGTH(probs_arg) > 0
+    {
+        probs.clear();
+        for i in 0..XLENGTH(probs_arg) {
+            probs.push(elt_real_safe(probs_arg, i));
+        }
+    }
+    let n = XLENGTH(x);
+    let mut vals = Vec::new();
+    for i in 0..n {
+        let val = matrix_numeric_elt(x, i);
+        if val.to_bits() != R_NA_BIT_PATTERN && !val.is_nan() {
+            vals.push(val);
+        }
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, probs.len() as i64);
+    let _r = protect(result);
+    let mut result_mut = active_owner()
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut names = Vec::with_capacity(probs.len());
+    for (i, p) in probs.iter().copied().enumerate() {
+        result_mut
+            .try_set_real_elt(i as R_xlen_t, quantile_type7(&vals, p))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pct = p * 100.0;
+        let name = if (pct - pct.round()).abs() < 1e-10 {
+            format!("{}%", pct.round() as i32)
+        } else {
+            format!("{pct}%")
+        };
+        names.push(name);
+    }
+    let names_arg = arg_by_name_or_position(args, &["names"], 3);
+    let keep_names = names_arg.is_null()
+        || names_arg == R_NilValue()
+        || names_arg == crate::sexp::globals::R_MissingArg()
+        || XLENGTH(names_arg) == 0
+        || real_or_default(names_arg, 1.0) != 0.0;
+    if keep_names {
+        set_string_names(result, &names);
+    }
+    result
 }
 
 /// R's `cummin(x)` — cumulative minimum.
@@ -1890,16 +1771,12 @@ pub fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if poisoned {
                     result_mut
                         .try_set_integer_elt(i, NA_INTEGER)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     min_so_far = min_so_far.min(val);
                     result_mut
                         .try_set_integer_elt(i, min_so_far)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
             return result;
@@ -1908,9 +1785,9 @@ pub fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut min_so_far = f64::INFINITY;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                x_owned.try_real_elt(i).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                })
+                x_owned
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             } else {
                 NA_REAL
             };
@@ -1922,9 +1799,7 @@ pub fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             result_mut
                 .try_set_real_elt(i, min_so_far)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         result
     }
@@ -1985,16 +1860,12 @@ pub fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if poisoned {
                     result_mut
                         .try_set_integer_elt(i, NA_INTEGER)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     max_so_far = max_so_far.max(val);
                     result_mut
                         .try_set_integer_elt(i, max_so_far)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
             return result;
@@ -2003,9 +1874,9 @@ pub fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut max_so_far = f64::NEG_INFINITY;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                x_owned.try_real_elt(i).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                })
+                x_owned
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             } else {
                 NA_REAL
             };
@@ -2017,9 +1888,7 @@ pub fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             result_mut
                 .try_set_real_elt(i, max_so_far)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         result
     }

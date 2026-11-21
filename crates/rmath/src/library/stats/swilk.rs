@@ -14,7 +14,7 @@ use crate::sexp::protect::protect;
 // `crate::main::coerce::coerceVector` still takes `c_int`; keep the conversion
 // local so this module can use `SEXPTYPE` at the call site.
 unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, sexptype.into()) }
+    crate::main::coerce::coerceVector(x, sexptype.into())
 }
 
 unsafe fn poly(cc: *const c_double, nord: c_int, x: c_double) -> c_double {

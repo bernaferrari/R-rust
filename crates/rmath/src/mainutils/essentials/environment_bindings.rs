@@ -28,23 +28,19 @@ pub fn do_unlockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's `bindingIsLocked(sym, env)` — check if a binding is locked.
 pub fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let sym = binding_symbol_arg(CAR(args));
-        let env = environment_arg(CAR(CDR(args)));
-        Rf_ScalarLogical(crate::sexp::envir::binding_is_locked_raw(env, sym) as c_int)
-    }
+    let sym = binding_symbol_arg(CAR(args));
+    let env = environment_arg(CAR(CDR(args)));
+    Rf_ScalarLogical(crate::sexp::envir::binding_is_locked_raw(env, sym) as c_int)
 }
 
 /// R's `bindingIsActive(sym, env)` — check if a binding is active.
 pub fn do_bindingIsActive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let sym = binding_symbol_arg(CAR(args));
-        let env = environment_arg(CAR(CDR(args)));
-        if !crate::sexp::envir::binding_exists_in_frame_raw(env, sym) {
-            base_error("no binding for symbol");
-        }
-        Rf_ScalarLogical(crate::sexp::envir::binding_is_active_raw(env, sym) as c_int)
+    let sym = binding_symbol_arg(CAR(args));
+    let env = environment_arg(CAR(CDR(args)));
+    if !crate::sexp::envir::binding_exists_in_frame_raw(env, sym) {
+        base_error("no binding for symbol");
     }
+    Rf_ScalarLogical(crate::sexp::envir::binding_is_active_raw(env, sym) as c_int)
 }
 
 /// R's `makeActiveBinding(sym, fun, env)` — create an active binding.
@@ -89,10 +85,8 @@ pub fn do_lockEnvironment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `environmentIsLocked(env)` — check if an environment is locked.
 pub fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let env = environment_arg(CAR(args));
-        Rf_ScalarLogical(crate::sexp::envir::environment_is_locked_raw(env) as c_int)
-    }
+    let env = environment_arg(CAR(args));
+    Rf_ScalarLogical(crate::sexp::envir::environment_is_locked_raw(env) as c_int)
 }
 
 /// R's `list2env(x, envir = NULL, parent = parent.frame(),

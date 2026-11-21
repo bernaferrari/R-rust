@@ -73,12 +73,12 @@ pub fn do_options(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `interactive()` — returns FALSE (not in interactive session).
 pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+    Rf_ScalarLogical(FALSE)
 }
 
 /// Alias for `interactive()`.
 pub fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+    Rf_ScalarLogical(FALSE)
 }
 
 /// R's `getRversion()` — returns an `R_system_version` package-version object.
@@ -125,7 +125,7 @@ pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// `getNamespaceVersion(ns)` for a base package is the R version.
 pub fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     do_getRversion(call, op, args, rho) 
+    do_getRversion(call, op, args, rho)
 }
 
 /// R's `R.version.string` — returns the full R version string.
@@ -145,7 +145,7 @@ pub fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 
 /// R-like `ls_args()` — list argument names of current function (simplified: return empty character).
 pub fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 0) }
+    Rf_allocVector3(SEXPTYPE::STRSXP, 0)
 }
 
 /// R's `deparse1(expr, collapse, width.cutoff)` — deparse to a single string.
@@ -165,61 +165,57 @@ pub fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `dput(x, file, control)` — dump using the requested deparse options.
 pub fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let file_arg = arg_by_name_or_position(args, &["file"], 1);
-        let control_arg = arg_by_name_or_position(args, &["control"], 2);
-        let opts = if control_arg.is_null()
-            || control_arg == R_NilValue()
-            || control_arg == R_MissingArg()
-        {
-            crate::mainutils::deparse::DEFAULT_USER_DEPARSE
-        } else if TYPEOF(control_arg) == SEXPTYPE::INTSXP
-            || TYPEOF(control_arg) == SEXPTYPE::REALSXP
-        {
-            crate::mainutils::coerce::asInteger(control_arg)
-        } else {
-            crate::mainutils::deparse::deparse_opts_from_control(control_arg)
-        };
-        let deparsed = crate::mainutils::deparse::deparse1(x, false, opts);
-        let n = if deparsed.is_null() || deparsed == R_NilValue() {
-            0
-        } else {
-            XLENGTH(deparsed)
-        };
-        let lines: Vec<String> = if n == 0 {
-            vec!["NULL".to_string()]
-        } else {
-            (0..n).map(|i| elt_to_string(deparsed, i)).collect()
-        };
-        let output = format!("{}\n", lines.join("\n"));
+    let x = CAR(args);
+    let file_arg = arg_by_name_or_position(args, &["file"], 1);
+    let control_arg = arg_by_name_or_position(args, &["control"], 2);
+    let opts = if control_arg.is_null()
+        || control_arg == R_NilValue()
+        || control_arg == R_MissingArg()
+    {
+        crate::mainutils::deparse::DEFAULT_USER_DEPARSE
+    } else if TYPEOF(control_arg) == SEXPTYPE::INTSXP || TYPEOF(control_arg) == SEXPTYPE::REALSXP {
+        crate::mainutils::coerce::asInteger(control_arg)
+    } else {
+        crate::mainutils::deparse::deparse_opts_from_control(control_arg)
+    };
+    let deparsed = crate::mainutils::deparse::deparse1(x, false, opts);
+    let n = if deparsed.is_null() || deparsed == R_NilValue() {
+        0
+    } else {
+        XLENGTH(deparsed)
+    };
+    let lines: Vec<String> = if n == 0 {
+        vec!["NULL".to_string()]
+    } else {
+        (0..n).map(|i| elt_to_string(deparsed, i)).collect()
+    };
+    let output = format!("{}\n", lines.join("\n"));
 
-        let file = if file_arg.is_null()
-            || file_arg == R_NilValue()
-            || file_arg == R_MissingArg()
-            || XLENGTH(file_arg) == 0
-        {
-            String::new()
+    let file = if file_arg.is_null()
+        || file_arg == R_NilValue()
+        || file_arg == R_MissingArg()
+        || XLENGTH(file_arg) == 0
+    {
+        String::new()
+    } else {
+        elt_to_string(file_arg, 0)
+    };
+    if file.is_empty() {
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&output);
         } else {
-            elt_to_string(file_arg, 0)
-        };
-        if file.is_empty() {
-            if crate::sexp::output::is_capturing() {
-                crate::sexp::output::capture_stdout(&output);
-            } else {
-                print!("{}", output);
-            }
-        } else {
-            std::fs::write(&file, output).unwrap_or_else(|err| {
-                std::panic::panic_any(RError {
-                    message: format!("cannot write dump file '{}': {err}", file),
-                })
-            });
+            print!("{}", output);
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-
-        x
+    } else {
+        std::fs::write(&file, output).unwrap_or_else(|err| {
+            std::panic::panic_any(RError {
+                message: format!("cannot write dump file '{}': {err}", file),
+            })
+        });
     }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+
+    x
 }
 
 /// GNU `dump(list, file, ...)` — write `name <-` deparsed values.
@@ -298,18 +294,16 @@ pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn deparse_lines(expr: SEXP) -> Vec<String> {
-    unsafe {
-        let deparsed = crate::mainutils::deparse::deparse1(
-            expr,
-            false,
-            crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
-        );
-        let n = XLENGTH(deparsed);
-        if deparsed.is_null() || deparsed == R_NilValue() || n == 0 {
-            return vec!["NULL".to_string()];
-        }
-        (0..n).map(|i| elt_to_string(deparsed, i)).collect()
+    let deparsed = crate::mainutils::deparse::deparse1(
+        expr,
+        false,
+        crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
+    );
+    let n = XLENGTH(deparsed);
+    if deparsed.is_null() || deparsed == R_NilValue() || n == 0 {
+        return vec!["NULL".to_string()];
     }
+    (0..n).map(|i| elt_to_string(deparsed, i)).collect()
 }
 
 /// R's `dget(file)` — read, parse, and evaluate a dumped expression.

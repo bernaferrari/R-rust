@@ -14,90 +14,88 @@ use super::*;
 /// `lapply(keys, resolve, context=context, strict=strict)` calls `resolve`
 /// with no `context`, failing on its first formal without a default.
 pub fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
+    let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+    let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
 
-        if x.is_null() || x == R_NilValue() || fun.is_null() {
-            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        }
-        // `x` and `fun` live across `apply_unary_value` -> `Rf_eval`, which
-        // allocates and can run a deferred collection at an eval safe point.
-        // Raw Rust locals are not GC roots, so an unprotected `x` can be
-        // swept mid-loop and its slab slot recycled as another node type;
-        // `extract_element` then reads `TYPEOF(x)` off the recycled node.
-        // Protect both for the whole loop, like `result`.
-        let _x_guard = protect(x);
-        let _fun_guard = protect(fun);
-
-        // Collect `...`: every cell that is not X (name or first positional
-        // when X is unnamed) and not FUN (name or the positional after X).
-        // Evaluate each once in the caller; values live across the loop.
-        let mut extra_args = R_NilValue();
-        let mut extra_tail: SEXP = std::ptr::null_mut();
-        let mut extra_guards: Vec<_> = Vec::new();
-        let mut x_named = false;
-        let mut fun_named = false;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            match tag_name(current).as_deref() {
-                Some("X") => x_named = true,
-                Some("FUN") => fun_named = true,
-                _ => {}
-            }
-            current = CDR(current);
-        }
-        let mut positional = 0usize;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let named = tag_name(current);
-            let is_x =
-                named.as_deref() == Some("X") || (named.is_none() && !x_named && positional == 0);
-            let is_fun = named.as_deref() == Some("FUN")
-                || (named.is_none() && !fun_named && positional == 1);
-            if !is_x && !is_fun {
-                let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
-                let _val = protect(val);
-                let cell = Rf_cons(val, R_NilValue());
-                extra_guards.push(protect(cell));
-                let tg = TAG(current);
-                if !tg.is_null() && tg != R_NilValue() {
-                    SETTAG(cell, tg);
-                }
-                if extra_args == R_NilValue() {
-                    extra_args = cell;
-                } else {
-                    SETCDR(extra_tail, cell);
-                }
-                extra_tail = cell;
-            }
-            if named.is_none() {
-                positional += 1;
-            }
-            current = CDR(current);
-        }
-
-        let n = list_apply_len(x);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..n {
-            let elem = extract_element(x, i);
-            let val = apply_fun_to_element(fun, elem, extra_args, rho);
-            crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
-        }
-        let names = list_apply_names(x, n);
-        if !names.is_null() && names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-        result
+    if x.is_null() || x == R_NilValue() || fun.is_null() {
+        return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
     }
+    // `x` and `fun` live across `apply_unary_value` -> `Rf_eval`, which
+    // allocates and can run a deferred collection at an eval safe point.
+    // Raw Rust locals are not GC roots, so an unprotected `x` can be
+    // swept mid-loop and its slab slot recycled as another node type;
+    // `extract_element` then reads `TYPEOF(x)` off the recycled node.
+    // Protect both for the whole loop, like `result`.
+    let _x_guard = protect(x);
+    let _fun_guard = protect(fun);
+
+    // Collect `...`: every cell that is not X (name or first positional
+    // when X is unnamed) and not FUN (name or the positional after X).
+    // Evaluate each once in the caller; values live across the loop.
+    let mut extra_args = R_NilValue();
+    let mut extra_tail: SEXP = std::ptr::null_mut();
+    let mut extra_guards: Vec<_> = Vec::new();
+    let mut x_named = false;
+    let mut fun_named = false;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        match tag_name(current).as_deref() {
+            Some("X") => x_named = true,
+            Some("FUN") => fun_named = true,
+            _ => {}
+        }
+        current = CDR(current);
+    }
+    let mut positional = 0usize;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let named = tag_name(current);
+        let is_x =
+            named.as_deref() == Some("X") || (named.is_none() && !x_named && positional == 0);
+        let is_fun =
+            named.as_deref() == Some("FUN") || (named.is_none() && !fun_named && positional == 1);
+        if !is_x && !is_fun {
+            let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
+            let _val = protect(val);
+            let cell = Rf_cons(val, R_NilValue());
+            extra_guards.push(protect(cell));
+            let tg = TAG(current);
+            if !tg.is_null() && tg != R_NilValue() {
+                SETTAG(cell, tg);
+            }
+            if extra_args == R_NilValue() {
+                extra_args = cell;
+            } else {
+                SETCDR(extra_tail, cell);
+            }
+            extra_tail = cell;
+        }
+        if named.is_none() {
+            positional += 1;
+        }
+        current = CDR(current);
+    }
+
+    let n = list_apply_len(x);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        let elem = extract_element(x, i);
+        let val = apply_fun_to_element(fun, elem, extra_args, rho);
+        crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
+    }
+    let names = list_apply_names(x, n);
+    if !names.is_null() && names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+    }
+    result
 }
 
 /// GNU `sapply(X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE)`.

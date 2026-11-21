@@ -170,18 +170,15 @@ pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
-    unsafe {
-        let levels =
-            crate::sexp::attrib_core::getAttrib(f, crate::sexp::attrib_core::R_LevelsSymbol());
-        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let mut out = Vec::with_capacity(XLENGTH(levels) as usize);
-        for i in 0..XLENGTH(levels) {
-            out.push(elt_to_string(levels, i));
-        }
-        Some(out)
+    let levels = crate::sexp::attrib_core::getAttrib(f, crate::sexp::attrib_core::R_LevelsSymbol());
+    if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+        return None;
     }
+    let mut out = Vec::with_capacity(XLENGTH(levels) as usize);
+    for i in 0..XLENGTH(levels) {
+        out.push(elt_to_string(levels, i));
+    }
+    Some(out)
 }
 
 pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {

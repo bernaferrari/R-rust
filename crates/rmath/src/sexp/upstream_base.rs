@@ -1186,8 +1186,7 @@ pub(crate) fn load_upstream_base_sources(base_env: SEXP) {
     if namespace.is_null() || namespace == R_UnboundValue() {
         return;
     }
-    let staging =
-        crate::sexp::memory_ext::NewEnvironment(R_NilValue(), namespace, R_NilValue());
+    let staging = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), namespace, R_NilValue());
     let _staging = crate::sexp::protect::protect(staging);
     load_files(base_env, staging);
     load_oracle_recovered_closures(base_env, staging);
@@ -1438,8 +1437,7 @@ fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
                 if value.is_null() || value == R_UnboundValue() {
                     continue;
                 }
-                if calls_use_method(value) && !default_method_reachable(base_env, staging, name)
-                {
+                if calls_use_method(value) && !default_method_reachable(base_env, staging, name) {
                     crate::sexp::envir::remove_binding_raw(staging, symbol);
                     removed = true;
                 }

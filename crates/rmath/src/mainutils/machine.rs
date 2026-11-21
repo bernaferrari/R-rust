@@ -111,12 +111,10 @@ unsafe fn define_machine_binding(rho: SEXP, ans: SEXP) {
     let Ok(env) = Environment::new(rho) else {
         return;
     };
-    let Some(machine_symbol) =
-        (unsafe { Sexp::from_raw(install(c".Machine".as_ptr())) })
-    else {
+    let Some(machine_symbol) = (unsafe { Sexp::from_raw(install(c".Machine".as_ptr())) }) else {
         return;
     };
-    let _ = unsafe { env.define(machine_symbol, ans) };
+    let _ = env.define(machine_symbol, ans);
 }
 
 // ---------------------------------------------------------------------------

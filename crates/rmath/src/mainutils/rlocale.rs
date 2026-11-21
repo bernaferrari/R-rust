@@ -78,7 +78,7 @@ pub fn IS_LOW_SURROGATE(wch: wint_t) -> bool {
 
 #[inline]
 pub fn IS_SURROGATE_PAIR(hs: wint_t, ls: wint_t) -> bool {
-     IS_HIGH_SURROGATE(hs) && IS_LOW_SURROGATE(ls) 
+    IS_HIGH_SURROGATE(hs) && IS_LOW_SURROGATE(ls)
 }
 
 // -----------------------------------------------------------------------

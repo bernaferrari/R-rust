@@ -20,10 +20,8 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect as protect_sexp;
 
 fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let u = getAttrib(x, R_DimSymbol());
-        !u.is_null() && LENGTH(u) >= 2
-    }
+    let u = getAttrib(x, R_DimSymbol());
+    !u.is_null() && LENGTH(u) >= 2
 }
 
 fn isVector(x: SEXP) -> bool {
@@ -127,32 +125,25 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             while !t.is_null() && t != nil {
                 let u = CAR(t);
                 if isMatrix(u) {
-                    let dim = unsafe { getAttrib(u, R_DimSymbol()) };
+                    let dim = getAttrib(u, R_DimSymbol());
                     if len < 0 {
                         len = unsafe { *INTEGER(dim) };
                     } else if len != unsafe { *INTEGER(dim) } {
-                        unsafe {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
-                            );
-                        }
+                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+
                         return nil;
                     }
                 } else if isVector(u) {
                     if len < 0 {
                         len = LENGTH(u);
                     } else if len != LENGTH(u) {
-                        unsafe {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
-                            );
-                        }
+                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+
                         return nil;
                     }
                 } else {
-                    unsafe {
-                        Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-                    }
+                    Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+
                     return nil;
                 }
                 t = CDR(t);
@@ -163,88 +154,80 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             if nt > 0 {
                 let mut it: c_int = 0;
                 while it < nt {
-                    let u = unsafe { VECTOR_ELT(t, it as i64) };
+                    let u = VECTOR_ELT(t, it as i64);
                     if isMatrix(u) {
-                        let dim = unsafe { getAttrib(u, R_DimSymbol()) };
+                        let dim = getAttrib(u, R_DimSymbol());
                         if len < 0 {
                             len = unsafe { *INTEGER(dim) };
                         } else if len != unsafe { *INTEGER(dim) } {
-                            unsafe {
-                                Rf_error(b"not all arguments have the same length\0".as_ptr()
-                                    as *const _);
-                            }
+                            Rf_error(
+                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            );
+
                             return nil;
                         }
                     } else if isVector(u) {
                         if len < 0 {
                             len = LENGTH(u);
                         } else if len != LENGTH(u) {
-                            unsafe {
-                                Rf_error(b"not all arguments have the same length\0".as_ptr()
-                                    as *const _);
-                            }
+                            Rf_error(
+                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            );
+
                             return nil;
                         }
                     } else {
-                        unsafe {
-                            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-                        }
+                        Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+
                         return nil;
                     }
                     it += 1;
                 }
             } else {
-                let u = unsafe { getAttrib(t, R_RowNamesSymbol()) };
+                let u = getAttrib(t, R_RowNamesSymbol());
                 if !u.is_null() && u != nil {
                     if len < 0 {
                         len = LENGTH(u);
                     } else if len != unsafe { *INTEGER(u) } {
-                        unsafe {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
-                            );
-                        }
+                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+
                         return nil;
                     }
                 }
             }
         } else if isMatrix(car) {
-            let dim = unsafe { getAttrib(car, R_DimSymbol()) };
+            let dim = getAttrib(car, R_DimSymbol());
             if len < 0 {
                 len = unsafe { *INTEGER(dim) };
             } else if len != unsafe { *INTEGER(dim) } {
-                unsafe {
-                    Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                }
+                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+
                 return nil;
             }
         } else if isVector(car) {
             if len < 0 {
                 len = LENGTH(car);
             } else if len != LENGTH(car) {
-                unsafe {
-                    Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                }
+                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+
                 return nil;
             }
         } else {
-            unsafe {
-                Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-            }
+            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+
             return nil;
         }
         s = CDR(s);
     }
 
     if len < 0 {
-        unsafe {
-            Rf_error(b"no input has determined the number of cases\0".as_ptr() as *const _);
-        }
+        Rf_error(b"no input has determined the number of cases\0".as_ptr() as *const _);
+
         return nil;
     }
 
-    let rval = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len) };
-    let _rval_guard = unsafe { protect_sexp(rval) };
+    let rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+    let _rval_guard = protect_sexp(rval);
     let rval_int = unsafe { slice::from_raw_parts_mut(INTEGER(rval), len as usize) };
     rval_int.fill(1);
 
@@ -268,7 +251,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             let nt = length_sexp(t);
             let mut it: c_int = 0;
             while it < nt {
-                let u = unsafe { VECTOR_ELT(t, it as i64) };
+                let u = VECTOR_ELT(t, it as i64);
                 check_vector_na(u, rval_int, len);
                 it += 1;
             }

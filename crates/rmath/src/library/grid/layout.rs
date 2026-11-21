@@ -29,12 +29,12 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 
 use super::types::*;
 use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
-use super::{
-    alloc_vector, integer_elt, protect, real_elt, set_real_elt, set_vector_elt, vector_elt,
-};
 use super::viewport::{
     viewportHeightCM, viewportLayout, viewportLayoutHeights, viewportLayoutPosCol,
     viewportLayoutPosRow, viewportLayoutWidths, viewportWidthCM,
+};
+use super::{
+    alloc_vector, integer_elt, protect, real_elt, set_real_elt, set_vector_elt, vector_elt,
 };
 
 // ---------------------------------------------------------------------------
@@ -397,8 +397,7 @@ fn allocateRemainingWidth(
     _dd: pGEDevDesc,
     npcWidths: &mut [f64],
 ) {
-    let sum_width =
-        totalUnrespectedWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
+    let sum_width = totalUnrespectedWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
     if sum_width > 0.0 {
         let widths = layoutWidths(_layout);
         for i in 0..layoutNCol(_layout) {
@@ -691,7 +690,7 @@ mod tests {
     use super::*;
     use crate::library::grid::unit::{L_CM, L_NULL, constructUnits, unit, unitLength, unitUnit};
     use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT, VECTOR_ELT};
-    use crate::sexp::constructors::{Rf_allocVector, Rf_ScalarInteger, Rf_ScalarReal};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::protect::protect;

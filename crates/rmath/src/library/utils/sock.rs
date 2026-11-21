@@ -40,10 +40,8 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 fn require_scalar(x: SEXP, message: &[u8]) {
-    unsafe {
-        if LENGTH(x) != 1 {
-            Rf_error(message.as_ptr() as *const c_char);
-        }
+    if LENGTH(x) != 1 {
+        Rf_error(message.as_ptr() as *const c_char);
     }
 }
 
@@ -87,24 +85,20 @@ pub fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
 }
 
 pub fn sockclose(sport: SEXP) -> SEXP {
-    unsafe {
-        require_scalar(sport, b"invalid 'socket' argument\0");
-        let mut sock = asInteger(sport);
-        if sock <= 0 {
-            Rf_error(b"attempt to close invalid socket\0".as_ptr() as *const c_char);
-        }
-        in_Rsockclose(&mut sock);
-        Rf_ScalarLogical(sock)
+    require_scalar(sport, b"invalid 'socket' argument\0");
+    let mut sock = asInteger(sport);
+    if sock <= 0 {
+        Rf_error(b"attempt to close invalid socket\0".as_ptr() as *const c_char);
     }
+    in_Rsockclose(&mut sock);
+    Rf_ScalarLogical(sock)
 }
 
 pub fn sockopen(sport: SEXP) -> SEXP {
-    unsafe {
-        require_scalar(sport, b"invalid 'port' argument\0");
-        let mut port = asInteger(sport);
-        in_Rsockopen(&mut port);
-        Rf_ScalarInteger(port)
-    }
+    require_scalar(sport, b"invalid 'port' argument\0");
+    let mut port = asInteger(sport);
+    in_Rsockopen(&mut port);
+    Rf_ScalarInteger(port)
 }
 
 pub fn socklisten(sport: SEXP) -> SEXP {

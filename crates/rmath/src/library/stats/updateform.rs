@@ -14,15 +14,15 @@ fn sym(name: &str) -> SEXP {
     }
 }
 unsafe fn setcadr(x: SEXP, y: SEXP) {
-    unsafe { SETCAR(CDR(x), y) }
+    SETCAR(CDR(x), y)
 }
 
 unsafe fn setcaddr(x: SEXP, y: SEXP) {
-    unsafe { SETCAR(CDR(CDR(x)), y) }
+    SETCAR(CDR(CDR(x)), y)
 }
 
 fn lang_len(object: SEXP) -> i32 {
-    unsafe { crate::sexp::constructors::Rf_length(object) }
+    crate::sexp::constructors::Rf_length(object)
 }
 
 fn is_sum(op: SEXP) -> bool {

@@ -389,43 +389,41 @@ unsafe fn set_dim_vector(target: SEXP, dims: &[usize]) {
 }
 
 unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, axes.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for (out_axis, axis) in axes.iter().enumerate() {
-            let value = if *axis < XLENGTH(dimnames) as usize {
-                VECTOR_ELT(dimnames, *axis as R_xlen_t)
-            } else {
-                R_NilValue()
-            };
-            SET_VECTOR_ELT(result, out_axis as R_xlen_t, value);
-        }
-
-        let names = getAttrib(dimnames, R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
-            if !result_names.is_null() {
-                let _names_guard = protect(result_names);
-                for (out_axis, axis) in axes.iter().enumerate() {
-                    if *axis < XLENGTH(names) as usize {
-                        SET_STRING_ELT(
-                            result_names,
-                            out_axis as R_xlen_t,
-                            STRING_ELT(names, *axis as R_xlen_t),
-                        );
-                    }
-                }
-                setAttrib(result, R_NamesSymbol(), result_names);
-            }
-        }
-        result
+    if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        return R_NilValue();
     }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, axes.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for (out_axis, axis) in axes.iter().enumerate() {
+        let value = if *axis < XLENGTH(dimnames) as usize {
+            VECTOR_ELT(dimnames, *axis as R_xlen_t)
+        } else {
+            R_NilValue()
+        };
+        SET_VECTOR_ELT(result, out_axis as R_xlen_t, value);
+    }
+
+    let names = getAttrib(dimnames, R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+        let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
+        if !result_names.is_null() {
+            let _names_guard = protect(result_names);
+            for (out_axis, axis) in axes.iter().enumerate() {
+                if *axis < XLENGTH(names) as usize {
+                    SET_STRING_ELT(
+                        result_names,
+                        out_axis as R_xlen_t,
+                        STRING_ELT(names, *axis as R_xlen_t),
+                    );
+                }
+            }
+            setAttrib(result, R_NamesSymbol(), result_names);
+        }
+    }
+    result
 }
 
 unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
@@ -438,30 +436,28 @@ unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
 }
 
 unsafe fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[usize]) {
-    unsafe {
-        if target_dim.is_null() || source_dim.is_null() || source_dim == R_NilValue() {
-            return;
-        }
-        let names = getAttrib(source_dim, R_NamesSymbol());
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return;
-        }
-        let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
-        if result_names.is_null() {
-            return;
-        }
-        let _names_guard = protect(result_names);
-        for (out_axis, axis) in axes.iter().enumerate() {
-            if *axis < XLENGTH(names) as usize {
-                SET_STRING_ELT(
-                    result_names,
-                    out_axis as R_xlen_t,
-                    STRING_ELT(names, *axis as R_xlen_t),
-                );
-            }
-        }
-        setAttrib(target_dim, R_NamesSymbol(), result_names);
+    if target_dim.is_null() || source_dim.is_null() || source_dim == R_NilValue() {
+        return;
     }
+    let names = getAttrib(source_dim, R_NamesSymbol());
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return;
+    }
+    let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
+    if result_names.is_null() {
+        return;
+    }
+    let _names_guard = protect(result_names);
+    for (out_axis, axis) in axes.iter().enumerate() {
+        if *axis < XLENGTH(names) as usize {
+            SET_STRING_ELT(
+                result_names,
+                out_axis as R_xlen_t,
+                STRING_ELT(names, *axis as R_xlen_t),
+            );
+        }
+    }
+    setAttrib(target_dim, R_NamesSymbol(), result_names);
 }
 
 unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
@@ -618,16 +614,14 @@ unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
 }
 
 unsafe fn parse_resize_arg(value: SEXP) -> bool {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return true;
-        }
-        let value = asLogical(value);
-        if value == NA_LOGICAL {
-            array_error("'resize' must be TRUE or FALSE");
-        }
-        value != 0
+    if value.is_null() || value == R_NilValue() {
+        return true;
     }
+    let value = asLogical(value);
+    if value == NA_LOGICAL {
+        array_error("'resize' must be TRUE or FALSE");
+    }
+    value != 0
 }
 
 unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
@@ -652,63 +646,61 @@ unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
 
 // Vectors promoted to matrices contribute no names, as in GNU R.
 unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: SEXP) {
-    unsafe {
-        let (xa, ya) = match kind {
-            MatProductKind::Matrix => (0, 1),
-            MatProductKind::Cross => (1, 1),
-            MatProductKind::TransposedCross => (0, 0),
-        };
-        let xd = getAttrib(x, R_DimNamesSymbol());
-        let yd = getAttrib(y, R_DimNamesSymbol());
-        let axis = |dn: SEXP, i: i32| {
-            if dn != R_NilValue()
-                && !dn.is_null()
-                && TYPEOF(dn) == SEXPTYPE::VECSXP
-                && (XLENGTH(dn) > i as i64 || (XLENGTH(dn) == 1 && i == 0))
-            {
-                VECTOR_ELT(dn, if XLENGTH(dn) == 1 { 0 } else { i as i64 })
-            } else {
-                R_NilValue()
-            }
-        };
-        let axis_label = |dn: SEXP, i: i32| {
-            if dn == R_NilValue() || dn.is_null() {
-                return R_NilValue();
-            }
-            let nm = getAttrib(dn, R_NamesSymbol());
-            if nm == R_NilValue() || nm.is_null() || TYPEOF(nm) != SEXPTYPE::STRSXP {
-                return R_NilValue();
-            }
-            if XLENGTH(nm) > i as i64 {
-                STRING_ELT(nm, i as i64)
-            } else if XLENGTH(nm) == 1 && i == 0 {
-                STRING_ELT(nm, 0)
-            } else {
-                R_NilValue()
-            }
-        };
-        let row = axis(xd, xa);
-        let col = axis(yd, ya);
-        if row != R_NilValue() || col != R_NilValue() {
-            let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            let _names = protect(names);
-            SET_VECTOR_ELT(names, 0, row);
-            SET_VECTOR_ELT(names, 1, col);
-            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            let _labels = protect(labels);
-            let rl = axis_label(xd, xa);
-            let cl = axis_label(yd, ya);
-            if rl != R_NilValue() {
-                SET_STRING_ELT(labels, 0, rl);
-            }
-            if cl != R_NilValue() {
-                SET_STRING_ELT(labels, 1, cl);
-            }
-            if rl != R_NilValue() || cl != R_NilValue() {
-                setAttrib(names, R_NamesSymbol(), labels);
-            }
-            setAttrib(result, R_DimNamesSymbol(), names);
+    let (xa, ya) = match kind {
+        MatProductKind::Matrix => (0, 1),
+        MatProductKind::Cross => (1, 1),
+        MatProductKind::TransposedCross => (0, 0),
+    };
+    let xd = getAttrib(x, R_DimNamesSymbol());
+    let yd = getAttrib(y, R_DimNamesSymbol());
+    let axis = |dn: SEXP, i: i32| {
+        if dn != R_NilValue()
+            && !dn.is_null()
+            && TYPEOF(dn) == SEXPTYPE::VECSXP
+            && (XLENGTH(dn) > i as i64 || (XLENGTH(dn) == 1 && i == 0))
+        {
+            VECTOR_ELT(dn, if XLENGTH(dn) == 1 { 0 } else { i as i64 })
+        } else {
+            R_NilValue()
         }
+    };
+    let axis_label = |dn: SEXP, i: i32| {
+        if dn == R_NilValue() || dn.is_null() {
+            return R_NilValue();
+        }
+        let nm = getAttrib(dn, R_NamesSymbol());
+        if nm == R_NilValue() || nm.is_null() || TYPEOF(nm) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        if XLENGTH(nm) > i as i64 {
+            STRING_ELT(nm, i as i64)
+        } else if XLENGTH(nm) == 1 && i == 0 {
+            STRING_ELT(nm, 0)
+        } else {
+            R_NilValue()
+        }
+    };
+    let row = axis(xd, xa);
+    let col = axis(yd, ya);
+    if row != R_NilValue() || col != R_NilValue() {
+        let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _names = protect(names);
+        SET_VECTOR_ELT(names, 0, row);
+        SET_VECTOR_ELT(names, 1, col);
+        let labels = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _labels = protect(labels);
+        let rl = axis_label(xd, xa);
+        let cl = axis_label(yd, ya);
+        if rl != R_NilValue() {
+            SET_STRING_ELT(labels, 0, rl);
+        }
+        if cl != R_NilValue() {
+            SET_STRING_ELT(labels, 1, cl);
+        }
+        if rl != R_NilValue() || cl != R_NilValue() {
+            setAttrib(names, R_NamesSymbol(), labels);
+        }
+        setAttrib(result, R_DimNamesSymbol(), names);
     }
 }
 
@@ -892,12 +884,10 @@ pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
 }
 
 unsafe fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
-    unsafe {
-        if !x.is_null() {
-            setAttrib(x, R_DimSymbol(), dims);
-        }
-        x
+    if !x.is_null() {
+        setAttrib(x, R_DimSymbol(), dims);
     }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -909,15 +899,13 @@ unsafe fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
 /// Ported from R's `GetRowNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 0)` if dimnames is a VECSXP, else R_NilValue.
 pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        if XLENGTH(dimnames) < 1 {
-            R_NilValue()
-        } else {
-            VECTOR_ELT(dimnames, 0)
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
+    if XLENGTH(dimnames) < 1 {
+        R_NilValue()
+    } else {
+        VECTOR_ELT(dimnames, 0)
     }
 }
 
@@ -926,15 +914,13 @@ pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
 /// Ported from R's `GetColNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 1)` if dimnames is a VECSXP, else R_NilValue.
 pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
-    unsafe {
-        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        if XLENGTH(dimnames) < 2 {
-            R_NilValue()
-        } else {
-            VECTOR_ELT(dimnames, 1)
-        }
+    if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
+    if XLENGTH(dimnames) < 2 {
+        R_NilValue()
+    } else {
+        VECTOR_ELT(dimnames, 1)
     }
 }
 
@@ -947,12 +933,10 @@ pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
 /// Ported from R's `do_matrix` in array.c (line 82).
 /// Creates a matrix from the given data, dimensions, and byrow flag.
 pub unsafe fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            array_error("matrix() requires arguments");
-        }
-        crate::mainutils::essentials::do_matrix(call, op, args, env)
+    if args.is_null() || args == R_NilValue() {
+        array_error("matrix() requires arguments");
     }
+    crate::mainutils::essentials::do_matrix(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1044,17 +1028,15 @@ pub unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
 /// Note: this function mutates `x` in place; duplication should occur before
 /// calling it.
 pub(crate) unsafe fn DropDims(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::mainutils::essentials::do_drop(
-            R_NilValue(),
-            R_NilValue(),
-            Rf_cons(x, R_NilValue()),
-            R_NilValue(),
-        )
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    crate::mainutils::essentials::do_drop(
+        R_NilValue(),
+        R_NilValue(),
+        Rf_cons(x, R_NilValue()),
+        R_NilValue(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,12 +1047,10 @@ pub(crate) unsafe fn DropDims(x: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_drop` in array.c (line 430).
 pub unsafe fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            array_error("drop() requires an argument");
-        }
-        crate::mainutils::essentials::do_drop(call, op, args, env)
+    if args.is_null() || args == R_NilValue() {
+        array_error("drop() requires an argument");
     }
+    crate::mainutils::essentials::do_drop(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1085,12 +1065,10 @@ pub unsafe fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Using `pub(crate) unsafe fn` here (no `#[unsafe(no_mangle)]`) to avoid duplicate
 /// symbol errors at link time.
 pub(crate) unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            array_error("length() requires an argument");
-        }
-        Rf_ScalarInteger(LENGTH(CAR(args)))
+    if args.is_null() || args == R_NilValue() {
+        array_error("length() requires an argument");
     }
+    Rf_ScalarInteger(LENGTH(CAR(args)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1119,7 +1097,7 @@ pub(crate) fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
 ///
 /// Ported from R's `do_lengths` in array.c (line 536).
 pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_lengths(call, op, args, env) }
+    crate::mainutils::essentials::do_lengths(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1192,7 +1170,7 @@ pub unsafe fn do_matprod(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_transpose` in array.c (line 1569).
 pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_transpose(call, op, args, env) }
+    crate::mainutils::essentials::do_transpose(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1311,20 +1289,18 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// GNU `do_aperm` returns a fresh object with only `dim` and `dimnames`
 /// (and `names(dim)`); drop every other attribute such as `tsp`/`class`.
 unsafe fn keep_only_dim_attributes(r: SEXP) -> SEXP {
-    unsafe {
-        let dim = getAttrib(r, R_DimSymbol());
-        let _dim_guard = protect(dim);
-        let dimnames = getAttrib(r, R_DimNamesSymbol());
-        let _dn_guard = protect(dimnames);
-        SET_ATTRIB(r, R_NilValue());
-        if !dim.is_null() && dim != R_NilValue() {
-            setAttrib(r, R_DimSymbol(), dim);
-        }
-        if !dimnames.is_null() && dimnames != R_NilValue() {
-            setAttrib(r, R_DimNamesSymbol(), dimnames);
-        }
-        r
+    let dim = getAttrib(r, R_DimSymbol());
+    let _dim_guard = protect(dim);
+    let dimnames = getAttrib(r, R_DimNamesSymbol());
+    let _dn_guard = protect(dimnames);
+    SET_ATTRIB(r, R_NilValue());
+    if !dim.is_null() && dim != R_NilValue() {
+        setAttrib(r, R_DimSymbol(), dim);
     }
+    if !dimnames.is_null() && dimnames != R_NilValue() {
+        setAttrib(r, R_DimNamesSymbol(), dimnames);
+    }
+    r
 }
 
 /// Copy all attributes from `src` to `dest` except dim, dimnames, and names
@@ -1333,28 +1309,26 @@ unsafe fn keep_only_dim_attributes(r: SEXP) -> SEXP {
 /// Ported from R's `copyMostAttrib` in attrib.c (line 301). Used by
 /// `do_aperm` (and `do_transpose` in essentials) as documented since 2006.
 pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
-    unsafe {
-        if dest.is_null() || dest == R_NilValue() {
-            array_error("attempt to set an attribute on NULL");
+    if dest.is_null() || dest == R_NilValue() {
+        array_error("attempt to set an attribute on NULL");
+    }
+    let mut cell = ATTRIB(src);
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
+            // GNU copyMostAttrib stores attributes via installAttrib:
+            // tsp is attached without the `tsp<-` validation pass.
+            crate::sexp::attrib_core::installAttrib(dest, tag, CAR(cell));
         }
-        let mut cell = ATTRIB(src);
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
-                // GNU copyMostAttrib stores attributes via installAttrib:
-                // tsp is attached without the `tsp<-` validation pass.
-                crate::sexp::attrib_core::installAttrib(dest, tag, CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        if OBJECT(src) != 0 {
-            SET_OBJECT(dest, 1);
-        }
-        if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
-            SET_S4_OBJECT(dest);
-        } else {
-            UNSET_S4_OBJECT(dest);
-        }
+        cell = CDR(cell);
+    }
+    if OBJECT(src) != 0 {
+        SET_OBJECT(dest, 1);
+    }
+    if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
+        SET_S4_OBJECT(dest);
+    } else {
+        UNSET_S4_OBJECT(dest);
     }
 }
 
@@ -1386,12 +1360,10 @@ pub unsafe fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_array` in array.c (line 2145).
 pub unsafe fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            array_error("array() requires arguments");
-        }
-        crate::mainutils::essentials::do_array(call, op, args, env)
+    if args.is_null() || args == R_NilValue() {
+        array_error("array() requires arguments");
     }
+    crate::mainutils::essentials::do_array(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,7 +1374,7 @@ pub unsafe fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_diag` in array.c (line 2259).
 pub unsafe fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_diag(call, op, args, env) }
+    crate::mainutils::essentials::do_diag(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1686,12 +1658,10 @@ unsafe fn do_asplit_internal(args: SEXP) -> SEXP {
 }
 
 unsafe fn as_integer(x: SEXP) -> i32 {
-    unsafe {
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => INTEGER_ELT(x, 0),
-            t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0) as i32,
-            _ => array_error("asplit() internal dimension must be an integer"),
-        }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => INTEGER_ELT(x, 0),
+        t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0) as i32,
+        _ => array_error("asplit() internal dimension must be an integer"),
     }
 }
 

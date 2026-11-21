@@ -107,18 +107,15 @@ fn data_frame_print_digits(args: SEXP) -> Option<i32> {
 }
 
 fn plain_numeric_column(col: SEXP) -> bool {
-    unsafe {
-        if col.is_null() || col == R_NilValue() {
-            return false;
-        }
-        let class =
-            crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_ClassSymbol());
-        if !class.is_null() && class != R_NilValue() && XLENGTH(class) > 0 {
-            return false;
-        }
-        let t = TYPEOF(col);
-        t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP
+    if col.is_null() || col == R_NilValue() {
+        return false;
     }
+    let class = crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_ClassSymbol());
+    if !class.is_null() && class != R_NilValue() && XLENGTH(class) > 0 {
+        return false;
+    }
+    let t = TYPEOF(col);
+    t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP
 }
 
 /// GNU `format.data.frame` formats each numeric column with `digits`.
@@ -660,17 +657,15 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
-    unsafe {
-        if col.is_null() || col == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        if let Some(levels) = aggregate_factor_levels(col) {
-            return summary_factor_result(col, levels, maxsum);
-        }
-        let args = Rf_cons(col, R_NilValue());
-        let _a = protect(args);
-        do_summary_default(std::ptr::null_mut(), std::ptr::null_mut(), args, rho)
+    if col.is_null() || col == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
     }
+    if let Some(levels) = aggregate_factor_levels(col) {
+        return summary_factor_result(col, levels, maxsum);
+    }
+    let args = Rf_cons(col, R_NilValue());
+    let _a = protect(args);
+    do_summary_default(std::ptr::null_mut(), std::ptr::null_mut(), args, rho)
 }
 
 fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usize) {

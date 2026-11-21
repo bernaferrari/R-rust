@@ -58,32 +58,32 @@ pub const R_GE_fontVar: c_int = 15;
 
 /// Stub: get current device number. Returns 0 (no device).
 unsafe fn curDevice() -> c_int {
-    unsafe { device_registry::curDevice() }
+    device_registry::curDevice()
 }
 
 /// Stub: get next device number. Returns 0.
 unsafe fn nextDevice(_dev: c_int) -> c_int {
-    unsafe { device_registry::nextDevice(_dev) }
+    device_registry::nextDevice(_dev)
 }
 
 /// Stub: get previous device number. Returns 0.
 unsafe fn prevDevice(_dev: c_int) -> c_int {
-    unsafe { device_registry::prevDevice(_dev) }
+    device_registry::prevDevice(_dev)
 }
 
 /// Stub: select device by number. Returns 0.
 unsafe fn selectDevice(_dev: c_int) -> c_int {
-    unsafe { device_registry::selectDevice(_dev) }
+    device_registry::selectDevice(_dev)
 }
 
 /// Stub: kill device by number. No-op.
 unsafe fn killDevice(_dev: c_int) {
-    unsafe { device_registry::killDevice(_dev) }
+    device_registry::killDevice(_dev)
 }
 
 /// Stub: get device by number. Returns null.
 unsafe fn GEgetDevice(_dev: c_int) -> pGEDevDesc {
-    unsafe { device_registry::GEgetDevice(_dev) }
+    device_registry::GEgetDevice(_dev)
 }
 
 /// Stub: capture device raster. Returns R_NilValue (unsupported).
@@ -93,12 +93,12 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 
 /// Return whether the registry currently has no real devices.
 unsafe fn NoDevices() -> c_int {
-    unsafe { device_registry::NoDevices() }
+    device_registry::NoDevices()
 }
 
 /// Return the current device count, including the null device.
 unsafe fn NumDevices() -> c_int {
-    unsafe { device_registry::NumDevices() }
+    device_registry::NumDevices()
 }
 
 /* ==================== Device functions ==================== */
@@ -106,13 +106,11 @@ unsafe fn NumDevices() -> c_int {
 /// Helper: check that the argument has positive length.
 /// Equivalent to the `checkArity_length` macro in the C source.
 unsafe fn checkArity_length(args: SEXP) -> SEXP {
-    unsafe {
-        let args = CDR(args);
-        if LENGTH(CAR(args)) == 0 {
-            Rf_error(b"argument must have positive length\0".as_ptr() as *const c_char);
-        }
-        args
+    let args = CDR(args);
+    if LENGTH(CAR(args)) == 0 {
+        Rf_error(b"argument must have positive length\0".as_ptr() as *const c_char);
     }
+    args
 }
 
 /// devcontrol(list) - enable/disable display list recording on current device.

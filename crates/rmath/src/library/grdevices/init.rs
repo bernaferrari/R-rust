@@ -19,9 +19,9 @@ use crate::sexp::ffi::SEXP;
 /// Returns FALSE (0) for both Cairo and PangoCairo and errors for any
 /// unsupported selector.
 pub unsafe fn cairoProps(in_: SEXP) -> SEXP {
-    let which = unsafe { asInteger(in_) };
+    let which = asInteger(in_);
     match which {
-        1 | 2 => unsafe { Rf_ScalarLogical(0) },
+        1 | 2 => Rf_ScalarLogical(0),
         _ => {
             Rf_error_unimplemented("grDevices::cairoProps");
             unreachable!("Rf_error_unimplemented returned");

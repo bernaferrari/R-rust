@@ -126,9 +126,8 @@ fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
         if env != base {
             // The base namespace redirects to the same symbol cells. Read
             // its binding cell directly so this never re-enters lookup.
-            let namespace = crate::sexp::accessors::SYMVALUE(super::symbol::install_str(
-                ".BaseNamespaceEnv",
-            ));
+            let namespace =
+                crate::sexp::accessors::SYMVALUE(super::symbol::install_str(".BaseNamespaceEnv"));
             let is_base_namespace = !namespace.is_null()
                 && namespace != R_UnboundValue()
                 && TYPEOF(namespace) == SEXPTYPE::ENVSXP
@@ -830,8 +829,7 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
             let nil = factory.nil();
             let evaluation = match promise_state::Admission::begin(prom.clone())? {
                 promise_state::Admission::Evaluating => {
-                    let call =
-                        factory.wrap(unsafe { crate::mainutils::errors::R_getCurrentCall() })?;
+                    let call = factory.wrap(crate::mainutils::errors::R_getCurrentCall())?;
                     promise_callback::<()>(&authority, || {
                         crate::mainutils::errors::errorcall_str(
                             call.as_raw(),
@@ -842,9 +840,8 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
                 }
                 promise_state::Admission::Ready(evaluation) => evaluation,
                 promise_state::Admission::Restart(restart) => {
-                    let call =
-                        factory.wrap(unsafe { crate::mainutils::errors::R_getCurrentCall() })?;
-                    promise_callback(&authority, || unsafe {
+                    let call = factory.wrap(crate::mainutils::errors::R_getCurrentCall())?;
+                    promise_callback(&authority, || {
                         crate::mainutils::errors::Rf_warningcall1(
                             call.as_raw(),
                             c"restarting interrupted promise evaluation".as_ptr(),
@@ -2210,7 +2207,8 @@ mod tests {
             let env = factory
                 .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                 .unwrap();
-            let symbol = Sexp::from_raw(crate::sexp::symbol::install_str("bytecode_missing_test")).unwrap();
+            let symbol =
+                Sexp::from_raw(crate::sexp::symbol::install_str("bytecode_missing_test")).unwrap();
             defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
             let words = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 3)))
@@ -2254,7 +2252,8 @@ mod tests {
             let env = factory
                 .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                 .unwrap();
-            let symbol = Sexp::from_raw(crate::sexp::symbol::install_str("gnu_missing_test")).unwrap();
+            let symbol =
+                Sexp::from_raw(crate::sexp::symbol::install_str("gnu_missing_test")).unwrap();
             defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
             let words = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 4)))
@@ -2333,9 +2332,11 @@ mod tests {
                 let env = factory
                     .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                     .unwrap();
-                let leaf = Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_leaf")).unwrap();
+                let leaf = Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_leaf"))
+                    .unwrap();
                 let middle =
-                    Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_middle")).unwrap();
+                    Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_middle"))
+                        .unwrap();
                 defineVar(leaf.as_raw(), R_MissingArg(), env.as_raw());
                 let entered = Rc::new(Cell::new(false));
                 let armed = Rc::new(Cell::new(false));
@@ -2352,7 +2353,8 @@ mod tests {
                                         let env = memory::with_arena(|arena| {
                                             arena.alloc_node(SEXPTYPE::ENVSXP)
                                         });
-                                        let sym = crate::sexp::symbol::install_str("nested_missing");
+                                        let sym =
+                                            crate::sexp::symbol::install_str("nested_missing");
                                         defineVar(sym, R_MissingArg(), env);
                                         assert!(is_missing_safe(
                                             Sexp::from_raw(sym).unwrap(),

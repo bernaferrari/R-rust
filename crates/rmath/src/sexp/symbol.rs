@@ -48,9 +48,7 @@ fn symbol_allocation_error() -> ! {
 /// the ambient entry pins the original instance, so no unsafe contract is
 /// left for the caller to uphold.
 pub(crate) fn install_str(name: &str) -> SEXP {
-    super::instance::with_required_current_instance(|inst| unsafe {
-        install_str_in(inst, name)
-    })
+    super::instance::with_required_current_instance(|inst| unsafe { install_str_in(inst, name) })
 }
 
 /// Intern `name` in `inst`'s symbol table, returning the existing SYMSXP

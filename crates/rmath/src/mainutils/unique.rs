@@ -15,7 +15,7 @@
 //!   cplx_eq (complex equality with NA/NaN handling)
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::{OwnerToken, StoredOwner};
 use std::os::raw::c_int;
 
@@ -84,11 +84,7 @@ fn alloc_like<'a>(x: &Sexp<'a>, kind: SEXPTYPE, len: R_xlen_t) -> SexpResult<Sex
 
 /// Allocate a fresh vector in `x`'s session, falling back to the current
 /// session for handles that carry no owner authority (e.g. `R_NilValue`).
-fn alloc_in_session<'a>(
-    x: &Sexp<'a>,
-    kind: SEXPTYPE,
-    len: R_xlen_t,
-) -> SexpResult<SexpMut<'a>> {
+fn alloc_in_session<'a>(x: &Sexp<'a>, kind: SEXPTYPE, len: R_xlen_t) -> SexpResult<SexpMut<'a>> {
     match alloc_like(x, kind, len) {
         ok @ Ok(_) => ok,
         Err(_) => {
@@ -1065,9 +1061,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Session-bound factory for the checked helpers below.
-    fn test_factory<'a>(
-        session: &'a crate::sexp::session::RSession,
-    ) -> SessionNodeFactory<'a> {
+    fn test_factory<'a>(session: &'a crate::sexp::session::RSession) -> SessionNodeFactory<'a> {
         session
             .owner_token()
             .expect("active session")
@@ -1077,9 +1071,7 @@ mod tests {
     /// Helper to create an integer vector with values.
     fn make_int_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[c_int]) -> Sexp<'a> {
         let value = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as R_xlen_t))
-            })
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as R_xlen_t)))
             .expect("integer vector allocation");
         let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
         for (i, &val) in values.iter().enumerate() {
@@ -1093,9 +1085,7 @@ mod tests {
     /// Helper to create a logical vector with values.
     fn make_logical_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[c_int]) -> Sexp<'a> {
         let value = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::LGLSXP, values.len() as R_xlen_t))
-            })
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, values.len() as R_xlen_t)))
             .expect("logical vector allocation");
         let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
         for (i, &val) in values.iter().enumerate() {
@@ -1109,9 +1099,7 @@ mod tests {
     /// Helper to create a real vector with values.
     fn make_real_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[f64]) -> Sexp<'a> {
         let value = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::REALSXP, values.len() as R_xlen_t))
-            })
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, values.len() as R_xlen_t)))
             .expect("real vector allocation");
         let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
         for (i, &val) in values.iter().enumerate() {
@@ -1123,14 +1111,9 @@ mod tests {
     }
 
     /// Helper to create a complex vector with values.
-    fn make_complex_vector<'a>(
-        factory: &SessionNodeFactory<'a>,
-        values: &[Rcomplex],
-    ) -> Sexp<'a> {
+    fn make_complex_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[Rcomplex]) -> Sexp<'a> {
         let value = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::CPLXSXP, values.len() as R_xlen_t))
-            })
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::CPLXSXP, values.len() as R_xlen_t)))
             .expect("complex vector allocation");
         let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
         for (i, &val) in values.iter().enumerate() {
@@ -1144,9 +1127,7 @@ mod tests {
     /// Helper to create a raw vector with values.
     fn make_raw_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[u8]) -> Sexp<'a> {
         let value = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::RAWSXP, values.len() as R_xlen_t))
-            })
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, values.len() as R_xlen_t)))
             .expect("raw vector allocation");
         let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
         for (i, &val) in values.iter().enumerate() {

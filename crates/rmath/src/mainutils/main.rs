@@ -405,9 +405,7 @@ fn run_task_callback(
     // callback must duplicate before mutating those original objects.
     access.with_native(|_| {
         for (_, value) in inputs.iter().flatten() {
-            unsafe {
-                crate::sexp::accessors::SET_NAMED(value.as_raw(), 2);
-            }
+            crate::sexp::accessors::SET_NAMED(value.as_raw(), 2);
         }
         Ok(())
     })?;
@@ -588,14 +586,13 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
                     // Keep this outside the catch above: with warn=2, this
                     // warning becomes an error and must escape the callback
                     // failure handler.
-                    unsafe {
-                        crate::mainutils::errors::Rf_warningcall1(
-                            R_NilValue(),
-                            c"top-level task callback did not return a logical value".as_ptr(),
-                        );
-                    }
+
+                    crate::mainutils::errors::Rf_warningcall1(
+                        R_NilValue(),
+                        c"top-level task callback did not return a logical value".as_ptr(),
+                    );
                 }
-                let keep = unsafe { crate::mainutils::coerce::asLogical(result.as_raw()) != FALSE };
+                let keep = crate::mainutils::coerce::asLogical(result.as_raw()) != FALSE;
                 access.require_active()?;
                 keep
             } else {
@@ -604,7 +601,7 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
             if crate::mainutils::errors::collect_warnings() > 0 {
                 let name = callback.name.try_as_string()?;
                 let name = name.split('\0').next().unwrap_or("");
-                if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+                if let Some(block) = crate::mainutils::errors::take_warnings_block() {
                     let mut attributed = String::new();
                     attributed.push_str(&format!(
                         "warning messages from top-level task callback '{name}'\n"
@@ -705,7 +702,7 @@ fn task_callback_selector(
                 }
             }
             SEXPTYPE::REALSXP => {
-                let id = unsafe { crate::mainutils::coerce::asInteger(which.as_raw()) };
+                let id = crate::mainutils::coerce::asInteger(which.as_raw());
                 if id == NA_INTEGER {
                     TaskCallbackSelector::Missing
                 } else {
@@ -1218,7 +1215,7 @@ mod owned_task_callback_tests {
         unsafe {
             Rf_callToplevelHandlers(expr.as_raw(), value.as_raw(), TRUE, FALSE);
         }
-        assert_eq!( R_GetVisible(), TRUE);
+        assert_eq!(R_GetVisible(), TRUE);
         let observed = source(&session, "callback_observed");
         assert_eq!(observed.vector_elt(0).unwrap().as_raw(), expr.as_raw());
         assert_eq!(observed.vector_elt(1).unwrap().as_raw(), value.as_raw());
@@ -1343,7 +1340,7 @@ mod owned_task_callback_tests {
             R_SetVisible(FALSE);
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
         }
-        assert_eq!( R_GetVisible(), FALSE);
+        assert_eq!(R_GetVisible(), FALSE);
         assert_eq!(
             source(&session, "callback_after_error").integer_elt(0),
             Some(1)
@@ -1409,7 +1406,7 @@ mod owned_task_callback_tests {
         }
         assert!(facade.borrow().is_none());
         assert!(!original.is_live());
-        other.with_active(|| assert_eq!( R_GetVisible(), TRUE));
+        other.with_active(|| assert_eq!(R_GetVisible(), TRUE));
     }
     include!("main/task_callback_contract_tests.rs");
 }

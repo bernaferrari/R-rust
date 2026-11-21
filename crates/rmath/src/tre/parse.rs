@@ -728,10 +728,8 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
         // Slice ctx.re..ctx.re_end, run the safe digit parser, then advance re.
         macro_rules! parse_int {
             () => {{
-                let rem = std::slice::from_raw_parts(
-                    ctx.re,
-                    ctx.re_end.offset_from(ctx.re) as usize,
-                );
+                let rem =
+                    std::slice::from_raw_parts(ctx.re, ctx.re_end.offset_from(ctx.re) as usize);
                 let (v, used) = tre_parse_int(rem);
                 ctx.re = ctx.re.add(used);
                 v

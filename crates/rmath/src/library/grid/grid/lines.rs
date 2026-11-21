@@ -1,7 +1,5 @@
 use super::*;
-use crate::library::grid::{
-    duplicate, integer_elt, protect, real_elt, set_real_elt, vector_elt,
-};
+use crate::library::grid::{duplicate, integer_elt, protect, real_elt, set_real_elt, vector_elt};
 
 pub fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
     {
@@ -24,14 +22,7 @@ pub fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-                        let (xx, yy) = transformLocn(x,
-            y,
-            0,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
-            dd, &transform);
+        let (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -75,14 +66,7 @@ pub fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-                        let (xx, yy) = transformLocn(x,
-            y,
-            0,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
-            dd, &transform);
+        let (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -104,7 +88,7 @@ pub fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
 
                 if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
                     // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+                    GEMode(1, dd);
                     GELine(xx0, yy0, xx1, yy1, gc, dd);
                     if !isNull(arrow) {
                         let ax = [xx0, xx1];
@@ -125,8 +109,8 @@ pub fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
                         );
                     }
                     // SAFETY: `dd` is the live device; engine mode teardown mirrors
-        // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+                    // the `GEMode(1, dd)` above.
+                    GEMode(0, dd);
                 }
             }
         }
@@ -161,7 +145,7 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
         let nl = LENGTH(index);
         for j in 0..nl {
             let indices = vector_elt(index, j as R_xlen_t);
@@ -180,20 +164,22 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
             for i in 0..nx as usize {
                 let idx = integer_elt(indices, i as R_xlen_t);
                 if idx > 0 {
-                    (xx[i], yy[i]) = transformLocn(x,
+                    (xx[i], yy[i]) = transformLocn(
+                        x,
                         y,
                         idx - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd, &transform);
+                        dd,
+                        &transform,
+                    );
                     // SAFETY: `dd` is the live device; `toDevice*` are
                     // engine coordinate bridges over the device state.
-                    unsafe {
-                        xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
-                        yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
-                    }
+
+                    xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
+                    yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
                 }
 
                 let current_finite = xx[i].is_finite() && yy[i].is_finite();
@@ -267,7 +253,7 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }
@@ -295,15 +281,7 @@ pub(crate) fn gridXspline(
  * L_xspline
  * ============================== */
 
-pub fn L_xspline(
-    x: SEXP,
-    y: SEXP,
-    s: SEXP,
-    o: SEXP,
-    a: SEXP,
-    rep: SEXP,
-    index: SEXP,
-) -> SEXP {
+pub fn L_xspline(x: SEXP, y: SEXP, s: SEXP, o: SEXP, a: SEXP, rep: SEXP, index: SEXP) -> SEXP {
     gridXspline(x, y, s, o, a, rep, index, 0.0, true, false);
     R_NilValue()
 }
@@ -373,29 +351,15 @@ pub fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
             .max(unitLength(x1))
             .max(unitLength(y1));
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
         for i in 0..maxn {
             updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let mut xx0: c_double;
             let mut yy0: c_double;
             let mut xx1: c_double;
             let mut yy1: c_double;
-            (xx0, yy0) = transformLocn(x0,
-                y0,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd, &transform);
-            (xx1, yy1) = transformLocn(x1,
-                y1,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd, &transform);
+            (xx0, yy0) = transformLocn(x0, y0, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+            (xx1, yy1) = transformLocn(x1, y1, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
             // SAFETY: `dd` is the live device; `toDevice*`/`GELine`/
             // `arrows` are engine bridges over live Rust buffers.
             unsafe {
@@ -428,7 +392,7 @@ pub fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }

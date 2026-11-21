@@ -102,11 +102,7 @@ pub(crate) fn condition_entry_value<'s>(
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-pub(crate) fn calling_handler_stack_from_args(
-    args: SEXP,
-    rho: SEXP,
-    old_stack: SEXP,
-) -> SEXP {
+pub(crate) fn calling_handler_stack_from_args(args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
     unsafe {
         let factory = condition_entry_factory();
         let rho = condition_entry_value(&factory, rho);
@@ -172,9 +168,9 @@ pub(crate) fn calling_handler_entry<'s>(
             .try_set_vector_elt(index as R_xlen_t, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
-    unsafe {
-        crate::sexp::accessors::SETLEVELS(entry.as_raw(), TRUE);
-    }
+
+    crate::sexp::accessors::SETLEVELS(entry.as_raw(), TRUE);
+
     entry.freeze()
 }
 thread_local! {
@@ -187,15 +183,12 @@ pub(crate) fn warning_handler_invoked() -> bool {
 }
 
 pub(crate) fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
-    unsafe {
-        WARNING_HANDLER_RAN.with(|c| c.set(false));
-        let _condition = protect(condition);
-        let message =
-            super::tables::list_element_by_name(condition, "message").unwrap_or(R_NilValue());
-        let call = super::tables::list_element_by_name(condition, "call").unwrap_or(R_NilValue());
-        let called = crate::mainutils::errors::signal_condition_object(condition, message, call);
-        WARNING_HANDLER_RAN.with(|c| c.set(called));
-    }
+    WARNING_HANDLER_RAN.with(|c| c.set(false));
+    let _condition = protect(condition);
+    let message = super::tables::list_element_by_name(condition, "message").unwrap_or(R_NilValue());
+    let call = super::tables::list_element_by_name(condition, "call").unwrap_or(R_NilValue());
+    let called = crate::mainutils::errors::signal_condition_object(condition, message, call);
+    WARNING_HANDLER_RAN.with(|c| c.set(called));
 }
 
 /// Signal an already-constructed warning condition to active calling handlers.
@@ -205,35 +198,33 @@ pub(crate) fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
 /// a more specific class than `simpleWarning`; keeping the concrete condition
 /// intact is required for class-selective handlers and `inherits()` checks.
 pub(crate) fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
-    unsafe {
-        let scope = ScopedRestartStack::capture();
-        let condition = restart_owned(condition);
-        let rho = restart_owned(rho);
-        let restart = restart_owned(restart_entry("muffleWarning", R_NilValue(), R_NilValue()));
-        let new_stack = restart_owned(Rf_cons(restart.as_raw(), scope.previous().as_raw()));
-        set_restart_stack(new_stack.as_raw());
+    let scope = ScopedRestartStack::capture();
+    let condition = restart_owned(condition);
+    let rho = restart_owned(rho);
+    let restart = restart_owned(restart_entry("muffleWarning", R_NilValue(), R_NilValue()));
+    let new_stack = restart_owned(Rf_cons(restart.as_raw(), scope.previous().as_raw()));
+    set_restart_stack(new_stack.as_raw());
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            signal_calling_handlers(condition.as_raw(), rho.as_raw())
-        }));
-        scope.restore();
-        scope.require_live();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        signal_calling_handlers(condition.as_raw(), rho.as_raw())
+    }));
+    scope.restore();
+    scope.require_live();
 
-        match result {
-            Ok(()) => false,
-            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
-                Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Restart(ticket)
-                        if restart_ticket_matches(&ticket, restart.as_raw()) =>
-                    {
-                        consume_matching_restart(ticket);
-                        scope.require_live();
-                        true
-                    }
-                    other => std::panic::panic_any(other),
-                },
-                Err(payload) => std::panic::resume_unwind(payload),
+    match result {
+        Ok(()) => false,
+        Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+            Ok(signal) => match *signal {
+                crate::sexp::context::RSignal::Restart(ticket)
+                    if restart_ticket_matches(&ticket, restart.as_raw()) =>
+                {
+                    consume_matching_restart(ticket);
+                    scope.require_live();
+                    true
+                }
+                other => std::panic::panic_any(other),
             },
-        }
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     }
 }

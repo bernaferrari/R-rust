@@ -151,9 +151,9 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let nil = R_NilValue();
         let arg_cell = self.cons(arg, nil)?;
         let call = self.cons(car, arg_cell)?;
-        unsafe {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
+
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+
         Ok(call)
     }
 
@@ -162,9 +162,9 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         let arg2_cell = self.cons(arg2, nil)?;
         let arg1_cell = self.cons(arg1, arg2_cell)?;
         let call = self.cons(car, arg1_cell)?;
-        unsafe {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
+
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+
         Ok(call)
     }
 
@@ -498,9 +498,9 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             list = self.cons(expression.clone().as_raw(), list)?;
         }
         let call = self.cons(brace_sym, list)?;
-        unsafe {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
+
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+
         self.domain
             .wrap(call)
             .map_err(|error| ParseError(error.to_string()))

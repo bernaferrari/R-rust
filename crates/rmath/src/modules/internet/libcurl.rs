@@ -394,12 +394,7 @@ fn push_header(buffer: *const c_char, len: usize) {
 }
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
-fn rcvHeaders(
-    buffer: *mut c_void,
-    size: size_t,
-    nmemb: size_t,
-    _userp: *mut c_void,
-) -> size_t {
+fn rcvHeaders(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void) -> size_t {
     let d = buffer as *mut c_char;
     let result = size * nmemb;
     let res = if result > 2048 { 2048 } else { result };
@@ -1490,11 +1485,9 @@ pub(crate) fn in_newCurlUrl(
     headers: SEXP,
     r#type: c_int,
 ) -> *mut c_void {
-    unsafe {
-        let _ = (description, mode, headers, r#type);
-        Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
-        std::ptr::null_mut()
-    }
+    let _ = (description, mode, headers, r#type);
+    Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
+    std::ptr::null_mut()
 }
 
 // ============================================================
@@ -1513,12 +1506,12 @@ fn install(name: *const c_char) -> SEXP {
 
 /// asInteger - coerce SEXP to integer
 fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asInteger(x) }
+    crate::main::coerce::asInteger(x)
 }
 
 /// asLogical - coerce SEXP to logical
 fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asLogical(x) }
+    crate::main::coerce::asLogical(x)
 }
 
 fn translateChar(x: SEXP) -> *const c_char {
@@ -1548,9 +1541,7 @@ fn currentTime() -> f64 {
 
 /// Rf_warning1 - issue a warning (single string)
 fn Rf_warning1(msg: *const c_char) {
-    unsafe {
-        crate::mainutils::errors::Rf_warning1(msg);
-    }
+    crate::mainutils::errors::Rf_warning1(msg);
 }
 
 /// CAD4R - CDR(CDR(CDR(CDR(args))))
@@ -1560,13 +1551,11 @@ fn CAD4R(args: SEXP) -> SEXP {
 
 /// Validate the fifth curlGetHeaders argument before curl handle creation.
 fn curl_header_tls(args: SEXP) -> *const c_char {
-    unsafe {
-        let tls = CAR(CAD4R(args));
-        if TYPEOF(tls) != SEXPTYPE::STRSXP || LENGTH(tls) != 1 {
-            Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
-        }
-        translateChar(STRING_ELT(tls, 0))
+    let tls = CAR(CAD4R(args));
+    if TYPEOF(tls) != SEXPTYPE::STRSXP || LENGTH(tls) != 1 {
+        Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
     }
+    translateChar(STRING_ELT(tls, 0))
 }
 
 /// isString - check if SEXP is a character vector

@@ -168,13 +168,13 @@ pub fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
 /// This is the inverse of `neWithNaN`.
 #[inline]
 pub fn eqWithNaN(x: f64, y: f64, str: c_int) -> bool {
-     neWithNaN(x, y, str) == 0 
+    neWithNaN(x, y, str) == 0
 }
 
 /// Safe Rust wrapper for `neWithNaN`.
 #[inline]
 pub fn ne_with_nan(x: f64, y: f64, str: c_int) -> bool {
-     neWithNaN(x, y, str) != 0 
+    neWithNaN(x, y, str) != 0
 }
 
 unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {

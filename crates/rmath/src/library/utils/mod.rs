@@ -97,9 +97,8 @@ unsafe extern "C-unwind" fn c_char_class(
         Ok(char_class::Classification::NeedsIntegerCoercion { input, descriptor }) => {
             // SAFETY: input is rooted in the pinned active owner throughout
             // coercion, and the resulting pointer is wrapped after rechecking it.
-            let raw = unsafe {
-                crate::main::coerce::coerceVector(input.as_raw(), SEXPTYPE::INTSXP.as_c_int())
-            };
+            let raw =
+                crate::main::coerce::coerceVector(input.as_raw(), SEXPTYPE::INTSXP.as_c_int());
             owner
                 .require_active()
                 .unwrap_or_else(|e| r_error(e.to_string()));

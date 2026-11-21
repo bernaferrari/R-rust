@@ -27,7 +27,7 @@ pub(crate) fn owner_sexp<'s>(owner: OwnerToken<'s>, value: SEXP) -> Sexp<'s> {
 /// their bodies on the safe side of the boundary.
 pub(crate) fn scalar_logical(value: c_int) -> SEXP {
     // SAFETY: allocates a scalar logical through the runtime constructor.
-    unsafe { Rf_ScalarLogical(value) }
+    Rf_ScalarLogical(value)
 }
 
 /// Read one integer-like element (`INTSXP` or `LGLSXP`) through typed cells.
@@ -336,9 +336,9 @@ pub(crate) fn grep_value_matches(
 pub(crate) fn ignore_perl_when_fixed(perl: &mut bool, fixed: bool) {
     if fixed && *perl {
         let msg = CString::new("argument 'perl = TRUE' will be ignored").unwrap_or_default();
-        unsafe {
-            crate::mainutils::errors::Rf_warning(msg.as_ptr());
-        }
+
+        crate::mainutils::errors::Rf_warning(msg.as_ptr());
+
         *perl = false;
     }
 }
@@ -352,47 +352,45 @@ pub(crate) fn grep_match_indices(
     invert: bool,
 ) -> crate::mainutils::grep::RegexIndices {
     let mut matches = crate::mainutils::grep::regex_workspace().buffer(0);
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return matches;
-        }
-        let n = XLENGTH(x);
-        let mut utf8_warned = false;
-        let owner = active_owner();
-        for i in 0..n {
-            if is_string_na(x, i) {
-                if invert {
-                    matches.push(i);
-                }
-                continue;
-            }
-            if !utf8_warned && TYPEOF(x) == SEXPTYPE::STRSXP {
-                let invalid_utf8 = owner
-                    .sexp(x)
-                    .and_then(|x| x.try_string_elt(i))
-                    .ok()
-                    .is_some_and(|elt| {
-                        crate::sexp::accessors::getCharCE(elt.as_raw())
-                            == crate::sexp::encoding::CE_UTF8
-                            && elt.try_as_string().is_err()
-                    });
-                if invalid_utf8 {
-                    utf8_warned = true;
-                    let msg = format!("input string {} is invalid UTF-8\0", i + 1);
-                    crate::mainutils::errors::warningcall(
-                        crate::sexp::globals::R_NilValue(),
-                        msg.as_ptr() as *const std::os::raw::c_char,
-                    );
-                }
-            }
-            let matched =
-                grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);
-            if if invert { !matched } else { matched } {
+
+    if x.is_null() || x == R_NilValue() {
+        return matches;
+    }
+    let n = XLENGTH(x);
+    let mut utf8_warned = false;
+    let owner = active_owner();
+    for i in 0..n {
+        if is_string_na(x, i) {
+            if invert {
                 matches.push(i);
             }
+            continue;
         }
-        matches
+        if !utf8_warned && TYPEOF(x) == SEXPTYPE::STRSXP {
+            let invalid_utf8 = owner
+                .sexp(x)
+                .and_then(|x| x.try_string_elt(i))
+                .ok()
+                .is_some_and(|elt| {
+                    crate::sexp::accessors::getCharCE(elt.as_raw())
+                        == crate::sexp::encoding::CE_UTF8
+                        && elt.try_as_string().is_err()
+                });
+            if invalid_utf8 {
+                utf8_warned = true;
+                let msg = format!("input string {} is invalid UTF-8\0", i + 1);
+                crate::mainutils::errors::warningcall(
+                    crate::sexp::globals::R_NilValue(),
+                    msg.as_ptr() as *const std::os::raw::c_char,
+                );
+            }
+        }
+        let matched = grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);
+        if if invert { !matched } else { matched } {
+            matches.push(i);
+        }
     }
+    matches
 }
 
 pub(crate) fn environment_arg_or_default(
@@ -641,7 +639,7 @@ pub(crate) fn sexp_key(x: SEXP) -> String {
     let t = TYPEOF(x);
     if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::CLOSXP {
         // SAFETY: x is a live SEXP retained by the caller's argument graph.
-        let text = unsafe { crate::mainutils::deparse::deparse1line(x, false) };
+        let text = crate::mainutils::deparse::deparse1line(x, false);
         if !text.is_null() && text != crate::sexp::globals::R_NilValue() && XLENGTH(text) > 0 {
             let owner = active_owner();
             if let Ok(chars) = owner.sexp(text).and_then(|text| text.try_string_elt(0))
@@ -678,9 +676,7 @@ pub(crate) fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
     }
     // SAFETY: x and the levels symbol are live SEXP values retained by the
     // caller's argument graph; getAttrib performs no allocation callbacks here.
-    let levels = unsafe {
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol())
-    };
+    let levels = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
     if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
         return None;
     }
@@ -900,8 +896,7 @@ pub(crate) fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
         return false;
     }
     // SAFETY: x is a live SEXP retained by the caller's argument graph.
-    let class =
-        unsafe { crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol()) };
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
     if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
         return false;
     }

@@ -12,15 +12,11 @@ pub unsafe fn do_update_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 fn setcadr(x: SEXP, v: SEXP) {
-    unsafe {
-        SETCAR(CDR(x), v);
-    }
+    SETCAR(CDR(x), v);
 }
 
 fn setcaddr(x: SEXP, v: SEXP) {
-    unsafe {
-        SETCAR(CDR(CDR(x)), v);
-    }
+    SETCAR(CDR(CDR(x)), v);
 }
 
 /// GNU `ExpandDots` (stats/src/model.c): replace `.` templates in `object`

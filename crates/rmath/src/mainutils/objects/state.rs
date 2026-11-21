@@ -252,7 +252,7 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
 
 pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
     with_objects_runtime(|access| {
-        if ! { objects_state_in(access, |state| state.s4_classes.contains_key(name)) }? {
+        if !{ objects_state_in(access, |state| state.s4_classes.contains_key(name)) }? {
             return Ok(false);
         }
         let domain = access.domain();
@@ -261,7 +261,7 @@ pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
         } else {
             domain.wrap(method)?
         };
-         {
+        {
             objects_state_in(access, |state| {
                 if method.is_nil() {
                     state.s4_validity.remove(name);
@@ -404,7 +404,7 @@ pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
         if !seen.insert(class.clone()) {
             continue;
         }
-        let Some(parents) = ( { gnu_class_contains(&class) }) else {
+        let Some(parents) = ({ gnu_class_contains(&class) }) else {
             continue;
         };
 

@@ -132,7 +132,7 @@ fn is_numeric_mode(x: SEXP) -> bool {
     let t = TYPEOF(x);
     if t == SEXPTYPE::INTSXP {
         // SAFETY: inherits2 performs a read-only class walk on a live SEXP.
-        unsafe { crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0 }
+        crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0
     } else {
         t == SEXPTYPE::REALSXP
     }
@@ -150,17 +150,19 @@ fn sexptype_mode_name(x: SEXP) -> String {
         };
     }
     // SAFETY: type2char returns a static NUL-terminated name or null.
-    let raw = unsafe { crate::mainutils::util_main::type2char(t) };
+    let raw = crate::mainutils::util_main::type2char(t);
     if raw.is_null() {
         return "unknown".to_string();
     }
     // SAFETY: raw is a live NUL-terminated static string.
-    unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn has_disallowed_vector_attribute(x: SEXP) -> bool {
     // SAFETY: returns the interned names symbol handle.
-    let names_sym = unsafe { crate::sexp::attrib_core::R_NamesSymbol() };
+    let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
     let nil = R_NilValue();
     let mut a = ATTRIB(x);
     while !a.is_null() && a != nil {
@@ -189,8 +191,7 @@ pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return scalar_logical(FALSE);
     }
     // SAFETY: x is a live SEXP retained by the caller's argument graph.
-    let names =
-        unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr())) };
+    let names = unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr())) };
     let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
     scalar_logical(if has_names { TRUE } else { FALSE })
 }
@@ -445,10 +446,10 @@ pub fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let t = TYPEOF(x);
     scalar_logical(if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `is.generic(x)` — check if x is a generic function (simplified).

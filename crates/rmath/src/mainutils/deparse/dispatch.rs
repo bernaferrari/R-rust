@@ -161,12 +161,10 @@ fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
 }
 
 pub fn s4_class_name(s: SEXP) -> Option<String> {
-    unsafe {
-        string_attribute_values(s, b"class\0")
-            .into_iter()
-            .next()
-            .filter(|name| !name.is_empty())
-    }
+    string_attribute_values(s, b"class\0")
+        .into_iter()
+        .next()
+        .filter(|name| !name.is_empty())
 }
 
 /// Slot names from the object when the class is not in the local setClass table
@@ -228,23 +226,21 @@ pub fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String>
 }
 
 pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
-    unsafe {
-        if TYPEOF(s) != SEXPTYPE::VECSXP {
-            return None;
-        }
+    if TYPEOF(s) != SEXPTYPE::VECSXP {
+        return None;
+    }
 
-        let names = string_attribute_values(s, b"names\0");
-        for (i, name) in names.iter().enumerate() {
-            if name == slot_name && (i as R_xlen_t) < XLENGTH(s) {
-                return Some(VECTOR_ELT(s, i as R_xlen_t));
-            }
+    let names = string_attribute_values(s, b"names\0");
+    for (i, name) in names.iter().enumerate() {
+        if name == slot_name && (i as R_xlen_t) < XLENGTH(s) {
+            return Some(VECTOR_ELT(s, i as R_xlen_t));
         }
+    }
 
-        if (position as R_xlen_t) < XLENGTH(s) {
-            Some(VECTOR_ELT(s, position as R_xlen_t))
-        } else {
-            None
-        }
+    if (position as R_xlen_t) < XLENGTH(s) {
+        Some(VECTOR_ELT(s, position as R_xlen_t))
+    } else {
+        None
     }
 }
 

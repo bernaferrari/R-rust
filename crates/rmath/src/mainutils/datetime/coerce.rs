@@ -434,37 +434,29 @@ mod seconds_slice_tests {
 }
 
 fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
-            crate::mainutils::essentials::do_as_Date(call, op, Rf_cons(x, R_NilValue()), env)
-        } else {
-            x
-        }
+    if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        crate::mainutils::essentials::do_as_Date(call, op, Rf_cons(x, R_NilValue()), env)
+    } else {
+        x
     }
 }
 
 /// GNU `weekdays.POSIXt(x)`.
 pub fn do_weekdays_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let x = posixlt_as_date(call, op, CAR(args), env);
-        crate::mainutils::essentials::do_weekdays(call, op, Rf_cons(x, CDR(args)), env)
-    }
+    let x = posixlt_as_date(call, op, CAR(args), env);
+    crate::mainutils::essentials::do_weekdays(call, op, Rf_cons(x, CDR(args)), env)
 }
 
 /// GNU `months.POSIXt(x)`.
 pub fn do_months_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let x = posixlt_as_date(call, op, CAR(args), env);
-        crate::mainutils::essentials::do_months(call, op, Rf_cons(x, CDR(args)), env)
-    }
+    let x = posixlt_as_date(call, op, CAR(args), env);
+    crate::mainutils::essentials::do_months(call, op, Rf_cons(x, CDR(args)), env)
 }
 
 /// GNU `quarters.POSIXt(x)`.
 pub fn do_quarters_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let x = posixlt_as_date(call, op, CAR(args), env);
-        crate::mainutils::essentials::do_quarters(call, op, Rf_cons(x, CDR(args)), env)
-    }
+    let x = posixlt_as_date(call, op, CAR(args), env);
+    crate::mainutils::essentials::do_quarters(call, op, Rf_cons(x, CDR(args)), env)
 }
 
 /// GNU `as.character.POSIXt(x, digits, OutDec)`.

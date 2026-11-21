@@ -289,58 +289,52 @@ pub(crate) fn print_max_cells() -> usize {
 
 /// GNU `print.default(..., quote=)` default TRUE; NA becomes TRUE.
 pub(crate) fn print_quote_flag() -> bool {
-    unsafe {
-        let extras = print_dispatch_extras();
-        let mut cur = extras;
-        while !cur.is_null() && cur != R_NilValue() {
-            if printable_attribute_name(cur).as_deref() == Some("quote") {
-                let value = CAR(cur);
-                if !value.is_null() && value != R_NilValue() {
-                    let q = crate::mainutils::coerce::asLogical(value);
-                    if q != crate::sexp::ffi::NA_LOGICAL {
-                        return q != 0;
-                    }
+    let extras = print_dispatch_extras();
+    let mut cur = extras;
+    while !cur.is_null() && cur != R_NilValue() {
+        if printable_attribute_name(cur).as_deref() == Some("quote") {
+            let value = CAR(cur);
+            if !value.is_null() && value != R_NilValue() {
+                let q = crate::mainutils::coerce::asLogical(value);
+                if q != crate::sexp::ffi::NA_LOGICAL {
+                    return q != 0;
                 }
-                return true;
             }
-            cur = CDR(cur);
+            return true;
         }
-        true
+        cur = CDR(cur);
     }
+    true
 }
 
 pub(crate) fn print_use_source_flag() -> bool {
-    unsafe {
-        let mut cell = print_dispatch_extras();
-        while !cell.is_null() && cell != R_NilValue() {
-            if printable_attribute_name(cell).as_deref() == Some("useSource") {
-                let value = crate::mainutils::coerce::asLogical(CAR(cell));
-                return value != 0;
-            }
-            cell = CDR(cell);
+    let mut cell = print_dispatch_extras();
+    while !cell.is_null() && cell != R_NilValue() {
+        if printable_attribute_name(cell).as_deref() == Some("useSource") {
+            let value = crate::mainutils::coerce::asLogical(CAR(cell));
+            return value != 0;
         }
-        true
+        cell = CDR(cell);
     }
+    true
 }
 
 /// GNU `print.default(..., right=)` default FALSE; NA stays FALSE.
 pub(crate) fn print_right_flag() -> bool {
-    unsafe {
-        let extras = print_dispatch_extras();
-        let mut cur = extras;
-        while !cur.is_null() && cur != R_NilValue() {
-            if printable_attribute_name(cur).as_deref() == Some("right") {
-                let value = CAR(cur);
-                if value.is_null() || value == R_NilValue() {
-                    return false;
-                }
-                let right = crate::mainutils::coerce::asLogical(value);
-                return right != crate::sexp::ffi::NA_LOGICAL && right != 0;
+    let extras = print_dispatch_extras();
+    let mut cur = extras;
+    while !cur.is_null() && cur != R_NilValue() {
+        if printable_attribute_name(cur).as_deref() == Some("right") {
+            let value = CAR(cur);
+            if value.is_null() || value == R_NilValue() {
+                return false;
             }
-            cur = CDR(cur);
+            let right = crate::mainutils::coerce::asLogical(value);
+            return right != crate::sexp::ffi::NA_LOGICAL && right != 0;
         }
-        false
+        cur = CDR(cur);
     }
+    false
 }
 
 pub(crate) fn matrix_print_window(nrow: usize, ncol: usize, max: usize) -> (usize, usize) {

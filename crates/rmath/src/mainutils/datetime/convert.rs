@@ -92,12 +92,10 @@ pub(crate) fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> boo
     }
 
     let mut ctm: tz_tm = unsafe { std::mem::zeroed() };
-    let res = unsafe {
-        if local {
-            R_localtime_r(&t, &mut ctm)
-        } else {
-            R_gmtime_r(&t, &mut ctm)
-        }
+    let res = if local {
+        R_localtime_r(&t, &mut ctm)
+    } else {
+        R_gmtime_r(&t, &mut ctm)
     };
 
     if res.is_null() {
@@ -435,23 +433,21 @@ pub fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
 ///
 /// Ported from `do_asPOSIXlt()` in datetime.c.
 pub fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
-            std::panic::panic_any(RError {
-                message: "invalid 'x' value: not numeric".to_string(),
-            });
-        }
-        let stz = CADR(args);
-        let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
-            String::new()
-        } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
-            charsxp_text(STRING_ELT(stz, 0), "tz")
-        } else {
-            String::new()
-        };
-        convert_posixct_to_posixlt(x, &tz)
+    let x = CAR(args);
+    if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
+        std::panic::panic_any(RError {
+            message: "invalid 'x' value: not numeric".to_string(),
+        });
     }
+    let stz = CADR(args);
+    let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
+        String::new()
+    } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
+        charsxp_text(STRING_ELT(stz, 0), "tz")
+    } else {
+        String::new()
+    };
+    convert_posixct_to_posixlt(x, &tz)
 }
 
 // ---------------------------------------------------------------------------
@@ -462,19 +458,17 @@ pub fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 ///
 /// Ported from `do_asPOSIXct()` in datetime.c.
 pub fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let _x_guard = protect(x);
-        let stz = CADR(args);
-        let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
-            String::new()
-        } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
-            charsxp_text(STRING_ELT(stz, 0), "tz")
-        } else {
-            String::new()
-        };
-        convert_posixlt_to_posixct(x, &tz)
-    }
+    let x = CAR(args);
+    let _x_guard = protect(x);
+    let stz = CADR(args);
+    let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
+        String::new()
+    } else if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
+        charsxp_text(STRING_ELT(stz, 0), "tz")
+    } else {
+        String::new()
+    };
+    convert_posixlt_to_posixct(x, &tz)
 }
 
 /// Convert fields in their requested time zone. Both native and GNU-facing

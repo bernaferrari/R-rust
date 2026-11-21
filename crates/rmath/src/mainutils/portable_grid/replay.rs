@@ -141,22 +141,11 @@ impl ReplayCommands {
         Self::draw_steps(&self.steps[..end], target, dpi);
     }
 
-    pub(crate) fn draw(
-        self,
-        target: &mut dyn DrawTarget,
-        dpi: f64,
-    ) -> (GridState, CommandLog) {
-        (
-            Self::draw_steps(&self.steps, target, dpi),
-            self.log,
-        )
+    pub(crate) fn draw(self, target: &mut dyn DrawTarget, dpi: f64) -> (GridState, CommandLog) {
+        (Self::draw_steps(&self.steps, target, dpi), self.log)
     }
 
-    fn draw_steps(
-        steps: &[(Command, SEXP)],
-        target: &mut dyn DrawTarget,
-        dpi: f64,
-    ) -> GridState {
+    fn draw_steps(steps: &[(Command, SEXP)], target: &mut dyn DrawTarget, dpi: f64) -> GridState {
         let mut state = GridState::default();
         let dims = target.dimensions();
         state.ensure(dims, dpi);
@@ -167,11 +156,7 @@ impl ReplayCommands {
     }
 }
 
-fn validate_argument(
-    value: SEXP,
-    depth: usize,
-    remaining: &mut usize,
-) -> Result<(), &'static str> {
+fn validate_argument(value: SEXP, depth: usize, remaining: &mut usize) -> Result<(), &'static str> {
     if value.is_null() || value == R_NilValue() {
         return Ok(());
     }
@@ -188,9 +173,7 @@ fn validate_argument(
             *remaining = remaining
                 .checked_sub(XLENGTH(value) as usize)
                 .ok_or(INVALID)?;
-            let vector = super::node_factory()
-                .wrap(value)
-                .map_err(|_| INVALID)?;
+            let vector = super::node_factory().wrap(value).map_err(|_| INVALID)?;
             for i in 0..XLENGTH(value) {
                 let element = vector
                     .try_vector_elt(i)

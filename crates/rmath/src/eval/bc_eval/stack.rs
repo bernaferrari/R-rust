@@ -66,13 +66,11 @@ pub(crate) fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> Sexp<
 /// do_colon, whose local asReal only reads INT/REAL/LGL, so non-numeric
 /// arguments are coerced to real first.
 pub(crate) unsafe fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
-    unsafe {
-        let ty = TYPEOF(value);
-        if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP || ty == SEXPTYPE::LGLSXP {
-            value
-        } else {
-            crate::mainutils::coerce::coerceVector(value, SEXPTYPE::REALSXP.0)
-        }
+    let ty = TYPEOF(value);
+    if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP || ty == SEXPTYPE::LGLSXP {
+        value
+    } else {
+        crate::mainutils::coerce::coerceVector(value, SEXPTYPE::REALSXP.0)
     }
 }
 
@@ -93,9 +91,7 @@ pub(crate) unsafe fn apply_pending_arg_tags(
     for (d, tag) in taken {
         let j = top as isize - 1 - d as isize;
         if j >= 0 && (j as usize) < cells.len() {
-            unsafe {
-                crate::sexp::accessors::SETTAG(cells[j as usize], tag.as_raw());
-            }
+            crate::sexp::accessors::SETTAG(cells[j as usize], tag.as_raw());
         }
     }
 }

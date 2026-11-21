@@ -8,6 +8,7 @@
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
+use super::protect;
 use crate::attrib_core::{R_NamesSymbol, R_classgets, getAttrib, setAttrib};
 use crate::mainutils::graphics_ffi::{
     rmath_ge_from_device_height, rmath_ge_from_device_width, rmath_ge_metric_info,
@@ -18,7 +19,6 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use super::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::pGEDevDesc;
@@ -26,8 +26,8 @@ use super::matrix::{location, locationX, locationY, rotation, trans};
 use super::types::pGEcontext;
 use super::{
     alloc_vector, char_ptr, class_gets, duplicate, get_attrib, inherits, install, integer_elt,
-    mk_char, real_elt, scalar_integer, scalar_real, set_integer_elt, set_real_elt,
-    set_string_elt, set_vector_elt, string_elt, string_value_elt, vector_elt,
+    mk_char, real_elt, scalar_integer, scalar_real, set_integer_elt, set_real_elt, set_string_elt,
+    set_vector_elt, string_elt, string_value_elt, vector_elt,
 };
 
 /* ==============================
@@ -123,15 +123,8 @@ fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
-type TransformToInchesFn = fn(
-    SEXP,
-    c_int,
-    LViewportContext,
-    pGEcontext,
-    c_double,
-    c_double,
-    pGEDevDesc,
-) -> c_double;
+type TransformToInchesFn =
+    fn(SEXP, c_int, LViewportContext, pGEcontext, c_double, c_double, pGEDevDesc) -> c_double;
 
 const POINTS_PER_INCH: c_double = 72.27;
 const BIGPOINTS_PER_INCH: c_double = 72.0;
@@ -1282,7 +1275,8 @@ pub fn multUnits(units: SEXP, values: SEXP) -> SEXP {
         for i in 0..n {
             let u = unitScalar(answer, i);
             if !u.is_null() {
-                let val = unitValue(answer, i) * real_elt(values, (i as usize % nv as usize) as R_xlen_t);
+                let val =
+                    unitValue(answer, i) * real_elt(values, (i as usize % nv as usize) as R_xlen_t);
                 set_vector_elt(u, 0, scalar_real(val));
             }
         }

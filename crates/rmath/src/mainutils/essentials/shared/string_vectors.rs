@@ -2,11 +2,7 @@
 
 use super::*;
 
-pub(crate) fn datetime_c_value(
-    source: SEXP,
-    index: R_xlen_t,
-    class: DatetimeVectorClass,
-) -> f64 {
+pub(crate) fn datetime_c_value(source: SEXP, index: R_xlen_t, class: DatetimeVectorClass) -> f64 {
     unsafe {
         match class {
             DatetimeVectorClass::Date => {

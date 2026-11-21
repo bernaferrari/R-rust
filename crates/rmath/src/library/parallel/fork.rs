@@ -1255,12 +1255,10 @@ pub fn mc_read_children(sTimeout: SEXP) -> SEXP {
 /// Remove a child process.
 #[cfg(unix)]
 pub fn mc_rm_child(sPid: SEXP) -> SEXP {
-    unsafe {
-        use crate::main::coerce::asInteger;
+    use crate::main::coerce::asInteger;
 
-        let pid = asInteger(sPid);
-        Rf_ScalarLogical(rm_child(pid))
-    }
+    let pid = asInteger(sPid);
+    Rf_ScalarLogical(rm_child(pid))
 }
 
 /// Get list of attached children PIDs.
@@ -1329,19 +1327,17 @@ pub fn mc_fds(sFdi: SEXP) -> SEXP {
 /// Get the master file descriptor (child side).
 #[cfg(unix)]
 pub fn mc_master_fd() -> SEXP {
-    unsafe { Rf_ScalarInteger(with_fork_state(|state| state.master_fd)) }
+    Rf_ScalarInteger(with_fork_state(|state| state.master_fd))
 }
 
 /// Check if current process is a child.
 #[cfg(unix)]
 pub fn mc_is_child() -> SEXP {
-    unsafe {
-        Rf_ScalarLogical(if with_fork_state(|state| state.is_master) != 0 {
-            0
-        } else {
-            1
-        })
-    }
+    Rf_ScalarLogical(if with_fork_state(|state| state.is_master) != 0 {
+        0
+    } else {
+        1
+    })
 }
 
 /// Send a signal to a process.
@@ -1408,15 +1404,13 @@ pub fn mc_exit(sRes: SEXP) -> SEXP {
 /// Get or set the interactive flag.
 #[cfg(unix)]
 pub fn mc_interactive(sWhat: SEXP) -> SEXP {
-    unsafe {
-        use crate::main::coerce::asInteger;
+    use crate::main::coerce::asInteger;
 
-        let what = asInteger(sWhat);
-        if what != NA_INTEGER {
-            with_fork_state(|state| state.interactive = what);
-        }
-        Rf_ScalarLogical(with_fork_state(|state| state.interactive))
+    let what = asInteger(sWhat);
+    if what != NA_INTEGER {
+        with_fork_state(|state| state.interactive = what);
     }
+    Rf_ScalarLogical(with_fork_state(|state| state.interactive))
 }
 
 /// Get or set CPU affinity (stub on non-Linux).

@@ -110,15 +110,13 @@ pub unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
 
 /// SHALLOW_DUPLICATE_ATTRIB: copy every attribute of `src` onto `dst`.
 pub(crate) unsafe fn copy_all_attrib(dst: SEXP, src: SEXP) {
-    unsafe {
-        if src.is_null() || src == R_NilValue() {
-            return;
-        }
-        let mut attr = crate::sexp::accessors::ATTRIB(src);
-        while !attr.is_null() && attr != R_NilValue() {
-            setAttrib(dst, TAG(attr), CAR(attr));
-            attr = CDR(attr);
-        }
+    if src.is_null() || src == R_NilValue() {
+        return;
+    }
+    let mut attr = crate::sexp::accessors::ATTRIB(src);
+    while !attr.is_null() && attr != R_NilValue() {
+        setAttrib(dst, TAG(attr), CAR(attr));
+        attr = CDR(attr);
     }
 }
 

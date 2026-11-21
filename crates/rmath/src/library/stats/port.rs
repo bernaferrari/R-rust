@@ -21,14 +21,11 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 fn error(msg: &str) -> ! {
-    crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
-        msg,
-    )
+    crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), msg)
 }
 
 fn is_null(x: SEXP) -> bool {
-    unsafe { Rf_isNull(x) != 0 }
+    Rf_isNull(x) != 0
 }
 
 // R counts vector slots from one. These offsets match stats::nlminb.

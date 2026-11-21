@@ -48,15 +48,13 @@ unsafe fn external_routine_name(args: SEXP) -> String {
 /// enforcing exactly that contract and returning `NULL`.
 #[cfg(not(feature = "renderplot-device"))]
 unsafe fn null_device_draw() -> SEXP {
-    unsafe {
-        if !graphics::plot_new_called() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "plot.new has not been called yet",
-            );
-        }
-        crate::sexp::globals::R_NilValue()
+    if !graphics::plot_new_called() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "plot.new has not been called yet",
+        );
     }
+    crate::sexp::globals::R_NilValue()
 }
 
 /// `.External` passes the routine name as the first cell. Portable graphics
@@ -240,14 +238,12 @@ unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SE
     }
 }
 unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::essentials::do_plot_window(
-            crate::sexp::globals::R_NilValue(),
-            crate::sexp::globals::R_NilValue(),
-            crate::sexp::accessors::CDR(args),
-            crate::sexp::globals::R_GlobalEnv(),
-        )
-    }
+    crate::mainutils::essentials::do_plot_window(
+        crate::sexp::globals::R_NilValue(),
+        crate::sexp::globals::R_NilValue(),
+        crate::sexp::accessors::CDR(args),
+        crate::sexp::globals::R_GlobalEnv(),
+    )
 }
 
 #[cfg(feature = "renderplot-device")]
@@ -351,15 +347,13 @@ unsafe fn convert_locations(args: SEXP, _vertical: bool) -> SEXP {
     }
 }
 unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::essentials::do_axis(
-            crate::sexp::globals::R_NilValue(),
-            crate::sexp::globals::R_NilValue(),
-            // The first cell is the routine name. Side follows it.
-            crate::sexp::accessors::CDR(args),
-            crate::sexp::globals::R_GlobalEnv(),
-        )
-    }
+    crate::mainutils::essentials::do_axis(
+        crate::sexp::globals::R_NilValue(),
+        crate::sexp::globals::R_NilValue(),
+        // The first cell is the routine name. Side follows it.
+        crate::sexp::accessors::CDR(args),
+        crate::sexp::globals::R_GlobalEnv(),
+    )
 }
 unsafe extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     unsafe { stem::C_BinCount(x, breaks, right, lowest) }
@@ -511,15 +505,13 @@ unsafe extern "C-unwind" fn c_xspline(_args: SEXP) -> SEXP {
 /// GNU `erase` — no plot frame required; the transparent default makes the
 /// device-less form a silent no-op.
 unsafe extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
-    unsafe {
-        #[cfg(feature = "renderplot-device")]
-        {
-            if renderplot_backend_active() {
-                return draw_portable_positional("erase", args, &["col"]);
-            }
+    #[cfg(feature = "renderplot-device")]
+    {
+        if renderplot_backend_active() {
+            return draw_portable_positional("erase", args, &["col"]);
         }
-        crate::sexp::globals::R_NilValue()
     }
+    crate::sexp::globals::R_NilValue()
 }
 
 /// GNU `dend` — requires a plot frame.

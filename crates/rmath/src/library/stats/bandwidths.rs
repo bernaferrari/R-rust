@@ -140,7 +140,7 @@ pub unsafe fn bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let n = as_integer(sn);
     let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
-    unsafe { Rf_ScalarReal(bw_ucv_impl(cnt, n, d, h)) }
+    Rf_ScalarReal(bw_ucv_impl(cnt, n, d, h))
 }
 
 pub unsafe fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
@@ -149,7 +149,7 @@ pub unsafe fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let n = as_integer(sn);
     let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
-    unsafe { Rf_ScalarReal(bw_bcv_impl(cnt, n, d, h)) }
+    Rf_ScalarReal(bw_bcv_impl(cnt, n, d, h))
 }
 
 pub unsafe fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
@@ -158,7 +158,7 @@ pub unsafe fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let n = as_integer(sn);
     let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
-    unsafe { Rf_ScalarReal(bw_phi4_impl(cnt, n, d, h)) }
+    Rf_ScalarReal(bw_phi4_impl(cnt, n, d, h))
 }
 
 pub unsafe fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
@@ -167,7 +167,7 @@ pub unsafe fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let n = as_integer(sn);
     let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
-    unsafe { Rf_ScalarReal(bw_phi6_impl(cnt, n, d, h)) }
+    Rf_ScalarReal(bw_phi6_impl(cnt, n, d, h))
 }
 
 pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
@@ -184,9 +184,8 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
             let msg =
                 std::ffi::CString::new(format!("non-finite x[{}] in bandwidth calculation", i + 1))
                     .unwrap();
-            unsafe {
-                Rf_error(msg.as_ptr());
-            }
+
+            Rf_error(msg.as_ptr());
         }
         if value < xmin {
             xmin = value;
@@ -197,21 +196,20 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     }
     let mut rang = (xmax - xmin) * 1.01;
     if rang == 0.0 {
-        unsafe {
-            Rf_error(b"data are constant in bandwidth calculation\0".as_ptr()
-                as *const core::ffi::c_char);
-        }
+        Rf_error(
+            b"data are constant in bandwidth calculation\0".as_ptr() as *const core::ffi::c_char
+        );
     }
     let dd = rang / nb as c_double;
 
-    let ans = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 2) };
-    let _ans_guard = unsafe { protect_sexp(ans) };
-    let sc = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int) };
-    let _sc_guard = unsafe { protect_sexp(sc) };
-    unsafe {
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(dd));
-        SET_VECTOR_ELT(ans, 1, sc);
-    }
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    let _ans_guard = protect_sexp(ans);
+    let sc = Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int);
+    let _sc_guard = protect_sexp(sc);
+
+    SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(dd));
+    SET_VECTOR_ELT(ans, 1, sc);
+
     let cnt = unsafe { slice::from_raw_parts_mut(REAL(sc), nb as usize) };
     cnt.fill(0.0);
 
@@ -244,8 +242,8 @@ pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
     let nb = LENGTH(sx);
     let x = unsafe { slice::from_raw_parts(INTEGER(sx), nb as usize) };
 
-    let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int) };
-    let _ans_guard = unsafe { protect_sexp(ans) };
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int);
+    let _ans_guard = protect_sexp(ans);
     let cnt = unsafe { slice::from_raw_parts_mut(REAL(ans), nb as usize) };
     cnt.fill(0.0);
 

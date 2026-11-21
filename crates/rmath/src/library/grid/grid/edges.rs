@@ -207,14 +207,13 @@ pub(crate) unsafe fn calcArrow(
     let rot = (yc).atan2(xc);
     // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
     // bridges over the device state.
-    unsafe {
-        vertx[0] = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
-        verty[0] = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
-        vertx[1] = toDeviceX(x1, GE_INCHES, dd);
-        verty[1] = toDeviceY(y1, GE_INCHES, dd);
-        vertx[2] = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
-        verty[2] = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
-    }
+
+    vertx[0] = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
+    verty[0] = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
+    vertx[1] = toDeviceX(x1, GE_INCHES, dd);
+    verty[1] = toDeviceY(y1, GE_INCHES, dd);
+    vertx[2] = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
+    verty[2] = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
 }
 
 /// Draw arrowheads at the start/end of a polyline. `x`/`y` are raw engine

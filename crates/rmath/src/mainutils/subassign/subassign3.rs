@@ -77,7 +77,7 @@ pub(crate) fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t
             || TYPEOF(x) != SEXPTYPE::VECSXP
             // SAFETY: class-walk helper still reads the attribute chain raw;
             // `x` is a live VECSXP argument rooted by the caller.
-            || !unsafe { crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") }
+            || !  crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
         {
             return;
         }
@@ -94,9 +94,7 @@ pub(crate) fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t
             && XLENGTH(was) > 0
             && owned(was)
                 .try_logical_elt(0)
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                 == TRUE;
         if was_true && nv == old_n {
             let na = factory()

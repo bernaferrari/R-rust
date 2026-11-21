@@ -29,7 +29,7 @@ pub fn OutReal(stream: R_outpstream_t, d: c_double) {
 }
 
 pub fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
-     {
+    {
         OutReal(stream, c.r);
         OutReal(stream, c.i);
     }
@@ -124,7 +124,7 @@ pub fn InReal(stream: R_inpstream_t) -> c_double {
 }
 
 pub fn InComplex(stream: R_inpstream_t) -> Rcomplex {
-     {
+    {
         Rcomplex {
             r: InReal(stream),
             i: InReal(stream),
@@ -144,7 +144,7 @@ pub fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
 }
 
 pub fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
-     {
+    {
         // Simplified: just read size bytes
         InString(stream, buf, size);
     }
@@ -209,68 +209,62 @@ pub fn InFormat(stream: R_inpstream_t) {
 // ---------------------------------------------------------------------------
 
 pub fn MakeHashTable() -> SEXP {
-    unsafe {
-        let vec = Rf_allocVector3(SEXPTYPE::VECSXP, HASHSIZE as R_xlen_t);
-        Rf_cons(Rf_ScalarInteger(0), vec)
-    }
+    let vec = Rf_allocVector3(SEXPTYPE::VECSXP, HASHSIZE as R_xlen_t);
+    Rf_cons(Rf_ScalarInteger(0), vec)
 }
 
 pub fn HashAdd(obj: SEXP, ht: SEXP) {
-    unsafe {
-        if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
-            return;
-        }
-        let buckets = CDR(ht);
-        if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
-            return;
-        }
-        let bucket_count = XLENGTH(buckets) as usize;
-        if bucket_count == 0 {
-            return;
-        }
-        let key = obj as usize;
-        let pos = ((key >> 2) % bucket_count) as R_xlen_t;
-        let current_count = asInteger(CAR(ht));
-        let next_count = current_count.saturating_add(1);
-        SETCAR(ht, Rf_ScalarInteger(next_count));
-
-        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        SET_VECTOR_ELT(entry, 0, obj);
-        SET_VECTOR_ELT(entry, 1, Rf_ScalarInteger(next_count));
-        let bucket = VECTOR_ELT(buckets, pos);
-        let new_bucket = Rf_cons(entry, bucket);
-        SET_VECTOR_ELT(buckets, pos, new_bucket);
+    if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
+        return;
     }
+    let buckets = CDR(ht);
+    if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
+        return;
+    }
+    let bucket_count = XLENGTH(buckets) as usize;
+    if bucket_count == 0 {
+        return;
+    }
+    let key = obj as usize;
+    let pos = ((key >> 2) % bucket_count) as R_xlen_t;
+    let current_count = asInteger(CAR(ht));
+    let next_count = current_count.saturating_add(1);
+    SETCAR(ht, Rf_ScalarInteger(next_count));
+
+    let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    SET_VECTOR_ELT(entry, 0, obj);
+    SET_VECTOR_ELT(entry, 1, Rf_ScalarInteger(next_count));
+    let bucket = VECTOR_ELT(buckets, pos);
+    let new_bucket = Rf_cons(entry, bucket);
+    SET_VECTOR_ELT(buckets, pos, new_bucket);
 }
 
 pub fn HashGet(item: SEXP, ht: SEXP) -> c_int {
-    unsafe {
-        if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
-            return 0;
-        }
-        let buckets = CDR(ht);
-        if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
-            return 0;
-        }
-        let bucket_count = XLENGTH(buckets) as usize;
-        if bucket_count == 0 {
-            return 0;
-        }
-        let key = item as usize;
-        let pos = ((key >> 2) % bucket_count) as R_xlen_t;
-        let mut node = VECTOR_ELT(buckets, pos);
-        while !node.is_null() && TYPEOF(node) == SEXPTYPE::LISTSXP {
-            let entry = CAR(node);
-            if !entry.is_null() && TYPEOF(entry) == SEXPTYPE::VECSXP && XLENGTH(entry) >= 2 {
-                let stored = VECTOR_ELT(entry, 0);
-                if stored == item {
-                    return asInteger(VECTOR_ELT(entry, 1));
-                }
-            }
-            node = CDR(node);
-        }
-        0
+    if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
+        return 0;
     }
+    let buckets = CDR(ht);
+    if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
+        return 0;
+    }
+    let bucket_count = XLENGTH(buckets) as usize;
+    if bucket_count == 0 {
+        return 0;
+    }
+    let key = item as usize;
+    let pos = ((key >> 2) % bucket_count) as R_xlen_t;
+    let mut node = VECTOR_ELT(buckets, pos);
+    while !node.is_null() && TYPEOF(node) == SEXPTYPE::LISTSXP {
+        let entry = CAR(node);
+        if !entry.is_null() && TYPEOF(entry) == SEXPTYPE::VECSXP && XLENGTH(entry) >= 2 {
+            let stored = VECTOR_ELT(entry, 0);
+            if stored == item {
+                return asInteger(VECTOR_ELT(entry, 1));
+            }
+        }
+        node = CDR(node);
+    }
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +306,7 @@ pub fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
 }
 
 pub fn SaveSpecialHookItem(item: SEXP) -> c_int {
-     SaveSpecialHook(item)
+    SaveSpecialHook(item)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +314,7 @@ pub fn SaveSpecialHookItem(item: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
-     {
+    {
         OutInteger(stream, LENGTH(s));
     }
 }
@@ -330,14 +324,12 @@ pub fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
 // ---------------------------------------------------------------------------
 
 pub fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
-    unsafe {
-        let len = XLENGTH(s);
-        OutInteger(stream, 0);
-        WriteLENGTH(stream, s);
-        for i in 0..len {
-            let elt = STRING_ELT(s, i as R_xlen_t);
-            R_WriteItem(elt, stream);
-        }
+    let len = XLENGTH(s);
+    OutInteger(stream, 0);
+    WriteLENGTH(stream, s);
+    for i in 0..len {
+        let elt = STRING_ELT(s, i as R_xlen_t);
+        R_WriteItem(elt, stream);
     }
 }
 
@@ -538,57 +530,51 @@ pub fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_
 // ---------------------------------------------------------------------------
 
 pub fn MakeReadRefTable() -> SEXP {
-    unsafe {
-        let data = Rf_allocVector3(SEXPTYPE::VECSXP, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
-        Rf_cons(data, Rf_ScalarInteger(0))
-    }
+    let data = Rf_allocVector3(SEXPTYPE::VECSXP, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
+    Rf_cons(data, Rf_ScalarInteger(0))
 }
 
 pub fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
-    unsafe {
-        if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP || index <= 0 {
-            error("reference index out of range");
-        }
-        let data = CAR(table);
-        if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
-            error("reference index out of range");
-        }
-        let used = asInteger(CDR(table));
-        if index > used {
-            error("reference index out of range");
-        }
-        VECTOR_ELT(data, (index - 1) as R_xlen_t)
+    if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP || index <= 0 {
+        error("reference index out of range");
     }
+    let data = CAR(table);
+    if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
+        error("reference index out of range");
+    }
+    let used = asInteger(CDR(table));
+    if index > used {
+        error("reference index out of range");
+    }
+    VECTOR_ELT(data, (index - 1) as R_xlen_t)
 }
 
 pub fn AddReadRef(table: SEXP, value: SEXP) {
-    unsafe {
-        if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP {
-            return;
-        }
-        let mut data = CAR(table);
-        if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
-            return;
-        }
-        let mut used = asInteger(CDR(table));
-        if used < 0 {
-            used = 0;
-        }
-
-        if (used as R_xlen_t) >= XLENGTH(data) {
-            let old_len = XLENGTH(data);
-            let new_len = std::cmp::max(1, old_len * 2);
-            let grown = Rf_allocVector3(SEXPTYPE::VECSXP, new_len);
-            for i in 0..old_len {
-                SET_VECTOR_ELT(grown, i, VECTOR_ELT(data, i));
-            }
-            SETCAR(table, grown);
-            data = grown;
-        }
-
-        SET_VECTOR_ELT(data, used as R_xlen_t, value);
-        SETCDR(table, Rf_ScalarInteger(used.saturating_add(1)));
+    if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP {
+        return;
     }
+    let mut data = CAR(table);
+    if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
+        return;
+    }
+    let mut used = asInteger(CDR(table));
+    if used < 0 {
+        used = 0;
+    }
+
+    if (used as R_xlen_t) >= XLENGTH(data) {
+        let old_len = XLENGTH(data);
+        let new_len = std::cmp::max(1, old_len * 2);
+        let grown = Rf_allocVector3(SEXPTYPE::VECSXP, new_len);
+        for i in 0..old_len {
+            SET_VECTOR_ELT(grown, i, VECTOR_ELT(data, i));
+        }
+        SETCAR(table, grown);
+        data = grown;
+    }
+
+    SET_VECTOR_ELT(data, used as R_xlen_t, value);
+    SETCDR(table, Rf_ScalarInteger(used.saturating_add(1)));
 }
 
 // ---------------------------------------------------------------------------

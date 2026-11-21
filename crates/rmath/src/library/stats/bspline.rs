@@ -47,14 +47,7 @@ fn with_bspline_state<R>(f: impl FnOnce(&mut BsplineState) -> R) -> R {
 /// - `x`: evaluation point
 /// - `left`: interval index such that t[left] <= x <= t[left+1] (0-indexed)
 /// - `biatx`: output array of length jhigh
-pub fn bsplvb(
-    t: &[f64],
-    jhigh: c_int,
-    index: c_int,
-    x: f64,
-    left: c_int,
-    biatx: &mut [f64],
-) {
+pub fn bsplvb(t: &[f64], jhigh: c_int, index: c_int, x: f64, left: c_int, biatx: &mut [f64]) {
     const JMAX: usize = 20;
 
     with_bspline_state(|state| {
@@ -83,11 +76,7 @@ pub fn bsplvb(
             let mut saved = 0.0f64;
             for i in 0..j_u {
                 let denom = state.deltar[i] + state.deltal[j_u - 1 - i];
-                let term = if denom == 0.0 {
-                    0.0
-                } else {
-                    biatx[i] / denom
-                };
+                let term = if denom == 0.0 { 0.0 } else { biatx[i] / denom };
                 biatx[i] = saved + state.deltar[i] * term;
                 saved = state.deltal[j_u - 1 - i] * term;
             }
@@ -189,8 +178,7 @@ pub fn bsplvd(
 
         let mut _ldummy: usize = 1;
         while _ldummy <= kp1mm as usize {
-            let factor =
-                fkp1mm / (t[(il + kp1mm as isize - 1) as usize] - t[(il - 1) as usize]);
+            let factor = fkp1mm / (t[(il + kp1mm as isize - 1) as usize] - t[(il - 1) as usize]);
             let mut j = 1usize;
             while j <= i {
                 a[i - 1 + (j - 1) * k_u] =

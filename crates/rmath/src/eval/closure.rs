@@ -11,9 +11,7 @@ use std::ffi::CStr;
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, SETCAR, STRING_ELT, TAG, TYPEOF, XLENGTH,
-};
+use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, SETCAR, STRING_ELT, TAG, TYPEOF, XLENGTH};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
@@ -57,7 +55,7 @@ pub unsafe fn create_env_safe<'a>(
     bindings: Sexp<'a>,
     parent: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
-    let env = unsafe { NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut()) };
+    let env = NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut());
     unsafe { Sexp::try_from_raw(env) }.map_err(|err| sexp_err("failed to create environment", err))
 }
 
@@ -581,7 +579,7 @@ pub(super) unsafe fn match_closure_args<'s>(
     let mut used = vec![0u8; supplied_cells.len()];
     let mut fargused = vec![false; formal_cells.len()];
     let missing = factory.missing();
-    let dots_symbol = unsafe { R_DotsSymbol() };
+    let dots_symbol = R_DotsSymbol();
     let mut result_owner = PairlistBuilder::from_factory(factory.clone());
     let mut result_cells = Vec::with_capacity(formal_cells.len());
     for formal in &formal_cells {
@@ -809,9 +807,7 @@ pub(super) unsafe fn match_closure_args<'s>(
             .as_raw()
             == missing.as_raw()
         {
-            unsafe {
-                crate::sexp::accessors::SET_MISSING(cell.as_raw(), 1);
-            }
+            crate::sexp::accessors::SET_MISSING(cell.as_raw(), 1);
         }
     }
     result_owner
@@ -834,21 +830,16 @@ fn deparse_for_error(expr: SEXP) -> String {
 }
 
 unsafe fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
-    unsafe {
-        let mut formal = formals;
-        let mut actual = frame;
+    let mut formal = formals;
+    let mut actual = frame;
 
-        while !formal.is_null()
-            && formal != R_NilValue()
-            && !actual.is_null()
-            && actual != R_NilValue()
-        {
-            if CAR(actual) == R_MissingArg() && CAR(formal) != R_MissingArg() {
-                SETCAR(actual, mkPROMISE(CAR(formal), new_env));
-            }
-            formal = CDR(formal);
-            actual = CDR(actual);
+    while !formal.is_null() && formal != R_NilValue() && !actual.is_null() && actual != R_NilValue()
+    {
+        if CAR(actual) == R_MissingArg() && CAR(formal) != R_MissingArg() {
+            SETCAR(actual, mkPROMISE(CAR(formal), new_env));
         }
+        formal = CDR(formal);
+        actual = CDR(actual);
     }
 }
 

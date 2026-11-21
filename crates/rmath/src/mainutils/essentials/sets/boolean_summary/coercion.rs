@@ -207,7 +207,7 @@ pub(super) fn logical<'s>(
             }
         }
     }
-    let raw = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::LGLSXP, n) };
+    let raw = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::LGLSXP, n);
     check();
     let mut output = SexpMut::try_from_checked(
         f.wrap(raw)

@@ -172,11 +172,7 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     // Read the header fields.
     let read_u32 = |offset: usize| -> nls_uint32 {
         let val = mo_u32(data.wrapping_add(offset) as *const u8);
-        if d.must_swap != 0 {
-            SWAP(val)
-        } else {
-            val
-        }
+        if d.must_swap != 0 { SWAP(val) } else { val }
     };
 
     let _revision = read_u32(4);
@@ -225,18 +221,10 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     let mut nplurals: c_ulong = 2;
 
     if !nullentry.is_null() {
-        super::plural_exp::libintl_gettext_extract_plural(
-            nullentry,
-            &mut plural,
-            &mut nplurals,
-        );
+        super::plural_exp::libintl_gettext_extract_plural(nullentry, &mut plural, &mut nplurals);
     } else {
         // Fall back to Germanic plural.
-        super::plural_exp::libintl_gettext_extract_plural(
-            ptr::null(),
-            &mut plural,
-            &mut nplurals,
-        );
+        super::plural_exp::libintl_gettext_extract_plural(ptr::null(), &mut plural, &mut nplurals);
     }
 
     d.plural = plural;

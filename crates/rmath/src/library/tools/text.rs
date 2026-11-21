@@ -538,9 +538,7 @@ pub fn nonASCII(text: SEXP) -> SEXP {
 /// SET_STRING_ELT accessor.
 #[inline]
 fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    unsafe {
-        crate::sexp::accessors::SET_STRING_ELT(x, i, val);
-    }
+    crate::sexp::accessors::SET_STRING_ELT(x, i, val);
 }
 
 /// Coerce SEXP to logical.

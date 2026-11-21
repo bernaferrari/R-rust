@@ -430,10 +430,18 @@ pub(crate) fn numbers(x: SEXP) -> Vec<f64> {
             let v = match SEXPTYPE(TYPEOF(x)) {
                 SEXPTYPE::REALSXP => object.try_real_elt(i),
                 SEXPTYPE::INTSXP => object.try_integer_elt(i).map(|n| {
-                    if n == i32::MIN { f64::NAN } else { f64::from(n) }
+                    if n == i32::MIN {
+                        f64::NAN
+                    } else {
+                        f64::from(n)
+                    }
                 }),
                 _ => object.try_logical_elt(i).map(|n| {
-                    if n == i32::MIN { f64::NAN } else { f64::from(n) }
+                    if n == i32::MIN {
+                        f64::NAN
+                    } else {
+                        f64::from(n)
+                    }
                 }),
             };
             let v = v.unwrap_or_else(|error| base_error(error.to_string()));
@@ -510,80 +518,80 @@ pub(crate) fn label_box(item: SEXP, index: usize, style: &Gp, dpi: f64) -> (f64,
     };
     // SAFETY: audited boundary — label decoding reads a live argument.
     let owned = unsafe { crate::mainutils::plotmath::labels(element.unwrap_or(item)) };
-        if owned.is_empty() {
-            return (0., 0.);
-        }
-        let label = if element.is_some() {
-            &owned[0]
-        } else {
-            &owned[index % owned.len()]
-        };
-        let (w, h) = label.dimensions(&device(), &params);
-        let (w, h) = (f64::from(w), f64::from(h));
-        if !w.is_finite() || !h.is_finite() {
-            base_error("grid unit conversion overflow");
-        }
-        (w, h)
+    if owned.is_empty() {
+        return (0., 0.);
+    }
+    let label = if element.is_some() {
+        &owned[0]
+    } else {
+        &owned[index % owned.len()]
+    };
+    let (w, h) = label.dimensions(&device(), &params);
+    let (w, h) = (f64::from(w), f64::from(h));
+    if !w.is_finite() || !h.is_finite() {
+        base_error("grid unit conversion overflow");
+    }
+    (w, h)
 }
 /// GNU sizes text by the positions actually drawn, which is
 /// max(length(x), length(y)), recycling labels. One shared anchor therefore
 /// measures only the first label. The result is the axis-aligned box after
 /// the grob's own rotation, using the grob gpar over the viewport gpar.
 pub(crate) fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axis: usize) -> f64 {
-        let style = gp(field(grob, "gp"), frame);
-        let labels = field(data, "label");
-        if labels == R_NilValue() || XLENGTH(labels) == 0 {
-            return 0.;
+    let style = gp(field(grob, "gp"), frame);
+    let labels = field(data, "label");
+    if labels == R_NilValue() || XLENGTH(labels) == 0 {
+        return 0.;
+    }
+    let xs = units(field(data, "x"), "npc", frame, 0, false);
+    let ys = units(field(data, "y"), "npc", frame, 1, false);
+    if xs.is_empty() || ys.is_empty() {
+        base_error("grid text requires coordinates");
+    }
+    let n = xs.len().max(ys.len());
+    let mut just = justification(field(data, "just"));
+    just[0] = num(field(data, "hjust"), just[0]);
+    just[1] = num(field(data, "vjust"), just[1]);
+    let rot = num(field(data, "rot"), 0.).to_radians();
+    let (c, s) = (rot.cos(), rot.sin());
+    let mut xmin = f64::INFINITY;
+    let mut xmax = f64::NEG_INFINITY;
+    let mut ymin = f64::INFINITY;
+    let mut ymax = f64::NEG_INFINITY;
+    for i in 0..n {
+        let (w, h) = label_box(labels, i, &style, frame.dpi);
+        let x = xs[i % xs.len()];
+        let y = ys[i % ys.len()];
+        for (cx, cy) in [(0., 0.), (w, 0.), (w, h), (0., h)] {
+            let px = cx - just[0] * w;
+            let py = cy - just[1] * h;
+            let rx = c * px - s * py + x;
+            let ry = s * px + c * py + y;
+            xmin = xmin.min(rx);
+            xmax = xmax.max(rx);
+            ymin = ymin.min(ry);
+            ymax = ymax.max(ry);
         }
-        let xs = units(field(data, "x"), "npc", frame, 0, false);
-        let ys = units(field(data, "y"), "npc", frame, 1, false);
-        if xs.is_empty() || ys.is_empty() {
-            base_error("grid text requires coordinates");
-        }
-        let n = xs.len().max(ys.len());
-        let mut just = justification(field(data, "just"));
-        just[0] = num(field(data, "hjust"), just[0]);
-        just[1] = num(field(data, "vjust"), just[1]);
-        let rot = num(field(data, "rot"), 0.).to_radians();
-        let (c, s) = (rot.cos(), rot.sin());
-        let mut xmin = f64::INFINITY;
-        let mut xmax = f64::NEG_INFINITY;
-        let mut ymin = f64::INFINITY;
-        let mut ymax = f64::NEG_INFINITY;
-        for i in 0..n {
-            let (w, h) = label_box(labels, i, &style, frame.dpi);
-            let x = xs[i % xs.len()];
-            let y = ys[i % ys.len()];
-            for (cx, cy) in [(0., 0.), (w, 0.), (w, h), (0., h)] {
-                let px = cx - just[0] * w;
-                let py = cy - just[1] * h;
-                let rx = c * px - s * py + x;
-                let ry = s * px + c * py + y;
-                xmin = xmin.min(rx);
-                xmax = xmax.max(rx);
-                ymin = ymin.min(ry);
-                ymax = ymax.max(ry);
-            }
-        }
-        let extent = if axis == 0 { xmax - xmin } else { ymax - ymin };
-        if !extent.is_finite() {
-            base_error("grid unit conversion overflow");
-        }
-        extent
+    }
+    let extent = if axis == 0 { xmax - xmin } else { ymax - ymin };
+    if !extent.is_finite() {
+        base_error("grid unit conversion overflow");
+    }
+    extent
 }
 pub(crate) fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 {
-        if grob == R_NilValue() || !has_class(grob, "grob") {
-            base_error("grob unit data must be a grob");
-        }
-        let kind = string(field(grob, "primitive"), "");
-        let data = field(grob, "data");
-        match (kind.as_str(), axis) {
-            ("rect", 0) => units(field(data, "width"), "npc", frame, 0, true)[0],
-            ("rect", 1) => units(field(data, "height"), "npc", frame, 1, true)[0],
-            ("circle", _) => 2. * units(field(data, "r"), "snpc", frame, axis, true)[0],
-            ("text", _) => text_grob_extent(grob, data, frame, axis),
-            _ => base_error(format!("grob unit is not supported for primitive '{kind}'")),
-        }
+    if grob == R_NilValue() || !has_class(grob, "grob") {
+        base_error("grob unit data must be a grob");
+    }
+    let kind = string(field(grob, "primitive"), "");
+    let data = field(grob, "data");
+    match (kind.as_str(), axis) {
+        ("rect", 0) => units(field(data, "width"), "npc", frame, 0, true)[0],
+        ("rect", 1) => units(field(data, "height"), "npc", frame, 1, true)[0],
+        ("circle", _) => 2. * units(field(data, "r"), "snpc", frame, axis, true)[0],
+        ("text", _) => text_grob_extent(grob, data, frame, axis),
+        _ => base_error(format!("grob unit is not supported for primitive '{kind}'")),
+    }
 }
 pub(crate) fn units(
     x: SEXP,
@@ -592,207 +600,212 @@ pub(crate) fn units(
     axis: usize,
     dimension: bool,
 ) -> Vec<f64> {
-        let (values, names, data) = if TYPEOF(x) == SEXPTYPE::VECSXP {
-            (
-                numbers(field(x, "value")),
-                field(x, "units"),
-                field(x, "data"),
-            )
-        } else {
-            (numbers(x), R_NilValue(), R_NilValue())
-        };
-        if values.is_empty() {
-            base_error("grid unit must have positive length");
-        }
-        let data_element = |i: usize| -> SEXP {
-            let at = i as i64 % XLENGTH(data);
-            node_factory()
-                .wrap(data)
-                .and_then(|data| data.try_vector_elt(at))
-                .map(|element| element.as_raw())
-                .unwrap_or_else(|error| base_error(error.to_string()))
-        };
-        values
-            .into_iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let name = if names == R_NilValue() {
-                    default.into()
-                } else {
-                    if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) == 0 {
-                        base_error("invalid grid unit names");
-                    }
-                    elt_to_string(names, (i as i64) % XLENGTH(names))
+    let (values, names, data) = if TYPEOF(x) == SEXPTYPE::VECSXP {
+        (
+            numbers(field(x, "value")),
+            field(x, "units"),
+            field(x, "data"),
+        )
+    } else {
+        (numbers(x), R_NilValue(), R_NilValue())
+    };
+    if values.is_empty() {
+        base_error("grid unit must have positive length");
+    }
+    let data_element = |i: usize| -> SEXP {
+        let at = i as i64 % XLENGTH(data);
+        node_factory()
+            .wrap(data)
+            .and_then(|data| data.try_vector_elt(at))
+            .map(|element| element.as_raw())
+            .unwrap_or_else(|error| base_error(error.to_string()))
+    };
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let name = if names == R_NilValue() {
+                default.into()
+            } else {
+                if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) == 0 {
+                    base_error("invalid grid unit names");
+                }
+                elt_to_string(names, (i as i64) % XLENGTH(names))
+            };
+            if name == ".rport-expression" {
+                if TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
+                    base_error("invalid grid expression data");
+                }
+                let child = data_element(i);
+                let resolved = units(child, default, frame, axis, dimension);
+                if resolved.len() != 1 {
+                    base_error("grid coordinate expression must resolve to one value");
+                }
+                return v * resolved[0];
+            }
+            if matches!(name.as_str(), "sum" | "min" | "max")
+                && TYPEOF(data) == SEXPTYPE::VECSXP
+                && XLENGTH(data) > 0
+            {
+                let mut parts = Vec::new();
+                for j in 0..XLENGTH(data) {
+                    parts.push(units(
+                        data_element(j as usize),
+                        default,
+                        frame,
+                        axis,
+                        dimension,
+                    ));
+                }
+                let terms = parts.into_iter().flatten();
+                return v * match name.as_str() {
+                    "sum" => terms.sum(),
+                    "min" => terms.fold(f64::INFINITY, f64::min),
+                    _ => terms.fold(f64::NEG_INFINITY, f64::max),
                 };
-                if name == ".rport-expression" {
-                    if TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
-                        base_error("invalid grid expression data");
-                    }
-                    let child = data_element(i);
-                    let resolved = units(child, default, frame, axis, dimension);
-                    if resolved.len() != 1 {
-                        base_error("grid coordinate expression must resolve to one value");
-                    }
-                    return v * resolved[0];
+            }
+            if name == "grobwidth" || name == "grobheight" {
+                if data == R_NilValue() {
+                    base_error("grob units require grob data");
                 }
-                if matches!(name.as_str(), "sum" | "min" | "max")
-                    && TYPEOF(data) == SEXPTYPE::VECSXP
-                    && XLENGTH(data) > 0
-                {
-                    let mut parts = Vec::new();
-                    for j in 0..XLENGTH(data) {
-                        parts.push(units(data_element(j as usize), default, frame, axis, dimension));
-                    }
-                    let terms = parts.into_iter().flatten();
-                    return v * match name.as_str() {
-                        "sum" => terms.sum(),
-                        "min" => terms.fold(f64::INFINITY, f64::min),
-                        _ => terms.fold(f64::NEG_INFINITY, f64::max),
-                    };
-                }
-                if name == "grobwidth" || name == "grobheight" {
-                    if data == R_NilValue() {
-                        base_error("grob units require grob data");
-                    }
-                    // grob_extent is already device pixels. convertWidth divides
-                    // by the destination unit, so do not also divide by DPI here.
-                    let extent = grob_extent(data, frame, if name == "grobwidth" { 0 } else { 1 });
-                    let resolved = v * extent;
-                    if !resolved.is_finite() {
-                        base_error("grid unit conversion overflow");
-                    }
-                    return resolved;
-                }
-                if name == "strwidth" || name == "strheight" {
-                    // Measured advances are device pixels. The strwidth factor
-                    // below is a 0.6em stand-in and must not scale them again.
-                    let (width, height) = label_box(data, i, &frame.gp, frame.dpi);
-                    let resolved = v * if name == "strwidth" { width } else { height };
-                    if !resolved.is_finite() {
-                        base_error("grid unit conversion overflow");
-                    }
-                    return resolved;
-                }
-                let (f, o) = frame
-                    .unit_factor(&name, axis, dimension)
-                    .unwrap_or_else(|e| base_error(e));
-                let resolved = v * f + o;
+                // grob_extent is already device pixels. convertWidth divides
+                // by the destination unit, so do not also divide by DPI here.
+                let extent = grob_extent(data, frame, if name == "grobwidth" { 0 } else { 1 });
+                let resolved = v * extent;
                 if !resolved.is_finite() {
                     base_error("grid unit conversion overflow");
                 }
-                resolved
-            })
-            .collect()
+                return resolved;
+            }
+            if name == "strwidth" || name == "strheight" {
+                // Measured advances are device pixels. The strwidth factor
+                // below is a 0.6em stand-in and must not scale them again.
+                let (width, height) = label_box(data, i, &frame.gp, frame.dpi);
+                let resolved = v * if name == "strwidth" { width } else { height };
+                if !resolved.is_finite() {
+                    base_error("grid unit conversion overflow");
+                }
+                return resolved;
+            }
+            let (f, o) = frame
+                .unit_factor(&name, axis, dimension)
+                .unwrap_or_else(|e| base_error(e));
+            let resolved = v * f + o;
+            if !resolved.is_finite() {
+                base_error("grid unit conversion overflow");
+            }
+            resolved
+        })
+        .collect()
 }
 pub(crate) fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
-        if x == R_NilValue() {
-            return old.to_vec();
-        }
-        if XLENGTH(x) == 0 {
-            base_error("grid color cannot be empty");
-        }
-        if !matches!(
-            SEXPTYPE(TYPEOF(x)),
-            SEXPTYPE::STRSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
-        ) {
-            base_error("invalid grid color");
-        }
-        (0..XLENGTH(x))
-            .map(|i| {
-                // SAFETY: audited boundary — device color conversion reads a
-                // live argument element.
-                let c = unsafe {
-                    crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff)
-                };
-                Color {
-                    r: c as u8,
-                    g: (c >> 8) as u8,
-                    b: (c >> 16) as u8,
-                    a: (c >> 24) as u8,
-                }
-            })
-            .collect()
+    if x == R_NilValue() {
+        return old.to_vec();
+    }
+    if XLENGTH(x) == 0 {
+        base_error("grid color cannot be empty");
+    }
+    if !matches!(
+        SEXPTYPE(TYPEOF(x)),
+        SEXPTYPE::STRSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
+    ) {
+        base_error("invalid grid color");
+    }
+    (0..XLENGTH(x))
+        .map(|i| {
+            // SAFETY: audited boundary — device color conversion reads a
+            // live argument element.
+            let c =
+                unsafe { crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff) };
+            Color {
+                r: c as u8,
+                g: (c >> 8) as u8,
+                b: (c >> 16) as u8,
+                a: (c >> 24) as u8,
+            }
+        })
+        .collect()
 }
 pub(crate) fn gp(x: SEXP, frame: &Frame) -> Gp {
-        let mut p = frame.gp.clone();
-        if x == R_NilValue() {
-            return p;
+    let mut p = frame.gp.clone();
+    if x == R_NilValue() {
+        return p;
+    }
+    let names = attribute(x, names_symbol());
+    for i in 0..XLENGTH(names) {
+        let name = elt_to_string(names, i);
+        if !matches!(
+            name.as_str(),
+            "col"
+                | "fill"
+                | "lwd"
+                | "fontsize"
+                | "cex"
+                | "alpha"
+                | "fontface"
+                | "fontfamily"
+                | "lty"
+                | "lineheight"
+        ) {
+            base_error(format!("grid gpar '{name}' is not supported"));
         }
-        let names = attribute(x, names_symbol());
-        for i in 0..XLENGTH(names) {
-            let name = elt_to_string(names, i);
-            if !matches!(
-                name.as_str(),
-                "col"
-                    | "fill"
-                    | "lwd"
-                    | "fontsize"
-                    | "cex"
-                    | "alpha"
-                    | "fontface"
-                    | "fontfamily"
-                    | "lty"
-                    | "lineheight"
-            ) {
-                base_error(format!("grid gpar '{name}' is not supported"));
-            }
-        }
-        p.col = color_values(field(x, "col"), &p.col);
-        p.fill = color_values(field(x, "fill"), &p.fill);
-        p.width = num(field(x, "lwd"), p.width);
-        p.size = num(field(x, "fontsize"), p.size * 72. / frame.dpi) * frame.dpi / 72.
-            * num(field(x, "cex"), 1.);
-        p.alpha *= num(field(x, "alpha"), 1.);
-        if p.width < 0.
-            || p.width > f32::MAX as f64
-            || p.size <= 0.
-            || p.size > f32::MAX as f64
-            || !p.size.is_finite()
-            || !(0. ..=1.).contains(&p.alpha)
-        {
-            base_error("invalid grid graphical parameters");
-        }
-        let face = string(field(x, "fontface"), "");
-        if !face.is_empty() {
-            p.face = match face.as_str() {
-                "plain" | "1" => r_graphics_engine::FontFace::Plain,
-                "bold" | "2" => r_graphics_engine::FontFace::Bold,
-                "italic" | "3" => r_graphics_engine::FontFace::Italic,
-                "bold.italic" | "4" => r_graphics_engine::FontFace::BoldItalic,
-                _ => base_error("invalid grid fontface"),
-            };
-        }
-        let family = string(field(x, "fontfamily"), "");
-        if !family.is_empty() && family != "sans" {
-            base_error("grid currently supports the device sans font only");
-        }
-        let lty = string(field(x, "lty"), "solid");
-        p.dash = match lty.as_str() {
-            "solid" | "1" => None,
-            "dashed" | "2" => Some(DashPattern {
-                intervals: vec![6., 4.],
-                offset: 0.,
-            }),
-            "dotted" | "3" => Some(DashPattern {
-                intervals: vec![1., 3.],
-                offset: 0.,
-            }),
-            "dotdash" | "4" => Some(DashPattern {
-                intervals: vec![1., 3., 6., 3.],
-                offset: 0.,
-            }),
-            "longdash" | "5" => Some(DashPattern {
-                intervals: vec![10., 4.],
-                offset: 0.,
-            }),
-            "twodash" | "6" => Some(DashPattern {
-                intervals: vec![8., 4., 2., 4.],
-                offset: 0.,
-            }),
-            _ => base_error("invalid grid line type"),
+    }
+    p.col = color_values(field(x, "col"), &p.col);
+    p.fill = color_values(field(x, "fill"), &p.fill);
+    p.width = num(field(x, "lwd"), p.width);
+    p.size = num(field(x, "fontsize"), p.size * 72. / frame.dpi) * frame.dpi / 72.
+        * num(field(x, "cex"), 1.);
+    p.alpha *= num(field(x, "alpha"), 1.);
+    if p.width < 0.
+        || p.width > f32::MAX as f64
+        || p.size <= 0.
+        || p.size > f32::MAX as f64
+        || !p.size.is_finite()
+        || !(0. ..=1.).contains(&p.alpha)
+    {
+        base_error("invalid grid graphical parameters");
+    }
+    let face = string(field(x, "fontface"), "");
+    if !face.is_empty() {
+        p.face = match face.as_str() {
+            "plain" | "1" => r_graphics_engine::FontFace::Plain,
+            "bold" | "2" => r_graphics_engine::FontFace::Bold,
+            "italic" | "3" => r_graphics_engine::FontFace::Italic,
+            "bold.italic" | "4" => r_graphics_engine::FontFace::BoldItalic,
+            _ => base_error("invalid grid fontface"),
         };
-        if field(x, "lineheight") != R_NilValue() {
-            p.lineheight = num(field(x, "lineheight"), 1.2);
-        }
-        p
+    }
+    let family = string(field(x, "fontfamily"), "");
+    if !family.is_empty() && family != "sans" {
+        base_error("grid currently supports the device sans font only");
+    }
+    let lty = string(field(x, "lty"), "solid");
+    p.dash = match lty.as_str() {
+        "solid" | "1" => None,
+        "dashed" | "2" => Some(DashPattern {
+            intervals: vec![6., 4.],
+            offset: 0.,
+        }),
+        "dotted" | "3" => Some(DashPattern {
+            intervals: vec![1., 3.],
+            offset: 0.,
+        }),
+        "dotdash" | "4" => Some(DashPattern {
+            intervals: vec![1., 3., 6., 3.],
+            offset: 0.,
+        }),
+        "longdash" | "5" => Some(DashPattern {
+            intervals: vec![10., 4.],
+            offset: 0.,
+        }),
+        "twodash" | "6" => Some(DashPattern {
+            intervals: vec![8., 4., 2., 4.],
+            offset: 0.,
+        }),
+        _ => base_error("invalid grid line type"),
+    };
+    if field(x, "lineheight") != R_NilValue() {
+        p.lineheight = num(field(x, "lineheight"), 1.2);
+    }
+    p
 }

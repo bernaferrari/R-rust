@@ -71,14 +71,8 @@ fn CHECK_CHAR_CLASSES(
         && !super::parse::tre_isctype(prev_c, trans_i.u.get_class()))
         || ((assertions & ASSERT_CHAR_CLASS) != 0
             && icase != 0
-            && !super::parse::tre_isctype(
-                super::parse::tre_tolower(prev_c),
-                trans_i.u.get_class(),
-            )
-            && !super::parse::tre_isctype(
-                super::parse::tre_toupper(prev_c),
-                trans_i.u.get_class(),
-            ))
+            && !super::parse::tre_isctype(super::parse::tre_tolower(prev_c), trans_i.u.get_class())
+            && !super::parse::tre_isctype(super::parse::tre_toupper(prev_c), trans_i.u.get_class()))
         || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
             && super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) != 0)
 }

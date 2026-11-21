@@ -123,17 +123,17 @@ pub fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_geterrmessage — geterrmessage().
 pub fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     super::native::error_buffer_entry(op, args, false)
+    super::native::error_buffer_entry(op, args, false)
 }
 
 /// do_seterrmessage — seterrmessage().
 pub fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     super::native::error_buffer_entry(op, args, true)
+    super::native::error_buffer_entry(op, args, true)
 }
 
 /// do_interruptsSuspended — get/set interrupts suspended flag.
 pub fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     {
+    {
         let orig = interrupts_suspended();
         ScalarLogical(orig as c_int)
     }

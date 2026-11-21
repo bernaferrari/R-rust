@@ -119,7 +119,7 @@ use crate::eval::attrib_core::getAttrib;
 // ---------------------------------------------------------------------------
 
 fn NA_STRING() -> SEXP {
-     crate::mainutils::relop::NA_STRING() 
+    crate::mainutils::relop::NA_STRING()
 }
 
 // ---------------------------------------------------------------------------

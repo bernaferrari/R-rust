@@ -165,28 +165,28 @@ pub(crate) fn set_string_elt(x: SEXP, index: R_xlen_t, value: SEXP) {
 pub(crate) fn alloc_vector(sexptype: crate::sexp::ffi::SEXPTYPE, len: c_int) -> SEXP {
     // SAFETY: grid entry points run inside the owning session; allocation
     // failures raise R errors rather than producing invalid objects.
-    unsafe { crate::sexp::constructors::Rf_allocVector(sexptype, len) }
+    crate::sexp::constructors::Rf_allocVector(sexptype, len)
 }
 
 /// Allocate a one-element REALSXP holding `value`.
 #[inline]
 pub(crate) fn scalar_real(value: c_double) -> SEXP {
     // SAFETY: see `alloc_vector`.
-    unsafe { crate::sexp::constructors::Rf_ScalarReal(value) }
+    crate::sexp::constructors::Rf_ScalarReal(value)
 }
 
 /// Allocate a one-element INTSXP holding `value`.
 #[inline]
 pub(crate) fn scalar_integer(value: c_int) -> SEXP {
     // SAFETY: see `alloc_vector`.
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(value) }
+    crate::sexp::constructors::Rf_ScalarInteger(value)
 }
 
 /// Allocate a one-element LGLSXP holding `value`.
 #[inline]
 pub(crate) fn scalar_logical(value: c_int) -> SEXP {
     // SAFETY: see `alloc_vector`.
-    unsafe { crate::sexp::constructors::Rf_ScalarLogical(value) }
+    crate::sexp::constructors::Rf_ScalarLogical(value)
 }
 
 /// Allocate a one-element STRSXP from Rust text.
@@ -223,7 +223,7 @@ pub(crate) fn protect(x: SEXP) -> crate::sexp::protect::ProtectGuard<'static> {
     // slot is claimed; foreign or reclaimed pointers raise an R error.
     let _ = checked(x);
     // SAFETY: `x` was just validated as a live registered node.
-    unsafe { crate::sexp::protect::protect(x) }
+    crate::sexp::protect::protect(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ pub(crate) fn get_attrib(x: SEXP, which: SEXP) -> SEXP {
     let _ = checked(x);
     let _ = checked(which);
     // SAFETY: both operands were just validated as live registered objects.
-    unsafe { crate::attrib_core::getAttrib(x, which) }
+    crate::attrib_core::getAttrib(x, which)
 }
 
 /// `Rf_inherits` on a checked, live object.
@@ -244,7 +244,7 @@ pub(crate) fn get_attrib(x: SEXP, which: SEXP) -> SEXP {
 pub(crate) fn inherits(x: SEXP, name: &std::ffi::CStr) -> bool {
     let _ = checked(x);
     // SAFETY: `x` was just validated as a live registered object.
-    let result = unsafe { crate::mainutils::objects::inherits2(x, name.as_ptr()) };
+    let result = crate::mainutils::objects::inherits2(x, name.as_ptr());
     result != 0
 }
 
@@ -254,7 +254,7 @@ pub(crate) fn class_gets(x: SEXP, class: SEXP) -> SEXP {
     let _ = checked(x);
     let _ = checked(class);
     // SAFETY: both operands were just validated as live registered objects.
-    unsafe { crate::attrib_core::R_classgets(x, class) }
+    crate::attrib_core::R_classgets(x, class)
 }
 
 /// `Rf_duplicate` on a checked, live object.
@@ -266,7 +266,7 @@ pub(crate) fn duplicate(x: SEXP) -> SEXP {
 }
 
 unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
-    unsafe { grid::L_pretty2(scale, n) }
+    grid::L_pretty2(scale, n)
 }
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {

@@ -61,35 +61,31 @@ fn set_mode_class(x: SEXP, class: &str) -> SEXP {
 
 /// GNU `as.hexmode(x)`.
 pub fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
-            return x;
-        }
-        match as_mode_integer(x, 16) {
-            Some(v) => set_mode_class(v, "hexmode"),
-            None => crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' cannot be coerced to class \"hexmode\"",
-            ),
-        }
+    let x = CAR(args);
+    if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
+        return x;
+    }
+    match as_mode_integer(x, 16) {
+        Some(v) => set_mode_class(v, "hexmode"),
+        None => crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' cannot be coerced to class \"hexmode\"",
+        ),
     }
 }
 
 /// GNU `as.octmode(x)`.
 pub fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
-            return x;
-        }
-        match as_mode_integer(x, 8) {
-            Some(v) => set_mode_class(v, "octmode"),
-            None => crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' cannot be coerced to class \"octmode\"",
-            ),
-        }
+    let x = CAR(args);
+    if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
+        return x;
+    }
+    match as_mode_integer(x, 8) {
+        Some(v) => set_mode_class(v, "octmode"),
+        None => crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' cannot be coerced to class \"octmode\"",
+        ),
     }
 }
 
@@ -134,22 +130,20 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
 }
 
 fn copy_mode_structure(out: SEXP, x: SEXP) {
-    unsafe {
-        use crate::sexp::attrib_core::{
-            R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
-        };
-        let dim = getAttrib(x, R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() {
-            setAttrib(out, R_DimSymbol(), dim);
-        }
-        let dn = getAttrib(x, R_DimNamesSymbol());
-        if !dn.is_null() && dn != R_NilValue() {
-            setAttrib(out, R_DimNamesSymbol(), dn);
-        }
-        let nm = getAttrib(x, R_NamesSymbol());
-        if !nm.is_null() && nm != R_NilValue() {
-            setAttrib(out, R_NamesSymbol(), nm);
-        }
+    use crate::sexp::attrib_core::{
+        R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+    };
+    let dim = getAttrib(x, R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() {
+        setAttrib(out, R_DimSymbol(), dim);
+    }
+    let dn = getAttrib(x, R_DimNamesSymbol());
+    if !dn.is_null() && dn != R_NilValue() {
+        setAttrib(out, R_DimNamesSymbol(), dn);
+    }
+    let nm = getAttrib(x, R_NamesSymbol());
+    if !nm.is_null() && nm != R_NilValue() {
+        setAttrib(out, R_NamesSymbol(), nm);
     }
 }
 
@@ -185,13 +179,11 @@ pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
 }
 
 pub(crate) fn mode_keep_str(args: SEXP) -> bool {
-    unsafe {
-        let rest = CDR(args);
-        if rest.is_null() || rest == R_NilValue() {
-            return false;
-        }
-        crate::mainutils::coerce::asLogical(CAR(rest)) == 1
+    let rest = CDR(args);
+    if rest.is_null() || rest == R_NilValue() {
+        return false;
     }
+    crate::mainutils::coerce::asLogical(CAR(rest)) == 1
 }
 
 /// GNU `as.character.hexmode`: unpadded `%x`; copy dim only if `keepStr`.
@@ -510,17 +502,15 @@ fn string_elt_or(x: &SEXP, fallback: &str) -> String {
 
 /// `asInteger` for the internal numeric arguments.
 fn int_or_na(x: &SEXP) -> i32 {
-    unsafe {
-        if !x.is_null() && *x != R_NilValue() {
-            if TYPEOF(*x) == SEXPTYPE::INTSXP && XLENGTH(*x) > 0 {
-                return INTEGER_ELT(*x, 0);
-            }
-            if TYPEOF(*x) == SEXPTYPE::REALSXP && XLENGTH(*x) > 0 {
-                return REAL_ELT(*x, 0) as i32;
-            }
+    if !x.is_null() && *x != R_NilValue() {
+        if TYPEOF(*x) == SEXPTYPE::INTSXP && XLENGTH(*x) > 0 {
+            return INTEGER_ELT(*x, 0);
         }
-        NA_INTEGER
+        if TYPEOF(*x) == SEXPTYPE::REALSXP && XLENGTH(*x) > 0 {
+            return REAL_ELT(*x, 0) as i32;
+        }
     }
+    NA_INTEGER
 }
 
 /// C-style width adjustment with the flag modifiers.
@@ -1551,15 +1541,13 @@ fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
 /// GNU format retains names and array shape, excluding class and unrelated
 /// attributes. Character formatting follows the same contract as numeric.
 fn copy_format_shape(x: SEXP, result: SEXP) {
-    unsafe {
-        use crate::sexp::attrib_core::{
-            R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
-        };
-        for symbol in [R_NamesSymbol(), R_DimSymbol(), R_DimNamesSymbol()] {
-            let value = getAttrib(x, symbol);
-            if !value.is_null() && value != R_NilValue() {
-                setAttrib(result, symbol, value);
-            }
+    use crate::sexp::attrib_core::{
+        R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+    };
+    for symbol in [R_NamesSymbol(), R_DimSymbol(), R_DimNamesSymbol()] {
+        let value = getAttrib(x, symbol);
+        if !value.is_null() && value != R_NilValue() {
+            setAttrib(result, symbol, value);
         }
     }
 }
@@ -1676,15 +1664,15 @@ fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
 
 /// R's `weekdays(x)` for Date/POSIXct values.
 pub fn do_weekdays(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     calendar_label_builtin(args, CalendarLabel::Weekday) 
+    calendar_label_builtin(args, CalendarLabel::Weekday)
 }
 
 /// R's `months(x)` for Date/POSIXct values.
 pub fn do_months(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     calendar_label_builtin(args, CalendarLabel::Month) 
+    calendar_label_builtin(args, CalendarLabel::Month)
 }
 
 /// R's `quarters(x)` for Date/POSIXct values.
 pub fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     calendar_label_builtin(args, CalendarLabel::Quarter) 
+    calendar_label_builtin(args, CalendarLabel::Quarter)
 }

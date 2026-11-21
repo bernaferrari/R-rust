@@ -129,9 +129,7 @@ fn split_mut<'a>(buf: &'a mut [f64], lens: &[usize]) -> Vec<&'a mut [f64]> {
 
 #[inline]
 fn rchkusr() {
-    unsafe {
-        crate::main::errors::R_CheckUserInterrupt();
-    }
+    crate::main::errors::R_CheckUserInterrupt();
 }
 
 // ---------------------------------------------------------------------------

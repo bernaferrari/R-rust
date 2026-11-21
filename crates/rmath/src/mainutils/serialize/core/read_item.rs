@@ -15,7 +15,7 @@ pub fn ReadItemInternal(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
-     read_item_in_context(reader, ref_table, ReadContext::Data)
+    read_item_in_context(reader, ref_table, ReadContext::Data)
 }
 
 pub(crate) fn read_item_in_context(
@@ -29,7 +29,7 @@ pub(crate) fn read_item_in_context(
         return Err("read error: serialized object nesting exceeds 128 levels".into());
     }
     reader.item_depth += 1;
-    let result =  { read_item_body(reader, ref_table, context) };
+    let result = { read_item_body(reader, ref_table, context) };
     reader.item_depth -= 1;
     result
 }
@@ -219,7 +219,7 @@ pub(crate) fn read_bc_language(
         return Err("read error: bytecode language nesting exceeds 128 levels".into());
     }
     reader.item_depth += 1;
-    let result = (|| unsafe {
+    let result = (|| {
         if kind == 243 {
             // BCREPREF
             let index = reader.read_i32()?;
@@ -277,7 +277,7 @@ pub(crate) fn read_packed_string_vec(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
-    unsafe {
+    {
         let names_flag = reader.read_i32()?;
         if names_flag != 0 {
             return Err("names in persistent strings are not supported".into());
@@ -397,7 +397,7 @@ pub(crate) fn read_item_body(
     ref_table: &mut ReadRefTable,
     context: ReadContext,
 ) -> Result<SEXP, String> {
-     {
+    {
         let packed = reader.read_i32()?;
         let mut flags = ItemFlags {
             stype: 0,
@@ -436,7 +436,7 @@ pub(crate) fn read_list_item(
         hasattr,
         hastag,
     } = flags;
-    unsafe {
+    {
         let s = allocSExp(SEXPTYPE(stype));
         let _s_guard = protect(s);
         if hasattr != 0 {
@@ -468,7 +468,7 @@ pub(crate) fn read_closure_item(
         hasattr,
         ..
     } = flags;
-    unsafe {
+    {
         let s = allocSExp(SEXPTYPE::CLOSXP);
         let _s_guard = protect(s);
         if hasattr != 0 {
@@ -560,7 +560,7 @@ pub(crate) fn read_remaining_item(
         hastag,
     } = item;
     let flags = packed;
-    unsafe {
+    {
         if stype == PERSISTSXP {
             read_persistent_item(reader, ref_table, item)
         } else if stype == NILVALUE_SXP {
@@ -734,7 +734,7 @@ pub(crate) fn read_namespace_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let names = read_packed_string_vec(reader, ref_table)?;
         let pkg = first_string_elt(names);
         let env = if pkg.is_empty() || pkg == "base" {
@@ -880,7 +880,7 @@ pub(crate) fn read_integer_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         let len = reader.read_vector_length(4)?;
         // Plain logical scalars may share GNU's immutable singleton bank.
         // Serialized metadata and noncanonical integer representations still
@@ -921,7 +921,7 @@ pub(crate) fn read_real_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         let len = reader.read_vector_length(8)?;
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
@@ -950,7 +950,7 @@ pub(crate) fn read_complex_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         let len = reader.read_vector_length(16)?;
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
@@ -1024,7 +1024,7 @@ pub(crate) fn read_raw_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         let len = reader.read_vector_length(1)?;
         let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
         let _s_guard = protect(s);
@@ -1047,7 +1047,7 @@ pub(crate) fn read_bytecode_source_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let repeated = reader.read_vector_length(4)?;
         let reps = Rf_allocVector(SEXPTYPE::VECSXP, repeated);
         let _reps = protect(reps);
@@ -1158,7 +1158,7 @@ pub(crate) fn read_s4_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         // GNU serialize.c: S4SXP is attributes-only; allocS4Object + InAttrib.
         let s = allocSExp(SEXPTYPE::S4SXP);
         let _s_guard = protect(s);
@@ -1179,7 +1179,7 @@ pub(crate) fn read_altrep_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let ItemFlags { levs, isobj, .. } = item;
-    unsafe {
+    {
         let info = ReadItemInternal(reader, ref_table)?;
         let _info = protect(info);
         let state = ReadItemInternal(reader, ref_table)?;

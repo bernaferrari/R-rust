@@ -327,25 +327,23 @@ pub(crate) fn lazy_load_db_fetch_value(
     datafile: SEXP,
     compressed: SEXP,
 ) -> Result<SEXP, String> {
-    unsafe {
-        let args = Rf_cons(
-            key,
-            Rf_cons(
-                datafile,
-                Rf_cons(compressed, Rf_cons(R_NilValue(), R_NilValue())),
-            ),
-        );
-        let value = crate::mainutils::serialize::do_lazyLoadDBfetch(
-            R_NilValue(),
-            R_NilValue(),
-            args,
-            R_NilValue(),
-        );
-        if value.is_null() {
-            Err("lazy-load database fetch returned NULL".to_string())
-        } else {
-            Ok(value)
-        }
+    let args = Rf_cons(
+        key,
+        Rf_cons(
+            datafile,
+            Rf_cons(compressed, Rf_cons(R_NilValue(), R_NilValue())),
+        ),
+    );
+    let value = crate::mainutils::serialize::do_lazyLoadDBfetch(
+        R_NilValue(),
+        R_NilValue(),
+        args,
+        R_NilValue(),
+    );
+    if value.is_null() {
+        Err("lazy-load database fetch returned NULL".to_string())
+    } else {
+        Ok(value)
     }
 }
 
@@ -354,7 +352,7 @@ pub(crate) fn eager_lazy_load_package_db(
     envir: SEXP,
     skip: &[&str],
 ) -> Result<(), String> {
-     lazy_lazy_load_package_db(filebase, envir, skip) 
+    lazy_lazy_load_package_db(filebase, envir, skip)
 }
 
 pub(crate) fn lazy_lazy_load_package_db(

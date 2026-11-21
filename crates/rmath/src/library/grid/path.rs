@@ -46,7 +46,7 @@ impl GridPathGuard {
     // mode-switch bridge whose raw device contract is discharged by callers
     // passing the `getDevice` result.
     unsafe fn enter(dd: pGEDevDesc) -> Self {
-        unsafe { ge::GEMode(1, dd) };
+        ge::GEMode(1, dd);
         setGridStateElement(dd, GSS_RESOLVINGPATH, scalar_logical(1));
         Self { dd }
     }
@@ -57,7 +57,7 @@ impl Drop for GridPathGuard {
         setGridStateElement(self.dd, GSS_RESOLVINGPATH, scalar_logical(0));
         // SAFETY: `dd` was a live device when the guard was entered; engine
         // mode teardown mirrors `enter`.
-        unsafe { ge::GEMode(0, self.dd) };
+        ge::GEMode(0, self.dd);
     }
 }
 
@@ -83,7 +83,7 @@ pub fn L_stroke(path: SEXP) -> SEXP {
     // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
     // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
-    unsafe { ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd) };
+    ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd);
 
     R_NilValue()
 }
@@ -108,7 +108,12 @@ pub fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
     // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
-    unsafe { ge::GEFill(path, integer_elt(rule, 0), _gc.as_ptr() as *const c_void, dd) };
+    ge::GEFill(
+        path,
+        integer_elt(rule, 0),
+        _gc.as_ptr() as *const c_void,
+        dd,
+    );
 
     if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
         let pattern_ref = getListElement(
@@ -148,7 +153,12 @@ pub fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
     // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
-    unsafe { ge::GEFillStroke(path, integer_elt(rule, 0), _gc.as_ptr() as *const c_void, dd) };
+    ge::GEFillStroke(
+        path,
+        integer_elt(rule, 0),
+        _gc.as_ptr() as *const c_void,
+        dd,
+    );
 
     if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
         let pattern_ref = getListElement(

@@ -64,7 +64,7 @@ pub fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
 /// WarningMessage — look up a warning message from the database and call warningcall.
 /// Matches C: `void WarningMessage(SEXP call, R_WARNING which_warn, ...)`
 pub fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
-     {
+    {
         let messages = [
             "NAs introduced by coercion",
             "inaccurate integer conversion in coercion",
@@ -89,7 +89,7 @@ pub fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
 
 /// do_gettext — R's gettext() function (simplified, no i18n).
 pub fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     {
+    {
         // Simplified: just return the string as-is (no translation)
         let string = CADR(args);
         if isNull(string) != 0 || LENGTH(string) == 0 {
@@ -178,7 +178,7 @@ fn bindtextdomain_impl(
     domain_ptr: *const std::os::raw::c_char,
     dirname_ptr: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
-    unsafe { crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr) }
+    crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr)
 }
 
 #[cfg(any(target_os = "android", target_arch = "wasm32"))]

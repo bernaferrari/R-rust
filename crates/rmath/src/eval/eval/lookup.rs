@@ -12,16 +12,14 @@ pub(crate) unsafe fn resolve_call_function<'a>(
 ) -> Result<Sexp<'a>, String> {
     Ok({
         if fun.typeof_() == SEXPTYPE::SYMSXP {
-            match (unsafe {
-                /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-                find_fun_result(fun.clone(), rho.clone())
-            })? {
+            match (/* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */find_fun_result(fun.clone(), rho.clone()))?
+            {
                 Some(value) => value,
                 None => match primitive_for_symbol(fun.clone()) {
                     Some(primitive) => primitive,
-                    None => unsafe {
+                    None => {
                         crate::mainutils::errors::R_FunctionNotFoundError(fun.as_raw(), e.as_raw())
-                    },
+                    }
                 },
             }
         } else {
@@ -85,14 +83,13 @@ pub unsafe fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<
 /// top-level render shows `Error in f() : argument "x" is missing, with no
 /// default`. `R_getCurrentCall()` returns that innermost context call here.
 pub(crate) fn missing_arg_error(name: &str) -> ! {
-    unsafe {
-        let c_name = std::ffi::CString::new(name).unwrap_or_default();
-        crate::mainutils::errors::R_MissingArgError_c(
-            c_name.as_ptr(),
-            crate::mainutils::errors::R_getCurrentCall(),
-            c"evalError".as_ptr(),
-        );
-    }
+    let c_name = std::ffi::CString::new(name).unwrap_or_default();
+    crate::mainutils::errors::R_MissingArgError_c(
+        c_name.as_ptr(),
+        crate::mainutils::errors::R_getCurrentCall(),
+        c"evalError".as_ptr(),
+    );
+
     unreachable!("R_MissingArgError_c signals");
 }
 
@@ -107,12 +104,11 @@ pub(crate) unsafe fn find_var_result<'a>(
     symbol: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Option<Sexp<'a>>, String> {
-    if symbol.clone().as_raw() == unsafe { R_DotsSymbol() } {
+    if symbol.clone().as_raw() == R_DotsSymbol() {
         return Ok(None);
     }
-    let missing_symbol =
-        crate::sexp::symbol::symbol_name_from_ptr(symbol.clone().as_raw())
-            .map_or(true, |name| name.is_empty());
+    let missing_symbol = crate::sexp::symbol::symbol_name_from_ptr(symbol.clone().as_raw())
+        .map_or(true, |name| name.is_empty());
     if missing_symbol {
         missing_arg_error("");
     }
@@ -120,10 +116,8 @@ pub(crate) unsafe fn find_var_result<'a>(
     // GNU Rf_eval SYMSXP: DDVAL names (`..1`, `..2`, ...) go through
     // ddfindVar, not ordinary findVar.
     if crate::sexp::envir::dd_val(symbol.clone()).is_some() {
-        let Some(value) = (unsafe {
-            /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-            crate::sexp::envir::dd_find_var_safe(symbol.clone(), rho)
-        }) else {
+        // SAFETY: internal caller retains the live owner and its roots across this scoped operation.
+        let Some(value) = crate::sexp::envir::dd_find_var_safe(symbol.clone(), rho) else {
             return Ok(None);
         };
         if value.clone().as_raw() == R_MissingArg() {
@@ -137,10 +131,7 @@ pub(crate) unsafe fn find_var_result<'a>(
     // GNU Rf_eval SYMSXP: findVar is unforced. A MissingArg *binding* is
     // a missing formal. A promise whose forced value is the empty symbol
     // (lapply/vapply over formals) is a real value.
-    let binding = (unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        crate::sexp::envir::find_var_binding_result(symbol.clone(), rho.clone())
-    })?;
+    let binding = (/* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */crate::sexp::envir::find_var_binding_result(symbol.clone(), rho.clone()))?;
     let Some(binding) = binding else {
         return Ok(None);
     };
@@ -156,10 +147,8 @@ pub(crate) unsafe fn find_var_result<'a>(
     Ok(Some(binding))
 }
 pub(crate) fn mark_named_on_read(x: SEXP) {
-    unsafe {
-        if !x.is_null() && crate::sexp::accessors::NAMED(x) == 0 {
-            crate::sexp::accessors::SET_NAMED(x, 1);
-        }
+    if !x.is_null() && crate::sexp::accessors::NAMED(x) == 0 {
+        crate::sexp::accessors::SET_NAMED(x, 1);
     }
 }
 

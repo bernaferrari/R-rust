@@ -166,7 +166,7 @@
 #![allow(clippy::drop_non_drop)]
 #![allow(clippy::assertions_on_constants)]
 #![allow(clippy::naive_bytecount)]
-#![allow(unused_unsafe)]
+#![warn(unused_unsafe)]
 #![allow(unknown_lints)]
 
 pub mod appl;

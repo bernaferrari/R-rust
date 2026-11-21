@@ -282,7 +282,7 @@ pub(crate) fn warn_if_non_multiple_recycling(a_len: R_xlen_t, b_len: R_xlen_t) {
 
 pub(crate) fn warn_simple(message: &str) {
     let cmsg = std::ffi::CString::new(message).unwrap_or_default();
-    unsafe { crate::mainutils::errors::Rf_warning(cmsg.as_ptr()) }
+    crate::mainutils::errors::Rf_warning(cmsg.as_ptr())
 }
 
 pub(crate) fn arithmetic_error(message: impl Into<String>) -> ! {
@@ -502,41 +502,39 @@ pub(crate) unsafe fn coerce_summary_posixlt_args(
     args: SEXP,
     rho: SEXP,
 ) -> SEXP {
-    unsafe {
-        let mut out = R_NilValue();
-        let mut tail: SEXP = std::ptr::null_mut();
-        let mut guards: Vec<_> = Vec::new();
-        let mut p = args;
-        while !p.is_null() && p != R_NilValue() {
-            let mut val = CAR(p);
-            if crate::mainutils::essentials::sexp_has_class(val, "POSIXlt")
-                && TYPEOF(val) == SEXPTYPE::VECSXP
-            {
-                let converted = crate::mainutils::essentials::do_as_POSIXct(
-                    call,
-                    op,
-                    Rf_cons(val, R_NilValue()),
-                    rho,
-                );
-                guards.push(protect(converted));
-                val = converted;
-            }
-            let cell = Rf_cons(val, R_NilValue());
-            guards.push(protect(cell));
-            if !TAG(p).is_null() && TAG(p) != R_NilValue() {
-                SETTAG(cell, TAG(p));
-            }
-            if out == R_NilValue() {
-                out = cell;
-            } else {
-                SETCDR(tail, cell);
-            }
-            tail = cell;
-            p = CDR(p);
+    let mut out = R_NilValue();
+    let mut tail: SEXP = std::ptr::null_mut();
+    let mut guards: Vec<_> = Vec::new();
+    let mut p = args;
+    while !p.is_null() && p != R_NilValue() {
+        let mut val = CAR(p);
+        if crate::mainutils::essentials::sexp_has_class(val, "POSIXlt")
+            && TYPEOF(val) == SEXPTYPE::VECSXP
+        {
+            let converted = crate::mainutils::essentials::do_as_POSIXct(
+                call,
+                op,
+                Rf_cons(val, R_NilValue()),
+                rho,
+            );
+            guards.push(protect(converted));
+            val = converted;
         }
-        let _guards = guards;
-        out
+        let cell = Rf_cons(val, R_NilValue());
+        guards.push(protect(cell));
+        if !TAG(p).is_null() && TAG(p) != R_NilValue() {
+            SETTAG(cell, TAG(p));
+        }
+        if out == R_NilValue() {
+            out = cell;
+        } else {
+            SETCDR(tail, cell);
+        }
+        tail = cell;
+        p = CDR(p);
     }
+    let _guards = guards;
+    out
 }
 
 pub(crate) unsafe fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {

@@ -328,11 +328,9 @@ pub fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `BIC(object)` for a `logLik`.
 pub fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = loglik_nobs(x);
-        Rf_ScalarReal(-2.0 * loglik_numeric(x) + loglik_df(x) * n.ln())
-    }
+    let x = CAR(args);
+    let n = loglik_nobs(x);
+    Rf_ScalarReal(-2.0 * loglik_numeric(x) + loglik_df(x) * n.ln())
 }
 
 /// GNU `logLik` identity for an already-tagged logLik.
@@ -369,27 +367,25 @@ pub(super) fn list_named_elt(list: SEXP, name: &str) -> SEXP {
 
 /// GNU `sigma(object)` for a list with deviance, nobs, coefficients.
 pub fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let dev = list_named_elt(x, "deviance");
-        let nobs = list_named_elt(x, "nobs");
-        let coef = list_named_elt(x, "coefficients");
-        if dev == R_NilValue() || nobs == R_NilValue() {
-            return R_NilValue();
-        }
-        let d = elt_real_safe(dev, 0);
-        let n = elt_real_safe(nobs, 0);
-        let p = if coef == R_NilValue() {
-            0.0
-        } else {
-            XLENGTH(coef) as f64
-        };
-        let den = n - p;
-        if den <= 0.0 {
-            return Rf_ScalarReal(f64::NAN);
-        }
-        Rf_ScalarReal((d / den).sqrt())
+    let x = CAR(args);
+    let dev = list_named_elt(x, "deviance");
+    let nobs = list_named_elt(x, "nobs");
+    let coef = list_named_elt(x, "coefficients");
+    if dev == R_NilValue() || nobs == R_NilValue() {
+        return R_NilValue();
     }
+    let d = elt_real_safe(dev, 0);
+    let n = elt_real_safe(nobs, 0);
+    let p = if coef == R_NilValue() {
+        0.0
+    } else {
+        XLENGTH(coef) as f64
+    };
+    let den = n - p;
+    if den <= 0.0 {
+        return Rf_ScalarReal(f64::NAN);
+    }
+    Rf_ScalarReal((d / den).sqrt())
 }
 
 /// GNU `extractAIC(fit, k)` glm-style: `c(edf, aic + (k-2)*edf)`.
@@ -462,18 +458,16 @@ pub fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `variable.names(object)` — `names(coefficients)`.
 pub fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let c = list_named_elt(obj, "coefficients");
-        if c != R_NilValue() {
-            let names =
-                crate::sexp::attrib_core::getAttrib(c, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                return names;
-            }
+    let obj = CAR(args);
+    let c = list_named_elt(obj, "coefficients");
+    if c != R_NilValue() {
+        let names =
+            crate::sexp::attrib_core::getAttrib(c, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            return names;
         }
-        crate::mainutils::essentials::do_colnames(call, op, args, rho)
     }
+    crate::mainutils::essentials::do_colnames(call, op, args, rho)
 }
 
 /// GNU `confint(object)` from `$coefficients` and `$vcov`.
@@ -794,18 +788,16 @@ pub fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `hatvalues(model)` — extract `$hat` or compute `hat(residuals)`.
 pub fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let h = list_named_elt(obj, "hat");
-        if h != R_NilValue() {
-            return h;
-        }
-        let x = list_named_elt(obj, "x");
-        if x != R_NilValue() {
-            return do_hat(_call, _op, Rf_cons(x, R_NilValue()), rho);
-        }
-        R_NilValue()
+    let obj = CAR(args);
+    let h = list_named_elt(obj, "hat");
+    if h != R_NilValue() {
+        return h;
     }
+    let x = list_named_elt(obj, "x");
+    if x != R_NilValue() {
+        return do_hat(_call, _op, Rf_cons(x, R_NilValue()), rho);
+    }
+    R_NilValue()
 }
 
 /// GNU `influence.measures(model)` — cbind(dfbetas, dffit, cov.r, cook.d, hat).

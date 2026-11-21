@@ -255,21 +255,13 @@ pub fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         for i in 0..maxn {
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformLocn(x,
-                y,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd, &transform);
+            (xx, yy) = transformLocn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
             if as_device {
                 // SAFETY: `dd` is the live device; `toDevice*` are engine
                 // coordinate bridges over the device state.
-                unsafe {
-                    xx = toDeviceX(xx, GE_INCHES, dd);
-                    yy = toDeviceY(yy, GE_INCHES, dd);
-                }
+
+                xx = toDeviceX(xx, GE_INCHES, dd);
+                yy = toDeviceY(yy, GE_INCHES, dd);
             }
             set_real_elt(devx, i as R_xlen_t, xx);
             set_real_elt(devy, i as R_xlen_t, yy);
@@ -315,22 +307,13 @@ pub fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         for i in 0..maxn {
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformDimn(x,
-                y,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd,
-                rotationAngle);
+            (xx, yy) = transformDimn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, rotationAngle);
             if as_device {
                 // SAFETY: `dd` is the live device; `toDevice*` are engine
                 // coordinate bridges over the device state.
-                unsafe {
-                    xx = toDeviceWidth(xx, GE_INCHES, dd);
-                    yy = toDeviceHeight(yy, GE_INCHES, dd);
-                }
+
+                xx = toDeviceWidth(xx, GE_INCHES, dd);
+                yy = toDeviceHeight(yy, GE_INCHES, dd);
             }
             set_real_elt(devx, i as R_xlen_t, xx);
             set_real_elt(devy, i as R_xlen_t, yy);

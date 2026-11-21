@@ -141,7 +141,7 @@ pub unsafe fn vmmin(
     let result =
         minimize_bfgs(point, mask, &mut objective, settings, owner).unwrap_or_else(|message| {
             let message = std::ffi::CString::new(message).unwrap_or_default();
-            unsafe { Rf_error(message.as_ptr()) };
+            Rf_error(message.as_ptr());
             unreachable!("Rf_error does not return")
         });
     unsafe {

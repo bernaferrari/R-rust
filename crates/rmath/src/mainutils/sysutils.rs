@@ -311,7 +311,7 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
 /// interactive() — check if R is in interactive mode.
 pub unsafe fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE }) }
+    Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE })
 }
 
 /// tempdir() — return the temporary directory path.

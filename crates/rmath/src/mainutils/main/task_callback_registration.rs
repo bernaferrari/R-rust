@@ -205,13 +205,12 @@ pub(crate) unsafe extern "C-unwind" fn add(
             names.freeze().into_owned()?
         };
         access.with_native(|_| {
-            unsafe {
-                crate::sexp::attrib_core::setAttrib(
-                    result.as_raw(),
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names.as_raw(),
-                );
-            }
+            crate::sexp::attrib_core::setAttrib(
+                result.as_raw(),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names.as_raw(),
+            );
+
             Ok(())
         })?;
         result.into_owned()
@@ -244,9 +243,7 @@ pub(crate) unsafe extern "C-unwind" fn remove(which: SEXP) -> SEXP {
             None
         };
         let index = if name.is_none() {
-            Some(access.with_native(|_| {
-                Ok(unsafe { crate::mainutils::coerce::asInteger(which.as_raw()) })
-            })?)
+            Some(access.with_native(|_| Ok(crate::mainutils::coerce::asInteger(which.as_raw())))?)
         } else {
             None
         };
@@ -372,18 +369,16 @@ pub(crate) unsafe fn install(base_env: SEXP) {
             let expression = factory.call(&call, &arguments)?;
             let promise = factory.promise(&expression, &target)?;
             owner.require_active()?;
-            if !unsafe {
-                crate::sexp::envir::define_var_safe(symbol.clone(), promise.clone(), target.clone())
-            } {
+            if !crate::sexp::envir::define_var_safe(symbol.clone(), promise.clone(), target.clone())
+            {
                 return Err(SexpError::EvaluationFailed {
                     message: "cannot install task callback registration".into(),
                 });
             }
             if selector >= 3 {
                 owner.require_active()?;
-                unsafe {
-                    crate::sexp::accessors::SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
-                }
+
+                crate::sexp::accessors::SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
             }
         }
         Ok(())

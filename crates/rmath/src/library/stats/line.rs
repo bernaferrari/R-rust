@@ -149,7 +149,7 @@ pub unsafe fn tukeyline0(
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asInteger(x) }
+    crate::main::coerce::asInteger(x)
 }
 
 pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {

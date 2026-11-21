@@ -307,19 +307,17 @@ fn ncols(x: SEXP) -> c_int {
 /// Get extended length of x.
 #[inline]
 fn xlength(x: SEXP) -> R_xlen_t {
-    unsafe {
-        if isPairList(x) || isLanguage(x) {
-            crate::sexp::constructors::Rf_length(x) as R_xlen_t
-        } else {
-            XLENGTH(x)
-        }
+    if isPairList(x) || isLanguage(x) {
+        crate::sexp::constructors::Rf_length(x) as R_xlen_t
+    } else {
+        XLENGTH(x)
     }
 }
 
 /// Get the length as c_int.
 #[inline]
 fn length_int(x: SEXP) -> c_int {
-    unsafe { crate::sexp::constructors::Rf_length(x) }
+    crate::sexp::constructors::Rf_length(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -329,12 +327,10 @@ fn length_int(x: SEXP) -> c_int {
 /// Raise the NAMED level of x to at least v (like RAISE_NAMED in C).
 #[inline]
 fn RAISE_NAMED(x: SEXP, v: c_int) {
-    unsafe {
-        if !x.is_null() {
-            let cur = NAMED(x);
-            if v > cur {
-                SET_NAMED(x, v);
-            }
+    if !x.is_null() {
+        let cur = NAMED(x);
+        if v > cur {
+            SET_NAMED(x, v);
         }
     }
 }
@@ -342,10 +338,8 @@ fn RAISE_NAMED(x: SEXP, v: c_int) {
 /// Set NAMED to NAMEDMAX (2).
 #[inline]
 fn ENSURE_NAMEDMAX(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            SET_NAMED(x, 2);
-        }
+    if !x.is_null() {
+        SET_NAMED(x, 2);
     }
 }
 
@@ -419,34 +413,32 @@ fn r_error(msg: &str) {
 
 /// Convert SEXP to logical value (NA -> NA_LOGICAL, length-0 -> NA_LOGICAL).
 fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if isNull(x) {
-            return NA_LOGICAL;
-        }
-        let len = LENGTH(x);
-        if len == 0 {
-            return NA_LOGICAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP {
-            let v = INTEGER_ELT(x, 0);
-            if v == NA_INTEGER {
-                NA_LOGICAL
-            } else {
-                if v != 0 { TRUE } else { FALSE }
-            }
-        } else if t == SEXPTYPE::REALSXP {
-            let v = REAL_ELT(x, 0);
-            if v.is_nan() {
-                NA_LOGICAL
-            } else {
-                if v != 0.0 { TRUE } else { FALSE }
-            }
-        } else {
+    if isNull(x) {
+        return NA_LOGICAL;
+    }
+    let len = LENGTH(x);
+    if len == 0 {
+        return NA_LOGICAL;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        let v = INTEGER_ELT(x, 0);
+        if v == NA_INTEGER {
             NA_LOGICAL
+        } else {
+            if v != 0 { TRUE } else { FALSE }
         }
+    } else if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() {
+            NA_LOGICAL
+        } else {
+            if v != 0.0 { TRUE } else { FALSE }
+        }
+    } else {
+        NA_LOGICAL
     }
 }
 
@@ -456,10 +448,8 @@ fn asLogical(x: SEXP) -> c_int {
 
 /// Create a 2-element list: list2(a, b).
 fn list2(a: SEXP, b: SEXP) -> SEXP {
-    unsafe {
-        let cdr = Rf_cons(b, R_NilValue());
-        Rf_cons(a, cdr)
-    }
+    let cdr = Rf_cons(b, R_NilValue());
+    Rf_cons(a, cdr)
 }
 
 // ---------------------------------------------------------------------------
@@ -619,15 +609,13 @@ fn DropDims(x: SEXP) -> SEXP {
 
 /// Extract row names from a dimnames list.
 fn GetRowNames(dimnames: SEXP) -> SEXP {
-    unsafe {
-        if isNull(dimnames) {
-            return R_NilValue();
-        }
-        if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
-            VECTOR_ELT(dimnames, 0)
-        } else {
-            CAR(dimnames)
-        }
+    if isNull(dimnames) {
+        return R_NilValue();
+    }
+    if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
+        VECTOR_ELT(dimnames, 0)
+    } else {
+        CAR(dimnames)
     }
 }
 
@@ -748,13 +736,11 @@ fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
 
 /// If RHS (container or element) has NAMED > 0, set NAMED = NAMEDMAX.
 fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
-        let val = VECTOR_ELT(y, i);
-        if NAMED(y) != 0 || NAMED(val) != 0 {
-            ENSURE_NAMEDMAX(val);
-        }
-        val
+    let val = VECTOR_ELT(y, i);
+    if NAMED(y) != 0 || NAMED(val) != 0 {
+        ENSURE_NAMEDMAX(val);
     }
+    val
 }
 
 mod bracket;

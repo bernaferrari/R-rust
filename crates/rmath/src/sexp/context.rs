@@ -329,12 +329,10 @@ pub unsafe fn Rf_begincontext_in(
     let srcref = if let Some(sref) = active_srcref {
         ContextValue(Some(sref))
     } else {
-        let srcref = unsafe {
-            crate::sexp::attrib_core::getAttrib(
-                call.as_raw(),
-                crate::sexp::symbol::install_str("srcref"),
-            )
-        };
+        let srcref = crate::sexp::attrib_core::getAttrib(
+            call.as_raw(),
+            crate::sexp::symbol::install_str("srcref"),
+        );
         require_context_owner_live(owner_pin.as_ref());
         unsafe { ContextValue::from_raw_in(instance, srcref) }
     };

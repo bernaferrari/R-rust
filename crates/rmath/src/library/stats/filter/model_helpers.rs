@@ -302,20 +302,18 @@ pub unsafe fn do_get_all_vars(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 fn pack_allnames_args(expr: SEXP, functions: bool) -> SEXP {
-    unsafe {
-        let unique = Rf_ScalarLogical(1);
-        let maxn = Rf_ScalarInteger(-1);
-        let funs = Rf_ScalarLogical(if functions { 1 } else { 0 });
-        let a1 = Rf_cons(unique, R_NilValue());
-        let _a1 = protect(a1);
-        let a2 = Rf_cons(maxn, a1);
-        let _a2 = protect(a2);
-        let a3 = Rf_cons(funs, a2);
-        let _a3 = protect(a3);
-        let a4 = Rf_cons(expr, a3);
-        let _a4 = protect(a4);
-        a4
-    }
+    let unique = Rf_ScalarLogical(1);
+    let maxn = Rf_ScalarInteger(-1);
+    let funs = Rf_ScalarLogical(if functions { 1 } else { 0 });
+    let a1 = Rf_cons(unique, R_NilValue());
+    let _a1 = protect(a1);
+    let a2 = Rf_cons(maxn, a1);
+    let _a2 = protect(a2);
+    let a3 = Rf_cons(funs, a2);
+    let _a3 = protect(a3);
+    let a4 = Rf_cons(expr, a3);
+    let _a4 = protect(a4);
+    a4
 }
 
 /// GNU `all.vars(expr)` — `.Internal(all.names(..., functions=FALSE))`.

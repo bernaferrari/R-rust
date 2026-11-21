@@ -44,7 +44,7 @@ pub fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_int)
 
 #[inline]
 pub(crate) fn sexp_has_attributes(s: SEXP) -> bool {
-     {
+    {
         let attrib = ATTRIB(s);
         !attrib.is_null() && attrib != R_NilValue()
     }
@@ -52,7 +52,7 @@ pub(crate) fn sexp_has_attributes(s: SEXP) -> bool {
 
 #[inline]
 pub(crate) fn sexp_has_tag(s: SEXP) -> bool {
-     {
+    {
         let tag = TAG(s);
         !tag.is_null() && tag != R_NilValue()
     }
@@ -89,22 +89,20 @@ pub(crate) fn persistent_package_or_namespace(s: SEXP) -> bool {
 }
 
 pub(crate) fn persistent_hook_eligible(s: SEXP) -> bool {
-    unsafe {
-        match TYPEOF(s) {
-            t if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP => true,
-            t if t == SEXPTYPE::ENVSXP => {
-                s != R_GlobalEnv()
-                    && s != R_BaseEnv()
-                    && s != R_EmptyEnv()
-                    && !persistent_package_or_namespace(s)
-            }
-            _ => false,
+    match TYPEOF(s) {
+        t if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP => true,
+        t if t == SEXPTYPE::ENVSXP => {
+            s != R_GlobalEnv()
+                && s != R_BaseEnv()
+                && s != R_EmptyEnv()
+                && !persistent_package_or_namespace(s)
         }
+        _ => false,
     }
 }
 
 pub(crate) fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
-     invoke_persist_hook(s, None, hook)
+    invoke_persist_hook(s, None, hook)
 }
 
 pub(crate) fn invoke_persist_hook(
@@ -134,7 +132,7 @@ pub(crate) fn invoke_persist_hook(
 }
 
 pub(crate) fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
-     {
+    {
         if writer.persist_hook_func.is_some() {
             invoke_persist_hook(s, writer.persist_hook_func, writer.persist_hook_data)
         } else {
@@ -148,30 +146,28 @@ pub(crate) fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn SaveSpecialHook(item: SEXP) -> c_int {
-    unsafe {
-        if item.is_null() {
-            return NILVALUE_SXP;
-        }
-        if TYPEOF(item) == SEXPTYPE::NILSXP {
-            return NILVALUE_SXP;
-        }
-        if item == R_GlobalEnv() {
-            return GLOBALENV_SXP;
-        }
-        if item == R_UnboundValue() {
-            return UNBOUNDVALUE_SXP;
-        }
-        if item == R_MissingArg() {
-            return MISSINGARG_SXP;
-        }
-        if item == R_EmptyEnv() {
-            return EMPTYENV_SXP;
-        }
-        if item == R_BaseEnv() {
-            return BASEENV_SXP;
-        }
-        0
+    if item.is_null() {
+        return NILVALUE_SXP;
     }
+    if TYPEOF(item) == SEXPTYPE::NILSXP {
+        return NILVALUE_SXP;
+    }
+    if item == R_GlobalEnv() {
+        return GLOBALENV_SXP;
+    }
+    if item == R_UnboundValue() {
+        return UNBOUNDVALUE_SXP;
+    }
+    if item == R_MissingArg() {
+        return MISSINGARG_SXP;
+    }
+    if item == R_EmptyEnv() {
+        return EMPTYENV_SXP;
+    }
+    if item == R_BaseEnv() {
+        return BASEENV_SXP;
+    }
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +228,7 @@ pub(crate) fn write_bc_language(
     writer: &mut BinaryWriter,
     depth: usize,
 ) {
-     {
+    {
         if depth >= 128 {
             error("GNU bytecode language nesting exceeds 128 levels");
         }

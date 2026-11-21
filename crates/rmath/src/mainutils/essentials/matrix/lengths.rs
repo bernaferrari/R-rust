@@ -114,7 +114,7 @@ fn allocate<'s>(
     n: i64,
     check: &impl Fn(),
 ) -> SexpMut<'s> {
-    let output = unsafe { crate::sexp::constructors::Rf_allocVector3(kind, n) };
+    let output = crate::sexp::constructors::Rf_allocVector3(kind, n);
     check();
     SexpMut::try_from_checked(f.wrap(output).expect("lengths admitted output owner"))
         .expect("lengths fresh output mutation")

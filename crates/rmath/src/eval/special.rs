@@ -248,17 +248,15 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
 }
 
 unsafe fn list_append(s: SEXP, t: SEXP) -> SEXP {
-    unsafe {
-        if is_null(s) {
-            return t;
-        }
-        let mut r = s;
-        while !is_null(CDR(r)) {
-            r = CDR(r);
-        }
-        SETCDR(r, t);
-        s
+    if is_null(s) {
+        return t;
     }
+    let mut r = s;
+    while !is_null(CDR(r)) {
+        r = CDR(r);
+    }
+    SETCDR(r, t);
+    s
 }
 
 unsafe fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT {

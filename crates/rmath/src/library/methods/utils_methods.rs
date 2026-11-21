@@ -132,11 +132,9 @@ pub fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
 
 /// R_methods_test_NEW - create a new object of a given class for testing.
 pub fn R_methods_test_NEW(className: SEXP) -> SEXP {
-    unsafe {
-        let class_name = class_name_owned(className);
-        let class_def = crate::mainutils::objects::make_class_by_name(class_name.as_str());
-        crate::mainutils::objects::R_do_new_object(class_def.as_raw())
-    }
+    let class_name = class_name_owned(className);
+    let class_def = crate::mainutils::objects::make_class_by_name(class_name.as_str());
+    crate::mainutils::objects::R_do_new_object(class_def.as_raw())
 }
 
 #[cfg(test)]

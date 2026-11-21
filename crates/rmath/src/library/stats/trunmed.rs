@@ -54,13 +54,7 @@ fn siftup(mut l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &
 }
 
 /// Heap sort window[low..up] (1-based indices).
-fn R_heapsort(
-    low: i64,
-    up: i64,
-    window: &mut [f64],
-    outlist: &mut [i64],
-    nrlist: &mut [i64],
-) {
+fn R_heapsort(low: i64, up: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
     {
         let mut l = (up / 2) + 1;
         let mut u = up;

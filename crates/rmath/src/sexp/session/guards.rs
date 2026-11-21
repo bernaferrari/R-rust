@@ -75,7 +75,7 @@ impl CurrentInstanceGuard {
         });
         let previous_liveness =
             previous.map(|pointer| unsafe { crate::sexp::instance::instance_liveness(pointer) });
-        let previous_rng = unsafe { rmath_nmath::rng::swap_rng(None) };
+        let previous_rng = rmath_nmath::rng::swap_rng(None);
         let previous_state = rmath_nmath::state::take_state();
         unsafe { replace_current_instance(None) };
         Self {

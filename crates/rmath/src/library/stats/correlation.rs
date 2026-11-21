@@ -24,7 +24,7 @@ enum MissingRows {
 
 impl MissingRows {
     fn from_r(value: SEXP) -> Self {
-        match unsafe { crate::mainutils::coerce::asInteger(value) } {
+        match crate::mainutils::coerce::asInteger(value) {
             1 => Self::All,
             2 => Self::Complete,
             3 => Self::Pairwise,

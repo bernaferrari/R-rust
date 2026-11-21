@@ -398,15 +398,10 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
             return dest;
         };
         for y in 0..dr.height {
-            let sy = sample_coordinate(
-                y,
-                dr.height,
-                source_rect.y,
-                source_rect.height,
-                src_height,
-            );
+            let sy = sample_coordinate(y, dr.height, source_rect.y, source_rect.height, src_height);
             for x in 0..dr.width {
-                let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
+                let sx =
+                    sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
                 dest_px[(y * dr.width + x) as usize] = src_px[(sy * src_width + sx) as usize];
             }
         }
@@ -418,15 +413,10 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
             return dest;
         };
         for y in 0..dr.height {
-            let sy = sample_coordinate(
-                y,
-                dr.height,
-                source_rect.y,
-                source_rect.height,
-                src_height,
-            );
+            let sy = sample_coordinate(y, dr.height, source_rect.y, source_rect.height, src_height);
             for x in 0..dr.width {
-                let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
+                let sx =
+                    sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
                 dest_px[(y * dr.width + x) as usize] = src_px[(sy * src_width + sx) as usize];
             }
         }

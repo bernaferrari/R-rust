@@ -43,21 +43,19 @@ fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP
 /// GNU `c.Date(...)`:
 /// `.Date(c(unlist(lapply(list(...), function(e) unclass(as.Date(e))))))`
 pub fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let converted = convert_c_args(args, rho, &|v| {
-            if sexp_has_class(v, "Date") {
-                v
-            } else {
-                do_as_Date(call, op, Rf_cons(v, R_NilValue()), rho)
-            }
-        });
-        let _c = protect(converted);
-        let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
-        let _r = protect(r);
-        drop_empty_names(r);
-        set_single_class(r, "Date");
-        r
-    }
+    let converted = convert_c_args(args, rho, &|v| {
+        if sexp_has_class(v, "Date") {
+            v
+        } else {
+            do_as_Date(call, op, Rf_cons(v, R_NilValue()), rho)
+        }
+    });
+    let _c = protect(converted);
+    let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
+    let _r = protect(r);
+    drop_empty_names(r);
+    set_single_class(r, "Date");
+    r
 }
 
 /// GNU `c.POSIXct(...)`:
@@ -136,16 +134,13 @@ pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn drop_empty_names(x: SEXP) {
-    unsafe {
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names_have_label(names) {
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                R_NilValue(),
-            );
-        }
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names_have_label(names) {
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            R_NilValue(),
+        );
     }
 }
 
@@ -371,7 +366,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `is.numeric.Date` / `is.numeric.POSIXt`.
 pub fn do_is_numeric_Date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+    Rf_ScalarLogical(FALSE)
 }
 
 /// GNU `xtfrm.Date(x)` is `as.numeric(x)`.

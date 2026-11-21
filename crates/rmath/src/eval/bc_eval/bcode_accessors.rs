@@ -23,13 +23,11 @@ pub unsafe fn BCODE_CODE(x: SEXP) -> *const c_int {
 
 /// Get the constant pool from a BCODESXP.
 pub unsafe fn BCODE_CONSTS(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return R_NilValue();
-        }
-        // Constants are the second element
-        crate::sexp::accessors::VECTOR_ELT(x, 1)
+    if x.is_null() {
+        return R_NilValue();
     }
+    // Constants are the second element
+    crate::sexp::accessors::VECTOR_ELT(x, 1)
 }
 
 /// Whether this BCODESXP was built by the GNU R deserialization adapter.

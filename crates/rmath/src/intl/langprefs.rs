@@ -27,9 +27,7 @@ mod macos {
     fn _nl_locale_name_canonicalize(name: *mut c_char) {
         // Convert the language part to lowercase within the caller's
         // NUL-terminated buffer.
-        let Some(len) =
-            crate::intl::types::cstr(name).map(|s| s.to_bytes_with_nul().len())
-        else {
+        let Some(len) = crate::intl::types::cstr(name).map(|s| s.to_bytes_with_nul().len()) else {
             return;
         };
         let Some(bytes) = crate::intl::types::slice_mut(name as *mut u8, len) else {

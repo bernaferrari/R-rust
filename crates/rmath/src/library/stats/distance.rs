@@ -179,11 +179,9 @@ fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> 
         let b = x[idx2];
         if both_non_na(a, b) {
             if !both_finite(a, b) {
-                unsafe {
-                    Rf_warning(
-                        b"treating non-finite values as NA\0".as_ptr() as *const core::ffi::c_char
-                    );
-                }
+                Rf_warning(
+                    b"treating non-finite values as NA\0".as_ptr() as *const core::ffi::c_char
+                );
             } else {
                 if a != 0.0 || b != 0.0 {
                     count += 1;
@@ -277,11 +275,11 @@ fn R_distance(
 }
 
 fn as_integer(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 fn as_real(x: SEXP) -> c_double {
-    unsafe { crate::mainutils::coerce::asReal(x) }
+    crate::mainutils::coerce::asReal(x)
 }
 
 fn nrows(x: SEXP) -> c_int {
@@ -315,22 +313,20 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let rp = as_real(p);
     let n_val = (nr as i64 * (nr as i64 - 1) / 2) as c_int;
 
-    let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, n_val) };
-    let _ans_guard = unsafe { protect_sexp(ans) };
-    let x = unsafe {
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
-            crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
-        } else {
-            x
-        }
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, n_val);
+    let _ans_guard = protect_sexp(ans);
+    let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
+        crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+    } else {
+        x
     };
-    let _x_guard = unsafe { protect_sexp(x) };
+    let _x_guard = protect_sexp(x);
     // Match GNU admission before exposing any payload spans to the kernels.
     if !(EUCLIDEAN..=MINKOWSKI).contains(&method) {
-        unsafe { crate::main::errors::Rf_error(c"distance(): invalid distance".as_ptr()) };
+        crate::main::errors::Rf_error(c"distance(): invalid distance".as_ptr());
     }
     if method == MINKOWSKI && (!rp.is_finite() || rp <= 0.0) {
-        unsafe { crate::main::errors::Rf_error(c"distance(): invalid p".as_ptr()) };
+        crate::main::errors::Rf_error(c"distance(): invalid p".as_ptr());
     }
     let x_len = LENGTH(x);
     let x_slice: &[c_double] = if x_len == 0 {
@@ -347,12 +343,12 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     R_distance(x_slice, nr, nc, ans_slice, diag, method, rp);
 
     /* tack on attributes */
-    let names = unsafe { getAttrib(attrs, R_NamesSymbol()) };
+    let names = getAttrib(attrs, R_NamesSymbol());
     for i in 0..(LENGTH(attrs) as usize) {
-        let name_sexp = unsafe { STRING_ELT(names, i as R_xlen_t) };
+        let name_sexp = STRING_ELT(names, i as R_xlen_t);
         let name_cstr = unsafe { CHAR(name_sexp) };
         let sym = unsafe { crate::sexp::symbol::Rf_install(name_cstr) };
-        unsafe { setAttrib(ans, sym, VECTOR_ELT(attrs, i as R_xlen_t)) };
+        setAttrib(ans, sym, VECTOR_ELT(attrs, i as R_xlen_t));
     }
 
     ans

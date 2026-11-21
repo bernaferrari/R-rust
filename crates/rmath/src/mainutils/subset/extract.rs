@@ -704,28 +704,26 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 /// Fast-path extraction of a scalar integer or real index from SEXP.
 /// Returns the 1-based index, or -1 for NA / non-scalar / attributed values.
 pub(crate) fn scalarIndex(s: SEXP) -> R_xlen_t {
-    unsafe {
-        if isNull(s) {
-            return -1;
-        }
-        if !isNull(ATTRIB(s)) {
-            return -1;
-        }
+    if isNull(s) {
+        return -1;
+    }
+    if !isNull(ATTRIB(s)) {
+        return -1;
+    }
 
-        let t = TYPEOF(s);
-        if t == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.into()) != 0 {
-            let ival = SCALAR_IVAL(s);
-            if ival != NA_INTEGER {
-                ival as R_xlen_t
-            } else {
-                -1
-            }
-        } else if t == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.into()) != 0 {
-            let rval = SCALAR_DVAL(s);
-            if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
+    let t = TYPEOF(s);
+    if t == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.into()) != 0 {
+        let ival = SCALAR_IVAL(s);
+        if ival != NA_INTEGER {
+            ival as R_xlen_t
         } else {
             -1
         }
+    } else if t == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.into()) != 0 {
+        let rval = SCALAR_DVAL(s);
+        if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
+    } else {
+        -1
     }
 }
 
@@ -736,26 +734,24 @@ pub(crate) fn scalarIndex(s: SEXP) -> R_xlen_t {
 /// Search for `arg_sym` in the argument list `args`. If found, remove it
 /// from the list and return its value. Otherwise return R_NilValue.
 pub(crate) fn ExtractArg(mut args: SEXP, arg_sym: SEXP) -> SEXP {
-    unsafe {
-        let mut prev_arg = args;
-        let mut arg = args;
+    let mut prev_arg = args;
+    let mut arg = args;
 
-        while !isNull(arg) {
-            if TAG(arg) == arg_sym {
-                let val = CAR(arg);
-                if arg == prev_arg {
-                    /* found at head of args */
-                    args = CDR(args);
-                } else {
-                    SETCDR(prev_arg, CDR(arg));
-                }
-                return val;
+    while !isNull(arg) {
+        if TAG(arg) == arg_sym {
+            let val = CAR(arg);
+            if arg == prev_arg {
+                /* found at head of args */
+                args = CDR(args);
+            } else {
+                SETCDR(prev_arg, CDR(arg));
             }
-            prev_arg = arg;
-            arg = CDR(arg);
+            return val;
         }
-        R_NilValue()
+        prev_arg = arg;
+        arg = CDR(arg);
     }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -780,14 +776,12 @@ pub(crate) unsafe fn ExtractDropArg(el: SEXP, drop: *mut c_int) {
 
 /// Extract the `exact` argument. Returns 0 (not exact), 1 (exact), or -1 (NA).
 pub(crate) fn ExtractExactArg(args: SEXP) -> c_int {
-    unsafe {
-        let argval = ExtractArg(args, sym_Exact());
-        if isNull(argval) {
-            return 1;
-        } /* Default is true as from R 2.7.0 */
-        let exact = asLogical(argval);
-        if exact == NA_LOGICAL { -1 } else { exact }
-    }
+    let argval = ExtractArg(args, sym_Exact());
+    if isNull(argval) {
+        return 1;
+    } /* Default is true as from R 2.7.0 */
+    let exact = asLogical(argval);
+    if exact == NA_LOGICAL { -1 } else { exact }
 }
 
 // ---------------------------------------------------------------------------

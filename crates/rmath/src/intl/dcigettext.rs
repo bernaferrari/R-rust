@@ -235,12 +235,8 @@ fn dcigettext_internal(
     };
 
     // Find the message catalog for this domain and locale.
-    let domain_file = super::finddomain::_nl_find_domain(
-        effective_dirname,
-        locale,
-        effective_domain,
-        binding,
-    );
+    let domain_file =
+        super::finddomain::_nl_find_domain(effective_dirname, locale, effective_domain, binding);
 
     let domain_data = ptr_ref(domain_file)
         .map(|f| f.data as *const loaded_domain)
@@ -365,8 +361,7 @@ fn lookup_message_in_domain(
                 let (_orig_length, orig_offset) = table_entry(orig_tab, string_idx as usize);
                 if cstr(blob_str(orig_offset)) == Some(msgid_cstr) {
                     // Found! Get the translation.
-                    let (trans_length, trans_offset) =
-                        table_entry(trans_tab, string_idx as usize);
+                    let (trans_length, trans_offset) = table_entry(trans_tab, string_idx as usize);
 
                     if trans_length == 0 {
                         return ptr::null_mut();

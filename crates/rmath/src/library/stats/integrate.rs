@@ -143,7 +143,7 @@ unsafe fn eval(call: SEXP, rho: SEXP) -> SEXP {
 }
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
+    crate::main::coerce::coerceVector(x, type_)
 }
 
 // ---------------------------------------------------------------------------

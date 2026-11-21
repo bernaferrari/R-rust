@@ -25,7 +25,7 @@ pub fn L_killGrid() -> SEXP {
 
 pub fn dirtyGridDevice(dd: pGEDevDesc) {
     {
-        unsafe { GEdeviceDirty(dd) };
+        GEdeviceDirty(dd);
     }
 }
 
@@ -87,14 +87,12 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
             }
         }
 
-        unsafe {
-            calcViewportTransform(
-                vp,
-                viewportParent(vp),
-                topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
-                dd,
-            );
-        }
+        calcViewportTransform(
+            vp,
+            viewportParent(vp),
+            topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
+            dd,
+        );
 
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -104,30 +102,43 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
             if !isClipPath(viewportClipSXP(vp))
                 && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
             {
-                unsafe {
-                    Rf_warning(
-                        c"Turning clipping on or off within a (clipping) path is no honoured"
-                            .as_ptr(),
-                    )
-                };
+                Rf_warning(
+                    c"Turning clipping on or off within a (clipping) path is no honoured".as_ptr(),
+                );
             }
         } else if isClipPath(viewportClipSXP(vp)) {
             let parentClip = viewportClipRect(viewportParent(vp));
             let _parent_clip_guard = protect(parentClip);
             let currentClip = alloc_vector(SEXPTYPE::REALSXP, 4);
             let _current_clip_guard = protect(currentClip);
-            set_real_elt(currentClip, (0) as R_xlen_t, real_elt(parentClip, (0) as R_xlen_t));
-            set_real_elt(currentClip, (1) as R_xlen_t, real_elt(parentClip, (1) as R_xlen_t));
-            set_real_elt(currentClip, (2) as R_xlen_t, real_elt(parentClip, (2) as R_xlen_t));
-            set_real_elt(currentClip, (3) as R_xlen_t, real_elt(parentClip, (3) as R_xlen_t));
+            set_real_elt(
+                currentClip,
+                (0) as R_xlen_t,
+                real_elt(parentClip, (0) as R_xlen_t),
+            );
+            set_real_elt(
+                currentClip,
+                (1) as R_xlen_t,
+                real_elt(parentClip, (1) as R_xlen_t),
+            );
+            set_real_elt(
+                currentClip,
+                (2) as R_xlen_t,
+                real_elt(parentClip, (2) as R_xlen_t),
+            );
+            set_real_elt(
+                currentClip,
+                (3) as R_xlen_t,
+                real_elt(parentClip, (3) as R_xlen_t),
+            );
             set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
         } else {
             if viewportClip(vp) == NA_LOGICAL {
-                xx1 = unsafe { toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd) };
-                yy1 = unsafe { toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd) };
-                xx2 = unsafe { toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd) };
-                yy2 = unsafe { toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd) };
-                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
+                xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
+                yy1 = toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd);
+                xx2 = toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd);
+                yy2 = toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd);
+                GESetClip(xx1, yy1, xx2, yy2, dd);
             } else if viewportClip(vp) != 0 {
                 let rotationAngle = if TYPEOF(viewportRotation(vp)) == SEXPTYPE::REALSXP
                     && LENGTH(viewportRotation(vp)) > 0
@@ -141,7 +152,7 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     && rotationAngle != 270.0
                     && rotationAngle != 360.0
                 {
-                    unsafe { Rf_warning(c"cannot clip to rotated viewport".as_ptr()) };
+                    Rf_warning(c"cannot clip to rotated viewport".as_ptr());
                     let parentClip = viewportClipRect(viewportParent(vp));
                     let _parent_clip_guard = protect(parentClip);
                     xx1 = real_elt(parentClip, (0) as R_xlen_t);
@@ -152,7 +163,8 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     let mut transform: LTransform = [[0.0; 3]; 3];
                     for i in 0..3usize {
                         for j in 0..3usize {
-                            transform[i][j] = real_elt(viewportTransform(vp), (i + 3 * j) as R_xlen_t);
+                            transform[i][j] =
+                                real_elt(viewportTransform(vp), (i + 3 * j) as R_xlen_t);
                         }
                     }
                     let vpWidthCM = real_elt(viewportWidthCM(vp), 0);
@@ -185,28 +197,16 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     getViewportContext(vp, &mut vpc);
                     let gc_buf: [u8; 256] = [0; 256];
                     let gc = gc_buf.as_ptr() as pGEcontext;
-                    unsafe { gcontextFromViewport(vp, gc, dd) };
-                    (xx1, yy1) = transformLocn(x1,
-                        y1,
-                        0,
-                        vpc,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd, &transform);
-                    (xx2, yy2) = transformLocn(x2,
-                        y2,
-                        0,
-                        vpc,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd, &transform);
-                    xx1 = unsafe { toDeviceX(xx1, GE_INCHES, dd) };
-                    yy1 = unsafe { toDeviceY(yy1, GE_INCHES, dd) };
-                    xx2 = unsafe { toDeviceX(xx2, GE_INCHES, dd) };
-                    yy2 = unsafe { toDeviceY(yy2, GE_INCHES, dd) };
-                    unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
+                    gcontextFromViewport(vp, gc, dd);
+                    (xx1, yy1) =
+                        transformLocn(x1, y1, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+                    (xx2, yy2) =
+                        transformLocn(x2, y2, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+                    xx1 = toDeviceX(xx1, GE_INCHES, dd);
+                    yy1 = toDeviceY(yy1, GE_INCHES, dd);
+                    xx2 = toDeviceX(xx2, GE_INCHES, dd);
+                    yy2 = toDeviceY(yy2, GE_INCHES, dd);
+                    GESetClip(xx1, yy1, xx2, yy2, dd);
                 }
             } else {
                 let parentClip = viewportClipRect(viewportParent(vp));
@@ -221,7 +221,7 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     set_vector_elt(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
                 }
                 if pushing == 0 && !isClipPath(parentClipPath) {
-                    unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
+                    GESetClip(xx1, yy1, xx2, yy2, dd);
                 }
             }
 
@@ -277,9 +277,9 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
         let _vp_guard = protect(vp);
 
         // SAFETY: `vp` is a live object; `install` returns a live symbol.
-        let fcall = unsafe { lang2(install("pushedvp"), vp) };
+        let fcall = lang2(install("pushedvp"), vp);
         let _fcall_guard = protect(fcall);
-        let pushedvp = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let pushedvp = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _pushedvp_guard = protect(pushedvp);
         let pushedvp = doSetViewport(
             pushedvp,
@@ -315,11 +315,9 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     && LENGTH(resolving_path) > 0
                     && logical_elt(resolving_path, 0) != 0
                 {
-                    unsafe {
-                        Rf_warning(
-                            c"Clipping paths within a (clipping) path are not honoured".as_ptr(),
-                        )
-                    };
+                    Rf_warning(
+                        c"Clipping paths within a (clipping) path are not honoured".as_ptr(),
+                    );
                     set_vector_elt(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
                 } else {
                     let resolvedclip = resolveClipPath(clip, dd);
@@ -338,9 +336,7 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     && LENGTH(resolving_path) > 0
                     && logical_elt(resolving_path, 0) != 0
                 {
-                    unsafe {
-                        Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr())
-                    };
+                    Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
                     set_vector_elt(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
                 } else {
                     let resolvedmask = resolveMask(mask, dd);
@@ -360,31 +356,31 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
 
 pub(crate) fn noChildren(children: SEXP) -> bool {
     {
-        let fcall = unsafe { lang2(install("no.children"), children) };
+        let fcall = lang2(install("no.children"), children);
         let _fcall_guard = protect(fcall);
-        let result = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
-        let r = unsafe { asBool(result) } != 0;
+        let r = asBool(result) != 0;
         r
     }
 }
 
 pub(crate) fn childExists(name: SEXP, children: SEXP) -> bool {
     {
-        let fcall = unsafe { lang3(install("child.exists"), name, children) };
+        let fcall = lang3(install("child.exists"), name, children);
         let _fcall_guard = protect(fcall);
-        let result = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
-        let r = unsafe { asBool(result) } != 0;
+        let r = asBool(result) != 0;
         r
     }
 }
 
 pub(crate) fn childList(children: SEXP) -> SEXP {
     {
-        let fcall = unsafe { lang2(install("child.list"), children) };
+        let fcall = lang2(install("child.list"), children);
         let _fcall_guard = protect(fcall);
-        let result = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
         result
     }
@@ -394,9 +390,9 @@ pub(crate) fn pathMatch(path: SEXP, pathsofar: SEXP, strict: SEXP) -> bool {
     {
         let fcall = unsafe { lang4(install("pathMatch"), path, pathsofar, strict) };
         let _fcall_guard = protect(fcall);
-        let result = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
-        let r = unsafe { asBool(result) } != 0;
+        let r = asBool(result) != 0;
         r
     }
 }
@@ -406,9 +402,9 @@ pub(crate) fn growPath(pathsofar: SEXP, name: SEXP) -> SEXP {
         if isNull(pathsofar) {
             return name;
         }
-        let fcall = unsafe { lang3(install("growPath"), pathsofar, name) };
+        let fcall = lang3(install("growPath"), pathsofar, name);
         let _fcall_guard = protect(fcall);
-        let result = unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()) };
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
         result
     }
@@ -430,11 +426,9 @@ pub(crate) fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> 
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(
-                result,
-                1 as R_xlen_t,
-                unsafe { findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)) },
-            );
+            set_vector_elt(result, 1 as R_xlen_t, unsafe {
+                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp))
+            });
         } else {
             if logical_elt(strict, 0) != 0 {
                 set_vector_elt(result, 0 as R_xlen_t, zeroDepth);
@@ -450,12 +444,7 @@ pub(crate) fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> 
     }
 }
 
-pub(crate) fn findInChildren(
-    name: SEXP,
-    strict: SEXP,
-    children: SEXP,
-    depth: c_int,
-) -> SEXP {
+pub(crate) fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int) -> SEXP {
     {
         let childnames = childList(children);
         let _childnames_guard = protect(childnames);
@@ -557,11 +546,9 @@ pub(crate) fn findvppath(
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(
-                result,
-                1 as R_xlen_t,
-                unsafe { findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)) },
-            );
+            set_vector_elt(result, 1 as R_xlen_t, unsafe {
+                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp))
+            });
         } else {
             let found = findvppathInChildren(
                 path,
@@ -612,12 +599,11 @@ pub fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
             }
             vector_elt(found, 0 as R_xlen_t)
         } else {
-            unsafe {
-                Rf_error1(
-                    c"Viewport '%s' was not found".as_ptr(),
-                    char_ptr(string_elt(name, 0)),
-                );
-            }
+            Rf_error1(
+                c"Viewport '%s' was not found".as_ptr(),
+                char_ptr(string_elt(name, 0)),
+            );
+
             R_NilValue()
         }
     }
@@ -656,12 +642,11 @@ pub fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
             }
             vector_elt(found, 0 as R_xlen_t)
         } else {
-            unsafe {
-                Rf_error1(
-                    c"Viewport '%s' was not found".as_ptr(),
-                    char_ptr(string_elt(name, 0)),
-                );
-            }
+            Rf_error1(
+                c"Viewport '%s' was not found".as_ptr(),
+                char_ptr(string_elt(name, 0)),
+            );
+
             R_NilValue()
         }
     }
@@ -677,23 +662,18 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
         let mut gvp = gridStateElement(dd, GSS_VP);
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            unsafe {
-                Rf_error(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                        .as_ptr(),
-                )
-            };
+            Rf_error(
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
+            );
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
-                unsafe {
-                    Rf_error(
-                        c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                            .as_ptr(),
-                    )
-                };
+                Rf_error(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
+                        .as_ptr(),
+                );
             }
         }
 
@@ -717,12 +697,12 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
             unsafe { SET_TAG(t, install("envir")) };
             t = CDR(t);
             unsafe { SET_TAG(t, install("inherits")) };
-            unsafe { Rf_eval_with_gd(fcall, grid_eval_env(), dd) };
+            Rf_eval_with_gd(fcall, grid_eval_env(), dd);
         }
 
         let (devWidthCM, devHeightCM) = unsafe { getDeviceSize(dd) };
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
-            unsafe { calcViewportTransform(newvp, viewportParent(newvp), true, dd) };
+            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
         }
         setGridStateElement(dd, GSS_GPAR, vector_elt(gvp, PVP_PARENTGPAR as R_xlen_t));
         setGridStateElement(dd, GSS_VP, newvp);
@@ -743,7 +723,7 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
                 let yy1 = real_elt(parentClip, (1) as R_xlen_t);
                 let xx2 = real_elt(parentClip, (2) as R_xlen_t);
                 let yy2 = real_elt(parentClip, (3) as R_xlen_t);
-                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
+                GESetClip(xx1, yy1, xx2, yy2, dd);
             }
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -768,29 +748,24 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
         let mut gvp = gridStateElement(dd, GSS_VP);
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            unsafe {
-                Rf_error(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                        .as_ptr(),
-                )
-            };
+            Rf_error(
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
+            );
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
-                unsafe {
-                    Rf_error(
-                        c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                            .as_ptr(),
-                    )
-                };
+                Rf_error(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
+                        .as_ptr(),
+                );
             }
         }
 
         let (devWidthCM, devHeightCM) = unsafe { getDeviceSize(dd) };
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
-            unsafe { calcViewportTransform(newvp, viewportParent(newvp), true, dd) };
+            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
         }
         setGridStateElement(dd, GSS_GPAR, vector_elt(gvp, PVP_PARENTGPAR as R_xlen_t));
         setGridStateElement(dd, GSS_VP, newvp);
@@ -811,7 +786,7 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
                 let yy1 = real_elt(parentClip, (1) as R_xlen_t);
                 let xx2 = real_elt(parentClip, (2) as R_xlen_t);
                 let yy2 = real_elt(parentClip, (3) as R_xlen_t);
-                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
+                GESetClip(xx1, yy1, xx2, yy2, dd);
             }
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP

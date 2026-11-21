@@ -217,8 +217,8 @@ pub(crate) fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
             let y = factory
                 .wrap(alloc_vector(TYPEOF(x), n - 1))
                 .unwrap_or_else(|e| fail(e));
-            let mut y = crate::sexp::object::SexpMut::try_from_checked(y)
-                .unwrap_or_else(|e| fail(e));
+            let mut y =
+                crate::sexp::object::SexpMut::try_from_checked(y).unwrap_or_else(|e| fail(e));
             let mut k: R_xlen_t = 0;
             for i in 0..n {
                 if i != which {
@@ -245,7 +245,9 @@ pub(crate) fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
                 for i in 0..n {
                     if i != which {
                         let elt = xnames.try_string_elt(i).unwrap_or_else(|e| fail(e));
-                        ynames.try_set_string_elt(k, elt).unwrap_or_else(|e| fail(e));
+                        ynames
+                            .try_set_string_elt(k, elt)
+                            .unwrap_or_else(|e| fail(e));
                         k += 1;
                     }
                 }

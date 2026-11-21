@@ -67,9 +67,8 @@ fn burg_values(
 }
 
 fn error(msg: &'static [u8]) -> ! {
-    unsafe {
-        Rf_error(msg.as_ptr() as *const _);
-    }
+    Rf_error(msg.as_ptr() as *const _);
+
     unreachable!("Rf_error returned");
 }
 
@@ -81,21 +80,21 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 }
 
 pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
-    let x = unsafe { coerceVector(x, SEXPTYPE::REALSXP.as_c_int()) };
-    let _x_guard = unsafe { protect(x) };
+    let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+    let _x_guard = protect(x);
     let n = LENGTH(x);
-    let pmax = unsafe { asInteger(order) };
+    let pmax = asInteger(order);
     let pmax_usize = non_negative_usize(pmax, b"'order.max' must be non-negative\0");
     if n <= pmax {
         error(b"'order.max' must be smaller than the number of observations\0");
     }
 
-    let coefs = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax) };
-    let _coefs_guard = unsafe { protect(coefs) };
-    let var1 = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1) };
-    let _var1_guard = unsafe { protect(var1) };
-    let var2 = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1) };
-    let _var2_guard = unsafe { protect(var2) };
+    let coefs = Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax);
+    let _coefs_guard = protect(coefs);
+    let var1 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
+    let _var1_guard = protect(var1);
+    let var2 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
+    let _var2_guard = protect(var2);
 
     let x_values = unsafe { slice::from_raw_parts(REAL(x), n as usize) };
     let coefs_values = unsafe { slice::from_raw_parts_mut(REAL(coefs), pmax_usize * pmax_usize) };
@@ -103,13 +102,13 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     let var2_values = unsafe { slice::from_raw_parts_mut(REAL(var2), pmax_usize + 1) };
     burg_values(x_values, pmax_usize, coefs_values, var1_values, var2_values);
 
-    let ans = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 3) };
-    let _ans_guard = unsafe { protect(ans) };
-    unsafe {
-        SET_VECTOR_ELT(ans, 0, coefs);
-        SET_VECTOR_ELT(ans, 1, var1);
-        SET_VECTOR_ELT(ans, 2, var2);
-    }
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+    let _ans_guard = protect(ans);
+
+    SET_VECTOR_ELT(ans, 0, coefs);
+    SET_VECTOR_ELT(ans, 1, var1);
+    SET_VECTOR_ELT(ans, 2, var2);
+
     ans
 }
 

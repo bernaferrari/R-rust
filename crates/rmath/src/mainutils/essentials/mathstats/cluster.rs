@@ -675,24 +675,22 @@ fn reorder_dendrogram_sum(
 }
 
 fn midcache_dendrogram(node: SEXP) {
-    unsafe {
-        if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
-            return;
-        }
-        let k = XLENGTH(node);
-        if k < 1 {
-            return;
-        }
-        for i in 0..k {
-            midcache_dendrogram(VECTOR_ELT(node, i));
-        }
-        let mut mid_sum = 0.0;
-        for i in 0..k {
-            mid_sum += dendrogram_attr_real(VECTOR_ELT(node, i), c"midpoint", 0.0);
-        }
-        let first_members = dendrogram_attr_real(VECTOR_ELT(node, 0), c"members", 1.0);
-        set_dendrogram_real(node, c"midpoint", (first_members + mid_sum) / 2.0);
+    if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
+        return;
     }
+    let k = XLENGTH(node);
+    if k < 1 {
+        return;
+    }
+    for i in 0..k {
+        midcache_dendrogram(VECTOR_ELT(node, i));
+    }
+    let mut mid_sum = 0.0;
+    for i in 0..k {
+        mid_sum += dendrogram_attr_real(VECTOR_ELT(node, i), c"midpoint", 0.0);
+    }
+    let first_members = dendrogram_attr_real(VECTOR_ELT(node, 0), c"members", 1.0);
+    set_dendrogram_real(node, c"midpoint", (first_members + mid_sum) / 2.0);
 }
 
 pub fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

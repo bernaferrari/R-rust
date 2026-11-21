@@ -218,14 +218,12 @@ fn isValidString(s: SEXP) -> bool {
 }
 
 unsafe fn isValidStringF(s: SEXP) -> bool {
-    unsafe {
-        if !isValidString(s) {
-            return false;
-        }
-        let elt = STRING_ELT(s, 0);
-        // Check it's not NA_STRING (NA_STRING has type == CHARSXP and is marked)
-        !elt.is_null() && TYPEOF(elt) == SEXPTYPE::CHARSXP
+    if !isValidString(s) {
+        return false;
     }
+    let elt = STRING_ELT(s, 0);
+    // Check it's not NA_STRING (NA_STRING has type == CHARSXP and is marked)
+    !elt.is_null() && TYPEOF(elt) == SEXPTYPE::CHARSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -234,11 +232,9 @@ unsafe fn isValidStringF(s: SEXP) -> bool {
 
 /// Structural check that replaces inherits(op, "NativeSymbolInfo").
 unsafe fn isNativeSymbolInfo(op: SEXP) -> bool {
-    unsafe {
-        TYPEOF(op) == SEXPTYPE::VECSXP
-            && LENGTH(op) >= 2
-            && TYPEOF(VECTOR_ELT(op, 1)) == SEXPTYPE::EXTPTRSXP
-    }
+    TYPEOF(op) == SEXPTYPE::VECSXP
+        && LENGTH(op) >= 2
+        && TYPEOF(VECTOR_ELT(op, 1)) == SEXPTYPE::EXTPTRSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,7 +1147,7 @@ unsafe fn invoke_native_handler(
                 .validate_request(interface, operands.payload.len())
                 .map_err(|error| native_admission_error(error.to_string()))?;
         } else if native_extension_policy_enabled() {
-             native_extension_policy_error(call.as_raw(), &interface.to_string());
+            native_extension_policy_error(call.as_raw(), &interface.to_string());
         }
         let result = if let Some(routine) = routine {
             match interface {

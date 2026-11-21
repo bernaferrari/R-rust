@@ -111,14 +111,12 @@ impl OwnedSwitch {
         // Native condition/coercion adapters copy results; no R payload loan
         // survives callbacks. All branch targets and names are already owned.
         pin.require_live().map_err(|error| error.to_string())?;
-        let factor =
-            unsafe { crate::mainutils::connections::inherits_class(value.as_raw(), "factor") };
+        let factor = crate::mainutils::connections::inherits_class(value.as_raw(), "factor");
         pin.require_live().map_err(|error| error.to_string())?;
         if factor {
-            unsafe {
-                crate::mainutils::errors::warningcall(self.call.as_raw(),
+            crate::mainutils::errors::warningcall(self.call.as_raw(),
                 c"EXPR is a \"factor\", treated as integer.\n Consider using 'switch(as.character( * ), ...)' instead.".as_ptr());
-            }
+
             pin.require_live().map_err(|error| error.to_string())?;
         }
         if let Some(selector) = selector {
@@ -155,7 +153,7 @@ impl OwnedSwitch {
         if self.numeric.len() == 1 {
             self.warn_empty(pin)?;
         }
-        let index = unsafe { crate::main::coerce::asInteger(value.as_raw()) };
+        let index = crate::main::coerce::asInteger(value.as_raw());
         pin.require_live().map_err(|error| error.to_string())?;
         let which = if index == NA_INTEGER || index < 1 || index as usize > self.numeric.len() {
             self.numeric
@@ -173,12 +171,12 @@ impl OwnedSwitch {
 
     fn warn_empty(&self, pin: &crate::sexp::owner::OwnerPin) -> Result<(), String> {
         pin.require_live().map_err(|error| error.to_string())?;
-        unsafe {
-            crate::mainutils::errors::warningcall(
-                self.call.as_raw(),
-                c"'switch' with no alternatives".as_ptr(),
-            );
-        }
+
+        crate::mainutils::errors::warningcall(
+            self.call.as_raw(),
+            c"'switch' with no alternatives".as_ptr(),
+        );
+
         pin.require_live().map_err(|error| error.to_string())
     }
 }

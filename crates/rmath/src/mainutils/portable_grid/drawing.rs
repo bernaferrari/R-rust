@@ -347,9 +347,7 @@ pub(crate) fn draw_commands(
                 let check_overlap = num(field(data, "check.overlap"), 0.) != 0.;
                 // SAFETY: audited boundary — label decoding reads a live
                 // argument under the active runtime.
-                let labels = unsafe {
-                    crate::mainutils::plotmath::labels(field(data, "label"))
-                };
+                let labels = unsafe { crate::mainutils::plotmath::labels(field(data, "label")) };
                 let count = labels.len();
                 if count == 0 {
                     return out;

@@ -50,10 +50,7 @@ struct tre_tag_states_t {
 }
 
 // Construct every field before publishing a child copied during tag insertion.
-fn tre_tagged_child(
-    mem: mem::tre_mem_t,
-    node: *const tre_ast_node_t,
-) -> *mut tre_ast_node_t {
+fn tre_tagged_child(mem: mem::tre_mem_t, node: *const tre_ast_node_t) -> *mut tre_ast_node_t {
     unsafe {
         let child =
             mem::tre_mem_alloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
@@ -127,11 +124,7 @@ fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_in
     }
 }
 
-fn tre_add_tag_right(
-    mem: mem::tre_mem_t,
-    node: *mut tre_ast_node_t,
-    tag_id: c_int,
-) -> c_int {
+fn tre_add_tag_right(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
     unsafe {
         let c = mem::tre_mem_alloc(mem, std::mem::size_of::<tre_catenation_t>())
             as *mut tre_catenation_t;
@@ -2015,12 +2008,7 @@ fn tre_ast_to_tnfa(
 
 // ===== Main compile function =====
 
-pub fn tre_compile(
-    preg: *mut regex_t,
-    regex: *const tre_char_t,
-    n: usize,
-    cflags: c_int,
-) -> c_int {
+pub fn tre_compile(preg: *mut regex_t, regex: *const tre_char_t, n: usize, cflags: c_int) -> c_int {
     tre_compile_with_workspace(
         preg,
         regex,
@@ -2071,8 +2059,7 @@ pub(crate) fn tre_compile_owned(
         re_nsub: 0,
         value: ptr::null_mut(),
     };
-    let status =
-        tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables));
+    let status = tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables));
     if status == REG_OK {
         Ok(CompiledTre {
             preg,
@@ -2102,9 +2089,7 @@ fn allocate_transition_table(
     }
 }
 
-fn allocate_tnfa(
-    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
-) -> *mut tre_tnfa_t {
+fn allocate_tnfa(storage: &mut Option<&mut super::owned_arena::OwnedArena>) -> *mut tre_tnfa_t {
     if let Some(storage) = storage {
         // Exact retained cells are zeroed and 16-byte aligned, as required by
         // this pointer/integer descriptor. Its arena outlives nested cleanup.

@@ -664,12 +664,7 @@ pub(crate) fn R_SockOpen(port: c_int) -> c_int {
 
 /// R_SockListen - listen on a server socket with timeout (accept via select)
 /// Signature: int R_SockListen(int sockp, char *buf, int len, int timeout)
-pub(crate) fn R_SockListen(
-    sockp: c_int,
-    buf: *mut c_char,
-    len: c_int,
-    timeout: c_int,
-) -> c_int {
+pub(crate) fn R_SockListen(sockp: c_int, buf: *mut c_char, len: c_int, timeout: c_int) -> c_int {
     unsafe {
         check_init();
 

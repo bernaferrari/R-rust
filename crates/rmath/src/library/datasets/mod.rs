@@ -104,7 +104,7 @@ fn current_base() -> Result<Sexp<'static>, String> {
 }
 
 fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
             .sexp(crate::sexp::envir::R_BaseNamespace())?
             .into_owned()
@@ -205,7 +205,7 @@ fn publish_namespace(access: &RuntimeAccess, namespace: &Sexp<'static>) -> SexpR
 
 fn attach_environment(access: &RuntimeAccess, environment: &Sexp<'static>) -> SexpResult<()> {
     access.domain().link(environment)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::sexp::envir::lock_environment_raw(environment.as_raw());
         crate::mainutils::essentials::attach_package_env(environment.as_raw());
         Ok(())
@@ -222,7 +222,7 @@ fn set_attribute(
     domain.link(value)?;
     domain.link(attribute)?;
     let name = symbol(access, name)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::sexp::attrib_core::setAttrib(value.as_raw(), name.as_raw(), attribute.as_raw());
         Ok(())
     })
@@ -242,7 +242,7 @@ fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<Sexp<'stat
 
 fn compression(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<i32> {
     access.domain().link(value)?;
-    access.with_native(|_| unsafe { Ok(crate::mainutils::coerce::asInteger(value.as_raw())) })
+    access.with_native(|_| Ok(crate::mainutils::coerce::asInteger(value.as_raw())))
 }
 
 #[cfg(test)]

@@ -21,27 +21,25 @@ pub fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `packageStartupMessage(...)` — startup message.
 pub fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let output = condition_message_text(args, &["domain", "appendLF"]);
-        let message = if output.ends_with('\n') {
-            output
-        } else {
-            format!("{output}\n")
-        };
-        let condition = super::conditions::simple_condition(
-            &message,
-            &[
-                "packageStartupMessage",
-                "simpleMessage",
-                "message",
-                "condition",
-            ],
-        );
-        let _c = protect(condition);
-        let wrapped = Rf_cons(condition, R_NilValue());
-        let _w = protect(wrapped);
-        super::conditions::do_message(call, op, wrapped, rho)
-    }
+    let output = condition_message_text(args, &["domain", "appendLF"]);
+    let message = if output.ends_with('\n') {
+        output
+    } else {
+        format!("{output}\n")
+    };
+    let condition = super::conditions::simple_condition(
+        &message,
+        &[
+            "packageStartupMessage",
+            "simpleMessage",
+            "message",
+            "condition",
+        ],
+    );
+    let _c = protect(condition);
+    let wrapped = Rf_cons(condition, R_NilValue());
+    let _w = protect(wrapped);
+    super::conditions::do_message(call, op, wrapped, rho)
 }
 
 // ---------------------------------------------------------------------------

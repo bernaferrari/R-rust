@@ -223,16 +223,13 @@ pub(crate) unsafe fn rewritten_level_labels(f: SEXP) -> Vec<String> {
 /// logical/integer/real/complex/raw make it (the rest error like stock's
 /// final else).
 pub(crate) unsafe fn relop_operand_to_character(x: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            return x;
-        }
-        if is_numeric_operand(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP || TYPEOF(x) == SEXPTYPE::RAWSXP
-        {
-            return crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.into());
-        }
-        arithmetic_error("comparison of these types is not implemented")
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
+        return x;
     }
+    if is_numeric_operand(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP || TYPEOF(x) == SEXPTYPE::RAWSXP {
+        return crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.into());
+    }
+    arithmetic_error("comparison of these types is not implemented")
 }
 
 /// stock Ops.factor for unordered factors: `==`/`!=` compare level strings

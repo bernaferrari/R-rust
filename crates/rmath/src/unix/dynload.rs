@@ -64,8 +64,7 @@ const RTLD_LOCAL: c_int = 0x0;
 // ---------------------------------------------------------------------------
 
 struct OsDynSymbolTable {
-    loadLibrary:
-        Option<extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
+    loadLibrary: Option<extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
     dlsym_fn: Option<extern "C" fn(*mut DllInfo, *const c_char) -> DL_FUNC>,
     closeLibrary: Option<extern "C" fn(*mut c_void)>,
     getError: Option<extern "C" fn(*mut c_char, c_int)>,

@@ -226,10 +226,8 @@ fn with_httpd_state<R>(f: impl FnOnce(&mut HttpdRuntimeState) -> R) -> R {
 // ============================================================
 
 fn R_FindNamespace(_name: SEXP) -> SEXP {
-    unsafe {
-        Rf_error(b"HTTPD namespace lookup is not implemented\0".as_ptr() as *const c_char);
-        R_NilValue()
-    }
+    Rf_error(b"HTTPD namespace lookup is not implemented\0".as_ptr() as *const c_char);
+    R_NilValue()
 }
 
 fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
@@ -244,23 +242,19 @@ fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_i
 }
 
 fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe {
-        let cell = Rf_cons(car, cdr);
-        if !cell.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        cell
+    let cell = Rf_cons(car, cdr);
+    if !cell.is_null() {
+        crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
     }
+    cell
 }
 
 fn SET_TAG(x: SEXP, y: SEXP) {
-    unsafe {
-        SETTAG(x, y);
-    }
+    SETTAG(x, y);
 }
 
 fn list4(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
-    unsafe { Rf_cons(a, Rf_cons(b, Rf_cons(c, Rf_cons(d, R_NilValue())))) }
+    Rf_cons(a, Rf_cons(b, Rf_cons(c, Rf_cons(d, R_NilValue()))))
 }
 
 fn addInputHandler(
@@ -269,10 +263,8 @@ fn addInputHandler(
     _handler: Option<unsafe fn(*mut c_void)>,
     _activity: c_int,
 ) -> *mut c_void {
-    unsafe {
-        Rf_error(b"HTTPD input handlers are not implemented\0".as_ptr() as *const c_char);
-        std::ptr::null_mut()
-    }
+    Rf_error(b"HTTPD input handlers are not implemented\0".as_ptr() as *const c_char);
+    std::ptr::null_mut()
 }
 
 fn removeInputHandler(_handlers: *mut c_void, _ih: *mut c_void) {}

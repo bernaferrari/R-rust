@@ -104,10 +104,8 @@ impl ListBuilder {
         }
     }
     unsafe fn push(&mut self, key: &'static str, value: SEXP) {
-        unsafe {
-            self.roots.push(protect(value));
-            self.fields.push((key, value));
-        }
+        self.roots.push(protect(value));
+        self.fields.push((key, value));
     }
     unsafe fn finish(self) -> SEXP {
         unsafe {

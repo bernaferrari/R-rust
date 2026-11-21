@@ -64,7 +64,7 @@ fn same_type_atomic(kind: SEXPTYPE, entry: &CoercionEntry<'_>) -> Result<SEXP, S
     let length = source.len();
     check();
     // Preserve the runtime's typed resource denial and allocation GC retry.
-    let raw = unsafe { Rf_allocVector3(kind, length) };
+    let raw = Rf_allocVector3(kind, length);
     let output = factory
         .wrap(raw)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -103,7 +103,7 @@ fn same_type_atomic(kind: SEXPTYPE, entry: &CoercionEntry<'_>) -> Result<SEXP, S
 
 /// R-level `as.character()` for factors (internal).
 pub fn do_asCharacterFactor(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-     {
+    {
         let x = CAR(args);
         asCharacterFactor(x)
     }
@@ -139,7 +139,7 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
     };
 
     let x_raw = entry.source.as_raw();
-     {
+    {
         if TYPEOF(x_raw) == type_ {
             return same_type_atomic(SEXPTYPE(type_), &entry);
         }
@@ -235,7 +235,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
         if kind.is_atomic_type() {
             return same_type_atomic(kind, &entry);
         }
-        let result =  {
+        let result = {
             ascommon(
                 ptr::null_mut(),
                 entry.source.as_raw(),
@@ -247,7 +247,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
     };
 
     let x_raw = entry.source.as_raw();
-     {
+    {
         if TYPEOF(x_raw) == type_ {
             match SEXPTYPE(type_) {
                 SEXPTYPE::LGLSXP
@@ -290,7 +290,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             let t = x.clone().typeof_();
             if t == SEXPTYPE::INTSXP {
                 let x_raw = x.as_raw();
-                 {
+                {
                     let is_factor = crate::mainutils::objects::inherits2(
                         x_raw,
                         b"factor\0".as_ptr() as *const c_char,
@@ -310,7 +310,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         16 => (x.typeof_() == SEXPTYPE::STRSXP) as c_int,
         1 => {
             let x_raw = x.as_raw();
-             {
+            {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
                         x_raw,
@@ -324,7 +324,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         }
         4 => {
             let x_raw = x.as_raw();
-             {
+            {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
                         x_raw,
@@ -425,8 +425,7 @@ pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int,
                     if tag.is_nil() {
                         return Ok(String::new());
                     }
-                    tag.try_printname()
-                        .and_then(|name| name.try_as_string())
+                    tag.try_printname().and_then(|name| name.try_as_string())
                 })
                 .unwrap_or_default();
             if !tag_names.is_empty() && tag_names != "names" {
@@ -450,10 +449,9 @@ pub fn is_null_safe(x: Sexp) -> c_int {
 
 pub fn is_numeric_safe(x: Sexp) -> c_int {
     let t = x.clone().typeof_();
-    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP)
-        && x.is_vector()
-        &&  { crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0 }
-    {
+    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && x.is_vector() && {
+        crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0
+    } {
         1
     } else {
         0
@@ -595,21 +593,19 @@ pub fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Check if a single element is NA — matches C's LIST_VEC_NA macro.
 /// Returns 1 if the element is a length-1 vector containing NA, 0 otherwise.
 pub fn elem_is_na(s: SEXP) -> c_int {
-    unsafe {
-        if !isVector(s) || xlength(s) != 1 {
-            return 0;
+    if !isVector(s) || xlength(s) != 1 {
+        return 0;
+    }
+    match TYPEOF(s) {
+        t if t == SEXPTYPE::LGLSXP => (LOGICAL_ELT(s, 0) == NA_LOGICAL) as c_int,
+        t if t == SEXPTYPE::INTSXP => (INTEGER_ELT(s, 0) == NA_INTEGER) as c_int,
+        t if t == SEXPTYPE::REALSXP => ISNAN(REAL_ELT(s, 0)) as c_int,
+        t if t == SEXPTYPE::STRSXP => (STRING_ELT(s, 0) == R_NaString()) as c_int,
+        t if t == SEXPTYPE::CPLXSXP => {
+            let v = COMPLEX_ELT(s, 0);
+            (ISNAN(v.r) || ISNAN(v.i)) as c_int
         }
-        match TYPEOF(s) {
-            t if t == SEXPTYPE::LGLSXP => (LOGICAL_ELT(s, 0) == NA_LOGICAL) as c_int,
-            t if t == SEXPTYPE::INTSXP => (INTEGER_ELT(s, 0) == NA_INTEGER) as c_int,
-            t if t == SEXPTYPE::REALSXP => ISNAN(REAL_ELT(s, 0)) as c_int,
-            t if t == SEXPTYPE::STRSXP => (STRING_ELT(s, 0) == R_NaString()) as c_int,
-            t if t == SEXPTYPE::CPLXSXP => {
-                let v = COMPLEX_ELT(s, 0);
-                (ISNAN(v.r) || ISNAN(v.i)) as c_int
-            }
-            _ => 0,
-        }
+        _ => 0,
     }
 }
 
@@ -633,7 +629,7 @@ pub fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             Err(_) => Rf_ScalarLogical(0),
         }
     }))
-    .unwrap_or_else(|_| unsafe { Rf_ScalarLogical(0) })
+    .unwrap_or_else(|_| Rf_ScalarLogical(0))
 }
 
 /// R-level `is.vector()` entry point.
@@ -658,7 +654,7 @@ pub fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             Err(_) => Rf_ScalarLogical(0),
         }
     }))
-    .unwrap_or_else(|_| unsafe { Rf_ScalarLogical(0) })
+    .unwrap_or_else(|_| Rf_ScalarLogical(0))
 }
 
 /// R-level `is.na()` entry point.

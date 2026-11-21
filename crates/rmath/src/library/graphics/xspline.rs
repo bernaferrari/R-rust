@@ -56,11 +56,9 @@ impl SplineBuilder {
             return;
         }
 
-        let point = unsafe {
-            SplinePoint {
-                x: toDeviceX(x / 1200.0, GE_INCHES, self.dd),
-                y: toDeviceY(y / 1200.0, GE_INCHES, self.dd),
-            }
+        let point = SplinePoint {
+            x: toDeviceX(x / 1200.0, GE_INCHES, self.dd),
+            y: toDeviceY(y / 1200.0, GE_INCHES, self.dd),
         };
         self.points.push(point);
     }
@@ -71,7 +69,7 @@ impl SplineBuilder {
 }
 
 fn r_error(message: &'static CStr) -> ! {
-    unsafe { Rf_error(message.as_ptr()) };
+    Rf_error(message.as_ptr());
     unreachable!("Rf_error should not return")
 }
 
@@ -213,12 +211,10 @@ fn step_computing(
     let ylength = yend - ystart;
     let mut start_to_end_dist = (xlength * xlength + ylength * ylength).sqrt();
 
-    let (dev_width, dev_height) = unsafe {
-        (
-            fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
-            fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
-        )
-    };
+    let (dev_width, dev_height) = (
+        fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
+        fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
+    );
     let dev_diag = (dev_width * dev_width + dev_height * dev_height).sqrt();
     if start_to_end_dist > dev_diag {
         start_to_end_dist = dev_diag;
@@ -278,10 +274,10 @@ fn copy_control_point(
     dd: PGEDevDesc,
 ) {
     let idx = i % x.len();
-    unsafe {
-        px[pi] = fromDeviceX(x[idx], GE_INCHES, dd) * 1200.0;
-        py[pi] = fromDeviceY(y[idx], GE_INCHES, dd) * 1200.0;
-    }
+
+    px[pi] = fromDeviceX(x[idx], GE_INCHES, dd) * 1200.0;
+    py[pi] = fromDeviceY(y[idx], GE_INCHES, dd) * 1200.0;
+
     ps[pi] = s[idx];
 }
 

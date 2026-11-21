@@ -36,7 +36,10 @@ use super::state::gridStateElement;
 use super::types::*;
 use super::unit::transformLocn;
 use super::viewport::fillViewportContextFromViewport;
-use super::{char_ptr, duplicate, integer_elt, mk_string, protect, real_elt, set_vector_elt, string_elt, vector_elt};
+use super::{
+    char_ptr, duplicate, integer_elt, mk_string, protect, real_elt, set_vector_elt, string_elt,
+    vector_elt,
+};
 
 /// GE_INCHES constant for unit conversion
 const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
@@ -49,7 +52,7 @@ impl GridModeGuard {
     // SAFETY: `GEMode` is an engine mode-switch bridge; callers pass the live
     // device returned by `getDevice`.
     unsafe fn enter(dd: pGEDevDesc) -> Self {
-        unsafe { ge::GEMode(1, dd) };
+        ge::GEMode(1, dd);
         Self { dd }
     }
 }
@@ -57,7 +60,7 @@ impl GridModeGuard {
 impl Drop for GridModeGuard {
     fn drop(&mut self) {
         // SAFETY: `dd` was a live device when the guard was entered.
-        unsafe { ge::GEMode(0, self.dd) };
+        ge::GEMode(0, self.dd);
     }
 }
 
@@ -96,8 +99,7 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
 
     // SAFETY: `currentvp`/`dd` keep their raw device-state contracts; the
     // viewport transform bridge writes through `dd`.
-    let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
-        unsafe { getViewportTransform(currentvp, dd) };
+    let (vpWidthCM, vpHeightCM, transform, rotationAngle) = getViewportTransform(currentvp, dd);
 
     let mut vpc = LViewportContext {
         xscalemin: 0.0,
@@ -142,8 +144,8 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
         );
         // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
         // bridges over the device state.
-        gx[i as usize] = unsafe { ge::toDeviceX(xx, GE_INCHES, dd) };
-        gy[i as usize] = unsafe { ge::toDeviceY(yy, GE_INCHES, dd) };
+        gx[i as usize] = ge::toDeviceX(xx, GE_INCHES, dd);
+        gy[i as usize] = ge::toDeviceY(yy, GE_INCHES, dd);
     }
 
     // SAFETY: remaining per-glyph vectors are raw engine SEXP bridges over the
@@ -162,7 +164,10 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
         let size = real_elt(glyph_size, offset as R_xlen_t);
         let glyph_rotation = if unsafe { ge::R_GE_hasGlyphRotation(glyphs) } != 0 {
             // SAFETY: presence was just confirmed by the flag above.
-            real_elt(unsafe { ge::R_GE_glyphRotation(glyphs) }, offset as R_xlen_t)
+            real_elt(
+                unsafe { ge::R_GE_glyphRotation(glyphs) },
+                offset as R_xlen_t,
+            )
         } else {
             0.0
         };

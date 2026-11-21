@@ -170,7 +170,7 @@ fn k2x(owner: OwnerToken<'_>, n: i32, d: c_double) -> Result<c_double, String> {
 pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let n = unsafe { crate::mainutils::coerce::asInteger(sn) };
+    let n = crate::mainutils::coerce::asInteger(sn);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -187,8 +187,8 @@ pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     let len = quantiles.len();
-    let ans = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len) };
-    let _ans_guard = unsafe { protect(ans) };
+    let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
+    let _ans_guard = protect(ans);
     let mut output = crate::sexp::SexpMut::try_from_checked(
         owner
             .sexp(ans)

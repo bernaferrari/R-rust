@@ -160,8 +160,7 @@ fn newly_ready_finalizer_can_resurrect_its_transitive_child_graph() {
         FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
     }
     let session = RSession::new_for_gc_tests();
-    RESURRECTION_SYMBOL
-        .set(unsafe { crate::sexp::symbol::install_str("resurrected_graph") });
+    RESURRECTION_SYMBOL.set(unsafe { crate::sexp::symbol::install_str("resurrected_graph") });
     let (graph, root) = graph();
     FINALIZER_RUNS.set(0);
     unsafe { crate::mainutils::memory_main::R_RegisterCFinalizerEx(graph.key, resurrect, 0) };

@@ -207,10 +207,8 @@ pub fn isArray(x: SEXP) -> bool {
 }
 
 pub fn SET_TYPEOF(x: SEXP, v: c_int) {
-    unsafe {
-        if !x.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
-        }
+    if !x.is_null() {
+        crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
     }
 }
 
@@ -223,7 +221,7 @@ pub fn error(msg: &str) -> ! {
 
 /// Panic with an R error message (call-specific).
 pub fn errorcall(_call: SEXP, msg: &str) -> ! {
-     {
+    {
         error(msg);
     }
 }
@@ -356,7 +354,7 @@ pub fn CoercionWarning(warn: c_int) {
             ] {
                 if warn & flag != 0 {
                     access.with_native(|_| {
-                         {
+                        {
                             if let Some(call) = &attributed {
                                 crate::mainutils::errors::warningcall(
                                     call.as_raw(),

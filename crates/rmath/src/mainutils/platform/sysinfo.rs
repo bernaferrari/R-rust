@@ -185,7 +185,7 @@ pub(crate) fn process_id() -> u32 {
 
 /// R's `Sys.getpid()` — get process ID.
 pub fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(process_id() as c_int) }
+    crate::sexp::constructors::Rf_ScalarInteger(process_id() as c_int)
 }
 
 /// R's `dir.create()` — create a directory, optionally making its parents.
@@ -242,11 +242,11 @@ pub fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// File copies use the same staged publication for a target file and a tree.
 pub fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { copy_paths(args, true) }
+    copy_paths(args, true)
 }
 
 pub fn do_filecopy_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { copy_paths(args, false) }
+    copy_paths(args, false)
 }
 
 fn copy_paths(args: SEXP, into_directory: bool) -> SEXP {
@@ -622,9 +622,7 @@ pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `Sys.junction()` — create NTFS junction (Windows only).
 /// On non-Windows, returns FALSE.
 pub fn do_mkjunction(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::Rf_ScalarLogical;
-        use crate::sexp::ffi::FALSE;
-        Rf_ScalarLogical(FALSE)
-    }
+    use crate::sexp::constructors::Rf_ScalarLogical;
+    use crate::sexp::ffi::FALSE;
+    Rf_ScalarLogical(FALSE)
 }

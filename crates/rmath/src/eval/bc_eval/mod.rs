@@ -67,38 +67,33 @@ fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
 /// `R_FunctionNotFoundError` with `R_CurrentExpression`; in bytecode that
 /// is the CALL constant.
 unsafe fn gnu_pending_call(words: &[c_int], mut pc: usize, constants: &[Sexp<'static>]) -> SEXP {
-    unsafe {
-        while pc < words.len() {
-            let opcode = words[pc];
-            if opcode == super::bytecode::GNU_OP_CALL
-                || opcode == super::bytecode::GNU_OP_CALLBUILTIN
-            {
-                if pc + 1 >= words.len() {
-                    break;
-                }
-                let call = owned_constant_at(constants, words[pc + 1] as i64, "GNU pending call");
-                if TYPEOF(call) == SEXPTYPE::LANGSXP {
-                    return call;
-                }
+    while pc < words.len() {
+        let opcode = words[pc];
+        if opcode == super::bytecode::GNU_OP_CALL || opcode == super::bytecode::GNU_OP_CALLBUILTIN {
+            if pc + 1 >= words.len() {
                 break;
             }
-            let Some(&width) = super::bytecode::GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
-                break;
-            };
-            pc += 1 + width as usize;
+            let call = owned_constant_at(constants, words[pc + 1] as i64, "GNU pending call");
+            if TYPEOF(call) == SEXPTYPE::LANGSXP {
+                return call;
+            }
+            break;
         }
-        crate::mainutils::errors::R_getCurrentCall()
+        let Some(&width) = super::bytecode::GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
+            break;
+        };
+        pc += 1 + width as usize;
     }
+    crate::mainutils::errors::R_getCurrentCall()
 }
 
 fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
-    unsafe {
-        crate::mainutils::errors::R_MissingArgError(
-            arg_sym,
-            crate::mainutils::errors::R_getCurrentCall(),
-            c"getvarError".as_ptr(),
-        );
-    }
+    crate::mainutils::errors::R_MissingArgError(
+        arg_sym,
+        crate::mainutils::errors::R_getCurrentCall(),
+        c"getvarError".as_ptr(),
+    );
+
     unreachable!("R_MissingArgError signals");
 }
 

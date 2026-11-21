@@ -42,7 +42,7 @@ fn environment(
         return Ok(value.clone());
     }
     if value.typeof_() == SEXPTYPE::OBJSXP {
-        let data = access.with_native(|owner| unsafe {
+        let data = access.with_native(|owner| {
             let data = crate::mainutils::subassign::R_getS4DataSlot(
                 value.as_raw(),
                 SEXPTYPE::ENVSXP.as_c_int(),
@@ -79,16 +79,15 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
         return Err(failure("use of NULL environment is defunct"));
     }
     let env = environment(access, &values[0], "argument is not an environment")?;
-    let empty = access.with_native(|owner| unsafe {
-        owner.sexp(crate::sexp::globals::R_EmptyEnv())?.into_owned()
-    })?;
+    let empty =
+        access.with_native(|owner| owner.sexp(crate::sexp::globals::R_EmptyEnv())?.into_owned())?;
     if env.as_raw() == empty.as_raw() {
         return Err(failure("can not set parent of the empty environment"));
     }
     let locked =
         access.with_native(|_| Ok(crate::sexp::envir::environment_is_locked_raw(env.as_raw())))?;
     if locked {
-        let base = access.with_native(|owner| unsafe {
+        let base = access.with_native(|owner| {
             owner
                 .sexp(crate::sexp::envir::R_BaseNamespace())?
                 .into_owned()
@@ -164,7 +163,7 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
         cursor = cursor.try_enclos()?.into_owned()?;
     }
     access.require_active()?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::sexp::accessors::SET_ENCLOS(env.as_raw(), parent.as_raw());
         Ok(())
     })?;
@@ -194,7 +193,7 @@ pub(super) fn dispatch(raw: SEXP, setter: bool) -> SEXP {
                     return set(access, &values);
                 }
                 let env = environment(access, &values[0], "argument is not an environment")?;
-                let empty = access.with_native(|token| unsafe {
+                let empty = access.with_native(|token| {
                     token.sexp(crate::sexp::globals::R_EmptyEnv())?.into_owned()
                 })?;
                 if env.as_raw() == empty.as_raw() {

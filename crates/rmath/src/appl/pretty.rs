@@ -133,12 +133,8 @@ fn pretty_impl(
                 "R_pretty(): very small range 'cell'={cell}, increased to {subsmall}"
             ))
             .unwrap_or_default();
-            unsafe {
-                crate::mainutils::errors::warningcall(
-                    crate::sexp::globals::R_NilValue(),
-                    msg.as_ptr(),
-                );
-            }
+
+            crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
         }
         cell = subsmall;
     } else if cell > dbL_MAX / max_f {
@@ -147,9 +143,9 @@ fn pretty_impl(
             "R_pretty(): very large range 'cell'={cell}, decreased to {shrunk}"
         ))
         .unwrap_or_default();
-        unsafe {
-            crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
-        }
+
+        crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
+
         cell = shrunk;
     }
 

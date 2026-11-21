@@ -421,7 +421,7 @@ pub(crate) fn allocate_character_vector<'a>(
     let blank = if len > 0 {
         owner.require_active().map_err(|error| error.to_string())?;
         // SAFETY: this original owner is active and no arena or payload is borrowed.
-        let blank = unsafe { crate::mainutils::bind::R_BlankString() };
+        let blank = crate::mainutils::bind::R_BlankString();
         owner.require_active().map_err(|error| error.to_string())?;
         Some(factory.wrap(blank).map_err(|error| error.to_string())?)
     } else {

@@ -376,13 +376,11 @@ pub fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `tsp(x)` — time-series parameter attribute.
 pub fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol())
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol())
 }
 
 /// R's `dim(x) <- value` — replace an object's dimension attribute.

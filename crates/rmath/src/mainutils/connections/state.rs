@@ -816,14 +816,12 @@ pub fn R_InitConnections() {
 // ---------------------------------------------------------------------------
 
 pub fn R_GetConnection(_n: c_int) -> SEXP {
-    unsafe {
-        // This returns the SEXP representation of the connection (the integer index)
-        // In R's C code, this returns the Rconnection struct pointer,
-        // but in our port, connections are in the global table.
-        // We return the integer SEXP index.
-        if _n < 0 || _n >= NCONNECTIONS as c_int {
-            r_error("invalid connection");
-        }
-        Rf_ScalarInteger(_n)
+    // This returns the SEXP representation of the connection (the integer index)
+    // In R's C code, this returns the Rconnection struct pointer,
+    // but in our port, connections are in the global table.
+    // We return the integer SEXP index.
+    if _n < 0 || _n >= NCONNECTIONS as c_int {
+        r_error("invalid connection");
     }
+    Rf_ScalarInteger(_n)
 }

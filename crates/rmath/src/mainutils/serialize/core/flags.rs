@@ -76,14 +76,12 @@ pub fn UnpackFlags(
 /// LEVELS word, including S4 (gp bit 4). Methods lazy-load stores
 /// standardGeneric / MethodDefinition as CLOSXP with that bit set.
 pub(crate) fn restore_serialized_gp(s: SEXP, levs: c_int, isobj: c_int) {
-    unsafe {
-        SETLEVELS(s, levs);
-        if isobj != 0 {
-            SET_OBJECT(s, 1);
-        }
-        if (levs & crate::sexp::accessors::S4_OBJECT_MASK as c_int) != 0 {
-            SET_S4_OBJECT(s);
-        }
+    SETLEVELS(s, levs);
+    if isobj != 0 {
+        SET_OBJECT(s, 1);
+    }
+    if (levs & crate::sexp::accessors::S4_OBJECT_MASK as c_int) != 0 {
+        SET_S4_OBJECT(s);
     }
 }
 
@@ -198,7 +196,7 @@ pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
         {
             let symbol = unsafe { crate::sexp::symbol::Rf_install(c"OutDec".as_ptr()) };
             owner.require_active().map_err(|error| error.to_string())?;
-            let attribute = unsafe { crate::sexp::attrib_core::getAttrib(info.as_raw(), symbol) };
+            let attribute = crate::sexp::attrib_core::getAttrib(info.as_raw(), symbol);
             let attribute = factory.wrap(attribute).map_err(|error| error.to_string())?;
             if attribute.typeof_() == SEXPTYPE::STRSXP && attribute.len() == 1 {
                 decimal = attribute

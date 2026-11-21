@@ -244,30 +244,22 @@ pub fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) fn expand_grid_column(
-    x: SEXP,
-    nx: i64,
-    rep_fac: i64,
-    orep: i64,
-    total: i64,
-) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(TYPEOF(x), total);
-        let _r = protect(result);
-        if nx == 0 || total == 0 {
-            return result;
-        }
-        let mut dst = 0i64;
-        for _ in 0..orep {
-            for src in 0..nx {
-                for _ in 0..rep_fac {
-                    copy_elt(x, src, result, dst);
-                    dst += 1;
-                }
+pub(super) fn expand_grid_column(x: SEXP, nx: i64, rep_fac: i64, orep: i64, total: i64) -> SEXP {
+    let result = Rf_allocVector3(TYPEOF(x), total);
+    let _r = protect(result);
+    if nx == 0 || total == 0 {
+        return result;
+    }
+    let mut dst = 0i64;
+    for _ in 0..orep {
+        for src in 0..nx {
+            for _ in 0..rep_fac {
+                copy_elt(x, src, result, dst);
+                dst += 1;
             }
         }
-        result
     }
+    result
 }
 
 pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {

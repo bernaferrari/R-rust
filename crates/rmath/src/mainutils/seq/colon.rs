@@ -300,8 +300,7 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // This runtime implements datetime classes natively (no R-level
         // methods), so mirror that behaviour here.
         // ------------------------------------------------------------------
-        if let Some(result) = datetime_seq(call, from, to, by, lout, miss_from, miss_to)
-        {
+        if let Some(result) = datetime_seq(call, from, to, by, lout, miss_from, miss_to) {
             return result;
         }
 

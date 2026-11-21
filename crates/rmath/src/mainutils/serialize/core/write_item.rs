@@ -7,15 +7,11 @@ fn serialized_gp_bits(s: SEXP) -> c_int {
     // The caller roots s; take an owned header snapshot without retaining a
     // header or interpreter borrow across recursive writes or callbacks.
     let object = unsafe { crate::sexp::object::Sexp::try_from_raw(s) }
-        .unwrap_or_else(|e|  { error(&e.to_string()) });
+        .unwrap_or_else(|e| error(&e.to_string()));
     i32::from(object.header().sxpinfo.gp())
 }
 
-pub fn WriteItemInternal(
-    s: SEXP,
-    ref_table: &mut WriteHashTable,
-    writer: &mut BinaryWriter,
-) {
+pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut BinaryWriter) {
     unsafe {
         let _item_guard = protect(s);
         // GNU serializes unexpanded compact integer/real sequences as
@@ -338,7 +334,9 @@ pub fn WriteItemInternal(
 fn vector_length_for_write(s: SEXP, writer: &BinaryWriter) -> R_xlen_t {
     let len = XLENGTH(s);
     if writer.strict_workspace && c_int::try_from(len).is_err() {
-         { error("cannot save unsupported long workspace vector") };
+        {
+            error("cannot save unsupported long workspace vector")
+        };
     }
     len
 }

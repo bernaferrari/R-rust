@@ -795,10 +795,8 @@ fn contour(
 
 /// Check if SEXP has a dim attribute with >= 2 elements (i.e., is a matrix).
 unsafe fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dim = crate::attrib_core::getAttrib(x, crate::attrib_core::R_DimSymbol());
-        !R_NilValue().is_null() && !dim.is_null() && LENGTH(dim) >= 2
-    }
+    let dim = crate::attrib_core::getAttrib(x, crate::attrib_core::R_DimSymbol());
+    !R_NilValue().is_null() && !dim.is_null() && LENGTH(dim) >= 2
 }
 
 /// Get the number of rows from a matrix's dim attribute.
@@ -1270,10 +1268,8 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
 /// C_contourDef -- return whether the current device supports rotated
 /// contour text. Stub: returns FALSE (NA_LOGICAL).
 pub unsafe fn C_contourDef() -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::*;
-        Rf_ScalarLogical(1)
-    }
+    use crate::sexp::constructors::*;
+    Rf_ScalarLogical(1)
 }
 
 /* ========================================================================

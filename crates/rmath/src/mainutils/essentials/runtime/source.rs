@@ -94,105 +94,84 @@ impl Drop for SourceDirectoryGuard {
 /// `exprs=` (and the `expr=` partial match used by eval-etc.R) evaluates
 /// already-parsed expressions with optional echo/auto-print.
 pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let parsed = source_call_args(args);
-        if let Some(exprs) = parsed.exprs {
-            let env = source_eval_env(parsed.local, rho, false);
-            return eval_source_expressions(
-                exprs,
-                env,
-                parsed.echo,
-                parsed.print_eval.unwrap_or(parsed.echo),
-                &parsed.prompt,
-                &parsed.continue_echo,
-                parsed.cutoff,
-                parsed.deparse_opts,
-                parsed.max_deparse_length,
-            );
-        }
-        let file_arg = parsed.file.unwrap_or(R_NilValue());
-        if file_arg.is_null() || file_arg == R_NilValue() {
-            eprintln!("source: no file specified");
-            return R_NilValue();
-        }
+    let parsed = source_call_args(args);
+    if let Some(exprs) = parsed.exprs {
         let env = source_eval_env(parsed.local, rho, false);
-        // GNU source() accepts an open connection (textConnection in
-        // reg-S4.R getSrcref). Character paths still go through the
-        // host/browser file reader.
-        if crate::mainutils::connections::inherits_class(file_arg, "connection") {
-            if parsed.chdir {
-                crate::mainutils::errors::Rf_warning1(
-                    c"'chdir = TRUE' makes no sense for a connection".as_ptr(),
-                );
-            }
-            let idx = crate::mainutils::coerce::asInteger(file_arg);
-            let mut bytes = Vec::new();
-            loop {
-                let b = crate::mainutils::connections::connection_fgetc(idx);
-                if b < 0 {
-                    break;
-                }
-                bytes.push(b as u8);
-            }
-            let content = String::from_utf8_lossy(&bytes).into_owned();
-            let srcname = format!("<connection {}>", idx);
-            return eval_source_text_with_options(
-                &content,
-                env,
-                &srcname,
-                parsed.echo,
-                parsed.print_eval.unwrap_or(parsed.echo),
-                &parsed.prompt,
-                &parsed.continue_echo,
-                parsed.skip_echo,
-                parsed.keep_source,
-                parsed.cutoff,
-                parsed.deparse_opts,
-                parsed.max_deparse_length,
+        return eval_source_expressions(
+            exprs,
+            env,
+            parsed.echo,
+            parsed.print_eval.unwrap_or(parsed.echo),
+            &parsed.prompt,
+            &parsed.continue_echo,
+            parsed.cutoff,
+            parsed.deparse_opts,
+            parsed.max_deparse_length,
+        );
+    }
+    let file_arg = parsed.file.unwrap_or(R_NilValue());
+    if file_arg.is_null() || file_arg == R_NilValue() {
+        eprintln!("source: no file specified");
+        return R_NilValue();
+    }
+    let env = source_eval_env(parsed.local, rho, false);
+    // GNU source() accepts an open connection (textConnection in
+    // reg-S4.R getSrcref). Character paths still go through the
+    // host/browser file reader.
+    if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+        if parsed.chdir {
+            crate::mainutils::errors::Rf_warning1(
+                c"'chdir = TRUE' makes no sense for a connection".as_ptr(),
             );
         }
-        let file_path = elt_to_string(file_arg, 0);
-        // GNU source(encoding = "UTF-8") opens the file with a UTF-8
-        // connection; in a single-byte locale the input is translated to
-        // native on read and lines are truncated at the first byte that
-        // cannot be represented (with a warning).
-        if let Some(encoding) = parsed.encoding.as_deref() {
-            let normalized = encoding.to_ascii_lowercase();
-            if (normalized == "utf-8" || normalized == "utf8")
-                && !crate::mainutils::platform::locale_is_utf8()
-            {
-                if let Ok(raw) = browser_files::read_admitted_bytes_or_host(&file_path) {
-                    let (content, invalid) = translate_utf8_source_to_native(&raw);
-                    if invalid {
-                        if let Ok(message) = std::ffi::CString::new(format!(
-                            "invalid input found on input connection '{}'",
-                            file_path
-                        )) {
-                            crate::mainutils::errors::Rf_warning1(message.as_ptr());
-                        }
-                    }
-                    let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);
-                    return eval_source_text_with_options(
-                        &content,
-                        env,
-                        &file_path,
-                        parsed.echo,
-                        parsed.print_eval.unwrap_or(parsed.echo),
-                        &parsed.prompt,
-                        &parsed.continue_echo,
-                        parsed.skip_echo,
-                        parsed.keep_source,
-                        parsed.cutoff,
-                        parsed.deparse_opts,
-                        parsed.max_deparse_length,
-                    );
-                }
+        let idx = crate::mainutils::coerce::asInteger(file_arg);
+        let mut bytes = Vec::new();
+        loop {
+            let b = crate::mainutils::connections::connection_fgetc(idx);
+            if b < 0 {
+                break;
             }
+            bytes.push(b as u8);
         }
-        match browser_files::read_text_or_host(&file_path) {
-            Ok(content) => {
+        let content = String::from_utf8_lossy(&bytes).into_owned();
+        let srcname = format!("<connection {}>", idx);
+        return eval_source_text_with_options(
+            &content,
+            env,
+            &srcname,
+            parsed.echo,
+            parsed.print_eval.unwrap_or(parsed.echo),
+            &parsed.prompt,
+            &parsed.continue_echo,
+            parsed.skip_echo,
+            parsed.keep_source,
+            parsed.cutoff,
+            parsed.deparse_opts,
+            parsed.max_deparse_length,
+        );
+    }
+    let file_path = elt_to_string(file_arg, 0);
+    // GNU source(encoding = "UTF-8") opens the file with a UTF-8
+    // connection; in a single-byte locale the input is translated to
+    // native on read and lines are truncated at the first byte that
+    // cannot be represented (with a warning).
+    if let Some(encoding) = parsed.encoding.as_deref() {
+        let normalized = encoding.to_ascii_lowercase();
+        if (normalized == "utf-8" || normalized == "utf8")
+            && !crate::mainutils::platform::locale_is_utf8()
+        {
+            if let Ok(raw) = browser_files::read_admitted_bytes_or_host(&file_path) {
+                let (content, invalid) = translate_utf8_source_to_native(&raw);
+                if invalid {
+                    if let Ok(message) = std::ffi::CString::new(format!(
+                        "invalid input found on input connection '{}'",
+                        file_path
+                    )) {
+                        crate::mainutils::errors::Rf_warning1(message.as_ptr());
+                    }
+                }
                 let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);
-                eval_source_text_with_options(
+                return eval_source_text_with_options(
                     &content,
                     env,
                     &file_path,
@@ -205,11 +184,30 @@ pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     parsed.cutoff,
                     parsed.deparse_opts,
                     parsed.max_deparse_length,
-                )
+                );
             }
-            Err(e) => {
-                base_error(format!("cannot open file '{}': {}", file_path, e));
-            }
+        }
+    }
+    match browser_files::read_text_or_host(&file_path) {
+        Ok(content) => {
+            let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);
+            eval_source_text_with_options(
+                &content,
+                env,
+                &file_path,
+                parsed.echo,
+                parsed.print_eval.unwrap_or(parsed.echo),
+                &parsed.prompt,
+                &parsed.continue_echo,
+                parsed.skip_echo,
+                parsed.keep_source,
+                parsed.cutoff,
+                parsed.deparse_opts,
+                parsed.max_deparse_length,
+            )
+        }
+        Err(e) => {
+            base_error(format!("cannot open file '{}': {}", file_path, e));
         }
     }
 }
@@ -217,29 +215,27 @@ pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `withAutoprint(exprs)` — `source(exprs=..., echo=TRUE, print.eval=TRUE)`
 /// in the calling environment. The argument is substituted, not evaluated twice.
 pub fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let (expr, print_eval, echo) = with_autoprint_args(args);
-        if expr.is_null() || expr == R_NilValue() || expr == R_MissingArg() {
-            crate::sexp::globals::set_R_Visible(FALSE);
-            return R_NilValue();
-        }
-        let exprs = brace_or_single_expressions(expr);
-        let _exprs = protect(exprs);
-        let prompt = option_prompt();
-        eval_source_expressions(
-            exprs,
-            rho,
-            echo,
-            print_eval,
-            &prompt,
-            "+ ",
-            crate::mainutils::deparse::DEFAULT_CUTOFF,
-            crate::mainutils::deparse::KEEPNA
-                | crate::mainutils::deparse::KEEPINTEGER
-                | crate::mainutils::deparse::SHOWATTRIBUTES,
-            usize::MAX,
-        )
+    let (expr, print_eval, echo) = with_autoprint_args(args);
+    if expr.is_null() || expr == R_NilValue() || expr == R_MissingArg() {
+        crate::sexp::globals::set_R_Visible(FALSE);
+        return R_NilValue();
     }
+    let exprs = brace_or_single_expressions(expr);
+    let _exprs = protect(exprs);
+    let prompt = option_prompt();
+    eval_source_expressions(
+        exprs,
+        rho,
+        echo,
+        print_eval,
+        &prompt,
+        "+ ",
+        crate::mainutils::deparse::DEFAULT_CUTOFF,
+        crate::mainutils::deparse::KEEPNA
+            | crate::mainutils::deparse::KEEPINTEGER
+            | crate::mainutils::deparse::SHOWATTRIBUTES,
+        usize::MAX,
+    )
 }
 
 struct SourceCallArgs {
@@ -262,105 +258,103 @@ struct SourceCallArgs {
 }
 
 fn source_call_args(args: SEXP) -> SourceCallArgs {
-    unsafe {
-        let mut file = None;
-        let mut exprs = None;
-        let mut local = None;
-        let mut echo = false;
-        let mut chdir = false;
-        let mut print_eval = None;
-        let mut prompt = None;
-        let mut continue_echo = None;
-        let mut skip_echo: c_int = 0;
-        let mut keep_source = None;
-        let mut cutoff = crate::mainutils::deparse::DEFAULT_CUTOFF;
-        let mut max_deparse_length: usize = 150;
-        let mut deparse_opts = crate::mainutils::deparse::SHOWATTRIBUTES;
-        let mut encoding: Option<String> = None;
+    let mut file = None;
+    let mut exprs = None;
+    let mut local = None;
+    let mut echo = false;
+    let mut chdir = false;
+    let mut print_eval = None;
+    let mut prompt = None;
+    let mut continue_echo = None;
+    let mut skip_echo: c_int = 0;
+    let mut keep_source = None;
+    let mut cutoff = crate::mainutils::deparse::DEFAULT_CUTOFF;
+    let mut max_deparse_length: usize = 150;
+    let mut deparse_opts = crate::mainutils::deparse::SHOWATTRIBUTES;
+    let mut encoding: Option<String> = None;
 
-        let mut first_positional = None;
-        let mut positional = 0usize;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
-            match tag_name(current).as_deref() {
-                Some("file") => file = Some(value),
-                Some(name) if name == "exprs" || name.starts_with("expr") => exprs = Some(value),
-                Some("local") => local = Some(value),
-                Some("echo") => echo = logical_arg(value, false),
-                Some("chdir") => chdir = logical_arg(value, false),
-                Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
-                Some("prompt.echo") => prompt = Some(elt_to_string(value, 0)),
-                Some("continue.echo") => continue_echo = Some(elt_to_string(value, 0)),
-                Some("skip.echo") => {
-                    let n = crate::mainutils::coerce::asInteger(value);
-                    if n != NA_INTEGER && n > 0 {
-                        skip_echo = n;
-                    }
-                }
-                Some("keep.source") => keep_source = Some(logical_arg(value, false)),
-                Some("width.cutoff") => {
-                    let n = crate::mainutils::coerce::asInteger(value);
-                    if n != NA_INTEGER
-                        && n >= crate::mainutils::deparse::MIN_CUTOFF
-                        && n <= crate::mainutils::deparse::MAX_CUTOFF
-                    {
-                        cutoff = n;
-                    }
-                }
-                Some("max.deparse.length") => {
-                    // GNU example() passes Inf. Compare as a real; asInteger(Inf)
-                    // would warn "NAs introduced by coercion to integer range".
-                    let n = crate::mainutils::coerce::asReal(value);
-                    if n.is_infinite() && n.is_sign_positive() {
-                        max_deparse_length = usize::MAX;
-                    } else if n.is_finite() && n >= 0.0 {
-                        max_deparse_length = n.min(usize::MAX as f64) as usize;
-                    }
-                }
-                Some("deparseCtrl") | Some("deparse.ctrl") => {
-                    deparse_opts = crate::mainutils::deparse::deparse_opts_from_control(value);
-                }
-                Some("encoding") => {
-                    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                        encoding = Some(elt_to_string(value, 0));
-                    }
-                }
-
-                Some(_) => {}
-
-                None => {
-                    match positional {
-                        0 => first_positional = Some(value),
-                        1 if local.is_none() => local = Some(value),
-                        11 => chdir = logical_arg(value, false),
-                        _ => {}
-                    }
-                    positional += 1;
+    let mut first_positional = None;
+    let mut positional = 0usize;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let value = CAR(current);
+        match tag_name(current).as_deref() {
+            Some("file") => file = Some(value),
+            Some(name) if name == "exprs" || name.starts_with("expr") => exprs = Some(value),
+            Some("local") => local = Some(value),
+            Some("echo") => echo = logical_arg(value, false),
+            Some("chdir") => chdir = logical_arg(value, false),
+            Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
+            Some("prompt.echo") => prompt = Some(elt_to_string(value, 0)),
+            Some("continue.echo") => continue_echo = Some(elt_to_string(value, 0)),
+            Some("skip.echo") => {
+                let n = crate::mainutils::coerce::asInteger(value);
+                if n != NA_INTEGER && n > 0 {
+                    skip_echo = n;
                 }
             }
-            current = CDR(current);
-        }
-        if exprs.is_none() {
-            file = file.or(first_positional);
-        }
-        SourceCallArgs {
-            file,
-            exprs,
-            local,
-            echo,
-            chdir,
-            print_eval,
-            prompt: prompt.unwrap_or_else(option_prompt),
-            continue_echo: continue_echo.unwrap_or_else(option_continue),
-            skip_echo,
-            keep_source: keep_source.unwrap_or_else(option_keep_source),
-            cutoff,
-            deparse_opts,
+            Some("keep.source") => keep_source = Some(logical_arg(value, false)),
+            Some("width.cutoff") => {
+                let n = crate::mainutils::coerce::asInteger(value);
+                if n != NA_INTEGER
+                    && n >= crate::mainutils::deparse::MIN_CUTOFF
+                    && n <= crate::mainutils::deparse::MAX_CUTOFF
+                {
+                    cutoff = n;
+                }
+            }
+            Some("max.deparse.length") => {
+                // GNU example() passes Inf. Compare as a real; asInteger(Inf)
+                // would warn "NAs introduced by coercion to integer range".
+                let n = crate::mainutils::coerce::asReal(value);
+                if n.is_infinite() && n.is_sign_positive() {
+                    max_deparse_length = usize::MAX;
+                } else if n.is_finite() && n >= 0.0 {
+                    max_deparse_length = n.min(usize::MAX as f64) as usize;
+                }
+            }
+            Some("deparseCtrl") | Some("deparse.ctrl") => {
+                deparse_opts = crate::mainutils::deparse::deparse_opts_from_control(value);
+            }
+            Some("encoding") => {
+                if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+                    encoding = Some(elt_to_string(value, 0));
+                }
+            }
 
-            max_deparse_length,
-            encoding,
+            Some(_) => {}
+
+            None => {
+                match positional {
+                    0 => first_positional = Some(value),
+                    1 if local.is_none() => local = Some(value),
+                    11 => chdir = logical_arg(value, false),
+                    _ => {}
+                }
+                positional += 1;
+            }
         }
+        current = CDR(current);
+    }
+    if exprs.is_none() {
+        file = file.or(first_positional);
+    }
+    SourceCallArgs {
+        file,
+        exprs,
+        local,
+        echo,
+        chdir,
+        print_eval,
+        prompt: prompt.unwrap_or_else(option_prompt),
+        continue_echo: continue_echo.unwrap_or_else(option_continue),
+        skip_echo,
+        keep_source: keep_source.unwrap_or_else(option_keep_source),
+        cutoff,
+        deparse_opts,
+
+        max_deparse_length,
+        encoding,
     }
 }
 
@@ -424,63 +418,57 @@ fn option_string(name: &str, default: &str) -> String {
 }
 
 fn source_eval_env(local: Option<SEXP>, rho: SEXP, default_caller: bool) -> SEXP {
-    unsafe {
-        match local {
-            Some(value) if TYPEOF(value) == SEXPTYPE::ENVSXP => value,
-            Some(value) if logical_arg(value, false) => rho,
-            Some(_) => crate::sexp::globals::R_GlobalEnv(),
-            None if default_caller => rho,
-            None => crate::sexp::globals::R_GlobalEnv(),
-        }
+    match local {
+        Some(value) if TYPEOF(value) == SEXPTYPE::ENVSXP => value,
+        Some(value) if logical_arg(value, false) => rho,
+        Some(_) => crate::sexp::globals::R_GlobalEnv(),
+        None if default_caller => rho,
+        None => crate::sexp::globals::R_GlobalEnv(),
     }
 }
 
 fn logical_arg(value: SEXP, default: bool) -> bool {
-    unsafe {
-        if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
-            return default;
-        }
-        crate::mainutils::coerce::asLogical(value) != 0
+    if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+        return default;
     }
+    crate::mainutils::coerce::asLogical(value) != 0
 }
 
 fn brace_or_single_expressions(expr: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
-            return expr;
-        }
-        if TYPEOF(expr) == SEXPTYPE::VECSXP {
-            let n = XLENGTH(expr);
-            let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
-            let _out = protect(out);
-            for i in 0..n {
-                SET_VECTOR_ELT(out, i, VECTOR_ELT(expr, i));
-            }
-            return out;
-        }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP && CAR(expr) == crate::sexp::symbol::R_BraceSymbol() {
-            let mut n = 0;
-            let mut cell = CDR(expr);
-            while !cell.is_null() && cell != R_NilValue() {
-                n += 1;
-                cell = CDR(cell);
-            }
-            let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
-            let _out = protect(out);
-            cell = CDR(expr);
-            let mut i = 0;
-            while !cell.is_null() && cell != R_NilValue() {
-                SET_VECTOR_ELT(out, i, CAR(cell));
-                i += 1;
-                cell = CDR(cell);
-            }
-            return out;
-        }
-        let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
-        let _out = protect(out);
-        SET_VECTOR_ELT(out, 0, expr);
-        out
+    if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
+        return expr;
     }
+    if TYPEOF(expr) == SEXPTYPE::VECSXP {
+        let n = XLENGTH(expr);
+        let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+        let _out = protect(out);
+        for i in 0..n {
+            SET_VECTOR_ELT(out, i, VECTOR_ELT(expr, i));
+        }
+        return out;
+    }
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP && CAR(expr) == crate::sexp::symbol::R_BraceSymbol() {
+        let mut n = 0;
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            n += 1;
+            cell = CDR(cell);
+        }
+        let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+        let _out = protect(out);
+        cell = CDR(expr);
+        let mut i = 0;
+        while !cell.is_null() && cell != R_NilValue() {
+            SET_VECTOR_ELT(out, i, CAR(cell));
+            i += 1;
+            cell = CDR(cell);
+        }
+        return out;
+    }
+    let out = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+    let _out = protect(out);
+    SET_VECTOR_ELT(out, 0, expr);
+    out
 }
 
 fn eval_source_expressions(
@@ -547,62 +535,60 @@ fn echo_source_expression(
     deparse_opts: c_int,
     max_deparse_length: usize,
 ) {
-    unsafe {
-        let wrapped = if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
-            expr
-        } else {
-            let one = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
-            let _one = protect(one);
-            SET_VECTOR_ELT(one, 0, expr);
-            one
-        };
-        let dumped = crate::mainutils::deparse::deparse1WithCutoff(
-            wrapped,
-            false,
-            cutoff,
-            true,
-            deparse_opts,
-            -1,
-        );
-        let _dumped = protect(dumped);
-        let mut text = String::new();
-        if !dumped.is_null() && dumped != R_NilValue() && TYPEOF(dumped) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(dumped) {
-                if i > 0 {
-                    text.push('\n');
-                }
-                text.push_str(&elt_to_string(dumped, i));
-            }
-        }
-        // GNU: substr(paste(deparse(ei), collapse="\n"), 12L, 1e6)
-        const EXPR_PREFIX: &str = "expression(";
-        if text.starts_with(EXPR_PREFIX) {
-            text = text[EXPR_PREFIX.len()..].to_string();
-        }
-        let mut dep = String::new();
-        for (i, line) in text.split('\n').enumerate() {
+    let wrapped = if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
+        expr
+    } else {
+        let one = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+        let _one = protect(one);
+        SET_VECTOR_ELT(one, 0, expr);
+        one
+    };
+    let dumped = crate::mainutils::deparse::deparse1WithCutoff(
+        wrapped,
+        false,
+        cutoff,
+        true,
+        deparse_opts,
+        -1,
+    );
+    let _dumped = protect(dumped);
+    let mut text = String::new();
+    if !dumped.is_null() && dumped != R_NilValue() && TYPEOF(dumped) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(dumped) {
             if i > 0 {
-                dep.push('\n');
+                text.push('\n');
             }
-            dep.push_str(if i == 0 { prompt } else { continue_echo });
-            dep.push_str(line);
+            text.push_str(&elt_to_string(dumped, i));
         }
-        // GNU: nd <- nchar(dep, "c") - 1L; substr to nd unless truncated.
-        let nd = dep.chars().count().saturating_sub(1);
-        let truncated = nd > max_deparse_length;
-        let keep = if truncated { max_deparse_length } else { nd };
-        let trimmed: String = dep.chars().take(keep).collect();
-        let mut line = trimmed;
-        if truncated {
-            line.push_str(" .... [TRUNCATED] ");
+    }
+    // GNU: substr(paste(deparse(ei), collapse="\n"), 12L, 1e6)
+    const EXPR_PREFIX: &str = "expression(";
+    if text.starts_with(EXPR_PREFIX) {
+        text = text[EXPR_PREFIX.len()..].to_string();
+    }
+    let mut dep = String::new();
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            dep.push('\n');
         }
-        line.push('\n');
+        dep.push_str(if i == 0 { prompt } else { continue_echo });
+        dep.push_str(line);
+    }
+    // GNU: nd <- nchar(dep, "c") - 1L; substr to nd unless truncated.
+    let nd = dep.chars().count().saturating_sub(1);
+    let truncated = nd > max_deparse_length;
+    let keep = if truncated { max_deparse_length } else { nd };
+    let trimmed: String = dep.chars().take(keep).collect();
+    let mut line = trimmed;
+    if truncated {
+        line.push_str(" .... [TRUNCATED] ");
+    }
+    line.push('\n');
 
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&line);
-        } else {
-            print!("{line}");
-        }
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&line);
+    } else {
+        print!("{line}");
     }
 }
 
@@ -624,41 +610,35 @@ fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
 
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
 pub fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let file_arg = arg_by_name_or_position(args, &["file"], 0);
-        let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
-        let chdir = logical_arg(arg_by_name_or_position(args, &["chdir"], 2), false);
+    let file_arg = arg_by_name_or_position(args, &["file"], 0);
+    let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
+    let chdir = logical_arg(arg_by_name_or_position(args, &["chdir"], 2), false);
 
-        if file_arg.is_null() || file_arg == R_NilValue() {
-            eprintln!("sys.source: no file specified");
-            return R_NilValue();
+    if file_arg.is_null() || file_arg == R_NilValue() {
+        eprintln!("sys.source: no file specified");
+        return R_NilValue();
+    }
+    let file_path = elt_to_string(file_arg, 0);
+    let target_env = if !envir_arg.is_null() && envir_arg != R_NilValue() {
+        envir_arg
+    } else {
+        crate::sexp::globals::R_BaseEnv()
+    };
+    if TYPEOF(target_env) != SEXPTYPE::ENVSXP {
+        base_error("'envir' must be an environment");
+    }
+
+    match crate::mainutils::browser_files::read_text_or_host(&file_path) {
+        Ok(content) => {
+            let _directory = SourceDirectoryGuard::enter(&file_path, chdir);
+            let _ =
+                eval_source_text_with_name(&content, target_env, &file_path, option_keep_source());
+            crate::sexp::globals::set_R_Visible(FALSE);
+            R_NilValue()
         }
-        let file_path = elt_to_string(file_arg, 0);
-        let target_env = if !envir_arg.is_null() && envir_arg != R_NilValue() {
-            envir_arg
-        } else {
-            crate::sexp::globals::R_BaseEnv()
-        };
-        if TYPEOF(target_env) != SEXPTYPE::ENVSXP {
-            base_error("'envir' must be an environment");
-        }
 
-        match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(content) => {
-                let _directory = SourceDirectoryGuard::enter(&file_path, chdir);
-                let _ = eval_source_text_with_name(
-                    &content,
-                    target_env,
-                    &file_path,
-                    option_keep_source(),
-                );
-                crate::sexp::globals::set_R_Visible(FALSE);
-                R_NilValue()
-            }
-
-            Err(e) => {
-                base_error(format!("cannot open file '{}': {}", file_path, e));
-            }
+        Err(e) => {
+            base_error(format!("cannot open file '{}': {}", file_path, e));
         }
     }
 }
@@ -877,12 +857,7 @@ fn echo_original_lines(
     }
 }
 
-fn eval_source_text_with_name(
-    content: &str,
-    env: SEXP,
-    filename: &str,
-    keep_source: bool,
-) -> SEXP {
+fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str, keep_source: bool) -> SEXP {
     unsafe {
         let keep_source = keep_source || option_keep_source();
         if keep_source {
@@ -960,7 +935,7 @@ fn eval_source_text_with_name(
 }
 
 fn eval_source_text(content: &str, env: SEXP) -> SEXP {
-     eval_source_text_with_name(content, env, "", option_keep_source()) 
+    eval_source_text_with_name(content, env, "", option_keep_source())
 }
 
 /// R's `demo(topic, ...)` — run a demo (simplified).
@@ -1042,15 +1017,13 @@ pub fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// means an embedded source was found and run; FALSE leaves GNU's ordinary
 /// help-file path in control.
 pub fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let Some((topic, source)) = portable_example_source(args) else {
-            crate::sexp::globals::set_R_Visible(TRUE);
-            return Rf_ScalarLogical(FALSE);
-        };
-        let _ = run_portable_example(&source, &topic, args, rho);
-        crate::sexp::globals::set_R_Visible(FALSE);
-        Rf_ScalarLogical(TRUE)
-    }
+    let Some((topic, source)) = portable_example_source(args) else {
+        crate::sexp::globals::set_R_Visible(TRUE);
+        return Rf_ScalarLogical(FALSE);
+    };
+    let _ = run_portable_example(&source, &topic, args, rho);
+    crate::sexp::globals::set_R_Visible(FALSE);
+    Rf_ScalarLogical(TRUE)
 }
 
 fn run_portable_example(source: &str, topic: &str, args: SEXP, rho: SEXP) -> SEXP {
@@ -1193,25 +1166,23 @@ fn force_example_argument(value: SEXP) -> SEXP {
 }
 
 fn abbreviate_example_topic(topic: &str) -> String {
-    unsafe {
-        let topic_vector = string_vector(&[topic.to_string()]);
-        let _topic_guard = protect(topic_vector);
-        let minlength = Rf_ScalarInteger(6);
-        let _minlength_guard = protect(minlength);
-        let args = Rf_cons(topic_vector, R_NilValue());
-        let _args_guard = protect(args);
-        let tail = Rf_cons(minlength, R_NilValue());
-        let _tail_guard = protect(tail);
-        SETCDR(args, tail);
-        let abbreviated = crate::mainutils::essentials::strings::do_abbreviate(
-            R_NilValue(),
-            R_NilValue(),
-            args,
-            R_NilValue(),
-        );
-        let _abbreviated_guard = protect(abbreviated);
-        elt_to_string(abbreviated, 0)
-    }
+    let topic_vector = string_vector(&[topic.to_string()]);
+    let _topic_guard = protect(topic_vector);
+    let minlength = Rf_ScalarInteger(6);
+    let _minlength_guard = protect(minlength);
+    let args = Rf_cons(topic_vector, R_NilValue());
+    let _args_guard = protect(args);
+    let tail = Rf_cons(minlength, R_NilValue());
+    let _tail_guard = protect(tail);
+    SETCDR(args, tail);
+    let abbreviated = crate::mainutils::essentials::strings::do_abbreviate(
+        R_NilValue(),
+        R_NilValue(),
+        args,
+        R_NilValue(),
+    );
+    let _abbreviated_guard = protect(abbreviated);
+    elt_to_string(abbreviated, 0)
 }
 
 fn utils_example_closure() -> Option<SEXP> {

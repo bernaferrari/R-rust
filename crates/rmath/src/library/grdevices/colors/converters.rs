@@ -22,10 +22,8 @@ pub(crate) unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
 }
 
 pub(crate) unsafe fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, R_DimSymbol());
-        Rf_isNull(dim) == 0 && LENGTH(dim) == 2
-    }
+    let dim = getAttrib(x, R_DimSymbol());
+    Rf_isNull(dim) == 0 && LENGTH(dim) == 2
 }
 
 pub(crate) fn RGB2rgb_func(r: u32, g: u32, b: u32) -> *const c_char {
@@ -101,51 +99,43 @@ pub(crate) fn incol2name_buf_trans(col: rcolor) -> *const c_char {
 }
 
 pub(crate) unsafe fn ScaleColor(x: c_double) -> u32 {
-    unsafe {
-        if ISNAN(x) {
-            Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
-        }
-        if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-            Rf_error(b"color intensity not in [0,1]\0".as_ptr() as *const c_char);
-        }
-        (255.0 * x + 0.5) as u32
+    if ISNAN(x) {
+        Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
     }
+    if !R_FINITE(x) || x < 0.0 || x > 1.0 {
+        Rf_error(b"color intensity not in [0,1]\0".as_ptr() as *const c_char);
+    }
+    (255.0 * x + 0.5) as u32
 }
 
 pub(crate) unsafe fn CheckColor(x: c_int) -> u32 {
-    unsafe {
-        if x == NA_INTEGER {
-            Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
-        }
-        if x < 0 || x > 255 {
-            Rf_error(b"color intensity not in 0:255\0".as_ptr() as *const c_char);
-        }
-        x as u32
+    if x == NA_INTEGER {
+        Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
     }
+    if x < 0 || x > 255 {
+        Rf_error(b"color intensity not in 0:255\0".as_ptr() as *const c_char);
+    }
+    x as u32
 }
 
 pub(crate) unsafe fn ScaleAlpha(x: c_double) -> u32 {
-    unsafe {
-        if ISNAN(x) {
-            Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
-        }
-        if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-            Rf_error(b"alpha level not in [0,1]\0".as_ptr() as *const c_char);
-        }
-        (255.0 * x + 0.5) as u32
+    if ISNAN(x) {
+        Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
     }
+    if !R_FINITE(x) || x < 0.0 || x > 1.0 {
+        Rf_error(b"alpha level not in [0,1]\0".as_ptr() as *const c_char);
+    }
+    (255.0 * x + 0.5) as u32
 }
 
 pub(crate) unsafe fn CheckAlpha(x: c_int) -> u32 {
-    unsafe {
-        if x == NA_INTEGER {
-            Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
-        }
-        if x < 0 || x > 255 {
-            Rf_error(b"alpha level not in 0:255\0".as_ptr() as *const c_char);
-        }
-        x as u32
+    if x == NA_INTEGER {
+        Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
     }
+    if x < 0 || x > 255 {
+        Rf_error(b"alpha level not in 0:255\0".as_ptr() as *const c_char);
+    }
+    x as u32
 }
 
 // ---------------------------------------------------------------------------
@@ -160,49 +150,47 @@ pub(crate) unsafe fn hsv2rgb(
     g: &mut c_double,
     b: &mut c_double,
 ) {
-    unsafe {
-        if !R_FINITE(h) || !R_FINITE(s) || !R_FINITE(v) {
-            Rf_error(b"inputs must be finite\0".as_ptr() as *const c_char);
+    if !R_FINITE(h) || !R_FINITE(s) || !R_FINITE(v) {
+        Rf_error(b"inputs must be finite\0".as_ptr() as *const c_char);
+    }
+    let (f, t_val) = libm::modf(h * 6.0);
+    let i = (t_val as c_int) % 6;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+    match i {
+        0 => {
+            *r = v;
+            *g = t;
+            *b = p;
         }
-        let (f, t_val) = libm::modf(h * 6.0);
-        let i = (t_val as c_int) % 6;
-        let p = v * (1.0 - s);
-        let q = v * (1.0 - s * f);
-        let t = v * (1.0 - s * (1.0 - f));
-        match i {
-            0 => {
-                *r = v;
-                *g = t;
-                *b = p;
-            }
-            1 => {
-                *r = q;
-                *g = v;
-                *b = p;
-            }
-            2 => {
-                *r = p;
-                *g = v;
-                *b = t;
-            }
-            3 => {
-                *r = p;
-                *g = q;
-                *b = v;
-            }
-            4 => {
-                *r = t;
-                *g = p;
-                *b = v;
-            }
-            5 => {
-                *r = v;
-                *g = p;
-                *b = q;
-            }
-            _ => {
-                Rf_error(b"bad hsv to rgb color conversion\0".as_ptr() as *const c_char);
-            }
+        1 => {
+            *r = q;
+            *g = v;
+            *b = p;
+        }
+        2 => {
+            *r = p;
+            *g = v;
+            *b = t;
+        }
+        3 => {
+            *r = p;
+            *g = q;
+            *b = v;
+        }
+        4 => {
+            *r = t;
+            *g = p;
+            *b = v;
+        }
+        5 => {
+            *r = v;
+            *g = p;
+            *b = q;
+        }
+        _ => {
+            Rf_error(b"bad hsv to rgb color conversion\0".as_ptr() as *const c_char);
         }
     }
 }
@@ -319,41 +307,39 @@ pub(crate) unsafe fn hcl2rgb(
     gv: &mut c_double,
     bv: &mut c_double,
 ) {
-    unsafe {
-        if l <= 0.0 {
-            *rv = 0.0;
-            *gv = 0.0;
-            *bv = 0.0;
-            return;
-        }
-
-        let rad = DEG2RAD * h;
-        let _lu = l;
-        let uu = c * rad.cos();
-        let vv = c * rad.sin();
-
-        let (x, y, z);
-        if l <= 0.0 && uu == 0.0 && vv == 0.0 {
-            x = 0.0;
-            y = 0.0;
-            z = 0.0;
-        } else {
-            y = WHITE_Y
-                * if l > 7.999592 {
-                    ((l + 16.0) / 116.0).powi(3)
-                } else {
-                    l / 903.3
-                };
-            let u2 = uu / (13.0 * l) + WHITE_u;
-            let v2 = vv / (13.0 * l) + WHITE_v;
-            x = 9.0 * y * u2 / (4.0 * v2);
-            z = -x / 3.0 - 5.0 * y + 3.0 * y / v2;
-        }
-
-        *rv = gtrans((3.240479 * x - 1.537150 * y - 0.498535 * z) / WHITE_Y);
-        *gv = gtrans((-0.969256 * x + 1.875992 * y + 0.041556 * z) / WHITE_Y);
-        *bv = gtrans((0.055648 * x - 0.204043 * y + 1.057311 * z) / WHITE_Y);
+    if l <= 0.0 {
+        *rv = 0.0;
+        *gv = 0.0;
+        *bv = 0.0;
+        return;
     }
+
+    let rad = DEG2RAD * h;
+    let _lu = l;
+    let uu = c * rad.cos();
+    let vv = c * rad.sin();
+
+    let (x, y, z);
+    if l <= 0.0 && uu == 0.0 && vv == 0.0 {
+        x = 0.0;
+        y = 0.0;
+        z = 0.0;
+    } else {
+        y = WHITE_Y
+            * if l > 7.999592 {
+                ((l + 16.0) / 116.0).powi(3)
+            } else {
+                l / 903.3
+            };
+        let u2 = uu / (13.0 * l) + WHITE_u;
+        let v2 = vv / (13.0 * l) + WHITE_v;
+        x = 9.0 * y * u2 / (4.0 * v2);
+        z = -x / 3.0 - 5.0 * y + 3.0 * y / v2;
+    }
+
+    *rv = gtrans((3.240479 * x - 1.537150 * y - 0.498535 * z) / WHITE_Y);
+    *gv = gtrans((-0.969256 * x + 1.875992 * y + 0.041556 * z) / WHITE_Y);
+    *bv = gtrans((0.055648 * x - 0.204043 * y + 1.057311 * z) / WHITE_Y);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,19 +389,17 @@ pub(crate) unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub(crate) unsafe fn hexdigit(d: c_int) -> u32 {
-    unsafe {
-        if d >= b'0' as c_int && d <= b'9' as c_int {
-            return (d - b'0' as c_int) as u32;
-        }
-        if d >= b'A' as c_int && d <= b'F' as c_int {
-            return (10 + d - b'A' as c_int) as u32;
-        }
-        if d >= b'a' as c_int && d <= b'f' as c_int {
-            return (10 + d - b'a' as c_int) as u32;
-        }
-        Rf_error(b"invalid hex digit in 'color' or 'lty'\0".as_ptr() as *const c_char);
-        0
+    if d >= b'0' as c_int && d <= b'9' as c_int {
+        return (d - b'0' as c_int) as u32;
     }
+    if d >= b'A' as c_int && d <= b'F' as c_int {
+        return (10 + d - b'A' as c_int) as u32;
+    }
+    if d >= b'a' as c_int && d <= b'f' as c_int {
+        return (10 + d - b'a' as c_int) as u32;
+    }
+    Rf_error(b"invalid hex digit in 'color' or 'lty'\0".as_ptr() as *const c_char);
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -519,22 +503,20 @@ pub(crate) unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
 
 /// Internal to external color representation.
 pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
-    unsafe {
-        if R_OPAQUE(col) != 0 {
-            for entry in COLOR_DATA_BASE.iter() {
-                if entry.name.is_empty() {
-                    break;
-                }
-                if col == entry.code {
-                    return entry.name.as_ptr() as *const c_char;
-                }
+    if R_OPAQUE(col) != 0 {
+        for entry in COLOR_DATA_BASE.iter() {
+            if entry.name.is_empty() {
+                break;
             }
-            incol2name_buf_opaque(col)
-        } else if R_TRANSPARENT(col) != 0 {
-            b"transparent\0".as_ptr() as *const c_char
-        } else {
-            incol2name_buf_trans(col)
+            if col == entry.code {
+                return entry.name.as_ptr() as *const c_char;
+            }
         }
+        incol2name_buf_opaque(col)
+    } else if R_TRANSPARENT(col) != 0 {
+        b"transparent\0".as_ptr() as *const c_char
+    } else {
+        incol2name_buf_trans(col)
     }
 }
 

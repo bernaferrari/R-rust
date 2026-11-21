@@ -333,14 +333,10 @@ pub fn unit_binary(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
                 let x = av[i % av.len()];
                 let y = bv[i % bv.len()];
                 if au && bu {
-                    let an = elt_to_string(
-                        field(a, "units"),
-                        (i as i64) % XLENGTH(field(a, "units")),
-                    );
-                    let bn = elt_to_string(
-                        field(b, "units"),
-                        (i as i64) % XLENGTH(field(b, "units")),
-                    );
+                    let an =
+                        elt_to_string(field(a, "units"), (i as i64) % XLENGTH(field(a, "units")));
+                    let bn =
+                        elt_to_string(field(b, "units"), (i as i64) % XLENGTH(field(b, "units")));
                     if an != bn
                         || field(a, "data") != R_NilValue()
                         || field(b, "data") != R_NilValue()

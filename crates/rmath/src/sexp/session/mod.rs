@@ -191,15 +191,10 @@ fn print_panic_r_error(
 }
 
 fn remember_last_value(value: SEXP) {
-    unsafe {
-        // GNU main.c REPL: SET_SYMVALUE(R_LastvalueSymbol, value). The value
-        // lives on the symbol's value cell, not in a globalenv binding, so
-        // `ls()` never lists `.Last.value` (oracle Rscript: character(0)).
-        crate::sexp::accessors::SET_SYMVALUE(
-            crate::sexp::symbol::install_str(".Last.value"),
-            value,
-        );
-    }
+    // GNU main.c REPL: SET_SYMVALUE(R_LastvalueSymbol, value). The value
+    // lives on the symbol's value cell, not in a globalenv binding, so
+    // `ls()` never lists `.Last.value` (oracle Rscript: character(0)).
+    crate::sexp::accessors::SET_SYMVALUE(crate::sexp::symbol::install_str(".Last.value"), value);
 }
 
 fn expr_or_nil(expr: SEXP) -> SEXP {

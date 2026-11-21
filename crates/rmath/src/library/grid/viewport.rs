@@ -24,6 +24,7 @@
 
 use std::os::raw::{c_char, c_double, c_int};
 
+use super::protect;
 use crate::eval::eval::Rf_eval;
 use crate::sexp::accessors::{
     CHAR, INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
@@ -34,7 +35,6 @@ use crate::sexp::envir::findFun;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::globals::R_NilValue;
-use super::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;
@@ -102,13 +102,11 @@ fn ScalarReal(x: f64) -> SEXP {
 }
 
 unsafe fn lang1(fn_: SEXP) -> SEXP {
-    unsafe {
-        let call = Rf_cons(fn_, R_NilValue());
-        if !call.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        call
+    let call = Rf_cons(fn_, R_NilValue());
+    if !call.is_null() {
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
     }
+    call
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +119,7 @@ fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     set_integer_elt(dims, 1, ncol);
     let result = alloc_vector(sexptype, nrow * ncol);
     // SAFETY: `result` and `dims` are live objects allocated above.
-    unsafe { crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims) };
+    crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims);
     result
 }
 
@@ -212,7 +210,10 @@ pub fn viewportgpar(vp: SEXP) -> SEXP {
 
 pub fn viewportFontFamily(vp: SEXP) -> *const c_char {
     char_ptr(string_elt(
-        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONTFAMILY as R_xlen_t),
+        vector_elt(
+            vector_elt(vp, PVP_GPAR as R_xlen_t),
+            GP_FONTFAMILY as R_xlen_t,
+        ),
         0,
     ))
 }
@@ -226,14 +227,20 @@ pub fn viewportFont(vp: SEXP) -> c_int {
 
 pub fn viewportFontSize(vp: SEXP) -> f64 {
     real_elt(
-        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONTSIZE as R_xlen_t),
+        vector_elt(
+            vector_elt(vp, PVP_GPAR as R_xlen_t),
+            GP_FONTSIZE as R_xlen_t,
+        ),
         0,
     )
 }
 
 pub fn viewportLineHeight(vp: SEXP) -> f64 {
     real_elt(
-        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_LINEHEIGHT as R_xlen_t),
+        vector_elt(
+            vector_elt(vp, PVP_GPAR as R_xlen_t),
+            GP_LINEHEIGHT as R_xlen_t,
+        ),
         0,
     )
 }

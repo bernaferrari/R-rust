@@ -24,7 +24,7 @@ use crate::sexp::protect::*;
 // ---------------------------------------------------------------------------
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
+    crate::main::coerce::coerceVector(x, type_)
 }
 
 unsafe fn duplicate(x: SEXP) -> SEXP {
@@ -38,7 +38,7 @@ use crate::mainutils::util_main::ncols;
 // ---------------------------------------------------------------------------
 
 unsafe fn as_real(x: SEXP) -> c_double {
-    unsafe { crate::mainutils::coerce::asReal(x) }
+    crate::mainutils::coerce::asReal(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
 // ---------------------------------------------------------------------------
 
 unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 // ---------------------------------------------------------------------------

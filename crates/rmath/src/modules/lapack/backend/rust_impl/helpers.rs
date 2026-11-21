@@ -4,9 +4,7 @@ use super::*;
 /// session is active. Standalone low-level LAPACK tests intentionally run
 /// without an ambient session and therefore retain the historical unlimited
 /// behavior.
-pub(crate) fn reserve_native_workspace(
-    bytes: usize,
-) -> Result<Option<TransientReservation>, ()> {
+pub(crate) fn reserve_native_workspace(bytes: usize) -> Result<Option<TransientReservation>, ()> {
     match with_current_instance(|instance| unsafe {
         with_arena_in(instance, |arena| arena.try_reserve_transient(bytes))
     }) {
@@ -47,13 +45,7 @@ pub(crate) fn write_matref_f64(
 }
 
 /// Write real matrix (owned) to column-major pointer.
-pub(crate) fn write_owned_f64(
-    mat: &Mat<f64>,
-    ptr: *mut f64,
-    m: usize,
-    n: usize,
-    lda: usize,
-) {
+pub(crate) fn write_owned_f64(mat: &Mat<f64>, ptr: *mut f64, m: usize, n: usize, lda: usize) {
     unsafe {
         for j in 0..n {
             for i in 0..m {
@@ -82,13 +74,7 @@ pub(crate) fn write_matref_c64(
 }
 
 /// Write complex matrix (owned) to column-major Rcomplex pointer.
-pub(crate) fn write_owned_c64(
-    mat: &Mat<c64>,
-    ptr: *mut Rcomplex,
-    m: usize,
-    n: usize,
-    lda: usize,
-) {
+pub(crate) fn write_owned_c64(mat: &Mat<c64>, ptr: *mut Rcomplex, m: usize, n: usize, lda: usize) {
     unsafe {
         for j in 0..n {
             for i in 0..m {
@@ -100,12 +86,7 @@ pub(crate) fn write_owned_c64(
 }
 
 /// Read a column-major complex matrix into a faer Mat<c64>.
-pub(crate) fn read_mat_c64(
-    ptr: *const Rcomplex,
-    m: usize,
-    n: usize,
-    lda: usize,
-) -> Mat<c64> {
+pub(crate) fn read_mat_c64(ptr: *const Rcomplex, m: usize, n: usize, lda: usize) -> Mat<c64> {
     unsafe {
         let mut mat = Mat::zeros(m, n);
         for j in 0..n {
