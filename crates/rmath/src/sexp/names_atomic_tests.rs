@@ -453,11 +453,11 @@ fn atomic_names_publication_appends_to_chain_replaced_during_cell_allocation() {
         let factory = token.node_factory();
         let object = factory.allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3))).unwrap().into_owned().unwrap();
         let input = factory.allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3))).unwrap().into_owned().unwrap();
-        let old_tag = unsafe { token.sexp(super::Rf_install(c"old".as_ptr())) }
+        let old_tag = unsafe { token.sexp(super::super::symbol::Rf_install(c"old".as_ptr())) }
             .unwrap()
             .into_owned()
             .unwrap();
-        let current_tag = unsafe { token.sexp(super::Rf_install(if add_dim { c"dim".as_ptr() } else { c"current".as_ptr() })) }
+        let current_tag = unsafe { token.sexp(super::super::symbol::Rf_install(if add_dim { c"dim".as_ptr() } else { c"current".as_ptr() })) }
             .unwrap()
             .into_owned()
             .unwrap();
@@ -904,7 +904,7 @@ fn names_replacement_plain_copy_survives_gc_and_rejects_revocation() {
             unsafe {
                 super::setAttrib(
                     input.as_raw(),
-                    super::Rf_install(c"marker".as_ptr()),
+                    super::super::symbol::Rf_install(c"marker".as_ptr()),
                     marker.as_raw(),
                 )
             };
@@ -956,7 +956,7 @@ fn names_replacement_plain_copy_denial_preserves_source_and_target() {
     unsafe {
         super::setAttrib(
             input.as_raw(),
-            super::Rf_install(c"marker".as_ptr()),
+            super::super::symbol::Rf_install(c"marker".as_ptr()),
             marker.as_raw(),
         )
     };
@@ -1010,7 +1010,7 @@ fn names_replacement_attribute_probe_rejects_foreign_singleton_and_stale() {
     unsafe {
         super::setAttrib(
             local.as_raw(),
-            super::Rf_install(c"marker".as_ptr()),
+            super::super::symbol::Rf_install(c"marker".as_ptr()),
             marker.as_raw(),
         )
     };

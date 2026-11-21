@@ -5,7 +5,7 @@ use super::super::globals::{
     R_BaseEnv, R_BaseEnv_in, R_EmptyEnv, R_EmptyEnv_in, R_GlobalEnv, R_GlobalEnv_in,
 };
 
-use super::super::symbol::Rf_install;
+use super::super::symbol::Rf_install_in;
 use super::*;
 
 #[test]

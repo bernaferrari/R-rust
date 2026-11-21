@@ -195,7 +195,6 @@ mod tests {
     use super::*;
     use crate::sexp::accessors::{CAR, CDR, TAG};
     use crate::sexp::constructors::Rf_ScalarInteger;
-    use crate::sexp::symbol::Rf_install;
 
     #[test]
     fn pairlist_builder_finish_as_type_preserves_cells_and_rejects_other_bodies() {

@@ -2093,7 +2093,7 @@ mod tests {
     use super::super::accessors::TYPEOF;
     use super::super::constructors::*;
     use super::super::ffi::*;
-    use super::super::globals::set_R_GlobalEnv_in;
+    use super::super::globals::{R_MissingArg, set_R_GlobalEnv_in};
     use super::super::instance::with_required_current_instance;
     use super::super::memory;
     use super::super::symbol::Rf_install;
