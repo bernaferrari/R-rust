@@ -178,7 +178,7 @@ pub fn ne_with_nan(x: f64, y: f64, str: c_int) -> bool {
 }
 
 unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {
-    unsafe { crate::mainutils::relop::Seql(x, y) != 0 }
+    crate::mainutils::relop::Seql(x, y) != 0
 }
 
 // ---------------------------------------------------------------------------

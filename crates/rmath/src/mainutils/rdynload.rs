@@ -1343,32 +1343,26 @@ pub fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        // The public pure-R wrapper admits only authenticated bundled DLL
-        // references. Name-only lookup cannot mint a typed library authority.
-        if TYPEOF(CAR(CDR(args))) == SEXPTYPE::STRSXP {
-            return R_NilValue();
-        }
-        if TYPEOF(CAR(CDR(args))) != SEXPTYPE::EXTPTRSXP {
-            error("invalid DLLInfo reference");
-        }
-        R_getSymbolInfo(CAR(args), CAR(CDR(args)), CAR(CDR(CDR(args))))
+    checkArity(op, args);
+    // The public pure-R wrapper admits only authenticated bundled DLL
+    // references. Name-only lookup cannot mint a typed library authority.
+    if TYPEOF(CAR(CDR(args))) == SEXPTYPE::STRSXP {
+        return R_NilValue();
     }
+    if TYPEOF(CAR(CDR(args))) != SEXPTYPE::EXTPTRSXP {
+        error("invalid DLLInfo reference");
+    }
+    R_getSymbolInfo(CAR(args), CAR(CDR(args)), CAR(CDR(CDR(args))))
 }
 
 pub fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        bundled_dll_table_entry()
-    }
+    checkArity(op, args);
+    bundled_dll_table_entry()
 }
 
 pub fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        R_getRegisteredRoutines(CAR(args))
-    }
+    checkArity(op, args);
+    R_getRegisteredRoutines(CAR(args))
 }
 
 // ---------------------------------------------------------------------------

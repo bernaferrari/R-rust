@@ -89,7 +89,7 @@ pub fn resolve_promise(x: SEXP) -> SEXP {
 /// currently a no-op, consistent with other modules.
 #[inline(always)]
 pub fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// R_listCompact: destructively removes R_NilValue ('NULL') elements from a

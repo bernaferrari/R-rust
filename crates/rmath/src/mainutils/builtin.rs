@@ -143,8 +143,7 @@ fn shallow_duplicate(x: SEXP) -> SEXP {
 
 /// Audited boundary: enforce declared arity on live arguments.
 fn check_arity(op: SEXP, args: SEXP) {
-    // SAFETY: checkArity inspects a live primitive and argument list.
-    unsafe { checkArity(op, args) }
+    checkArity(op, args)
 }
 
 /// Audited boundary: the value parked on the active return context, or null.

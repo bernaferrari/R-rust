@@ -151,7 +151,7 @@ fn getCharCE(s: SEXP) -> c_int {
 /// checkArity — shared primitive arity validation.
 #[inline(always)]
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// asInteger — extract integer value from scalar.

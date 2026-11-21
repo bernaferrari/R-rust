@@ -785,7 +785,7 @@ pub(crate) fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 /// checkArity: check function arity.
 #[inline]
 pub(crate) fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// GetArrayDimnames: get dimnames attribute.

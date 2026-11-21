@@ -130,7 +130,7 @@ use crate::sexp::protect::protect;
 /// checkArity — stub, no-op.
 #[inline(always)]
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// isString check — STRSXP type.

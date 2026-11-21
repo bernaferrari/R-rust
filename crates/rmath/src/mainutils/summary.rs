@@ -13,18 +13,21 @@
 //!   iprod, rprod, cprod (product with NA/NaN handling),
 //!   real_mean, integer_mean (mean with overflow protection)
 
+use crate::mainutils::essentials::{active_owner, owner_sexp};
 use crate::sexp::accessors::{
-    CAR, CDR, COMPLEX, INTEGER, LOGICAL, REAL, SETCDR, SETTAG, TAG, TYPEOF, XLENGTH,
+    CAR, CDR, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_REAL_ELT, SETCDR, SETTAG, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_ScalarComplex, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
+use crate::sexp::ffi::R_xlen_t;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::{Sexp, SexpResult};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
-use std::os::raw::{c_char, c_double, c_int};
+use crate::sexp::symbol::install_str;
+use std::os::raw::{c_double, c_int};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -415,55 +418,51 @@ fn Int2Real(i: c_int) -> f64 {
 
 /// asLogical — extract integer logical value from SEXP.
 #[inline]
-unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return NA_INTEGER;
+fn asLogical(x: SEXP) -> c_int {
+    if x.is_null() || x == R_NilValue() {
+        return NA_INTEGER;
+    }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP => {
+            if XLENGTH(x) == 0 {
+                NA_INTEGER
+            } else {
+                crate::sexp::accessors::LOGICAL_ELT(x, 0)
+            }
         }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => {
-                if XLENGTH(x) == 0 {
-                    NA_INTEGER
-                } else {
-                    *LOGICAL(x)
-                }
+        t if t == SEXPTYPE::INTSXP => {
+            if XLENGTH(x) == 0 {
+                NA_INTEGER
+            } else {
+                crate::sexp::accessors::INTEGER_ELT(x, 0)
             }
-            t if t == SEXPTYPE::INTSXP => {
-                if XLENGTH(x) == 0 {
-                    NA_INTEGER
-                } else {
-                    *INTEGER(x)
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                if XLENGTH(x) == 0 {
-                    NA_INTEGER
-                } else {
-                    let v = *REAL(x);
-                    if ISNAN(v) {
-                        NA_INTEGER
-                    } else {
-                        if v != 0.0 { 1 } else { 0 }
-                    }
-                }
-            }
-            _ => NA_INTEGER,
         }
+        t if t == SEXPTYPE::REALSXP => {
+            if XLENGTH(x) == 0 {
+                NA_INTEGER
+            } else {
+                let v = crate::sexp::accessors::REAL_ELT(x, 0);
+                if ISNAN(v) {
+                    NA_INTEGER
+                } else {
+                    if v != 0.0 { 1 } else { 0 }
+                }
+            }
+        }
+        _ => NA_INTEGER,
     }
 }
 
 /// asBool2 — extract boolean from scalar (panics on NA).
 #[inline]
-unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
-    unsafe {
-        let v = asLogical(x);
-        if v == NA_INTEGER {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'na.rm' value".to_string(),
-            });
-        }
-        v != 0
+fn asBool2(x: SEXP, _call: SEXP) -> bool {
+    let v = asLogical(x);
+    if v == NA_INTEGER {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "invalid 'na.rm' value".to_string(),
+        });
     }
+    v != 0
 }
 
 /// PRIMVAL -- get the primitive's internal integer value.
@@ -474,401 +473,395 @@ fn PRIMVAL(op: SEXP) -> c_int {
 }
 
 /// Get or intern the "na.rm" symbol.
-unsafe fn R_NaRmSymbol() -> SEXP {
-    unsafe { Rf_install(b"na.rm\0".as_ptr() as *const c_char) }
+fn R_NaRmSymbol() -> SEXP {
+    install_str("na.rm")
 }
 
 /// matchArgExact — find the argument matching a tag by exact symbol identity.
 /// Destructively removes the matched element from the list.
-unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP {
-    unsafe {
-        let mut prev: SEXP = std::ptr::null_mut();
-        let mut a = *list;
+fn matchArgExact(tag: SEXP, list: &mut SEXP) -> SEXP {
+    let mut prev: SEXP = std::ptr::null_mut();
+    let mut a = *list;
 
-        while a != R_NilValue() {
-            if TAG(a) == tag {
-                // Found it — remove from list
-                let val = CAR(a);
-                if prev.is_null() {
-                    *list = CDR(a);
-                } else {
-                    SETCDR(prev, CDR(a));
-                }
-                return val;
+    while a != R_NilValue() {
+        if TAG(a) == tag {
+            // Found it — remove from list
+            let val = CAR(a);
+            if prev.is_null() {
+                *list = CDR(a);
+            } else {
+                SETCDR(prev, CDR(a));
             }
-            prev = a;
-            a = CDR(a);
+            return val;
         }
-        R_NilValue()
+        prev = a;
+        a = CDR(a);
     }
+    R_NilValue()
 }
 
 /// checkArity -- verify argument count matches expected arity.
 #[inline]
-unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+fn checkArity(op: SEXP, args: SEXP) {
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// fixup_NaRm — ensure na.rm is the last argument and exists.
 /// Returns the potentially modified args list.
-unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
-    unsafe {
-        let na_sym = R_NaRmSymbol();
-        let mut na_value = Rf_ScalarLogical(0); // FALSE
-        let mut seen_narm = false;
-        let mut prev: SEXP = std::ptr::null_mut();
-        let mut a = args;
+fn fixup_NaRm(mut args: SEXP) -> SEXP {
+    let na_sym = R_NaRmSymbol();
+    let mut na_value = Rf_ScalarLogical(0); // FALSE
+    let mut seen_narm = false;
+    let mut prev: SEXP = std::ptr::null_mut();
+    let mut a = args;
 
-        while a != R_NilValue() {
-            if TAG(a) == na_sym {
-                if seen_narm {
-                    // Duplicate formal argument "na.rm"
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: "formal argument \"na.rm\" matched by multiple actual arguments"
-                            .to_string(),
-                    });
-                }
-                seen_narm = true;
-                if CDR(a) == R_NilValue() {
-                    return args; // already at the end
-                }
-                na_value = CAR(a);
-                if prev.is_null() {
-                    args = CDR(a);
-                } else {
-                    crate::sexp::accessors::SETCDR(prev, CDR(a));
-                }
+    while a != R_NilValue() {
+        if TAG(a) == na_sym {
+            if seen_narm {
+                // Duplicate formal argument "na.rm"
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "formal argument \"na.rm\" matched by multiple actual arguments"
+                        .to_string(),
+                });
             }
-            prev = a;
-            a = CDR(a);
-        }
-
-        // Append na.rm = na_value to the end
-        let _na_value_guard = protect(na_value);
-        let t = crate::sexp::constructors::Rf_cons(na_value, R_NilValue());
-        let _t_guard = protect(t);
-        SETTAG(t, na_sym);
-        if args == R_NilValue() {
-            args = t;
-        } else {
-            let mut r = args;
-            while CDR(r) != R_NilValue() {
-                r = CDR(r);
+            seen_narm = true;
+            if CDR(a) == R_NilValue() {
+                return args; // already at the end
             }
-            crate::sexp::accessors::SETCDR(r, t);
+            na_value = CAR(a);
+            if prev.is_null() {
+                args = CDR(a);
+            } else {
+                crate::sexp::accessors::SETCDR(prev, CDR(a));
+            }
         }
-        args
+        prev = a;
+        a = CDR(a);
     }
+
+    // Append na.rm = na_value to the end
+    let _na_value_guard = protect(na_value);
+    let t = crate::sexp::constructors::Rf_cons(na_value, R_NilValue());
+    let _t_guard = protect(t);
+    SETTAG(t, na_sym);
+    if args == R_NilValue() {
+        args = t;
+    } else {
+        let mut r = args;
+        while CDR(r) != R_NilValue() {
+            r = CDR(r);
+        }
+        crate::sexp::accessors::SETCDR(r, t);
+    }
+    args
 }
 
 // ---------------------------------------------------------------------------
 // SEXP-level sum/min/max/prod helpers (operate on SEXP vectors)
 // ---------------------------------------------------------------------------
 
+/// Root a raw vector in the active owner for checked element reads.
+fn checked_vec(x: SEXP) -> Sexp<'static> {
+    owner_sexp(active_owner(), x)
+}
+
+/// Unwrap a checked accessor result, raising an R error on failure.
+fn checked<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked integer read that also accepts logical storage, matching GNU R's
+/// `INTEGER()` aliasing of LGLSXP payloads.
+fn int_elt(v: &Sexp<'_>, i: R_xlen_t) -> c_int {
+    checked(if v.typeof_() == SEXPTYPE::LGLSXP {
+        v.try_logical_elt(i)
+    } else {
+        v.try_integer_elt(i)
+    })
+}
+
 /// Integer/logical sum from SEXP vector.
 /// Returns (sum_value, updated_flag).
 /// updated: 0 = no elements, NA_INTEGER = NA found (go to na_answer),
 ///          42 = overflow (switch to real).
-unsafe fn isum_sexp(sx: SEXP, narm: bool) -> (i64, c_int) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = INTEGER(sx);
-        let mut s: i64 = 0;
-        let mut updated: c_int = 0;
-        let mut overflow_count: i32 = 0;
+fn isum_sexp(sx: SEXP, narm: bool) -> (i64, c_int) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: i64 = 0;
+    let mut updated: c_int = 0;
+    let mut overflow_count: i32 = 0;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi != NA_INTEGER {
-                if updated == 0 {
-                    updated = 1;
-                }
-                s += xi as i64;
-                overflow_count += 1;
-                if overflow_count > 1000 {
-                    if s > 9_000_000_000_000_000_i64 || s < -9_000_000_000_000_000_i64 {
-                        return (s, 42); // overflow, switch to real
-                    }
-                    overflow_count = 0;
-                }
-            } else if !narm {
-                return (0, NA_INTEGER);
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi != NA_INTEGER {
+            if updated == 0 {
+                updated = 1;
             }
+            s += xi as i64;
+            overflow_count += 1;
+            if overflow_count > 1000 {
+                if s > 9_000_000_000_000_000_i64 || s < -9_000_000_000_000_000_i64 {
+                    return (s, 42); // overflow, switch to real
+                }
+                overflow_count = 0;
+            }
+        } else if !narm {
+            return (0, NA_INTEGER);
         }
-        (s, updated)
     }
+    (s, updated)
 }
 
 /// Real sum from SEXP vector (used when integer overflow occurs).
-unsafe fn risum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = INTEGER(sx);
-        let mut s: f64 = 0.0;
-        let mut updated = false;
+fn risum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 0.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi != NA_INTEGER {
-                if !updated {
-                    updated = true;
-                }
-                s += xi as f64;
-            } else if !narm {
-                return (NA_REAL, true);
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi != NA_INTEGER {
+            if !updated {
+                updated = true;
             }
+            s += xi as f64;
+        } else if !narm {
+            return (NA_REAL, true);
         }
-        if s > f64::MAX {
-            s = R_PosInf;
-        } else if s < -f64::MAX {
-            s = R_NegInf;
-        }
-        (s, updated)
     }
+    if s > f64::MAX {
+        s = R_PosInf;
+    } else if s < -f64::MAX {
+        s = R_NegInf;
+    }
+    (s, updated)
 }
 
 /// Double sum from SEXP vector.
-unsafe fn rsum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = REAL(sx);
-        let mut s: f64 = 0.0;
-        let mut updated = false;
+fn rsum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 0.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if !narm || !ISNAN(xi) {
-                if !updated {
-                    updated = true;
-                }
-                s += xi;
+    for k in 0..n {
+        let xi = checked(v.try_real_elt(k));
+        if !narm || !ISNAN(xi) {
+            if !updated {
+                updated = true;
             }
+            s += xi;
         }
-        if s > f64::MAX {
-            s = R_PosInf;
-        } else if s < -f64::MAX {
-            s = R_NegInf;
-        }
-        (s, updated)
     }
+    if s > f64::MAX {
+        s = R_PosInf;
+    } else if s < -f64::MAX {
+        s = R_NegInf;
+    }
+    (s, updated)
 }
 
 /// Complex sum from SEXP vector.
-unsafe fn csum_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = COMPLEX(sx);
-        let mut sr: f64 = 0.0;
-        let mut si: f64 = 0.0;
-        let mut updated = false;
+fn csum_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut sr: f64 = 0.0;
+    let mut si: f64 = 0.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xc = *ptr.add(k as usize);
-            if !narm || (!ISNAN(xc.r) && !ISNAN(xc.i)) {
-                if !updated {
-                    updated = true;
-                }
-                sr += xc.r;
-                si += xc.i;
+    for k in 0..n {
+        let xc = checked(v.try_complex_elt(k));
+        if !narm || (!ISNAN(xc.r) && !ISNAN(xc.i)) {
+            if !updated {
+                updated = true;
             }
+            sr += xc.r;
+            si += xc.i;
         }
-        (Rcomplex { r: sr, i: si }, updated)
     }
+    (Rcomplex { r: sr, i: si }, updated)
 }
 
 /// Integer min from SEXP vector.
-unsafe fn imin_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = INTEGER(sx);
-        let mut s: c_int = 0;
-        let mut updated = false;
+fn imin_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: c_int = 0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi != NA_INTEGER {
-                if !updated || s > xi {
-                    s = xi;
-                    if !updated {
-                        updated = true;
-                    }
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi != NA_INTEGER {
+            if !updated || s > xi {
+                s = xi;
+                if !updated {
+                    updated = true;
                 }
-            } else if !narm {
-                return (NA_INTEGER, true);
             }
+        } else if !narm {
+            return (NA_INTEGER, true);
         }
-        (s, updated)
     }
+    (s, updated)
 }
 
 /// Double min from SEXP vector.
-unsafe fn rmin_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = REAL(sx);
-        let mut s: f64 = 0.0;
-        let mut updated = false;
+fn rmin_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 0.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if ISNAN(xi) {
-                if !narm {
-                    if !ISNA(s) {
-                        s = xi;
-                    }
-                    if !updated {
-                        updated = true;
-                    }
+    for k in 0..n {
+        let xi = checked(v.try_real_elt(k));
+        if ISNAN(xi) {
+            if !narm {
+                if !ISNA(s) {
+                    s = xi;
                 }
-            } else if !updated || xi < s {
-                s = xi;
                 if !updated {
                     updated = true;
                 }
             }
+        } else if !updated || xi < s {
+            s = xi;
+            if !updated {
+                updated = true;
+            }
         }
-        (s, updated)
     }
+    (s, updated)
 }
 
 /// Integer max from SEXP vector.
-unsafe fn imax_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = INTEGER(sx);
-        let mut s: c_int = 0;
-        let mut updated = false;
+fn imax_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: c_int = 0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi != NA_INTEGER {
-                if !updated || s < xi {
-                    s = xi;
-                    if !updated {
-                        updated = true;
-                    }
-                }
-            } else if !narm {
-                return (NA_INTEGER, true);
-            }
-        }
-        (s, updated)
-    }
-}
-
-/// Double max from SEXP vector.
-unsafe fn rmax_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = REAL(sx);
-        let mut s: f64 = 0.0;
-        let mut updated = false;
-
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if ISNAN(xi) {
-                if !narm {
-                    if !ISNA(s) {
-                        s = xi;
-                    }
-                    if !updated {
-                        updated = true;
-                    }
-                }
-            } else if !updated || xi > s {
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi != NA_INTEGER {
+            if !updated || s < xi {
                 s = xi;
                 if !updated {
                     updated = true;
                 }
             }
+        } else if !narm {
+            return (NA_INTEGER, true);
         }
-        (s, updated)
     }
+    (s, updated)
+}
+
+/// Double max from SEXP vector.
+fn rmax_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 0.0;
+    let mut updated = false;
+
+    for k in 0..n {
+        let xi = checked(v.try_real_elt(k));
+        if ISNAN(xi) {
+            if !narm {
+                if !ISNA(s) {
+                    s = xi;
+                }
+                if !updated {
+                    updated = true;
+                }
+            }
+        } else if !updated || xi > s {
+            s = xi;
+            if !updated {
+                updated = true;
+            }
+        }
+    }
+    (s, updated)
 }
 
 /// Integer product from SEXP vector (returns double).
-unsafe fn iprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = INTEGER(sx);
-        let mut s: f64 = 1.0;
-        let mut updated = false;
+fn iprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 1.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi != NA_INTEGER {
-                s *= xi as f64;
-                if !updated {
-                    updated = true;
-                }
-            } else if !narm {
-                if !updated {
-                    updated = true;
-                }
-                return (NA_REAL, updated);
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi != NA_INTEGER {
+            s *= xi as f64;
+            if !updated {
+                updated = true;
             }
-            if ISNAN(s) {
-                return (NA_REAL, updated);
+        } else if !narm {
+            if !updated {
+                updated = true;
             }
+            return (NA_REAL, updated);
         }
-        if s > f64::MAX {
-            s = R_PosInf;
-        } else if s < -f64::MAX {
-            s = R_NegInf;
+        if ISNAN(s) {
+            return (NA_REAL, updated);
         }
-        (s, updated)
     }
+    if s > f64::MAX {
+        s = R_PosInf;
+    } else if s < -f64::MAX {
+        s = R_NegInf;
+    }
+    (s, updated)
 }
 
 /// Double product from SEXP vector.
-unsafe fn rprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = REAL(sx);
-        let mut s: f64 = 1.0;
-        let mut updated = false;
+fn rprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut s: f64 = 1.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if !narm || !ISNAN(xi) {
-                if !updated {
-                    updated = true;
-                }
-                s *= xi;
+    for k in 0..n {
+        let xi = checked(v.try_real_elt(k));
+        if !narm || !ISNAN(xi) {
+            if !updated {
+                updated = true;
             }
+            s *= xi;
         }
-        if s > f64::MAX {
-            s = R_PosInf;
-        } else if s < -f64::MAX {
-            s = R_NegInf;
-        }
-        (s, updated)
     }
+    if s > f64::MAX {
+        s = R_PosInf;
+    } else if s < -f64::MAX {
+        s = R_NegInf;
+    }
+    (s, updated)
 }
 
 /// Complex product from SEXP vector.
-unsafe fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
-    unsafe {
-        let n = XLENGTH(sx);
-        let ptr = COMPLEX(sx);
-        let mut sr: f64 = 1.0;
-        let mut si: f64 = 0.0;
-        let mut updated = false;
+fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
+    let n = XLENGTH(sx);
+    let v = checked_vec(sx);
+    let mut sr: f64 = 1.0;
+    let mut si: f64 = 0.0;
+    let mut updated = false;
 
-        for k in 0..n {
-            let xc = *ptr.add(k as usize);
-            if !narm || (!ISNAN(xc.r) && !ISNAN(xc.i)) {
-                if !updated {
-                    updated = true;
-                }
-                let tr = sr;
-                let ti = si;
-                sr = tr * xc.r - ti * xc.i;
-                si = tr * xc.i + ti * xc.r;
+    for k in 0..n {
+        let xc = checked(v.try_complex_elt(k));
+        if !narm || (!ISNAN(xc.r) && !ISNAN(xc.i)) {
+            if !updated {
+                updated = true;
             }
+            let tr = sr;
+            let ti = si;
+            sr = tr * xc.r - ti * xc.i;
+            si = tr * xc.i + ti * xc.r;
         }
-        (Rcomplex { r: sr, i: si }, updated)
     }
+    (Rcomplex { r: sr, i: si }, updated)
 }
 
 // ---------------------------------------------------------------------------
@@ -876,124 +869,116 @@ unsafe fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
 // ---------------------------------------------------------------------------
 
 /// Mean of a logical SEXP vector.
-unsafe fn logical_mean_sexp(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let ptr = LOGICAL(x);
-        let mut s: f64 = 0.0;
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi == c_int::MIN {
-                return Rf_ScalarReal(NA_REAL);
-            }
-            s += xi as f64;
+fn logical_mean_sexp(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let v = checked_vec(x);
+    let mut s: f64 = 0.0;
+    for k in 0..n {
+        let xi = checked(v.try_logical_elt(k));
+        if xi == c_int::MIN {
+            return Rf_ScalarReal(NA_REAL);
         }
-        Rf_ScalarReal(s / n as f64)
+        s += xi as f64;
     }
+    Rf_ScalarReal(s / n as f64)
 }
 
 /// Mean of an integer SEXP vector.
-unsafe fn integer_mean_sexp(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let ptr = INTEGER(x);
-        let mut s: f64 = 0.0;
-        for k in 0..n {
-            let xi = *ptr.add(k as usize);
-            if xi == NA_INTEGER {
-                return Rf_ScalarReal(NA_REAL);
-            }
-            s += xi as f64;
+fn integer_mean_sexp(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let v = checked_vec(x);
+    let mut s: f64 = 0.0;
+    for k in 0..n {
+        let xi = int_elt(&v, k);
+        if xi == NA_INTEGER {
+            return Rf_ScalarReal(NA_REAL);
         }
-        Rf_ScalarReal(s / n as f64)
+        s += xi as f64;
     }
+    Rf_ScalarReal(s / n as f64)
 }
 
 /// Mean of a real SEXP vector (with overflow protection).
-unsafe fn real_mean_sexp(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let ptr = REAL(x);
-        if n == 0 {
-            // GNU summary.c do_summary mean: ScalarReal(R_NaN)
-            return Rf_ScalarReal(f64::NAN);
-        }
-
-        // GNU .Internal(mean): first NA/NaN is returned with its bits.
-        // Adding NA_REAL into a running sum collapses it to a generic NaN.
-        for k in 0..n {
-            let v = *ptr.add(k as usize);
-            if ISNAN(v) {
-                return Rf_ScalarReal(v);
-            }
-        }
-
-        // First pass: sum
-        let mut s: f64 = 0.0;
-        for k in 0..n {
-            s += *ptr.add(k as usize);
-        }
-
-        let finite_s = s.is_finite();
-        if finite_s {
-            s /= n as f64;
-        } else {
-            // Infinite s — divide each term by n first
-            s = 0.0;
-            for k in 0..n {
-                s += *ptr.add(k as usize) / n as f64;
-            }
-        }
-
-        // Second pass: correction term
-        if finite_s && s.is_finite() {
-            let mut t: f64 = 0.0;
-            for k in 0..n {
-                t += *ptr.add(k as usize) - s;
-            }
-            s += t / n as f64;
-        } else if s.is_finite() {
-            let mut t: f64 = 0.0;
-            for k in 0..n {
-                t += (*ptr.add(k as usize) - s) / n as f64;
-            }
-            s += t;
-        }
-
-        Rf_ScalarReal(s)
+fn real_mean_sexp(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let v = checked_vec(x);
+    if n == 0 {
+        // GNU summary.c do_summary mean: ScalarReal(R_NaN)
+        return Rf_ScalarReal(f64::NAN);
     }
+
+    // GNU .Internal(mean): first NA/NaN is returned with its bits.
+    // Adding NA_REAL into a running sum collapses it to a generic NaN.
+    for k in 0..n {
+        let v = checked(v.try_real_elt(k));
+        if ISNAN(v) {
+            return Rf_ScalarReal(v);
+        }
+    }
+
+    // First pass: sum
+    let mut s: f64 = 0.0;
+    for k in 0..n {
+        s += checked(v.try_real_elt(k));
+    }
+
+    let finite_s = s.is_finite();
+    if finite_s {
+        s /= n as f64;
+    } else {
+        // Infinite s — divide each term by n first
+        s = 0.0;
+        for k in 0..n {
+            s += checked(v.try_real_elt(k)) / n as f64;
+        }
+    }
+
+    // Second pass: correction term
+    if finite_s && s.is_finite() {
+        let mut t: f64 = 0.0;
+        for k in 0..n {
+            t += checked(v.try_real_elt(k)) - s;
+        }
+        s += t / n as f64;
+    } else if s.is_finite() {
+        let mut t: f64 = 0.0;
+        for k in 0..n {
+            t += (checked(v.try_real_elt(k)) - s) / n as f64;
+        }
+        s += t;
+    }
+
+    Rf_ScalarReal(s)
 }
 
 /// Mean of a complex SEXP vector.
-unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let ptr = COMPLEX(x);
-        let mut sr: f64 = 0.0;
-        let mut si: f64 = 0.0;
+fn complex_mean_sexp(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let v = checked_vec(x);
+    let mut sr: f64 = 0.0;
+    let mut si: f64 = 0.0;
 
-        for k in 0..n {
-            let xc = *ptr.add(k as usize);
-            sr += xc.r;
-            si += xc.i;
-        }
-        sr /= n as f64;
-        si /= n as f64;
-
-        if sr.is_finite() && si.is_finite() {
-            let mut tr: f64 = 0.0;
-            let mut ti: f64 = 0.0;
-            for k in 0..n {
-                let xc = *ptr.add(k as usize);
-                tr += xc.r - sr;
-                ti += xc.i - si;
-            }
-            sr += tr / n as f64;
-            si += ti / n as f64;
-        }
-
-        Rf_ScalarComplex(Rcomplex { r: sr, i: si })
+    for k in 0..n {
+        let xc = checked(v.try_complex_elt(k));
+        sr += xc.r;
+        si += xc.i;
     }
+    sr /= n as f64;
+    si /= n as f64;
+
+    if sr.is_finite() && si.is_finite() {
+        let mut tr: f64 = 0.0;
+        let mut ti: f64 = 0.0;
+        for k in 0..n {
+            let xc = checked(v.try_complex_elt(k));
+            tr += xc.r - sr;
+            ti += xc.i - si;
+        }
+        sr += tr / n as f64;
+        si += ti / n as f64;
+    }
+
+    Rf_ScalarComplex(Rcomplex { r: sr, i: si })
 }
 
 // ---------------------------------------------------------------------------
@@ -1003,174 +988,143 @@ unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
 /// `do_summary` provides a variety of data summaries.
 ///
 /// op (PRIMVAL): 0 = sum, 1 = mean, 2 = min, 3 = max, 4 = prod
-pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        let iop = PRIMVAL(op);
+    let iop = PRIMVAL(op);
 
-        // Mean is special: only one arg, no na.rm dispatch
-        if iop == 1 {
-            let x = CAR(args);
-            match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP => return logical_mean_sexp(x),
-                t if t == SEXPTYPE::INTSXP => return integer_mean_sexp(x),
-                t if t == SEXPTYPE::REALSXP => return real_mean_sexp(x),
-                t if t == SEXPTYPE::CPLXSXP => return complex_mean_sexp(x),
-                _ => {
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: "invalid 'type' of argument".to_string(),
-                    });
-                }
-            }
-        }
-
-        // For sum/min/max/prod: fixup na.rm to be the last argument
-        let args = fixup_NaRm(args);
-        let _args_guard = protect(args);
-        let _call2 = crate::mainutils::duplicate::shallow_duplicate(call);
-        let _call2_guard = protect(_call2);
-
-        // Extract na.rm value
-        let na_rm_sym = R_NaRmSymbol();
-        let mut args_mut = args;
-        let na_rm_val = matchArgExact(na_rm_sym, &mut args_mut);
-        let narm = asBool2(na_rm_val, call);
-
-        // Determine ans_type by scanning all arguments
-        let mut complex_a = false;
-        let mut real_a = false;
-        let mut a = args_mut;
-        while a != R_NilValue() {
-            match TYPEOF(CAR(a)) {
-                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::NILSXP => {}
-                t if t == SEXPTYPE::REALSXP => {
-                    real_a = true;
-                }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    complex_a = true;
-                }
-                _ => {
-                    let bad = CAR(a);
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: "invalid 'type' of argument".to_string(),
-                    });
-                }
-            }
-            a = CDR(a);
-        }
-
-        let mut ans_type: c_int;
-        let mut icum: c_int = 0;
-        let mut iLcum: i64 = 0;
-        let mut zcum = Rcomplex { r: 0.0, i: 0.0 };
-        let mut use_isum = true;
-
-        match iop {
-            0 => {
-                // sum
-                if complex_a {
-                    ans_type = SEXPTYPE::CPLXSXP.into();
-                } else if real_a {
-                    ans_type = SEXPTYPE::REALSXP.into();
-                } else {
-                    ans_type = SEXPTYPE::INTSXP.into();
-                    iLcum = 0;
-                }
-            }
-            2 => {
-                // min
-                ans_type = SEXPTYPE::INTSXP.into();
-                zcum.r = R_PosInf;
-                icum = c_int::MAX;
-            }
-            3 => {
-                // max
-                ans_type = SEXPTYPE::INTSXP.into();
-                zcum.r = R_NegInf;
-                icum = 1 + c_int::MIN; // R_INT_MIN
-            }
-            4 => {
-                // prod
-                ans_type = SEXPTYPE::REALSXP.into();
-                zcum.r = 1.0;
-                zcum.i = 0.0;
-            }
+    // Mean is special: only one arg, no na.rm dispatch
+    if iop == 1 {
+        let x = CAR(args);
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => return logical_mean_sexp(x),
+            t if t == SEXPTYPE::INTSXP => return integer_mean_sexp(x),
+            t if t == SEXPTYPE::REALSXP => return real_mean_sexp(x),
+            t if t == SEXPTYPE::CPLXSXP => return complex_mean_sexp(x),
             _ => {
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: format!("unsupported summary primitive code {iop}"),
+                    message: "invalid 'type' of argument".to_string(),
                 });
             }
         }
+    }
 
-        let mut empty = true;
-        let mut args_iter = args_mut;
+    // For sum/min/max/prod: fixup na.rm to be the last argument
+    let args = fixup_NaRm(args);
+    let _args_guard = protect(args);
+    let _call2 = crate::mainutils::duplicate::shallow_duplicate(call);
+    let _call2_guard = protect(_call2);
 
-        // Loop over all arguments
-        while args_iter != R_NilValue() {
-            a = CAR(args_iter);
-            let xtype = TYPEOF(a);
-            let len = XLENGTH(a);
+    // Extract na.rm value
+    let na_rm_sym = R_NaRmSymbol();
+    let mut args_mut = args;
+    let na_rm_val = matchArgExact(na_rm_sym, &mut args_mut);
+    let narm = asBool2(na_rm_val, call);
 
-            if len > 0 {
-                let mut updated: c_int = 0;
-                let mut int_a = false;
-                let mut real_a_local = false;
+    // Determine ans_type by scanning all arguments
+    let mut complex_a = false;
+    let mut real_a = false;
+    let mut a = args_mut;
+    while a != R_NilValue() {
+        match TYPEOF(CAR(a)) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::NILSXP => {}
+            t if t == SEXPTYPE::REALSXP => {
+                real_a = true;
+            }
+            t if t == SEXPTYPE::CPLXSXP => {
+                complex_a = true;
+            }
+            _ => {
+                let bad = CAR(a);
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "invalid 'type' of argument".to_string(),
+                });
+            }
+        }
+        a = CDR(a);
+    }
 
-                match iop {
-                    2 | 3 => {
-                        // min / max
-                        match xtype {
-                            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
-                                int_a = true;
-                                let (itmp, upd) = if iop == 2 {
-                                    imin_sexp(a, narm)
-                                } else {
-                                    imax_sexp(a, narm)
-                                };
-                                updated = if upd { 1 } else { 0 };
+    let mut ans_type: c_int;
+    let mut icum: c_int = 0;
+    let mut iLcum: i64 = 0;
+    let mut zcum = Rcomplex { r: 0.0, i: 0.0 };
+    let mut use_isum = true;
 
-                                if updated != 0 {
-                                    if ans_type == SEXPTYPE::INTSXP {
-                                        if icum != NA_INTEGER
-                                            && (itmp == NA_INTEGER
-                                                || (iop == 2 && itmp < icum)
-                                                || (iop == 3 && itmp > icum))
-                                        {
-                                            icum = itmp;
-                                        }
-                                    } else if ans_type == SEXPTYPE::REALSXP {
-                                        let tmp = Int2Real(itmp);
-                                        if ISNA(zcum.r) {
-                                            // NA trumps anything
-                                        } else if ISNAN(tmp) {
-                                            if ISNA(tmp) {
-                                                zcum.r = tmp;
-                                            } else {
-                                                zcum.r += tmp;
-                                            }
-                                        } else if (iop == 2 && tmp < zcum.r)
-                                            || (iop == 3 && tmp > zcum.r)
-                                        {
-                                            zcum.r = tmp;
-                                        }
+    match iop {
+        0 => {
+            // sum
+            if complex_a {
+                ans_type = SEXPTYPE::CPLXSXP.into();
+            } else if real_a {
+                ans_type = SEXPTYPE::REALSXP.into();
+            } else {
+                ans_type = SEXPTYPE::INTSXP.into();
+                iLcum = 0;
+            }
+        }
+        2 => {
+            // min
+            ans_type = SEXPTYPE::INTSXP.into();
+            zcum.r = R_PosInf;
+            icum = c_int::MAX;
+        }
+        3 => {
+            // max
+            ans_type = SEXPTYPE::INTSXP.into();
+            zcum.r = R_NegInf;
+            icum = 1 + c_int::MIN; // R_INT_MIN
+        }
+        4 => {
+            // prod
+            ans_type = SEXPTYPE::REALSXP.into();
+            zcum.r = 1.0;
+            zcum.i = 0.0;
+        }
+        _ => {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: format!("unsupported summary primitive code {iop}"),
+            });
+        }
+    }
+
+    let mut empty = true;
+    let mut args_iter = args_mut;
+
+    // Loop over all arguments
+    while args_iter != R_NilValue() {
+        a = CAR(args_iter);
+        let xtype = TYPEOF(a);
+        let len = XLENGTH(a);
+
+        if len > 0 {
+            let mut updated: c_int = 0;
+            let mut int_a = false;
+            let mut real_a_local = false;
+
+            match iop {
+                2 | 3 => {
+                    // min / max
+                    match xtype {
+                        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                            int_a = true;
+                            let (itmp, upd) = if iop == 2 {
+                                imin_sexp(a, narm)
+                            } else {
+                                imax_sexp(a, narm)
+                            };
+                            updated = if upd { 1 } else { 0 };
+
+                            if updated != 0 {
+                                if ans_type == SEXPTYPE::INTSXP {
+                                    if icum != NA_INTEGER
+                                        && (itmp == NA_INTEGER
+                                            || (iop == 2 && itmp < icum)
+                                            || (iop == 3 && itmp > icum))
+                                    {
+                                        icum = itmp;
                                     }
-                                }
-                            }
-                            t if t == SEXPTYPE::REALSXP => {
-                                real_a_local = true;
-                                if ans_type == SEXPTYPE::INTSXP && !empty {
-                                    ans_type = SEXPTYPE::REALSXP.into();
-                                    zcum.r = Int2Real(icum);
-                                }
-                                let (tmp, upd) = if iop == 2 {
-                                    rmin_sexp(a, narm)
-                                } else {
-                                    rmax_sexp(a, narm)
-                                };
-                                updated = if upd { 1 } else { 0 };
-
-                                if updated != 0 && ans_type == SEXPTYPE::REALSXP {
+                                } else if ans_type == SEXPTYPE::REALSXP {
+                                    let tmp = Int2Real(itmp);
                                     if ISNA(zcum.r) {
                                         // NA trumps anything
                                     } else if ISNAN(tmp) {
@@ -1186,203 +1140,238 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     }
                                 }
                             }
-                            _ => {
-                                std::panic::panic_any(crate::sexp::context::RError {
-                                    message: "invalid 'type' of argument".to_string(),
-                                });
-                            }
                         }
-                    }
+                        t if t == SEXPTYPE::REALSXP => {
+                            real_a_local = true;
+                            if ans_type == SEXPTYPE::INTSXP && !empty {
+                                ans_type = SEXPTYPE::REALSXP.into();
+                                zcum.r = Int2Real(icum);
+                            }
+                            let (tmp, upd) = if iop == 2 {
+                                rmin_sexp(a, narm)
+                            } else {
+                                rmax_sexp(a, narm)
+                            };
+                            updated = if upd { 1 } else { 0 };
 
-                    0 => {
-                        // sum
-                        match xtype {
-                            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
-                                let (iLtmp, upd) = isum_sexp(a, narm);
-                                updated = upd;
-
-                                if updated == NA_INTEGER {
-                                    // NA found, na_answer
-                                    let ans = Rf_allocVector3(ans_type, 1);
-                                    match ans_type {
-                                        t2 if t2 == SEXPTYPE::INTSXP => {
-                                            *INTEGER(ans) = NA_INTEGER;
-                                        }
-                                        t2 if t2 == SEXPTYPE::REALSXP => {
-                                            *REAL(ans) = NA_REAL;
-                                        }
-                                        t2 if t2 == SEXPTYPE::CPLXSXP => {
-                                            *COMPLEX(ans) = Rcomplex {
-                                                r: NA_REAL,
-                                                i: NA_REAL,
-                                            };
-                                        }
-                                        _ => {} // intentionally unhandled: unexpected ans_type for NA answer
-                                    }
-                                    return ans;
-                                } else if use_isum && updated == 42 {
-                                    // Impending integer overflow — switch to real
-                                    use_isum = false;
-                                    if ans_type == SEXPTYPE::INTSXP {
-                                        ans_type = SEXPTYPE::REALSXP.into();
-                                    }
-                                    let (tmp, _upd) = risum_sexp(a, narm);
-                                    zcum.r = iLcum as f64 + tmp;
-                                } else if updated != 0 {
-                                    if ans_type == SEXPTYPE::INTSXP {
-                                        let s = iLcum as f64 + iLtmp as f64;
-                                        if s > c_int::MAX as f64 || s < (1 + c_int::MIN) as f64 {
-                                            ans_type = SEXPTYPE::REALSXP.into();
-                                            zcum.r = s;
-                                        } else {
-                                            iLcum += iLtmp;
-                                        }
+                            if updated != 0 && ans_type == SEXPTYPE::REALSXP {
+                                if ISNA(zcum.r) {
+                                    // NA trumps anything
+                                } else if ISNAN(tmp) {
+                                    if ISNA(tmp) {
+                                        zcum.r = tmp;
                                     } else {
-                                        zcum.r += iLtmp as f64;
+                                        zcum.r += tmp;
                                     }
+                                } else if (iop == 2 && tmp < zcum.r) || (iop == 3 && tmp > zcum.r) {
+                                    zcum.r = tmp;
                                 }
-                            }
-                            t if t == SEXPTYPE::REALSXP => {
-                                if ans_type == SEXPTYPE::INTSXP {
-                                    ans_type = SEXPTYPE::REALSXP.into();
-                                    if !empty {
-                                        zcum.r = iLcum as f64;
-                                    }
-                                }
-                                let (tmp, upd) = rsum_sexp(a, narm);
-                                updated = if upd { 1 } else { 0 };
-                                if updated != 0 {
-                                    zcum.r += tmp;
-                                }
-                            }
-                            t if t == SEXPTYPE::CPLXSXP => {
-                                if ans_type == SEXPTYPE::INTSXP {
-                                    ans_type = SEXPTYPE::CPLXSXP.into();
-                                    if !empty {
-                                        zcum.r = iLcum as f64;
-                                    }
-                                } else if ans_type == SEXPTYPE::REALSXP {
-                                    ans_type = SEXPTYPE::CPLXSXP.into();
-                                }
-                                let (ztmp, upd) = csum_sexp(a, narm);
-                                updated = if upd { 1 } else { 0 };
-                                if updated != 0 {
-                                    zcum.r += ztmp.r;
-                                    zcum.i += ztmp.i;
-                                }
-                            }
-                            _ => {
-                                std::panic::panic_any(crate::sexp::context::RError {
-                                    message: "invalid 'type' of argument".to_string(),
-                                });
                             }
                         }
-                    }
-
-                    4 => {
-                        // prod
-                        match xtype {
-                            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
-                                let (tmp, upd) = iprod_sexp(a, narm);
-                                updated = if upd { 1 } else { 0 };
-                                if updated != 0 {
-                                    zcum.r *= tmp;
-                                    zcum.i *= tmp;
-                                }
-                            }
-                            t if t == SEXPTYPE::REALSXP => {
-                                let (tmp, upd) = rprod_sexp(a, narm);
-                                updated = if upd { 1 } else { 0 };
-                                if updated != 0 {
-                                    zcum.r *= tmp;
-                                    zcum.i *= tmp;
-                                }
-                            }
-                            t if t == SEXPTYPE::CPLXSXP => {
-                                ans_type = SEXPTYPE::CPLXSXP.into();
-                                let (ztmp, upd) = cprod_sexp(a, narm);
-                                updated = if upd { 1 } else { 0 };
-                                if updated != 0 {
-                                    let z = Rcomplex {
-                                        r: zcum.r,
-                                        i: zcum.i,
-                                    };
-                                    zcum.r = z.r * ztmp.r - z.i * ztmp.i;
-                                    zcum.i = z.r * ztmp.i + z.i * ztmp.r;
-                                }
-                            }
-                            _ => {
-                                std::panic::panic_any(crate::sexp::context::RError {
-                                    message: "invalid 'type' of argument".to_string(),
-                                });
-                            }
-                        }
-                    }
-
-                    _ => {} // intentionally unhandled: unknown summary operation for SEXPTYPE dispatch
-                }
-
-                if empty && updated != 0 {
-                    empty = false;
-                }
-            } else {
-                // Zero-length argument — update ans_type if needed
-                match xtype {
-                    t if t == SEXPTYPE::LGLSXP
-                        || t == SEXPTYPE::INTSXP
-                        || t == SEXPTYPE::REALSXP
-                        || t == SEXPTYPE::NILSXP => {}
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        if iop == 2 || iop == 3 {
+                        _ => {
                             std::panic::panic_any(crate::sexp::context::RError {
                                 message: "invalid 'type' of argument".to_string(),
                             });
                         }
                     }
-                    _ => {
+                }
+
+                0 => {
+                    // sum
+                    match xtype {
+                        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                            let (iLtmp, upd) = isum_sexp(a, narm);
+                            updated = upd;
+
+                            if updated == NA_INTEGER {
+                                // NA found, na_answer
+                                let ans = Rf_allocVector3(ans_type, 1);
+                                match ans_type {
+                                    t2 if t2 == SEXPTYPE::INTSXP => {
+                                        SET_INTEGER_ELT(ans, 0, NA_INTEGER);
+                                    }
+                                    t2 if t2 == SEXPTYPE::REALSXP => {
+                                        SET_REAL_ELT(ans, 0, NA_REAL);
+                                    }
+                                    t2 if t2 == SEXPTYPE::CPLXSXP => {
+                                        SET_COMPLEX_ELT(
+                                            ans,
+                                            0,
+                                            Rcomplex {
+                                                r: NA_REAL,
+                                                i: NA_REAL,
+                                            },
+                                        );
+                                    }
+                                    _ => {} // intentionally unhandled: unexpected ans_type for NA answer
+                                }
+                                return ans;
+                            } else if use_isum && updated == 42 {
+                                // Impending integer overflow — switch to real
+                                use_isum = false;
+                                if ans_type == SEXPTYPE::INTSXP {
+                                    ans_type = SEXPTYPE::REALSXP.into();
+                                }
+                                let (tmp, _upd) = risum_sexp(a, narm);
+                                zcum.r = iLcum as f64 + tmp;
+                            } else if updated != 0 {
+                                if ans_type == SEXPTYPE::INTSXP {
+                                    let s = iLcum as f64 + iLtmp as f64;
+                                    if s > c_int::MAX as f64 || s < (1 + c_int::MIN) as f64 {
+                                        ans_type = SEXPTYPE::REALSXP.into();
+                                        zcum.r = s;
+                                    } else {
+                                        iLcum += iLtmp;
+                                    }
+                                } else {
+                                    zcum.r += iLtmp as f64;
+                                }
+                            }
+                        }
+                        t if t == SEXPTYPE::REALSXP => {
+                            if ans_type == SEXPTYPE::INTSXP {
+                                ans_type = SEXPTYPE::REALSXP.into();
+                                if !empty {
+                                    zcum.r = iLcum as f64;
+                                }
+                            }
+                            let (tmp, upd) = rsum_sexp(a, narm);
+                            updated = if upd { 1 } else { 0 };
+                            if updated != 0 {
+                                zcum.r += tmp;
+                            }
+                        }
+                        t if t == SEXPTYPE::CPLXSXP => {
+                            if ans_type == SEXPTYPE::INTSXP {
+                                ans_type = SEXPTYPE::CPLXSXP.into();
+                                if !empty {
+                                    zcum.r = iLcum as f64;
+                                }
+                            } else if ans_type == SEXPTYPE::REALSXP {
+                                ans_type = SEXPTYPE::CPLXSXP.into();
+                            }
+                            let (ztmp, upd) = csum_sexp(a, narm);
+                            updated = if upd { 1 } else { 0 };
+                            if updated != 0 {
+                                zcum.r += ztmp.r;
+                                zcum.i += ztmp.i;
+                            }
+                        }
+                        _ => {
+                            std::panic::panic_any(crate::sexp::context::RError {
+                                message: "invalid 'type' of argument".to_string(),
+                            });
+                        }
+                    }
+                }
+
+                4 => {
+                    // prod
+                    match xtype {
+                        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                            let (tmp, upd) = iprod_sexp(a, narm);
+                            updated = if upd { 1 } else { 0 };
+                            if updated != 0 {
+                                zcum.r *= tmp;
+                                zcum.i *= tmp;
+                            }
+                        }
+                        t if t == SEXPTYPE::REALSXP => {
+                            let (tmp, upd) = rprod_sexp(a, narm);
+                            updated = if upd { 1 } else { 0 };
+                            if updated != 0 {
+                                zcum.r *= tmp;
+                                zcum.i *= tmp;
+                            }
+                        }
+                        t if t == SEXPTYPE::CPLXSXP => {
+                            ans_type = SEXPTYPE::CPLXSXP.into();
+                            let (ztmp, upd) = cprod_sexp(a, narm);
+                            updated = if upd { 1 } else { 0 };
+                            if updated != 0 {
+                                let z = Rcomplex {
+                                    r: zcum.r,
+                                    i: zcum.i,
+                                };
+                                zcum.r = z.r * ztmp.r - z.i * ztmp.i;
+                                zcum.i = z.r * ztmp.i + z.i * ztmp.r;
+                            }
+                        }
+                        _ => {
+                            std::panic::panic_any(crate::sexp::context::RError {
+                                message: "invalid 'type' of argument".to_string(),
+                            });
+                        }
+                    }
+                }
+
+                _ => {} // intentionally unhandled: unknown summary operation for SEXPTYPE dispatch
+            }
+
+            if empty && updated != 0 {
+                empty = false;
+            }
+        } else {
+            // Zero-length argument — update ans_type if needed
+            match xtype {
+                t if t == SEXPTYPE::LGLSXP
+                    || t == SEXPTYPE::INTSXP
+                    || t == SEXPTYPE::REALSXP
+                    || t == SEXPTYPE::NILSXP => {}
+                t if t == SEXPTYPE::CPLXSXP => {
+                    if iop == 2 || iop == 3 {
                         std::panic::panic_any(crate::sexp::context::RError {
                             message: "invalid 'type' of argument".to_string(),
                         });
                     }
                 }
-                if ans_type < xtype && ans_type != SEXPTYPE::CPLXSXP {
-                    if !empty && ans_type == SEXPTYPE::INTSXP {
-                        zcum.r = Int2Real(icum);
-                    }
-                    ans_type = xtype;
+                _ => {
+                    std::panic::panic_any(crate::sexp::context::RError {
+                        message: "invalid 'type' of argument".to_string(),
+                    });
                 }
             }
-
-            args_iter = CDR(args_iter);
-        }
-
-        // Handle empty min/max
-        if empty && (iop == 2 || iop == 3) {
-            ans_type = SEXPTYPE::REALSXP.into();
-        }
-
-        let ans = Rf_allocVector3(ans_type, 1);
-        match ans_type {
-            t if t == SEXPTYPE::INTSXP => {
-                if iop == 0 {
-                    *INTEGER(ans) = iLcum as c_int;
-                } else {
-                    *INTEGER(ans) = icum;
+            if ans_type < xtype && ans_type != SEXPTYPE::CPLXSXP {
+                if !empty && ans_type == SEXPTYPE::INTSXP {
+                    zcum.r = Int2Real(icum);
                 }
+                ans_type = xtype;
             }
-            t if t == SEXPTYPE::REALSXP => {
-                *REAL(ans) = zcum.r;
+        }
+
+        args_iter = CDR(args_iter);
+    }
+
+    // Handle empty min/max
+    if empty && (iop == 2 || iop == 3) {
+        ans_type = SEXPTYPE::REALSXP.into();
+    }
+
+    let ans = Rf_allocVector3(ans_type, 1);
+    match ans_type {
+        t if t == SEXPTYPE::INTSXP => {
+            if iop == 0 {
+                SET_INTEGER_ELT(ans, 0, iLcum as c_int);
+            } else {
+                SET_INTEGER_ELT(ans, 0, icum);
             }
-            t if t == SEXPTYPE::CPLXSXP => {
-                *COMPLEX(ans) = Rcomplex {
+        }
+        t if t == SEXPTYPE::REALSXP => {
+            SET_REAL_ELT(ans, 0, zcum.r);
+        }
+        t if t == SEXPTYPE::CPLXSXP => {
+            SET_COMPLEX_ELT(
+                ans,
+                0,
+                Rcomplex {
                     r: zcum.r,
                     i: zcum.i,
-                };
-            }
-            _ => {} // intentionally unhandled: unexpected ans_type for result storage
+                },
+            );
         }
-        ans
+        _ => {} // intentionally unhandled: unexpected ans_type for result storage
     }
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,42 +1380,45 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// `do_range` implements `range(...)` which finds min and max.
 /// It delegates to range.default via applyClosure.
-pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let factory = crate::eval::parser::active_factory();
-        let input_args = if args.is_null() {
-            factory.nil()
-        } else {
-            factory
-                .wrap(args)
-                .expect("range arguments belong to the active heap")
-        };
-        let args = fixup_NaRm(input_args.as_raw());
-        let _args_guard = protect(args);
-
-        // Find range.default and apply it
-        let range_sym = Rf_install(b"range.default\0".as_ptr() as *const c_char);
-        let range_fun = crate::sexp::envir::findFun(range_sym, env);
-        let _range_fun_guard = protect(range_fun);
-
-        // Build promise args
-        let arguments = factory
+pub fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let factory = active_owner().node_factory();
+    let input_args = if args.is_null() {
+        factory.nil()
+    } else {
+        factory
             .wrap(args)
-            .expect("fixed range arguments remain live");
-        let prargs = crate::eval::dispatch::promiseArgs(&factory, arguments, factory.nil());
+            .expect("range arguments belong to the active heap")
+    };
+    let args = fixup_NaRm(input_args.as_raw());
+    let _args_guard = protect(args);
 
-        // Evaluate range.default via applyClosure
-        let ans = crate::eval::closure::applyClosure(
-            call,
-            range_fun,
-            prargs.as_raw(),
-            env,
-            R_NilValue(),
-            1,
-        );
+    // Find range.default and apply it
+    let range_sym = install_str("range.default");
+    // SAFETY: `range_sym` is an interned symbol and `env` is the live calling
+    // environment rooted by the evaluator for this builtin call.
+    let range_fun = unsafe { crate::sexp::envir::findFun(range_sym, env) };
+    let _range_fun_guard = protect(range_fun);
 
-        ans
-    }
+    // Build promise args
+    let arguments = factory
+        .wrap(args)
+        .expect("fixed range arguments remain live");
+    // SAFETY: the active factory's owner is current for this builtin and no
+    // Rust payload loans are held across promise construction.
+    let prargs = unsafe { crate::eval::dispatch::promiseArgs(&factory, arguments, factory.nil()) };
+
+    // Evaluate range.default via applyClosure
+    let ans = crate::eval::closure::applyClosureWithFrameVars(
+        call,
+        range_fun,
+        prargs.as_raw(),
+        env,
+        R_NilValue(),
+        R_NilValue(),
+        1,
+    );
+
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1436,19 +1428,17 @@ pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `do_mean` implements `mean.default(x)`.
 /// Note: mean is typically dispatched via do_summary when PRIMVAL(op) == 1,
 /// but this provides a standalone entry point.
-pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => logical_mean_sexp(x),
-            t if t == SEXPTYPE::INTSXP => integer_mean_sexp(x),
-            t if t == SEXPTYPE::REALSXP => real_mean_sexp(x),
-            t if t == SEXPTYPE::CPLXSXP => complex_mean_sexp(x),
-            _ => {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "invalid 'type' of argument".to_string(),
-                });
-            }
+pub fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let x = CAR(args);
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP => logical_mean_sexp(x),
+        t if t == SEXPTYPE::INTSXP => integer_mean_sexp(x),
+        t if t == SEXPTYPE::REALSXP => real_mean_sexp(x),
+        t if t == SEXPTYPE::CPLXSXP => complex_mean_sexp(x),
+        _ => {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "invalid 'type' of argument".to_string(),
+            });
         }
     }
 }

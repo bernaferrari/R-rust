@@ -1529,9 +1529,7 @@ fn R_ExpandFileName(path: *const c_char) -> *const c_char {
 
 /// checkArity - check function call arity
 fn checkArity(op: SEXP, args: SEXP) {
-    unsafe {
-        crate::mainutils::relop::checkArity(op, args);
-    }
+    crate::mainutils::relop::checkArity(op, args);
 }
 
 /// currentTime - get current time in seconds

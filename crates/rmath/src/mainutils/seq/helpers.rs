@@ -77,7 +77,7 @@ pub unsafe fn DispatchOrEval(
 }
 
 pub fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 pub unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {

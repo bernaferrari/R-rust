@@ -37,7 +37,7 @@ pub fn pp(pre: i32) -> String {
 
 #[inline(always)]
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 /// Check if SEXP is a factor.

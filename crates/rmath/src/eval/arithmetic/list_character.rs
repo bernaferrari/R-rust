@@ -241,7 +241,7 @@ pub(super) fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, String>
         let value = if ac.as_raw() == na.as_raw() || bc.as_raw() == na.as_raw() {
             NA_LOGICAL
         } else if op == "==" || op == "!=" {
-            let equal = unsafe { crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) } != 0;
+            let equal = crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) != 0;
             if equal == (op == "==") { TRUE } else { FALSE }
         } else {
             let a_bytes = crate::sexp::accessors::charsxp_as_utf8(ac.as_raw());

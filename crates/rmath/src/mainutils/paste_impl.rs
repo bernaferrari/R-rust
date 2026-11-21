@@ -93,9 +93,7 @@ fn ENC_KNOWN(s: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 fn checkArity(op: SEXP, args: SEXP) {
-    // SAFETY: `op` and `args` are the live primitive and argument list of
-    // the current builtin call.
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 // error/errorcall use panic_any(RError{..}) in the full port.

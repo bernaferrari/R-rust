@@ -857,18 +857,16 @@ pub(crate) fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// unevaluated special-form path (`do_paren`) keeps serving the name-based
 /// dispatch fallback.
 pub extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = call;
-        let _ = rho;
-        crate::mainutils::relop::checkArity(op, args);
-        if args.is_null() || crate::sexp::accessors::Rf_isNull(args) != 0 {
-            return R_NilValue();
-        }
-        // eval.c's do_paren explicitly overrides the visibility left by its
-        // evaluated argument.  This is what makes `(x <- value)` visible.
-        super::runtime::set_visible(TRUE);
-        CAR(args)
+    let _ = call;
+    let _ = rho;
+    crate::mainutils::relop::checkArity(op, args);
+    if args.is_null() || crate::sexp::accessors::Rf_isNull(args) != 0 {
+        return R_NilValue();
     }
+    // eval.c's do_paren explicitly overrides the visibility left by its
+    // evaluated argument.  This is what makes `(x <- value)` visible.
+    super::runtime::set_visible(TRUE);
+    CAR(args)
 }
 
 /// Implement the `(` special form (parenthesized expression).

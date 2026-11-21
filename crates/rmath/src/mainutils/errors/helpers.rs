@@ -130,7 +130,7 @@ pub(super) fn translateChar(s: SEXP) -> *const c_char {
 
 /// Check argument arity (simplified).
 pub(super) fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 pub(super) fn ScalarInteger(x: c_int) -> SEXP {

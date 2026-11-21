@@ -660,7 +660,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 
 /// Check that the number of arguments matches the function arity.
 fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 // ---------------------------------------------------------------------------

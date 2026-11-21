@@ -1863,17 +1863,15 @@ mod tests {
 /// R_identC - test if two single-string objects are identical at the C level.
 /// Ported from R's R_identC() in methods_list_dispatch.c.
 pub fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(e1) == SEXPTYPE::STRSXP
-            && TYPEOF(e2) == SEXPTYPE::STRSXP
-            && LENGTH(e1) == 1
-            && LENGTH(e2) == 1
-            && crate::mainutils::relop::Seql(STRING_ELT(e1, 0), STRING_ELT(e2, 0)) != 0
-        {
-            return scalar_logical(1);
-        }
-        scalar_logical(0)
+    if TYPEOF(e1) == SEXPTYPE::STRSXP
+        && TYPEOF(e2) == SEXPTYPE::STRSXP
+        && LENGTH(e1) == 1
+        && LENGTH(e2) == 1
+        && crate::mainutils::relop::Seql(STRING_ELT(e1, 0), STRING_ELT(e2, 0)) != 0
+    {
+        return scalar_logical(1);
     }
+    scalar_logical(0)
 }
 
 /// R_getClassFromCache — look up a class definition in `.classTable`.

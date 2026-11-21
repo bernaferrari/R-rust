@@ -1623,7 +1623,7 @@ pub fn do_regFinaliz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `Seql()`.
 pub fn Seql(a: SEXP, b: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::Seql(a, b) }
+    crate::mainutils::relop::Seql(a, b)
 }
 
 // ---------------------------------------------------------------------------

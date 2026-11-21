@@ -17,7 +17,7 @@ use crate::sexp::instance::with_required_current_instance;
 // ---------------------------------------------------------------------------
 
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe { crate::mainutils::relop::checkArity(op, args) }
+    crate::mainutils::relop::checkArity(op, args)
 }
 
 // ---------------------------------------------------------------------------

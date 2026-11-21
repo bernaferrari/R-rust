@@ -133,9 +133,7 @@ fn r_error(msg: &str) {
 
 /// Check arity of a call against the canonical primitive table.
 fn checkArity(op: SEXP, args: SEXP) {
-    // SAFETY: `op` and `args` are the live primitive and argument list of
-    // the current builtin call.
-    unsafe { crate::mainutils::relop::checkArity(op, args) };
+    crate::mainutils::relop::checkArity(op, args);
 }
 
 /// Convert SEXP to c_int (asInteger).

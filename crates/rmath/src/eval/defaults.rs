@@ -62,7 +62,7 @@ pub fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in relop.c. Implements comparison operators.
 // no_mangle removed (duplicate)
 pub fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
-    unsafe { crate::mainutils::relop::do_relop_dflt(call, op, lhs, rhs) }
+    crate::mainutils::relop::do_relop_dflt(call, op, lhs, rhs)
 }
 
 /// `do_logic(call, op, args, rho)` - logical operator default.
@@ -399,6 +399,5 @@ mod tests {
             assert_eq!(asLogicalNoNA(Rf_ScalarLogical(FALSE), R_NilValue()), FALSE);
             assert_eq!(asLogicalNoNA(Rf_ScalarInteger(42), R_NilValue()), TRUE);
             assert_eq!(asLogicalNoNA(Rf_ScalarInteger(0), R_NilValue()), FALSE);
-        
     }
 }

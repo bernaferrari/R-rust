@@ -21,8 +21,7 @@
 //!   R_compute_identical, NO_REFERENCES, coerceVector,
 //!   isTs, isArray, deparse1line_ex, ErrorMessage,
 //!   checkArity, PRIMVAL, PRIMNAME, getAttrib, setAttrib,
-//!   isNumeric, conformable, UNIMPLEMENTED_TYPE, COMPLEX_RO,
-//!   INTEGER_RO, RAW_RO, IS_SIMPLE_SCALAR
+//!   isNumeric, conformable, UNIMPLEMENTED_TYPE, IS_SIMPLE_SCALAR
 
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
@@ -31,11 +30,11 @@ use std::ptr;
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, NAMED, PRINTNAME, REAL_ELT,
-    SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
+    ATTRIB, CADR, CAR, INTEGER_ELT, LENGTH, NAMED, PRINTNAME, REAL_ELT, SET_STRING_ELT, STRING_ELT,
+    TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length};
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::{OwnerToken, StoredOwner};
@@ -81,29 +80,22 @@ pub fn warningcall_stub(call: SEXP, format: *const c_char) {
 }
 
 /// GNU `Seql`: pointer equality, else UTF-8 translation (memory.c).
-pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
-    unsafe {
-        if x == y {
-            return 1;
-        }
-        if x.is_null() || y.is_null() {
-            return 0;
-        }
-        if crate::sexp::accessors::IS_BYTES(x) != 0 || crate::sexp::accessors::IS_BYTES(y) != 0 {
-            if crate::sexp::accessors::IS_BYTES(x) != 0 && crate::sexp::accessors::IS_BYTES(y) != 0
-            {
-                let cx = CHAR(x);
-                let cy = CHAR(y);
-                if cx.is_null() || cy.is_null() {
-                    return 0;
-                }
-                return (CStr::from_ptr(cx).to_bytes() == CStr::from_ptr(cy).to_bytes()) as c_int;
-            }
-            return 0;
-        }
-        (crate::sexp::accessors::charsxp_as_utf8(x) == crate::sexp::accessors::charsxp_as_utf8(y))
-            as c_int
+pub fn Seql(x: SEXP, y: SEXP) -> c_int {
+    if x == y {
+        return 1;
     }
+    if x.is_null() || y.is_null() {
+        return 0;
+    }
+    if crate::sexp::accessors::IS_BYTES(x) != 0 || crate::sexp::accessors::IS_BYTES(y) != 0 {
+        if crate::sexp::accessors::IS_BYTES(x) != 0 && crate::sexp::accessors::IS_BYTES(y) != 0 {
+            return (crate::mainutils::printutils::charsxp_bytes(x)
+                == crate::mainutils::printutils::charsxp_bytes(y)) as c_int;
+        }
+        return 0;
+    }
+    (crate::sexp::accessors::charsxp_as_utf8(x) == crate::sexp::accessors::charsxp_as_utf8(y))
+        as c_int
 }
 
 /// Check if SEXP has no references (NAMED == 0).
@@ -119,9 +111,7 @@ pub fn isTs(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
-    // SAFETY: raw attribute lookup on a live SEXP, as before.
-    let tsp =
-        unsafe { crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol()) };
+    let tsp = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol());
     (tsp != R_NilValue()) as c_int
 }
 
@@ -130,9 +120,7 @@ pub fn isArray(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
-    // SAFETY: raw attribute lookup on a live SEXP, as before.
-    let dim =
-        unsafe { crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol()) };
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
     (dim != R_NilValue()) as c_int
 }
 
@@ -163,53 +151,32 @@ pub fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
 ///
 /// Ported from `Rf_checkArityCall()` in `r-source/src/main/util.c:516`.
 /// Uses `R_FunTab[offset].arity` to determine expected argument count.
-pub unsafe fn checkArity(op: SEXP, args: SEXP) {
-    unsafe {
-        if op.is_null() {
-            return;
-        }
-        let t = TYPEOF(op);
-        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
-            return;
-        }
-        let Some(entry) = crate::eval::primitive::PrimitiveDescriptor::from_raw(op) else {
-            return;
+pub fn checkArity(op: SEXP, args: SEXP) {
+    if op.is_null() {
+        return;
+    }
+    let t = TYPEOF(op);
+    if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+        return;
+    }
+    let Some(entry) = crate::eval::primitive::raw_primitive_entry(op) else {
+        return;
+    };
+    let expected = entry.arity;
+    if expected < 0 {
+        return;
+    }
+    let actual = Rf_length(args);
+    if expected != actual {
+        let internal = (entry.eval % 100) / 10 != 0;
+        let name = crate::eval::primitive::fun_tab_name(entry.name);
+        let noun = if actual == 1 { "argument" } else { "arguments" };
+        let message = if internal {
+            format!("{actual} {noun} passed to .Internal({name}) which requires {expected}")
+        } else {
+            format!("{actual} {noun} passed to '{name}' which requires {expected}")
         };
-        let expected = entry
-            .op
-            .clone()
-            .try_primoffset()
-            .clone()
-            .ok()
-            .and_then(crate::eval::primitive::fun_tab_descriptor)
-            .map(|entry| entry.arity)
-            .unwrap_or(-1);
-        if expected < 0 {
-            return;
-        }
-        let actual = Rf_length(args);
-        if expected != actual {
-            let internal = entry
-                .op
-                .try_primoffset()
-                .ok()
-                .and_then(crate::eval::primitive::fun_tab_descriptor)
-                .map(|entry| (entry.eval % 100) / 10 != 0)
-                .unwrap_or(false);
-            let noun = if actual == 1 { "argument" } else { "arguments" };
-            let message = if internal {
-                format!(
-                    "{actual} {noun} passed to .Internal({}) which requires {expected}",
-                    entry.name
-                )
-            } else {
-                format!(
-                    "{actual} {noun} passed to '{}' which requires {expected}",
-                    entry.name
-                )
-            };
-            std::panic::panic_any(crate::sexp::context::RError { message });
-        }
+        std::panic::panic_any(crate::sexp::context::RError { message });
     }
 }
 
@@ -234,8 +201,7 @@ pub fn PRIMNAME(op: SEXP) -> *const c_char {
 
 /// Helper for getAttrib -- delegates to eval::attrib_core.
 pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    // SAFETY: delegates to the raw attrib boundary with the same arguments.
-    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+    crate::sexp::attrib_core::getAttrib(x, what)
 }
 
 /// Helper for setAttrib -- delegates to eval::attrib_core.
@@ -248,31 +214,26 @@ pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
 
 /// Check if two arrays have conformable dimensions.
 pub fn conformable(a: SEXP, b: SEXP) -> c_int {
-    // SAFETY: the attribute lookups and INTEGER payload loans stay inside
-    // this comparison; no allocation or mutation intervenes.
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return 1;
-        }
-        let da = crate::eval::attrib_core::getAttrib(a, crate::eval::attrib_core::R_DimSymbol());
-        let db = crate::eval::attrib_core::getAttrib(b, crate::eval::attrib_core::R_DimSymbol());
-        let la = LENGTH(da);
-        let lb = LENGTH(db);
-        if la != lb {
+    if a.is_null() || b.is_null() {
+        return 1;
+    }
+    let da = crate::sexp::attrib_core::getAttrib(a, crate::sexp::attrib_core::R_DimSymbol());
+    let db = crate::sexp::attrib_core::getAttrib(b, crate::sexp::attrib_core::R_DimSymbol());
+    let la = LENGTH(da);
+    let lb = LENGTH(db);
+    if la != lb {
+        return 0;
+    }
+    // A dim without integer storage has no payload to compare.
+    if TYPEOF(da) != SEXPTYPE::INTSXP || TYPEOF(db) != SEXPTYPE::INTSXP {
+        return 1;
+    }
+    for i in 0..la {
+        if INTEGER_ELT(da, i) != INTEGER_ELT(db, i) {
             return 0;
         }
-        let ia = INTEGER(da);
-        let ib = INTEGER(db);
-        if ia.is_null() || ib.is_null() {
-            return 1;
-        }
-        for i in 0..la {
-            if *ia.add(i as usize) != *ib.add(i as usize) {
-                return 0;
-            }
-        }
-        1
     }
+    1
 }
 
 /// Report an unimplemented type error.
@@ -368,9 +329,7 @@ fn int_like_elt(x: &Sexp<'_>, i: R_xlen_t) -> SexpResult<c_int> {
 
 /// Thin safe wrapper over the raw `Seql` CHARSXP comparator.
 fn seql_chars(x: &Sexp<'_>, y: &Sexp<'_>) -> c_int {
-    // SAFETY: both handles name live CHARSXPs retained by their root leases;
-    // `Seql` performs the same reads the checked path would.
-    unsafe { Seql(x.as_raw(), y.as_raw()) }
+    Seql(x.as_raw(), y.as_raw())
 }
 
 /// Thin safe wrapper over the raw `charsxp_as_utf8` translation.
@@ -397,16 +356,10 @@ fn coerce_bitwise_operand<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
 }
 
 fn primitive_name(op: SEXP) -> String {
-    let name = PRIMNAME(op);
-    if name.is_null() {
-        String::new()
-    } else {
-        // SAFETY: `PRIMNAME` returns a pointer into the static primitive
-        // name table, which is NUL-terminated for the process lifetime.
-        unsafe { CStr::from_ptr(name) }
-            .to_string_lossy()
-            .into_owned()
-    }
+    crate::eval::primitive::raw_primitive_entry(op).map_or_else(String::new, |entry| {
+        let bytes = entry.name.split(|&b| b == 0).next().unwrap_or_default();
+        String::from_utf8_lossy(bytes).into_owned()
+    })
 }
 
 fn language_comparison_error(op: SEXP) -> ! {
@@ -414,21 +367,6 @@ fn language_comparison_error(op: SEXP) -> ! {
         "comparison ({}) is not possible for language types",
         primitive_name(op)
     ))
-}
-
-/// Returns DATAPTR as const Rcomplex pointer.
-pub unsafe fn COMPLEX_RO(x: SEXP) -> *const Rcomplex {
-    unsafe { DATAPTR(x) as *const Rcomplex }
-}
-
-/// Returns DATAPTR as const int pointer.
-pub unsafe fn INTEGER_RO(x: SEXP) -> *const c_int {
-    unsafe { DATAPTR(x) as *const c_int }
-}
-
-/// Returns DATAPTR as const Rbyte pointer.
-pub unsafe fn RAW_RO(x: SEXP) -> *const Rbyte {
-    unsafe { DATAPTR(x) as *const Rbyte }
 }
 
 /// Helper for isNull -- matches R_NilValue.
@@ -508,32 +446,27 @@ pub fn NA_STRING() -> SEXP {
 
 /// R_DimSymbol -- returns the dim symbol.
 pub fn R_DimSymbol() -> SEXP {
-    // SAFETY: delegates to the raw symbol boundary.
-    unsafe { crate::eval::attrib_core::R_DimSymbol() }
+    crate::sexp::attrib_core::R_DimSymbol()
 }
 
 /// R_DimNamesSymbol -- returns the dimnames symbol.
 pub fn R_DimNamesSymbol() -> SEXP {
-    // SAFETY: delegates to the raw symbol boundary.
-    unsafe { crate::eval::attrib_core::R_DimNamesSymbol() }
+    crate::sexp::attrib_core::R_DimNamesSymbol()
 }
 
 /// R_NamesSymbol -- returns the names symbol.
 pub fn R_NamesSymbol() -> SEXP {
-    // SAFETY: delegates to the raw symbol boundary.
-    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+    crate::sexp::attrib_core::R_NamesSymbol()
 }
 
 /// R_TspSymbol -- returns the tsp symbol.
 pub fn R_TspSymbol() -> SEXP {
-    // SAFETY: delegates to the raw symbol boundary.
-    unsafe { crate::eval::attrib_core::R_TspSymbol() }
+    crate::sexp::attrib_core::R_TspSymbol()
 }
 
 /// R_ClassSymbol -- returns the class symbol.
 pub fn R_ClassSymbol() -> SEXP {
-    // SAFETY: delegates to the raw symbol boundary.
-    unsafe { crate::eval::attrib_core::R_ClassSymbol() }
+    crate::sexp::attrib_core::R_ClassSymbol()
 }
 
 /// R_TrueValue -- returns the TRUE logical value.
@@ -636,35 +569,37 @@ where
 ///
 /// Checks for group dispatch via `DispatchGroup`, then delegates to
 /// `do_relop_dflt` for the default implementation.
-pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let arg1 = CAR(args);
-        let arg2 = CADR(args);
+pub fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let arg1 = CAR(args);
+    let arg2 = CADR(args);
 
-        // Prefer the evaluator DispatchGroup that actually applies methods.
-        // Skip ordered factors so the dedicated Ops.ordered path keeps stock warnings.
-        if !checked_has_class(arg1, "ordered") && !checked_has_class(arg2, "ordered") {
-            let mut ans: SEXP = R_NilValue();
-            if crate::eval::dispatch::DispatchGroup(
+    // Prefer the evaluator DispatchGroup that actually applies methods.
+    // Skip ordered factors so the dedicated Ops.ordered path keeps stock warnings.
+    if !checked_has_class(arg1, "ordered") && !checked_has_class(arg2, "ordered") {
+        let mut ans: SEXP = R_NilValue();
+        // SAFETY: "Ops" is a NUL-terminated literal, `ans` is a live local
+        // out-slot, and call/op/args/env are the evaluator's rooted inputs.
+        let dispatched = unsafe {
+            crate::eval::dispatch::DispatchGroup(
                 b"Ops\0".as_ptr() as *const c_char,
                 call,
                 op,
                 args,
                 env,
                 &mut ans,
-            ) != 0
-            {
-                return ans;
-            }
+            )
+        };
+        if dispatched != 0 {
+            return ans;
         }
-
-        let argc = Rf_length(args);
-        if argc != 2 {
-            relop_error("operator needs two arguments");
-        }
-
-        do_relop_dflt(call, op, arg1, arg2)
     }
+
+    let argc = Rf_length(args);
+    if argc != 2 {
+        relop_error("operator needs two arguments");
+    }
+
+    do_relop_dflt(call, op, arg1, arg2)
 }
 
 // ---------------------------------------------------------------------------
@@ -672,140 +607,154 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Initialize the language comparison option from environment.
-unsafe fn init_relop_lang_option() {
+fn init_relop_lang_option() {
     // GNU default since PR#18676: == and != use identical(), ignoring srcref.
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.relop_lang_option = 2;
+    set_relop_lang_option(2);
+}
+
+/// Store the instance-scoped language comparison mode.
+fn set_relop_lang_option(value: c_int) {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        // SAFETY: the current instance pointer is live for the closure; this
+        // is a single scalar field write with no allocation or reentry.
+        unsafe { (*inst).eval_state.relop_lang_option = value };
     });
 }
 
+/// Read the instance-scoped language comparison mode.
+fn relop_lang_option() -> c_int {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        // SAFETY: the current instance pointer is live for the closure; this
+        // is a single scalar field read with no allocation or reentry.
+        unsafe { (*inst).eval_state.relop_lang_option }
+    })
+}
+
+/// `identical(x, y)` with the language-comparison flags (ignore srcref).
+fn identical_lang(x: SEXP, y: SEXP) -> bool {
+    // SAFETY: `x` and `y` are live operands rooted by the relop caller for the
+    // duration of the comparison.
+    unsafe { R_compute_identical(x, y, 16) != 0 }
+}
+
 /// Compute language equality for `==` and `!=` operators.
-unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
-    unsafe {
-        if isSymbol(x) != 0 {
-            if y == x || (is_scalar_string(y) && Seql(PRINTNAME(x), STRING_ELT(y, 0)) != 0) {
-                return true;
-            }
-        } else if isSymbol(y) != 0
-            && (x == y || (is_scalar_string(x) && Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0))
-        {
+fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
+    if isSymbol(x) != 0 {
+        if y == x || (is_scalar_string(y) && Seql(PRINTNAME(x), STRING_ELT(y, 0)) != 0) {
             return true;
         }
-
-        R_compute_identical(x, y, 16) != 0
+    } else if isSymbol(y) != 0
+        && (x == y || (is_scalar_string(x) && Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0))
+    {
+        return true;
     }
+
+    identical_lang(x, y)
 }
 
 /// Handle language object comparison based on `_R_COMPARE_LANG_OBJECTS` option.
-unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    unsafe {
-        if crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).eval_state.relop_lang_option
-        }) == 0
-        {
-            init_relop_lang_option();
-        }
+fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
+    if relop_lang_option() == 0 {
+        init_relop_lang_option();
+    }
 
-        match crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).eval_state.relop_lang_option
-        }) {
-            // EQONLY
-            1 => match PRIMVAL(op) {
-                EQOP | NEOP => return ptr::null_mut(),
+    match relop_lang_option() {
+        // EQONLY
+        1 => match PRIMVAL(op) {
+            EQOP | NEOP => return ptr::null_mut(),
+            _ => language_comparison_error(op),
+        },
+        // IDENTICAL_CALLS
+        2 => {
+            let eq = compute_lang_equal(x, y);
+            match PRIMVAL(op) {
+                EQOP => {
+                    if eq {
+                        R_TrueValue()
+                    } else {
+                        R_FalseValue()
+                    }
+                }
+                NEOP => {
+                    if eq {
+                        R_FalseValue()
+                    } else {
+                        R_TrueValue()
+                    }
+                }
                 _ => language_comparison_error(op),
-            },
-            // IDENTICAL_CALLS
-            2 => {
-                let eq = compute_lang_equal(x, y);
-                match PRIMVAL(op) {
-                    EQOP => {
-                        if eq {
-                            R_TrueValue()
-                        } else {
-                            R_FalseValue()
-                        }
-                    }
-                    NEOP => {
-                        if eq {
-                            R_FalseValue()
-                        } else {
-                            R_TrueValue()
-                        }
-                    }
-                    _ => language_comparison_error(op),
-                }
             }
-            // IDENTICAL_CALLS_ATTR
-            3 => {
-                let mut x = x;
-                let mut y = y;
-                if isSymbol(x) != 0 && is_scalar_string(y) {
-                    y = if Seql(STRING_ELT(y, 0), PRINTNAME(x)) != 0 {
-                        x
-                    } else {
-                        R_NilValue()
-                    };
-                } else if isSymbol(y) != 0 && is_scalar_string(x) {
-                    x = if Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0 {
-                        y
-                    } else {
-                        R_NilValue()
-                    };
-                }
-                let id = R_compute_identical(x, y, 16) != 0;
-                match PRIMVAL(op) {
-                    EQOP => {
-                        if id {
-                            R_TrueValue()
-                        } else {
-                            R_FalseValue()
-                        }
-                    }
-                    NEOP => {
-                        if id {
-                            R_FalseValue()
-                        } else {
-                            R_TrueValue()
-                        }
-                    }
-                    _ => language_comparison_error(op),
-                }
-            }
-            // IDENTICAL
-            4 => {
-                // SYMBOL_STRING_MATCH check omitted (stubs)
-                let id = R_compute_identical(x, y, 16) != 0;
-                match PRIMVAL(op) {
-                    EQOP => {
-                        if id {
-                            R_TrueValue()
-                        } else {
-                            R_FalseValue()
-                        }
-                    }
-                    NEOP => {
-                        if id {
-                            R_FalseValue()
-                        } else {
-                            R_TrueValue()
-                        }
-                    }
-                    _ => language_comparison_error(op),
-                }
-            }
-            // ERROR_CALLS
-            5 => {
-                if TYPEOF(x) == SEXPTYPE::LANGSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
-                    relop_error("comparison of call objects is not supported");
-                }
-                ptr::null_mut()
-            }
-            // ERROR
-            6 => {
-                relop_error("comparison of language objects is not supported");
-            }
-            _ => ptr::null_mut(),
         }
+        // IDENTICAL_CALLS_ATTR
+        3 => {
+            let mut x = x;
+            let mut y = y;
+            if isSymbol(x) != 0 && is_scalar_string(y) {
+                y = if Seql(STRING_ELT(y, 0), PRINTNAME(x)) != 0 {
+                    x
+                } else {
+                    R_NilValue()
+                };
+            } else if isSymbol(y) != 0 && is_scalar_string(x) {
+                x = if Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0 {
+                    y
+                } else {
+                    R_NilValue()
+                };
+            }
+            let id = identical_lang(x, y);
+            match PRIMVAL(op) {
+                EQOP => {
+                    if id {
+                        R_TrueValue()
+                    } else {
+                        R_FalseValue()
+                    }
+                }
+                NEOP => {
+                    if id {
+                        R_FalseValue()
+                    } else {
+                        R_TrueValue()
+                    }
+                }
+                _ => language_comparison_error(op),
+            }
+        }
+        // IDENTICAL
+        4 => {
+            // SYMBOL_STRING_MATCH check omitted (stubs)
+            let id = identical_lang(x, y);
+            match PRIMVAL(op) {
+                EQOP => {
+                    if id {
+                        R_TrueValue()
+                    } else {
+                        R_FalseValue()
+                    }
+                }
+                NEOP => {
+                    if id {
+                        R_FalseValue()
+                    } else {
+                        R_TrueValue()
+                    }
+                }
+                _ => language_comparison_error(op),
+            }
+        }
+        // ERROR_CALLS
+        5 => {
+            if TYPEOF(x) == SEXPTYPE::LANGSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
+                relop_error("comparison of call objects is not supported");
+            }
+            ptr::null_mut()
+        }
+        // ERROR
+        6 => {
+            relop_error("comparison of language objects is not supported");
+        }
+        _ => ptr::null_mut(),
     }
 }
 
@@ -817,192 +766,190 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
 ///
 /// Handles fast paths for simple scalars, then delegates to type-specific
 /// comparison functions.
-pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
-    unsafe {
-        // Fast path: handle simple scalar cases
-        if IS_SIMPLE_SCALAR(x, SEXPTYPE::INTSXP.into()) != 0 {
-            let ix = INTEGER_ELT(x, 0);
-            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
-                let iy = INTEGER_ELT(y, 0);
-                if ix == NA_INTEGER || iy == NA_INTEGER {
-                    return Rf_ScalarLogical(NA_LOGICAL);
-                }
-                return scalar_relop_int(PRIMVAL(op), ix, iy);
-            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
-                let dy = REAL_ELT(y, 0);
-                if ix == NA_INTEGER || ISNAN(dy) {
-                    return Rf_ScalarLogical(NA_LOGICAL);
-                }
-                return scalar_relop(PRIMVAL(op), ix as c_double, dy);
+pub fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
+    // Fast path: handle simple scalar cases
+    if IS_SIMPLE_SCALAR(x, SEXPTYPE::INTSXP.into()) != 0 {
+        let ix = INTEGER_ELT(x, 0);
+        if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
+            let iy = INTEGER_ELT(y, 0);
+            if ix == NA_INTEGER || iy == NA_INTEGER {
+                return Rf_ScalarLogical(NA_LOGICAL);
             }
-        } else if IS_SIMPLE_SCALAR(x, SEXPTYPE::REALSXP.into()) != 0 {
-            let dx = REAL_ELT(x, 0);
-            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
-                let iy = INTEGER_ELT(y, 0);
-                if ISNAN(dx) || iy == NA_INTEGER {
-                    return Rf_ScalarLogical(NA_LOGICAL);
-                }
-                return scalar_relop(PRIMVAL(op), dx, iy as c_double);
-            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
-                let dy = REAL_ELT(y, 0);
-                if ISNAN(dx) || ISNAN(dy) {
-                    return Rf_ScalarLogical(NA_LOGICAL);
-                }
-                return scalar_relop(PRIMVAL(op), dx, dy);
+            return scalar_relop_int(PRIMVAL(op), ix, iy);
+        } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
+            let dy = REAL_ELT(y, 0);
+            if ix == NA_INTEGER || ISNAN(dy) {
+                return Rf_ScalarLogical(NA_LOGICAL);
             }
+            return scalar_relop(PRIMVAL(op), ix as c_double, dy);
         }
-
-        let mut nx = if isVector(x) != 0 { XLENGTH(x) } else { 0 };
-        let mut ny = if isVector(y) != 0 { XLENGTH(y) } else { 0 };
-        let typex = TYPEOF(x);
-        let typey = TYPEOF(y);
-
-        // Fast path: simple REALSXP/INTSXP vector/scalar case
-        if ATTRIB(x) == R_NilValue()
-            && ATTRIB(y) == R_NilValue()
-            && (typex == SEXPTYPE::REALSXP || typex == SEXPTYPE::INTSXP)
-            && (typey == SEXPTYPE::REALSXP || typey == SEXPTYPE::INTSXP)
-            && nx > 0
-            && ny > 0
-            && (nx == 1 || ny == 1)
-        {
-            return unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
-        }
-
-        // Handle the general case
-        if isSymbol(x) != 0
-            || TYPEOF(x) == SEXPTYPE::LANGSXP
-            || isSymbol(y) != 0
-            || TYPEOF(y) == SEXPTYPE::LANGSXP
-        {
-            let ans = compute_language_relop(call, op, x, y);
-            if !ans.is_null() {
-                return ans;
+    } else if IS_SIMPLE_SCALAR(x, SEXPTYPE::REALSXP.into()) != 0 {
+        let dx = REAL_ELT(x, 0);
+        if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
+            let iy = INTEGER_ELT(y, 0);
+            if ISNAN(dx) || iy == NA_INTEGER {
+                return Rf_ScalarLogical(NA_LOGICAL);
             }
-        }
-
-        let mut held = Vec::new();
-        // Convert symbols/calls to strings
-        let mut iS;
-        if {
-            iS = isSymbol(x) != 0;
-            iS
-        } || TYPEOF(x) == SEXPTYPE::LANGSXP
-        {
-            let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            held.push(crate::sexp::protect::protect(tmp));
-            if !tmp.is_null() {
-                if iS {
-                    SET_STRING_ELT(tmp, 0, PRINTNAME(x));
-                } else {
-                    let dep = crate::mainutils::deparse::deparse1line(x, false);
-                    let _dep = crate::sexp::protect::protect(dep);
-                    SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
-                }
+            return scalar_relop(PRIMVAL(op), dx, iy as c_double);
+        } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
+            let dy = REAL_ELT(y, 0);
+            if ISNAN(dx) || ISNAN(dy) {
+                return Rf_ScalarLogical(NA_LOGICAL);
             }
-            x = tmp;
-            nx = XLENGTH(x);
+            return scalar_relop(PRIMVAL(op), dx, dy);
         }
-        if {
-            iS = isSymbol(y) != 0;
-            iS
-        } || TYPEOF(y) == SEXPTYPE::LANGSXP
-        {
-            let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            held.push(crate::sexp::protect::protect(tmp));
-            if !tmp.is_null() {
-                if iS {
-                    SET_STRING_ELT(tmp, 0, PRINTNAME(y));
-                } else {
-                    let dep = crate::mainutils::deparse::deparse1line(y, false);
-                    let _dep = crate::sexp::protect::protect(dep);
-                    SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
-                }
-            }
-            y = tmp;
-            ny = XLENGTH(y);
-        }
-
-        // Replace NULL with empty integer vectors
-        if isNull(x) != 0 {
-            x = Rf_allocVector(SEXPTYPE::INTSXP, 0);
-        }
-        if isNull(y) != 0 {
-            y = Rf_allocVector(SEXPTYPE::INTSXP, 0);
-        }
-        if isVector(x) == 0 || isVector(y) == 0 {
-            relop_error(format!(
-                "comparison ({}) is possible only for atomic and list types",
-                primitive_name(op)
-            ));
-        }
-
-        // Array and time series handling (simplified -- stubs return 0)
-        let xarray = isArray(x) != 0;
-        let yarray = isArray(y) != 0;
-        let xts = isTs(x) != 0;
-        let yts = isTs(y) != 0;
-
-        // Type coercion and dispatch
-        if nx > 0 && ny > 0 {
-            // Recycling warning check
-            if (if nx > ny { nx % ny } else { ny % nx }) != 0 {
-                // warningcall
-            }
-
-            if let Some(result) = ordered_factor_relop(PRIMVAL(op), &checked(x), &checked(y))
-                .unwrap_or_else(|err| -> Option<Sexp<'_>> { relop_error(err.to_string()) })
-            {
-                x = result.as_raw();
-            } else if is_unordered_factor_eq_ne(PRIMVAL(op), &checked(x), &checked(y))
-                .unwrap_or_else(|err| -> bool { relop_error(err.to_string()) })
-            {
-                // Upstream comparison.c: unordered factor ==/!= compares
-                // the LEVEL STRINGS of the elements (factor vs character
-                // matches the character against the levels); relational
-                // operators on unordered factors are "not meaningful".
-                let xf = unwrap_sexp(factor_operand_as_levels(&checked(x)));
-                let _xg = protect(xf);
-                let yf = unwrap_sexp(factor_operand_as_levels(&checked(y)));
-                let _yg = protect(yf);
-                x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(xf), &checked(yf)));
-            } else if isString(x) != 0 || isString(y) != 0 {
-                x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(x), &checked(y)));
-            } else if isComplex(x) != 0 || isComplex(y) != 0 {
-                x = unwrap_sexp(complex_relop(PRIMVAL(op), &checked(x), &checked(y)));
-            } else if (isNumeric(x) != 0 || isLogical(x) != 0)
-                && (isNumeric(y) != 0 || isLogical(y) != 0)
-            {
-                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
-            } else if isReal(x) != 0 || isReal(y) != 0 {
-                let xc = coerceVector(x, SEXPTYPE::REALSXP.into());
-                let _xg = protect(xc);
-                let yc = coerceVector(y, SEXPTYPE::REALSXP.into());
-                let _yg = protect(yc);
-                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
-            } else if isInteger(x) != 0 || isInteger(y) != 0 {
-                let xc = coerceVector(x, SEXPTYPE::INTSXP.into());
-                let _xg = protect(xc);
-                let yc = coerceVector(y, SEXPTYPE::INTSXP.into());
-                let _yg = protect(yc);
-                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
-            } else if isLogical(x) != 0 || isLogical(y) != 0 {
-                let xc = coerceVector(x, SEXPTYPE::LGLSXP.into());
-                let _xg = protect(xc);
-                let yc = coerceVector(y, SEXPTYPE::LGLSXP.into());
-                let _yg = protect(yc);
-                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
-            } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
-                x = unwrap_sexp(raw_relop(PRIMVAL(op), &checked(x), &checked(y)));
-            } else {
-                relop_error("comparison of these types is not implemented");
-            }
-        } else {
-            x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
-        }
-
-        x
     }
+
+    let mut nx = if isVector(x) != 0 { XLENGTH(x) } else { 0 };
+    let mut ny = if isVector(y) != 0 { XLENGTH(y) } else { 0 };
+    let typex = TYPEOF(x);
+    let typey = TYPEOF(y);
+
+    // Fast path: simple REALSXP/INTSXP vector/scalar case
+    if ATTRIB(x) == R_NilValue()
+        && ATTRIB(y) == R_NilValue()
+        && (typex == SEXPTYPE::REALSXP || typex == SEXPTYPE::INTSXP)
+        && (typey == SEXPTYPE::REALSXP || typey == SEXPTYPE::INTSXP)
+        && nx > 0
+        && ny > 0
+        && (nx == 1 || ny == 1)
+    {
+        return unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
+    }
+
+    // Handle the general case
+    if isSymbol(x) != 0
+        || TYPEOF(x) == SEXPTYPE::LANGSXP
+        || isSymbol(y) != 0
+        || TYPEOF(y) == SEXPTYPE::LANGSXP
+    {
+        let ans = compute_language_relop(call, op, x, y);
+        if !ans.is_null() {
+            return ans;
+        }
+    }
+
+    let mut held = Vec::new();
+    // Convert symbols/calls to strings
+    let mut iS;
+    if {
+        iS = isSymbol(x) != 0;
+        iS
+    } || TYPEOF(x) == SEXPTYPE::LANGSXP
+    {
+        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        held.push(crate::sexp::protect::protect(tmp));
+        if !tmp.is_null() {
+            if iS {
+                SET_STRING_ELT(tmp, 0, PRINTNAME(x));
+            } else {
+                let dep = crate::mainutils::deparse::deparse1line(x, false);
+                let _dep = crate::sexp::protect::protect(dep);
+                SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
+            }
+        }
+        x = tmp;
+        nx = XLENGTH(x);
+    }
+    if {
+        iS = isSymbol(y) != 0;
+        iS
+    } || TYPEOF(y) == SEXPTYPE::LANGSXP
+    {
+        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        held.push(crate::sexp::protect::protect(tmp));
+        if !tmp.is_null() {
+            if iS {
+                SET_STRING_ELT(tmp, 0, PRINTNAME(y));
+            } else {
+                let dep = crate::mainutils::deparse::deparse1line(y, false);
+                let _dep = crate::sexp::protect::protect(dep);
+                SET_STRING_ELT(tmp, 0, STRING_ELT(dep, 0));
+            }
+        }
+        y = tmp;
+        ny = XLENGTH(y);
+    }
+
+    // Replace NULL with empty integer vectors
+    if isNull(x) != 0 {
+        x = Rf_allocVector(SEXPTYPE::INTSXP, 0);
+    }
+    if isNull(y) != 0 {
+        y = Rf_allocVector(SEXPTYPE::INTSXP, 0);
+    }
+    if isVector(x) == 0 || isVector(y) == 0 {
+        relop_error(format!(
+            "comparison ({}) is possible only for atomic and list types",
+            primitive_name(op)
+        ));
+    }
+
+    // Array and time series handling (simplified -- stubs return 0)
+    let xarray = isArray(x) != 0;
+    let yarray = isArray(y) != 0;
+    let xts = isTs(x) != 0;
+    let yts = isTs(y) != 0;
+
+    // Type coercion and dispatch
+    if nx > 0 && ny > 0 {
+        // Recycling warning check
+        if (if nx > ny { nx % ny } else { ny % nx }) != 0 {
+            // warningcall
+        }
+
+        if let Some(result) = ordered_factor_relop(PRIMVAL(op), &checked(x), &checked(y))
+            .unwrap_or_else(|err| -> Option<Sexp<'_>> { relop_error(err.to_string()) })
+        {
+            x = result.as_raw();
+        } else if is_unordered_factor_eq_ne(PRIMVAL(op), &checked(x), &checked(y))
+            .unwrap_or_else(|err| -> bool { relop_error(err.to_string()) })
+        {
+            // Upstream comparison.c: unordered factor ==/!= compares
+            // the LEVEL STRINGS of the elements (factor vs character
+            // matches the character against the levels); relational
+            // operators on unordered factors are "not meaningful".
+            let xf = unwrap_sexp(factor_operand_as_levels(&checked(x)));
+            let _xg = protect(xf);
+            let yf = unwrap_sexp(factor_operand_as_levels(&checked(y)));
+            let _yg = protect(yf);
+            x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(xf), &checked(yf)));
+        } else if isString(x) != 0 || isString(y) != 0 {
+            x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(x), &checked(y)));
+        } else if isComplex(x) != 0 || isComplex(y) != 0 {
+            x = unwrap_sexp(complex_relop(PRIMVAL(op), &checked(x), &checked(y)));
+        } else if (isNumeric(x) != 0 || isLogical(x) != 0)
+            && (isNumeric(y) != 0 || isLogical(y) != 0)
+        {
+            x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
+        } else if isReal(x) != 0 || isReal(y) != 0 {
+            let xc = coerceVector(x, SEXPTYPE::REALSXP.into());
+            let _xg = protect(xc);
+            let yc = coerceVector(y, SEXPTYPE::REALSXP.into());
+            let _yg = protect(yc);
+            x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
+        } else if isInteger(x) != 0 || isInteger(y) != 0 {
+            let xc = coerceVector(x, SEXPTYPE::INTSXP.into());
+            let _xg = protect(xc);
+            let yc = coerceVector(y, SEXPTYPE::INTSXP.into());
+            let _yg = protect(yc);
+            x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
+        } else if isLogical(x) != 0 || isLogical(y) != 0 {
+            let xc = coerceVector(x, SEXPTYPE::LGLSXP.into());
+            let _xg = protect(xc);
+            let yc = coerceVector(y, SEXPTYPE::LGLSXP.into());
+            let _yg = protect(yc);
+            x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
+        } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
+            x = unwrap_sexp(raw_relop(PRIMVAL(op), &checked(x), &checked(y)));
+        } else {
+            relop_error("comparison of these types is not implemented");
+        }
+    } else {
+        x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
+    }
+
+    x
 }
 
 /// Raw-boundary `has_class` for callers still holding SEXP pointers.
@@ -1137,11 +1084,7 @@ fn factor_levels_match(value: &Sexp<'_>, expected: &[String]) -> SexpResult<bool
 }
 
 fn factor_levels(value: &Sexp<'_>) -> SexpResult<Option<Vec<String>>> {
-    // SAFETY: `R_LevelsSymbol` returns the static levels symbol on the
-    // interpreter thread where factor comparisons run.
-    let levels = getAttrib(value.as_raw(), unsafe {
-        crate::eval::attrib_core::R_LevelsSymbol()
-    });
+    let levels = getAttrib(value.as_raw(), crate::sexp::symbol::install_str("levels"));
     if levels.is_null() || levels == R_NilValue() {
         return Ok(None);
     }
@@ -1609,7 +1552,7 @@ fn bitwise_shift<'a, F: Fn(c_int, c_int) -> c_int>(
 /// # Safety
 /// ABI boundary registered via `PrimFun`; the body delegates to checked
 /// kernels through the session wrap in [`checked`].
-pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, env);
     let a = checked(CAR(args));
     let b = checked(CADR(args));
@@ -1632,27 +1575,27 @@ pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_bitwAnd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwAnd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_and(&checked(CAR(args)), &checked(CADR(args))))
 }
 
-pub unsafe fn do_bitwOr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwOr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_or(&checked(CAR(args)), &checked(CADR(args))))
 }
 
-pub unsafe fn do_bitwXor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwXor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_xor(&checked(CAR(args)), &checked(CADR(args))))
 }
 
-pub unsafe fn do_bitwNot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwNot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_not(&checked(CAR(args))))
 }
 
-pub unsafe fn do_bitwShiftL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwShiftL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_shift_l(&checked(CAR(args)), &checked(CADR(args))))
 }
 
-pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unwrap_sexp(bitwise_shift_r(&checked(CAR(args)), &checked(CADR(args))))
 }
 
@@ -1664,6 +1607,7 @@ pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 mod tests {
     use crate::sexp::accessors::*;
     use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::ffi::Rcomplex;
 
     use super::*;
 
@@ -1699,28 +1643,22 @@ mod tests {
     #[test]
     fn test_is_scalar_string_non_string() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-            assert!(!is_scalar_string(v));
-        }
+        let v = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        assert!(!is_scalar_string(v));
     }
 
     #[test]
     fn test_is_scalar_string_correct() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            assert!(is_scalar_string(v));
-        }
+        let v = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        assert!(is_scalar_string(v));
     }
 
     #[test]
     fn test_is_scalar_string_wrong_length() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector(SEXPTYPE::STRSXP, 3);
-            assert!(!is_scalar_string(v));
-        }
+        let v = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        assert!(!is_scalar_string(v));
     }
 
     #[test]
@@ -1937,18 +1875,16 @@ mod tests {
     #[test]
     fn test_bitwise_unsupported_type_errors() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let string = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            let err = std::panic::catch_unwind(|| {
-                let _ = bitwise_not(&checked(string));
-            })
-            .expect_err("unsupported bitwise type should raise an RError");
-            let message = err
-                .downcast_ref::<crate::sexp::context::RError>()
-                .map(|err| err.message.as_str())
-                .unwrap_or("");
-            assert!(message.contains("bitwNot: unsupported SEXPTYPE"));
-        }
+        let string = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let err = std::panic::catch_unwind(|| {
+            let _ = bitwise_not(&checked(string));
+        })
+        .expect_err("unsupported bitwise type should raise an RError");
+        let message = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .map(|err| err.message.as_str())
+            .unwrap_or("");
+        assert!(message.contains("bitwNot: unsupported SEXPTYPE"));
     }
 
     #[test]
