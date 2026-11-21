@@ -44,11 +44,14 @@ fn unsupported(name: &str) -> ! {
     unreachable!("Rf_error_unimplemented returned");
 }
 
-unsafe fn first_string_ptr(value: SEXP) -> *const std::os::raw::c_char {
+fn first_string_ptr(value: SEXP) -> *const std::os::raw::c_char {
+    if value.is_null() || value == R_NilValue() {
+        return std::ptr::null();
+    }
+    // SAFETY: `value` is a live SEXP supplied by an active R call; the
+    // returned pointer borrows the CHARSXP payload for the duration of the
+    // enclosing engine call and must not outlive it.
     unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return std::ptr::null();
-        }
         match TYPEOF(value) {
             t if t == SEXPTYPE::CHARSXP => CHAR(value),
             t if t == SEXPTYPE::STRSXP && LENGTH(value) > 0 => CHAR(STRING_ELT(value, 0)),
@@ -64,17 +67,13 @@ unsafe fn first_string_ptr(value: SEXP) -> *const std::os::raw::c_char {
 /// C_strWidth -- compute the width of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    unsafe {
-        crate::mainutils::engine::GEStrWidth(first_string_ptr(_str), 0, std::ptr::null(), _dd)
-    }
+    crate::mainutils::engine::GEStrWidth(first_string_ptr(_str), 0, std::ptr::null(), _dd)
 }
 
 /// C_strHeight -- compute the height of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    unsafe {
-        crate::mainutils::engine::GEStrHeight(first_string_ptr(_str), 0, std::ptr::null(), _dd)
-    }
+    crate::mainutils::engine::GEStrHeight(first_string_ptr(_str), 0, std::ptr::null(), _dd)
 }
 
 /* ========================================================================

@@ -198,10 +198,10 @@ fn stem_leaf(x: &mut [c_double], scale: c_double, width: c_int, atom: c_double) 
 }
 
 /* The R wrapper has removed NAs from x */
-pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP {
+pub fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    unsafe {
+    {
         if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(scale) != SEXPTYPE::REALSXP {
             Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
         }
@@ -225,13 +225,13 @@ pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP
         /* Make a mutable copy since R_rsort sorts in place */
         let xcopy = Rf_allocVector(SEXPTYPE::REALSXP, n);
         let _xcopy_guard = protect(xcopy);
-        std::ptr::copy_nonoverlapping(REAL(x), REAL(xcopy), n as usize);
-        stem_leaf(
-            std::slice::from_raw_parts_mut(REAL(xcopy), n as usize),
-            sc,
-            width,
-            sa,
-        );
+        // SAFETY: `x` is a live REALSXP of length n and `xcopy` is a freshly
+        // allocated REALSXP of the same length, both protected here.
+        let xcopy_data = unsafe {
+            std::ptr::copy_nonoverlapping(REAL(x), REAL(xcopy), n as usize);
+            std::slice::from_raw_parts_mut(REAL(xcopy), n as usize)
+        };
+        stem_leaf(xcopy_data, sc, width, sa);
 
         R_NilValue()
     }
@@ -280,10 +280,10 @@ fn C_bincount(
 }
 
 /* The R wrapper removed non-finite values */
-pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
+pub fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    unsafe {
+    {
         let x = coerceVector(x, SEXPTYPE::REALSXP.into());
         let _x_guard = protect(x);
         let breaks = coerceVector(breaks, SEXPTYPE::REALSXP.into());
@@ -302,21 +302,24 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
 
         let counts = Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int);
         let _counts_guard = protect(counts);
-        C_bincount(
-            std::slice::from_raw_parts(REAL(x), n as usize),
-            std::slice::from_raw_parts(REAL(breaks), nB as usize),
-            std::slice::from_raw_parts_mut(INTEGER(counts), (nB - 1) as usize),
-            sr,
-            sl,
-        );
+        // SAFETY: `x`, `breaks`, and `counts` are live protected vectors of
+        // the exact lengths sliced here.
+        let (x_data, breaks_data, counts_data) = unsafe {
+            (
+                std::slice::from_raw_parts(REAL(x), n as usize),
+                std::slice::from_raw_parts(REAL(breaks), nB as usize),
+                std::slice::from_raw_parts_mut(INTEGER(counts), (nB - 1) as usize),
+            )
+        };
+        C_bincount(x_data, breaks_data, counts_data, sr, sl);
 
         counts
     }
 }
 
 /// GNU `stem(x, scale=1, width=80, atom=1e-8)`.
-pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let x = CAR(args);
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
@@ -329,9 +332,9 @@ pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut finite: Vec<f64> = Vec::new();
         for i in 0..n {
             let v = if xt == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                REAL_ELT(x, i as c_int)
             } else {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = INTEGER_ELT(x, i as c_int);
                 if iv == NA_INTEGER {
                     f64::NAN
                 } else {
@@ -356,9 +359,7 @@ pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(tag))).into_owned()
             } else {
                 String::new()
             };
@@ -376,23 +377,23 @@ pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             match slot {
                 0 => {
                     scale = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                        *REAL(v)
+                        REAL_ELT(v, 0)
                     } else {
-                        *INTEGER(v) as f64
+                        INTEGER_ELT(v, 0) as f64
                     };
                 }
                 1 => {
                     width = if TYPEOF(v) == SEXPTYPE::INTSXP {
-                        *INTEGER(v)
+                        INTEGER_ELT(v, 0)
                     } else {
-                        *REAL(v) as c_int
+                        REAL_ELT(v, 0) as c_int
                     };
                 }
                 2 => {
                     atom = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                        *REAL(v)
+                        REAL_ELT(v, 0)
                     } else {
-                        *INTEGER(v) as f64
+                        INTEGER_ELT(v, 0) as f64
                     };
                 }
                 _ => {}
@@ -408,7 +409,7 @@ pub unsafe fn do_stem(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xd = Rf_allocVector3(SEXPTYPE::REALSXP, finite.len() as i64);
         let _xd = protect(xd);
         for (i, v) in finite.iter().enumerate() {
-            *REAL(xd).add(i) = *v;
+            SET_REAL_ELT(xd, i as c_int, *v);
         }
         let sc = Rf_ScalarReal(scale);
         let _sc = protect(sc);

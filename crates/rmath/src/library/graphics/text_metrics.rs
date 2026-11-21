@@ -9,13 +9,13 @@ use crate::sexp::ffi::SEXP;
 /// par("ps") inputs and converts user units through par("usr")/par("pin")
 /// exactly like `GConvertXUnits`, so every unit still yields finite doubles.
 #[cfg(not(feature = "renderplot-device"))]
-pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
+pub(super) fn measure(args: SEXP, height: bool) -> SEXP {
     use super::graphics;
     use super::par::{ParValue, parameter};
     use crate::mainutils::coerce::{asInteger, asReal, coerceVector};
     use crate::mainutils::essentials::elt_to_string;
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
-    unsafe {
+    {
         let nil = R_NilValue();
         let mut cell = CDR(args);
         let mut arguments = [nil; 5];
@@ -123,7 +123,7 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
         let result =
             crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, measured.len() as i64);
         for (index, value) in measured.into_iter().enumerate() {
-            *REAL(result).add(index) = value;
+            SET_REAL_ELT(result, index as i32, value);
         }
         result
     }
@@ -150,13 +150,13 @@ fn positive_par_number(name: &str) -> f64 {
 /// # Safety
 /// R arguments must be live and rooted in the active session for coercion.
 #[cfg(feature = "renderplot-device")]
-pub(crate) unsafe fn text_parameters(
+pub(crate) fn text_parameters(
     cex: SEXP,
     font: SEXP,
     extras: SEXP,
 ) -> (r_graphics_engine::PlotParameters, f64) {
     use crate::mainutils::coerce::asReal;
-    unsafe {
+    {
         let base_scale = positive_par_number("cex");
         let scale = if cex == crate::sexp::globals::R_NilValue() {
             base_scale
@@ -176,12 +176,12 @@ pub(crate) unsafe fn text_parameters(
 /// # Safety
 /// The argument pairlist and its children must be live and rooted in the active session.
 #[cfg(feature = "renderplot-device")]
-pub(crate) unsafe fn drawing_parameters(
+pub(crate) fn drawing_parameters(
     args: SEXP,
     count: usize,
 ) -> Vec<r_graphics_engine::PlotParameters> {
     use crate::mainutils::essentials::arg_by_name_or_position;
-    unsafe {
+    {
         let cex = arg_by_name_or_position(args, &["cex"], usize::MAX);
         let font = arg_by_name_or_position(args, &["font"], usize::MAX);
         let base_scale = positive_par_number("cex");
@@ -191,24 +191,24 @@ pub(crate) unsafe fn drawing_parameters(
 
 /// Margin text uses absolute magnification, independently of par("cex").
 #[cfg(feature = "renderplot-device")]
-pub(crate) unsafe fn margin_parameters(
+pub(crate) fn margin_parameters(
     cex: SEXP,
     font: SEXP,
     extras: SEXP,
     count: usize,
 ) -> Vec<r_graphics_engine::PlotParameters> {
-    unsafe { drawing_parameters_with_scale(cex, font, extras, count, 1.) }
+    drawing_parameters_with_scale(cex, font, extras, count, 1.)
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe fn drawing_parameters_with_scale(
+fn drawing_parameters_with_scale(
     cex: SEXP,
     font: SEXP,
     args: SEXP,
     count: usize,
     base_scale: f64,
 ) -> Vec<r_graphics_engine::PlotParameters> {
-    unsafe {
+    {
         let scales = numeric_prefix(cex, "cex", count);
         let fonts = font_codes(font, count);
         let mut parameters = Vec::new();
@@ -240,9 +240,9 @@ unsafe fn drawing_parameters_with_scale(
 // Copy only values that drawing can use. Checked element reads also keep
 // compact sequences lazy when a tiny plot receives a very large argument.
 #[cfg(feature = "renderplot-device")]
-unsafe fn numeric_prefix(value: SEXP, name: &str, limit: usize) -> Vec<f64> {
+fn numeric_prefix(value: SEXP, name: &str, limit: usize) -> Vec<f64> {
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, object::Sexp};
-    unsafe {
+    {
         let count = usize::try_from(XLENGTH(value))
             .unwrap_or_else(|_| base_error("graphics argument is too long"));
         if count == 0 {
@@ -256,8 +256,8 @@ unsafe fn numeric_prefix(value: SEXP, name: &str, limit: usize) -> Vec<f64> {
             base_error(format!("invalid '{name}' argument"));
         }
         // SAFETY: the caller roots numeric arguments in the active session.
-        let value =
-            Sexp::from_raw(value).unwrap_or_else(|| base_error("invalid graphics argument"));
+        let value = unsafe { Sexp::from_raw(value) }
+            .unwrap_or_else(|| base_error("invalid graphics argument"));
         let mut values = Vec::new();
         values
             .try_reserve_exact(count.min(limit))
@@ -278,8 +278,8 @@ unsafe fn numeric_prefix(value: SEXP, name: &str, limit: usize) -> Vec<f64> {
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe fn font_codes(font: SEXP, limit: usize) -> Vec<i32> {
-    unsafe {
+fn font_codes(font: SEXP, limit: usize) -> Vec<i32> {
+    {
         numeric_prefix(font, "font", limit)
             .into_iter()
             .map(|value| {
@@ -294,7 +294,7 @@ unsafe fn font_codes(font: SEXP, limit: usize) -> Vec<i32> {
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe fn font_parameters(
+fn font_parameters(
     scale: f64,
     requested_font: i32,
     extras: SEXP,
@@ -302,7 +302,7 @@ unsafe fn font_parameters(
     use crate::mainutils::coerce::coerceVector;
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
     use r_graphics_engine::{FontFace, PlotParameters};
-    unsafe {
+    {
         let nil = R_NilValue();
         if !scale.is_finite() || scale <= 0. {
             base_error("invalid 'cex' value");
@@ -373,13 +373,13 @@ unsafe fn font_parameters(
 }
 
 #[cfg(feature = "renderplot-device")]
-pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
+pub(super) fn measure(args: SEXP, height: bool) -> SEXP {
     use crate::mainutils::{
         coerce::{asInteger, coerceVector},
         plotmath::Label,
     };
     use crate::sexp::{accessors::*, ffi::SEXPTYPE, globals::R_NilValue, protect::protect};
-    unsafe {
+    {
         let nil = R_NilValue();
         let mut cell = CDR(args);
         let mut arguments = [nil; 5];
@@ -408,7 +408,8 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
             coerceVector(input, SEXPTYPE::STRSXP.0)
         };
         let _strings = protect(strings);
-        let labels = crate::mainutils::plotmath::labels(strings);
+        // SAFETY: `strings` is a live protected SEXP in the active session.
+        let labels = unsafe { crate::mainutils::plotmath::labels(strings) };
         let missing: Vec<_> = if TYPEOF(strings) == SEXPTYPE::STRSXP {
             (0..XLENGTH(strings))
                 .map(|index| STRING_ELT(strings, index) == crate::sexp::globals::R_NaString())
@@ -418,7 +419,8 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
         };
 
         let coordinates = crate::sexp::instance::with_required_current_instance(|instance| {
-            (*instance).portable_graphics.current
+            // SAFETY: the instance pointer is valid for the callback duration.
+            unsafe { (*instance).portable_graphics.current }
         });
         use r_graphics_engine::DrawTarget;
         let target =
@@ -488,7 +490,7 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
         let result =
             crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, measured.len() as i64);
         for (index, value) in measured.into_iter().enumerate() {
-            *REAL(result).add(index) = value;
+            SET_REAL_ELT(result, index as i32, value);
         }
         result
     }

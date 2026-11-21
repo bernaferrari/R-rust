@@ -1231,7 +1231,7 @@ fn graphics_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn layout_pop_arg(args: &mut SEXP) -> SEXP {
+fn layout_pop_arg(args: &mut SEXP) -> SEXP {
     {
         if args.is_null() || *args == R_NilValue() {
             graphics_error("invalid graphics layout");
@@ -1242,23 +1242,23 @@ unsafe fn layout_pop_arg(args: &mut SEXP) -> SEXP {
     }
 }
 
-unsafe fn layout_int_scalar(args: &mut SEXP, name: &str) -> c_int {
-    unsafe {
+fn layout_int_scalar(args: &mut SEXP, name: &str) -> c_int {
+    {
         let value = layout_pop_arg(args);
         if value.is_null() || value == R_NilValue() || XLENGTH(value) < 1 {
             graphics_error(format!("invalid '{name}' in graphics layout"));
         }
         match TYPEOF(value) {
-            t if t == SEXPTYPE::INTSXP => *INTEGER(value),
-            t if t == SEXPTYPE::REALSXP => *REAL(value) as c_int,
-            t if t == SEXPTYPE::LGLSXP => *crate::sexp::accessors::LOGICAL(value),
+            t if t == SEXPTYPE::INTSXP => INTEGER_ELT(value, 0),
+            t if t == SEXPTYPE::REALSXP => REAL_ELT(value, 0) as c_int,
+            t if t == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
     }
 }
 
-unsafe fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_int> {
-    unsafe {
+fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_int> {
+    {
         let value = layout_pop_arg(args);
         if value.is_null() || value == R_NilValue() {
             if min_len == 0 {
@@ -1272,24 +1272,21 @@ unsafe fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<
         let n = XLENGTH(value) as usize;
         match TYPEOF(value) {
             t if t == SEXPTYPE::INTSXP => {
-                let src = INTEGER(value);
-                (0..n).map(|i| *src.add(i)).collect()
+                (0..n).map(|i| INTEGER_ELT(value, i as c_int)).collect()
             }
             t if t == SEXPTYPE::REALSXP => {
-                let src = REAL(value);
-                (0..n).map(|i| *src.add(i) as c_int).collect()
+                (0..n).map(|i| REAL_ELT(value, i as c_int) as c_int).collect()
             }
             t if t == SEXPTYPE::LGLSXP => {
-                let src = crate::sexp::accessors::LOGICAL(value);
-                (0..n).map(|i| *src.add(i)).collect()
+                (0..n).map(|i| LOGICAL_ELT(value, i as c_int)).collect()
             }
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
     }
 }
 
-unsafe fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_double> {
-    unsafe {
+fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_double> {
+    {
         let value = layout_pop_arg(args);
         if value.is_null() || value == R_NilValue() || XLENGTH(value) < min_len as R_xlen_t {
             graphics_error(format!("invalid '{name}' in graphics layout"));
@@ -1297,12 +1294,10 @@ unsafe fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec
         let n = XLENGTH(value) as usize;
         match TYPEOF(value) {
             t if t == SEXPTYPE::REALSXP => {
-                let src = REAL(value);
-                (0..n).map(|i| *src.add(i)).collect()
+                (0..n).map(|i| REAL_ELT(value, i as c_int)).collect()
             }
             t if t == SEXPTYPE::INTSXP => {
-                let src = INTEGER(value);
-                (0..n).map(|i| *src.add(i) as c_double).collect()
+                (0..n).map(|i| INTEGER_ELT(value, i as c_int) as c_double).collect()
             }
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
@@ -1332,8 +1327,8 @@ fn apply_layout_state(nrow: c_int, ncol: c_int, order: &[c_int], num_figures: c_
     }
 }
 
-unsafe fn matrix_shape(value: SEXP) -> Option<(c_int, c_int)> {
-    unsafe {
+fn matrix_shape(value: SEXP) -> Option<(c_int, c_int)> {
+    {
         let dim =
             crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null()
@@ -1343,23 +1338,21 @@ unsafe fn matrix_shape(value: SEXP) -> Option<(c_int, c_int)> {
         {
             return None;
         }
-        Some((*INTEGER(dim), *INTEGER(dim).add(1)))
+        Some((INTEGER_ELT(dim, 0), INTEGER_ELT(dim, 1)))
     }
 }
 
-unsafe fn layout_matrix_order(value: SEXP, len: usize) -> Vec<c_int> {
-    unsafe {
+fn layout_matrix_order(value: SEXP, len: usize) -> Vec<c_int> {
+    {
         if value.is_null() || value == R_NilValue() || XLENGTH(value) < len as R_xlen_t {
             graphics_error("invalid layout matrix");
         }
         match TYPEOF(value) {
             t if t == SEXPTYPE::INTSXP => {
-                let src = INTEGER(value);
-                (0..len).map(|i| *src.add(i)).collect()
+                (0..len).map(|i| INTEGER_ELT(value, i as c_int)).collect()
             }
             t if t == SEXPTYPE::REALSXP => {
-                let src = REAL(value);
-                (0..len).map(|i| *src.add(i) as c_int).collect()
+                (0..len).map(|i| REAL_ELT(value, i as c_int) as c_int).collect()
             }
             _ => graphics_error("invalid layout matrix"),
         }
@@ -1389,17 +1382,16 @@ fn current_par_value(state: &GraphicsParState, name: &str) -> ParValue {
         })
 }
 
-unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
-    unsafe {
+fn par_value_to_sexp(value: &ParValue) -> SEXP {
+    {
         match value {
             ParValue::Logical(values) => {
                 let result = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
                 if result.is_null() {
                     return R_NilValue();
                 }
-                let dst = LOGICAL(result);
                 for (i, value) in values.iter().enumerate() {
-                    *dst.add(i) = *value;
+                    SET_LOGICAL_ELT(result, i as c_int, *value);
                 }
                 result
             }
@@ -1408,9 +1400,8 @@ unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
                 if result.is_null() {
                     return R_NilValue();
                 }
-                let dst = INTEGER(result);
                 for (i, value) in values.iter().enumerate() {
-                    *dst.add(i) = *value;
+                    SET_INTEGER_ELT(result, i as c_int, *value);
                 }
                 result
             }
@@ -1419,22 +1410,22 @@ unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
                 if result.is_null() {
                     return R_NilValue();
                 }
-                let dst = REAL(result);
                 for (i, value) in values.iter().enumerate() {
-                    *dst.add(i) = *value;
+                    SET_REAL_ELT(result, i as c_int, *value);
                 }
                 result
             }
             ParValue::String(value) => {
                 let cstr = std::ffi::CString::new(value.as_str()).unwrap_or_default();
-                Rf_mkString(cstr.as_ptr())
+                // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
+                unsafe { Rf_mkString(cstr.as_ptr()) }
             }
         }
     }
 }
 
-unsafe fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
-    unsafe {
+fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
+    {
         let n = slots.len() as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -1455,7 +1446,8 @@ unsafe fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
             };
             SET_VECTOR_ELT(result, i as R_xlen_t, value);
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
+            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1466,8 +1458,8 @@ unsafe fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
     }
 }
 
-unsafe fn null_named_list(names: &[String]) -> SEXP {
-    unsafe {
+fn null_named_list(names: &[String]) -> SEXP {
+    {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -1481,7 +1473,8 @@ unsafe fn null_named_list(names: &[String]) -> SEXP {
         for (i, name) in names.iter().enumerate() {
             SET_VECTOR_ELT(result, i as R_xlen_t, R_NilValue());
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
+            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1492,9 +1485,9 @@ unsafe fn null_named_list(names: &[String]) -> SEXP {
     }
 }
 
-unsafe fn named_par_list(names: &[String]) -> SEXP {
+fn named_par_list(names: &[String]) -> SEXP {
     let values: Vec<_> = names.iter().map(|name| parameter(name)).collect();
-    unsafe {
+    {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -1510,7 +1503,8 @@ unsafe fn named_par_list(names: &[String]) -> SEXP {
             let value = &values[i];
             SET_VECTOR_ELT(result, i as R_xlen_t, par_value_to_sexp(&value));
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
+            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
         }
 
         crate::sexp::attrib_core::setAttrib(
@@ -1522,33 +1516,30 @@ unsafe fn named_par_list(names: &[String]) -> SEXP {
     }
 }
 
-unsafe fn sexp_to_par_value(value: SEXP) -> ParValue {
-    unsafe {
+fn sexp_to_par_value(value: SEXP) -> ParValue {
+    {
         match TYPEOF(value) {
             t if t == SEXPTYPE::LGLSXP => {
                 let n = XLENGTH(value);
-                let src = LOGICAL(value);
                 let mut out = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    out.push(*src.add(i as usize));
+                    out.push(LOGICAL_ELT(value, i as c_int));
                 }
                 ParValue::Logical(out)
             }
             t if t == SEXPTYPE::INTSXP => {
                 let n = XLENGTH(value);
-                let src = INTEGER(value);
                 let mut out = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    out.push(*src.add(i as usize));
+                    out.push(INTEGER_ELT(value, i as c_int));
                 }
                 ParValue::Integer(out)
             }
             t if t == SEXPTYPE::REALSXP => {
                 let n = XLENGTH(value);
-                let src = REAL(value);
                 let mut out = Vec::with_capacity(n as usize);
                 for i in 0..n {
-                    out.push(*src.add(i as usize));
+                    out.push(REAL_ELT(value, i as c_int));
                 }
                 ParValue::Real(out)
             }
@@ -1557,9 +1548,8 @@ unsafe fn sexp_to_par_value(value: SEXP) -> ParValue {
                 if elt == R_NaString() {
                     ParValue::String(String::new())
                 } else {
-                    let text = std::ffi::CStr::from_ptr(CHAR(elt))
-                        .to_string_lossy()
-                        .into_owned();
+                    let text =
+                        String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned();
                     ParValue::String(text)
                 }
             }
@@ -1568,8 +1558,8 @@ unsafe fn sexp_to_par_value(value: SEXP) -> ParValue {
     }
 }
 
-unsafe fn string_vector_values(value: SEXP) -> Vec<String> {
-    unsafe {
+fn string_vector_values(value: SEXP) -> Vec<String> {
+    {
         if TYPEOF(value) != SEXPTYPE::STRSXP {
             par_error("invalid argument passed to par()");
         }
@@ -1580,36 +1570,30 @@ unsafe fn string_vector_values(value: SEXP) -> Vec<String> {
             if elt == R_NaString() {
                 par_error("invalid argument passed to par()");
             }
-            out.push(
-                std::ffi::CStr::from_ptr(CHAR(elt))
-                    .to_string_lossy()
-                    .into_owned(),
-            );
+            out.push(String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned());
         }
         out
     }
 }
 
-unsafe fn tag_name(tag: SEXP) -> Option<String> {
-    unsafe {
+fn tag_name(tag: SEXP) -> Option<String> {
+    {
         if tag.is_null() || tag == R_NilValue() {
             None
         } else {
             Some(
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned(),
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(tag))).into_owned(),
             )
         }
     }
 }
 
-unsafe fn logical_scalar(value: SEXP) -> Option<bool> {
-    unsafe {
+fn logical_scalar(value: SEXP) -> Option<bool> {
+    {
         if TYPEOF(value) != SEXPTYPE::LGLSXP || XLENGTH(value) < 1 {
             return None;
         }
-        match *LOGICAL(value) {
+        match LOGICAL_ELT(value, 0) {
             TRUE => Some(true),
             FALSE => Some(false),
             _ => None,
@@ -1628,8 +1612,8 @@ fn all_query_names(no_readonly: bool) -> Vec<String> {
 /// Rust-shaped `par()` implementation backed by per-session defaults and
 /// overrides. It intentionally covers the query/update surface used by base
 /// plotting and Android embedding without relying on process-global GE state.
-pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut current = args;
         let mut query_names = Vec::new();
         let mut set_names = Vec::new();
@@ -1689,16 +1673,15 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         if names_ok {
                             for i in 0..n {
                                 let elt = STRING_ELT(names, i);
-                                let name = std::ffi::CStr::from_ptr(CHAR(elt))
-                                    .to_string_lossy()
-                                    .into_owned();
+                                let name =
+                                    String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned();
                                 if name.is_empty() {
                                     let inner = VECTOR_ELT(value, i);
                                     if TYPEOF(inner) == SEXPTYPE::STRSXP && XLENGTH(inner) > 0 {
                                         let ch = STRING_ELT(inner, 0);
-                                        let qname = std::ffi::CStr::from_ptr(CHAR(ch))
-                                            .to_string_lossy()
-                                            .into_owned();
+                                        let qname =
+                                            String::from_utf8_lossy(&charsxp_as_utf8(ch))
+                                                .into_owned();
                                         if is_known_par(&qname) {
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
@@ -1767,9 +1750,8 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 let elt = VECTOR_ELT(value, i);
                                 for j in 0..XLENGTH(elt) {
                                     let ch = STRING_ELT(elt, j);
-                                    let name = std::ffi::CStr::from_ptr(CHAR(ch))
-                                        .to_string_lossy()
-                                        .into_owned();
+                                    let name =
+                                        String::from_utf8_lossy(&charsxp_as_utf8(ch)).into_owned();
                                     if is_known_par(&name) {
                                         query_names.push(name);
                                     }
@@ -1840,8 +1822,8 @@ pub unsafe fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// Original C signature:
 ///   SEXP C_par(SEXP call, SEXP op, SEXP args, SEXP rho)
-pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_par(call, op, args, rho) }
+pub fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    do_par(call, op, args, rho)
 }
 
 /* ---- C_layout (the layout() .Internal) ---- */
@@ -1852,8 +1834,8 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Original C signature:
 ///   SEXP C_layout(SEXP args)
 ///
-pub unsafe fn C_layout(_args: SEXP) -> SEXP {
-    unsafe {
+pub fn C_layout(_args: SEXP) -> SEXP {
+    {
         const MAX_LAYOUT_ROWS: c_int = 200;
         const MAX_LAYOUT_COLS: c_int = 200;
         const MAX_LAYOUT_CELLS: c_int = 10007;
@@ -1894,8 +1876,8 @@ pub unsafe fn C_layout(_args: SEXP) -> SEXP {
 /// Rust-level `layout()` entry point used by the headless Android runtime.
 /// It mirrors the observable state changes from graphics' R wrapper and
 /// `C_layout`; drawing backends consume the same `par()` state later.
-pub unsafe fn do_layout(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_layout(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         if args.is_null() || args == R_NilValue() {
             graphics_error("argument 'mat' is missing, with no default");
         }

@@ -203,7 +203,7 @@ const NA_STRING: SEXP = 1 as SEXP; /* placeholder; real NA_STRING is a special C
  * ======================================================================== */
 
 #[inline(always)]
-unsafe fn TypeCheck(s: SEXP, stype: c_int) {
+fn TypeCheck(s: SEXP, stype: c_int) {
     if TYPEOF(s) != stype {
         Rf_error(b"invalid type passed to graphics function\0".as_ptr() as *const c_char);
     }
@@ -213,7 +213,7 @@ unsafe fn TypeCheck(s: SEXP, stype: c_int) {
  * Utility: isNAcol -- check if element i of a colour object is NA.
  * ======================================================================== */
 
-pub unsafe fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
+pub fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
     unsafe {
         let mut result: Rboolean = 1; /* TRUE by default */
         // A length-0 colour is NA, same as NULL (PR19178). Indexing it
@@ -273,7 +273,7 @@ unsafe fn getInlinePar(s: SEXP, name: *mut c_char) -> SEXP {
  * FixupPch -- fix up plotting character specification.
  * ======================================================================== */
 
-unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
+fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
     unsafe {
         let n = length(pch);
         if n == 0 {
@@ -327,12 +327,12 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
 }
 
 /* GEstring_to_pch delegate */
-unsafe fn GEstring_to_pch(s: SEXP) -> c_int {
+fn GEstring_to_pch(s: SEXP) -> c_int {
     unsafe { crate::mainutils::engine::GEstring_to_pch(s) }
 }
 
 /* GE_LTYpar delegate */
-unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
+fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
     crate::mainutils::engine::GE_LTYpar(lty, i) as c_int
 }
 
@@ -340,7 +340,7 @@ unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
  * FixupLty -- fix up line type specification.
  * ======================================================================== */
 
-pub unsafe fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
+pub fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
     unsafe {
         let n = length(lty);
         let mut ans: SEXP = R_NilValue();
@@ -360,7 +360,7 @@ pub unsafe fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
  * FixupLwd -- fix up line width specification.
  * ======================================================================== */
 
-pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
+pub fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
     unsafe {
         let n = length(lwd);
         let mut ans: SEXP = R_NilValue();
@@ -388,7 +388,7 @@ pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
  * FixupFont -- fix up font specification.
  * ======================================================================== */
 
-unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
+fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
     unsafe {
         let n = length(font);
         let mut ans: SEXP = R_NilValue();
@@ -432,7 +432,7 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
  * FixupCol -- fix up colour specification.
  * ======================================================================== */
 
-pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
+pub fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
     unsafe {
         let n = length(col);
         let ans: SEXP;
@@ -469,7 +469,7 @@ pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
  * FixupCex -- fix up character expansion specification.
  * ======================================================================== */
 
-unsafe fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
+fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
     unsafe {
         let n = length(cex);
         let ans: SEXP;
@@ -511,7 +511,7 @@ unsafe fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
  * FixupVFont -- fix up vector font specification.
  * ======================================================================== */
 
-pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
+pub fn FixupVFont(vfont: SEXP) -> SEXP {
     unsafe {
         if Rf_isNull(vfont) != 0 {
             return R_NilValue();
@@ -1138,7 +1138,7 @@ unsafe fn CheckSymbolPar(p: SEXP, nr: *mut c_int, nc: *mut c_int) {
  * labelformat -- format labels from numbers to strings
  * ======================================================================== */
 
-pub unsafe fn labelformat(labels: SEXP) -> SEXP {
+pub fn labelformat(labels: SEXP) -> SEXP {
     unsafe {
         let n = length(labels);
         let mut ans: SEXP = R_NilValue();
@@ -1224,7 +1224,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
  * C_plot_new -- create a new plot frame (plot.new())
  * ======================================================================== */
 
-pub unsafe fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
         if dd.is_null() {
@@ -1258,7 +1258,7 @@ pub unsafe fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
  * C_path -- draw a path (possibly with holes)
  * ======================================================================== */
 
-pub unsafe fn C_path(args: SEXP) -> SEXP {
+pub fn C_path(args: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
         GCheckState(dd);
@@ -1461,7 +1461,7 @@ unsafe fn drawdend(
     }
 }
 
-pub unsafe fn C_dend(args: SEXP) -> SEXP {
+pub fn C_dend(args: SEXP) -> SEXP {
     unsafe {
         let mut x: c_double = 0.0;
         let mut y: c_double = 0.0;
@@ -1561,7 +1561,7 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
  * C_dendwindow -- set up dendrogram window
  * ======================================================================== */
 
-pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
+pub fn C_dendwindow(args: SEXP) -> SEXP {
     unsafe {
         let n: c_int;
         let mut pin: c_double;
@@ -1701,7 +1701,7 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
  * C_erase -- erase the current device/frame
  * ======================================================================== */
 
-pub unsafe fn C_erase(args: SEXP) -> SEXP {
+pub fn C_erase(args: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
         let mut args = CDR(args);
@@ -1729,7 +1729,7 @@ pub unsafe fn C_erase(args: SEXP) -> SEXP {
  * C_convertX -- convert x coordinates between coordinate systems
  * ======================================================================== */
 
-pub unsafe fn C_convertX(args: SEXP) -> SEXP {
+pub fn C_convertX(args: SEXP) -> SEXP {
     unsafe {
         let mut args = CDR(args);
         let x = CAR(args);
@@ -1762,7 +1762,7 @@ pub unsafe fn C_convertX(args: SEXP) -> SEXP {
  * C_convertY -- convert y coordinates between coordinate systems
  * ======================================================================== */
 
-pub unsafe fn C_convertY(args: SEXP) -> SEXP {
+pub fn C_convertY(args: SEXP) -> SEXP {
     unsafe {
         let mut args = CDR(args);
         let x = CAR(args);

@@ -794,14 +794,14 @@ fn contour(
  * ======================================================================== */
 
 /// Check if SEXP has a dim attribute with >= 2 elements (i.e., is a matrix).
-unsafe fn isMatrix(x: SEXP) -> bool {
+fn isMatrix(x: SEXP) -> bool {
     let dim = crate::attrib_core::getAttrib(x, crate::attrib_core::R_DimSymbol());
     !R_NilValue().is_null() && !dim.is_null() && LENGTH(dim) >= 2
 }
 
 /// Get the number of rows from a matrix's dim attribute.
-unsafe fn nrows(x: SEXP) -> c_int {
-    unsafe {
+fn nrows(x: SEXP) -> c_int {
+    {
         if x.is_null() {
             return 0;
         }
@@ -813,12 +813,12 @@ unsafe fn nrows(x: SEXP) -> c_int {
         if len < 1 {
             return 0;
         }
-        *INTEGER(dim).add(0)
+        INTEGER_ELT(dim, 0)
     }
 }
 
-unsafe fn ncols(x: SEXP) -> c_int {
-    unsafe {
+fn ncols(x: SEXP) -> c_int {
+    {
         if x.is_null() {
             return 0;
         }
@@ -830,14 +830,14 @@ unsafe fn ncols(x: SEXP) -> c_int {
         if len < 2 {
             return if len == 1 { 1 } else { 0 };
         }
-        *INTEGER(dim).add(1)
+        INTEGER_ELT(dim, 1)
     }
 }
 
 /// C_filledcontour -- draw a filled contour plot.
 /// Ported from plot3d.c C_filledcontour().
 /// Uses real FindPolygonVertices algorithm; GE drawing calls are stubs.
-pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
+pub fn C_filledcontour(args: SEXP) -> SEXP {
     unsafe {
         if !super::graphics::plot_new_called() {
             plot3d_error("plot.new has not been called yet");
@@ -963,7 +963,7 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
 /// C_image -- draw an image plot.
 /// Ported from plot3d.c C_image().
 /// GE drawing calls (GRect) are stubs.
-pub unsafe fn C_image(args: SEXP) -> SEXP {
+pub fn C_image(args: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
 
@@ -1022,7 +1022,7 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
 /// C_persp -- draw a 3D perspective surface plot.
 /// Ported from plot3d.c C_persp().
 /// GE drawing calls are stubs; transformation math is real.
-pub unsafe fn C_persp(args: SEXP) -> SEXP {
+pub fn C_persp(args: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
 
@@ -1267,7 +1267,7 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
 
 /// C_contourDef -- return whether the current device supports rotated
 /// contour text. Stub: returns FALSE (NA_LOGICAL).
-pub unsafe fn C_contourDef() -> SEXP {
+pub fn C_contourDef() -> SEXP {
     use crate::sexp::constructors::*;
     Rf_ScalarLogical(1)
 }
@@ -1279,7 +1279,7 @@ pub unsafe fn C_contourDef() -> SEXP {
 /// C_contour -- draw a contour plot.
 /// Ported from plot3d.c C_contour().
 /// Validation logic is real; GE drawing calls are stubs.
-pub unsafe fn C_contour(args: SEXP) -> SEXP {
+pub fn C_contour(args: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
 
