@@ -9,19 +9,19 @@
 use super::*;
 
 #[inline(always)]
-pub(crate) unsafe fn daxpy(n: i32, da: f64, dx: *const f64, incx: i32, dy: *mut f64, incy: i32) {
-    unsafe {
+pub(crate) fn daxpy(n: i32, da: f64, dx: &[f64], incx: i32, dy: &mut [f64], incy: i32) {
+    {
         if n <= 0 || da == 0.0 {
             return;
         }
         if incx == 1 && incy == 1 {
             for i in 0..n as usize {
-                *dy.add(i) += da * *dx.add(i);
+                dy[i] += da * dx[i];
             }
         } else {
             let (mut ix, mut iy) = (0usize, 0usize);
             for _ in 0..n {
-                *dy.add(iy) += da * *dx.add(ix);
+                dy[iy] += da * dx[ix];
                 ix += incx as usize;
                 iy += incy as usize;
             }
@@ -30,19 +30,19 @@ pub(crate) unsafe fn daxpy(n: i32, da: f64, dx: *const f64, incx: i32, dy: *mut 
 }
 
 #[inline(always)]
-pub(crate) unsafe fn dcopy(n: i32, dx: *const f64, incx: i32, dy: *mut f64, incy: i32) {
-    unsafe {
+pub(crate) fn dcopy(n: i32, dx: &[f64], incx: i32, dy: &mut [f64], incy: i32) {
+    {
         if n <= 0 {
             return;
         }
         if incx == 1 && incy == 1 {
             for i in 0..n as usize {
-                *dy.add(i) = *dx.add(i);
+                dy[i] = dx[i];
             }
         } else {
             let (mut ix, mut iy) = (0usize, 0usize);
             for _ in 0..n {
-                *dy.add(iy) = *dx.add(ix);
+                dy[iy] = dx[ix];
                 ix += incx as usize;
                 iy += incy as usize;
             }
@@ -50,21 +50,36 @@ pub(crate) unsafe fn dcopy(n: i32, dx: *const f64, incx: i32, dy: *mut f64, incy
     }
 }
 
+/// `dcopy` between two regions of one array, element by element in the
+/// Fortran order, so overlapping regions behave exactly as in the C original.
 #[inline(always)]
-pub(crate) unsafe fn ddot(n: i32, dx: *const f64, incx: i32, dy: *const f64, incy: i32) -> f64 {
-    unsafe {
+pub(crate) fn dcopy_within(n: i32, a: &mut [f64], dx: usize, incx: i32, dy: usize, incy: i32) {
+    if n <= 0 {
+        return;
+    }
+    let (mut ix, mut iy) = (dx, dy);
+    for _ in 0..n {
+        a[iy] = a[ix];
+        ix += incx as usize;
+        iy += incy as usize;
+    }
+}
+
+#[inline(always)]
+pub(crate) fn ddot(n: i32, dx: &[f64], incx: i32, dy: &[f64], incy: i32) -> f64 {
+    {
         if n <= 0 {
             return 0.0;
         }
         let mut s = 0.0_f64;
         if incx == 1 && incy == 1 {
             for i in 0..n as usize {
-                s += *dx.add(i) * *dy.add(i);
+                s += dx[i] * dy[i];
             }
         } else {
             let (mut ix, mut iy) = (0usize, 0usize);
             for _ in 0..n {
-                s += *dx.add(ix) * *dy.add(iy);
+                s += dx[ix] * dy[iy];
                 ix += incx as usize;
                 iy += incy as usize;
             }
@@ -74,19 +89,19 @@ pub(crate) unsafe fn ddot(n: i32, dx: *const f64, incx: i32, dy: *const f64, inc
 }
 
 #[inline(always)]
-pub(crate) unsafe fn dscal(n: i32, da: f64, dx: *mut f64, incx: i32) {
-    unsafe {
+pub(crate) fn dscal(n: i32, da: f64, dx: &mut [f64], incx: i32) {
+    {
         if n <= 0 || da == 1.0 {
             return;
         }
         if incx == 1 {
             for i in 0..n as usize {
-                *dx.add(i) *= da;
+                dx[i] *= da;
             }
         } else {
             let mut ix = 0usize;
             for _ in 0..n {
-                *dx.add(ix) *= da;
+                dx[ix] *= da;
                 ix += incx as usize;
             }
         }
@@ -104,8 +119,8 @@ pub(crate) unsafe fn dscal(n: i32, da: f64, dx: *mut f64, incx: i32) {
 ///   job 10 (10): solve T'*x = b, T lower triangular (backward)
 ///   job 11 (11): solve T'*x = b, T upper triangular (forward)
 #[inline(always)]
-pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i32) -> i32 {
-    unsafe {
+pub(crate) fn dtrsl(a: &[f64], lda: i32, n: i32, x: &mut [f64], job: i32) -> i32 {
+    {
         let kase1 = if job % 10 != 0 { 1 } else { 0 };
         let kase2 = if (job / 10) % 10 != 0 { 1 } else { 0 };
         let kase = 1 + kase1 + 2 * kase2;
@@ -114,7 +129,7 @@ pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i3
         // dtrsl.f scans all diagonal elements first and returns the index
         // of the first zero one without touching b.
         for j in 0..n_u {
-            if *a.add(j + j * lda_u) == 0.0 {
+            if a[j + j * lda_u] == 0.0 {
                 return (j + 1) as i32;
             }
         }
@@ -122,23 +137,23 @@ pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i3
             1 => {
                 // solve T*x = b, T lower triangular: forward
                 for j in 0..n_u {
-                    let mut tmp = *x.add(j);
+                    let mut tmp = x[j];
                     for c in 0..j {
-                        tmp -= *a.add(j + c * lda_u) * *x.add(c);
+                        tmp -= a[j + c * lda_u] * x[c];
                     }
-                    let ajj = *a.add(j + j * lda_u);
-                    *x.add(j) = tmp / ajj;
+                    let ajj = a[j + j * lda_u];
+                    x[j] = tmp / ajj;
                 }
             }
             2 => {
                 // solve T*x = b, T upper triangular: backward
                 for j in (0..n_u).rev() {
-                    let mut tmp = *x.add(j);
+                    let mut tmp = x[j];
                     for c in (j + 1)..n_u {
-                        tmp -= *a.add(j + c * lda_u) * *x.add(c);
+                        tmp -= a[j + c * lda_u] * x[c];
                     }
-                    let ajj = *a.add(j + j * lda_u);
-                    *x.add(j) = tmp / ajj;
+                    let ajj = a[j + j * lda_u];
+                    x[j] = tmp / ajj;
                 }
             }
             3 => {
@@ -147,10 +162,10 @@ pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i3
                 for j in (0..n_u).rev() {
                     let mut dot = 0.0_f64;
                     for r in (j + 1)..n_u {
-                        dot += *a.add(r + j * lda_u) * *x.add(r);
+                        dot += a[r + j * lda_u] * x[r];
                     }
-                    let ajj = *a.add(j + j * lda_u);
-                    *x.add(j) = (*x.add(j) - dot) / ajj;
+                    let ajj = a[j + j * lda_u];
+                    x[j] = (x[j] - dot) / ajj;
                 }
             }
             _ => {
@@ -159,10 +174,10 @@ pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i3
                 for j in 0..n_u {
                     let mut dot = 0.0_f64;
                     for r in 0..j {
-                        dot += *a.add(r + j * lda_u) * *x.add(r);
+                        dot += a[r + j * lda_u] * x[r];
                     }
-                    let ajj = *a.add(j + j * lda_u);
-                    *x.add(j) = (*x.add(j) - dot) / ajj;
+                    let ajj = a[j + j * lda_u];
+                    x[j] = (x[j] - dot) / ajj;
                 }
             }
         }
@@ -172,28 +187,28 @@ pub(crate) unsafe fn dtrsl(a: *const f64, lda: i32, n: i32, x: *mut f64, job: i3
 
 /// dpofa: Cholesky factorization of symmetric positive definite matrix.
 /// Upper triangle stored column-major. On exit: U where A = U'*U.
-pub(crate) unsafe fn dpofa(a: *mut f64, lda: i32, n: i32) -> i32 {
-    unsafe {
+pub(crate) fn dpofa(a: &mut [f64], lda: i32, n: i32) -> i32 {
+    {
         for j in 0..n as usize {
             let mut s = 0.0_f64;
             for i in 0..j {
-                let aij = *a.add(j * lda as usize + i);
+                let aij = a[j * lda as usize + i];
                 s += aij * aij;
             }
-            let ajj = *a.add(j * lda as usize + j) - s;
+            let ajj = a[j * lda as usize + j] - s;
             // R's vendored dpofa.f fails when s <= eps*|a(j,j)| (eps = 1e-14),
             // not only when the pivot is non-positive.
-            if ajj <= 1.0e-14 * (*a.add(j * lda as usize + j)).abs() {
+            if ajj <= 1.0e-14 * (a[j * lda as usize + j]).abs() {
                 return (j + 1) as i32;
             }
-            *a.add(j * lda as usize + j) = sqrt(ajj);
-            let ajj = *a.add(j * lda as usize + j);
+            a[j * lda as usize + j] = sqrt(ajj);
+            let ajj = a[j * lda as usize + j];
             for i in (j + 1)..n as usize {
                 let mut s2 = 0.0_f64;
                 for k in 0..j {
-                    s2 += *a.add(j * lda as usize + k) * *a.add(i * lda as usize + k);
+                    s2 += a[j * lda as usize + k] * a[i * lda as usize + k];
                 }
-                *a.add(i * lda as usize + j) = (*a.add(i * lda as usize + j) - s2) / ajj;
+                a[i * lda as usize + j] = (a[i * lda as usize + j] - s2) / ajj;
             }
         }
         0
@@ -205,16 +220,16 @@ pub(crate) unsafe fn dpofa(a: *mut f64, lda: i32, n: i32) -> i32 {
 // =====================================================================
 
 #[inline(always)]
-pub(crate) unsafe fn cstrncmp(s: *const c_char, prefix: &[u8], n: usize) -> bool {
-    unsafe {
+pub(crate) fn cstrncmp(s: &[c_char], prefix: &[u8], n: usize) -> bool {
+    {
         for i in 0..n {
             if i >= prefix.len() {
                 return false;
             }
-            if *s.add(i) == 0 {
+            if s[i] == 0 {
                 return false;
             }
-            if *s.add(i) as u8 != prefix[i] {
+            if s[i] as u8 != prefix[i] {
                 return false;
             }
         }
@@ -223,12 +238,12 @@ pub(crate) unsafe fn cstrncmp(s: *const c_char, prefix: &[u8], n: usize) -> bool
 }
 
 #[inline(always)]
-pub(crate) unsafe fn cstrcpy(dst: *mut c_char, src: &[u8]) {
-    unsafe {
+pub(crate) fn cstrcpy(dst: &mut [c_char], src: &[u8]) {
+    {
         for i in 0..src.len() {
-            *dst.add(i) = src[i] as c_char;
+            dst[i] = src[i] as c_char;
         }
-        *dst.add(src.len()) = 0;
+        dst[src.len()] = 0;
     }
 }
 
@@ -392,25 +407,25 @@ pub(crate) fn workspace_lengths(n: c_int, m: c_int) -> Option<(c_int, c_int)> {
     Some((real_words, integer_words))
 }
 
-pub(crate) unsafe fn lbfgsb(
+pub(crate) fn lbfgsb(
     st: &mut LbfgsbState,
     n: c_int,
     m: c_int,
-    x: *mut f64,
-    l: *mut f64,
-    u: *mut f64,
-    nbd: *mut c_int,
-    f: *mut f64,
-    g: *mut f64,
+    x: &mut [f64],
+    l: &[f64],
+    u: &[f64],
+    nbd: &[c_int],
+    f: &mut f64,
+    g: &mut [f64],
     factr: f64,
-    pgtol: *mut f64,
-    wa: *mut f64,
-    iwa: *mut c_int,
-    task: *mut c_char,
+    pgtol: &f64,
+    wa: &mut [f64],
+    iwa: &mut [c_int],
+    task: &mut [c_char],
     iprint: c_int,
-    isave: *mut c_int,
+    isave: &mut [c_int],
 ) {
-    unsafe {
+    {
         let mut csave: [c_char; 60] = [0; 60];
 
         if cstrncmp(task, b"START", 5) {
@@ -428,6 +443,21 @@ pub(crate) unsafe fn lbfgsb(
             st.lwa = st.lt + n;
         }
 
+        // The Fortran work-array layout, carved into disjoint sections at
+        // the offsets fixed by the START call.
+        let (ws, rest) = wa[(st.lws - 1) as usize..].split_at_mut((st.lwy - st.lws) as usize);
+        let (wy, rest) = rest.split_at_mut((st.lsy - st.lwy) as usize);
+        let (sy, rest) = rest.split_at_mut((st.lss - st.lsy) as usize);
+        let (ss, rest) = rest.split_at_mut((st.lwt - st.lss) as usize);
+        let (wt, rest) = rest.split_at_mut((st.lwn - st.lwt) as usize);
+        let (wn, rest) = rest.split_at_mut((st.lsnd - st.lwn) as usize);
+        let (snd, rest) = rest.split_at_mut((st.lz - st.lsnd) as usize);
+        let (z, rest) = rest.split_at_mut((st.lr - st.lz) as usize);
+        let (r, rest) = rest.split_at_mut((st.ld - st.lr) as usize);
+        let (d, rest) = rest.split_at_mut((st.lt - st.ld) as usize);
+        let (t, wa) = rest.split_at_mut((st.lwa - st.lt) as usize);
+        let (indx, rest) = iwa.split_at_mut(n as usize);
+        let (iwhere, indx2) = rest.split_at_mut(n as usize);
         mainlb(
             n,
             m,
@@ -439,31 +469,31 @@ pub(crate) unsafe fn lbfgsb(
             g,
             factr,
             pgtol,
-            wa.add((st.lws - 1) as usize),
-            wa.add((st.lwy - 1) as usize),
-            wa.add((st.lsy - 1) as usize),
-            wa.add((st.lss - 1) as usize),
-            wa.add((st.lwt - 1) as usize),
-            wa.add((st.lwn - 1) as usize),
-            wa.add((st.lsnd - 1) as usize),
-            wa.add((st.lz - 1) as usize),
-            wa.add((st.lr - 1) as usize),
-            wa.add((st.ld - 1) as usize),
-            wa.add((st.lt - 1) as usize),
-            wa.add((st.lwa - 1) as usize),
-            iwa,
-            iwa.add(n as usize),
-            iwa.add((2 * n) as usize),
+            ws,
+            wy,
+            sy,
+            ss,
+            wt,
+            wn,
+            snd,
+            z,
+            r,
+            d,
+            t,
+            wa,
+            indx,
+            iwhere,
+            indx2,
             task,
             iprint,
-            csave.as_mut_ptr(),
+            &mut csave,
             isave,
             st,
         );
         // GNU mainlb saves nfgv into isave at every exit (isave[12]
         // of the rearranged size-21 layout); our caller reads the
         // original-layout slot 33 (Fortran isave(34)).
-        *isave.add(33) = st.nfgv;
+        isave[33] = st.nfgv;
     }
 }
 
@@ -471,39 +501,39 @@ pub(crate) unsafe fn lbfgsb(
 // mainlb
 // =====================================================================
 
-unsafe fn mainlb(
+fn mainlb(
     n: i32,
     m: i32,
-    x: *mut f64,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    f: *mut f64,
-    g: *mut f64,
+    x: &mut [f64],
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    f: &mut f64,
+    g: &mut [f64],
     factr: f64,
-    pgtol: *const f64,
-    ws: *mut f64,
-    wy: *mut f64,
-    sy: *mut f64,
-    ss: *mut f64,
-    wt: *mut f64,
-    wn: *mut f64,
-    snd: *mut f64,
-    z: *mut f64,
-    r: *mut f64,
-    d: *mut f64,
-    t: *mut f64,
-    wa: *mut f64,
-    indx: *mut i32,
-    iwhere: *mut i32,
-    indx2: *mut i32,
-    task: *mut c_char,
+    pgtol: &f64,
+    ws: &mut [f64],
+    wy: &mut [f64],
+    sy: &mut [f64],
+    ss: &mut [f64],
+    wt: &mut [f64],
+    wn: &mut [f64],
+    snd: &mut [f64],
+    z: &mut [f64],
+    r: &mut [f64],
+    d: &mut [f64],
+    t: &mut [f64],
+    wa: &mut [f64],
+    indx: &mut [i32],
+    iwhere: &mut [i32],
+    indx2: &mut [i32],
+    task: &mut [c_char],
     iprint: i32,
-    csave: *mut c_char,
-    isave: *mut i32,
+    csave: &mut [c_char],
+    isave: &mut [i32],
     st: &mut LbfgsbState,
 ) {
-    unsafe {
+    {
         // All arrays 0-based.
         // ws, wy: n x m col-major => ws[i + j*n]
         // sy, ss, wt: m x m col-major => sy[i + j*m]
@@ -564,7 +594,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iback,
                     st.stp,
                     st.xstep,
@@ -599,27 +629,12 @@ unsafe fn mainlb(
                 nbd,
                 x,
                 f,
-                &mut st.fold,
-                &mut st.gd,
-                &mut st.gdold,
                 g,
                 d,
                 r,
                 t,
                 z,
-                &mut st.stp,
-                &mut st.dnorm,
-                &mut st.dtd,
-                &mut st.xstep,
-                &mut st.stpmx,
-                &st.iter,
-                &mut st.ifun,
-                &mut st.iback,
-                &mut st.nfgv,
-                &mut st.info,
                 task,
-                &st.boxed,
-                &st.cnstnd,
                 csave,
                 st,
             );
@@ -650,7 +665,7 @@ unsafe fn mainlb(
                         st.nact,
                         st.sbgnrm,
                         st.nint,
-                        st.word.as_ptr() as *const c_char,
+                        &st.word,
                         st.iback,
                         st.stp,
                         st.xstep,
@@ -696,7 +711,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iword,
                     st.iback,
                     st.stp,
@@ -724,7 +739,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iback,
                     st.stp,
                     st.xstep,
@@ -752,7 +767,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iback,
                     st.stp,
                     st.xstep,
@@ -762,7 +777,7 @@ unsafe fn mainlb(
             }
             // Compute r = newg - oldg, rr = y'y, dr = y's
             for i in 0..n as usize {
-                *r.add(i) = *g.add(i) - *r.add(i);
+                r[i] = g[i] - r[i];
             }
             rr = ddot(n, r, 1, r, 1);
             if st.stp == 1.0 {
@@ -850,7 +865,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iback,
                     st.stp,
                     st.xstep,
@@ -862,7 +877,7 @@ unsafe fn mainlb(
         }
 
         if cstrncmp(task, b"STOP", 4) {
-            if cstrncmp(task.add(6), b"CPU", 3) {
+            if cstrncmp(&mut task[6..], b"CPU", 3) {
                 dcopy(n, t, 1, x, 1);
                 dcopy(n, r, 1, g, 1);
                 *f = st.fold;
@@ -881,7 +896,7 @@ unsafe fn mainlb(
                 st.nact,
                 st.sbgnrm,
                 st.nint,
-                st.word.as_ptr() as *const c_char,
+                &st.word,
                 st.iback,
                 st.stp,
                 st.xstep,
@@ -902,6 +917,9 @@ unsafe fn mainlb(
                 wrk = st.updatd;
                 st.nint = 0;
             } else {
+                let (wa_p, rest) = wa.split_at_mut((2 * m) as usize);
+                let (wa_c, rest) = rest.split_at_mut((2 * m) as usize);
+                let (wa_wbp, wa_v) = rest.split_at_mut((2 * m) as usize);
                 cauchy(
                     n,
                     x,
@@ -922,10 +940,10 @@ unsafe fn mainlb(
                     &st.theta,
                     &st.col,
                     &st.head,
-                    wa,
-                    wa.add((2 * m) as usize),
-                    wa.add((4 * m) as usize),
-                    wa.add((6 * m) as usize),
+                    wa_p,
+                    wa_c,
+                    wa_wbp,
+                    wa_v,
                     &mut st.nint,
                     iprint,
                     &st.sbgnrm,
@@ -1085,7 +1103,7 @@ unsafe fn mainlb(
 
             // L555: line search
             for i in 0..n as usize {
-                *d.add(i) = *z.add(i) - *x.add(i);
+                d[i] = z[i] - x[i];
             }
 
             // L666
@@ -1096,27 +1114,12 @@ unsafe fn mainlb(
                 nbd,
                 x,
                 f,
-                &mut st.fold,
-                &mut st.gd,
-                &mut st.gdold,
                 g,
                 d,
                 r,
                 t,
                 z,
-                &mut st.stp,
-                &mut st.dnorm,
-                &mut st.dtd,
-                &mut st.xstep,
-                &mut st.stpmx,
-                &st.iter,
-                &mut st.ifun,
-                &mut st.iback,
-                &mut st.nfgv,
-                &mut st.info,
                 task,
-                &st.boxed,
-                &st.cnstnd,
                 csave,
                 st,
             );
@@ -1148,7 +1151,7 @@ unsafe fn mainlb(
                         st.nact,
                         st.sbgnrm,
                         st.nint,
-                        st.word.as_ptr() as *const c_char,
+                        &st.word,
                         st.iback,
                         st.stp,
                         st.xstep,
@@ -1193,7 +1196,7 @@ unsafe fn mainlb(
                     st.nact,
                     st.sbgnrm,
                     st.nint,
-                    st.word.as_ptr() as *const c_char,
+                    &st.word,
                     st.iword,
                     st.iback,
                     st.stp,
@@ -1209,52 +1212,52 @@ unsafe fn mainlb(
 // active
 // =====================================================================
 
-unsafe fn active(
+fn active(
     n: i32,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    x: *mut f64,
-    iwhere: *mut i32,
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    x: &mut [f64],
+    iwhere: &mut [i32],
     iprint: i32,
-    prjctd: *mut i32,
-    cnstnd: *mut i32,
-    boxed: *mut i32,
+    prjctd: &mut i32,
+    cnstnd: &mut i32,
+    boxed: &mut i32,
 ) {
-    unsafe {
+    {
         let mut nbdd = 0i32;
         *prjctd = 0;
         *cnstnd = 0;
         *boxed = 1;
         for i in 0..n as usize {
-            if *nbd.add(i) > 0 {
-                if *nbd.add(i) <= 2 && *x.add(i) <= *l.add(i) {
-                    if *x.add(i) < *l.add(i) {
+            if nbd[i] > 0 {
+                if nbd[i] <= 2 && x[i] <= l[i] {
+                    if x[i] < l[i] {
                         *prjctd = 1;
-                        *x.add(i) = *l.add(i);
+                        x[i] = l[i];
                     }
                     nbdd += 1;
-                } else if *nbd.add(i) >= 2 && *x.add(i) >= *u.add(i) {
-                    if *x.add(i) > *u.add(i) {
+                } else if nbd[i] >= 2 && x[i] >= u[i] {
+                    if x[i] > u[i] {
                         *prjctd = 1;
-                        *x.add(i) = *u.add(i);
+                        x[i] = u[i];
                     }
                     nbdd += 1;
                 }
             }
         }
         for i in 0..n as usize {
-            if *nbd.add(i) != 2 {
+            if nbd[i] != 2 {
                 *boxed = 0;
             }
-            if *nbd.add(i) == 0 {
-                *iwhere.add(i) = -1;
+            if nbd[i] == 0 {
+                iwhere[i] = -1;
             } else {
                 *cnstnd = 1;
-                if *nbd.add(i) == 2 && *u.add(i) - *l.add(i) <= 0.0 {
-                    *iwhere.add(i) = 3;
+                if nbd[i] == 2 && u[i] - l[i] <= 0.0 {
+                    iwhere[i] = 3;
                 } else {
-                    *iwhere.add(i) = 0;
+                    iwhere[i] = 0;
                 }
             }
         }
@@ -1276,16 +1279,16 @@ unsafe fn active(
 // bmv
 // =====================================================================
 
-pub(crate) unsafe fn bmv(
+pub(crate) fn bmv(
     m: i32,
-    sy: *const f64,
-    wt: *const f64,
-    col: *const i32,
-    v: *const f64,
-    p: *mut f64,
-    info: *mut i32,
+    sy: &[f64],
+    wt: &[f64],
+    col: &i32,
+    v: &[f64],
+    p: &mut [f64],
+    info: &mut i32,
 ) {
-    unsafe {
+    {
         let col_v = *col;
         if col_v == 0 {
             return;
@@ -1294,39 +1297,39 @@ pub(crate) unsafe fn bmv(
         let m_i = m as usize;
 
         // PART I
-        *p.add(col_i) = *v.add(col_i);
+        p[col_i] = v[col_i];
         for i in 1..col_i {
             let i2 = col_i + i;
             let mut sum = 0.0_f64;
             for k in 0..i as usize {
-                sum += *sy.add(i + k * m_i) * *v.add(k) / *sy.add(k + k * m_i);
+                sum += sy[i + k * m_i] * v[k] / sy[k + k * m_i];
             }
-            *p.add(i2) = *v.add(i2) + sum;
+            p[i2] = v[i2] + sum;
         }
-        *info = dtrsl(wt, m, col_v, p.add(col_i), 11);
+        *info = dtrsl(wt, m, col_v, &mut p[col_i..], 11);
         if *info != 0 {
             return;
         }
 
         for i in 0..col_i {
-            *p.add(i) = *v.add(i) / sqrt(*sy.add(i + i * m_i));
+            p[i] = v[i] / sqrt(sy[i + i * m_i]);
         }
 
         // PART II
-        *info = dtrsl(wt, m, col_v, p.add(col_i), 1);
+        *info = dtrsl(wt, m, col_v, &mut p[col_i..], 1);
         if *info != 0 {
             return;
         }
 
         for i in 0..col_i {
-            *p.add(i) = -*p.add(i) / sqrt(*sy.add(i + i * m_i));
+            p[i] = -p[i] / sqrt(sy[i + i * m_i]);
         }
         for i in 0..col_i {
             let mut sum = 0.0_f64;
             for k in (i + 1)..col_i {
-                sum += *sy.add(k + i * m_i) * *p.add(col_i + k) / *sy.add(i + i * m_i);
+                sum += sy[k + i * m_i] * p[col_i + k] / sy[i + i * m_i];
             }
-            *p.add(i) += sum;
+            p[i] += sum;
         }
     }
 }

@@ -759,31 +759,24 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut l_iter: c_int = 0;
         let mut state = LbfgsbState::default();
         loop {
-            // SAFETY: every buffer is live scratch sized for `npar`/`lmm`
-            // (`workspace_lengths` sizes `wa`/`iwa`), `task` is a 60-byte
-            // NUL-terminated buffer and `isave` has the 44 slots lbfgsb uses.
-            // lbfgsb only reads the bounds `l`/`u`, so sharing them with
-            // `os` (read by the callbacks between calls) is sound.
-            unsafe {
-                lbfgsb(
-                    &mut state,
-                    npar,
-                    lmm,
-                    dpar.as_mut_ptr(),
-                    os.lower.as_ptr().cast_mut(),
-                    os.upper.as_ptr().cast_mut(),
-                    nbd.as_mut_ptr(),
-                    &mut val,
-                    g.as_mut_ptr(),
-                    factr,
-                    &mut pgtol_val,
-                    wa.as_mut_ptr(),
-                    iwa.as_mut_ptr(),
-                    task.as_mut_ptr(),
-                    iprint,
-                    isave.as_mut_ptr(),
-                );
-            }
+            lbfgsb(
+                &mut state,
+                npar,
+                lmm,
+                dpar,
+                &os.lower,
+                &os.upper,
+                nbd,
+                &mut val,
+                g,
+                factr,
+                &pgtol_val,
+                wa,
+                iwa,
+                &mut task,
+                iprint,
+                &mut isave,
+            );
 
             // Read task as bytes
             let task_len = task.iter().position(|&c| c == 0).unwrap_or(60);

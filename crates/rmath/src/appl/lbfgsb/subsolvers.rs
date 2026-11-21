@@ -8,37 +8,37 @@
 #![allow(clippy::manual_memcpy, clippy::comparison_to_empty)]
 use super::*;
 
-pub(crate) unsafe fn cauchy(
+pub(crate) fn cauchy(
     n: i32,
-    x: *const f64,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    g: *const f64,
-    iorder: *mut i32,
-    iwhere: *mut i32,
-    t: *mut f64,
-    d: *mut f64,
-    xcp: *mut f64,
+    x: &[f64],
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    g: &[f64],
+    iorder: &mut [i32],
+    iwhere: &mut [i32],
+    t: &mut [f64],
+    d: &mut [f64],
+    xcp: &mut [f64],
     m: i32,
-    wy: *const f64,
-    ws: *const f64,
-    sy: *const f64,
-    wt: *const f64,
-    theta: *const f64,
-    col: *const i32,
-    head: *const i32,
-    p: *mut f64,
-    c: *mut f64,
-    wbp: *mut f64,
-    v: *mut f64,
-    nint: *mut i32,
+    wy: &[f64],
+    ws: &[f64],
+    sy: &[f64],
+    wt: &[f64],
+    theta: &f64,
+    col: &i32,
+    head: &i32,
+    p: &mut [f64],
+    c: &mut [f64],
+    wbp: &mut [f64],
+    v: &mut [f64],
+    nint: &mut i32,
     iprint: i32,
-    sbgnrm: *const f64,
-    info: *mut i32,
-    epsmch: *const f64,
+    sbgnrm: &f64,
+    info: &mut i32,
+    epsmch: &f64,
 ) {
-    unsafe {
+    {
         let n_i = n as usize;
         let m_i = m as usize;
         let col2 = *col * 2;
@@ -76,74 +76,74 @@ pub(crate) unsafe fn cauchy(
         }
 
         for i in 0..col2 as usize {
-            *p.add(i) = 0.0;
+            p[i] = 0.0;
         }
 
         for i in 0..n_i {
-            neggi = -*g.add(i);
-            let iw = *iwhere.add(i);
+            neggi = -g[i];
+            let iw = iwhere[i];
             if iw != 3 && iw != -1 {
-                let tl = if *nbd.add(i) <= 2 {
-                    *x.add(i) - *l.add(i)
+                let tl = if nbd[i] <= 2 {
+                    x[i] - l[i]
                 } else {
                     0.0
                 };
-                let tu = if *nbd.add(i) >= 2 {
-                    *u.add(i) - *x.add(i)
+                let tu = if nbd[i] >= 2 {
+                    u[i] - x[i]
                 } else {
                     0.0
                 };
-                let xlower = *nbd.add(i) <= 2 && tl <= 0.0;
-                let xupper = *nbd.add(i) >= 2 && tu <= 0.0;
-                *iwhere.add(i) = 0;
+                let xlower = nbd[i] <= 2 && tl <= 0.0;
+                let xupper = nbd[i] >= 2 && tu <= 0.0;
+                iwhere[i] = 0;
                 if xlower {
                     if neggi <= 0.0 {
-                        *iwhere.add(i) = 1;
+                        iwhere[i] = 1;
                     }
                 } else if xupper {
                     if neggi >= 0.0 {
-                        *iwhere.add(i) = 2;
+                        iwhere[i] = 2;
                     }
                 } else {
                     if fabs(neggi) <= 0.0 {
-                        *iwhere.add(i) = -3;
+                        iwhere[i] = -3;
                     }
                 }
             }
 
             let mut pointr = (*head - 1) as usize;
-            let iw = *iwhere.add(i);
+            let iw = iwhere[i];
             if iw != 0 && iw != -1 {
-                *d.add(i) = 0.0;
+                d[i] = 0.0;
             } else {
-                *d.add(i) = neggi;
+                d[i] = neggi;
                 f1 -= neggi * neggi;
                 for j in 0..*col as usize {
-                    *p.add(j) += *wy.add(i + pointr * n_i) * neggi;
-                    *p.add(*col as usize + j) += *ws.add(i + pointr * n_i) * neggi;
+                    p[j] += wy[i + pointr * n_i] * neggi;
+                    p[*col as usize + j] += ws[i + pointr * n_i] * neggi;
                     pointr = (pointr + 1) % m_i;
                 }
-                if *nbd.add(i) <= 2 && *nbd.add(i) != 0 && neggi < 0.0 {
+                if nbd[i] <= 2 && nbd[i] != 0 && neggi < 0.0 {
                     nbreak += 1;
-                    *iorder.add((nbreak - 1) as usize) = (i + 1) as i32;
-                    let tl = *x.add(i) - *l.add(i);
-                    *t.add((nbreak - 1) as usize) = tl / (-neggi);
-                    if nbreak == 1 || *t.add((nbreak - 1) as usize) < bkmin {
-                        bkmin = *t.add((nbreak - 1) as usize);
+                    iorder[(nbreak - 1) as usize] = (i + 1) as i32;
+                    let tl = x[i] - l[i];
+                    t[(nbreak - 1) as usize] = tl / (-neggi);
+                    if nbreak == 1 || t[(nbreak - 1) as usize] < bkmin {
+                        bkmin = t[(nbreak - 1) as usize];
                         ibkmin = nbreak;
                     }
-                } else if *nbd.add(i) >= 2 && neggi > 0.0 {
+                } else if nbd[i] >= 2 && neggi > 0.0 {
                     nbreak += 1;
-                    *iorder.add((nbreak - 1) as usize) = (i + 1) as i32;
-                    let tu = *u.add(i) - *x.add(i);
-                    *t.add((nbreak - 1) as usize) = tu / neggi;
-                    if nbreak == 1 || *t.add((nbreak - 1) as usize) < bkmin {
-                        bkmin = *t.add((nbreak - 1) as usize);
+                    iorder[(nbreak - 1) as usize] = (i + 1) as i32;
+                    let tu = u[i] - x[i];
+                    t[(nbreak - 1) as usize] = tu / neggi;
+                    if nbreak == 1 || t[(nbreak - 1) as usize] < bkmin {
+                        bkmin = t[(nbreak - 1) as usize];
                         ibkmin = nbreak;
                     }
                 } else {
                     nfree -= 1;
-                    *iorder.add((nfree - 1) as usize) = (i + 1) as i32;
+                    iorder[(nfree - 1) as usize] = (i + 1) as i32;
                     if fabs(neggi) > 0.0 {
                         bnded = 0;
                     }
@@ -152,14 +152,14 @@ pub(crate) unsafe fn cauchy(
         }
 
         if *theta != 1.0 {
-            dscal(*col, *theta, p.add(*col as usize), 1);
+            dscal(*col, *theta, &mut p[*col as usize..], 1);
         }
         dcopy(n, x, 1, xcp, 1);
         if nbreak == 0 && nfree == n + 1 {
             if iprint > 100 {
                 eprint!("Cauchy X =  ");
                 for i in 0..n_i {
-                    eprint!("{} ", *xcp.add(i));
+                    eprint!("{} ", xcp[i]);
                 }
                 eprintln!();
             }
@@ -167,7 +167,7 @@ pub(crate) unsafe fn cauchy(
         }
 
         for j in 0..col2 as usize {
-            *c.add(j) = 0.0;
+            c[j] = 0.0;
         }
         f2 = -*theta * f1;
         let f2_org = f2;
@@ -195,15 +195,15 @@ pub(crate) unsafe fn cauchy(
                 tj0 = tj;
                 if iter == 1 {
                     tj = bkmin;
-                    ibp = *iorder.add((ibkmin - 1) as usize);
+                    ibp = iorder[(ibkmin - 1) as usize];
                 } else {
                     if iter == 2 && ibkmin != nbreak {
-                        *t.add((ibkmin - 1) as usize) = *t.add((nbreak - 1) as usize);
-                        *iorder.add((ibkmin - 1) as usize) = *iorder.add((nbreak - 1) as usize);
+                        t[(ibkmin - 1) as usize] = t[(nbreak - 1) as usize];
+                        iorder[(ibkmin - 1) as usize] = iorder[(nbreak - 1) as usize];
                     }
                     hpsolb(nleft, t, iorder, iter - 2);
-                    tj = *t.add((nleft - 1) as usize);
-                    ibp = *iorder.add((nleft - 1) as usize);
+                    tj = t[(nleft - 1) as usize];
+                    ibp = iorder[(nleft - 1) as usize];
                 }
                 dt = tj - tj0;
                 if dt != 0.0 && iprint >= 100 {
@@ -221,16 +221,16 @@ pub(crate) unsafe fn cauchy(
                 tsum += dt;
                 nleft -= 1;
                 iter += 1;
-                dibp = *d.add((ibp - 1) as usize);
-                *d.add((ibp - 1) as usize) = 0.0;
+                dibp = d[(ibp - 1) as usize];
+                d[(ibp - 1) as usize] = 0.0;
                 if dibp > 0.0 {
-                    zibp = *u.add((ibp - 1) as usize) - *x.add((ibp - 1) as usize);
-                    *xcp.add((ibp - 1) as usize) = *u.add((ibp - 1) as usize);
-                    *iwhere.add((ibp - 1) as usize) = 2;
+                    zibp = u[(ibp - 1) as usize] - x[(ibp - 1) as usize];
+                    xcp[(ibp - 1) as usize] = u[(ibp - 1) as usize];
+                    iwhere[(ibp - 1) as usize] = 2;
                 } else {
-                    zibp = *l.add((ibp - 1) as usize) - *x.add((ibp - 1) as usize);
-                    *xcp.add((ibp - 1) as usize) = *l.add((ibp - 1) as usize);
-                    *iwhere.add((ibp - 1) as usize) = 1;
+                    zibp = l[(ibp - 1) as usize] - x[(ibp - 1) as usize];
+                    xcp[(ibp - 1) as usize] = l[(ibp - 1) as usize];
+                    iwhere[(ibp - 1) as usize] = 1;
                 }
                 if iprint >= 100 {
                     eprintln!("Variable  {}  is fixed.", ibp);
@@ -248,9 +248,9 @@ pub(crate) unsafe fn cauchy(
                     daxpy(col2, dt, p, 1, c, 1);
                     let mut pointr = (*head - 1) as usize;
                     for j in 0..*col as usize {
-                        *wbp.add(j) = *wy.add((ibp - 1) as usize + pointr * n_i);
-                        *wbp.add(*col as usize + j) =
-                            *theta * *ws.add((ibp - 1) as usize + pointr * n_i);
+                        wbp[j] = wy[(ibp - 1) as usize + pointr * n_i];
+                        wbp[*col as usize + j] =
+                            *theta * ws[(ibp - 1) as usize + pointr * n_i];
                         pointr = (pointr + 1) % m_i;
                     }
                     bmv(m, sy, wt, col, wbp, v, info);
@@ -304,7 +304,7 @@ pub(crate) unsafe fn cauchy(
         if iprint >= 100 {
             eprint!("Cauchy X =  ");
             for i in 0..n_i {
-                eprint!("{} ", *xcp.add(i));
+                eprint!("{} ", xcp[i]);
             }
             eprintln!();
         }
@@ -318,52 +318,53 @@ pub(crate) unsafe fn cauchy(
 // cmprlb
 // =====================================================================
 
-pub(crate) unsafe fn cmprlb(
+pub(crate) fn cmprlb(
     n: i32,
     m: i32,
-    x: *const f64,
-    g: *const f64,
-    ws: *const f64,
-    wy: *const f64,
-    sy: *const f64,
-    wt: *const f64,
-    z: *const f64,
-    r: *mut f64,
-    wa: *mut f64,
-    indx: *const i32,
-    theta: *const f64,
-    col: *const i32,
-    head: *const i32,
-    nfree: *const i32,
-    cnstnd: *const i32,
-    info: *mut i32,
+    x: &[f64],
+    g: &[f64],
+    ws: &[f64],
+    wy: &[f64],
+    sy: &[f64],
+    wt: &[f64],
+    z: &[f64],
+    r: &mut [f64],
+    wa: &mut [f64],
+    indx: &[i32],
+    theta: &f64,
+    col: &i32,
+    head: &i32,
+    nfree: &i32,
+    cnstnd: &i32,
+    info: &mut i32,
 ) {
-    unsafe {
+    {
         let n_i = n as usize;
         let m_i = m as usize;
         let col_v = *col;
         if *cnstnd == 0 && col_v > 0 {
             for i in 0..n_i {
-                *r.add(i) = -*g.add(i);
+                r[i] = -g[i];
             }
         } else {
             let n_f = *nfree;
             for i in 0..n_f as usize {
-                let k = (*indx.add(i) - 1) as usize;
-                *r.add(i) = -*theta * (*z.add(k) - *x.add(k)) - *g.add(k);
+                let k = (indx[i] - 1) as usize;
+                r[i] = -*theta * (z[k] - x[k]) - g[k];
             }
-            bmv(m, sy, wt, col, wa.add((2 * m) as usize), wa, info);
+            let (wa_out, wa_in) = wa.split_at_mut((2 * m) as usize);
+            bmv(m, sy, wt, col, wa_in, wa_out, info);
             if *info != 0 {
                 *info = -8;
                 return;
             }
             let mut pointr = (*head - 1) as usize;
             for j in 0..col_v as usize {
-                let a1 = *wa.add(j);
-                let a2 = *theta * *wa.add(col_v as usize + j);
+                let a1 = wa[j];
+                let a2 = *theta * wa[col_v as usize + j];
                 for i in 0..n_f as usize {
-                    let k = (*indx.add(i) - 1) as usize;
-                    *r.add(i) += *wy.add(k + pointr * n_i) * a1 + *ws.add(k + pointr * n_i) * a2;
+                    let k = (indx[i] - 1) as usize;
+                    r[i] += wy[k + pointr * n_i] * a1 + ws[k + pointr * n_i] * a2;
                 }
                 pointr = (pointr + 1) % m_i;
             }
@@ -375,18 +376,18 @@ pub(crate) unsafe fn cmprlb(
 // errclb
 // =====================================================================
 
-pub(crate) unsafe fn errclb(
+pub(crate) fn errclb(
     n: i32,
     m: i32,
     factr: f64,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    task: *mut c_char,
-    info: *mut i32,
-    k: *mut i32,
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    task: &mut [c_char],
+    info: &mut i32,
+    k: &mut i32,
 ) {
-    unsafe {
+    {
         if n <= 0 {
             cstrcpy(task, b"ERROR: N .LE. 0");
         }
@@ -397,12 +398,12 @@ pub(crate) unsafe fn errclb(
             cstrcpy(task, b"ERROR: FACTR .LT. 0");
         }
         for i in 0..n as usize {
-            if *nbd.add(i) < 0 || *nbd.add(i) > 3 {
+            if nbd[i] < 0 || nbd[i] > 3 {
                 cstrcpy(task, b"ERROR: INVALID NBD");
                 *info = -6;
                 *k = (i + 1) as i32;
             }
-            if *nbd.add(i) == 2 && *l.add(i) > *u.add(i) {
+            if nbd[i] == 2 && l[i] > u[i] {
                 cstrcpy(task, b"ERROR: NO FEASIBLE SOLUTION");
                 *info = -7;
                 *k = (i + 1) as i32;
@@ -415,27 +416,27 @@ pub(crate) unsafe fn errclb(
 // formk
 // =====================================================================
 
-pub(crate) unsafe fn formk(
+pub(crate) fn formk(
     n: i32,
-    nsub: *mut i32,
-    ind: *const i32,
-    nenter: *const i32,
-    ileave: *const i32,
-    indx2: *const i32,
-    iupdat: *const i32,
-    updatd: *const i32,
-    wn: *mut f64,
-    wn1: *mut f64,
+    nsub: &mut i32,
+    ind: &[i32],
+    nenter: &i32,
+    ileave: &i32,
+    indx2: &[i32],
+    iupdat: &i32,
+    updatd: &i32,
+    wn: &mut [f64],
+    wn1: &mut [f64],
     m: i32,
-    ws: *const f64,
-    wy: *const f64,
-    sy: *const f64,
-    theta: *const f64,
-    col: *const i32,
-    head: *const i32,
-    info: *mut i32,
+    ws: &[f64],
+    wy: &[f64],
+    sy: &[f64],
+    theta: &f64,
+    col: &i32,
+    head: &i32,
+    info: &mut i32,
 ) {
-    unsafe {
+    {
         let m2 = 2 * m;
         let m2i = m2 as usize;
         let mi = m as usize;
@@ -447,27 +448,9 @@ pub(crate) unsafe fn formk(
                 for jy in 0..(m - 1) as usize {
                     let js = mi + jy;
                     let cnt = m - 1 - jy as i32;
-                    dcopy(
-                        cnt,
-                        wn1.add((jy + 1) + (jy + 1) * m2i),
-                        1,
-                        wn1.add(jy + jy * m2i),
-                        1,
-                    );
-                    dcopy(
-                        cnt,
-                        wn1.add((js + 1) + (js + 1) * m2i),
-                        1,
-                        wn1.add(js + js * m2i),
-                        1,
-                    );
-                    dcopy(
-                        m - 1,
-                        wn1.add((m as usize + 1) + (jy + 1) * m2i),
-                        1,
-                        wn1.add(mi + jy * m2i),
-                        1,
-                    );
+                    dcopy_within(cnt, wn1, (jy + 1) + (jy + 1) * m2i, 1, jy + jy * m2i, 1);
+                    dcopy_within(cnt, wn1, (js + 1) + (js + 1) * m2i, 1, js + js * m2i, 1);
+                    dcopy_within(m - 1, wn1, (m as usize + 1) + (jy + 1) * m2i, 1, mi + jy * m2i, 1);
                 }
             }
             let pbegin = 0;
@@ -485,17 +468,17 @@ pub(crate) unsafe fn formk(
                 let js = mi + jy;
                 let (mut t1, mut t2, mut t3) = (0.0_f64, 0.0_f64, 0.0_f64);
                 for k in pbegin as usize..=pend as usize {
-                    let k1 = (*ind.add(k) - 1) as usize;
-                    t1 += *wy.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
+                    let k1 = (ind[k] - 1) as usize;
+                    t1 += wy[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
                 }
                 for k in dbegin as usize..=dend as usize {
-                    let k1 = (*ind.add(k) - 1) as usize;
-                    t2 += *ws.add(k1 + ipntr * ni) * *ws.add(k1 + jpntr * ni);
-                    t3 += *ws.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
+                    let k1 = (ind[k] - 1) as usize;
+                    t2 += ws[k1 + ipntr * ni] * ws[k1 + jpntr * ni];
+                    t3 += ws[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
                 }
-                *wn1.add(iy + jy * m2i) = t1;
-                *wn1.add(is_ + js * m2i) = t2;
-                *wn1.add(is_ + jy * m2i) = t3;
+                wn1[iy + jy * m2i] = t1;
+                wn1[is_ + js * m2i] = t2;
+                wn1[is_ + jy * m2i] = t3;
                 jpntr = (jpntr + 1) % mi;
             }
             let jy = (*col - 1) as usize;
@@ -508,11 +491,11 @@ pub(crate) unsafe fn formk(
                 let is_ = mi + i;
                 let mut t3 = 0.0_f64;
                 for k in pbegin as usize..=pend as usize {
-                    let k1 = (*ind.add(k) - 1) as usize;
-                    t3 += *ws.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
+                    let k1 = (ind[k] - 1) as usize;
+                    t3 += ws[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
                 }
                 ipntr = (ipntr + 1) % mi;
-                *wn1.add(is_ + jy * m2i) = t3;
+                wn1[is_ + jy * m2i] = t3;
             }
             upcl = *col - 1;
         } else {
@@ -528,17 +511,17 @@ pub(crate) unsafe fn formk(
                 let js = mi + jy;
                 let (mut t1, mut t2, mut t3, mut t4) = (0.0, 0.0, 0.0, 0.0);
                 for k in 0..*nenter as usize {
-                    let k1 = (*indx2.add(k) - 1) as usize;
-                    t1 += *wy.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
-                    t2 += *ws.add(k1 + ipntr * ni) * *ws.add(k1 + jpntr * ni);
+                    let k1 = (indx2[k] - 1) as usize;
+                    t1 += wy[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
+                    t2 += ws[k1 + ipntr * ni] * ws[k1 + jpntr * ni];
                 }
                 for k in (*ileave - 1) as usize..ni {
-                    let k1 = (*indx2.add(k) - 1) as usize;
-                    t3 += *wy.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
-                    t4 += *ws.add(k1 + ipntr * ni) * *ws.add(k1 + jpntr * ni);
+                    let k1 = (indx2[k] - 1) as usize;
+                    t3 += wy[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
+                    t4 += ws[k1 + ipntr * ni] * ws[k1 + jpntr * ni];
                 }
-                *wn1.add(iy + jy * m2i) = *wn1.add(iy + jy * m2i) + t1 - t3;
-                *wn1.add(is_ + js * m2i) = *wn1.add(is_ + js * m2i) - t2 + t4;
+                wn1[iy + jy * m2i] = wn1[iy + jy * m2i] + t1 - t3;
+                wn1[is_ + js * m2i] = wn1[is_ + js * m2i] - t2 + t4;
                 jpntr = (jpntr + 1) % mi;
             }
             ipntr = (ipntr + 1) % mi;
@@ -551,17 +534,17 @@ pub(crate) unsafe fn formk(
             for jy in 0..upcl as usize {
                 let (mut t1, mut t3) = (0.0_f64, 0.0_f64);
                 for k in 0..*nenter as usize {
-                    let k1 = (*indx2.add(k) - 1) as usize;
-                    t1 += *ws.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
+                    let k1 = (indx2[k] - 1) as usize;
+                    t1 += ws[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
                 }
                 for k in (*ileave - 1) as usize..ni {
-                    let k1 = (*indx2.add(k) - 1) as usize;
-                    t3 += *ws.add(k1 + ipntr * ni) * *wy.add(k1 + jpntr * ni);
+                    let k1 = (indx2[k] - 1) as usize;
+                    t3 += ws[k1 + ipntr * ni] * wy[k1 + jpntr * ni];
                 }
                 if is_ <= jy + mi {
-                    *wn1.add(is_ + jy * m2i) += t1 - t3;
+                    wn1[is_ + jy * m2i] += t1 - t3;
                 } else {
-                    *wn1.add(is_ + jy * m2i) += -t1 + t3;
+                    wn1[is_ + jy * m2i] += -t1 + t3;
                 }
                 jpntr = (jpntr + 1) % mi;
             }
@@ -575,19 +558,19 @@ pub(crate) unsafe fn formk(
             for jy in 0..=iy {
                 let js = *col as usize + jy;
                 let js1 = mi + jy;
-                *wn.add(jy + iy * m2i) = *wn1.add(iy + jy * m2i) / *theta;
-                *wn.add(js + is_ * m2i) = *wn1.add(is1 + js1 * m2i) * *theta;
+                wn[jy + iy * m2i] = wn1[iy + jy * m2i] / *theta;
+                wn[js + is_ * m2i] = wn1[is1 + js1 * m2i] * *theta;
             }
             // (1,2) block of the upper triangle: -wn1 below the diagonal
             // of the block, +wn1 on and above it (Fortran wn(jy, is)).
             for jy in 0..iy {
-                *wn.add(jy + is_ * m2i) = -*wn1.add(is1 + jy * m2i);
+                wn[jy + is_ * m2i] = -wn1[is1 + jy * m2i];
             }
             for jy in iy..*col as usize {
-                *wn.add(jy + is_ * m2i) = *wn1.add(is1 + jy * m2i);
+                wn[jy + is_ * m2i] = wn1[is1 + jy * m2i];
             }
             // sy diagonal enters the (1,1) block diagonal.
-            *wn.add(iy + iy * m2i) += *sy.add(iy + iy * mi);
+            wn[iy + iy * m2i] += sy[iy + iy * mi];
         }
 
         // Cholesky (1,1)
@@ -602,18 +585,23 @@ pub(crate) unsafe fn formk(
         for js in *col..col2 {
             // GNU ignores intermediate dtrsl info codes here; the final
             // dpofa below decides success.
-            *info = dtrsl(wn, m2, *col, wn.add(js as usize * m2i), 11);
+            // The solved column js >= col lies outside the col x col
+            // triangle dtrsl reads, so solving a copy is identical.
+            let at = js as usize * m2i;
+            let mut column = wn[at..at + *col as usize].to_vec();
+            *info = dtrsl(wn, m2, *col, &mut column, 11);
+            wn[at..at + *col as usize].copy_from_slice(&column);
         }
 
         // Complete (2,2)
         for is_ in *col as usize..col2 as usize {
             for js in is_..col2 as usize {
-                *wn.add(is_ + js * m2i) += ddot(*col, wn.add(is_ * m2i), 1, wn.add(js * m2i), 1);
+                wn[is_ + js * m2i] += ddot(*col, &wn[is_ * m2i..], 1, &wn[js * m2i..], 1);
             }
         }
 
         // Cholesky (2,2)
-        *info = dpofa(wn.add(*col as usize + *col as usize * m2i), m2, *col);
+        *info = dpofa(&mut wn[*col as usize + *col as usize * m2i..], m2, *col);
         if *info != 0 {
             *info = -2;
         }
@@ -624,19 +612,19 @@ pub(crate) unsafe fn formk(
 // formt
 // =====================================================================
 
-pub(crate) unsafe fn formt(
+pub(crate) fn formt(
     m: i32,
-    wt: *mut f64,
-    sy: *const f64,
-    ss: *const f64,
-    col: *const i32,
-    theta: *const f64,
-    info: *mut i32,
+    wt: &mut [f64],
+    sy: &[f64],
+    ss: &[f64],
+    col: &i32,
+    theta: &f64,
+    info: &mut i32,
 ) {
-    unsafe {
+    {
         let mi = m as usize;
         for j in 0..*col as usize {
-            *wt.add(j * mi) = *theta * *ss.add(j * mi);
+            wt[j * mi] = *theta * ss[j * mi];
         }
         for i in 1..*col as usize {
             for j in i..*col as usize {
@@ -644,9 +632,9 @@ pub(crate) unsafe fn formt(
                 // bound min(i,j) here since j >= i in this loop.
                 let mut ddum = 0.0_f64;
                 for k in 0..i {
-                    ddum += *sy.add(i + k * mi) * *sy.add(j + k * mi) / *sy.add(k + k * mi);
+                    ddum += sy[i + k * mi] * sy[j + k * mi] / sy[k + k * mi];
                 }
-                *wt.add(i + j * mi) = ddum + *theta * *ss.add(i + j * mi);
+                wt[i + j * mi] = ddum + *theta * ss[i + j * mi];
             }
         }
         *info = dpofa(wt, m, *col);
@@ -660,39 +648,39 @@ pub(crate) unsafe fn formt(
 // freev
 // =====================================================================
 
-pub(crate) unsafe fn freev(
+pub(crate) fn freev(
     n: i32,
-    nfree: *mut i32,
-    indx: *mut i32,
-    nenter: *mut i32,
-    ileave: *mut i32,
-    indx2: *mut i32,
-    iwhere: *const i32,
-    wrk: *mut i32,
-    updatd: *const i32,
-    cnstnd: *const i32,
+    nfree: &mut i32,
+    indx: &mut [i32],
+    nenter: &mut i32,
+    ileave: &mut i32,
+    indx2: &mut [i32],
+    iwhere: &[i32],
+    wrk: &mut i32,
+    updatd: &i32,
+    cnstnd: &i32,
     iprint: i32,
-    iter: *const i32,
+    iter: &i32,
 ) {
-    unsafe {
+    {
         *nenter = 0;
         *ileave = n + 1;
         if *iter > 0 && *cnstnd != 0 {
             for i in 0..*nfree as usize {
-                let k = *indx.add(i);
-                if *iwhere.add((k - 1) as usize) > 0 {
+                let k = indx[i];
+                if iwhere[(k - 1) as usize] > 0 {
                     *ileave -= 1;
-                    *indx2.add((*ileave - 1) as usize) = k;
+                    indx2[(*ileave - 1) as usize] = k;
                     if iprint >= 100 {
                         eprintln!("Variable {} leaves the set of free variables", k);
                     }
                 }
             }
             for i in *nfree as usize..n as usize {
-                let k = *indx.add(i);
-                if *iwhere.add((k - 1) as usize) <= 0 {
+                let k = indx[i];
+                if iwhere[(k - 1) as usize] <= 0 {
                     *nenter += 1;
-                    *indx2.add((*nenter - 1) as usize) = k;
+                    indx2[(*nenter - 1) as usize] = k;
                     if iprint >= 100 {
                         eprintln!("Variable {} enters the set of free variables", k);
                     }
@@ -714,12 +702,12 @@ pub(crate) unsafe fn freev(
         *nfree = 0;
         let mut iact = n + 1;
         for i in 0..n as usize {
-            if *iwhere.add(i) <= 0 {
+            if iwhere[i] <= 0 {
                 *nfree += 1;
-                *indx.add((*nfree - 1) as usize) = (i + 1) as i32;
+                indx[(*nfree - 1) as usize] = (i + 1) as i32;
             } else {
                 iact -= 1;
-                *indx.add((iact - 1) as usize) = (i + 1) as i32;
+                indx[(iact - 1) as usize] = (i + 1) as i32;
             }
         }
         if iprint >= 99 {
@@ -736,46 +724,46 @@ pub(crate) unsafe fn freev(
 // hpsolb
 // =====================================================================
 
-unsafe fn hpsolb(n: i32, t: *mut f64, iorder: *mut i32, iheap: i32) {
-    unsafe {
+fn hpsolb(n: i32, t: &mut [f64], iorder: &mut [i32], iheap: i32) {
+    {
         // 0-based indexing
         if iheap == 0 {
             for k in 1..n as usize {
-                let ddum = *t.add(k);
-                let indxin = *iorder.add(k);
+                let ddum = t[k];
+                let indxin = iorder[k];
                 let mut i = k;
                 loop {
                     if i == 0 {
                         break;
                     }
                     let j = (i - 1) / 2;
-                    if ddum < *t.add(j) {
-                        *t.add(i) = *t.add(j);
-                        *iorder.add(i) = *iorder.add(j);
+                    if ddum < t[j] {
+                        t[i] = t[j];
+                        iorder[i] = iorder[j];
                         i = j;
                     } else {
                         break;
                     }
                 }
-                *t.add(i) = ddum;
-                *iorder.add(i) = indxin;
+                t[i] = ddum;
+                iorder[i] = indxin;
             }
         }
         if n > 1 {
             let mut i = 0usize;
-            let out = *t.add(0);
-            let indxou = *iorder.add(0);
-            let ddum = *t.add((n - 1) as usize);
-            let indxin = *iorder.add((n - 1) as usize);
+            let out = t[0];
+            let indxou = iorder[0];
+            let ddum = t[(n - 1) as usize];
+            let indxin = iorder[(n - 1) as usize];
             loop {
                 let mut j = i + i + 1;
                 if j <= (n - 2) as usize {
-                    if *t.add(j + 1) < *t.add(j) {
+                    if t[j + 1] < t[j] {
                         j += 1;
                     }
-                    if *t.add(j) < ddum {
-                        *t.add(i) = *t.add(j);
-                        *iorder.add(i) = *iorder.add(j);
+                    if t[j] < ddum {
+                        t[i] = t[j];
+                        iorder[i] = iorder[j];
                         i = j;
                     } else {
                         break;
@@ -784,10 +772,10 @@ unsafe fn hpsolb(n: i32, t: *mut f64, iorder: *mut i32, iheap: i32) {
                     break;
                 }
             }
-            *t.add(i) = ddum;
-            *iorder.add(i) = indxin;
-            *t.add((n - 1) as usize) = out;
-            *iorder.add((n - 1) as usize) = indxou;
+            t[i] = ddum;
+            iorder[i] = indxin;
+            t[(n - 1) as usize] = out;
+            iorder[(n - 1) as usize] = indxou;
         }
     }
 }
@@ -796,38 +784,23 @@ unsafe fn hpsolb(n: i32, t: *mut f64, iorder: *mut i32, iheap: i32) {
 // lnsrlb
 // =====================================================================
 
-pub(crate) unsafe fn lnsrlb(
+pub(crate) fn lnsrlb(
     n: i32,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    x: *mut f64,
-    f: *mut f64,
-    fold: *mut f64,
-    gd: *mut f64,
-    gdold: *mut f64,
-    g: *mut f64,
-    d: *mut f64,
-    r: *mut f64,
-    t: *mut f64,
-    z: *const f64,
-    stp: *mut f64,
-    dnorm: *mut f64,
-    dtd: *mut f64,
-    xstep: *mut f64,
-    stpmx: *mut f64,
-    iter: *const i32,
-    ifun: *mut i32,
-    iback: *mut i32,
-    nfgv: *mut i32,
-    info: *mut i32,
-    task: *mut c_char,
-    boxed: *const i32,
-    cnstnd: *const i32,
-    csave: *mut c_char,
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    x: &mut [f64],
+    f: &mut f64,
+    g: &mut [f64],
+    d: &mut [f64],
+    r: &mut [f64],
+    t: &mut [f64],
+    z: &[f64],
+    task: &mut [c_char],
+    csave: &mut [c_char],
     st: &mut LbfgsbState,
 ) {
-    unsafe {
+    {
         const STPMIN: f64 = 0.0;
         const FTOL: f64 = 0.001;
         const GTOL: f64 = 0.9;
@@ -836,70 +809,74 @@ pub(crate) unsafe fn lnsrlb(
         if cstrncmp(task, b"FG_LN", 5) {
             // goto L556
         } else {
-            *dtd = ddot(n, d, 1, d, 1);
-            *dnorm = sqrt(*dtd);
-            *stpmx = 1e10;
-            if *cnstnd != 0 {
-                if *iter == 0 {
-                    *stpmx = 1.0;
+            st.dtd = ddot(n, d, 1, d, 1);
+            st.dnorm = sqrt(st.dtd);
+            st.stpmx = 1e10;
+            if st.cnstnd != 0 {
+                if st.iter == 0 {
+                    st.stpmx = 1.0;
                 } else {
                     for i in 0..n as usize {
-                        let a1 = *d.add(i);
-                        if *nbd.add(i) != 0 {
-                            if a1 < 0.0 && *nbd.add(i) <= 2 {
-                                let a2 = *l.add(i) - *x.add(i);
+                        let a1 = d[i];
+                        if nbd[i] != 0 {
+                            if a1 < 0.0 && nbd[i] <= 2 {
+                                let a2 = l[i] - x[i];
                                 if a2 >= 0.0 {
-                                    *stpmx = 0.0;
-                                } else if a1 * *stpmx < a2 {
-                                    *stpmx = a2 / a1;
+                                    st.stpmx = 0.0;
+                                } else if a1 * st.stpmx < a2 {
+                                    st.stpmx = a2 / a1;
                                 }
-                            } else if a1 > 0.0 && *nbd.add(i) >= 2 {
-                                let a2 = *u.add(i) - *x.add(i);
+                            } else if a1 > 0.0 && nbd[i] >= 2 {
+                                let a2 = u[i] - x[i];
                                 if a2 <= 0.0 {
-                                    *stpmx = 0.0;
-                                } else if a1 * *stpmx > a2 {
-                                    *stpmx = a2 / a1;
+                                    st.stpmx = 0.0;
+                                } else if a1 * st.stpmx > a2 {
+                                    st.stpmx = a2 / a1;
                                 }
                             }
                         }
                     }
                 }
             }
-            if *iter == 0 && *boxed == 0 {
-                let d1 = 1.0 / *dnorm;
-                *stp = d1.min(*stpmx);
+            if st.iter == 0 && st.boxed == 0 {
+                let d1 = 1.0 / st.dnorm;
+                st.stp = d1.min(st.stpmx);
             } else {
-                *stp = 1.0;
+                st.stp = 1.0;
             }
-            dcopy(n, x as *const f64, 1, t, 1);
-            dcopy(n, g as *const f64, 1, r, 1);
-            *fold = *f;
-            *ifun = 0;
-            *iback = 0;
+            dcopy(n, x, 1, t, 1);
+            dcopy(n, g, 1, r, 1);
+            st.fold = *f;
+            st.ifun = 0;
+            st.iback = 0;
             cstrcpy(csave, b"START");
         }
 
         // L556
-        *gd = ddot(n, g, 1, d, 1);
-        if *ifun == 0 {
-            *gdold = *gd;
-            if *gd >= 0.0 {
-                *info = -4;
+        st.gd = ddot(n, g, 1, d, 1);
+        if st.ifun == 0 {
+            st.gdold = st.gd;
+            if st.gd >= 0.0 {
+                st.info = -4;
                 return;
             }
         }
-        dcsrch(f, gd, stp, FTOL, GTOL, XTOL, STPMIN, *stpmx, csave, st);
-        *xstep = *stp * *dnorm;
+        // dcsrch keeps its own state in the dcsrch_* fields; gd and stp are
+        // passed by reference exactly as the C statics were.
+        let (mut gd, mut stp) = (st.gd, st.stp);
+        dcsrch(f, &mut gd, &mut stp, FTOL, GTOL, XTOL, STPMIN, st.stpmx, csave, st);
+        (st.gd, st.stp) = (gd, stp);
+        st.xstep = st.stp * st.dnorm;
         if !cstrncmp(csave, b"CONV", 4) && !cstrncmp(csave, b"WARN", 4) {
             cstrcpy(task, b"FG_LNSRCH");
-            *ifun += 1;
-            *nfgv += 1;
-            *iback = *ifun - 1;
-            if *stp == 1.0 {
+            st.ifun += 1;
+            st.nfgv += 1;
+            st.iback = st.ifun - 1;
+            if st.stp == 1.0 {
                 dcopy(n, z, 1, x, 1);
             } else {
                 for i in 0..n as usize {
-                    *x.add(i) = *stp * *d.add(i) + *t.add(i);
+                    x[i] = st.stp * d[i] + t[i];
                 }
             }
         } else {
@@ -912,26 +889,26 @@ pub(crate) unsafe fn lnsrlb(
 // matupd
 // =====================================================================
 
-pub(crate) unsafe fn matupd(
+pub(crate) fn matupd(
     n: i32,
     m: i32,
-    ws: *mut f64,
-    wy: *mut f64,
-    sy: *mut f64,
-    ss: *mut f64,
-    d: *const f64,
-    r: *const f64,
-    itail: *mut i32,
-    iupdat: *const i32,
-    col: *mut i32,
-    head: *mut i32,
-    theta: *mut f64,
-    rr: *const f64,
-    dr: *const f64,
-    stp: *const f64,
-    dtd: *const f64,
+    ws: &mut [f64],
+    wy: &mut [f64],
+    sy: &mut [f64],
+    ss: &mut [f64],
+    d: &[f64],
+    r: &[f64],
+    itail: &mut i32,
+    iupdat: &i32,
+    col: &mut i32,
+    head: &mut i32,
+    theta: &mut f64,
+    rr: &f64,
+    dr: &f64,
+    stp: &f64,
+    dtd: &f64,
 ) {
-    unsafe {
+    {
         let mi = m as usize;
         let ni = n as usize;
         if *iupdat <= m {
@@ -942,23 +919,17 @@ pub(crate) unsafe fn matupd(
             *head = *head % m + 1;
         }
         // itail and head are 1-based; convert to 0-based for array access
-        dcopy(n, d, 1, ws.add((*itail - 1) as usize * ni), 1);
-        dcopy(n, r, 1, wy.add((*itail - 1) as usize * ni), 1);
+        dcopy(n, d, 1, &mut ws[(*itail - 1) as usize * ni..], 1);
+        dcopy(n, r, 1, &mut wy[(*itail - 1) as usize * ni..], 1);
         *theta = *rr / *dr;
 
         if *iupdat > m {
             // Move old information: Fortran dcopy(j, ss(2, j+1), ss(1, j))
             // and dcopy(col-j, sy(j+1, j+1), sy(j, j)) with 0-based j here.
             for j in 0..(*col - 1) as usize {
-                dcopy(j as i32 + 1, ss.add(1 + (j + 1) * mi), 1, ss.add(j * mi), 1);
+                dcopy_within(j as i32 + 1, ss, 1 + (j + 1) * mi, 1, j * mi, 1);
                 let cnt = *col - (j as i32 + 1);
-                dcopy(
-                    cnt,
-                    sy.add((j + 1) + (j + 1) * mi),
-                    1,
-                    sy.add(j + j * mi),
-                    1,
-                );
+                dcopy_within(cnt, sy, (j + 1) + (j + 1) * mi, 1, j + j * mi, 1);
             }
         }
 
@@ -967,16 +938,16 @@ pub(crate) unsafe fn matupd(
         let col0 = (*col - 1) as usize;
         let mut pointr = (*head - 1) as usize;
         for j in 0..col0 {
-            *sy.add(col0 + j * mi) = ddot(n, d, 1, wy.add(pointr * ni), 1);
-            *ss.add(j + col0 * mi) = ddot(n, ws.add(pointr * ni), 1, d, 1);
+            sy[col0 + j * mi] = ddot(n, d, 1, &mut wy[pointr * ni..], 1);
+            ss[j + col0 * mi] = ddot(n, &mut ws[pointr * ni..], 1, d, 1);
             pointr = (pointr + 1) % mi;
         }
         if *stp == 1.0 {
-            *ss.add(col0 + col0 * mi) = *dtd;
+            ss[col0 + col0 * mi] = *dtd;
         } else {
-            *ss.add(col0 + col0 * mi) = *stp * *stp * *dtd;
+            ss[col0 + col0 * mi] = *stp * *stp * *dtd;
         }
-        *sy.add(col0 + col0 * mi) = *dr;
+        sy[col0 + col0 * mi] = *dr;
     }
 }
 
@@ -984,31 +955,31 @@ pub(crate) unsafe fn matupd(
 // projgr
 // =====================================================================
 
-pub(crate) unsafe fn projgr(
+pub(crate) fn projgr(
     n: i32,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    x: *const f64,
-    g: *const f64,
-    sbgnrm: *mut f64,
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    x: &[f64],
+    g: &[f64],
+    sbgnrm: &mut f64,
 ) {
-    unsafe {
+    {
         // Note: C code uses 0-based here already!
         *sbgnrm = 0.0;
         for i in 0..n as usize {
-            let mut gi = *g.add(i);
-            if *nbd.add(i) != 0 {
+            let mut gi = g[i];
+            if nbd[i] != 0 {
                 if gi < 0.0 {
-                    if *nbd.add(i) >= 2 {
-                        let d1 = *x.add(i) - *u.add(i);
+                    if nbd[i] >= 2 {
+                        let d1 = x[i] - u[i];
                         if gi < d1 {
                             gi = d1;
                         }
                     }
                 } else {
-                    if *nbd.add(i) <= 2 {
-                        let d1 = *x.add(i) - *l.add(i);
+                    if nbd[i] <= 2 {
+                        let d1 = x[i] - l[i];
                         if gi > d1 {
                             gi = d1;
                         }
@@ -1027,28 +998,28 @@ pub(crate) unsafe fn projgr(
 // subsm
 // =====================================================================
 
-pub(crate) unsafe fn subsm(
+pub(crate) fn subsm(
     n: i32,
     m: i32,
-    nsub: *const i32,
-    ind: *const i32,
-    l: *const f64,
-    u: *const f64,
-    nbd: *const i32,
-    x: *mut f64,
-    d: *mut f64,
-    ws: *const f64,
-    wy: *const f64,
-    theta: *const f64,
-    col: *const i32,
-    head: *const i32,
-    iword: *mut i32,
-    wv: *mut f64,
-    wn: *const f64,
+    nsub: &i32,
+    ind: &[i32],
+    l: &[f64],
+    u: &[f64],
+    nbd: &[i32],
+    x: &mut [f64],
+    d: &mut [f64],
+    ws: &[f64],
+    wy: &[f64],
+    theta: &f64,
+    col: &i32,
+    head: &i32,
+    iword: &mut i32,
+    wv: &mut [f64],
+    wn: &[f64],
     iprint: i32,
-    info: *mut i32,
+    info: &mut i32,
 ) {
-    unsafe {
+    {
         let m2 = 2 * m;
         let m2i = m2 as usize;
         let mi = m as usize;
@@ -1063,12 +1034,12 @@ pub(crate) unsafe fn subsm(
         for i in 0..*col as usize {
             let (mut t1, mut t2) = (0.0_f64, 0.0_f64);
             for j in 0..ns as usize {
-                let k = (*ind.add(j) - 1) as usize;
-                t1 += *wy.add(k + pointr * ni) * *d.add(j);
-                t2 += *ws.add(k + pointr * ni) * *d.add(j);
+                let k = (ind[j] - 1) as usize;
+                t1 += wy[k + pointr * ni] * d[j];
+                t2 += ws[k + pointr * ni] * d[j];
             }
-            *wv.add(i) = t1;
-            *wv.add(*col as usize + i) = *theta * t2;
+            wv[i] = t1;
+            wv[*col as usize + i] = *theta * t2;
             pointr = (pointr + 1) % mi;
         }
 
@@ -1077,7 +1048,7 @@ pub(crate) unsafe fn subsm(
             return;
         }
         for i in 0..*col as usize {
-            *wv.add(i) = -*wv.add(i);
+            wv[i] = -wv[i];
         }
         *info = dtrsl(wn, m2, col2, wv, 1);
         if *info != 0 {
@@ -1088,14 +1059,14 @@ pub(crate) unsafe fn subsm(
         for jy in 0..*col as usize {
             let js = *col as usize + jy;
             for i in 0..ns as usize {
-                let k = (*ind.add(i) - 1) as usize;
-                *d.add(i) += *wy.add(k + pointr * ni) * *wv.add(jy) / *theta
-                    + *ws.add(k + pointr * ni) * *wv.add(js);
+                let k = (ind[i] - 1) as usize;
+                d[i] += wy[k + pointr * ni] * wv[jy] / *theta
+                    + ws[k + pointr * ni] * wv[js];
             }
             pointr = (pointr + 1) % mi;
         }
         for i in 0..ns as usize {
-            *d.add(i) /= *theta;
+            d[i] /= *theta;
         }
 
         // Backtrack to feasible region
@@ -1103,18 +1074,18 @@ pub(crate) unsafe fn subsm(
         let mut temp1 = alpha;
         let mut ibd = 0i32;
         for i in 0..ns as usize {
-            let k = (*ind.add(i) - 1) as usize;
-            let dk = *d.add(i);
-            if *nbd.add(k) != 0 {
-                if dk < 0.0 && *nbd.add(k) <= 2 {
-                    let temp2 = *l.add(k) - *x.add(k);
+            let k = (ind[i] - 1) as usize;
+            let dk = d[i];
+            if nbd[k] != 0 {
+                if dk < 0.0 && nbd[k] <= 2 {
+                    let temp2 = l[k] - x[k];
                     if temp2 >= 0.0 {
                         temp1 = 0.0;
                     } else if dk * alpha < temp2 {
                         temp1 = temp2 / dk;
                     }
-                } else if dk > 0.0 && *nbd.add(k) >= 2 {
-                    let temp2 = *u.add(k) - *x.add(k);
+                } else if dk > 0.0 && nbd[k] >= 2 {
+                    let temp2 = u[k] - x[k];
                     if temp2 <= 0.0 {
                         temp1 = 0.0;
                     } else if dk * alpha > temp2 {
@@ -1128,19 +1099,19 @@ pub(crate) unsafe fn subsm(
             }
         }
         if alpha < 1.0 {
-            let dk = *d.add((ibd - 1) as usize);
-            let k = (*ind.add((ibd - 1) as usize) - 1) as usize;
+            let dk = d[(ibd - 1) as usize];
+            let k = (ind[(ibd - 1) as usize] - 1) as usize;
             if dk > 0.0 {
-                *x.add(k) = *u.add(k);
-                *d.add((ibd - 1) as usize) = 0.0;
+                x[k] = u[k];
+                d[(ibd - 1) as usize] = 0.0;
             } else if dk < 0.0 {
-                *x.add(k) = *l.add(k);
-                *d.add((ibd - 1) as usize) = 0.0;
+                x[k] = l[k];
+                d[(ibd - 1) as usize] = 0.0;
             }
         }
         for i in 0..ns as usize {
-            let k = (*ind.add(i) - 1) as usize;
-            *x.add(k) += alpha * *d.add(i);
+            let k = (ind[i] - 1) as usize;
+            x[k] += alpha * d[i];
         }
         *iword = if alpha < 1.0 { 1 } else { 0 };
     }
@@ -1150,19 +1121,19 @@ pub(crate) unsafe fn subsm(
 // dcsrch
 // =====================================================================
 
-unsafe fn dcsrch(
-    f: *mut f64,
-    g: *mut f64,
-    stp: *mut f64,
+fn dcsrch(
+    f: &mut f64,
+    g: &mut f64,
+    stp: &mut f64,
     ftol: f64,
     gtol: f64,
     xtol: f64,
     stpmin: f64,
     stpmax: f64,
-    task: *mut c_char,
+    task: &mut [c_char],
     st: &mut LbfgsbState,
 ) {
-    unsafe {
+    {
         let ftest: f64;
         let mut fm: f64;
         let mut gm: f64;
@@ -1321,21 +1292,21 @@ unsafe fn dcsrch(
 // dcstep
 // =====================================================================
 
-unsafe fn dcstep(
-    stx: *mut f64,
-    fx: *mut f64,
-    dx: *mut f64,
-    sty: *mut f64,
-    fy: *mut f64,
-    dy: *mut f64,
-    stp: *mut f64,
-    fp: *mut f64,
-    dp: *mut f64,
-    brackt: *mut i32,
-    stpmin: *mut f64,
-    stpmax: *mut f64,
+fn dcstep(
+    stx: &mut f64,
+    fx: &mut f64,
+    dx: &mut f64,
+    sty: &mut f64,
+    fy: &mut f64,
+    dy: &mut f64,
+    stp: &mut f64,
+    fp: &mut f64,
+    dp: &mut f64,
+    brackt: &mut i32,
+    stpmin: &mut f64,
+    stpmax: &mut f64,
 ) {
-    unsafe {
+    {
         let sgnd = *dp * (*dx / fabs(*dx));
         let mut theta: f64;
         let mut s: f64;
@@ -1466,27 +1437,27 @@ unsafe fn dcstep(
 // Print routines
 // =====================================================================
 
-unsafe fn pvector(title: &[u8], x: *const f64, n: i32) {
-    unsafe {
-        let title_str = std::str::from_utf8_unchecked(title);
+fn pvector(title: &[u8], x: &[f64], n: i32) {
+    {
+        let title_str = String::from_utf8_lossy(title);
         eprint!("{} ", title_str);
         for i in 0..n as usize {
-            eprint!("{} ", *x.add(i));
+            eprint!("{} ", x[i]);
         }
         eprintln!();
     }
 }
 
-pub(crate) unsafe fn prn1lb(
+pub(crate) fn prn1lb(
     n: i32,
     m: i32,
-    l: *const f64,
-    u: *const f64,
-    x: *const f64,
+    l: &[f64],
+    u: &[f64],
+    x: &[f64],
     iprint: i32,
     epsmch: f64,
 ) {
-    unsafe {
+    {
         if iprint >= 0 {
             eprintln!("N = {}, M = {} machine precision = {}", n, m, epsmch);
             if iprint >= 100 {
@@ -1498,24 +1469,24 @@ pub(crate) unsafe fn prn1lb(
     }
 }
 
-pub(crate) unsafe fn prn2lb(
+pub(crate) fn prn2lb(
     n: i32,
-    x: *const f64,
-    f: *const f64,
-    g: *const f64,
+    x: &[f64],
+    f: &f64,
+    g: &[f64],
     iprint: i32,
     iter: i32,
     nfgv: i32,
     nact: i32,
     sbgnrm: f64,
     nint: i32,
-    word: *const c_char,
+    word: &[u8],
     iword: i32,
     iback: i32,
     stp: f64,
     xstep: f64,
 ) {
-    unsafe {
+    {
         if iprint >= 99 {
             eprintln!("LINE SEARCH {} times; norm of step = {}", iback, xstep);
             if iprint > 100 {
@@ -1531,11 +1502,11 @@ pub(crate) unsafe fn prn2lb(
     }
 }
 
-pub(crate) unsafe fn prn3lb(
+pub(crate) fn prn3lb(
     n: i32,
-    x: *const f64,
-    f: *const f64,
-    task: *const c_char,
+    x: &[f64],
+    f: &f64,
+    task: &[c_char],
     iprint: i32,
     info: i32,
     iter: i32,
@@ -1545,13 +1516,13 @@ pub(crate) unsafe fn prn3lb(
     nact: i32,
     sbgnrm: f64,
     nint: i32,
-    word: *const c_char,
+    word: &[u8],
     iback: i32,
     stp: f64,
     xstep: f64,
     k: i32,
 ) {
-    unsafe {
+    {
         if cstrncmp(task, b"CONV", 4) {
             if iprint >= 0 {
                 eprintln!(

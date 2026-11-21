@@ -8,19 +8,19 @@
 // Rdqagi: Integration over infinite intervals
 // Rdqags: Integration over finite intervals
 
+use std::os::raw::c_int;
+
 use crate::utils::*;
 use libm::*;
 
 // =====================================================================
 // Callback type: vectorizing integrand function
-// f(x[1..n], ex) overwrites x[] with f(x[1..n])
+// f(x[1..n]) overwrites x[] with f(x[1..n])
 // =====================================================================
 
-/// Type alias for the integrand callback function.
-/// The function receives a mutable slice of x values and an opaque pointer.
-/// It should overwrite x[i] with f(x[i]).
-pub type IntegrFn =
-    unsafe extern "C-unwind" fn(x: *mut f64, n: std::os::raw::c_int, ex: *mut std::ffi::c_void);
+/// The vectorizing integrand: it receives a mutable slice of x values and
+/// should overwrite x[i] with f(x[i]). Closures capture what C passed as `ex`.
+pub type IntegrFn<'a> = dyn FnMut(&mut [f64]) + 'a;
 
 // =====================================================================
 // Constants
@@ -36,13 +36,8 @@ const DBL_MAX: f64 = 1.7976931348623157e+308;
 
 /// Gauss-Kronrod 15-point rule for infinite intervals
 /// Maps (0,1) subinterval, computes integral of transformed integrand.
-///
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-unsafe fn rdqk15i(
-    f: IntegrFn,
-    ex: *mut std::ffi::c_void,
+fn rdqk15i(
+    f: &mut IntegrFn<'_>,
     boun: f64,
     inf: i32,
     a: f64,
@@ -116,13 +111,9 @@ unsafe fn rdqk15i(
         }
     }
 
-    unsafe {
-        f(vec.as_mut_ptr(), 15, ex);
-    }
+    f(&mut vec);
     if inf == 2 {
-        unsafe {
-            f(vec2.as_mut_ptr(), 15, ex);
-        }
+        f(&mut vec2);
     }
 
     let mut fval1 = vec[0];
@@ -368,11 +359,7 @@ fn rdqpsrt(
 }
 
 /// Gauss-Kronrod 21-point rule for finite intervals
-///
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-unsafe fn rdqk21(f: IntegrFn, ex: *mut std::ffi::c_void, a: f64, b: f64) -> (f64, f64, f64, f64) {
+fn rdqk21(f: &mut IntegrFn<'_>, a: f64, b: f64) -> (f64, f64, f64, f64) {
     // (result, abserr, resabs, resasc)
 
     // Gauss weights (10-point)
@@ -438,9 +425,7 @@ unsafe fn rdqk21(f: IntegrFn, ex: *mut std::ffi::c_void, a: f64, b: f64) -> (f64
         vec[(j << 1) + 10] = centr + absc;
     }
 
-    unsafe {
-        f(vec.as_mut_ptr(), 21, ex);
-    }
+    f(&mut vec);
 
     let fc = vec[0];
     let mut resk = WGK[10] * fc;
@@ -498,12 +483,8 @@ unsafe fn rdqk21(f: IntegrFn, ex: *mut std::ffi::c_void, a: f64, b: f64) -> (f64
 // Internal adaptive integration for infinite intervals (QAGIE)
 // =====================================================================
 
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-unsafe fn rdqagie(
-    f: IntegrFn,
-    ex: *mut std::ffi::c_void,
+fn rdqagie(
+    f: &mut IntegrFn<'_>,
     bound: f64,
     inf: i32,
     epsabs: f64,
@@ -542,8 +523,7 @@ unsafe fn rdqagie(
 
     let boun = if inf == 2 { 0.0 } else { bound };
 
-    // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-    let (res, err, defabs, resabs) = unsafe { rdqk15i(f, ex, boun, inf, 0.0, 1.0) };
+    let (res, err, defabs, resabs) = rdqk15i(f, boun, inf, 0.0, 1.0);
     *result = res;
     *abserr = err;
 
@@ -617,10 +597,8 @@ unsafe fn rdqagie(
         let b2 = blist[maxerr];
         let erlast = errmax;
 
-        // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-        let (area1, error1, _, defab1) = unsafe { rdqk15i(f, ex, boun, inf, a1, b1) };
-        // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-        let (area2, error2, _, defab2) = unsafe { rdqk15i(f, ex, boun, inf, a2, b2) };
+        let (area1, error1, _, defab1) = rdqk15i(f, boun, inf, a1, b1);
+        let (area2, error2, _, defab2) = rdqk15i(f, boun, inf, a2, b2);
 
         let area12 = area1 + area2;
         let erro12 = error1 + error2;
@@ -891,12 +869,8 @@ unsafe fn rdqagie(
 // Internal adaptive integration for finite intervals (QAGSE)
 // =====================================================================
 
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-unsafe fn rdqagse(
-    f: IntegrFn,
-    ex: *mut std::ffi::c_void,
+fn rdqagse(
+    f: &mut IntegrFn<'_>,
     a: f64,
     b: f64,
     epsabs: f64,
@@ -932,8 +906,7 @@ unsafe fn rdqagse(
         return;
     }
 
-    // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-    let (res, err, defabs, _resasc) = unsafe { rdqk21(f, ex, a, b) };
+    let (res, err, defabs, _resasc) = rdqk21(f, a, b);
     *result = res;
     *abserr = err;
 
@@ -999,10 +972,8 @@ unsafe fn rdqagse(
         let b2 = blist[maxerr];
         let erlast = errmax;
 
-        // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-        let (area1, error1, _, defab1) = unsafe { rdqk21(f, ex, a1, b1) };
-        // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-        let (area2, error2, _, defab2) = unsafe { rdqk21(f, ex, a2, b2) };
+        let (area1, error1, _, defab1) = rdqk21(f, a1, b1);
+        let (area2, error2, _, defab2) = rdqk21(f, a2, b2);
 
         let area12 = area1 + area2;
         let erro12 = error1 + error2;
@@ -1230,7 +1201,6 @@ unsafe fn rdqagse(
 ///
 /// # Arguments
 /// * `f` - vectorizing integrand function
-/// * `ex` - opaque pointer passed to f
 /// * `bound` - finite bound of integration range
 /// * `inf` - type of infinite interval (1, -1, or 2)
 /// * `epsabs` - absolute accuracy requested
@@ -1244,44 +1214,35 @@ unsafe fn rdqagse(
 /// * `last` - number of subintervals produced (output)
 /// * `iwork` - integer work array of dimension limit
 /// * `work` - double work array of dimension lenw
-///
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-/// Every scalar pointer (`bound`, `inf`, `epsabs`, `epsrel`, `result`, `abserr`, `neval`, `ier`, `limit`,
-/// `lenw`, `last`) must be valid for one read/write; `work` must be valid for `*lenw` and `iwork`
-/// for `*limit` elements whenever `*limit >= 1` and `*lenw >= 4 * *limit`.
-pub unsafe fn Rdqagi(
-    f: IntegrFn,
-    ex: *mut std::ffi::c_void,
-    bound: *mut f64,
-    inf: *mut std::os::raw::c_int,
-    epsabs: *mut f64,
-    epsrel: *mut f64,
-    result: *mut f64,
-    abserr: *mut f64,
-    neval: *mut std::os::raw::c_int,
-    ier: *mut std::os::raw::c_int,
-    limit: *mut std::os::raw::c_int,
-    lenw: *mut std::os::raw::c_int,
-    last: *mut std::os::raw::c_int,
-    iwork: *mut std::os::raw::c_int,
-    work: *mut f64,
+#[allow(clippy::too_many_arguments)]
+pub fn Rdqagi(
+    f: &mut IntegrFn<'_>,
+    bound: f64,
+    inf: c_int,
+    epsabs: f64,
+    epsrel: f64,
+    result: &mut f64,
+    abserr: &mut f64,
+    neval: &mut c_int,
+    ier: &mut c_int,
+    limit: c_int,
+    lenw: c_int,
+    last: &mut c_int,
+    iwork: &mut [c_int],
+    work: &mut [f64],
 ) {
-    let bound_val = unsafe { *bound };
-    let inf_val = unsafe { *inf };
-    let epsabs_val = unsafe { *epsabs };
-    let epsrel_val = unsafe { *epsrel };
-    let limit_val = unsafe { *limit };
-    let lenw_val = unsafe { *lenw };
+    let bound_val = bound;
+    let inf_val = inf;
+    let epsabs_val = epsabs;
+    let epsrel_val = epsrel;
+    let limit_val = limit;
+    let lenw_val = lenw;
 
-    unsafe {
-        *ier = 6;
-        *neval = 0;
-        *last = 0;
-        *result = 0.0;
-        *abserr = 0.0;
-    }
+    *ier = 6;
+    *neval = 0;
+    *last = 0;
+    *result = 0.0;
+    *abserr = 0.0;
 
     if limit_val < 1 || lenw_val < limit_val * 4 {
         return;
@@ -1291,8 +1252,8 @@ pub unsafe fn Rdqagi(
     let l2 = l1 + l1;
     let l3 = l2 + l1;
 
-    let work_slice = unsafe { std::slice::from_raw_parts_mut(work, lenw_val as usize) };
-    let iwork_slice = unsafe { std::slice::from_raw_parts_mut(iwork, limit_val as usize) };
+    let work_slice = &mut work[..lenw_val as usize];
+    let iwork_slice = &mut iwork[..limit_val as usize];
 
     // Copy into separate vectors to avoid borrow checker issues with overlapping slices
     let mut alist = vec![0.0f64; l1];
@@ -1315,11 +1276,8 @@ pub unsafe fn Rdqagi(
     let mut ier_val = 0;
     let mut last_val = 0;
 
-    // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-    unsafe {
         rdqagie(
             f,
-            ex,
             bound_val,
             inf_val,
             epsabs_val,
@@ -1335,8 +1293,7 @@ pub unsafe fn Rdqagi(
             &mut elist,
             &mut iord,
             &mut last_val,
-        )
-    };
+        );
 
     // Copy results back to work/iwork arrays
     for i in 0..l1 {
@@ -1347,13 +1304,11 @@ pub unsafe fn Rdqagi(
         iwork_slice[i] = iord[i];
     }
 
-    unsafe {
-        *result = result_val;
-        *abserr = abserr_val;
-        *neval = neval_val;
-        *ier = ier_val;
-        *last = last_val;
-    }
+    *result = result_val;
+    *abserr = abserr_val;
+    *neval = neval_val;
+    *ier = ier_val;
+    *last = last_val;
 }
 
 /// Integration over finite intervals (QAGS from QUADPACK).
@@ -1362,7 +1317,6 @@ pub unsafe fn Rdqagi(
 ///
 /// # Arguments
 /// * `f` - vectorizing integrand function
-/// * `ex` - opaque pointer passed to f
 /// * `a` - lower limit of integration
 /// * `b` - upper limit of integration
 /// * `epsabs` - absolute accuracy requested
@@ -1376,44 +1330,35 @@ pub unsafe fn Rdqagi(
 /// * `last` - number of subintervals produced (output)
 /// * `iwork` - integer work array of dimension limit
 /// * `work` - double work array of dimension lenw
-///
-/// # Safety
-///
-/// `f` must be sound to call with `ex` (it is invoked as `f(x, n, ex)` on a live local buffer).
-/// Every scalar pointer (`a`, `b`, `epsabs`, `epsrel`, `result`, `abserr`, `neval`, `ier`, `limit`,
-/// `lenw`, `last`) must be valid for one read/write; `work` must be valid for `*lenw` and `iwork`
-/// for `*limit` elements whenever `*limit >= 1` and `*lenw >= 4 * *limit`.
-pub unsafe fn Rdqags(
-    f: IntegrFn,
-    ex: *mut std::ffi::c_void,
-    a: *mut f64,
-    b: *mut f64,
-    epsabs: *mut f64,
-    epsrel: *mut f64,
-    result: *mut f64,
-    abserr: *mut f64,
-    neval: *mut std::os::raw::c_int,
-    ier: *mut std::os::raw::c_int,
-    limit: *mut std::os::raw::c_int,
-    lenw: *mut std::os::raw::c_int,
-    last: *mut std::os::raw::c_int,
-    iwork: *mut std::os::raw::c_int,
-    work: *mut f64,
+#[allow(clippy::too_many_arguments)]
+pub fn Rdqags(
+    f: &mut IntegrFn<'_>,
+    a: f64,
+    b: f64,
+    epsabs: f64,
+    epsrel: f64,
+    result: &mut f64,
+    abserr: &mut f64,
+    neval: &mut c_int,
+    ier: &mut c_int,
+    limit: c_int,
+    lenw: c_int,
+    last: &mut c_int,
+    iwork: &mut [c_int],
+    work: &mut [f64],
 ) {
-    let a_val = unsafe { *a };
-    let b_val = unsafe { *b };
-    let epsabs_val = unsafe { *epsabs };
-    let epsrel_val = unsafe { *epsrel };
-    let limit_val = unsafe { *limit };
-    let lenw_val = unsafe { *lenw };
+    let a_val = a;
+    let b_val = b;
+    let epsabs_val = epsabs;
+    let epsrel_val = epsrel;
+    let limit_val = limit;
+    let lenw_val = lenw;
 
-    unsafe {
-        *ier = 6;
-        *neval = 0;
-        *last = 0;
-        *result = 0.0;
-        *abserr = 0.0;
-    }
+    *ier = 6;
+    *neval = 0;
+    *last = 0;
+    *result = 0.0;
+    *abserr = 0.0;
 
     if limit_val < 1 || lenw_val < limit_val * 4 {
         return;
@@ -1423,8 +1368,8 @@ pub unsafe fn Rdqags(
     let l2 = l1 + l1;
     let l3 = l2 + l1;
 
-    let work_slice = unsafe { std::slice::from_raw_parts_mut(work, lenw_val as usize) };
-    let iwork_slice = unsafe { std::slice::from_raw_parts_mut(iwork, limit_val as usize) };
+    let work_slice = &mut work[..lenw_val as usize];
+    let iwork_slice = &mut iwork[..limit_val as usize];
 
     // Copy into separate vectors
     let mut alist = vec![0.0f64; l1];
@@ -1447,11 +1392,8 @@ pub unsafe fn Rdqags(
     let mut ier_val = 0;
     let mut last_val = 0;
 
-    // SAFETY: `f`/`ex` are forwarded unchanged from this function's caller, which upholds the same contract.
-    unsafe {
         rdqagse(
             f,
-            ex,
             a_val,
             b_val,
             epsabs_val,
@@ -1467,8 +1409,7 @@ pub unsafe fn Rdqags(
             &mut elist,
             &mut iord,
             &mut last_val,
-        )
-    };
+        );
 
     for i in 0..l1 {
         work_slice[i] = alist[i];
@@ -1478,11 +1419,9 @@ pub unsafe fn Rdqags(
         iwork_slice[i] = iord[i];
     }
 
-    unsafe {
-        *result = result_val;
-        *abserr = abserr_val;
-        *neval = neval_val;
-        *ier = ier_val;
-        *last = last_val;
-    }
+    *result = result_val;
+    *abserr = abserr_val;
+    *neval = neval_val;
+    *ier = ier_val;
+    *last = last_val;
 }

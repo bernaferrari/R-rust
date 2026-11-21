@@ -30,14 +30,14 @@ struct IntStruct {
 // Rintfn -- the integrand function called by the quadrature routines
 // ---------------------------------------------------------------------------
 
-unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
-    unsafe {
-        let is = &*(ex as *const IntStruct);
+fn Rintfn(is: &IntStruct, x: &mut [c_double]) {
+    {
+        let n = x.len() as c_int;
 
         let args = Rf_allocVector(SEXPTYPE::REALSXP, n);
         let _args_guard = protect(args);
         for i in 0..n {
-            SET_REAL_ELT(args, i as i32, *x.add(i as usize));
+            SET_REAL_ELT(args, i as i32, x[i as usize]);
         }
 
         let tmp = Rf_lang2(is.f, args);
@@ -65,8 +65,8 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         };
 
         for i in 0..n {
-            *x.add(i as usize) = REAL_ELT(resultsxp, i as i32);
-            if !R_FINITE(*x.add(i as usize)) {
+            x[i as usize] = REAL_ELT(resultsxp, i as i32);
+            if !R_FINITE(x[i as usize]) {
                 Rf_error_cstr(c"non-finite function value");
             }
         }
@@ -228,28 +228,22 @@ pub fn call_dqags(args: SEXP) -> SEXP {
     let mut last: c_int = 0;
     let mut lenw_out: c_int = lenw;
 
-    // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
-    // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
-    // live `IntStruct` the `Rintfn` trampoline reads.
-    unsafe {
-        Rdqags(
-            Rintfn,
-            &mut is as *mut IntStruct as *mut std::ffi::c_void,
-            &mut lower,
-            &mut upper,
-            &mut epsabs,
-            &mut epsrel,
-            &mut result,
-            &mut abserr,
-            &mut neval,
-            &mut ier,
-            &mut limit,
-            &mut lenw_out,
-            &mut last,
-            iwork.as_mut_ptr(),
-            work.as_mut_ptr(),
-        );
-    }
+    Rdqags(
+        &mut |x| Rintfn(&is, x),
+        lower,
+        upper,
+        epsabs,
+        epsrel,
+        &mut result,
+        &mut abserr,
+        &mut neval,
+        &mut ier,
+        limit,
+        lenw_out,
+        &mut last,
+        &mut iwork,
+        &mut work,
+    );
 
     build_integrate_result(result, abserr, last, ier)
 }
@@ -296,28 +290,22 @@ pub fn call_dqagi(args: SEXP) -> SEXP {
     let mut last: c_int = 0;
     let mut lenw_out: c_int = lenw;
 
-    // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
-    // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
-    // live `IntStruct` the `Rintfn` trampoline reads.
-    unsafe {
-        Rdqagi(
-            Rintfn,
-            &mut is as *mut IntStruct as *mut std::ffi::c_void,
-            &mut bound,
-            &mut inf,
-            &mut epsabs,
-            &mut epsrel,
-            &mut result,
-            &mut abserr,
-            &mut neval,
-            &mut ier,
-            &mut limit,
-            &mut lenw_out,
-            &mut last,
-            iwork.as_mut_ptr(),
-            work.as_mut_ptr(),
-        );
-    }
+    Rdqagi(
+        &mut |x| Rintfn(&is, x),
+        bound,
+        inf,
+        epsabs,
+        epsrel,
+        &mut result,
+        &mut abserr,
+        &mut neval,
+        &mut ier,
+        limit,
+        lenw_out,
+        &mut last,
+        &mut iwork,
+        &mut work,
+    );
 
     build_integrate_result(result, abserr, last, ier)
 }

@@ -246,29 +246,24 @@ pub fn port_nlminb(
     let iprint = if trace != 0 { trace } else { -1 };
     let mut state = LbfgsbState::default();
     let code = 'solver: loop {
-        // SAFETY: every buffer is live workspace sized by `workspace_lengths(n, history)`,
-        // `task` is a 60-byte NUL-terminated buffer and `isave` has the 44 slots lbfgsb
-        // uses; lbfgsb only reads the bounds, so the shared `lower`/`upper` casts are sound.
-        unsafe {
-            lbfgsb(
-                &mut state,
-                n as c_int,
-                history,
-                x.as_mut_ptr(),
-                lower.as_ptr() as *mut c_double,
-                upper.as_ptr() as *mut c_double,
-                nbd.as_mut_ptr(),
-                &mut f,
-                g.as_mut_ptr(),
-                factr,
-                &mut pgtol,
-                wa.as_mut_ptr(),
-                iwa.as_mut_ptr(),
-                task.as_mut_ptr(),
-                iprint,
-                isave.as_mut_ptr(),
-            );
-        }
+        lbfgsb(
+            &mut state,
+            n as c_int,
+            history,
+            &mut x,
+            &lower,
+            &upper,
+            &nbd,
+            &mut f,
+            &mut g,
+            factr,
+            &pgtol,
+            &mut wa,
+            &mut iwa,
+            &mut task,
+            iprint,
+            &mut isave,
+        );
         let task_len = task.iter().position(|&c| c == 0).unwrap_or(60);
         let task_bytes: Vec<u8> = task[..task_len].iter().map(|&c| c as u8).collect();
         if task_bytes.starts_with(b"CONVERGENCE: NORM") {
