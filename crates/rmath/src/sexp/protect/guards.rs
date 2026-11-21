@@ -188,15 +188,15 @@ where
     F: FnOnce() -> R,
 {
     with_required_current_instance(|inst| {
-        // P2: strictly-local RefCell reads around the caller's extra-root
-        // push; f() runs with no instance borrow held.
-        // SAFETY: `inst` is the required ambient instance.
-        let start = unsafe { (*inst).legacy_protect.len() };
+        // The ambient instance supplies the checked owner; `extra` still
+        // receives the raw pointer its translated callers require. f() runs
+        // with no instance borrow held.
+        let owner = GuardOwner::current();
+        let start = owner.legacy_len();
         extra(inst);
-        // SAFETY: as above.
-        let added = unsafe { (*inst).legacy_protect.len().saturating_sub(start) };
+        let added = owner.legacy_len().saturating_sub(start);
         let result = f();
-        unprotect_count_in(inst, added);
+        owner.pop_legacy_count(added);
         result
     })
 }

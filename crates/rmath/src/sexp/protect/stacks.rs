@@ -639,6 +639,39 @@ impl GuardOwner {
         }
     }
 
+    /// Lend this owner's legacy protection stack for a strictly-local update.
+    ///
+    /// P1: `f` must not run any ambient-capable call while the lend is live.
+    fn with_legacy_protect<R>(
+        &self,
+        f: impl FnOnce(&mut super::super::protect::LegacyProtectionStack) -> R,
+    ) -> Option<R> {
+        // SAFETY: strictly-local single-field lend on a live pinned owner.
+        self.with_pinned(|inst| unsafe { f(&mut (*inst).legacy_protect) })
+    }
+
+    /// Lend this owner's generational root table for a strictly-local update.
+    ///
+    /// Same strictly-local lend contract as [`Self::with_legacy_protect`].
+    fn with_root_table<R>(
+        &self,
+        f: impl FnOnce(&mut super::super::protect::RootTable) -> R,
+    ) -> Option<R> {
+        // SAFETY: strictly-local single-field lend on a live pinned owner.
+        self.with_pinned(|inst| unsafe { f(&mut (*inst).root_table) })
+    }
+
+    /// Lend this owner's preserved-roots stack for a strictly-local update.
+    ///
+    /// Same strictly-local lend contract as [`Self::with_legacy_protect`].
+    fn with_preserve_stack<R>(
+        &self,
+        f: impl FnOnce(&mut super::super::protect::PreservedRoots) -> R,
+    ) -> Option<R> {
+        // SAFETY: strictly-local single-field lend on a live pinned owner.
+        self.with_pinned(|inst| unsafe { f(&mut (*inst).preserve_stack) })
+    }
+
     /// Authenticate `s` against this owner's captured heap identity.
     pub(crate) fn root_value(&self, s: SEXP) -> Result<RootValue, ProtectError> {
         RootValue::from_heap(&self.heap, s)
@@ -647,43 +680,42 @@ impl GuardOwner {
     /// Push `s` onto this owner's legacy protection stack.
     pub(crate) fn push_legacy(&self, s: SEXP) {
         let value = self.root_value(s).expect("invalid protection owner");
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.push(value, "protect") });
+        self.with_legacy_protect(|stack| stack.push(value, "protect"));
     }
 
     /// Pop the top `n` entries from this owner's legacy stack.
     pub(crate) fn pop_legacy_count(&self, n: usize) {
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.pop_count(n) });
+        self.with_legacy_protect(|stack| stack.pop_count(n));
     }
 
     /// Remove the topmost legacy entry holding `s` on this owner.
     pub(crate) fn remove_topmost_legacy(&self, s: SEXP) {
         let value = self.root_value(s).expect("invalid unprotect owner");
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.remove_topmost(&value) });
+        self.with_legacy_protect(|stack| stack.remove_topmost(&value));
     }
 
     /// Current depth of this owner's legacy protection stack.
     pub(crate) fn legacy_len(&self) -> usize {
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.len() })
-            .unwrap_or(0)
+        self.with_legacy_protect(|stack| stack.len()).unwrap_or(0)
     }
 
     /// Copy this owner's legacy native projections into `output` when it
     /// fits, returning the entry count.
     pub(crate) fn legacy_copy_native_entries(&self, output: &mut [SEXP]) -> Option<usize> {
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.copy_native_entries(output) })
+        self.with_legacy_protect(|stack| stack.copy_native_entries(output))
             .flatten()
     }
 
     /// Snapshot this owner's legacy entries as native projections.
     pub(crate) fn legacy_entries_snapshot(&self) -> Option<RootSnapshot<SEXP>> {
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.entries_snapshot() })
+        self.with_legacy_protect(|stack| stack.entries_snapshot())
     }
 
     /// Snapshot this owner's legacy leases for a relocating update pass.
     pub(crate) fn legacy_updates_snapshot(
         &self,
     ) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
-        self.with_pinned(|inst| unsafe { (*inst).legacy_protect.updates_snapshot() })
+        self.with_legacy_protect(|stack| stack.updates_snapshot())
     }
 
     /// Replace `expected` with `replacement` on this owner's legacy stack
@@ -694,10 +726,8 @@ impl GuardOwner {
         expected: &RootValue,
         replacement: RootValue,
     ) {
-        self.with_pinned(|inst| unsafe {
-            (*inst)
-                .legacy_protect
-                .replace_if_current(lease, expected, replacement);
+        self.with_legacy_protect(|stack| {
+            stack.replace_if_current(lease, expected, replacement);
         });
     }
 
@@ -708,44 +738,44 @@ impl GuardOwner {
         managed: bool,
     ) -> Result<ProtectionSlot, ProtectError> {
         let value = self.root_value(s)?;
-        self.with_pinned(|inst| unsafe { (*inst).root_table.try_claim(value, managed) })
+        self.with_root_table(|table| table.try_claim(value, managed))
             .unwrap_or(Err(ProtectError::OwnerUnavailable))
     }
 
     /// Replace the value held by `slot` with a checked image of `s`.
     pub(crate) fn reprotect_value(&self, slot: ProtectionSlot, s: SEXP) {
         let value = self.root_value(s).expect("invalid root replacement");
-        self.with_pinned(|inst| unsafe {
-            let _ = (*inst).root_table.reprotect(slot, value);
+        self.with_root_table(|table| {
+            let _ = table.reprotect(slot, value);
         });
     }
 
     /// Release `slot` from this owner's root table.
     pub(crate) fn release_root(&self, slot: ProtectionSlot) {
-        self.with_pinned(|inst| unsafe { (*inst).root_table.release(slot) });
+        self.with_root_table(|table| table.release(slot));
     }
 
     /// The generation currently recorded for `slot` on this owner.
     pub(crate) fn root_generation_at(&self, slot: ProtectionSlot) -> Option<u64> {
-        self.with_pinned(|inst| unsafe { (*inst).root_table.generation_at(slot) })
+        self.with_root_table(|table| table.generation_at(slot))
             .flatten()
     }
 
     /// Copy this owner's root-table native projections into `output` when it
     /// fits, returning the entry count.
     pub(crate) fn root_copy_native_entries(&self, output: &mut [SEXP]) -> Option<usize> {
-        self.with_pinned(|inst| unsafe { (*inst).root_table.copy_native_entries(output) })
+        self.with_root_table(|table| table.copy_native_entries(output))
             .flatten()
     }
 
     /// Snapshot this owner's root-table entries as native projections.
     pub(crate) fn root_entries_snapshot(&self) -> Option<RootSnapshot<SEXP>> {
-        self.with_pinned(|inst| unsafe { (*inst).root_table.entries_snapshot() })
+        self.with_root_table(|table| table.entries_snapshot())
     }
 
     /// Snapshot this owner's root-table slots for a relocating update pass.
     pub(crate) fn root_updates_snapshot(&self) -> Option<RootSnapshot<(SlotId, RootValue)>> {
-        self.with_pinned(|inst| unsafe { (*inst).root_table.updates_snapshot() })
+        self.with_root_table(|table| table.updates_snapshot())
     }
 
     /// Replace `expected` with `replacement` in this owner's root table when
@@ -756,45 +786,43 @@ impl GuardOwner {
         expected: &RootValue,
         replacement: RootValue,
     ) {
-        self.with_pinned(|inst| unsafe {
-            (*inst)
-                .root_table
-                .replace_if_current(slot, expected, replacement);
+        self.with_root_table(|table| {
+            table.replace_if_current(slot, expected, replacement);
         });
     }
 
     /// Push `s` onto this owner's preserve stack, returning its lease.
     pub(crate) fn try_preserve(&self, s: SEXP) -> Result<Option<SequenceLease>, ProtectError> {
         let value = self.root_value(s)?;
-        self.with_pinned(|inst| unsafe { (*inst).preserve_stack.try_push(value).map(Some) })
+        self.with_preserve_stack(|stack| stack.try_push(value).map(Some))
             .unwrap_or(Err(ProtectError::OwnerUnavailable))
     }
 
     /// Remove the first preserve entry holding `s` on this owner.
     pub(crate) fn remove_preserved(&self, s: SEXP) {
         let value = self.root_value(s).expect("invalid preserve release owner");
-        self.with_pinned(|inst| unsafe {
-            (*inst).preserve_stack.remove_first(&value);
+        self.with_preserve_stack(|stack| {
+            stack.remove_first(&value);
         });
     }
 
     /// Remove exactly `lease` from this owner's preserve stack.
     pub(crate) fn remove_preserve_lease(&self, lease: SequenceLease) {
-        self.with_pinned(|inst| unsafe {
-            (*inst).preserve_stack.remove_lease(lease);
+        self.with_preserve_stack(|stack| {
+            stack.remove_lease(lease);
         });
     }
 
     /// Snapshot this owner's preserve entries as native projections.
     pub(crate) fn preserve_entries_snapshot(&self) -> Option<RootSnapshot<SEXP>> {
-        self.with_pinned(|inst| unsafe { (*inst).preserve_stack.entries_snapshot() })
+        self.with_preserve_stack(|stack| stack.entries_snapshot())
     }
 
     /// Snapshot this owner's preserve leases for a relocating update pass.
     pub(crate) fn preserve_updates_snapshot(
         &self,
     ) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
-        self.with_pinned(|inst| unsafe { (*inst).preserve_stack.updates_snapshot() })
+        self.with_preserve_stack(|stack| stack.updates_snapshot())
     }
 
     /// Replace `expected` with `replacement` on this owner's preserve stack
@@ -805,10 +833,8 @@ impl GuardOwner {
         expected: &RootValue,
         replacement: RootValue,
     ) {
-        self.with_pinned(|inst| unsafe {
-            (*inst)
-                .preserve_stack
-                .replace_if_current(lease, expected, replacement);
+        self.with_preserve_stack(|stack| {
+            stack.replace_if_current(lease, expected, replacement);
         });
     }
 }
