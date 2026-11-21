@@ -2220,12 +2220,12 @@ mod tests {
     }
 
     fn pairlist(values: &[SEXP]) -> SEXP {
-        unsafe {
+        
             values
                 .iter()
                 .rev()
                 .fold(R_NilValue(), |tail, value| Rf_cons(*value, tail))
-        }
+        
     }
 
     fn unique_profile_path(prefix: &str) -> String {
@@ -2559,7 +2559,7 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| {
             let path = unique_profile_path("rport-rprof");
-            let args = unsafe {
+            let args = 
                 pairlist(&[
                     r_string(&path),
                     Rf_ScalarLogical(FALSE),
@@ -2572,23 +2572,23 @@ mod tests {
                     Rf_ScalarInteger(PROFBUFSIZ as c_int),
                     r_string("elapsed"),
                 ])
-            };
+            ;
 
-            unsafe {
+            
                 crate::mainutils::essentials::do_Rprof(
                     ptr::null_mut(),
                     ptr::null_mut(),
                     args,
                     R_NilValue(),
                 );
-            }
+            
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 1);
                 assert_eq!(state.mem_profiling, 0);
                 assert!(state.profile_outfile >= 0);
             });
 
-            unsafe {
+            
                 let stop_args = pairlist(&[r_string("")]);
                 crate::mainutils::essentials::do_Rprof(
                     ptr::null_mut(),
@@ -2596,7 +2596,7 @@ mod tests {
                     stop_args,
                     R_NilValue(),
                 );
-            }
+            
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 0);
                 assert_eq!(state.profile_outfile, -1);
@@ -2613,16 +2613,16 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| {
             let path = unique_profile_path("rport-rprofmem");
-            let args = unsafe { pairlist(&[r_string(&path), Rf_ScalarLogical(FALSE)]) };
+            let args =  pairlist(&[r_string(&path), Rf_ScalarLogical(FALSE)]) ;
 
-            unsafe {
+            
                 crate::mainutils::essentials::do_Rprofmem(
                     ptr::null_mut(),
                     ptr::null_mut(),
                     args,
                     R_NilValue(),
                 );
-            }
+            
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 1);
                 assert_eq!(state.mem_profiling, 1);
@@ -2635,7 +2635,7 @@ mod tests {
             assert!(with_profiling_state(|state| state.profile_schedule.is_none()));
             R_WriteProfile(0);
 
-            unsafe {
+            
                 let stop_args = pairlist(&[r_string("")]);
                 crate::mainutils::essentials::do_Rprofmem(
                     ptr::null_mut(),
@@ -2643,7 +2643,7 @@ mod tests {
                     stop_args,
                     R_NilValue(),
                 );
-            }
+            
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 0);
                 assert_eq!(state.mem_profiling, 0);

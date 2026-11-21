@@ -1521,18 +1521,18 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
             .unwrap();
 
         let cycle = factory.pairlist_cell(&value, &nil, &nil).unwrap();
-        unsafe { crate::sexp::accessors::SETCDR(cycle.as_raw(), cycle.as_raw()) };
+         crate::sexp::accessors::SETCDR(cycle.as_raw(), cycle.as_raw()) ;
         let cycle_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             summary_method_arguments(&factory, cycle)
         }));
         assert!(cycle_error.is_err());
 
         let improper = factory.pairlist_cell(&value, &nil, &nil).unwrap();
-        unsafe { crate::sexp::accessors::SETCDR(improper.as_raw(), value.as_raw()) };
+         crate::sexp::accessors::SETCDR(improper.as_raw(), value.as_raw()) ;
         let improper_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             summary_method_arguments(&factory, improper)
         }));
@@ -1545,7 +1545,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let notifications = force_allocations_with_reentrant_gc(&session);
@@ -1559,8 +1559,8 @@ mod owned_argument_tests {
         .unwrap_err()
         .downcast::<RError>()
         .unwrap();
-        let canonical_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            crate::sexp::constructors::Rf_cons(value.as_raw(), nil.as_raw())
+        let canonical_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{            crate::sexp::constructors::Rf_cons(value.as_raw(), nil.as_raw())
         }))
         .unwrap_err()
         .downcast::<RError>()
@@ -1589,7 +1589,7 @@ mod owned_argument_tests {
             .wrap(crate::sexp::symbol::install_str("sum"))
             .unwrap();
         let value = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let blockers = (0..3)
@@ -1633,14 +1633,14 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(original.owner_token().unwrap());
         let result = original.with_active(|| {
             factory
-                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(17) })
+                .wrap( crate::sexp::constructors::Rf_ScalarInteger(17) )
                 .unwrap()
         });
         let result_raw = result.as_raw();
         let foreign_factory = SessionNodeFactory::new(replacement.owner_token().unwrap());
         let foreign_result = replacement.with_active(|| {
             foreign_factory
-                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(19) })
+                .wrap( crate::sexp::constructors::Rf_ScalarInteger(19) )
                 .unwrap()
         });
         let foreign_raw = foreign_result.as_raw();
@@ -1692,7 +1692,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let blockers = vec![
@@ -1741,7 +1741,7 @@ mod owned_argument_tests {
             let factory = SessionNodeFactory::new(original.owner_token().unwrap());
             let nil = factory.nil();
             let value = factory
-                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+                .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
                 .unwrap();
             let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
             (factory, arguments)
@@ -1781,7 +1781,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let environment = session.global_env().unwrap();
         for (name, number) in [(c"x", 11), (c"y", 22)] {
-            let value = factory.wrap(unsafe { Rf_ScalarInteger(number) }).unwrap();
+            let value = factory.wrap( Rf_ScalarInteger(number) ).unwrap();
             unsafe {
                 crate::sexp::envir::defineVar(
                     crate::sexp::symbol::install_str(name.to_str().unwrap()),
@@ -1907,7 +1907,7 @@ mod owned_argument_tests {
         let session = RSession::new_for_gc_tests();
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let environment = session.global_env().unwrap();
-        let invalid = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+        let invalid = factory.wrap( Rf_ScalarInteger(7) ).unwrap();
         unsafe {
             crate::sexp::envir::defineVar(R_DotsSymbol(), invalid.as_raw(), environment.as_raw());
         }

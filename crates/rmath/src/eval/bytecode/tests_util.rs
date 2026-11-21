@@ -83,12 +83,12 @@ pub(crate) fn collect_and_detach_pool(
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             // Remove the only graph edge to the original constants. The
             // executor's actual snapshots and argument cells must own them.
-            unsafe {
+            
                 crate::sexp::accessors::SET_ATTRIB(
                     code.as_raw(),
                     crate::sexp::globals::R_NilValue(),
                 );
-            }
+            
             crate::sexp::gengc::full_gc();
             observed.set(observed.get() + 1);
         }));

@@ -538,19 +538,19 @@ fn test_unary_minus() {
 #[test]
 fn unary_minus_is_looser_than_power() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    
         let result_handle = must(parse_str(&session, "exp(-x^2)"));
         let result = result_handle.clone().as_raw();
         let call = CADR(result);
         assert_eq!(call_head_name(call), "-");
         assert_eq!(call_head_name(CADR(call)), "^");
-    }
+    
 }
 
 #[test]
 fn unary_exponent_is_allowed_and_power_remains_right_associative() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    
         let result_handle = must(parse_str(&session, "2^-2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(call_head_name(result), "^");
@@ -560,7 +560,7 @@ fn unary_exponent_is_allowed_and_power_remains_right_associative() {
         let nested = nested_handle.clone().as_raw();
         assert_eq!(call_head_name(nested), "^");
         assert_eq!(call_head_name(crate::sexp::accessors::CADDR(nested)), "^");
-    }
+    
 }
 
 // --- Assignment ---
@@ -578,12 +578,12 @@ fn test_assignment() {
 #[test]
 fn test_equals_assign() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    
         let result_handle = must(parse_str(&session, "x = 42"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         assert_eq!(call_head_name(result), "=");
-    }
+    
 }
 
 #[test]
@@ -599,12 +599,12 @@ fn test_right_assign() {
 #[test]
 fn test_super_assignment_preserves_operator() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    
         let result_handle = must(parse_str(&session, "x <<- 42"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         assert_eq!(call_head_name(result), "<<-");
-    }
+    
 }
 
 // --- Function calls ---
@@ -661,7 +661,7 @@ fn test_quoted_named_arg() {
 #[test]
 fn test_parenthesized() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    
         let result_handle = must(parse_str(&session, "(1 + 2)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -670,7 +670,7 @@ fn test_parenthesized() {
         let inner = CADR(result);
         assert_eq!(TYPEOF(inner), SEXPTYPE::LANGSXP);
         assert_eq!(call_head_name(inner), "+");
-    }
+    
 }
 
 // --- Logical ---
@@ -859,10 +859,10 @@ fn if_body_newline_paren_is_next_expression() {
         2,
         "if-body newline then (2) must be two top-level expressions"
     );
-    unsafe {
+    
         assert_eq!(call_head_name(exprs[0].clone().as_raw()), "if");
         assert_eq!(call_head_name(exprs[1].clone().as_raw()), "(");
-    }
+    
 }
 
 #[test]

@@ -1239,7 +1239,7 @@ mod owned_matcher_tests {
                 .unwrap();
             formals.push(factory.missing(), Some(tag)).unwrap();
             let value = factory
-                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(number) })
+                .wrap( crate::sexp::constructors::Rf_ScalarInteger(number) )
                 .unwrap();
             arguments.push(value, None).unwrap();
         }
@@ -1257,10 +1257,10 @@ mod owned_matcher_tests {
             if !changed.replace(true) {
                 // The caller retains both original heads for this callback.
                 // Every detached indexed cell must now be owned by the matcher.
-                unsafe {
+                
                     SETCDR(original_formals, nil);
                     SETCDR(original_arguments, nil);
-                }
+                
             }
             crate::sexp::gengc::full_gc();
         }));
@@ -1270,7 +1270,7 @@ mod owned_matcher_tests {
         });
         let before = crate::sexp::protect::R_ProtectCount();
         let matched =
-            unsafe { match_closure_args(&factory, formals.clone(), arguments.clone()) }.unwrap();
+             match_closure_args(&factory, formals.clone(), arguments.clone()) .unwrap();
         session.with_active_in(|instance| unsafe {
             (*instance).memory_state.gc_force_gap = 0;
         });
@@ -1325,10 +1325,10 @@ mod owned_matcher_tests {
                 .unwrap()
         });
         let selected = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(37) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(37) )
             .unwrap();
         let handled = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(0) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(0) )
             .unwrap();
         let symbol = |name: &CStr| {
             factory

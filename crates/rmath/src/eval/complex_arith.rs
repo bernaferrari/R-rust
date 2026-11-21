@@ -425,9 +425,9 @@ mod tests {
         session.with_active(|| {
             // SAFETY: the owner remains active and all evaluated inputs are
             // rooted through materialization, computation, and publication.
-            let complex = unsafe { Rf_ScalarComplex(Rcomplex { r: 2.0, i: 3.0 }) };
+            let complex =  Rf_ScalarComplex(Rcomplex { r: 2.0, i: 3.0 }) ;
             let complex = owner.sexp(complex).unwrap();
-            let raw = unsafe { complex_binary("*", complex.as_raw(), real.as_raw()) };
+            let raw =  complex_binary("*", complex.as_raw(), real.as_raw()) ;
             let value = owner.sexp(raw).unwrap().try_complex_elt(0).unwrap();
             assert_eq!((value.r, value.i), (10.0, 15.0));
         });
@@ -437,20 +437,20 @@ mod tests {
     #[test]
     fn test_complex_add() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
             let result = complex_binary("+", a, b);
             let z = COMPLEX_ELT(result, 0);
             assert!((z.r - 4.0).abs() < 1e-10);
             assert!((z.i - 6.0).abs() < 1e-10);
-        }
+        
     }
 
     #[test]
     fn test_complex_mul() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        
             // (1+2i) * (3+4i) = (3-8) + (4+6)i = -5 + 10i
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
@@ -458,13 +458,13 @@ mod tests {
             let z = COMPLEX_ELT(result, 0);
             assert!((z.r - (-5.0)).abs() < 1e-10);
             assert!((z.i - 10.0).abs() < 1e-10);
-        }
+        
     }
 
     #[test]
     fn test_complex_div() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        
             // (1+2i) / (1+i) = ((1+2i)(1-i)) / 2 = (3+i)/2 = 1.5 + 0.5i
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 1.0 });
@@ -472,32 +472,32 @@ mod tests {
             let z = COMPLEX_ELT(result, 0);
             assert!((z.r - 1.5).abs() < 1e-10);
             assert!((z.i - 0.5).abs() < 1e-10);
-        }
+        
     }
 
     #[test]
     fn test_complex_sub() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        
             let a = Rf_ScalarComplex(Rcomplex { r: 5.0, i: 3.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 2.0, i: 1.0 });
             let result = complex_binary("-", a, b);
             let z = COMPLEX_ELT(result, 0);
             assert!((z.r - 3.0).abs() < 1e-10);
             assert!((z.i - 2.0).abs() < 1e-10);
-        }
+        
     }
 
     #[test]
     fn test_complex_abs() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        
             let a = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
             let result = complex_abs_vec(a);
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             let v = REAL_ELT(result, 0);
             assert!((v - 5.0).abs() < 1e-10);
-        }
+        
     }
 
     #[test]

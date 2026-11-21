@@ -293,12 +293,12 @@ mod tests {
     }
 
     fn integers(values: &[i32]) -> Sexp<'static> {
-        let mut value = SexpMut::try_from_checked(unsafe {
+        let mut value = SexpMut::try_from_checked(
             own_operand(Rf_allocVector(
                 SEXPTYPE::INTSXP,
                 i32::try_from(values.len()).unwrap(),
             ))
-        })
+        )
         .unwrap();
         for (index, element) in values.iter().copied().enumerate() {
             assert!(value.set_integer_elt(index as i64, element));
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn owned_switch_selector_rejects_revoked_original_runtime_with_replacement_active() {
         let mut session = RSession::new_for_gc_tests();
-        let (table, value, pin) = session.with_active(|| unsafe {
+        let (table, value, pin) = session.with_active(|| {
             let pin = session.owner_token().unwrap().pin().unwrap().unwrap();
             let value = own_operand(Rf_ScalarInteger(1));
             let table = OwnedSwitch {

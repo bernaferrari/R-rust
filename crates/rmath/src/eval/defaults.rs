@@ -394,11 +394,11 @@ mod tests {
     #[test]
     fn as_logical_no_na_uses_typed_scalar_access() {
         let _session = RSession::new();
-        unsafe {
+        
             assert_eq!(asLogicalNoNA(Rf_ScalarLogical(TRUE), R_NilValue()), TRUE);
             assert_eq!(asLogicalNoNA(Rf_ScalarLogical(FALSE), R_NilValue()), FALSE);
             assert_eq!(asLogicalNoNA(Rf_ScalarInteger(42), R_NilValue()), TRUE);
             assert_eq!(asLogicalNoNA(Rf_ScalarInteger(0), R_NilValue()), FALSE);
-        }
+        
     }
 }

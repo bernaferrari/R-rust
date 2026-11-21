@@ -53,13 +53,13 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
     } else {
         None
     };
-    let bytecode = unsafe {
+    let bytecode = 
         own_operand(
             compile_expr(expression.as_raw(), environment.as_raw())
                 .expect("subassignment must compile"),
         )
-    };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) };
+    ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) ;
     SexpMut::try_from_checked(pool.clone())
         .unwrap()
         .try_set_vector_elt(0, factory.nil())
@@ -93,12 +93,12 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
             (*instance).memory_state.gc_force_wait = 1;
         });
     }
-    let actual = unsafe {
+    let actual = 
         own_operand(super::super::bc_eval::bcEval(
             bytecode.as_raw(),
             environment.as_raw(),
         ))
-    };
+    ;
     let actual_visible = crate::sexp::globals::R_Visible();
     let actual_object =
         unsafe { own_operand(crate::sexp::envir::R_findVar(symbol, environment.as_raw())) };
@@ -223,7 +223,7 @@ fn compiled_subassignment_keeps_bare_dots_on_existing_source_path() {
             .with_arena(|arena| crate::eval::parser::parse(syntax, arena, factory.domain()))
             .unwrap()
             .unwrap();
-        assert!(unsafe { compile_expr(expression.as_raw(), environment.as_raw()) }.is_none());
+        assert!( compile_expr(expression.as_raw(), environment.as_raw()) .is_none());
     }
 }
 
@@ -243,8 +243,8 @@ fn owned_compiled_subassignment_rejects_original_owner_revocation() {
         .unwrap()
         .unwrap();
     let bytecode =
-        unsafe { own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) };
+         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) ;
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, factory.nil())
@@ -263,8 +263,8 @@ fn owned_compiled_subassignment_rejects_original_owner_revocation() {
             }
         }
     }));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
     }));
     assert!(observed.get());
     assert!(original.pin().is_err());
@@ -301,7 +301,7 @@ fn owned_compiled_subassignment_preserves_live_callback_panic_identity() {
         .unwrap()
         .unwrap();
     let bytecode =
-        unsafe { own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) };
+         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
     drop(expression);
     let observed = Rc::new(Cell::new(false));
     let called = observed.clone();
@@ -310,8 +310,8 @@ fn owned_compiled_subassignment_preserves_live_callback_panic_identity() {
             std::panic::panic_any(0xA17E_u32);
         }
     }));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
     }))
     .expect_err("live callback panic must propagate unchanged");
     assert_eq!(
@@ -331,8 +331,8 @@ fn owned_compiled_subassignment_preserves_live_callback_panic_identity() {
             });
         }
     }));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
     }))
     .expect_err("live R callback error must propagate unchanged");
     // The primitive's normal error attribution converts the bare RError into
@@ -404,8 +404,8 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
                 environment.as_raw(),
             ))
         };
-        let body = unsafe { own_operand(crate::sexp::accessors::BODY(function.as_raw())) };
-        assert!(unsafe { super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) });
+        let body =  own_operand(crate::sexp::accessors::BODY(function.as_raw())) ;
+        assert!( super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) );
         let rhs = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
                 crate::sexp::symbol::install_str("rhs"),
@@ -417,12 +417,12 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
         setup(&mut session, "f<-NULL");
         drop(function);
         session.gc();
-        let result = unsafe {
+        let result = 
             own_operand(super::super::bc_eval::bcEval(
                 body.as_raw(),
                 environment.as_raw(),
             ))
-        };
+        ;
         assert_eq!(result, rhs, "GNU must return the original RHS");
         assert_eq!(crate::sexp::globals::R_Visible(), 0);
         let (result, _, _) = session.eval_code_with_output_capture(assertion);
@@ -442,17 +442,17 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
             environment.as_raw(),
         ))
     };
-    let body = unsafe { own_operand(crate::sexp::accessors::BODY(function.as_raw())) };
-    assert!(unsafe { super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) });
+    let body =  own_operand(crate::sexp::accessors::BODY(function.as_raw())) ;
+    assert!( super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) );
     setup(&mut session, "f<-NULL");
     drop(function);
     session.gc();
-    let result = unsafe {
+    let result = 
         own_operand(super::super::bc_eval::bcEval(
             body.as_raw(),
             environment.as_raw(),
         ))
-    };
+    ;
     unsafe {
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::install_str("actual"),
@@ -507,8 +507,8 @@ fn owned_compiled_subassignment_index_error_keeps_rhs_effects_and_recovers() {
     };
     setup(&mut session, setup_code);
     let bytecode =
-        unsafe { own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) };
+         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(bytecode.as_raw())) ;
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, factory.nil())
@@ -516,8 +516,8 @@ fn owned_compiled_subassignment_index_error_keeps_rhs_effects_and_recovers() {
     drop(expression);
     session.gc();
     let protections = crate::sexp::protect::R_ProtectCount();
-    let compiled_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
+    let compiled_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{        super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw())
     }))
     .expect_err("compiled index callback must signal an R error");
     assert_eq!(error_message(compiled_error), source_message);

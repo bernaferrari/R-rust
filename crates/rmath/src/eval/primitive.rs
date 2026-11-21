@@ -345,7 +345,7 @@ mod tests {
         let pointer = arena.alloc_node(SEXPTYPE::BUILTINSXP);
         let offset = fun_tab_index_by_name("length").unwrap();
         // SAFETY: the arena keeps this exact initialized primitive live.
-        unsafe { SET_PRIMOFFSET(pointer, offset) };
+         SET_PRIMOFFSET(pointer, offset) ;
         let address_only = std::ptr::without_provenance_mut(pointer.addr());
         assert_eq!(PRIMNAME(address_only), "length");
         assert_eq!(
@@ -427,10 +427,10 @@ mod tests {
     fn portable_identity_is_reused_without_adding_r_attributes() {
         let _session = RSession::new();
         let first = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
-        let _first = unsafe {
+        let _first = 
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             crate::sexp::protect::protect(first)
-        };
+        ;
         let second = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
         assert_eq!(
             crate::sexp::accessors::PRIMOFFSET(first),

@@ -1383,7 +1383,7 @@ mod tests {
             .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
             .unwrap()
             .unwrap();
-        unsafe {
+        
             let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
             crate::sexp::accessors::SET_VECTOR_ELT(
                 super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
@@ -1425,7 +1425,7 @@ mod tests {
                 symbol_name_from_sexp(object.as_raw()).as_deref(),
                 Some("*tmp*")
             );
-        }
+        
     }
 
     #[test]
@@ -1558,7 +1558,7 @@ mod tests {
         let factory = owner.node_factory();
         let env = session.global_env().unwrap();
         let expression=owner.with_arena(|arena|crate::eval::parser::parse("{x<-c('foo');`stamp<-`<-function(x,label,value){attr(x,'expression')<-substitute(label);x};stamp(x,unbound_label)<-7L;x}",arena,factory.domain())).unwrap().unwrap();
-        unsafe {
+        
             let code = own_operand(
                 compile_expr(expression.as_raw(), env.as_raw())
                     .expect("lazy custom replacement must compile"),
@@ -1581,7 +1581,7 @@ mod tests {
                 symbol_name_from_sexp(attribute.as_raw()).as_deref(),
                 Some("unbound_label")
             );
-        }
+        
     }
 
     #[test]
@@ -1597,7 +1597,7 @@ mod tests {
             .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
             .unwrap()
             .unwrap();
-        unsafe {
+        
             let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
             crate::sexp::accessors::SET_VECTOR_ELT(
                 super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
@@ -1626,7 +1626,7 @@ mod tests {
                 symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
                 Some("*tmp*")
             );
-        }
+        
     }
 
     #[test]
@@ -1640,15 +1640,15 @@ mod tests {
     #[test]
     fn compile_constant_round_trips_through_bc_eval() {
         let session = RSession::new_without_default_packages();
-        let expr = session.with_active(|| unsafe { Rf_ScalarInteger(42) });
+        let expr = session.with_active(||  Rf_ScalarInteger(42) );
         let env = session.global_env().expect("global env");
 
-        unsafe {
+        
             let bcode = compile_expr(expr, env.clone().as_raw()).expect("constant should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(INTEGER_ELT(result, 0), 42);
-        }
+        
     }
 
     #[test]

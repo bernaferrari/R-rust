@@ -425,18 +425,18 @@ mod tests {
         ];
 
         fn symbol(name: &str) -> crate::sexp::ffi::SEXP {
-            unsafe {
+            
                 if name == "..." {
                     return R_DotsSymbol();
                 }
                 crate::sexp::symbol::install_str(name)
-            }
+            
         }
 
         fn chain(
             cells: &[(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP)],
         ) -> crate::sexp::ffi::SEXP {
-            unsafe {
+            
                 let mut head = R_NilValue();
                 for (car, tag) in cells.iter().rev() {
                     let cell = Rf_cons(*car, head);
@@ -446,14 +446,14 @@ mod tests {
                     head = cell;
                 }
                 head
-            }
+            
         }
 
         fn observe(
             formals: crate::sexp::ffi::SEXP,
             actuals: crate::sexp::ffi::SEXP,
         ) -> Vec<Binding> {
-            unsafe {
+            
                 let mut out = Vec::new();
                 let mut formal = formals;
                 let mut actual = actuals;
@@ -480,7 +480,7 @@ mod tests {
                     actual = CDR(actual);
                 }
                 out
-            }
+            
         }
 
         for (names, tags) in rows {
@@ -496,7 +496,7 @@ mod tests {
                 })
                 .collect();
             let expected = match_formals(&formals_pure, &supplied_pure);
-            let (formals, supplied) = unsafe {
+            let (formals, supplied) = {
                 let formal_cells: Vec<_> = names
                     .iter()
                     .map(|name| (R_MissingArg(), symbol(name)))
@@ -515,12 +515,12 @@ mod tests {
                     .collect();
                 (chain(&formal_cells), chain(&supplied_cells))
             };
-            let factory = unsafe { crate::eval::dispatch::active_argument_factory() };
+            let factory =  crate::eval::dispatch::active_argument_factory() ;
             let formals_owner = crate::eval::dispatch::argument_value(&factory, formals);
             let supplied_owner = crate::eval::dispatch::argument_value(&factory, supplied);
-            let closure = unsafe {
+            let closure = 
                 match_closure_args(&factory, formals_owner.clone(), supplied_owner.clone())
-            };
+            ;
             let builtin = catch_unwind(AssertUnwindSafe(|| unsafe {
                 matchArgs_NR_local(formals, supplied, R_NilValue())
             }));

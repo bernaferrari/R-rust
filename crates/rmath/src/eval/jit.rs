@@ -1199,15 +1199,15 @@ mod tests {
         let factory = SessionNodeFactory::new(owner);
         let global = session.global_env().unwrap();
         let environment = factory
-            .wrap(unsafe {
+            .wrap(
                 crate::sexp::memory_ext::NewEnvironment(R_NilValue(), global.as_raw(), R_NilValue())
-            })
+            )
             .unwrap();
         let seed = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(44) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(44) )
             .unwrap();
         let other_seed = factory
-            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(100) })
+            .wrap( crate::sexp::constructors::Rf_ScalarInteger(100) )
             .unwrap();
         let seed_symbol = factory
             .wrap(crate::sexp::symbol::install_str("seed"))
@@ -1286,9 +1286,9 @@ mod tests {
             (*instance).memory_state.gc_force_wait = 1;
         });
         let before = crate::sexp::protect::R_ProtectCount();
-        let promised = unsafe {
+        let promised = 
             tailcall_promise_args(&factory, call.try_cdr().unwrap(), environment.clone())
-        };
+        ;
         let cells: Vec<_> = PairlistIter::new(promised.clone()).collect();
         assert_eq!(cells.len(), 4);
         assert_eq!(cells[0].try_car().unwrap(), forwarded);
@@ -1317,9 +1317,9 @@ mod tests {
             "tail"
         );
         let continuation = factory
-            .wrap(unsafe {
+            .wrap(
                 make_exec_continuation(call.as_raw(), environment.as_raw(), function.as_raw())
-            })
+            )
             .unwrap();
         drop(call);
         drop(function_expression);
@@ -1441,11 +1441,11 @@ mod tests {
     fn test_compile_expr_compiles_simple_expressions() {
         let _session = RSession::new();
         let expr =
-            _session.with_active(|| unsafe { crate::sexp::constructors::Rf_ScalarInteger(7) });
-        unsafe {
+            _session.with_active(||  crate::sexp::constructors::Rf_ScalarInteger(7) );
+        
             let compiled = R_compileExpr(expr, R_NilValue());
             assert_eq!(TYPEOF(compiled), SEXPTYPE::BCODESXP);
-        }
+        
     }
 
     #[test]
@@ -1549,7 +1549,7 @@ mod tests {
         let left = RSession::new();
         let right = RSession::new();
 
-        left.with_active(|| unsafe {
+        left.with_active(|| {
             set_R_jit_enabled(3);
             init_exec_token();
             let left_token = with_required_current_instance(get_R_exec_token_in);
@@ -1557,7 +1557,7 @@ mod tests {
             assert!(!left_token.is_null());
         });
 
-        right.with_active(|| unsafe {
+        right.with_active(|| {
             assert_eq!(get_R_jit_enabled(), 3);
             assert!(with_required_current_instance(get_R_exec_token_in).is_null());
             set_R_jit_enabled(1);

@@ -55,13 +55,13 @@ fn compare(session: &mut RSession, source: &str, syntax: &str, assertion: &str) 
     drop(expression);
     setup(session, source);
     let expression = parse(session, syntax, &environment);
-    let body = unsafe {
+    let body = 
         own_operand(
             compile_expr(expression.as_raw(), environment.as_raw())
                 .expect("general replacement must compile"),
         )
-    };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) };
+    ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, environment.node_factory().unwrap().nil())
@@ -69,12 +69,12 @@ fn compare(session: &mut RSession, source: &str, syntax: &str, assertion: &str) 
     drop(expression);
     session.gc();
     let rhs = binding(&environment, c"rhsValue");
-    let actual = unsafe {
+    let actual = 
         own_operand(super::super::bc_eval::bcEval(
             body.as_raw(),
             environment.as_raw(),
         ))
-    };
+    ;
     assert_eq!(actual, rhs, "return original RHS identity");
     assert_eq!(crate::sexp::globals::R_Visible(), 0);
     for (expected, actual) in [
@@ -171,7 +171,7 @@ fn compiled_general_non_symbol_heads_decline_and_keep_gnu_errors() {
     let environment = session.global_env().unwrap().into_owned().unwrap();
     for syntax in ["get('names')(x)<-rhs()", "fns[[i()]](x)<-rhs()"] {
         let expression = parse(&session, syntax, &environment);
-        assert!(unsafe { compile_expr(expression.as_raw(), environment.as_raw()) }.is_none());
+        assert!( compile_expr(expression.as_raw(), environment.as_raw()) .is_none());
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
         }))
@@ -205,8 +205,8 @@ fn compile(session: &RSession, syntax: &str) -> (Sexp<'static>, Sexp<'static>) {
     let environment = session.global_env().unwrap().into_owned().unwrap();
     let expression = parse(session, syntax, &environment);
     let body =
-        unsafe { own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) };
+         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, environment.node_factory().unwrap().nil())
@@ -215,12 +215,12 @@ fn compile(session: &RSession, syntax: &str) -> (Sexp<'static>, Sexp<'static>) {
     (body, environment)
 }
 fn execute(body: &Sexp<'static>, environment: &Sexp<'static>) -> Sexp<'static> {
-    unsafe {
+    
         own_operand(super::super::bc_eval::bcEval(
             body.as_raw(),
             environment.as_raw(),
         ))
-    }
+    
 }
 fn error_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
@@ -244,7 +244,7 @@ fn owned_general_replacement_sole_targets_and_rhs_survive_detached_pool_gc() {
     );
     let (body, environment) = compile(&session, "names(x[[unbound_index]])<-rhs()");
     session.gc();
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) };
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
     let captured = environment.clone();
     let count = Rc::new(Cell::new(0));
     let observed = count.clone();
@@ -285,11 +285,11 @@ fn owned_general_replacement_rejects_bad_levels_and_cyclic_syntax() {
         "x<-list(1L);rhsValue<-7L;events<-0L;`[[`<-function(x,i){events<<-1L;.subset2(x,1L)}",
     );
     let (body, environment) = compile(&session, "attr(x[[1L]],'note')<-rhsValue");
-    let words = unsafe { own_operand(crate::sexp::accessors::VECTOR_ELT(body.as_raw(), 0)) };
+    let words =  own_operand(crate::sexp::accessors::VECTOR_ELT(body.as_raw(), 0)) ;
     let opcode = (0..words.len())
         .find(|&index| words.integer_elt(index) == Some(opcodes::OP_REPLACEMENT_CHAIN))
         .unwrap();
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) };
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
     let scalar = (0..pool.len())
         .find(|&index| pool.try_vector_elt(index).unwrap().typeof_() == SEXPTYPE::INTSXP)
         .unwrap();
@@ -323,14 +323,14 @@ fn owned_general_replacement_rejects_bad_levels_and_cyclic_syntax() {
     }
     assert_eq!(execute(&body, &environment).integer_elt(0), Some(7));
     let expression = parse(&session, "names(x[[1L]])<-rhsValue", &environment);
-    let lhs = unsafe { own_operand(CAR(CDR(expression.as_raw()))) };
+    let lhs =  own_operand(CAR(CDR(expression.as_raw()))) ;
     // Deliberately make an invalid native syntax graph; checked path traversal
     // must reject the actual CAR cycle before invoking Rust recursion.
-    unsafe {
+    
         crate::sexp::accessors::SETCAR(CDR(lhs.as_raw()), lhs.as_raw());
-    }
-    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        compile_expr(expression.as_raw(), environment.as_raw())
+    
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
+{        compile_expr(expression.as_raw(), environment.as_raw())
     }))
     .unwrap_err();
     assert!(error_message(error).contains("cyclic replacement syntax spine"));
@@ -455,8 +455,8 @@ fn gnu_general_replacement_fixtures_execute_direct_vm_after_closure_release() {
         );
         let environment = session.global_env().unwrap().into_owned().unwrap();
         let function = binding(&environment, c"f");
-        let body = unsafe { own_operand(crate::sexp::accessors::BODY(function.as_raw())) };
-        assert!(unsafe { super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) });
+        let body =  own_operand(crate::sexp::accessors::BODY(function.as_raw())) ;
+        assert!( super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) );
         setup(&mut session, "f<-NULL");
         drop(function);
         session.gc();
@@ -499,8 +499,8 @@ fn compiled_general_replacement_deeper_and_enclosing_roots() {
     let environment = binding(&global, c"frame");
     let expression = parse(&session, "names(x[[i()]])<<-rhs()", &environment);
     let body =
-        unsafe { own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) };
-    let pool = unsafe { own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) };
+         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
+    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, environment.node_factory().unwrap().nil())
