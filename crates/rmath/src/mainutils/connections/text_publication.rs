@@ -140,9 +140,7 @@ pub(super) fn publish(
     }
     let factory = owner.node_factory();
     let symbol = call(owner, connection, || crate::sexp::symbol::install_str(name));
-    let old = call(owner, connection, || unsafe {
-        // SAFETY: `environment` is a checked owning handle and `symbol` is a
-        // live SYMSXP for the duration of this lookup.
+    let old = call(owner, connection, || {
         crate::sexp::envir::R_findVarInFrame(environment.as_raw(), symbol)
     });
     let old = factory
@@ -161,8 +159,7 @@ pub(super) fn publish(
         reuse.then_some(&old),
         &factory,
     );
-    call(owner, connection, || unsafe {
-        // SAFETY: all three handles are live for this strictly-local env write.
+    call(owner, connection, || {
         crate::sexp::envir::defineVar(symbol, answer.as_raw(), environment.as_raw())
     });
     data.published = complete;

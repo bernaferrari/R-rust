@@ -208,27 +208,25 @@ fn patch_argument(
     farg: Option<&mut fstype_t>,
     cloenv: SEXP,
 ) {
-    unsafe {
-        let value = CAR(supplied_slot);
-        if value == R_MissingArg() {
-            let local = crate::sexp::envir::R_findVarInFrame(cloenv, name);
-            if local == R_MissingArg() {
-                if let Some(farg) = farg {
-                    *farg = fstype_t::MatchedMissing;
-                }
-                return;
-            }
+    let value = CAR(supplied_slot);
+    if value == R_MissingArg() {
+        let local = crate::sexp::envir::R_findVarInFrame(cloenv, name);
+        if local == R_MissingArg() {
             if let Some(farg) = farg {
-                *farg = fstype_t::MatchedLocal;
+                *farg = fstype_t::MatchedMissing;
             }
-        } else if let Some(farg) = farg {
-            *farg = fstype_t::MatchedPresent;
+            return;
         }
-        SETCAR(
-            supplied_slot,
-            crate::sexp::memory_ext::mkPROMISE(name, cloenv),
-        );
+        if let Some(farg) = farg {
+            *farg = fstype_t::MatchedLocal;
+        }
+    } else if let Some(farg) = farg {
+        *farg = fstype_t::MatchedPresent;
     }
+    SETCAR(
+        supplied_slot,
+        crate::sexp::memory_ext::mkPROMISE(name, cloenv),
+    );
 }
 
 /// 3-pass argument matching: exact tag, partial tag, positional.
@@ -432,48 +430,44 @@ pub(crate) fn fixcall(call: SEXP, args: SEXP) -> SEXP {
 
 /// Find a function in the environment chain from rho to target.
 pub(crate) fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
-    unsafe {
-        let mut current_rho = rho;
-        while !current_rho.is_null() && current_rho != R_EmptyEnv() {
-            let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
-            if vl != R_UnboundValue() {
-                if TYPEOF(vl) == SEXPTYPE::PROMSXP {
-                    // Would need to eval -- for now skip promise forcing
-                }
-                let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                    return vl;
-                }
+    let mut current_rho = rho;
+    while !current_rho.is_null() && current_rho != R_EmptyEnv() {
+        let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
+        if vl != R_UnboundValue() {
+            if TYPEOF(vl) == SEXPTYPE::PROMSXP {
+                // Would need to eval -- for now skip promise forcing
             }
-            if current_rho == target {
-                return R_UnboundValue();
+            let t = TYPEOF(vl);
+            if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+                return vl;
             }
-            current_rho = ENCLOS(current_rho);
         }
-        R_UnboundValue()
+        if current_rho == target {
+            return R_UnboundValue();
+        }
+        current_rho = ENCLOS(current_rho);
     }
+    R_UnboundValue()
 }
 
 /// Find a function, searching the global env, then base env.
 pub(crate) fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut current_rho = rho;
-        while !current_rho.is_null() && current_rho != R_EmptyEnv() {
-            let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
-            if vl != R_UnboundValue() {
-                let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                    return vl;
-                }
-            }
-            if current_rho == R_GlobalEnv() {
-                current_rho = R_BaseEnv();
-            } else {
-                current_rho = ENCLOS(current_rho);
+    let mut current_rho = rho;
+    while !current_rho.is_null() && current_rho != R_EmptyEnv() {
+        let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
+        if vl != R_UnboundValue() {
+            let t = TYPEOF(vl);
+            if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+                return vl;
             }
         }
-        R_UnboundValue()
+        if current_rho == R_GlobalEnv() {
+            current_rho = R_BaseEnv();
+        } else {
+            current_rho = ENCLOS(current_rho);
+        }
     }
+    R_UnboundValue()
 }
 
 // ---------------------------------------------------------------------------

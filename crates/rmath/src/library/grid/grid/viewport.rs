@@ -88,15 +88,11 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
         if topLevelVP == 0 && pushing != 0 {
             let parent = gridStateElement(dd, GSS_VP);
             set_vector_elt(vp, PVP_PARENT as R_xlen_t, parent);
-            // SAFETY: `parent`'s children environment and the interned name
-            // symbol are live objects lent by the viewport above.
-            unsafe {
-                defineVar(
-                    installTrChar(string_elt(vector_elt(vp, VP_NAME as R_xlen_t), 0)),
-                    vp,
-                    vector_elt(parent, PVP_CHILDREN as R_xlen_t),
-                );
-            }
+            defineVar(
+                installTrChar(string_elt(vector_elt(vp, VP_NAME as R_xlen_t), 0)),
+                vp,
+                vector_elt(parent, PVP_CHILDREN as R_xlen_t),
+            );
         }
 
         // SAFETY: forwarded raw pointers satisfy `calcViewportTransform`'s contract per this function's own `# Safety` requirements.
@@ -457,9 +453,7 @@ pub(crate) fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> 
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(result, 1 as R_xlen_t, unsafe {
-                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp))
-            });
+            set_vector_elt(result, 1 as R_xlen_t, findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)));
         } else {
             if logical_elt(strict, 0) != 0 {
                 set_vector_elt(result, 0 as R_xlen_t, zeroDepth);
@@ -484,12 +478,10 @@ pub(crate) fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_
         let mut found = false;
         let mut result = R_NilValue();
         while count < n && !found {
-            let child = unsafe {
-                findVar(
-                    installTrChar(string_elt(childnames, count as R_xlen_t)),
-                    children,
-                )
-            };
+            let child = findVar(
+                installTrChar(string_elt(childnames, count as R_xlen_t)),
+                children,
+            );
             let _child_guard = protect(child);
             if !isNull(child) {
                 result = findViewport(name, strict, child, depth);
@@ -527,12 +519,10 @@ pub(crate) fn findvppathInChildren(
         let mut found = false;
         let mut result = R_NilValue();
         while count < n && !found {
-            let vp = unsafe {
-                findVar(
-                    installTrChar(string_elt(childnames, count as R_xlen_t)),
-                    children,
-                )
-            };
+            let vp = findVar(
+                installTrChar(string_elt(childnames, count as R_xlen_t)),
+                children,
+            );
             let _vp_guard = protect(vp);
             let newpathsofar = growPath(pathsofar, vector_elt(vp, VP_NAME as R_xlen_t));
             let _newpathsofar_guard = protect(newpathsofar);
@@ -577,9 +567,7 @@ pub(crate) fn findvppath(
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(result, 1 as R_xlen_t, unsafe {
-                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp))
-            });
+            set_vector_elt(result, 1 as R_xlen_t, findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)));
         } else {
             let found = findvppathInChildren(
                 path,

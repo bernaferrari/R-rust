@@ -691,12 +691,10 @@ pub(crate) fn namespace() -> SEXP {
     }
 }
 pub(crate) fn attach() {
-    unsafe {
-        if !crate::mainutils::essentials::package_attached("grid") {
-            namespace();
-            let env = new_grid_environment();
-            let _guard = crate::sexp::protect::protect(env);
-            crate::mainutils::essentials::attach_package_env(env);
-        }
+    if !crate::mainutils::essentials::package_attached("grid") {
+        namespace();
+        let env = new_grid_environment();
+        let _guard = crate::sexp::protect::protect(env);
+        crate::mainutils::essentials::attach_package_env(env);
     }
 }

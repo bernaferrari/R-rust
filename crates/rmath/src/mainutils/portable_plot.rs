@@ -300,11 +300,7 @@ fn colors(x: SEXP, default: Color) -> Vec<Color> {
         }
         (0..n)
             .map(|i| {
-                // SAFETY: `x` is a live atomic vector of the checked length;
-                // inRGBpar3 reads element `i` and returns a packed color.
-                let c = unsafe {
-                    crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff)
-                };
+                let c = crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff);
                 Color {
                     r: c as u8,
                     g: (c >> 8) as u8,
@@ -2733,10 +2729,7 @@ pub(crate) fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
                 let count = x.len().max(y.len());
-                // SAFETY: `args` is the live argument list of an evaluated call.
-                let parameters = unsafe {
-                    crate::library::graphics::text_metrics::drawing_parameters(args, count)
-                };
+                let parameters = crate::library::graphics::text_metrics::drawing_parameters(args, count);
                 let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for (i, mut text_params) in parameters.into_iter().enumerate() {

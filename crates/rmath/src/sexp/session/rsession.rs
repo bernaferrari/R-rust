@@ -1042,7 +1042,7 @@ impl RSession {
                 // Same main.c REPL-tail flush as the plain script loop; the
                 // final statement's warnings flush at result assembly.
                 if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
-                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
                     }) {
                         result = Err(error);

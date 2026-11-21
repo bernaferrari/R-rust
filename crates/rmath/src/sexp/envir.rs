@@ -48,9 +48,7 @@ pub fn R_BaseNamespace() -> SEXP {
         return base;
     }
     let sym = super::symbol::install_str(".BaseNamespaceEnv");
-    // SAFETY: both inputs are live globals-owned SEXPs under the ambient
-    // runtime contract.
-    let ns = unsafe { R_findVarInFrame(base, sym) };
+    let ns = R_findVarInFrame(base, sym);
     if !ns.is_null()
         && ns != R_UnboundValue()
         && ns != R_NilValue()
@@ -1209,7 +1207,7 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
 
         if let Some(val) = find_var_in_frame_result(current.clone(), symbol.clone())? {
             let val = if val.clone().typeof_() == SEXPTYPE::PROMSXP {
-                let forced = unsafe { forcePromise(val.clone().as_raw()) };
+                let forced = forcePromise(val.clone().as_raw());
                 unsafe { Sexp::from_raw(forced) }.unwrap_or(val)
             } else {
                 val
@@ -1231,7 +1229,7 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
     let mut value = crate::sexp::accessors::SYMVALUE(raw);
     if !value.is_null() && value != R_UnboundValue() {
         if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = unsafe { forcePromise(value) };
+            value = forcePromise(value);
         }
         let t = TYPEOF(value);
         if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
@@ -1747,62 +1745,56 @@ pub fn exists_var_in_frame_safe(rho: Sexp<'_>, symbol: Sexp<'_>) -> bool {
 
 /// Find a variable in the frame of a single environment (no inheritance).
 ///
-/// FFI wrapper around [`find_var_in_frame_safe`].
-pub(crate) unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
-    unsafe {
-        if rho.is_null() || symbol.is_null() {
-            return R_UnboundValue();
-        }
-
-        match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
-            (Some(rho), Some(symbol)) => find_var_in_frame_safe(rho, symbol)
-                .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(R_UnboundValue),
-            _ => R_UnboundValue(),
-        }
+/// Raw-pointer wrapper around [`find_var_in_frame_safe`]. Both pointers are
+/// validated against the heap directory and rooted for the lookup.
+pub(crate) fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
+    if rho.is_null() || symbol.is_null() {
+        return R_UnboundValue();
     }
+    Sexp::with_registered_raw2(rho, symbol, |rho, symbol| {
+        find_var_in_frame_safe(rho.clone(), symbol.clone()).map(|s: Sexp<'_>| s.as_raw())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_else(R_UnboundValue)
 }
 
 /// Find a variable, searching through parent environments.
 ///
-/// FFI wrapper around [`find_var_safe`].
-pub unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if symbol.is_null() {
-            return R_UnboundValue();
-        }
-
-        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-            (Some(symbol), Some(rho)) => find_var_safe(symbol, rho)
-                .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(R_UnboundValue),
-            _ => R_UnboundValue(),
-        }
+/// Raw-pointer wrapper around [`find_var_safe`]. Both pointers are validated
+/// against the heap directory and rooted for the lookup.
+pub fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
+    if symbol.is_null() {
+        return R_UnboundValue();
     }
+    Sexp::with_registered_raw2(symbol, rho, |symbol, rho| {
+        find_var_safe(symbol.clone(), rho.clone()).map(|s: Sexp<'_>| s.as_raw())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_else(R_UnboundValue)
 }
 
 /// Force evaluation of a promise, returning its value.
 ///
-/// FFI wrapper around [`force_promise_safe`].
-pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
-    unsafe {
-        if prom.is_null() {
-            return R_NilValue();
-        }
-
-        match Sexp::from_raw(prom) {
-            Some(prom) => force_promise_safe(prom)
-                .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(R_NilValue),
-            None => R_NilValue(),
-        }
+/// Raw-pointer wrapper around [`force_promise_safe`]. The promise is
+/// validated against the heap directory and rooted while it is forced.
+pub fn forcePromise(prom: SEXP) -> SEXP {
+    if prom.is_null() {
+        return R_NilValue();
     }
+    Sexp::with_registered_raw(prom, |prom| {
+        force_promise_safe(prom.clone()).map(|s: Sexp<'_>| s.as_raw())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_else(R_NilValue)
 }
 
 /// Define a variable in the given environment's frame.
 ///
-/// FFI wrapper around [`define_var_safe`].
-pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
+/// Raw-pointer wrapper around [`define_var_safe`].
+pub fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
     let _ = define_var_updates(symbol, value, rho);
 }
 
@@ -1818,65 +1810,45 @@ fn increment_named_on_assign(value: SEXP) {
 
 /// Define or update a binding, returning whether the frame/hash were updated.
 pub(crate) fn define_var_updates(symbol: SEXP, value: SEXP, rho: SEXP) -> bool {
-    unsafe {
-        // SAFETY: from_raw admits only registered, still-live node storage.
-        if rho.is_null() || symbol.is_null() {
-            return false;
-        }
-
-        if let (Some(symbol), Some(value), Some(rho)) = (
-            Sexp::from_raw(symbol),
-            Sexp::from_raw(value),
-            Sexp::from_raw(rho),
-        ) {
-            define_var_safe(symbol, value, rho)
-        } else {
-            false
-        }
+    if rho.is_null() || symbol.is_null() {
+        return false;
     }
+    Sexp::with_registered_raw3(symbol, value, rho, |symbol, value, rho| {
+        define_var_safe(symbol.clone(), value.clone(), rho.clone())
+    })
+    .unwrap_or(false)
 }
 
 /// Set a variable value, searching parent environments if needed.
 ///
-/// FFI wrapper around [`set_var_safe`].
-pub unsafe fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
-    unsafe {
-        if symbol.is_null() {
-            return;
-        }
-
-        if let (Some(symbol), Some(value), Some(rho)) = (
-            Sexp::from_raw(symbol),
-            Sexp::from_raw(value),
-            Sexp::from_raw(rho),
-        ) {
-            set_var_safe(symbol, value, rho);
-        }
+/// Raw-pointer wrapper around [`set_var_safe`].
+pub fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
+    if symbol.is_null() {
+        return;
     }
+    let _ = Sexp::with_registered_raw3(symbol, value, rho, |symbol, value, rho| {
+        set_var_safe(symbol.clone(), value.clone(), rho.clone());
+    });
 }
 
 /// Find a function value for a symbol.
 ///
-/// FFI wrapper around [`find_fun_safe`].
-pub(crate) unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if symbol.is_null() {
-            return R_UnboundValue();
-        }
-
-        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-            (Some(symbol), Some(rho)) => find_fun_safe(symbol, rho)
-                .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(R_UnboundValue),
-            _ => R_UnboundValue(),
-        }
+/// Raw-pointer wrapper around [`find_fun_safe`].
+pub(crate) fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
+    if symbol.is_null() {
+        return R_UnboundValue();
     }
+    Sexp::with_registered_raw2(symbol, rho, |symbol, rho| {
+        find_fun_safe(symbol.clone(), rho.clone()).map(|s: Sexp<'_>| s.as_raw())
+    })
+    .ok()
+    .flatten()
+    .unwrap_or_else(R_UnboundValue)
 }
 
 /// Find a function with error reporting.
 pub fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
-    // SAFETY: inputs are live SEXPs under the ambient runtime contract.
-    let fun = unsafe { findFun(symbol, rho) };
+    let fun = findFun(symbol, rho);
     if fun == R_UnboundValue() {
         // Could not find function — would error in real implementation
     }
@@ -1885,33 +1857,26 @@ pub fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
 
 /// Check if a symbol has a missing argument in the given environment.
 ///
-/// FFI wrapper around [`is_missing_safe`].
-pub unsafe fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
-    unsafe {
-        if symbol.is_null() || rho.is_null() {
-            return 0;
-        }
-
-        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-            (Some(symbol), Some(rho)) => is_missing_safe(symbol, rho) as c_int,
-            _ => 0,
-        }
+/// Raw-pointer wrapper around [`is_missing_safe`].
+pub fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
+    if symbol.is_null() || rho.is_null() {
+        return 0;
     }
+    Sexp::with_registered_raw2(symbol, rho, |symbol, rho| {
+        is_missing_safe(symbol.clone(), rho.clone()) as c_int
+    })
+    .unwrap_or(0)
 }
 
 /// FFI wrapper around [`r_missing_safe`].
 pub fn R_missing(symbol: SEXP, rho: SEXP) -> c_int {
-    unsafe {
-        // SAFETY: from_raw admits only registered, still-live node storage.
-        if symbol.is_null() || rho.is_null() {
-            return 0;
-        }
-
-        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-            (Some(symbol), Some(rho)) => r_missing_safe(symbol, rho) as c_int,
-            _ => 0,
-        }
+    if symbol.is_null() || rho.is_null() {
+        return 0;
     }
+    Sexp::with_registered_raw2(symbol, rho, |symbol, rho| {
+        r_missing_safe(symbol.clone(), rho.clone()) as c_int
+    })
+    .unwrap_or(0)
 }
 
 /// Report an error for a missing argument.

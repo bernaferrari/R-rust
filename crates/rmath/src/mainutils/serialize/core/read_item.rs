@@ -830,12 +830,7 @@ pub(crate) fn read_environment_item(
                 if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                     return Err("invalid environment binding name".into());
                 }
-                // SAFETY: `env` is a freshly allocated environment and
-                // `symbol` is a checked SYMSXP; the binding value is a live
-                // list CAR.
-                unsafe {
-                    crate::sexp::envir::defineVar(symbol, CAR(cell), env);
-                }
+                crate::sexp::envir::defineVar(symbol, CAR(cell), env);
                 cell = CDR(cell);
             }
         }

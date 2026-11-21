@@ -76,12 +76,10 @@ fn ints(x: SEXP) -> Vec<i32> {
 
 /// GNU `asRboolean` with NA collapsing to false.
 fn logical_flag(x: SEXP) -> bool {
-    unsafe {
-        if x == R_NilValue() {
-            return false;
-        }
-        asLogical(x) != 0 && asLogical(x) != NA_LOGICAL
+    if x == R_NilValue() {
+        return false;
     }
+    asLogical(x) != 0 && asLogical(x) != NA_LOGICAL
 }
 
 /// GNU `SymbolRange`: the finite maximum/minimum pair is valid when the
@@ -112,19 +110,17 @@ fn user_per_inch(c: &Coordinates, vertical: bool) -> f64 {
 /// GNU `C_erase` — fill the whole device (NDC 0..1) with `col`. The default
 /// `R_TRANWHITE` fill is transparent, so nothing is drawn.
 unsafe fn erase(args: SEXP) -> SEXP {
-    unsafe {
-        let fill = colors(arg(args, "col"), transparent()).remove(0);
-        if fill.a != 0 {
-            let target = &mut renderer();
-            let (w, h) = target.dimensions();
-            target.set_clip(None);
-            let mut rect = Path::rect(0., 0., w as f32, h as f32);
-            rect.fill = fill;
-            rect.stroke = Stroke::new(0., transparent());
-            target.draw_path(&rect);
-        }
-        invisible()
+    let fill = colors(arg(args, "col"), transparent()).remove(0);
+    if fill.a != 0 {
+        let target = &mut renderer();
+        let (w, h) = target.dimensions();
+        target.set_clip(None);
+        let mut rect = Path::rect(0., 0., w as f32, h as f32);
+        rect.fill = fill;
+        rect.stroke = Stroke::new(0., transparent());
+        target.draw_path(&rect);
     }
+    invisible()
 }
 
 /// GNU `C_path` — filled subpaths split by `nper` counts. The engine's Path
@@ -132,426 +128,422 @@ unsafe fn erase(args: SEXP) -> SEXP {
 /// of `rule` is decoded (and honored where subpaths are disjoint) but not
 /// re-expressed for overlapping holes.
 unsafe fn path(args: SEXP) -> SEXP {
-    unsafe {
-        let c = current();
-        let b = bindings(args, &["x", "y", "nper", "rule", "col", "border"]);
-        let x = values(b[0]);
-        let y = values(b[1]);
-        let nper = ints(b[2]);
-        let _rule = ints(b[3]).first().copied().unwrap_or(0);
-        let fill = colors(b[4], transparent());
-        let border = colors(b[5], par_color("fg", Color::BLACK));
-        if x.len() != y.len() {
+    let c = current();
+    let b = bindings(args, &["x", "y", "nper", "rule", "col", "border"]);
+    let x = values(b[0]);
+    let y = values(b[1]);
+    let nper = ints(b[2]);
+    let _rule = ints(b[3]).first().copied().unwrap_or(0);
+    let fill = colors(b[4], transparent());
+    let border = colors(b[5], par_color("fg", Color::BLACK));
+    if x.len() != y.len() {
+        base_error("invalid 'x' or 'y' (in 'GPath')");
+    }
+    let stroke = style(args, point_size(args));
+    let target = &mut renderer();
+    target.set_clip(Some(clip_rect(c, args)));
+    let mut start = 0usize;
+    for (index, count) in nper.iter().map(|v| *v as usize).enumerate() {
+        if count == 0 {
+            continue;
+        }
+        if start + count > x.len() {
             base_error("invalid 'x' or 'y' (in 'GPath')");
         }
-        let stroke = style(args, point_size(args));
-        let target = &mut renderer();
-        target.set_clip(Some(clip_rect(c, args)));
-        let mut start = 0usize;
-        for (index, count) in nper.iter().map(|v| *v as usize).enumerate() {
-            if count == 0 {
-                continue;
-            }
-            if start + count > x.len() {
+        let mut commands = Vec::new();
+        for k in 0..count {
+            let p = c.map(x[start + k], y[start + k]);
+            if !p.x.is_finite() || !p.y.is_finite() {
                 base_error("invalid 'x' or 'y' (in 'GPath')");
             }
-            let mut commands = Vec::new();
-            for k in 0..count {
-                let p = c.map(x[start + k], y[start + k]);
-                if !p.x.is_finite() || !p.y.is_finite() {
-                    base_error("invalid 'x' or 'y' (in 'GPath')");
-                }
-                commands.push(if k == 0 {
-                    PathCommand::MoveTo(p.x, p.y)
-                } else {
-                    PathCommand::LineTo(p.x, p.y)
-                });
-            }
-            commands.push(PathCommand::Close);
-            let mut subpath = Path {
-                commands,
-                fill: fill[0],
-                stroke: stroke.stroke(index),
-                anti_alias: true,
-            };
-            subpath.stroke.color = border[index % border.len()];
-            target.draw_path(&subpath);
-            start += count;
+            commands.push(if k == 0 {
+                PathCommand::MoveTo(p.x, p.y)
+            } else {
+                PathCommand::LineTo(p.x, p.y)
+            });
         }
-        target.set_clip(None);
-        invisible()
+        commands.push(PathCommand::Close);
+        let mut subpath = Path {
+            commands,
+            fill: fill[0],
+            stroke: stroke.stroke(index),
+            anti_alias: true,
+        };
+        subpath.stroke.color = border[index % border.len()];
+        target.draw_path(&subpath);
+        start += count;
     }
+    target.set_clip(None);
+    invisible()
 }
 
 /// GNU `C_symbols` — circles, squares, rectangles, stars, thermometers and
 /// boxplots, with GNU's inches/NDC size conversions.
 unsafe fn symbols(args: SEXP) -> SEXP {
-    unsafe {
-        let c = current();
-        let b = bindings(args, &["x", "y", "type", "data", "inches", "bg", "fg"]);
-        let x = values(b[0]);
-        let y = values(b[1]);
-        if x.is_empty() || y.is_empty() || x.len() != y.len() {
-            base_error("invalid symbol coordinates");
-        }
-        let symbol_type = asInteger(b[2]);
-        let data = values(b[3]);
-        let dim = crate::attrib_core::getAttrib(b[3], crate::attrib_core::R_DimSymbol());
-        let (nr, nc) = if dim == R_NilValue() || LENGTH(dim) == 0 {
-            (data.len(), 1)
+    let c = current();
+    let b = bindings(args, &["x", "y", "type", "data", "inches", "bg", "fg"]);
+    let x = values(b[0]);
+    let y = values(b[1]);
+    if x.is_empty() || y.is_empty() || x.len() != y.len() {
+        base_error("invalid symbol coordinates");
+    }
+    let symbol_type = asInteger(b[2]);
+    let data = values(b[3]);
+    let dim = crate::attrib_core::getAttrib(b[3], crate::attrib_core::R_DimSymbol());
+    let (nr, nc) = if dim == R_NilValue() || LENGTH(dim) == 0 {
+        (data.len(), 1)
+    } else {
+        let d0 = INTEGER_ELT(dim, 0);
+        let d1 = if LENGTH(dim) > 1 {
+            INTEGER_ELT(dim, 1)
         } else {
-            let d0 = INTEGER_ELT(dim, 0);
-            let d1 = if LENGTH(dim) > 1 {
-                INTEGER_ELT(dim, 1)
-            } else {
-                1
-            };
-            (d0.max(0) as usize, d1.max(0) as usize)
+            1
         };
-        if nr == 0 || nc == 0 {
-            base_error("invalid symbol parameter vector");
+        (d0.max(0) as usize, d1.max(0) as usize)
+    };
+    if nr == 0 || nc == 0 {
+        base_error("invalid symbol parameter vector");
+    }
+    if data.len() < nr * nc || nr != x.len() {
+        base_error("x/y/parameter length mismatch");
+    }
+    // R matrices are column-major: p[i + j * nr].
+    let p = |i: usize, j: usize| data[i + j * nr];
+    let mut inches = asReal(b[4]);
+    if !inches.is_finite() || inches < 0. {
+        inches = 0.;
+    }
+    let bg = colors(b[5], transparent());
+    let fg = colors(b[6], transparent());
+    let target = &mut renderer();
+    target.set_clip(Some(clip_rect(c, args)));
+    match symbol_type {
+        1 => {
+            // circles: radius in inches
+            if nc != 1 {
+                base_error("invalid circles data");
+            }
+            let radii: Vec<f64> = (0..nr).map(|i| p(i, 0)).collect();
+            let Some((pmax, _)) = symbol_range(&radii) else {
+                base_error("invalid symbol parameter");
+            };
+            for i in 0..nr {
+                if ![x[i], y[i], radii[i]].iter().all(|v| v.is_finite()) {
+                    continue;
+                }
+                let rx = if inches > 0. {
+                    radii[i] * inches / pmax
+                } else {
+                    radii[i] / user_per_inch(&c, false)
+                };
+                // GCircle maps a zero radius to one device pixel.
+                let r = (rx * 72.).max(1.) as f32;
+                let center = c.map(x[i], y[i]);
+                let mut circle = Path {
+                    commands: vec![
+                        PathCommand::MoveTo(center.x + r, center.y),
+                        PathCommand::ArcTo {
+                            rx: r,
+                            ry: r,
+                            x: center.x - r,
+                            y: center.y,
+                        },
+                        PathCommand::ArcTo {
+                            rx: r,
+                            ry: r,
+                            x: center.x + r,
+                            y: center.y,
+                        },
+                        PathCommand::Close,
+                    ],
+                    fill: bg[i % bg.len()],
+                    stroke: Stroke::new(1., fg[i % fg.len()]),
+                    anti_alias: true,
+                };
+                circle.stroke.color = fg[i % fg.len()];
+                target.draw_path(&circle);
+            }
         }
-        if data.len() < nr * nc || nr != x.len() {
-            base_error("x/y/parameter length mismatch");
+        2 => {
+            // squares
+            if nc != 1 {
+                base_error("invalid squares data");
+            }
+            let sizes: Vec<f64> = (0..nr).map(|i| p(i, 0)).collect();
+            let Some((pmax, _)) = symbol_range(&sizes) else {
+                base_error("invalid symbol parameter");
+            };
+            for i in 0..nr {
+                if ![x[i], y[i], sizes[i]].iter().all(|v| v.is_finite()) {
+                    continue;
+                }
+                let side = if inches > 0. {
+                    sizes[i] * inches / pmax
+                } else {
+                    sizes[i] / user_per_inch(&c, false)
+                };
+                let rx = (0.5 * side * 72.) as f32;
+                let center = c.map(x[i], y[i]);
+                draw_rect_symbol(
+                    target,
+                    center.x - rx,
+                    center.y - rx,
+                    center.x + rx,
+                    center.y + rx,
+                    bg[i % bg.len()],
+                    fg[i % fg.len()],
+                );
+            }
         }
-        // R matrices are column-major: p[i + j * nr].
-        let p = |i: usize, j: usize| data[i + j * nr];
-        let mut inches = asReal(b[4]);
-        if !inches.is_finite() || inches < 0. {
-            inches = 0.;
+        3 => {
+            // rectangles
+            if nc != 2 {
+                base_error("invalid rectangles data (need 2 columns)");
+            }
+            let flat: Vec<f64> = (0..2 * nr).map(|i| data[i]).collect();
+            let Some((pmax, _)) = symbol_range(&flat) else {
+                base_error("invalid symbol parameter");
+            };
+            for i in 0..nr {
+                if ![x[i], y[i], p(i, 0), p(i, 1)].iter().all(|v| v.is_finite()) {
+                    continue;
+                }
+                let (mut p0, mut p1) = (p(i, 0), p(i, 1));
+                if inches > 0. {
+                    p0 *= inches / pmax;
+                    p1 *= inches / pmax;
+                }
+                let rx = (0.5 * p0 * 72.) as f32;
+                let ry = (0.5 * p1 * 72.) as f32;
+                let center = c.map(x[i], y[i]);
+                draw_rect_symbol(
+                    target,
+                    center.x - rx,
+                    center.y - ry,
+                    center.x + rx,
+                    center.y + ry,
+                    bg[i % bg.len()],
+                    fg[i % fg.len()],
+                );
+            }
         }
-        let bg = colors(b[5], transparent());
-        let fg = colors(b[6], transparent());
-        let target = &mut renderer();
-        target.set_clip(Some(clip_rect(c, args)));
-        match symbol_type {
-            1 => {
-                // circles: radius in inches
-                if nc != 1 {
-                    base_error("invalid circles data");
+        4 => {
+            // stars
+            if nc < 3 {
+                base_error("invalid stars data");
+            }
+            let flat: Vec<f64> = (0..nc * nr).map(|i| data[i]).collect();
+            let Some((pmax, _)) = symbol_range(&flat) else {
+                base_error("invalid symbol parameter");
+            };
+            let step = 2.0 * std::f64::consts::PI / nc as f64;
+            for i in 0..nr {
+                if !x[i].is_finite() || !y[i].is_finite() {
+                    continue;
                 }
-                let radii: Vec<f64> = (0..nr).map(|i| p(i, 0)).collect();
-                let Some((pmax, _)) = symbol_range(&radii) else {
-                    base_error("invalid symbol parameter");
-                };
-                for i in 0..nr {
-                    if ![x[i], y[i], radii[i]].iter().all(|v| v.is_finite()) {
-                        continue;
+                let center = c.map(x[i], y[i]);
+                let mut commands = Vec::new();
+                for j in 0..nc {
+                    let mut v = p(i, j);
+                    if !v.is_finite() {
+                        v = 0.;
                     }
-                    let rx = if inches > 0. {
-                        radii[i] * inches / pmax
+                    let length = if inches > 0. {
+                        v / pmax * inches
                     } else {
-                        radii[i] / user_per_inch(&c, false)
+                        v / user_per_inch(&c, false)
                     };
-                    // GCircle maps a zero radius to one device pixel.
-                    let r = (rx * 72.).max(1.) as f32;
-                    let center = c.map(x[i], y[i]);
-                    let mut circle = Path {
-                        commands: vec![
-                            PathCommand::MoveTo(center.x + r, center.y),
-                            PathCommand::ArcTo {
-                                rx: r,
-                                ry: r,
-                                x: center.x - r,
-                                y: center.y,
-                            },
-                            PathCommand::ArcTo {
-                                rx: r,
-                                ry: r,
-                                x: center.x + r,
-                                y: center.y,
-                            },
-                            PathCommand::Close,
-                        ],
-                        fill: bg[i % bg.len()],
-                        stroke: Stroke::new(1., fg[i % fg.len()]),
-                        anti_alias: true,
-                    };
-                    circle.stroke.color = fg[i % fg.len()];
-                    target.draw_path(&circle);
-                }
-            }
-            2 => {
-                // squares
-                if nc != 1 {
-                    base_error("invalid squares data");
-                }
-                let sizes: Vec<f64> = (0..nr).map(|i| p(i, 0)).collect();
-                let Some((pmax, _)) = symbol_range(&sizes) else {
-                    base_error("invalid symbol parameter");
-                };
-                for i in 0..nr {
-                    if ![x[i], y[i], sizes[i]].iter().all(|v| v.is_finite()) {
-                        continue;
-                    }
-                    let side = if inches > 0. {
-                        sizes[i] * inches / pmax
+                    let px = center.x + (length * (j as f64 * step).cos() * 72.) as f32;
+                    let py = center.y - (length * (j as f64 * step).sin() * 72.) as f32;
+                    commands.push(if j == 0 {
+                        PathCommand::MoveTo(px, py)
                     } else {
-                        sizes[i] / user_per_inch(&c, false)
-                    };
-                    let rx = (0.5 * side * 72.) as f32;
-                    let center = c.map(x[i], y[i]);
-                    draw_rect_symbol(
-                        target,
-                        center.x - rx,
-                        center.y - rx,
-                        center.x + rx,
-                        center.y + rx,
-                        bg[i % bg.len()],
-                        fg[i % fg.len()],
-                    );
-                }
-            }
-            3 => {
-                // rectangles
-                if nc != 2 {
-                    base_error("invalid rectangles data (need 2 columns)");
-                }
-                let flat: Vec<f64> = (0..2 * nr).map(|i| data[i]).collect();
-                let Some((pmax, _)) = symbol_range(&flat) else {
-                    base_error("invalid symbol parameter");
-                };
-                for i in 0..nr {
-                    if ![x[i], y[i], p(i, 0), p(i, 1)].iter().all(|v| v.is_finite()) {
-                        continue;
-                    }
-                    let (mut p0, mut p1) = (p(i, 0), p(i, 1));
-                    if inches > 0. {
-                        p0 *= inches / pmax;
-                        p1 *= inches / pmax;
-                    }
-                    let rx = (0.5 * p0 * 72.) as f32;
-                    let ry = (0.5 * p1 * 72.) as f32;
-                    let center = c.map(x[i], y[i]);
-                    draw_rect_symbol(
-                        target,
-                        center.x - rx,
-                        center.y - ry,
-                        center.x + rx,
-                        center.y + ry,
-                        bg[i % bg.len()],
-                        fg[i % fg.len()],
-                    );
-                }
-            }
-            4 => {
-                // stars
-                if nc < 3 {
-                    base_error("invalid stars data");
-                }
-                let flat: Vec<f64> = (0..nc * nr).map(|i| data[i]).collect();
-                let Some((pmax, _)) = symbol_range(&flat) else {
-                    base_error("invalid symbol parameter");
-                };
-                let step = 2.0 * std::f64::consts::PI / nc as f64;
-                for i in 0..nr {
-                    if !x[i].is_finite() || !y[i].is_finite() {
-                        continue;
-                    }
-                    let center = c.map(x[i], y[i]);
-                    let mut commands = Vec::new();
-                    for j in 0..nc {
-                        let mut v = p(i, j);
-                        if !v.is_finite() {
-                            v = 0.;
-                        }
-                        let length = if inches > 0. {
-                            v / pmax * inches
-                        } else {
-                            v / user_per_inch(&c, false)
-                        };
-                        let px = center.x + (length * (j as f64 * step).cos() * 72.) as f32;
-                        let py = center.y - (length * (j as f64 * step).sin() * 72.) as f32;
-                        commands.push(if j == 0 {
-                            PathCommand::MoveTo(px, py)
-                        } else {
-                            PathCommand::LineTo(px, py)
-                        });
-                    }
-                    commands.push(PathCommand::Close);
-                    let mut star = Path {
-                        commands,
-                        fill: bg[i % bg.len()],
-                        stroke: Stroke::new(1., fg[i % fg.len()]),
-                        anti_alias: true,
-                    };
-                    star.stroke.color = fg[i % fg.len()];
-                    target.draw_path(&star);
-                }
-            }
-            5 => {
-                // thermometers: width, height, fraction(s) in [0,1]
-                if nc != 3 && nc != 4 {
-                    base_error("invalid thermometers data (need 3 or 4 columns)");
-                }
-                // GNU errors only when no thermometer fraction is finite.
-                let fractions: Vec<f64> = (0..nr).map(|i| p(i, 2)).collect();
-                if fractions.iter().all(|v| !v.is_finite()) {
-                    base_error(if nc == 4 {
-                        "invalid 'thermometers[, 3:4]'"
-                    } else {
-                        "invalid 'thermometers[, 3]'"
+                        PathCommand::LineTo(px, py)
                     });
                 }
-                let flat: Vec<f64> = (0..2 * nr).map(|i| data[i]).collect();
-                let Some((pmax, _)) = symbol_range(&flat) else {
-                    base_error("invalid 'thermometers[, 1:2]'");
+                commands.push(PathCommand::Close);
+                let mut star = Path {
+                    commands,
+                    fill: bg[i % bg.len()],
+                    stroke: Stroke::new(1., fg[i % fg.len()]),
+                    anti_alias: true,
                 };
-                for i in 0..nr {
-                    if ![x[i], y[i], p(i, 0), p(i, 1), p(i, 2)]
-                        .iter()
-                        .all(|v| v.is_finite())
-                    {
-                        continue;
-                    }
-                    let mut p2 = p(i, 2).clamp(0., 1.);
-                    let mut p3 = if nc == 4 { p(i, 3).clamp(0., 1.) } else { 0. };
-                    if !p3.is_finite() {
-                        p3 = 0.;
-                    }
-                    if !p2.is_finite() {
-                        p2 = 0.;
-                    }
-                    let (mut p0, mut p1) = (p(i, 0), p(i, 1));
-                    if inches > 0. {
-                        p0 *= inches / pmax;
-                        p1 *= inches / pmax;
-                    }
-                    let rx = (0.5 * p0 * 72.) as f32;
-                    let ry = (0.5 * p1 * 72.) as f32;
-                    let center = c.map(x[i], y[i]);
-                    let fg_i = fg[i % fg.len()];
-                    draw_rect_symbol(
-                        target,
-                        center.x - rx,
-                        center.y - ry,
-                        center.x + rx,
-                        center.y + ry,
-                        bg[i % bg.len()],
-                        fg_i,
-                    );
-                    let ya = center.y - (1. - 2. * p2 as f32) * ry;
-                    let yb = center.y - (1. - 2. * p3 as f32) * ry;
-                    let mut bulb = Path::rect(center.x - rx, ya.min(yb), 2. * rx, (yb - ya).abs());
-                    bulb.fill = fg_i;
-                    bulb.stroke = Stroke::new(0., fg_i);
-                    target.draw_path(&bulb);
-                    line(
-                        target,
-                        Point {
-                            x: center.x - rx,
-                            y: center.y,
-                        },
-                        Point {
-                            x: center.x - 1.5 * rx,
-                            y: center.y,
-                        },
-                        Stroke::new(1., fg_i),
-                    );
-                    line(
-                        target,
-                        Point {
-                            x: center.x + rx,
-                            y: center.y,
-                        },
-                        Point {
-                            x: center.x + 1.5 * rx,
-                            y: center.y,
-                        },
-                        Stroke::new(1., fg_i),
-                    );
-                }
+                star.stroke.color = fg[i % fg.len()];
+                target.draw_path(&star);
             }
-            6 => {
-                // boxplots: width, height, lower/upper whisker, median proportion
-                if nc != 5 {
-                    base_error("invalid 'boxplots' data (need 5 columns)");
-                }
-                let flat: Vec<f64> = (0..4 * nr).map(|i| data[i]).collect();
-                let Some((pmax, _)) = symbol_range(&flat) else {
-                    base_error("invalid 'boxplots[, 1:4]'");
-                };
-                for i in 0..nr {
-                    if ![x[i], y[i], p(i, 0), p(i, 1), p(i, 2), p(i, 3), p(i, 4)]
-                        .iter()
-                        .all(|v| v.is_finite())
-                    {
-                        continue;
-                    }
-                    let (mut p0, mut p1, mut p2, mut p3) = (p(i, 0), p(i, 1), p(i, 2), p(i, 3));
-                    let p4 = p(i, 4);
-                    if inches > 0. {
-                        let f = inches / pmax * 72.;
-                        p0 *= f;
-                        p1 *= f;
-                        p2 *= f;
-                        p3 *= f;
-                    } else {
-                        // USER extents become device extents through the
-                        // 72-units-per-inch metric, like GConvertXUnits.
-                        p0 *= 72. / user_per_inch(&c, false);
-                        p1 *= 72. / user_per_inch(&c, true);
-                        p2 *= 72. / user_per_inch(&c, true);
-                        p3 *= 72. / user_per_inch(&c, true);
-                    }
-                    let center = c.map(x[i], y[i]);
-                    let rx = (0.5 * p0) as f32;
-                    let ry = (0.5 * p1) as f32;
-                    let median = ((1. - p4) * (0. - ry as f64) + p4 * (ry as f64)) as f32;
-                    let fg_i = fg[i % fg.len()];
-                    draw_rect_symbol(
-                        target,
-                        center.x - rx,
-                        center.y - ry,
-                        center.x + rx,
-                        center.y + ry,
-                        bg[i % bg.len()],
-                        fg_i,
-                    );
-                    let whisker = Stroke::new(1., fg_i);
-                    line(
-                        target,
-                        Point {
-                            x: center.x - rx,
-                            y: center.y + median,
-                        },
-                        Point {
-                            x: center.x + rx,
-                            y: center.y + median,
-                        },
-                        whisker.clone(),
-                    );
-                    line(
-                        target,
-                        Point {
-                            x: center.x,
-                            y: center.y - ry,
-                        },
-                        Point {
-                            x: center.x,
-                            y: center.y - ry - p2 as f32,
-                        },
-                        whisker.clone(),
-                    );
-                    line(
-                        target,
-                        Point {
-                            x: center.x,
-                            y: center.y + ry,
-                        },
-                        Point {
-                            x: center.x,
-                            y: center.y + ry + p3 as f32,
-                        },
-                        whisker.clone(),
-                    );
-                }
-            }
-            _ => base_error("invalid symbol type"),
         }
-        target.set_clip(None);
-        invisible()
+        5 => {
+            // thermometers: width, height, fraction(s) in [0,1]
+            if nc != 3 && nc != 4 {
+                base_error("invalid thermometers data (need 3 or 4 columns)");
+            }
+            // GNU errors only when no thermometer fraction is finite.
+            let fractions: Vec<f64> = (0..nr).map(|i| p(i, 2)).collect();
+            if fractions.iter().all(|v| !v.is_finite()) {
+                base_error(if nc == 4 {
+                    "invalid 'thermometers[, 3:4]'"
+                } else {
+                    "invalid 'thermometers[, 3]'"
+                });
+            }
+            let flat: Vec<f64> = (0..2 * nr).map(|i| data[i]).collect();
+            let Some((pmax, _)) = symbol_range(&flat) else {
+                base_error("invalid 'thermometers[, 1:2]'");
+            };
+            for i in 0..nr {
+                if ![x[i], y[i], p(i, 0), p(i, 1), p(i, 2)]
+                    .iter()
+                    .all(|v| v.is_finite())
+                {
+                    continue;
+                }
+                let mut p2 = p(i, 2).clamp(0., 1.);
+                let mut p3 = if nc == 4 { p(i, 3).clamp(0., 1.) } else { 0. };
+                if !p3.is_finite() {
+                    p3 = 0.;
+                }
+                if !p2.is_finite() {
+                    p2 = 0.;
+                }
+                let (mut p0, mut p1) = (p(i, 0), p(i, 1));
+                if inches > 0. {
+                    p0 *= inches / pmax;
+                    p1 *= inches / pmax;
+                }
+                let rx = (0.5 * p0 * 72.) as f32;
+                let ry = (0.5 * p1 * 72.) as f32;
+                let center = c.map(x[i], y[i]);
+                let fg_i = fg[i % fg.len()];
+                draw_rect_symbol(
+                    target,
+                    center.x - rx,
+                    center.y - ry,
+                    center.x + rx,
+                    center.y + ry,
+                    bg[i % bg.len()],
+                    fg_i,
+                );
+                let ya = center.y - (1. - 2. * p2 as f32) * ry;
+                let yb = center.y - (1. - 2. * p3 as f32) * ry;
+                let mut bulb = Path::rect(center.x - rx, ya.min(yb), 2. * rx, (yb - ya).abs());
+                bulb.fill = fg_i;
+                bulb.stroke = Stroke::new(0., fg_i);
+                target.draw_path(&bulb);
+                line(
+                    target,
+                    Point {
+                        x: center.x - rx,
+                        y: center.y,
+                    },
+                    Point {
+                        x: center.x - 1.5 * rx,
+                        y: center.y,
+                    },
+                    Stroke::new(1., fg_i),
+                );
+                line(
+                    target,
+                    Point {
+                        x: center.x + rx,
+                        y: center.y,
+                    },
+                    Point {
+                        x: center.x + 1.5 * rx,
+                        y: center.y,
+                    },
+                    Stroke::new(1., fg_i),
+                );
+            }
+        }
+        6 => {
+            // boxplots: width, height, lower/upper whisker, median proportion
+            if nc != 5 {
+                base_error("invalid 'boxplots' data (need 5 columns)");
+            }
+            let flat: Vec<f64> = (0..4 * nr).map(|i| data[i]).collect();
+            let Some((pmax, _)) = symbol_range(&flat) else {
+                base_error("invalid 'boxplots[, 1:4]'");
+            };
+            for i in 0..nr {
+                if ![x[i], y[i], p(i, 0), p(i, 1), p(i, 2), p(i, 3), p(i, 4)]
+                    .iter()
+                    .all(|v| v.is_finite())
+                {
+                    continue;
+                }
+                let (mut p0, mut p1, mut p2, mut p3) = (p(i, 0), p(i, 1), p(i, 2), p(i, 3));
+                let p4 = p(i, 4);
+                if inches > 0. {
+                    let f = inches / pmax * 72.;
+                    p0 *= f;
+                    p1 *= f;
+                    p2 *= f;
+                    p3 *= f;
+                } else {
+                    // USER extents become device extents through the
+                    // 72-units-per-inch metric, like GConvertXUnits.
+                    p0 *= 72. / user_per_inch(&c, false);
+                    p1 *= 72. / user_per_inch(&c, true);
+                    p2 *= 72. / user_per_inch(&c, true);
+                    p3 *= 72. / user_per_inch(&c, true);
+                }
+                let center = c.map(x[i], y[i]);
+                let rx = (0.5 * p0) as f32;
+                let ry = (0.5 * p1) as f32;
+                let median = ((1. - p4) * (0. - ry as f64) + p4 * (ry as f64)) as f32;
+                let fg_i = fg[i % fg.len()];
+                draw_rect_symbol(
+                    target,
+                    center.x - rx,
+                    center.y - ry,
+                    center.x + rx,
+                    center.y + ry,
+                    bg[i % bg.len()],
+                    fg_i,
+                );
+                let whisker = Stroke::new(1., fg_i);
+                line(
+                    target,
+                    Point {
+                        x: center.x - rx,
+                        y: center.y + median,
+                    },
+                    Point {
+                        x: center.x + rx,
+                        y: center.y + median,
+                    },
+                    whisker.clone(),
+                );
+                line(
+                    target,
+                    Point {
+                        x: center.x,
+                        y: center.y - ry,
+                    },
+                    Point {
+                        x: center.x,
+                        y: center.y - ry - p2 as f32,
+                    },
+                    whisker.clone(),
+                );
+                line(
+                    target,
+                    Point {
+                        x: center.x,
+                        y: center.y + ry,
+                    },
+                    Point {
+                        x: center.x,
+                        y: center.y + ry + p3 as f32,
+                    },
+                    whisker.clone(),
+                );
+            }
+        }
+        _ => base_error("invalid symbol type"),
     }
+    target.set_clip(None);
+    invisible()
 }
 
 fn draw_rect_symbol(
@@ -675,19 +667,15 @@ unsafe fn xspline(args: SEXP) -> SEXP {
 /// builder (shared with the device-less profile) lives in the graphics
 /// registry module.
 unsafe fn locator(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = current();
-        crate::library::graphics::locator_result(args)
-    }
+    let _ = current();
+    crate::library::graphics::locator_result(args)
 }
 
 /// GNU `C_identify` — zero clicks identifies nothing: all-false `ind` with
 /// zero `pos`/`order` (the R wrapper reduces this to integer(0)).
 unsafe fn identify(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = current();
-        crate::library::graphics::identify_result(args)
-    }
+    let _ = current();
+    crate::library::graphics::identify_result(args)
 }
 
 /// Dendrogram drawing state (GNU's static dnd_* globals, per call).
@@ -774,14 +762,12 @@ impl Dendrogram {
         text: &r_graphics_engine::PlotParameters,
         text_color: Color,
     ) {
-        unsafe {
-            let Some(label) = &labels[leaf] else { return };
-            let mut params = text.clone();
-            params.text_angle = 90.;
-            params.text_anchor = TextAnchor::End;
-            params.text_color = text_color;
-            Label::Text(label.clone()).draw(target, c.map(x, y - self.offset), &params);
-        }
+        let Some(label) = &labels[leaf] else { return };
+        let mut params = text.clone();
+        params.text_angle = 90.;
+        params.text_anchor = TextAnchor::End;
+        params.text_color = text_color;
+        Label::Text(label.clone()).draw(target, c.map(x, y - self.offset), &params);
     }
 }
 
@@ -862,99 +848,97 @@ unsafe fn dend(args: SEXP) -> SEXP {
 /// GNU `C_dendwindow` — install the dendrogram's user window, leaving room
 /// for the deepest leaf label.
 unsafe fn dendwindow(args: SEXP) -> SEXP {
-    unsafe {
-        let c = current();
-        let b = bindings(args, &["n", "merge", "height", "hang", "labels"]);
-        let n = asInteger(b[0]);
-        if n == NA_INTEGER || n < 2 {
-            base_error("invalid dendrogram input");
-        }
-        let n = n as usize;
-        if SEXPTYPE(TYPEOF(b[1])) != SEXPTYPE::INTSXP || XLENGTH(b[1]) as usize != 2 * n {
-            base_error("invalid dendrogram input");
-        }
-        let merge = ints(b[1]);
-        if SEXPTYPE(TYPEOF(b[2])) != SEXPTYPE::REALSXP || XLENGTH(b[2]) as usize != n {
-            base_error("invalid dendrogram input");
-        }
-        let heights = values(b[2]);
-        let hang = asReal(b[3]);
-        if !hang.is_finite() {
-            base_error("invalid dendrogram input");
-        }
-        if SEXPTYPE(TYPEOF(b[4])) != SEXPTYPE::STRSXP || XLENGTH(b[4]) as usize != n + 1 {
-            base_error("invalid dendrogram input");
-        }
-        let params = crate::library::graphics::text_metrics::drawing_parameters(args, 1).remove(0);
-        let target = &mut renderer();
-        let offset = Label::Text("m".into()).dimensions(target, &params).0 as f64 / 72.;
-        let mut ymax = heights[0];
-        let mut ymin = heights[0];
-        for &h in &heights {
-            ymax = ymax.max(h);
-            ymin = ymin.min(h);
-        }
-        let pin = f64::from(c.rect[3] - c.rect[1]) / 72.;
-        let mut ll = Vec::with_capacity(n + 1);
-        for i in 0..=n {
-            let string = STRING_ELT(b[4], i as R_xlen_t);
-            ll.push(if string == R_NaString() {
-                0.
-            } else {
-                Label::Text(crate::mainutils::essentials::elt_to_string(
-                    b[4],
-                    i as R_xlen_t,
-                ))
-                .dimensions(target, &params)
-                .0 as f64
-                    / 72.
-                    + offset
-            });
-        }
-        let mut leaf_height = vec![0f64; n + 1];
-        let (mut imax, mut yval, yrange);
-        if hang >= 0. {
-            ymin = ymax - (1. + hang) * (ymax - ymin);
-            yrange = ymax - ymin;
-            for i in 0..n {
-                if merge[i] < 0 {
-                    leaf_height[(-merge[i] - 1) as usize] = heights[i];
-                }
-                if merge[i + n] < 0 {
-                    leaf_height[(-merge[i + n] - 1) as usize] = heights[i];
-                }
-            }
-            imax = -1i32;
-            yval = -f64::MAX;
-            for i in 0..=n {
-                let tmp = ((ymax - leaf_height[i]) / yrange) * pin + ll[i];
-                if tmp > yval {
-                    yval = tmp;
-                    imax = i as i32;
-                }
-            }
-        } else {
-            yrange = ymax;
-            imax = -1i32;
-            yval = -f64::MAX;
-            for i in 0..=n {
-                let tmp = pin + ll[i];
-                if tmp > yval {
-                    yval = tmp;
-                    imax = i as i32;
-                }
-            }
-        }
-        let ymin = ymax - (pin / (pin - ll[imax as usize])) * yrange;
-        install(Coordinates {
-            limits: [1., (n + 1) as f64, ymin, ymax],
-            rect: c.rect,
-            figure: c.figure,
-            device: c.device,
-            log: [false, false],
-        });
-        invisible()
+    let c = current();
+    let b = bindings(args, &["n", "merge", "height", "hang", "labels"]);
+    let n = asInteger(b[0]);
+    if n == NA_INTEGER || n < 2 {
+        base_error("invalid dendrogram input");
     }
+    let n = n as usize;
+    if SEXPTYPE(TYPEOF(b[1])) != SEXPTYPE::INTSXP || XLENGTH(b[1]) as usize != 2 * n {
+        base_error("invalid dendrogram input");
+    }
+    let merge = ints(b[1]);
+    if SEXPTYPE(TYPEOF(b[2])) != SEXPTYPE::REALSXP || XLENGTH(b[2]) as usize != n {
+        base_error("invalid dendrogram input");
+    }
+    let heights = values(b[2]);
+    let hang = asReal(b[3]);
+    if !hang.is_finite() {
+        base_error("invalid dendrogram input");
+    }
+    if SEXPTYPE(TYPEOF(b[4])) != SEXPTYPE::STRSXP || XLENGTH(b[4]) as usize != n + 1 {
+        base_error("invalid dendrogram input");
+    }
+    let params = crate::library::graphics::text_metrics::drawing_parameters(args, 1).remove(0);
+    let target = &mut renderer();
+    let offset = Label::Text("m".into()).dimensions(target, &params).0 as f64 / 72.;
+    let mut ymax = heights[0];
+    let mut ymin = heights[0];
+    for &h in &heights {
+        ymax = ymax.max(h);
+        ymin = ymin.min(h);
+    }
+    let pin = f64::from(c.rect[3] - c.rect[1]) / 72.;
+    let mut ll = Vec::with_capacity(n + 1);
+    for i in 0..=n {
+        let string = STRING_ELT(b[4], i as R_xlen_t);
+        ll.push(if string == R_NaString() {
+            0.
+        } else {
+            Label::Text(crate::mainutils::essentials::elt_to_string(
+                b[4],
+                i as R_xlen_t,
+            ))
+            .dimensions(target, &params)
+            .0 as f64
+                / 72.
+                + offset
+        });
+    }
+    let mut leaf_height = vec![0f64; n + 1];
+    let (mut imax, mut yval, yrange);
+    if hang >= 0. {
+        ymin = ymax - (1. + hang) * (ymax - ymin);
+        yrange = ymax - ymin;
+        for i in 0..n {
+            if merge[i] < 0 {
+                leaf_height[(-merge[i] - 1) as usize] = heights[i];
+            }
+            if merge[i + n] < 0 {
+                leaf_height[(-merge[i + n] - 1) as usize] = heights[i];
+            }
+        }
+        imax = -1i32;
+        yval = -f64::MAX;
+        for i in 0..=n {
+            let tmp = ((ymax - leaf_height[i]) / yrange) * pin + ll[i];
+            if tmp > yval {
+                yval = tmp;
+                imax = i as i32;
+            }
+        }
+    } else {
+        yrange = ymax;
+        imax = -1i32;
+        yval = -f64::MAX;
+        for i in 0..=n {
+            let tmp = pin + ll[i];
+            if tmp > yval {
+                yval = tmp;
+                imax = i as i32;
+            }
+        }
+    }
+    let ymin = ymax - (pin / (pin - ll[imax as usize])) * yrange;
+    install(Coordinates {
+        limits: [1., (n + 1) as f64, ymin, ymax],
+        rect: c.rect,
+        figure: c.figure,
+        device: c.device,
+        log: [false, false],
+    });
+    invisible()
 }
 
 /// Decoded drawing inputs handed over by plot3d's `C_persp`.
@@ -1161,40 +1145,38 @@ unsafe fn persp_box(
     edge_done: &mut [bool; 12],
     stroke: Stroke,
 ) {
-    unsafe {
-        let vt = input.vt;
-        for f in 0..6 {
-            let p: Vec<(f64, f64)> = (0..4)
-                .map(|k| {
-                    let idx = FACE[f][k] as usize;
-                    project(
-                        &vt,
-                        [
-                            pick(input.xlim, VERTEX[idx][0] as usize),
-                            pick(input.ylim, VERTEX[idx][1] as usize),
-                            pick(input.zlim, VERTEX[idx][2] as usize),
-                        ],
-                    )
-                })
-                .collect();
-            let d = [
-                p[1].0 - p[0].0,
-                p[1].1 - p[0].1,
-                p[2].0 - p[1].0,
-                p[2].1 - p[1].1,
-            ];
-            let nearby = (d[0] * d[3] - d[1] * d[2]) < 0.;
-            if (front == 1 && nearby) || (front == 0 && !nearby) {
-                for e in 0..4 {
-                    let edge = EDGE[f][e] as usize;
-                    if edge_done[edge] {
-                        continue;
-                    }
-                    edge_done[edge] = true;
-                    let a = c.map(p[e].0, p[e].1);
-                    let b = c.map(p[(e + 1) % 4].0, p[(e + 1) % 4].1);
-                    line(target, a, b, stroke.clone());
+    let vt = input.vt;
+    for f in 0..6 {
+        let p: Vec<(f64, f64)> = (0..4)
+            .map(|k| {
+                let idx = FACE[f][k] as usize;
+                project(
+                    &vt,
+                    [
+                        pick(input.xlim, VERTEX[idx][0] as usize),
+                        pick(input.ylim, VERTEX[idx][1] as usize),
+                        pick(input.zlim, VERTEX[idx][2] as usize),
+                    ],
+                )
+            })
+            .collect();
+        let d = [
+            p[1].0 - p[0].0,
+            p[1].1 - p[0].1,
+            p[2].0 - p[1].0,
+            p[2].1 - p[1].1,
+        ];
+        let nearby = (d[0] * d[3] - d[1] * d[2]) < 0.;
+        if (front == 1 && nearby) || (front == 0 && !nearby) {
+            for e in 0..4 {
+                let edge = EDGE[f][e] as usize;
+                if edge_done[edge] {
+                    continue;
                 }
+                edge_done[edge] = true;
+                let a = c.map(p[e].0, p[e].1);
+                let b = c.map(p[(e + 1) % 4].0, p[(e + 1) % 4].1);
+                line(target, a, b, stroke.clone());
             }
         }
     }
@@ -1283,118 +1265,116 @@ unsafe fn persp_axis(
     axis_type: usize,
     label: &str,
 ) {
-    unsafe {
-        let vt = input.vt;
-        let tick_length = 0.03;
-        let range = match axis_type {
-            0 => input.xlim,
-            1 => input.ylim,
-            _ => input.zlim,
-        };
-        let ticks = pretty_linear_ticks(range[0], range[1], input.n_ticks.max(1) as f64);
-        let (min, max) = (
-            ticks.first().copied().unwrap_or(range[0]),
-            ticks.last().copied().unwrap_or(range[1]),
-        );
-        let start = AXIS_START[axis] as usize;
-        let mut base_point = [
-            pick(input.xlim, VERTEX[start][0] as usize),
-            pick(input.ylim, VERTEX[start][1] as usize),
-            pick(input.zlim, VERTEX[start][2] as usize),
-        ];
-        match axis_type {
-            0 => base_point[0] = min,
-            1 => base_point[1] = min,
-            _ => base_point[2] = min,
+    let vt = input.vt;
+    let tick_length = 0.03;
+    let range = match axis_type {
+        0 => input.xlim,
+        1 => input.ylim,
+        _ => input.zlim,
+    };
+    let ticks = pretty_linear_ticks(range[0], range[1], input.n_ticks.max(1) as f64);
+    let (min, max) = (
+        ticks.first().copied().unwrap_or(range[0]),
+        ticks.last().copied().unwrap_or(range[1]),
+    );
+    let start = AXIS_START[axis] as usize;
+    let mut base_point = [
+        pick(input.xlim, VERTEX[start][0] as usize),
+        pick(input.ylim, VERTEX[start][1] as usize),
+        pick(input.zlim, VERTEX[start][2] as usize),
+    ];
+    match axis_type {
+        0 => base_point[0] = min,
+        1 => base_point[1] = min,
+        _ => base_point[2] = min,
+    }
+    let tick = [
+        tick_length * (input.xlim[1] - input.xlim[0]) * TICK_VECTOR[axis][0] as f64,
+        tick_length * (input.ylim[1] - input.ylim[0]) * TICK_VECTOR[axis][1] as f64,
+        tick_length * (input.zlim[1] - input.zlim[0]) * TICK_VECTOR[axis][2] as f64,
+    ];
+    let mut u1 = base_point;
+    u1[0] += tick[0];
+    u1[1] += tick[1];
+    u1[2] += tick[2];
+    let mut u2 = u1;
+    match axis_type {
+        0 => u2[0] = max,
+        1 => u2[1] = max,
+        _ => u2[2] = max,
+    }
+    let mut u3 = u1;
+    let offset = if input.tick_type == 1 { 1. } else { 2.5 };
+    u3[0] += offset * tick[0];
+    u3[1] += offset * tick[1];
+    u3[2] += offset * tick[2];
+    match axis_type {
+        0 => u3[0] = (min + max) / 2.,
+        1 => u3[1] = (min + max) / 2.,
+        _ => u3[2] = (min + max) / 2.,
+    }
+    let v1 = project(&vt, u1);
+    let v2 = project(&vt, u2);
+    let v3 = project(&vt, u3);
+    let stroke = Stroke::new(1., par_color("col", Color::BLACK));
+    let label_params = r_graphics_engine::PlotParameters {
+        font_size: par_numbers("cex.lab").first().copied().unwrap_or(1.) as f32 * 12.,
+        text_color: par_color("col.lab", par_color("fg", Color::BLACK)),
+        text_anchor: TextAnchor::Middle,
+        text_angle: label_angle(v1.0, v1.1, v2.0, v2.1) as f32,
+        ..Default::default()
+    };
+    Label::Text(label.to_string()).draw(target, c.map(v3.0, v3.1), &label_params);
+    if input.tick_type == 1 {
+        // Arrow parallel to the axis, at the v2 end.
+        let a = c.map(v1.0, v1.1);
+        let b = c.map(v2.0, v2.1);
+        line(target, a, b, stroke.clone());
+        let theta = (b.y - a.y).atan2(b.x - a.x);
+        for sign in [-1f32, 1.] {
+            let t = theta + sign * 10f32.to_radians();
+            line(
+                target,
+                b,
+                Point {
+                    x: b.x + 0.1f32 * 72. * t.cos(),
+                    y: b.y + 0.1f32 * 72. * t.sin(),
+                },
+                stroke.clone(),
+            );
         }
-        let tick = [
-            tick_length * (input.xlim[1] - input.xlim[0]) * TICK_VECTOR[axis][0] as f64,
-            tick_length * (input.ylim[1] - input.ylim[0]) * TICK_VECTOR[axis][1] as f64,
-            tick_length * (input.zlim[1] - input.zlim[0]) * TICK_VECTOR[axis][2] as f64,
-        ];
-        let mut u1 = base_point;
-        u1[0] += tick[0];
-        u1[1] += tick[1];
-        u1[2] += tick[2];
-        let mut u2 = u1;
-        match axis_type {
-            0 => u2[0] = max,
-            1 => u2[1] = max,
-            _ => u2[2] = max,
-        }
-        let mut u3 = u1;
-        let offset = if input.tick_type == 1 { 1. } else { 2.5 };
-        u3[0] += offset * tick[0];
-        u3[1] += offset * tick[1];
-        u3[2] += offset * tick[2];
-        match axis_type {
-            0 => u3[0] = (min + max) / 2.,
-            1 => u3[1] = (min + max) / 2.,
-            _ => u3[2] = (min + max) / 2.,
-        }
-        let v1 = project(&vt, u1);
-        let v2 = project(&vt, u2);
-        let v3 = project(&vt, u3);
-        let stroke = Stroke::new(1., par_color("col", Color::BLACK));
-        let label_params = r_graphics_engine::PlotParameters {
-            font_size: par_numbers("cex.lab").first().copied().unwrap_or(1.) as f32 * 12.,
-            text_color: par_color("col.lab", par_color("fg", Color::BLACK)),
+    } else {
+        let tick_params = r_graphics_engine::PlotParameters {
+            font_size: par_numbers("cex.axis").first().copied().unwrap_or(1.) as f32 * 10.,
+            text_color: par_color("col.axis", par_color("fg", Color::BLACK)),
             text_anchor: TextAnchor::Middle,
-            text_angle: label_angle(v1.0, v1.1, v2.0, v2.1) as f32,
             ..Default::default()
         };
-        Label::Text(label.to_string()).draw(target, c.map(v3.0, v3.1), &label_params);
-        if input.tick_type == 1 {
-            // Arrow parallel to the axis, at the v2 end.
-            let a = c.map(v1.0, v1.1);
-            let b = c.map(v2.0, v2.1);
-            line(target, a, b, stroke.clone());
-            let theta = (b.y - a.y).atan2(b.x - a.x);
-            for sign in [-1f32, 1.] {
-                let t = theta + sign * 10f32.to_radians();
-                line(
-                    target,
-                    b,
-                    Point {
-                        x: b.x + 0.1f32 * 72. * t.cos(),
-                        y: b.y + 0.1f32 * 72. * t.sin(),
-                    },
-                    stroke.clone(),
-                );
+        for &value in &ticks {
+            let mut t1 = base_point;
+            match axis_type {
+                0 => t1[0] = value,
+                1 => t1[1] = value,
+                _ => t1[2] = value,
             }
-        } else {
-            let tick_params = r_graphics_engine::PlotParameters {
-                font_size: par_numbers("cex.axis").first().copied().unwrap_or(1.) as f32 * 10.,
-                text_color: par_color("col.axis", par_color("fg", Color::BLACK)),
-                text_anchor: TextAnchor::Middle,
-                ..Default::default()
+            let mut t2 = t1;
+            t2[0] += tick[0];
+            t2[1] += tick[1];
+            t2[2] += tick[2];
+            let mut t3 = t2;
+            t3[0] += tick[0];
+            t3[1] += tick[1];
+            t3[2] += tick[2];
+            let w1 = project(&vt, t1);
+            let w2 = project(&vt, t2);
+            let w3 = project(&vt, t3);
+            line(target, c.map(w1.0, w1.1), c.map(w2.0, w2.1), stroke.clone());
+            let text = if (value - value.round()).abs() < 1e-9 {
+                format!("{}", value.round() as i64)
+            } else {
+                format!("{value}")
             };
-            for &value in &ticks {
-                let mut t1 = base_point;
-                match axis_type {
-                    0 => t1[0] = value,
-                    1 => t1[1] = value,
-                    _ => t1[2] = value,
-                }
-                let mut t2 = t1;
-                t2[0] += tick[0];
-                t2[1] += tick[1];
-                t2[2] += tick[2];
-                let mut t3 = t2;
-                t3[0] += tick[0];
-                t3[1] += tick[1];
-                t3[2] += tick[2];
-                let w1 = project(&vt, t1);
-                let w2 = project(&vt, t2);
-                let w3 = project(&vt, t3);
-                line(target, c.map(w1.0, w1.1), c.map(w2.0, w2.1), stroke.clone());
-                let text = if (value - value.round()).abs() < 1e-9 {
-                    format!("{}", value.round() as i64)
-                } else {
-                    format!("{value}")
-                };
-                Label::Text(text).draw(target, c.map(w3.0, w3.1), &tick_params);
-            }
+            Label::Text(text).draw(target, c.map(w3.0, w3.1), &tick_params);
         }
     }
 }
@@ -1408,74 +1388,72 @@ pub(crate) unsafe fn filledcontour_render(
     levels: &[f64],
     col: SEXP,
 ) {
-    unsafe {
-        if !renderplot_backend_active() {
-            return;
-        }
-        let c = current();
-        let ncol = XLENGTH(col) as usize;
-        let cols: Vec<Color> = (0..ncol)
-            .map(|i| {
-                let v = INTEGER_ELT(col, i as i32) as u32;
-                Color {
-                    r: v as u8,
-                    g: (v >> 8) as u8,
-                    b: (v >> 16) as u8,
-                    a: (v >> 24) as u8,
+    if !renderplot_backend_active() {
+        return;
+    }
+    let c = current();
+    let ncol = XLENGTH(col) as usize;
+    let cols: Vec<Color> = (0..ncol)
+        .map(|i| {
+            let v = INTEGER_ELT(col, i as i32) as u32;
+            Color {
+                r: v as u8,
+                g: (v >> 8) as u8,
+                b: (v >> 16) as u8,
+                a: (v >> 24) as u8,
+            }
+        })
+        .collect();
+    let target = &mut renderer();
+    target.set_clip(Some(c.rect));
+    let nx = x.len();
+    let mut px = [0f64; 8];
+    let mut py = [0f64; 8];
+    let mut pz = [0f64; 8];
+    let mut npt = 0i32;
+    for i in 1..x.len() {
+        for j in 1..y.len() {
+            for k in 1..levels.len() {
+                FindPolygonVertices(
+                    levels[k - 1],
+                    levels[k],
+                    x[i - 1],
+                    x[i],
+                    y[j - 1],
+                    y[j],
+                    z[i - 1 + (j - 1) * nx],
+                    z[i + (j - 1) * nx],
+                    z[i - 1 + j * nx],
+                    z[i + j * nx],
+                    &mut px,
+                    &mut py,
+                    &mut pz,
+                    &mut npt,
+                );
+                if npt <= 2 {
+                    continue;
                 }
-            })
-            .collect();
-        let target = &mut renderer();
-        target.set_clip(Some(c.rect));
-        let nx = x.len();
-        let mut px = [0f64; 8];
-        let mut py = [0f64; 8];
-        let mut pz = [0f64; 8];
-        let mut npt = 0i32;
-        for i in 1..x.len() {
-            for j in 1..y.len() {
-                for k in 1..levels.len() {
-                    FindPolygonVertices(
-                        levels[k - 1],
-                        levels[k],
-                        x[i - 1],
-                        x[i],
-                        y[j - 1],
-                        y[j],
-                        z[i - 1 + (j - 1) * nx],
-                        z[i + (j - 1) * nx],
-                        z[i - 1 + j * nx],
-                        z[i + j * nx],
-                        &mut px,
-                        &mut py,
-                        &mut pz,
-                        &mut npt,
-                    );
-                    if npt <= 2 {
-                        continue;
-                    }
-                    let mut commands = Vec::new();
-                    for m in 0..npt as usize {
-                        let p = c.map(px[m], py[m]);
-                        commands.push(if m == 0 {
-                            PathCommand::MoveTo(p.x, p.y)
-                        } else {
-                            PathCommand::LineTo(p.x, p.y)
-                        });
-                    }
-                    commands.push(PathCommand::Close);
-                    let band = Path {
-                        commands,
-                        fill: cols[(k - 1) % ncol.max(1)],
-                        stroke: Stroke::new(0., transparent()),
-                        anti_alias: true,
-                    };
-                    target.draw_path(&band);
+                let mut commands = Vec::new();
+                for m in 0..npt as usize {
+                    let p = c.map(px[m], py[m]);
+                    commands.push(if m == 0 {
+                        PathCommand::MoveTo(p.x, p.y)
+                    } else {
+                        PathCommand::LineTo(p.x, p.y)
+                    });
                 }
+                commands.push(PathCommand::Close);
+                let band = Path {
+                    commands,
+                    fill: cols[(k - 1) % ncol.max(1)],
+                    stroke: Stroke::new(0., transparent()),
+                    anti_alias: true,
+                };
+                target.draw_path(&band);
             }
         }
-        target.set_clip(None);
     }
+    target.set_clip(None);
 }
 
 /// Backend check shared with the plot3d drawing hooks.

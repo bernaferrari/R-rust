@@ -144,11 +144,7 @@ fn bind(
     domain.link(value)?;
     let name = symbol(access, name)?;
     access.with_native(|_| {
-        // SAFETY: all three handles are linked, live values owned by this
-        // runtime for the duration of the strictly-local env write.
-        unsafe {
-            crate::sexp::envir::defineVar(name.as_raw(), value.as_raw(), environment.as_raw());
-        }
+        crate::sexp::envir::defineVar(name.as_raw(), value.as_raw(), environment.as_raw());
         Ok(())
     })
 }
@@ -169,8 +165,7 @@ fn lookup(
     access.with_native(|owner| {
         // SAFETY: both handles are linked, live values owned by this
         // runtime for the duration of the frame lookup.
-        let raw =
-            unsafe { crate::sexp::envir::R_findVarInFrame(environment.as_raw(), name.as_raw()) };
+        let raw = crate::sexp::envir::R_findVarInFrame(environment.as_raw(), name.as_raw());
         owner.sexp(raw)?.into_owned()
     })
 }
@@ -234,9 +229,7 @@ fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<Sexp<'stat
     access.domain().link(value)?;
     access.with_native(|owner| {
         let result = if value.typeof_() == crate::sexp::SEXPTYPE::PROMSXP {
-            // SAFETY: `value` is a linked, live PROMSXP owned by this
-            // runtime; forcing it returns the promise value.
-            unsafe { crate::sexp::envir::forcePromise(value.as_raw()) }
+            crate::sexp::envir::forcePromise(value.as_raw())
         } else {
             value.as_raw()
         };

@@ -338,12 +338,10 @@ pub(crate) fn cache_class(class: &str, klass: SEXP) -> SEXP {
                 .into_owned()
         })?;
         access.with_native(|_| {
-            unsafe {
-                if klass.is_nil() {
-                    crate::sexp::envir::remove_binding_raw(table.as_raw(), symbol.as_raw());
-                } else {
-                    crate::sexp::envir::defineVar(symbol.as_raw(), klass.as_raw(), table.as_raw());
-                }
+            if klass.is_nil() {
+                crate::sexp::envir::remove_binding_raw(table.as_raw(), symbol.as_raw());
+            } else {
+                crate::sexp::envir::defineVar(symbol.as_raw(), klass.as_raw(), table.as_raw());
             }
             Ok(())
         })?;
@@ -534,34 +532,32 @@ fn implicit_s3_class(x: SEXP) -> SEXP {
 /// Find the top-level environment by walking ENCLOS.
 /// GNU: GlobalEnv, BaseEnv, BaseNamespace, package/namespace, or `.packageName`.
 pub(crate) fn topenv(what: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if env.is_null() {
-            return R_NilValue();
+    if env.is_null() {
+        return R_NilValue();
+    }
+    let base_ns = crate::sexp::envir::R_BaseNamespace();
+    let mut rho = env;
+    loop {
+        if rho == R_EmptyEnv() {
+            return R_GlobalEnv();
         }
-        let base_ns = crate::sexp::envir::R_BaseNamespace();
-        let mut rho = env;
-        loop {
-            if rho == R_EmptyEnv() {
-                return R_GlobalEnv();
-            }
-            if (!what.is_null() && what != R_NilValue() && rho == what)
-                || rho == R_GlobalEnv()
-                || rho == R_BaseEnv()
-                || (rho == base_ns && rho != R_BaseEnv())
-            {
-                return rho;
-            }
-            let pkg = crate::sexp::envir::R_findVarInFrame(
-                rho,
-                crate::sexp::symbol::install_str(".packageName"),
-            );
-            if pkg != R_UnboundValue() {
-                return rho;
-            }
-            rho = ENCLOS(rho);
-            if rho.is_null() {
-                return R_GlobalEnv();
-            }
+        if (!what.is_null() && what != R_NilValue() && rho == what)
+            || rho == R_GlobalEnv()
+            || rho == R_BaseEnv()
+            || (rho == base_ns && rho != R_BaseEnv())
+        {
+            return rho;
+        }
+        let pkg = crate::sexp::envir::R_findVarInFrame(
+            rho,
+            crate::sexp::symbol::install_str(".packageName"),
+        );
+        if pkg != R_UnboundValue() {
+            return rho;
+        }
+        rho = ENCLOS(rho);
+        if rho.is_null() {
+            return R_GlobalEnv();
         }
     }
 }

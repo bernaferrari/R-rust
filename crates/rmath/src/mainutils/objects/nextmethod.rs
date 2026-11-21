@@ -154,25 +154,23 @@ pub fn readS3VarsFromFrame(
     callenv: &mut SEXP,
     defenv: &mut SEXP,
 ) {
-    unsafe {
-        if frame.is_null() {
-            return;
-        }
-
-        let dot_generic_sym = sym(".Generic");
-        let dot_group_sym = sym(".Group");
-        let dot_class_sym = sym(".Class");
-        let dot_method_sym = sym(".Method");
-        let dot_callenv_sym = sym(".GenericCallEnv");
-        let dot_defenv_sym = sym(".GenericDefEnv");
-
-        *generic = crate::sexp::envir::R_findVarInFrame(frame, dot_generic_sym);
-        *group = crate::sexp::envir::R_findVarInFrame(frame, dot_group_sym);
-        *klass = crate::sexp::envir::R_findVarInFrame(frame, dot_class_sym);
-        *method = crate::sexp::envir::R_findVarInFrame(frame, dot_method_sym);
-        *callenv = crate::sexp::envir::R_findVarInFrame(frame, dot_callenv_sym);
-        *defenv = crate::sexp::envir::R_findVarInFrame(frame, dot_defenv_sym);
+    if frame.is_null() {
+        return;
     }
+
+    let dot_generic_sym = sym(".Generic");
+    let dot_group_sym = sym(".Group");
+    let dot_class_sym = sym(".Class");
+    let dot_method_sym = sym(".Method");
+    let dot_callenv_sym = sym(".GenericCallEnv");
+    let dot_defenv_sym = sym(".GenericDefEnv");
+
+    *generic = crate::sexp::envir::R_findVarInFrame(frame, dot_generic_sym);
+    *group = crate::sexp::envir::R_findVarInFrame(frame, dot_group_sym);
+    *klass = crate::sexp::envir::R_findVarInFrame(frame, dot_class_sym);
+    *method = crate::sexp::envir::R_findVarInFrame(frame, dot_method_sym);
+    *callenv = crate::sexp::envir::R_findVarInFrame(frame, dot_callenv_sym);
+    *defenv = crate::sexp::envir::R_findVarInFrame(frame, dot_defenv_sym);
 }
 
 // ---------------------------------------------------------------------------

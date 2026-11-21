@@ -345,6 +345,35 @@ impl<'a> Sexp<'a> {
         Ok(operation(&value))
     }
 
+    /// [`with_registered_raw`](Self::with_registered_raw) for two pointers.
+    /// Both values stay rooted for the whole operation.
+    pub(crate) fn with_registered_raw2<T>(
+        first: SEXP,
+        second: SEXP,
+        operation: impl FnOnce(&Sexp<'_>, &Sexp<'_>) -> T,
+    ) -> SexpResult<T> {
+        Self::with_registered_raw(first, |first| {
+            Self::with_registered_raw(second, |second| operation(first, second))
+        })
+        .and_then(|result| result)
+    }
+
+    /// [`with_registered_raw`](Self::with_registered_raw) for three pointers.
+    /// All values stay rooted for the whole operation.
+    pub(crate) fn with_registered_raw3<T>(
+        first: SEXP,
+        second: SEXP,
+        third: SEXP,
+        operation: impl FnOnce(&Sexp<'_>, &Sexp<'_>, &Sexp<'_>) -> T,
+    ) -> SexpResult<T> {
+        Self::with_registered_raw(first, |first| {
+            Self::with_registered_raw2(second, third, |second, third| {
+                operation(first, second, third)
+            })
+        })
+        .and_then(|result| result)
+    }
+
     /// Wrap a pointer that has already been validated against `arena`.
     #[inline]
     pub(crate) fn from_arena_raw<'arena>(

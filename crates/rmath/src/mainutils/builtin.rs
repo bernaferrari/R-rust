@@ -121,14 +121,12 @@ fn define_var(symbol: SEXP, value: SEXP, env: SEXP) {
 
 /// Audited boundary: function lookup in a live environment.
 fn find_fun(symbol: SEXP, env: SEXP) -> SEXP {
-    // SAFETY: findFun searches bindings of a live environment.
-    unsafe { findFun(symbol, env) }
+    findFun(symbol, env)
 }
 
 /// Audited boundary: frame lookup in a live environment.
 fn find_var_in_frame(rho: SEXP, symbol: SEXP) -> SEXP {
-    // SAFETY: R_findVarInFrame reads bindings of a live environment.
-    unsafe { R_findVarInFrame(rho, symbol) }
+    R_findVarInFrame(rho, symbol)
 }
 
 /// Audited boundary: deep duplicate of a live object.

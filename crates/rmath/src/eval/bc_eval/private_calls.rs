@@ -71,7 +71,7 @@ pub(crate) fn eval_source_call(
     if source.typeof_() != SEXPTYPE::LANGSXP {
         bc_error("CALL source constant is not a language object");
     }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         with_stack_rooted(stack, execution.as_raw(), || {
             let selected = if function.typeof_() == SEXPTYPE::SYMSXP {
                 own_operand(crate::sexp::envir::findFun(
@@ -205,13 +205,11 @@ pub(crate) fn private_target_call_owned(
                 )?;
                 return restore_temporary.run(|| {
                     access.with_native(|owner| {
-                        unsafe {
-                            crate::sexp::envir::defineVar(
-                                temporary.as_raw(),
-                                object.as_raw(),
-                                environment.as_raw(),
-                            );
-                        }
+                        crate::sexp::envir::defineVar(
+                            temporary.as_raw(),
+                            object.as_raw(),
+                            environment.as_raw(),
+                        );
                         access.require_active()?;
                         let result = unsafe {
                             super::super::eval::Rf_eval(call.as_raw(), environment.as_raw())
@@ -384,12 +382,10 @@ pub(crate) fn private_replacement_path_owned(
                 changed
             };
             access.with_native(|_| {
-                unsafe {
-                    if superassign {
-                        setVar(root.as_raw(), result.as_raw(), lookup.as_raw());
-                    } else {
-                        defineVar(root.as_raw(), result.as_raw(), environment.as_raw());
-                    }
+                if superassign {
+                    setVar(root.as_raw(), result.as_raw(), lookup.as_raw());
+                } else {
+                    defineVar(root.as_raw(), result.as_raw(), environment.as_raw());
                 }
                 Ok(())
             })?;
@@ -570,12 +566,10 @@ pub(crate) fn private_replacement_chain_owned(
                 };
             }
             access.with_native(|_| {
-                unsafe {
-                    if superassign {
-                        setVar(root.as_raw(), changed.as_raw(), lookup.as_raw());
-                    } else {
-                        defineVar(root.as_raw(), changed.as_raw(), environment.as_raw());
-                    }
+                if superassign {
+                    setVar(root.as_raw(), changed.as_raw(), lookup.as_raw());
+                } else {
+                    defineVar(root.as_raw(), changed.as_raw(), environment.as_raw());
                 }
                 Ok(())
             })?;
@@ -664,10 +658,8 @@ pub(crate) fn bind_for_element(
     index: c_int,
     rho: SEXP,
 ) {
-    unsafe {
-        with_stack_rooted(stack, symbol, || {
-            let value = for_sequence_element(sequence, index);
-            defineVar(symbol, value, rho);
-        });
-    }
+    with_stack_rooted(stack, symbol, || {
+        let value = for_sequence_element(sequence, index);
+        defineVar(symbol, value, rho);
+    });
 }

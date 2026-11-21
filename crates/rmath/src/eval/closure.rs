@@ -291,14 +291,12 @@ fn require_closure_owner(
 }
 
 fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
-    unsafe {
-        while !vars.is_null() && vars != R_NilValue() {
-            let tag = TAG(vars);
-            if !tag.is_null() && tag != R_NilValue() {
-                crate::sexp::envir::defineVar(tag, CAR(vars), rho);
-            }
-            vars = CDR(vars);
+    while !vars.is_null() && vars != R_NilValue() {
+        let tag = TAG(vars);
+        if !tag.is_null() && tag != R_NilValue() {
+            crate::sexp::envir::defineVar(tag, CAR(vars), rho);
         }
+        vars = CDR(vars);
     }
 }
 
@@ -337,100 +335,95 @@ fn disconnected_methods_snapshot(cloenv: SEXP, empty: SEXP, base: SEXP) -> bool 
 }
 
 fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
-    unsafe {
-        if op.is_null() || crate::sexp::accessors::TYPEOF(op) != SEXPTYPE::CLOSXP {
-            return false;
-        }
-        for name in [
-            c"asMethodDefinition",
-            c"makeGeneric",
-            c"setGeneric",
-            c"getGeneric",
-            c"implicitGeneric",
-            c"setMethod",
-            c".derivedDefaultMethod",
-            c"matchSignature",
-            c".isSealedMethod",
-            c".copyMethodDefaults",
-            c"rematchDefinition",
-            c".matchSigLength",
-        ] {
-            let mut bound = crate::sexp::envir::R_findVarInFrame(
-                methods,
-                crate::sexp::symbol::install_str(name.to_str().unwrap()),
-            );
-            if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                // Identity inspection must not execute unrelated lazy bindings.
-                bound = crate::sexp::accessors::PRVALUE(bound);
-            }
-            if bound == op {
-                return true;
-            }
-        }
-        false
+    if op.is_null() || crate::sexp::accessors::TYPEOF(op) != SEXPTYPE::CLOSXP {
+        return false;
     }
+    for name in [
+        c"asMethodDefinition",
+        c"makeGeneric",
+        c"setGeneric",
+        c"getGeneric",
+        c"implicitGeneric",
+        c"setMethod",
+        c".derivedDefaultMethod",
+        c"matchSignature",
+        c".isSealedMethod",
+        c".copyMethodDefaults",
+        c"rematchDefinition",
+        c".matchSigLength",
+    ] {
+        let mut bound = crate::sexp::envir::R_findVarInFrame(
+            methods,
+            crate::sexp::symbol::install_str(name.to_str().unwrap()),
+        );
+        if bound.is_null() || bound == crate::sexp::globals::R_UnboundValue() {
+            continue;
+        }
+        if TYPEOF(bound) == SEXPTYPE::PROMSXP {
+            // Identity inspection must not execute unrelated lazy bindings.
+            bound = crate::sexp::accessors::PRVALUE(bound);
+        }
+        if bound == op {
+            return true;
+        }
+    }
+    false
 }
 
 fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
-    unsafe {
-        let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
-        else {
-            return cloenv;
-        };
-        if cloenv.is_null() || cloenv == methods {
-            return cloenv;
-        }
-        let empty = crate::sexp::globals::R_EmptyEnv();
-        let base = crate::sexp::globals::R_BaseEnv();
-        let global = crate::sexp::globals::R_GlobalEnv();
-        if cloenv == empty || cloenv == base || cloenv == global {
-            return cloenv;
-        }
-        if env_on_enclos_chain(methods, cloenv) {
-            return cloenv;
-        }
-        if crate::sexp::accessors::ENCLOS(cloenv) == methods {
-            return cloenv;
-        }
-        // Lazy-load sometimes leaves methods helpers in an empty snapshot
-        // whose parent is EmptyEnv/base. asMethodDefinition's default
-        // `list(.anyClassName)` then cannot see the methods namespace.
-        if disconnected_methods_snapshot(cloenv, empty, base)
-            && methods_namespace_owns_closure(methods, op)
-        {
-            crate::sexp::accessors::SET_CLOENV(op, methods);
-            return methods;
-        }
-        let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
-        let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
-        let is_generic_snapshot = !tables.is_null()
-            && tables != crate::sexp::globals::R_UnboundValue()
-            && crate::sexp::accessors::TYPEOF(tables) == SEXPTYPE::ENVSXP;
-        let is_method_def = crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
-            && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP;
-        if is_method_def || is_generic_snapshot {
-            let parent = crate::sexp::accessors::ENCLOS(cloenv);
-            if parent.is_null() || parent == empty || parent == base {
-                crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
-                crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
-                return cloenv;
-            }
-        }
-        if !is_generic_snapshot {
-            return cloenv;
-        }
-        let sg = crate::sexp::symbol::install_str("standardGeneric");
-        let snap = crate::sexp::envir::R_findVarInFrame(cloenv, sg);
-        let live = crate::sexp::envir::R_findVarInFrame(methods, sg);
-        if is_function_sexp(live) && !is_function_sexp(snap) {
-            crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
-        }
-        crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
-        cloenv
+    let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+        return cloenv;
+    };
+    if cloenv.is_null() || cloenv == methods {
+        return cloenv;
     }
+    let empty = crate::sexp::globals::R_EmptyEnv();
+    let base = crate::sexp::globals::R_BaseEnv();
+    let global = crate::sexp::globals::R_GlobalEnv();
+    if cloenv == empty || cloenv == base || cloenv == global {
+        return cloenv;
+    }
+    if env_on_enclos_chain(methods, cloenv) {
+        return cloenv;
+    }
+    if crate::sexp::accessors::ENCLOS(cloenv) == methods {
+        return cloenv;
+    }
+    // Lazy-load sometimes leaves methods helpers in an empty snapshot
+    // whose parent is EmptyEnv/base. asMethodDefinition's default
+    // `list(.anyClassName)` then cannot see the methods namespace.
+    if disconnected_methods_snapshot(cloenv, empty, base)
+        && methods_namespace_owns_closure(methods, op)
+    {
+        crate::sexp::accessors::SET_CLOENV(op, methods);
+        return methods;
+    }
+    let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
+    let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
+    let is_generic_snapshot = !tables.is_null()
+        && tables != crate::sexp::globals::R_UnboundValue()
+        && crate::sexp::accessors::TYPEOF(tables) == SEXPTYPE::ENVSXP;
+    let is_method_def = crate::mainutils::coerce::IS_S4_OBJECT(op) != 0
+        && crate::sexp::accessors::TYPEOF(op) == SEXPTYPE::CLOSXP;
+    if is_method_def || is_generic_snapshot {
+        let parent = crate::sexp::accessors::ENCLOS(cloenv);
+        if parent.is_null() || parent == empty || parent == base {
+            crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+            crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+            return cloenv;
+        }
+    }
+    if !is_generic_snapshot {
+        return cloenv;
+    }
+    let sg = crate::sexp::symbol::install_str("standardGeneric");
+    let snap = crate::sexp::envir::R_findVarInFrame(cloenv, sg);
+    let live = crate::sexp::envir::R_findVarInFrame(methods, sg);
+    if is_function_sexp(live) && !is_function_sexp(snap) {
+        crate::sexp::accessors::SET_ENCLOS(cloenv, methods);
+    }
+    crate::mainutils::essentials::bind_methods_base_primitives(cloenv);
+    cloenv
 }
 
 fn is_function_sexp(value: SEXP) -> bool {
@@ -440,28 +433,26 @@ fn is_function_sexp(value: SEXP) -> bool {
 
 /// This is a helper that separates environment creation from body evaluation.
 fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
-    unsafe {
-        let empty = crate::sexp::globals::R_EmptyEnv();
-        if cloenv.is_null() {
-            return cloenv;
-        }
-        let parent = crate::sexp::accessors::ENCLOS(cloenv);
-        if !cloenv.is_null() && !parent.is_null() && parent != empty {
-            return cloenv;
-        }
-        let Some(utils) = crate::mainutils::essentials::cached_namespace_by_name("utils") else {
-            return cloenv;
-        };
-        let symbol = crate::sexp::symbol::install_str("RweaveLatexRuncode");
-        let mut bound = crate::sexp::envir::R_findVarInFrame(utils, symbol);
-        if crate::sexp::accessors::TYPEOF(bound) == crate::sexp::ffi::SEXPTYPE::PROMSXP {
-            bound = crate::sexp::envir::forcePromise(bound);
-        }
-        if bound == op {
-            crate::sexp::accessors::SET_ENCLOS(cloenv, utils);
-        }
-        cloenv
+    let empty = crate::sexp::globals::R_EmptyEnv();
+    if cloenv.is_null() {
+        return cloenv;
     }
+    let parent = crate::sexp::accessors::ENCLOS(cloenv);
+    if !cloenv.is_null() && !parent.is_null() && parent != empty {
+        return cloenv;
+    }
+    let Some(utils) = crate::mainutils::essentials::cached_namespace_by_name("utils") else {
+        return cloenv;
+    };
+    let symbol = crate::sexp::symbol::install_str("RweaveLatexRuncode");
+    let mut bound = crate::sexp::envir::R_findVarInFrame(utils, symbol);
+    if crate::sexp::accessors::TYPEOF(bound) == crate::sexp::ffi::SEXPTYPE::PROMSXP {
+        bound = crate::sexp::envir::forcePromise(bound);
+    }
+    if bound == op {
+        crate::sexp::accessors::SET_ENCLOS(cloenv, utils);
+    }
+    cloenv
 }
 
 pub fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {

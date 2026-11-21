@@ -337,7 +337,7 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
             // Lookup may force active bindings; acquire its root before any
             // later promise evaluation or list-cell allocation.
             let h = factory
-                .wrap(unsafe { R_findVar(expr.as_raw(), rho.as_raw()) })
+                .wrap(R_findVar(expr.as_raw(), rho.as_raw()))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if h.typeof_() == SEXPTYPE::DOTSXP || h.is_nil() {
                 let mut dh = h;
@@ -477,7 +477,7 @@ pub(crate) unsafe fn promiseArgs<'s>(
         if expression.as_raw() == dots_symbol {
             // Lookup can invoke active bindings. Root the returned dots before
             // constructing promises or allocating any new list cell.
-            let mut dots = argument_value(factory, unsafe { R_findVar(dots_symbol, rho.as_raw()) });
+            let mut dots = argument_value(factory, R_findVar(dots_symbol, rho.as_raw()));
             if dots.typeof_() == SEXPTYPE::DOTSXP || dots.is_nil() {
                 while !dots.is_nil() {
                     let expression = dots
@@ -1387,7 +1387,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         if expr.as_raw() == R_DotsSymbol() {
             let mut dots = factory
-                .wrap(unsafe { R_findVarInFrame(rho.as_raw(), expr.as_raw()) })
+                .wrap(R_findVarInFrame(rho.as_raw(), expr.as_raw()))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if dots.typeof_() == SEXPTYPE::DOTSXP || dots.is_nil() {
                 while !dots.is_nil() {

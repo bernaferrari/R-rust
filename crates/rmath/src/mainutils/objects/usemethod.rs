@@ -85,33 +85,31 @@ unsafe fn dispatchMethod(
 }
 
 fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let mut tags = Vec::new();
-        let mut formal = formals;
-        while !formal.is_null() && formal != R_NilValue() {
-            let tag = TAG(formal);
-            if tag != R_DotsSymbol_fn() {
-                tags.push(tag);
-            }
-            formal = CDR(formal);
+    let mut tags = Vec::new();
+    let mut formal = formals;
+    while !formal.is_null() && formal != R_NilValue() {
+        let tag = TAG(formal);
+        if tag != R_DotsSymbol_fn() {
+            tags.push(tag);
         }
-
-        let mut args = R_NilValue();
-        for tag in tags.into_iter().rev() {
-            let mut value = if tag.is_null() || tag == R_NilValue() {
-                R_MissingArg()
-            } else {
-                crate::sexp::envir::R_findVarInFrame(env, tag)
-            };
-            if value.is_null() || value == R_UnboundValue() {
-                value = R_MissingArg();
-            }
-            let cell = Rf_cons(value, args);
-            SETTAG(cell, tag);
-            args = cell;
-        }
-        args
+        formal = CDR(formal);
     }
+
+    let mut args = R_NilValue();
+    for tag in tags.into_iter().rev() {
+        let mut value = if tag.is_null() || tag == R_NilValue() {
+            R_MissingArg()
+        } else {
+            crate::sexp::envir::R_findVarInFrame(env, tag)
+        };
+        if value.is_null() || value == R_UnboundValue() {
+            value = R_MissingArg();
+        }
+        let cell = Rf_cons(value, args);
+        SETTAG(cell, tag);
+        args = cell;
+    }
+    args
 }
 
 pub(crate) fn simple_next_method_dispatch(
@@ -281,112 +279,108 @@ pub(crate) fn getPrimitive(symbol: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP> {
-    unsafe {
-        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return None;
-        }
-        crate::sexp::env_hash::promote_to_hash_table(env);
-        let table = crate::sexp::envir::R_findVarInFrame(env, S3MethodsTable_symbol());
-        if table.is_null() || table == R_UnboundValue() || TYPEOF(table) != SEXPTYPE::ENVSXP {
-            return None;
-        }
-        let _table_guard = protect(table);
-        crate::sexp::env_hash::promote_to_hash_table(table);
-        let val = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
-        if val.is_null() || val == R_UnboundValue() || val == R_NilValue() {
-            return None;
-        }
-        let t = TYPEOF(val);
-        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            Some(val)
-        } else {
-            None
-        }
+    if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        return None;
+    }
+    crate::sexp::env_hash::promote_to_hash_table(env);
+    let table = crate::sexp::envir::R_findVarInFrame(env, S3MethodsTable_symbol());
+    if table.is_null() || table == R_UnboundValue() || TYPEOF(table) != SEXPTYPE::ENVSXP {
+        return None;
+    }
+    let _table_guard = protect(table);
+    crate::sexp::env_hash::promote_to_hash_table(table);
+    let val = force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method));
+    if val.is_null() || val == R_UnboundValue() || val == R_NilValue() {
+        return None;
+    }
+    let t = TYPEOF(val);
+    if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        Some(val)
+    } else {
+        None
     }
 }
 
 /// Look up a method in the S3 dispatch chain: call environment, definition
 /// environment's .__S3MethodsTable__., and the base environment.
 pub fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> SEXP {
-    unsafe {
-        if method.is_null() {
-            return R_NilValue();
-        }
-
-        // Validate callrho
-        if !callrho.is_null() && TYPEOF(callrho) != SEXPTYPE::ENVSXP {
-            if callrho == R_NilValue() {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "use of NULL environment is defunct".to_string(),
-                });
-            } else {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "bad generic call environment".to_string(),
-                });
-            }
-        }
-
-        // Search from callrho up to the top environment
-        let top = topenv(R_NilValue(), callrho);
-        let _top_guard = protect(top);
-
-        let val = force_s3_method_value(findFunInEnvRange(method, callrho, top));
-        if val != R_UnboundValue() {
-            return val;
-        }
-
-        // Try the .__S3MethodsTable__. in defrho. GNU maps R_BaseEnv to
-        // R_BaseNamespace; session clones of base closures miss that table,
-        // so also search `.BaseNamespaceEnv`.
-        if let Some(val2) = lookup_s3_method_in_env_table(method, defrho) {
-            return val2;
-        }
-        let base_ns = crate::sexp::envir::R_findVarInFrame(
-            R_BaseEnv(),
-            crate::sexp::symbol::install_str(".BaseNamespaceEnv"),
-        );
-        if !base_ns.is_null()
-            && base_ns != R_UnboundValue()
-            && TYPEOF(base_ns) == SEXPTYPE::ENVSXP
-            && base_ns != defrho
-        {
-            if let Some(val2) = lookup_s3_method_in_env_table(method, base_ns) {
-                return val2;
-            }
-        }
-        if let Some(val2) = lookup_s3_method_in_env_table(method, R_BaseEnv()) {
-            return val2;
-        }
-
-        // Search from top's enclosing environment. In this port the search
-        // path is represented by R_GlobalEnv's enclosure chain, so this also
-        // covers attached package environments before base.
-        let search_start = ENCLOS(top);
-
-        if !search_start.is_null() && search_start != R_EmptyEnv() {
-            let val3 =
-                force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(method, search_start));
-            if val3 != R_UnboundValue() {
-                return val3;
-            }
-        }
-
-        // GNU UseMethod also finds methods on the search path / .GlobalEnv
-        // (`mean.L` assigned at the top level, called from median.default).
-        let global = crate::sexp::globals::R_GlobalEnv();
-        if !global.is_null() && global != R_NilValue() {
-            let val4 = force_s3_method_value(crate::sexp::envir::R_findVar(method, global));
-            if !val4.is_null()
-                && val4 != R_UnboundValue()
-                && val4 != R_NilValue()
-                && isFunction(val4) != FALSE
-            {
-                return val4;
-            }
-        }
-
-        R_UnboundValue()
+    if method.is_null() {
+        return R_NilValue();
     }
+
+    // Validate callrho
+    if !callrho.is_null() && TYPEOF(callrho) != SEXPTYPE::ENVSXP {
+        if callrho == R_NilValue() {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "use of NULL environment is defunct".to_string(),
+            });
+        } else {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "bad generic call environment".to_string(),
+            });
+        }
+    }
+
+    // Search from callrho up to the top environment
+    let top = topenv(R_NilValue(), callrho);
+    let _top_guard = protect(top);
+
+    let val = force_s3_method_value(findFunInEnvRange(method, callrho, top));
+    if val != R_UnboundValue() {
+        return val;
+    }
+
+    // Try the .__S3MethodsTable__. in defrho. GNU maps R_BaseEnv to
+    // R_BaseNamespace; session clones of base closures miss that table,
+    // so also search `.BaseNamespaceEnv`.
+    if let Some(val2) = lookup_s3_method_in_env_table(method, defrho) {
+        return val2;
+    }
+    let base_ns = crate::sexp::envir::R_findVarInFrame(
+        R_BaseEnv(),
+        crate::sexp::symbol::install_str(".BaseNamespaceEnv"),
+    );
+    if !base_ns.is_null()
+        && base_ns != R_UnboundValue()
+        && TYPEOF(base_ns) == SEXPTYPE::ENVSXP
+        && base_ns != defrho
+    {
+        if let Some(val2) = lookup_s3_method_in_env_table(method, base_ns) {
+            return val2;
+        }
+    }
+    if let Some(val2) = lookup_s3_method_in_env_table(method, R_BaseEnv()) {
+        return val2;
+    }
+
+    // Search from top's enclosing environment. In this port the search
+    // path is represented by R_GlobalEnv's enclosure chain, so this also
+    // covers attached package environments before base.
+    let search_start = ENCLOS(top);
+
+    if !search_start.is_null() && search_start != R_EmptyEnv() {
+        let val3 =
+            force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(method, search_start));
+        if val3 != R_UnboundValue() {
+            return val3;
+        }
+    }
+
+    // GNU UseMethod also finds methods on the search path / .GlobalEnv
+    // (`mean.L` assigned at the top level, called from median.default).
+    let global = crate::sexp::globals::R_GlobalEnv();
+    if !global.is_null() && global != R_NilValue() {
+        let val4 = force_s3_method_value(crate::sexp::envir::R_findVar(method, global));
+        if !val4.is_null()
+            && val4 != R_UnboundValue()
+            && val4 != R_NilValue()
+            && isFunction(val4) != FALSE
+        {
+            return val4;
+        }
+    }
+
+    R_UnboundValue()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -403,16 +397,14 @@ pub(crate) fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
 }
 
 fn force_s3_method_value(method: SEXP) -> SEXP {
-    unsafe {
-        if method.is_null() || method == R_NilValue() || method == R_UnboundValue() {
-            return method;
-        }
-        if TYPEOF(method) == SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(method);
-            crate::sexp::accessors::PRVALUE(method)
-        } else {
-            method
-        }
+    if method.is_null() || method == R_NilValue() || method == R_UnboundValue() {
+        return method;
+    }
+    if TYPEOF(method) == SEXPTYPE::PROMSXP {
+        crate::sexp::envir::forcePromise(method);
+        crate::sexp::accessors::PRVALUE(method)
+    } else {
+        method
     }
 }
 
@@ -553,28 +545,26 @@ pub(crate) fn lookup_s3_method_for_classes(
 }
 
 fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
-        {
-            R_GlobalEnv()
-        } else {
-            rho
-        };
+    let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
+    {
+        R_GlobalEnv()
+    } else {
+        rho
+    };
 
-        while !current.is_null() && current != R_EmptyEnv() {
-            let table = crate::sexp::envir::R_findVarInFrame(current, S3MethodsTable_symbol());
-            if !table.is_null() && table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
-                let method =
-                    force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method_sym));
-                if isFunction(method) != FALSE {
-                    return method;
-                }
+    while !current.is_null() && current != R_EmptyEnv() {
+        let table = crate::sexp::envir::R_findVarInFrame(current, S3MethodsTable_symbol());
+        if !table.is_null() && table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
+            let method =
+                force_s3_method_value(crate::sexp::envir::R_findVarInFrame(table, method_sym));
+            if isFunction(method) != FALSE {
+                return method;
             }
-            current = ENCLOS(current);
         }
-
-        R_UnboundValue()
+        current = ENCLOS(current);
     }
+
+    R_UnboundValue()
 }
 
 // ---------------------------------------------------------------------------

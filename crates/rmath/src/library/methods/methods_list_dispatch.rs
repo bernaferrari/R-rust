@@ -1035,17 +1035,15 @@ pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP)
 /// GNU `is_missing_arg`: MISSING bit on the frame cell, not the bound value.
 /// Default promises (`function(drop=TRUE)`) keep MISSING=1 until forced.
 fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
-    unsafe {
-        if crate::sexp::envir::R_isMissing(symbol, ev) != 0 {
-            return true;
-        }
-        let loc = crate::eval::missing::R_findVarLocInFrame(ev, symbol);
-        if !loc.cell.is_null() {
-            return MISSING(loc.cell) != 0 || CAR(loc.cell) == R_MissingArg();
-        }
-        let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
-        val == R_UnboundValue() || val == R_MissingArg()
+    if crate::sexp::envir::R_isMissing(symbol, ev) != 0 {
+        return true;
     }
+    let loc = crate::eval::missing::R_findVarLocInFrame(ev, symbol);
+    if !loc.cell.is_null() {
+        return MISSING(loc.cell) != 0 || CAR(loc.cell) == R_MissingArg();
+    }
+    let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
+    val == R_UnboundValue() || val == R_MissingArg()
 }
 
 /// R_missingArg - check if an argument is missing in a method call.

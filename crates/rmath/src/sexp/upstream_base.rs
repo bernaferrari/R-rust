@@ -1181,8 +1181,7 @@ pub(crate) fn load_upstream_base_sources(base_env: SEXP) {
         return;
     }
 
-    let namespace =
-        unsafe { R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv")) };
+    let namespace = R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv"));
     if namespace.is_null() || namespace == R_UnboundValue() {
         return;
     }
@@ -1389,30 +1388,28 @@ fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
 fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
     let mut copied = false;
     for name in names {
-        unsafe {
-            let replacing_builtin = bootstrap_builtin_needs_closure(base_env, name);
-            if defined_in(base_env, name) && !replacing_builtin {
-                continue;
-            }
-            let symbol = Rf_install_in_current(name);
-            let value = R_findVarInFrame(staging, symbol);
-            if value.is_null() || value == R_UnboundValue() {
-                continue;
-            }
-            if replacing_builtin
-                && super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP
-            {
-                continue;
-            }
-            if calls_use_method(value) && !default_method_reachable(base_env, staging, name) {
-                continue;
-            }
-            defineVar(symbol, value, base_env);
-            // GNU defineVar publishes closures on the symbol value cell;
-            // deparse and primitives.R introspection rely on that slot.
-            SET_SYMVALUE(symbol, value);
-            copied = true;
+        let replacing_builtin = bootstrap_builtin_needs_closure(base_env, name);
+        if defined_in(base_env, name) && !replacing_builtin {
+            continue;
         }
+        let symbol = Rf_install_in_current(name);
+        let value = R_findVarInFrame(staging, symbol);
+        if value.is_null() || value == R_UnboundValue() {
+            continue;
+        }
+        if replacing_builtin
+            && super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP
+        {
+            continue;
+        }
+        if calls_use_method(value) && !default_method_reachable(base_env, staging, name) {
+            continue;
+        }
+        defineVar(symbol, value, base_env);
+        // GNU defineVar publishes closures on the symbol value cell;
+        // deparse and primitives.R introspection rely on that slot.
+        SET_SYMVALUE(symbol, value);
+        copied = true;
     }
     copied
 }
@@ -1433,7 +1430,7 @@ fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
         for file in UPSTREAM_FILES {
             for name in file.exports {
                 let symbol = Rf_install_in_current(name);
-                let value = unsafe { R_findVarInFrame(staging, symbol) };
+                let value = R_findVarInFrame(staging, symbol);
                 if value.is_null() || value == R_UnboundValue() {
                     continue;
                 }
@@ -1671,7 +1668,7 @@ fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
     {
         return false;
     }
-    unsafe {
+    {
         let value = R_findVarInFrame(env, Rf_install_in_current(name));
         if value.is_null() || value == R_UnboundValue() {
             return false;
@@ -1684,10 +1681,8 @@ fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
 
 /// Whether `name` has a binding in `env`'s own frame.
 fn defined_in(env: SEXP, name: &str) -> bool {
-    unsafe {
-        let value = R_findVarInFrame(env, Rf_install_in_current(name));
-        !value.is_null() && value != R_UnboundValue()
-    }
+    let value = R_findVarInFrame(env, Rf_install_in_current(name));
+    !value.is_null() && value != R_UnboundValue()
 }
 
 fn Rf_install_in_current(name: &str) -> SEXP {

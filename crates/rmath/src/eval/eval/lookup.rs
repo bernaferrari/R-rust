@@ -170,7 +170,7 @@ pub(crate) fn eval_promise_safe<'a>(
     let factory = rho
         .node_factory()
         .map_err(|err| sexp_err("promise owner", err))?;
-    let raw_result = unsafe { forcePromise(prom.as_raw()) };
+    let raw_result = forcePromise(prom.as_raw());
     factory
         .wrap(raw_result)
         .map_err(|err| sexp_err("forced promise result", err))

@@ -715,8 +715,7 @@ pub(crate) fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
         .map(|i| {
             // SAFETY: audited boundary — device color conversion reads a
             // live argument element.
-            let c =
-                unsafe { crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff) };
+            let c = crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff);
             Color {
                 r: c as u8,
                 g: (c >> 8) as u8,

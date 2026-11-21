@@ -134,12 +134,11 @@ unsafe fn snapshot_portable_state(recording: SEXP) {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(grid), bytes.len());
             setAttrib(recording, grid_symbol, grid);
         }
-        let Some(coords) =
-            with_required_current_instance(|inst| unsafe { (*inst).portable_graphics.current })
+        let Some(coords) = with_required_current_instance(|inst| (*inst).portable_graphics.current)
         else {
             return;
         };
-        let clip = with_required_current_instance(|inst| unsafe { (*inst).portable_graphics.clip });
+        let clip = with_required_current_instance(|inst| (*inst).portable_graphics.clip);
         let (clip_rect, clip_xpd) = match clip {
             Some(clip) => (clip.rect, f64::from(clip.xpd)),
             None => ([0.; 4], -1.),

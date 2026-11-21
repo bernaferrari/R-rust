@@ -819,9 +819,10 @@ fn tailcall_promise_args<'s>(
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         if expression.as_raw() == crate::sexp::symbol::R_DotsSymbol() {
-            let dots = super::dispatch::argument_value(factory, unsafe {
-                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw())
-            });
+            let dots = super::dispatch::argument_value(
+                factory,
+                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw()),
+            );
             let count = if dots.typeof_() == SEXPTYPE::DOTSXP {
                 crate::sexp::object::PairlistIter::new(dots).count()
             } else {
@@ -841,9 +842,10 @@ fn tailcall_promise_args<'s>(
             continue;
         }
         if expression.typeof_() == SEXPTYPE::SYMSXP {
-            let found = super::dispatch::argument_value(factory, unsafe {
-                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw())
-            });
+            let found = super::dispatch::argument_value(
+                factory,
+                crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw()),
+            );
             let missing_binding = found.as_raw() == missing.as_raw()
                 || (found.typeof_() == SEXPTYPE::PROMSXP
                     && found

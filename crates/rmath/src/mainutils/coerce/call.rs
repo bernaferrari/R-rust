@@ -276,7 +276,7 @@ pub fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
     use crate::sexp::symbol::R_DotsSymbol;
 
-    unsafe {
+    {
         if el.is_null() || el == R_NilValue() {
             return el;
         }

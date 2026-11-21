@@ -1394,9 +1394,7 @@ pub fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
     // Find range.default and apply it
     let range_sym = install_str("range.default");
-    // SAFETY: `range_sym` is an interned symbol and `env` is the live calling
-    // environment rooted by the evaluator for this builtin call.
-    let range_fun = unsafe { crate::sexp::envir::findFun(range_sym, env) };
+    let range_fun = crate::sexp::envir::findFun(range_sym, env);
     let _range_fun_guard = protect(range_fun);
 
     // Build promise args

@@ -69,6 +69,5 @@ fn class_symbol() -> SEXP {
 
 /// Audited boundary: read-only class check on a live object.
 fn has_class(x: SEXP, class: &str) -> bool {
-    // SAFETY: sexp_has_class walks the class attribute without mutation.
-    unsafe { sexp_has_class(x, class) }
+    sexp_has_class(x, class)
 }

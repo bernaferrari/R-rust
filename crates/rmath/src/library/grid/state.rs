@@ -97,7 +97,7 @@ fn isString(x: SEXP) -> bool {
 /// frame lookup may allocate in the owning session.
 #[inline]
 unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::envir::R_findVarInFrame(rho, sym) }
+    crate::sexp::envir::R_findVarInFrame(rho, sym)
 }
 
 /* ==================== Helper: lang1 ==================== */

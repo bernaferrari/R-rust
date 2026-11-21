@@ -73,9 +73,7 @@ pub fn resolveMask(mask: SEXP, dd: pGEDevDesc) -> SEXP {
     // initialization state as the rest of grid.
     let env = grid_eval_env();
     let resolve_sym = install("resolveMask");
-    // SAFETY: `resolve_sym` is a live interned symbol; `env` is the shared
-    // grid evaluation environment.
-    let resolve_fn = unsafe { findFun(resolve_sym, env) };
+    let resolve_fn = findFun(resolve_sym, env);
     let _resolve_fn_guard = protect(resolve_fn);
     // SAFETY: both arguments are live objects lent for the call.
     let r_fcall = Rf_lang2(resolve_fn, mask);

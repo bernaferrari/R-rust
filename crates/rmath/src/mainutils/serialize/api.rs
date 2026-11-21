@@ -820,10 +820,7 @@ fn persist_restore_inner(
     data: SEXP,
     owner: crate::sexp::owner::OwnerToken<'_>,
 ) -> SEXP {
-    // SAFETY: `data` is a caller-owned environment SEXP; each
-    // R_findVarInFrame/defineVar call uses installed symbols against
-    // checked environment types inside this pinned restore scope.
-    unsafe {
+    {
         if data.is_null() || TYPEOF(data) != SEXPTYPE::ENVSXP {
             return R_NilValue();
         }

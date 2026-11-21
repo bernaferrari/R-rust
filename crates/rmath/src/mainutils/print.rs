@@ -383,9 +383,7 @@ fn print_matrix_dimnamed(t: SEXP, s: SEXP, dims: SEXP, quote: c_int, right: c_in
 
 /// Single-frame variable lookup (GNU `findVarInFrame`).
 fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
-    // SAFETY: printing passes live environments and symbols rooted by the
-    // value being printed or the base namespace.
-    unsafe { crate::sexp::envir::R_findVarInFrame(rho, symbol) }
+    crate::sexp::envir::R_findVarInFrame(rho, symbol)
 }
 
 /// GNU `defineVar` in a live, rooted environment.
@@ -395,14 +393,12 @@ fn define_var(symbol: SEXP, value: SEXP, rho: SEXP) {
 
 /// GNU `findFun` from a live environment.
 fn find_fun(symbol: SEXP, rho: SEXP) -> SEXP {
-    // SAFETY: `symbol` and `rho` are live nodes owned by the active session.
-    unsafe { crate::sexp::envir::findFun(symbol, rho) }
+    crate::sexp::envir::findFun(symbol, rho)
 }
 
 /// GNU `forcePromise` on a live promise.
 fn force_promise(prom: SEXP) -> SEXP {
-    // SAFETY: `prom` is a live promise read from a rooted namespace frame.
-    unsafe { crate::sexp::envir::forcePromise(prom) }
+    crate::sexp::envir::forcePromise(prom)
 }
 
 /// GNU `eval(call, rho)` of a protected call.

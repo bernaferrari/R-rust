@@ -103,47 +103,45 @@ pub fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_ngettext — R's ngettext() function (simplified, no i18n).
 pub fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let n = {
-            // GNU asInteger(): the staged stop.R wrapper reaches this
-            // .Internal with `n` still an unforced promise.
-            let raw = CAR(args);
-            let value = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(raw)
-            } else {
-                raw
-            };
-            if (isInteger(value) != 0 || TYPEOF(value) == SEXPTYPE::REALSXP) && LENGTH(value) >= 1 {
-                crate::mainutils::coerce::asInteger(value)
-            } else {
-                crate::sexp::ffi::NA_INTEGER
-            }
+    checkArity(op, args);
+    let n = {
+        // GNU asInteger(): the staged stop.R wrapper reaches this
+        // .Internal with `n` still an unforced promise.
+        let raw = CAR(args);
+        let value = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(raw)
+        } else {
+            raw
         };
-        let msg1 = {
-            let v = CADR(args);
-            if TYPEOF(v) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(v)
-            } else {
-                v
-            }
-        };
-        let msg2 = {
-            let v = CADDR(args);
-            if TYPEOF(v) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(v)
-            } else {
-                v
-            }
-        };
-
-        if n == crate::sexp::ffi::NA_INTEGER || n < 0 {
-            errorcall_cstr(call, c"invalid 'n' argument");
+        if (isInteger(value) != 0 || TYPEOF(value) == SEXPTYPE::REALSXP) && LENGTH(value) >= 1 {
+            crate::mainutils::coerce::asInteger(value)
+        } else {
+            crate::sexp::ffi::NA_INTEGER
         }
+    };
+    let msg1 = {
+        let v = CADR(args);
+        if TYPEOF(v) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(v)
+        } else {
+            v
+        }
+    };
+    let msg2 = {
+        let v = CADDR(args);
+        if TYPEOF(v) == SEXPTYPE::PROMSXP {
+            crate::sexp::envir::forcePromise(v)
+        } else {
+            v
+        }
+    };
 
-        // Return singular or plural form based on n
-        if n == 1 { msg1 } else { msg2 }
+    if n == crate::sexp::ffi::NA_INTEGER || n < 0 {
+        errorcall_cstr(call, c"invalid 'n' argument");
     }
+
+    // Return singular or plural form based on n
+    if n == 1 { msg1 } else { msg2 }
 }
 
 /// do_bindtextdomain — R's bindtextdomain() function (simplified, no i18n).

@@ -254,7 +254,7 @@ fn packed_color(value: c_uint) -> [u8; 4] {
 }
 
 unsafe fn arg(args: SEXP, name: &str) -> SEXP {
-    unsafe { arg_by_name_or_position(args, &[name], usize::MAX) }
+    arg_by_name_or_position(args, &[name], usize::MAX)
 }
 
 unsafe fn numeric_vector(value: SEXP, name: &str) -> Vec<f64> {
@@ -284,7 +284,7 @@ unsafe fn numeric_vector(value: SEXP, name: &str) -> Vec<f64> {
 }
 
 unsafe fn numeric_vector_or_default(value: SEXP, name: &str, default: f64) -> Vec<f64> {
-    if unsafe { value == R_NilValue() } {
+    if value == R_NilValue() {
         vec![default]
     } else {
         unsafe { numeric_vector(value, name) }

@@ -56,10 +56,7 @@ fn null_device_draw() -> SEXP {
 /// reads the arguments that follow it.
 #[cfg(feature = "renderplot-device")]
 fn forward_portable(name: &str, args: SEXP) -> SEXP {
-    // SAFETY: callers hand a live `.External` argument pairlist.
-    unsafe {
-        crate::mainutils::portable_plot::draw_builtin(name, crate::sexp::accessors::CDR(args))
-    }
+    crate::mainutils::portable_plot::draw_builtin(name, crate::sexp::accessors::CDR(args))
 }
 
 /// Native title arguments are positional in GNU's main/sub/xlab/ylab order.
@@ -223,13 +220,10 @@ unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SE
             // GEcurrentDevice, which opens options("device") and writes pdf.
             // GNewPlot records the frame exactly like the device-less path.
             graphics::set_plot_new_state();
-            // SAFETY: callers hand a live `.External` argument pairlist.
-            return unsafe {
-                crate::mainutils::portable_plot::draw_builtin(
-                    "plot.new",
-                    crate::sexp::accessors::CDR(args),
-                )
-            };
+            return crate::mainutils::portable_plot::draw_builtin(
+                "plot.new",
+                crate::sexp::accessors::CDR(args),
+            );
         }
         plot::C_plot_new(call, op, args, rho)
     }
@@ -290,15 +284,13 @@ unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
 /// GNU `clip` passes four user coordinates after the routine name.
 #[cfg(feature = "renderplot-device")]
 unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
-    unsafe {
-        if renderplot_backend_active() {
-            return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
-        }
-        crate::mainutils::essentials::base_error(format!(
-            "native graphics operation '{}' requires an active renderplot device",
-            external_routine_name(args),
-        ))
+    if renderplot_backend_active() {
+        return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
     }
+    crate::mainutils::essentials::base_error(format!(
+        "native graphics operation '{}' requires an active renderplot device",
+        external_routine_name(args),
+    ))
 }
 
 /// GNU C_clip converts and stores a clip rectangle; it does not require an
@@ -320,18 +312,16 @@ unsafe extern "C-unwind" fn c_convert_y(args: SEXP) -> SEXP {
 
 #[cfg(feature = "renderplot-device")]
 fn convert_locations(args: SEXP, vertical: bool) -> SEXP {
-    unsafe {
-        if renderplot_backend_active() {
-            return crate::mainutils::portable_plot::native_convert(
-                crate::sexp::accessors::CDR(args),
-                vertical,
-            );
-        }
-        crate::mainutils::essentials::base_error(format!(
-            "native graphics operation '{}' requires an active renderplot device",
-            external_routine_name(args),
-        ))
+    if renderplot_backend_active() {
+        return crate::mainutils::portable_plot::native_convert(
+            crate::sexp::accessors::CDR(args),
+            vertical,
+        );
     }
+    crate::mainutils::essentials::base_error(format!(
+        "native graphics operation '{}' requires an active renderplot device",
+        external_routine_name(args),
+    ))
 }
 
 #[cfg(not(feature = "renderplot-device"))]

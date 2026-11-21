@@ -24,7 +24,7 @@ pub(super) unsafe fn save(
         }
         let symbol = unsafe { Rf_install(native.as_ptr()) };
         let tag = bindings.wrap(symbol).unwrap_or_else(fail);
-        let mut value = unsafe { R_findVar(symbol, envir.as_raw()) };
+        let mut value = R_findVar(symbol, envir.as_raw());
         if value == R_UnboundValue() {
             crate::sexp::context::r_error(format!("object ‘{name}’ not found"));
         }

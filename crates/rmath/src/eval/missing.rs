@@ -105,19 +105,17 @@ fn dots_context_error(message: &str) -> ! {
 }
 
 fn current_dots(rho: SEXP) -> SEXP {
-    unsafe {
-        let dots = R_findVarInFrame(rho, R_DotsSymbol());
-        if dots.is_null() || dots == R_UnboundValue() {
-            dots_context_error("incorrect context: the current call has no '...' to look in");
-        }
-        if dots == R_NilValue() || dots == R_MissingArg() {
-            return R_NilValue();
-        }
-        if TYPEOF(dots) != SEXPTYPE::DOTSXP {
-            dots_context_error("incorrect context: the current call has no '...' to look in");
-        }
-        dots
+    let dots = R_findVarInFrame(rho, R_DotsSymbol());
+    if dots.is_null() || dots == R_UnboundValue() {
+        dots_context_error("incorrect context: the current call has no '...' to look in");
     }
+    if dots == R_NilValue() || dots == R_MissingArg() {
+        return R_NilValue();
+    }
+    if TYPEOF(dots) != SEXPTYPE::DOTSXP {
+        dots_context_error("incorrect context: the current call has no '...' to look in");
+    }
+    dots
 }
 
 fn dots_len(dots: SEXP) -> c_int {
@@ -399,14 +397,12 @@ fn classForGroupDispatch(obj: SEXP) -> SEXP {
 /// unbound unless `InitNames` ran, and stores the real primitive in the
 /// base frame. Method tables are keyed by that primitive.
 fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
-    unsafe {
-        let op = crate::sexp::accessors::SYMVALUE(generic_sym);
-        if dispatch_op_usable(op) {
-            return op;
-        }
-        let found = R_findVarInFrame(super::runtime::base_env(), generic_sym);
-        if dispatch_op_usable(found) { found } else { op }
+    let op = crate::sexp::accessors::SYMVALUE(generic_sym);
+    if dispatch_op_usable(op) {
+        return op;
     }
+    let found = R_findVarInFrame(super::runtime::base_env(), generic_sym);
+    if dispatch_op_usable(found) { found } else { op }
 }
 
 fn dispatch_op_usable(op: SEXP) -> bool {

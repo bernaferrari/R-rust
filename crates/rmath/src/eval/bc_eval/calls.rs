@@ -44,15 +44,13 @@ pub(crate) fn eval_gnu_logic(
 /// are unforced; GNU SPECIAL `attr<-` evaluates them, and a BUILTIN port
 /// must force them before `apply_builtin_values_safe`.
 pub(crate) fn force_gnu_builtin_arglist(mut args: SEXP) {
-    unsafe {
-        while !args.is_null() && args != R_NilValue() {
-            let car = CAR(args);
-            if TYPEOF(car) == SEXPTYPE::PROMSXP {
-                let value = forcePromise(car);
-                crate::sexp::accessors::SETCAR(args, value);
-            }
-            args = CDR(args);
+    while !args.is_null() && args != R_NilValue() {
+        let car = CAR(args);
+        if TYPEOF(car) == SEXPTYPE::PROMSXP {
+            let value = forcePromise(car);
+            crate::sexp::accessors::SETCAR(args, value);
         }
+        args = CDR(args);
     }
 }
 

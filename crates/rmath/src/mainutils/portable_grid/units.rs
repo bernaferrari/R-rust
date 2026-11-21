@@ -84,8 +84,7 @@ fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
 }
 pub(crate) fn unit_result(template: SEXP, values: &[f64]) -> SEXP {
     let value = result(values);
-    // SAFETY: audited boundary — shallow structural copy of a live template.
-    let obj = unsafe { crate::mainutils::seq::Rf_shallow_duplicate(template) };
+    let obj = crate::mainutils::seq::Rf_shallow_duplicate(template);
     // Preserve attributes, unit names and string/grob data while replacing
     // only the owned numeric coefficient vector.
     let names = attribute(obj, names_symbol());
@@ -271,8 +270,7 @@ pub(crate) fn unit_terms_result(template: SEXP, terms: &[UnitTerm]) -> SEXP {
     let names = names.freeze();
     let data = data.freeze();
     let values = values.freeze();
-    // SAFETY: audited boundary — shallow structural copy of a live template.
-    let obj = unsafe { crate::mainutils::seq::Rf_shallow_duplicate(template) };
+    let obj = crate::mainutils::seq::Rf_shallow_duplicate(template);
     let nms = attribute(obj, names_symbol());
     let mut object = mutable_vector(obj);
     for i in 0..XLENGTH(obj).min(XLENGTH(nms)) {
@@ -341,9 +339,7 @@ pub fn unit_binary(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
                         || field(a, "data") != R_NilValue()
                         || field(b, "data") != R_NilValue()
                     {
-                        // SAFETY: audited boundary — raw temporaries must stay
-                        // protected across later allocations.
-                        unsafe {
+                        {
                             let left = unit_element(a, i);
                             let _left = crate::sexp::protect::protect(left);
                             let mut right = unit_element(b, i);
@@ -419,9 +415,7 @@ pub fn unit_summary(op: &str, args: SEXP) -> Option<SEXP> {
             for i in 0..XLENGTH(field(x, "value")) {
                 mixed |= unit_name_at(x, i as usize) != first_kind;
                 let term = unit_element(x, i as usize);
-                // SAFETY: audited boundary — raw temporaries must stay
-                // protected across later allocations.
-                expression_roots.push(unsafe { crate::sexp::protect::protect(term) });
+                expression_roots.push(crate::sexp::protect::protect(term));
                 expression_terms.push(term);
             }
             values.extend(unit_values(field(x, "value")));

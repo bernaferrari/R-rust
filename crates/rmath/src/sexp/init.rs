@@ -153,49 +153,45 @@ fn initialize_base_functions(base_env: SEXP) {
 }
 
 fn alias_visible_primitive(base_env: SEXP, alias: &str, target: &str) {
-    unsafe {
-        let value = R_findVarInFrame(base_env, Rf_install_in_current(target));
-        if value.is_null() || value == R_UnboundValue() || value == R_NilValue() {
-            return;
-        }
-        let alias_sym = Rf_install_in_current(alias);
-        defineVar(alias_sym, value, base_env);
-        SET_SYMVALUE(alias_sym, value);
+    let value = R_findVarInFrame(base_env, Rf_install_in_current(target));
+    if value.is_null() || value == R_UnboundValue() || value == R_NilValue() {
+        return;
     }
+    let alias_sym = Rf_install_in_current(alias);
+    defineVar(alias_sym, value, base_env);
+    SET_SYMVALUE(alias_sym, value);
 }
 
 fn retarget_base_closure_envs(base_env: SEXP) {
-    unsafe {
-        let global = super::globals::R_GlobalEnv();
-        let namespace = crate::sexp::memory_ext::NewEnvironment(
-            super::accessors::FRAME(base_env),
-            global,
-            super::globals::R_NilValue(),
-        );
-        let _guard = super::protect::protect(namespace);
-        let mut cell = super::accessors::FRAME(base_env);
-        while !cell.is_null() && cell != super::globals::R_NilValue() {
-            let value = super::accessors::CAR(cell);
-            if super::accessors::TYPEOF(value) == super::ffi::SEXPTYPE::CLOSXP {
-                super::accessors::SET_CLOENV(value, namespace);
-            }
-            cell = super::accessors::CDR(cell);
+    let global = super::globals::R_GlobalEnv();
+    let namespace = crate::sexp::memory_ext::NewEnvironment(
+        super::accessors::FRAME(base_env),
+        global,
+        super::globals::R_NilValue(),
+    );
+    let _guard = super::protect::protect(namespace);
+    let mut cell = super::accessors::FRAME(base_env);
+    while !cell.is_null() && cell != super::globals::R_NilValue() {
+        let value = super::accessors::CAR(cell);
+        if super::accessors::TYPEOF(value) == super::ffi::SEXPTYPE::CLOSXP {
+            super::accessors::SET_CLOENV(value, namespace);
         }
-        // GNU InitGlobalEnv sets this symbol's value to R_BaseNamespace.
-        // `isBaseFun` is `identical(environment(fun), .BaseNamespaceEnv)`, and
-        // `getPackageName` returns "base" for that same pointer. The binding
-        // already exists, so this updates the shared frame in place.
-        let sym = Rf_install_in_current(".BaseNamespaceEnv");
-        defineVar(sym, namespace, base_env);
-        SET_SYMVALUE(sym, namespace);
-
-        // GNU base/R/namespace.R gives the base namespace its table for
-        // registered methods while base is still unsealed; after session
-        // bootstrap locks base, nothing may add bindings to it. The define
-        // mirrors into the shared base frame like every other base binding.
-        crate::mainutils::essentials::ensure_s3_methods_table(namespace)
-            .expect("base namespace requires an S3 methods table");
+        cell = super::accessors::CDR(cell);
     }
+    // GNU InitGlobalEnv sets this symbol's value to R_BaseNamespace.
+    // `isBaseFun` is `identical(environment(fun), .BaseNamespaceEnv)`, and
+    // `getPackageName` returns "base" for that same pointer. The binding
+    // already exists, so this updates the shared frame in place.
+    let sym = Rf_install_in_current(".BaseNamespaceEnv");
+    defineVar(sym, namespace, base_env);
+    SET_SYMVALUE(sym, namespace);
+
+    // GNU base/R/namespace.R gives the base namespace its table for
+    // registered methods while base is still unsealed; after session
+    // bootstrap locks base, nothing may add bindings to it. The define
+    // mirrors into the shared base frame like every other base binding.
+    crate::mainutils::essentials::ensure_s3_methods_table(namespace)
+        .expect("base namespace requires an S3 methods table");
 }
 
 fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
@@ -651,47 +647,41 @@ pub(crate) const LANGUAGE_ELEMENTS: &[&str] = &[
 ];
 
 fn initialize_primitive_metadata_in(base_env: SEXP) {
-    unsafe {
-        let args_env = super::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
-        let generic_args_env =
-            super::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
+    let args_env = super::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
+    let generic_args_env =
+        super::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
 
-        install_prototypes(args_env, base_env, NON_GENERIC_PROTOTYPES);
-        install_prototypes(generic_args_env, base_env, GENERIC_PROTOTYPES);
+    install_prototypes(args_env, base_env, NON_GENERIC_PROTOTYPES);
+    install_prototypes(generic_args_env, base_env, GENERIC_PROTOTYPES);
 
-        // Every primitive checks these registries, including absent names.
-        // Index their canonical frames even below the general size threshold;
-        // the existing index reads live cells and invalidates structural edits.
-        super::env_hash::promote_to_hash_table(args_env);
-        super::env_hash::promote_to_hash_table(generic_args_env);
+    // Every primitive checks these registries, including absent names.
+    // Index their canonical frames even below the general size threshold;
+    // the existing index reads live cells and invalidates structural edits.
+    super::env_hash::promote_to_hash_table(args_env);
+    super::env_hash::promote_to_hash_table(generic_args_env);
 
-        defineVar(Rf_install_in_current(".ArgsEnv"), args_env, base_env);
-        defineVar(
-            Rf_install_in_current(".GenericArgsEnv"),
-            generic_args_env,
-            base_env,
-        );
-    }
+    defineVar(Rf_install_in_current(".ArgsEnv"), args_env, base_env);
+    defineVar(
+        Rf_install_in_current(".GenericArgsEnv"),
+        generic_args_env,
+        base_env,
+    );
 }
 
 fn install_prototypes(target_env: SEXP, base_env: SEXP, prototypes: &[PrimitivePrototype]) {
-    unsafe {
-        for prototype in prototypes {
-            if !base_binding_is_primitive(base_env, prototype.name) {
-                continue;
-            }
-            let closure = prototype_closure(*prototype, base_env);
-            defineVar(Rf_install_in_current(prototype.name), closure, target_env);
+    for prototype in prototypes {
+        if !base_binding_is_primitive(base_env, prototype.name) {
+            continue;
         }
+        let closure = prototype_closure(*prototype, base_env);
+        defineVar(Rf_install_in_current(prototype.name), closure, target_env);
     }
 }
 
 fn base_binding_is_primitive(base_env: SEXP, name: &str) -> bool {
-    unsafe {
-        let value = R_findVarInFrame(base_env, Rf_install_in_current(name));
-        value != R_UnboundValue()
-            && (TYPEOF(value) == SEXPTYPE::BUILTINSXP || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
-    }
+    let value = R_findVarInFrame(base_env, Rf_install_in_current(name));
+    value != R_UnboundValue()
+        && (TYPEOF(value) == SEXPTYPE::BUILTINSXP || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
 }
 
 fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SEXP {

@@ -450,7 +450,7 @@ pub(crate) fn next_for_iteration(
         )?,
     };
     execution.require_live()?;
-    execution.native(|_| unsafe {
+    execution.native(|_| {
         crate::sexp::envir::defineVar(variable.as_raw(), value.as_raw(), env.as_raw());
     })?;
     execution.require_live()?;

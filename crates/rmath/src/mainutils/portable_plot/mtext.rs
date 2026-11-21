@@ -25,12 +25,10 @@ fn length(value: &Sexp<'_>) -> usize {
 }
 
 unsafe fn coerced(value: &Sexp<'_>, kind: SEXPTYPE, owner: OwnerToken) -> Sexp<'static> {
-    unsafe {
-        checked(owner.require_active());
-        let raw = coerceVector(value.as_raw(), kind.0);
-        checked(owner.require_active());
-        checked(checked(owner.sexp(raw)).into_owned())
-    }
+    checked(owner.require_active());
+    let raw = coerceVector(value.as_raw(), kind.0);
+    checked(owner.require_active());
+    checked(checked(owner.sexp(raw)).into_owned())
 }
 
 fn numbers(value: &Sexp<'_>, owner: OwnerToken) -> Vec<f64> {
@@ -60,40 +58,38 @@ fn numbers(value: &Sexp<'_>, owner: OwnerToken) -> Vec<f64> {
 }
 
 unsafe fn color_values(value: &Sexp<'_>, owner: OwnerToken) -> Vec<Color> {
-    unsafe {
-        let fallback = par_color("col", Color::BLACK);
-        if value.is_nil() {
-            return vec![fallback];
-        }
-        let n = length(value);
-        if n == 0 {
-            return vec![Color {
-                r: 255,
-                g: 255,
-                b: 255,
-                a: 0,
-            }];
-        }
-        let mut colors = super::colors(value.as_raw(), fallback);
-        checked(owner.require_active());
-        for (i, color) in colors.iter_mut().enumerate() {
-            let missing = match value.typeof_() {
-                SEXPTYPE::STRSXP => {
-                    let text = checked(value.try_string_elt(i as i64));
-                    text.is_na_string() || checked(text.try_char_eq(b"NA"))
-                }
-                SEXPTYPE::REALSXP => !checked(value.try_real_elt(i as i64)).is_finite(),
-                SEXPTYPE::INTSXP => checked(value.try_integer_elt(i as i64)) == i32::MIN,
-                SEXPTYPE::LGLSXP => checked(value.try_logical_elt(i as i64)) == i32::MIN,
-                _ => base_error("invalid color specification"),
-            };
-            checked(owner.require_active());
-            if missing {
-                *color = fallback;
-            }
-        }
-        colors
+    let fallback = par_color("col", Color::BLACK);
+    if value.is_nil() {
+        return vec![fallback];
     }
+    let n = length(value);
+    if n == 0 {
+        return vec![Color {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: 0,
+        }];
+    }
+    let mut colors = super::colors(value.as_raw(), fallback);
+    checked(owner.require_active());
+    for (i, color) in colors.iter_mut().enumerate() {
+        let missing = match value.typeof_() {
+            SEXPTYPE::STRSXP => {
+                let text = checked(value.try_string_elt(i as i64));
+                text.is_na_string() || checked(text.try_char_eq(b"NA"))
+            }
+            SEXPTYPE::REALSXP => !checked(value.try_real_elt(i as i64)).is_finite(),
+            SEXPTYPE::INTSXP => checked(value.try_integer_elt(i as i64)) == i32::MIN,
+            SEXPTYPE::LGLSXP => checked(value.try_logical_elt(i as i64)) == i32::MIN,
+            _ => base_error("invalid color specification"),
+        };
+        checked(owner.require_active());
+        if missing {
+            *color = fallback;
+        }
+    }
+    colors
 }
 
 fn default_adj(side: i32, las: i32) -> f64 {
