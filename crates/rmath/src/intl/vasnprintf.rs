@@ -18,7 +18,7 @@ use std::alloc::{self, Layout};
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
 use std::ptr;
 
-use super::types::cstr;
+use super::types::*;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -111,7 +111,10 @@ impl FormatState {
             return false;
         }
         // Write into the owned buffer; space was ensured above.
-        unsafe { *self.buf.add(self.buf_pos) = c };
+        let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) else {
+            return false;
+        };
+        buf[self.buf_pos] = c as u8;
         self.buf_pos += 1;
         true
     }
@@ -122,7 +125,13 @@ impl FormatState {
         }
         // Copy `len` caller bytes into the owned buffer; space was
         // ensured above.
-        unsafe { ptr::copy_nonoverlapping(s, self.buf.add(self.buf_pos), len) };
+        let Some(src) = slice_ref(s as *const u8, len) else {
+            return false;
+        };
+        let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) else {
+            return false;
+        };
+        buf[self.buf_pos..self.buf_pos + len].copy_from_slice(src);
         self.buf_pos += len;
         true
     }
@@ -134,11 +143,11 @@ impl FormatState {
         }
         // Write the NUL into the owned buffer and the length through the
         // caller's out-pointer.
-        unsafe {
-            *self.buf.add(self.buf_pos) = 0;
-            if !lengthp.is_null() {
-                *lengthp = self.buf_pos;
-            }
+        if let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) {
+            buf[self.buf_pos] = 0;
+        }
+        if let Some(p) = ptr_mut(lengthp) {
+            *p = self.buf_pos;
         }
 
         // If resultbuf was provided and we can fit, use it.
@@ -165,21 +174,14 @@ fn format_string(
     let Some(fmt) = cstr(format) else {
         // Write the empty result through the caller's out-pointers, or
         // allocate a 1-byte empty string.
-        unsafe {
-            if !lengthp.is_null() {
-                *lengthp = 0;
-            }
-            if !resultbuf.is_null() {
-                *resultbuf = 0;
-                return resultbuf;
-            }
-            let layout = Layout::from_size_align(1, 1).unwrap_or(Layout::new::<u8>());
-            let p = alloc::alloc(layout) as *mut c_char;
-            if !p.is_null() {
-                *p = 0;
-            }
-            return p;
+        if let Some(p) = ptr_mut(lengthp) {
+            *p = 0;
         }
+        if let Some(p) = ptr_mut(resultbuf) {
+            *p = 0;
+            return resultbuf;
+        }
+        return c_strdup(b"\0".as_ptr() as *const c_char);
     };
 
     let mut state = FormatState::new(resultbuf);
