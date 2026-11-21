@@ -315,8 +315,7 @@ fn lookup_message_in_domain(
     // Form a checked pointer at `off` inside the catalog image.
     let in_blob = |off: usize| -> *const c_char {
         if off < data.len() {
-            // `off` is a valid index into the `mmap_size`-byte image.
-            unsafe { data.as_ptr().add(off) }
+            data[off..].as_ptr()
         } else {
             ptr::null()
         }

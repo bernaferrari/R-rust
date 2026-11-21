@@ -15,7 +15,7 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-use super::types::{c_free, c_strdup, cstr, ptr_mut};
+use super::types::{c_free, c_strdup, cstr, ptr_mut, slice_mut, slice_ref};
 
 // ---------------------------------------------------------------------------
 // Internal vasnprintf stub
@@ -135,9 +135,12 @@ pub fn libintl_vsnprintf(
             };
             // Copy `pruned` bytes plus NUL into the caller's
             // `maxlength`-byte buffer.
-            unsafe {
-                ptr::copy_nonoverlapping(result, resultbuf, pruned);
-                *resultbuf.add(pruned) = 0;
+            if let (Some(dst), Some(src)) = (
+                slice_mut(resultbuf as *mut u8, _maxlength),
+                slice_ref(result as *const u8, pruned),
+            ) {
+                dst[..pruned].copy_from_slice(src);
+                dst[pruned] = 0;
             }
         }
         c_free(result);
@@ -232,6 +235,7 @@ pub fn libintl_asprintf(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CStr;
 
     #[test]
     fn test_vasnprintf_simple() {
