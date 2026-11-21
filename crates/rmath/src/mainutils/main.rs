@@ -753,11 +753,11 @@ fn task_callback_selector(
 // ---------------------------------------------------------------------------
 
 pub fn R_GetMaxVSize() -> u64 {
-    unsafe { crate::mainutils::memory_main::R_GetMaxVSize_memory() }
+    crate::mainutils::memory_main::R_GetMaxVSize_memory()
 }
 
 pub fn R_GetMaxNSize() -> u64 {
-    unsafe { crate::mainutils::memory_main::R_GetMaxNSize_memory() }
+    crate::mainutils::memory_main::R_GetMaxNSize_memory()
 }
 
 pub fn R_GetVSize() -> u64 {
