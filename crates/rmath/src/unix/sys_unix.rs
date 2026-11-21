@@ -69,7 +69,13 @@ fn R_NamesSymbol() -> SEXP {
 
 /// Expand ~ in file paths.
 /// Handles ~, ~user, and ~user/path forms using HOME env and getpwnam.
-pub fn R_ExpandFileName(s: *const c_char) -> *const c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
     // SAFETY: `s` is a NUL-terminated path per the C contract; passwd,
     // uname and buffer copies stay inside this block.
     unsafe {
@@ -232,7 +238,13 @@ pub fn R_setStartTime() {
 }
 
 /// Get process timing data: [user, system, elapsed, child_user, child_system].
-pub fn R_getProcTime(data: *mut c_double) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_getProcTime(data: *mut c_double) {
     // SAFETY: `data` points to five writable c_double slots per the C
     // contract; getrusage out-pointers are valid stack locals.
     unsafe {
@@ -610,7 +622,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         R_setStartTime();
         let mut data = [0.0f64; 5];
-        R_getProcTime(data.as_mut_ptr());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { R_getProcTime(data.as_mut_ptr()) };
         // Elapsed time should be non-negative
         assert!(data[2] >= 0.0);
     }

@@ -64,10 +64,11 @@ const RTLD_LOCAL: c_int = 0x0;
 // ---------------------------------------------------------------------------
 
 struct OsDynSymbolTable {
-    loadLibrary: Option<extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
-    dlsym_fn: Option<extern "C" fn(*mut DllInfo, *const c_char) -> DL_FUNC>,
-    closeLibrary: Option<extern "C" fn(*mut c_void)>,
-    getError: Option<extern "C" fn(*mut c_char, c_int)>,
+    loadLibrary:
+        Option<unsafe extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
+    dlsym_fn: Option<unsafe extern "C" fn(*mut DllInfo, *const c_char) -> DL_FUNC>,
+    closeLibrary: Option<unsafe extern "C" fn(*mut c_void)>,
+    getError: Option<unsafe extern "C" fn(*mut c_char, c_int)>,
 }
 
 fn os_dyn_symbol_table() -> OsDynSymbolTable {
@@ -103,14 +104,21 @@ pub(crate) fn compute_dlopen_flag(as_local: c_int, now: c_int) -> c_int {
 }
 
 /// Load a shared library using dlopen.
-extern "C" fn load_library(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn load_library(
     path: *const c_char,
     as_local: c_int,
     now: c_int,
     _search: *const c_char,
 ) -> *mut c_void {
     let open_flag = compute_dlopen_flag(as_local, now);
-    libc_dlopen(path, open_flag)
+    // SAFETY: forwarded raw pointers satisfy `libc_dlopen`'s contract per this function's own `# Safety` requirements.
+    unsafe { libc_dlopen(path, open_flag) }
 }
 
 /// Look up a symbol in a shared library using dlsym.
@@ -123,12 +131,25 @@ extern "C" fn local_dlsym(info: *mut DllInfo, name: *const c_char) -> DL_FUNC {
 }
 
 /// Close a shared library using dlclose.
-extern "C" fn close_library(handle: *mut c_void) {
-    libc_dlclose(handle);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn close_library(handle: *mut c_void) {
+    // SAFETY: forwarded raw pointers satisfy `libc_dlclose`'s contract per this function's own `# Safety` requirements.
+    unsafe { libc_dlclose(handle) };
 }
 
 /// Get the last dlerror message.
-extern "C" fn get_system_error(buf: *mut c_char, len: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn get_system_error(buf: *mut c_char, len: c_int) {
     // SAFETY: `buf` has `len` writable bytes per the vtable contract.
     unsafe {
         if len > 0 {
@@ -179,17 +200,32 @@ pub(crate) fn dlerror() -> *mut c_char {
     MSG.as_ptr() as *mut c_char
 }
 
-fn libc_dlopen(path: *const c_char, flag: c_int) -> *mut c_void {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn libc_dlopen(path: *const c_char, flag: c_int) -> *mut c_void {
     // SAFETY: `path` is NUL-terminated per the dlopen contract.
     unsafe { dlopen(path, flag) }
 }
 
-fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
     // SAFETY: `handle` is a live dlopen handle and `name` is NUL-terminated.
     unsafe { dlsym(handle, name) }
 }
 
-fn libc_dlclose(handle: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn libc_dlclose(handle: *mut c_void) {
     // SAFETY: `handle` is a live dlopen handle.
     unsafe {
         dlclose(handle);

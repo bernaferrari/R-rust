@@ -34,20 +34,20 @@ const C_STACK_DIRECTION: c_int = -1;
 // Function pointer types for system interface
 // ---------------------------------------------------------------------------
 
-type PtrSuicide = Option<extern "C" fn(*const c_char)>;
-type PtrShowMessage = Option<extern "C" fn(*const c_char)>;
+type PtrSuicide = Option<unsafe extern "C" fn(*const c_char)>;
+type PtrShowMessage = Option<unsafe extern "C" fn(*const c_char)>;
 // Read-console callbacks are installed as `unsafe extern "C" fn` by callers
 // outside this module, so the slot keeps that type.
 type PtrReadConsole = Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
-type PtrWriteConsole = Option<extern "C" fn(*const c_char, c_int)>;
-type PtrWriteConsoleEx = Option<extern "C" fn(*const c_char, c_int, c_int)>;
+type PtrWriteConsole = Option<unsafe extern "C" fn(*const c_char, c_int)>;
+type PtrWriteConsoleEx = Option<unsafe extern "C" fn(*const c_char, c_int, c_int)>;
 type PtrResetConsole = Option<extern "C" fn()>;
 type PtrFlushConsole = Option<extern "C" fn()>;
 type PtrClearerrConsole = Option<extern "C" fn()>;
 type PtrBusy = Option<extern "C" fn(c_int)>;
 type PtrCleanUp = Option<extern "C" fn(c_int, c_int, c_int)>;
 type PtrShowFiles = Option<
-    extern "C" fn(
+    unsafe extern "C" fn(
         c_int,
         *const *const c_char,
         *const *const c_char,
@@ -56,10 +56,10 @@ type PtrShowFiles = Option<
         *const c_char,
     ) -> c_int,
 >;
-type PtrChooseFile = Option<extern "C" fn(c_int, *mut c_char, c_int) -> c_int>;
-type PtrHistory = Option<extern "C" fn(*const c_char)>;
+type PtrChooseFile = Option<unsafe extern "C" fn(c_int, *mut c_char, c_int) -> c_int>;
+type PtrHistory = Option<unsafe extern "C" fn(*const c_char)>;
 type PtrEditFiles = Option<
-    extern "C" fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
+    unsafe extern "C" fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
 >;
 
 // ---------------------------------------------------------------------------
@@ -150,7 +150,12 @@ pub(crate) fn set_read_console_callback_for_tests(
 // Default implementations (Rstd_* equivalents)
 // ---------------------------------------------------------------------------
 
-extern "C" fn Rstd_Suicide(msg: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn Rstd_Suicide(msg: *const c_char) {
     // SAFETY: the dispatch contract passes a NUL-terminated message.
     unsafe {
         let s = std::ffi::CStr::from_ptr(msg);
@@ -159,7 +164,12 @@ extern "C" fn Rstd_Suicide(msg: *const c_char) {
     }
 }
 
-extern "C" fn Rstd_ShowMessage(msg: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn Rstd_ShowMessage(msg: *const c_char) {
     // SAFETY: the dispatch contract passes a NUL-terminated message.
     unsafe {
         let s = std::ffi::CStr::from_ptr(msg);
@@ -176,7 +186,12 @@ extern "C" fn Rstd_ReadConsole(
     0
 }
 
-extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
     // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
     unsafe {
         let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
@@ -184,7 +199,12 @@ extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
     }
 }
 
-extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, _otype: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, _otype: c_int) {
     // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
     unsafe {
         let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
@@ -227,20 +247,37 @@ fn Rstd_read_history(_file: *const c_char) {}
 // Public system interface functions (dispatch through pointers)
 // ---------------------------------------------------------------------------
 
-pub fn R_Suicide(s: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_Suicide(s: *const c_char) {
     if let Some(f) = with_system_state(|state| state.callbacks.suicide) {
-        f(s);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(s) };
     }
     std::process::exit(2);
 }
 
-pub fn R_ShowMessage(s: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ShowMessage(s: *const c_char) {
     if let Some(f) = with_system_state(|state| state.callbacks.show_message) {
-        f(s);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(s) };
     }
 }
 
-pub fn R_ReadConsole(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
@@ -255,21 +292,35 @@ pub fn R_ReadConsole(
     }
 }
 
-pub fn R_WriteConsole(buf: *const c_char, len: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_WriteConsole(buf: *const c_char, len: c_int) {
     let callbacks = with_system_state(|state| state.callbacks);
     if let Some(f) = callbacks.write_console {
-        f(buf, len);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(buf, len) };
     } else if let Some(f) = callbacks.write_console_ex {
-        f(buf, len, 0);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(buf, len, 0) };
     }
 }
 
-pub fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     let callbacks = with_system_state(|state| state.callbacks);
     if let Some(f) = callbacks.write_console {
-        f(buf, len);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(buf, len) };
     } else if let Some(f) = callbacks.write_console_ex {
-        f(buf, len, otype);
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(buf, len, otype) };
     }
 }
 
@@ -304,7 +355,12 @@ pub fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
     std::process::exit(status);
 }
 
-pub fn R_ShowFiles(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ShowFiles(
     nfile: c_int,
     file: *const *const c_char,
     headers: *const *const c_char,
@@ -313,28 +369,41 @@ pub fn R_ShowFiles(
     pager: *const c_char,
 ) -> c_int {
     if let Some(f) = with_system_state(|state| state.callbacks.show_files) {
-        f(nfile, file, headers, wtitle, del, pager)
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(nfile, file, headers, wtitle, del, pager) }
     } else {
         0
     }
 }
 
-pub fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
     if let Some(f) = with_system_state(|state| state.callbacks.choose_file) {
-        f(new, buf, len)
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(new, buf, len) }
     } else {
         0
     }
 }
 
-pub fn R_EditFiles(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_EditFiles(
     nfile: c_int,
     file: *const *const c_char,
     title: *const *const c_char,
     editor: *const c_char,
 ) -> c_int {
     if let Some(f) = with_system_state(|state| state.callbacks.edit_files) {
-        f(nfile, file, title, editor)
+        // SAFETY: forwarded raw pointers satisfy the registered callback's contract per this function's own `# Safety` requirements.
+        unsafe { f(nfile, file, title, editor) }
     } else {
         0
     }
@@ -433,7 +502,12 @@ pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
 // Rf_initialize_R
 // ---------------------------------------------------------------------------
 
-fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
     // SAFETY: `src` is a NUL-terminated C string and `dst` has room for the
     // unescaped result; the caller (Rf_initialize_R) owns both buffers.
     unsafe {
@@ -495,7 +569,12 @@ fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut crate::mainutils:
 fn R_setStartTime() {}
 fn fpu_setup(_start: c_int) {}
 
-pub fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
     unsafe {
         if with_system_state(|state| state.num_initialized) != 0 {
             eprintln!("R is already initialized\n");
@@ -700,7 +779,8 @@ mod tests {
     #[test]
     fn test_system_dispatch_nulls() {
         let _session = crate::sexp::session::RSession::new();
-        R_ShowMessage(b"test\0".as_ptr() as *const c_char);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { R_ShowMessage(b"test\0".as_ptr() as *const c_char) };
     }
 
     #[test]
@@ -761,7 +841,8 @@ mod tests {
     fn test_unescape_arg() {
         let src = b"hello~+~world\0";
         let mut dst = [0i8; 16];
-        let end = unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let end = unsafe { unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr()) };
         let written = (end as usize) - (dst.as_mut_ptr() as usize);
         assert_eq!(written, 11);
         assert_eq!(&dst[..11], b"hello world".map(|b| b as i8));

@@ -45,7 +45,13 @@ const SA_SUICIDE: c_int = 3;
 // ---------------------------------------------------------------------------
 
 /// Fatal error handler called at startup.
-pub fn Rstd_Suicide(s: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_Suicide(s: *const c_char) {
     // SAFETY: `s` is NUL-terminated or null per the console contract.
     unsafe {
         if !s.is_null() {
@@ -89,7 +95,12 @@ fn read_console_from(reader: &mut impl BufRead, buf: &mut [u8]) -> c_int {
     }
 }
 
-pub fn Rstd_ReadConsole(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
@@ -121,7 +132,13 @@ pub fn Rstd_ReadConsole(
 // ---------------------------------------------------------------------------
 
 /// Write to the console (legacy interface).
-pub fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
     // SAFETY: `buf` has `len` readable bytes per the console contract.
     unsafe {
         if len <= 0 || buf.is_null() {
@@ -134,7 +151,13 @@ pub fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
 
 /// Write to the console with output type.
 /// otype=0: normal, otype=1: warning/error
-pub fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     // SAFETY: `buf` has `len` readable bytes per the console contract.
     unsafe {
         if len <= 0 || buf.is_null() {
@@ -173,7 +196,13 @@ pub fn Rstd_Busy(_which: c_int) {}
 // ---------------------------------------------------------------------------
 
 /// Show a message (used for warnings during initialization).
-pub fn Rstd_ShowMessage(s: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_ShowMessage(s: *const c_char) {
     // SAFETY: `s` is NUL-terminated or null per the console contract.
     unsafe {
         if !s.is_null() {
@@ -231,7 +260,12 @@ pub(crate) struct SysStdRuntimeState {
     readline_word_breaks: Option<String>,
 }
 
-fn cstr_to_string(ptr: *const c_char) -> Option<String> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn cstr_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
@@ -243,8 +277,15 @@ fn cstr_to_string(ptr: *const c_char) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Load command history from file.
-pub fn Rstd_loadhistory(file: *const c_char) {
-    let Some(path) = cstr_to_string(file) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_loadhistory(file: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let Some(path) = (unsafe { cstr_to_string(file) }) else {
         return;
     };
     let Ok(contents) = std::fs::read_to_string(path) else {
@@ -256,8 +297,15 @@ pub fn Rstd_loadhistory(file: *const c_char) {
 }
 
 /// Save command history to file.
-pub fn Rstd_savehistory(file: *const c_char) {
-    let Some(path) = cstr_to_string(file) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_savehistory(file: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let Some(path) = (unsafe { cstr_to_string(file) }) else {
         return;
     };
     let contents = with_sys_std_state(|state| {
@@ -271,16 +319,30 @@ pub fn Rstd_savehistory(file: *const c_char) {
 }
 
 /// Add a line to the history.
-pub fn Rstd_addhistory(line: *const c_char) {
-    let Some(line) = cstr_to_string(line) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_addhistory(line: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let Some(line) = (unsafe { cstr_to_string(line) }) else {
         return;
     };
     with_sys_std_state(|state| state.history.push(line));
 }
 
 /// Read history from file (readline interface).
-pub fn Rstd_read_history(file: *const c_char) {
-    Rstd_loadhistory(file)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rstd_read_history(file: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `Rstd_loadhistory`'s contract per this function's own `# Safety` requirements.
+    unsafe { Rstd_loadhistory(file) }
 }
 
 // ---------------------------------------------------------------------------
@@ -315,13 +377,26 @@ pub fn Rg_wait_usec(_usec: c_int) {
 }
 
 /// Set readline word break characters.
-pub fn set_rl_word_breaks(value: *const c_char) {
-    let word_breaks = cstr_to_string(value);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn set_rl_word_breaks(value: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let word_breaks = unsafe { cstr_to_string(value) };
     with_sys_std_state(|state| state.readline_word_breaks = word_breaks);
 }
 
 /// Expand filename using the frontend-compatible readline hook.
-pub fn R_ExpandFileName_readline(s: *const c_char, buff: *mut c_char) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ExpandFileName_readline(s: *const c_char, buff: *mut c_char) -> *mut c_char {
     // SAFETY: `s` is NUL-terminated and `buff` holds R_PATH_MAX bytes per
     // the readline contract.
     unsafe {
@@ -414,22 +489,26 @@ mod tests {
 
     #[test]
     fn test_std_write_console() {
-        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 5);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 5) };
     }
 
     #[test]
     fn test_std_write_console_ex_normal() {
-        Rstd_WriteConsoleEx(b"hello\0".as_ptr() as *const c_char, 5, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsoleEx(b"hello\0".as_ptr() as *const c_char, 5, 0) };
     }
 
     #[test]
     fn test_std_write_console_ex_error() {
-        Rstd_WriteConsoleEx(b"error\0".as_ptr() as *const c_char, 5, 1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsoleEx(b"error\0".as_ptr() as *const c_char, 5, 1) };
     }
 
     #[test]
     fn test_std_show_message() {
-        Rstd_ShowMessage(b"test message\0".as_ptr() as *const c_char);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_ShowMessage(b"test message\0".as_ptr() as *const c_char) };
     }
 
     #[test]
@@ -462,9 +541,12 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        Rstd_addhistory(b"1 + 1\0".as_ptr() as *const c_char);
-        Rstd_addhistory(b"plot(1:3)\0".as_ptr() as *const c_char);
-        Rstd_savehistory(c_path.as_ptr());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_addhistory(b"1 + 1\0".as_ptr() as *const c_char) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_addhistory(b"plot(1:3)\0".as_ptr() as *const c_char) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_savehistory(c_path.as_ptr()) };
 
         let saved = std::fs::read_to_string(&path).expect("history should be saved");
         assert_eq!(saved, "1 + 1\nplot(1:3)\n");
@@ -473,7 +555,8 @@ mod tests {
         unsafe {
             set_current_instance(&mut other);
         }
-        Rstd_loadhistory(c_path.as_ptr());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_loadhistory(c_path.as_ptr()) };
         assert_eq!(
             other.sys_std_state.history,
             vec!["1 + 1".to_string(), "plot(1:3)".to_string()]
@@ -485,7 +568,8 @@ mod tests {
     #[test]
     fn test_set_rl_word_breaks() {
         let _session = crate::sexp::session::RSession::new();
-        set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char) };
         crate::sexp::instance::with_required_current_instance(|instance| unsafe {
             assert_eq!(
                 (*instance).sys_std_state.readline_word_breaks.as_deref(),
@@ -513,9 +597,12 @@ mod tests {
 
     #[test]
     fn test_std_write_console_null() {
-        Rstd_WriteConsole(ptr::null(), 5);
-        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 0);
-        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, -1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsole(ptr::null(), 5) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 0) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, -1) };
     }
 
     #[test]

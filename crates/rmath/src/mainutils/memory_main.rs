@@ -1121,13 +1121,15 @@ pub(crate) unsafe fn R_ReadConsole_memory(
     len: c_int,
     addtohistory: c_int,
 ) -> c_int {
-    crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory)
+    // SAFETY: forwarded raw pointers satisfy `R_ReadConsole`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory) }
 }
 
 /// Write to the active console callback.
 /// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
 pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
-    crate::unix::system::R_WriteConsole(buf, len)
+    // SAFETY: forwarded raw pointers satisfy `R_WriteConsole`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::unix::system::R_WriteConsole(buf, len) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,7 +1140,8 @@ pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
 /// This is the equivalent of R's `readline()` function.
 pub unsafe fn readline(prompt: *const c_char) -> *mut c_char {
     let mut buffer = vec![0u8; 8192];
-    let ok = crate::unix::system::R_ReadConsole(prompt, buffer.as_mut_ptr(), 8192, 1);
+    // SAFETY: forwarded raw pointers satisfy `R_ReadConsole`'s contract per this function's own `# Safety` requirements.
+    let ok = unsafe { crate::unix::system::R_ReadConsole(prompt, buffer.as_mut_ptr(), 8192, 1) };
     if ok == 0 {
         return ptr::null_mut();
     }

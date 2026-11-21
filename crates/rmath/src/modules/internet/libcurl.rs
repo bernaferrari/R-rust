@@ -1634,8 +1634,15 @@ fn translateCharFP(x: SEXP) -> *const c_char {
 }
 
 /// R_ExpandFileName - expand ~ in file paths
-fn R_ExpandFileName(path: *const c_char) -> *const c_char {
-    crate::unix::sys_unix::R_ExpandFileName(path)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
+    // SAFETY: forwarded raw pointers satisfy `R_ExpandFileName`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::unix::sys_unix::R_ExpandFileName(path) }
 }
 
 /// checkArity - check function call arity

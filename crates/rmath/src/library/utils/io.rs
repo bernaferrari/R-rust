@@ -66,8 +66,14 @@ fn errno_ptr() -> *mut c_int {
 /// whitespace, optional sign, "0x" prefix under base 16/0, octal detection
 /// under base 0). Port of the former wasm-libc facade parser: no errno —
 /// the caller reports overflow through its range check.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[cfg(target_arch = "wasm32")]
-fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
+unsafe fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
     unsafe {
         let b = CStr::from_ptr(nptr).to_bytes();
         let mut i = 0;
@@ -131,15 +137,26 @@ fn c_isspace(c: c_int) -> c_int {
 /// ASCII case-insensitive prefix compare: libc strncasecmp(3) on native
 /// targets, a portable eq_ignore_ascii_case on wasm32. `lit` is an ASCII
 /// literal without its NUL terminator.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[cfg(not(target_arch = "wasm32"))]
 #[inline]
-fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
     unsafe { libc::strncasecmp(s, lit.as_ptr() as *const c_char, lit.len()) == 0 }
 }
 
 #[cfg(target_arch = "wasm32")]
 #[inline]
-fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
     unsafe {
         let bytes = CStr::from_ptr(s).to_bytes();
         bytes.len() >= lit.len() && bytes[..lit.len()].eq_ignore_ascii_case(lit)
@@ -147,7 +164,13 @@ fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
 }
 
 /// Check if string is blank (empty or whitespace-only)
-fn isBlankString(s: *const core::ffi::c_char) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn isBlankString(s: *const core::ffi::c_char) -> c_int {
     unsafe {
         if *s == 0 {
             return 1;
@@ -321,7 +344,12 @@ fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
     }
 }
 
-fn streql(a: *const c_char, b: *const c_char) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         if a.is_null() || b.is_null() {
             return (a == b) as c_int;
@@ -330,7 +358,12 @@ fn streql(a: *const c_char, b: *const c_char) -> c_int {
     }
 }
 
-fn write_connection_cstr(con: c_int, value: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_connection_cstr(con: c_int, value: *const c_char) {
     unsafe {
         if value.is_null() {
             return;
@@ -339,9 +372,16 @@ fn write_connection_cstr(con: c_int, value: *const c_char) {
     }
 }
 
-fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
-    write_connection_cstr(con, first);
-    write_connection_cstr(con, second);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `write_connection_cstr`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_connection_cstr(con, first) };
+    // SAFETY: forwarded raw pointers satisfy `write_connection_cstr`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_connection_cstr(con, second) };
 }
 
 /* LocalData struct — mirrors the C version */
@@ -414,7 +454,12 @@ fn Rspace(c: c_uint) -> bool {
 
 /* isNAstring — check if a string matches one of the NA strings */
 #[inline]
-fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
     unsafe {
         if mode == 0 {
             let len = CStr::from_ptr(buf).to_bytes().len();
@@ -434,7 +479,12 @@ fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
 }
 
 /* Strtoi — strtol wrapper returning NA_INTEGER on overflow */
-fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     unsafe {
         let mut endp: *mut c_char = ptr::null_mut();
         #[cfg(not(target_arch = "wasm32"))]
@@ -471,7 +521,12 @@ fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
 /* Strtod — ported from R_strtod5 in r-source/src/main/util.c
  * Handles decimal char substitution, NA/NaN/Inf, hex literals, exact mode.
  */
-fn Strtod(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn Strtod(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     na: c_int,
@@ -822,7 +877,12 @@ fn Strtod(
  * Forms: "3.5", "3.5i", "3+4i", "3-4i", "i", "2i"
  * Ported from r-source/src/library/utils/src/io.c
  */
-fn strtoc(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn strtoc(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     na: c_int,
@@ -1000,7 +1060,17 @@ fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
 }
 
 /* ruleout_types — determine possible types for a string */
-fn ruleout_types(s: *const c_char, typeInfo: &mut Typecvt_Info, data: &LocalData, exact: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ruleout_types(
+    s: *const c_char,
+    typeInfo: &mut Typecvt_Info,
+    data: &LocalData,
+    exact: c_int,
+) {
     unsafe {
         if s.is_null() {
             return;
@@ -1109,14 +1179,12 @@ fn isVectorAtomic(x: SEXP) -> bool {
 }
 
 /// inherits — check if object has a given class
-fn inherits(x: SEXP, _what: *const c_char) -> bool {
+fn inherits(x: SEXP, what: &CStr) -> bool {
     unsafe {
         let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
         if isNull(klass) {
             // Check for special types by name
-            if TYPEOF(x) == SEXPTYPE::VECSXP
-                && CStr::from_ptr(_what).to_str().unwrap_or("") == "data.frame"
-            {
+            if TYPEOF(x) == SEXPTYPE::VECSXP && what.to_str().unwrap_or("") == "data.frame" {
                 return true;
             }
             return false;
@@ -1125,7 +1193,7 @@ fn inherits(x: SEXP, _what: *const c_char) -> bool {
             return false;
         }
         let len = LENGTH(klass);
-        let what_cstr = CStr::from_ptr(_what);
+        let what_cstr = what;
         let what_str = what_cstr.to_str().unwrap_or("");
         for i in 0..len {
             let s = CHAR(STRING_ELT(klass, i as R_xlen_t));
@@ -1158,45 +1226,37 @@ fn strchr_quoteset(quoteset: &[c_char; 10], c: c_int) -> bool {
 }
 
 /// Format an error message and call Rf_error
-fn r_error(fmt: *const c_char, arg: *const c_char) {
-    unsafe {
-        // Rf_error in our Rust port takes a single format string
-        // Build the full message using snprintf
-        let mut buf = [0 as core::ffi::c_char; 512];
-        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
-        let args: Vec<crate::mainutils::r_format::CArg> = if arg.is_null() {
-            vec![]
-        } else {
-            vec![CArg::Str(CStr::from_ptr(arg).to_bytes())]
-        };
-        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
-        Rf_error(buf.as_ptr());
-    }
+fn r_error(fmt: &CStr, arg: Option<&CStr>) {
+    // Rf_error in our Rust port takes a single format string
+    // Build the full message using snprintf
+    let mut buf = [0 as core::ffi::c_char; 512];
+    let fmt_b = fmt.to_bytes().to_vec();
+    let args: Vec<crate::mainutils::r_format::CArg> = match arg {
+        None => vec![],
+        Some(arg) => vec![CArg::Str(arg.to_bytes())],
+    };
+    crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
+    Rf_error(buf.as_ptr());
 }
 
 /// Format an error message with int arg and call Rf_error
-fn r_error_int(fmt: *const c_char, arg: c_int) {
-    unsafe {
-        let mut buf = [0 as core::ffi::c_char; 512];
-        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
-        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &[arg.into()]);
-        Rf_error(buf.as_ptr());
-    }
+fn r_error_int(fmt: &CStr, arg: c_int) {
+    let mut buf = [0 as core::ffi::c_char; 512];
+    let fmt_b = fmt.to_bytes().to_vec();
+    crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &[arg.into()]);
+    Rf_error(buf.as_ptr());
 }
 
 /// Format a warning message and call Rf_warning
-fn r_warning(fmt: *const c_char, arg: *const c_char) {
-    unsafe {
-        let mut buf = [0 as core::ffi::c_char; 512];
-        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
-        let args: Vec<crate::mainutils::r_format::CArg> = if arg.is_null() {
-            vec![]
-        } else {
-            vec![CArg::Str(CStr::from_ptr(arg).to_bytes())]
-        };
-        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
-        Rf_warning(buf.as_ptr());
-    }
+fn r_warning(fmt: &CStr, arg: Option<&CStr>) {
+    let mut buf = [0 as core::ffi::c_char; 512];
+    let fmt_b = fmt.to_bytes().to_vec();
+    let args: Vec<crate::mainutils::r_format::CArg> = match arg {
+        None => vec![],
+        Some(arg) => vec![CArg::Str(arg.to_bytes())],
+    };
+    crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
+    Rf_warning(buf.as_ptr());
 }
 
 /// EncodeElement2 — encode an element for writetable output.
@@ -1289,19 +1349,13 @@ pub fn countfields(args: SEXP) -> SEXP {
 
         // Validate comment.char
         if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"comment.char\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"comment.char"));
         }
         let p = translateChar(STRING_ELT(comstr, 0));
         data.comchar = NO_COMCHAR;
         let plen = CStr::from_ptr(p).to_bytes().len();
         if plen > 1 {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"comment.char\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"comment.char"));
         } else if plen == 1 {
             data.comchar = *p as c_int;
         }
@@ -1321,10 +1375,7 @@ pub fn countfields(args: SEXP) -> SEXP {
                 data.sepchar = *translateChar(STRING_ELT(sep, 0)) as c_int;
             }
         } else {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"sep\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"sep"));
         }
 
         // Parse quotes
@@ -1343,10 +1394,7 @@ pub fn countfields(args: SEXP) -> SEXP {
         } else if isNull(quotes) {
             data.quoteset[0] = 0;
         } else {
-            r_error(
-                b"invalid quote symbol set\0".as_ptr() as *const c_char,
-                ptr::null(),
-            );
+            r_error(c"invalid quote symbol set", None);
         }
 
         // Set up connection
@@ -1883,10 +1931,7 @@ pub fn readtablehead(args: SEXP) -> SEXP {
         let skipNul = asLogical(CAR(args_cdr));
 
         if nlines <= 0 || nlines == NA_INTEGER() {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"nlines\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"nlines"));
         }
         if blskip == NA_LOGICAL() {
             blskip = 1;
@@ -1908,27 +1953,18 @@ pub fn readtablehead(args: SEXP) -> SEXP {
         } else if isNull(quotes) {
             data.quoteset[0] = 0;
         } else {
-            r_error(
-                b"invalid quote symbol set\0".as_ptr() as *const c_char,
-                ptr::null(),
-            );
+            r_error(c"invalid quote symbol set", None);
         }
 
         // Validate comment.char
         if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"comment.char\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"comment.char"));
         }
         let p = translateChar(STRING_ELT(comstr, 0));
         data.comchar = NO_COMCHAR;
         let plen = CStr::from_ptr(p).to_bytes().len();
         if plen > 1 {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"comment.char\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"comment.char"));
         } else if plen == 1 {
             data.comchar = *p as c_int;
         }
@@ -1941,17 +1977,11 @@ pub fn readtablehead(args: SEXP) -> SEXP {
                 data.sepchar = *translateChar(STRING_ELT(sep, 0)) as c_int;
             }
         } else {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"sep\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"sep"));
         }
 
         if skipNul == NA_LOGICAL() {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"skipNul\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"skipNul"));
         }
         data.skipNul = skipNul != 0;
 
@@ -2000,10 +2030,7 @@ pub fn readtablehead(args: SEXP) -> SEXP {
                         nbuf += 1;
                         let c2 = scanchar(true, &mut data);
                         if c2 == R_EOF_VAL {
-                            r_error(
-                                b"\\ followed by EOF\0".as_ptr() as *const c_char,
-                                ptr::null(),
-                            );
+                            r_error(c"\\ followed by EOF", None);
                         }
                         buf[nbuf] = c2 as c_char;
                         nbuf += 1;
@@ -2144,52 +2171,28 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Validate arguments
         if nr == NA_INTEGER() {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"nr\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"nr"));
         }
         if nc == NA_INTEGER() {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"nc\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"nc"));
         }
         if !isNull(rnames) && !isString(rnames) {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"rnames\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"rnames"));
         }
         if !isString(sep) {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"sep\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"sep"));
         }
         if !isString(eol) {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"eol\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"eol"));
         }
         if !isString(na) {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"na\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"na"));
         }
         if !isString(dec) {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"dec\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"dec"));
         }
         if qmethod0 == NA_LOGICAL() {
-            r_error(
-                b"invalid '%s' argument\0".as_ptr() as *const c_char,
-                b"qmethod\0".as_ptr() as *const c_char,
-            );
+            r_error(c"invalid '%s' argument", Some(c"qmethod"));
         }
         let qmethod = qmethod0 != 0;
 
@@ -2198,10 +2201,7 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let cna = translateChar(STRING_ELT(na, 0));
         let sdec = translateChar(STRING_ELT(dec, 0));
         if CStr::from_ptr(sdec).to_bytes().len() != 1 {
-            r_error(
-                b"'dec' must be a single character\0".as_ptr() as *const c_char,
-                ptr::null(),
-            );
+            r_error(c"'dec' must be a single character", None);
         }
 
         // Parse quote columns
@@ -2245,7 +2245,7 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     );
                     Rf_error(encode_buf.as_ptr());
                 }
-                if inherits(xj, b"factor\0".as_ptr() as *const c_char) {
+                if inherits(xj, c"factor") {
                     *levels_arr.add(j) = attrib_core::getAttrib(xj, attrib_core::R_LevelsSymbol());
                 } else {
                     *levels_arr.add(j) = R_NilValue();
@@ -2304,8 +2304,7 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             );
                         } else {
                             r_error_int(
-                                b"column %d claims to be a factor but does not have numeric codes\0"
-                                    .as_ptr() as *const c_char,
+                                c"column %d claims to be a factor but does not have numeric codes",
                                 (j + 1) as c_int,
                             );
                             tmp = ptr::null(); // unreachable
@@ -2329,10 +2328,7 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         } else {
             // A matrix
             if !isVectorAtomic(x) {
-                r_error(
-                    b"write.table: x must be a matrix or data frame\0".as_ptr() as *const c_char,
-                    ptr::null(),
-                );
+                r_error(c"write.table: x must be a matrix or data frame", None);
             }
 
             for i in 0..nr as usize {
