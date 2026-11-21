@@ -58,67 +58,63 @@ pub fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// is allowed; every other attribute makes the result false. A missing mode
 /// is `"any"`, which is what `is.vector(x)` and `str()` pass.
 pub fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let mode = match vector_mode_argument(args) {
-            Ok(mode) => mode,
-            Err(message) => panic_r_error(message),
-        };
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let mode_name = if mode == "name" {
-            "symbol".to_string()
-        } else {
-            mode
-        };
-        let matches_mode = if mode_name == "any" {
-            is_gnu_vector(TYPEOF(x))
-        } else if mode_name == "numeric" {
-            is_numeric_mode(x)
-        } else {
-            sexptype_mode_name(x) == mode_name
-        };
-        if !matches_mode || has_disallowed_vector_attribute(x) {
-            return Rf_ScalarLogical(FALSE);
-        }
-        Rf_ScalarLogical(TRUE)
+    if args.is_null() || args == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let mode = match vector_mode_argument(args) {
+        Ok(mode) => mode,
+        Err(message) => panic_r_error(message),
+    };
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
+    }
+    let mode_name = if mode == "name" {
+        "symbol".to_string()
+    } else {
+        mode
+    };
+    let matches_mode = if mode_name == "any" {
+        is_gnu_vector(TYPEOF(x))
+    } else if mode_name == "numeric" {
+        is_numeric_mode(x)
+    } else {
+        sexptype_mode_name(x) == mode_name
+    };
+    if !matches_mode || has_disallowed_vector_attribute(x) {
+        return scalar_logical(FALSE);
+    }
+    scalar_logical(TRUE)
 }
 
 fn vector_mode_argument(args: SEXP) -> Result<String, &'static str> {
-    unsafe {
-        let cell = CDR(args);
-        if cell.is_null() || cell == R_NilValue() {
-            return Ok("any".to_string());
-        }
-        let mode = CAR(cell);
-        if mode == R_MissingArg() {
-            return Ok("any".to_string());
-        }
-        if mode.is_null()
-            || mode == R_NilValue()
-            || TYPEOF(mode) != SEXPTYPE::STRSXP
-            || XLENGTH(mode) != 1
-        {
-            return Err("invalid 'mode' argument");
-        }
-        let elt = STRING_ELT(mode, 0);
-        if elt.is_null() || elt == R_NilValue() {
-            return Err("invalid 'mode' argument");
-        }
-        if elt == crate::sexp::globals::R_NaString() {
-            return Ok("NA".to_string());
-        }
-        let bytes = CHAR(elt);
-        if bytes.is_null() {
-            return Err("invalid 'mode' argument");
-        }
-        Ok(CStr::from_ptr(bytes).to_string_lossy().into_owned())
+    let cell = CDR(args);
+    if cell.is_null() || cell == R_NilValue() {
+        return Ok("any".to_string());
     }
+    let mode = CAR(cell);
+    if mode == R_MissingArg() {
+        return Ok("any".to_string());
+    }
+    if mode.is_null()
+        || mode == R_NilValue()
+        || TYPEOF(mode) != SEXPTYPE::STRSXP
+        || XLENGTH(mode) != 1
+    {
+        return Err("invalid 'mode' argument");
+    }
+    let owner = active_owner();
+    let elt = owner
+        .sexp(mode)
+        .and_then(|mode| mode.try_string_elt(0))
+        .map_err(|_| "invalid 'mode' argument")?;
+    if elt.as_raw().is_null() || elt.as_raw() == R_NilValue() {
+        return Err("invalid 'mode' argument");
+    }
+    if elt.as_raw() == crate::sexp::globals::R_NaString() {
+        return Ok("NA".to_string());
+    }
+    charsxp_utf8_lossy(&elt).ok_or("invalid 'mode' argument")
 }
 
 fn is_gnu_vector(t: c_int) -> bool {
@@ -133,73 +129,70 @@ fn is_gnu_vector(t: c_int) -> bool {
 }
 
 fn is_numeric_mode(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0
-        } else {
-            t == SEXPTYPE::REALSXP
-        }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP {
+        // SAFETY: inherits2 performs a read-only class walk on a live SEXP.
+        unsafe { crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0 }
+    } else {
+        t == SEXPTYPE::REALSXP
     }
 }
 
 fn sexptype_mode_name(x: SEXP) -> String {
-    unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::OBJSXP {
-            let s4 = ((*x).sxpinfo.gp() & (1 << 4)) != 0;
-            return if s4 {
-                "S4".to_string()
-            } else {
-                "object".to_string()
-            };
-        }
-        let raw = crate::mainutils::util_main::type2char(t);
-        if raw.is_null() {
-            return "unknown".to_string();
-        }
-        CStr::from_ptr(raw).to_string_lossy().into_owned()
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::OBJSXP {
+        // SAFETY: x is a live SEXP; reading the S4 flag bit is a pure read.
+        let s4 = (unsafe { (*x).sxpinfo.gp() } & (1 << 4)) != 0;
+        return if s4 {
+            "S4".to_string()
+        } else {
+            "object".to_string()
+        };
     }
+    // SAFETY: type2char returns a static NUL-terminated name or null.
+    let raw = unsafe { crate::mainutils::util_main::type2char(t) };
+    if raw.is_null() {
+        return "unknown".to_string();
+    }
+    // SAFETY: raw is a live NUL-terminated static string.
+    unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned()
 }
 
 fn has_disallowed_vector_attribute(x: SEXP) -> bool {
-    unsafe {
-        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
-        let nil = R_NilValue();
-        let mut a = ATTRIB(x);
-        while !a.is_null() && a != nil {
-            if TAG(a) != names_sym {
-                return true;
-            }
-            a = CDR(a);
+    // SAFETY: returns the interned names symbol handle.
+    let names_sym = unsafe { crate::sexp::attrib_core::R_NamesSymbol() };
+    let nil = R_NilValue();
+    let mut a = ATTRIB(x);
+    while !a.is_null() && a != nil {
+        if TAG(a) != names_sym {
+            return true;
         }
-        false
+        a = CDR(a);
     }
+    false
 }
 
 /// R's `is.scalar(x)` — check if x has length 1 (simplified).
 pub fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        Rf_ScalarLogical(if n == 1 { TRUE } else { FALSE })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let n = XLENGTH(x);
+    scalar_logical(if n == 1 { TRUE } else { FALSE })
 }
 
 /// R's `is.named(x)` — check if x has names attribute.
 pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
-        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
-        Rf_ScalarLogical(if has_names { TRUE } else { FALSE })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    // SAFETY: x is a live SEXP retained by the caller's argument graph.
+    let names =
+        unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr())) };
+    let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
+    scalar_logical(if has_names { TRUE } else { FALSE })
 }
 
 /// R's `is.unsorted(x, na.rm = FALSE, strictly = FALSE)`.
@@ -208,39 +201,37 @@ pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `na.rm = FALSE`, any NA/NaN makes the result `NA`, even if another pair is
 /// visibly out of order.
 pub fn do_is_unsorted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let na_rm = match logical_arg_with_default(args, "na.rm", 1, FALSE) {
-            Ok(value) => value != FALSE,
-            Err(message) => panic_r_error(message),
-        };
-        let strictly = match logical_arg_with_default(args, "strictly", 2, FALSE) {
-            Ok(value) => value != FALSE,
-            Err(_) => panic_r_error("invalid 'strictly' argument"),
-        };
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-        if n <= 1 {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let result = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-            is_unsorted_int_like(x, n, na_rm, strictly)
-        } else if t == SEXPTYPE::REALSXP {
-            is_unsorted_real(x, n, na_rm, strictly)
-        } else if t == SEXPTYPE::CPLXSXP {
-            is_unsorted_complex(x, n, na_rm, strictly)
-        } else if t == SEXPTYPE::STRSXP {
-            is_unsorted_character(x, n, na_rm, strictly)
-        } else if t == SEXPTYPE::RAWSXP {
-            is_unsorted_raw(x, n, strictly)
-        } else {
-            NA_LOGICAL
-        };
-        Rf_ScalarLogical(result)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let na_rm = match logical_arg_with_default(args, "na.rm", 1, FALSE) {
+        Ok(value) => value != FALSE,
+        Err(message) => panic_r_error(message),
+    };
+    let strictly = match logical_arg_with_default(args, "strictly", 2, FALSE) {
+        Ok(value) => value != FALSE,
+        Err(_) => panic_r_error("invalid 'strictly' argument"),
+    };
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    if n <= 1 {
+        return scalar_logical(FALSE);
+    }
+    let result = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
+        is_unsorted_int_like(x, n, na_rm, strictly)
+    } else if t == SEXPTYPE::REALSXP {
+        is_unsorted_real(x, n, na_rm, strictly)
+    } else if t == SEXPTYPE::CPLXSXP {
+        is_unsorted_complex(x, n, na_rm, strictly)
+    } else if t == SEXPTYPE::STRSXP {
+        is_unsorted_character(x, n, na_rm, strictly)
+    } else if t == SEXPTYPE::RAWSXP {
+        is_unsorted_raw(x, n, strictly)
+    } else {
+        NA_LOGICAL
+    };
+    scalar_logical(result)
 }
 
 fn logical_arg_with_default(
@@ -249,32 +240,34 @@ fn logical_arg_with_default(
     position: usize,
     default: c_int,
 ) -> Result<c_int, &'static str> {
-    unsafe {
-        let value = arg_by_name_or_position(args, &[name], position);
-        if value.is_null() || value == R_NilValue() {
-            return Ok(default);
-        }
-        if XLENGTH(value) == 0 {
-            return Err("argument is of length zero");
-        }
-        let value_type = TYPEOF(value);
-        let raw = if value_type == SEXPTYPE::LGLSXP || value_type == SEXPTYPE::INTSXP {
-            *INTEGER(value)
-        } else if value_type == SEXPTYPE::REALSXP {
-            let value = *REAL(value);
-            if value.is_nan() {
-                NA_LOGICAL
-            } else {
-                value as c_int
-            }
-        } else {
-            return Err("argument is not interpretable as logical");
-        };
-        if raw == NA_LOGICAL {
-            return Err("missing value where TRUE/FALSE needed");
-        }
-        Ok(if raw == FALSE { FALSE } else { TRUE })
+    let value = arg_by_name_or_position(args, &[name], position);
+    if value.is_null() || value == R_NilValue() {
+        return Ok(default);
     }
+    if XLENGTH(value) == 0 {
+        return Err("argument is of length zero");
+    }
+    let value_type = TYPEOF(value);
+    let owner = active_owner();
+    let value_owned = owner_sexp(owner, value);
+    let raw = if value_type == SEXPTYPE::LGLSXP || value_type == SEXPTYPE::INTSXP {
+        integer_like_elt(&value_owned, 0)
+    } else if value_type == SEXPTYPE::REALSXP {
+        let value = value_owned
+            .try_real_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if value.is_nan() {
+            NA_LOGICAL
+        } else {
+            value as c_int
+        }
+    } else {
+        return Err("argument is not interpretable as logical");
+    };
+    if raw == NA_LOGICAL {
+        return Err("missing value where TRUE/FALSE needed");
+    }
+    Ok(if raw == FALSE { FALSE } else { TRUE })
 }
 
 fn panic_r_error(message: impl Into<String>) -> ! {
@@ -284,114 +277,125 @@ fn panic_r_error(message: impl Into<String>) -> ! {
 }
 
 fn is_unsorted_int_like(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
-    unsafe {
-        let mut previous: Option<c_int> = None;
-        for i in 0..n {
-            let current = *INTEGER(x).add(i as usize);
-            if current == NA_INTEGER {
-                if na_rm {
-                    continue;
-                }
-                return NA_LOGICAL;
+    let owner = active_owner();
+    let x = owner_sexp(owner, x);
+    let mut previous: Option<c_int> = None;
+    for i in 0..n {
+        let current = integer_like_elt(&x, i);
+        if current == NA_INTEGER {
+            if na_rm {
+                continue;
             }
-            if let Some(prev) = previous {
-                if out_of_order_i32(prev, current, strictly) {
-                    return TRUE;
-                }
-            }
-            previous = Some(current);
+            return NA_LOGICAL;
         }
-        FALSE
+        if let Some(prev) = previous {
+            if out_of_order_i32(prev, current, strictly) {
+                return TRUE;
+            }
+        }
+        previous = Some(current);
     }
+    FALSE
 }
 
 fn is_unsorted_real(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
-    unsafe {
-        let mut previous: Option<f64> = None;
-        for i in 0..n {
-            let current = *REAL(x).add(i as usize);
-            if current.is_nan() {
-                if na_rm {
-                    continue;
-                }
-                return NA_LOGICAL;
+    let owner = active_owner();
+    let x = owner_sexp(owner, x);
+    let mut previous: Option<f64> = None;
+    for i in 0..n {
+        let current = x
+            .try_real_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if current.is_nan() {
+            if na_rm {
+                continue;
             }
-            if let Some(prev) = previous {
-                if out_of_order_f64(prev, current, strictly) {
-                    return TRUE;
-                }
-            }
-            previous = Some(current);
+            return NA_LOGICAL;
         }
-        FALSE
+        if let Some(prev) = previous {
+            if out_of_order_f64(prev, current, strictly) {
+                return TRUE;
+            }
+        }
+        previous = Some(current);
     }
+    FALSE
 }
 
 fn is_unsorted_complex(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
-    unsafe {
-        let mut previous: Option<Rcomplex> = None;
-        for i in 0..n {
-            let current = *COMPLEX(x).add(i as usize);
-            if current.r.is_nan() || current.i.is_nan() {
-                if na_rm {
-                    continue;
-                }
-                return NA_LOGICAL;
+    let owner = active_owner();
+    let x = owner_sexp(owner, x);
+    let mut previous: Option<Rcomplex> = None;
+    for i in 0..n {
+        let current = x
+            .try_complex_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if current.r.is_nan() || current.i.is_nan() {
+            if na_rm {
+                continue;
             }
-            if let Some(prev) = previous {
-                if out_of_order_complex(prev, current, strictly) {
-                    return TRUE;
-                }
-            }
-            previous = Some(current);
+            return NA_LOGICAL;
         }
-        FALSE
+        if let Some(prev) = previous {
+            if out_of_order_complex(prev, current, strictly) {
+                return TRUE;
+            }
+        }
+        previous = Some(current);
     }
+    FALSE
 }
 
 fn is_unsorted_character(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
-    unsafe {
-        let mut previous: Option<String> = None;
-        for i in 0..n {
-            if STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
-                if na_rm {
-                    continue;
-                }
-                return NA_LOGICAL;
+    let owner = active_owner();
+    let x_owned = owner_sexp(owner, x);
+    let mut previous: Option<String> = None;
+    for i in 0..n {
+        let elt = x_owned
+            .try_string_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if elt.as_raw() == crate::sexp::globals::R_NaString() {
+            if na_rm {
+                continue;
             }
-            let current = elt_to_string(x, i);
-            if let Some(prev) = previous.as_deref() {
-                let out_of_order = if strictly {
-                    prev >= current.as_str()
-                } else {
-                    prev > current.as_str()
-                };
-                if out_of_order {
-                    return TRUE;
-                }
-            }
-            previous = Some(current);
+            return NA_LOGICAL;
         }
-        FALSE
-    }
-}
-
-fn is_unsorted_raw(x: SEXP, n: R_xlen_t, strictly: bool) -> c_int {
-    unsafe {
-        for i in 1..n {
-            let prev = *RAW(x).add((i - 1) as usize);
-            let current = *RAW(x).add(i as usize);
+        let current = elt_to_string(x, i);
+        if let Some(prev) = previous.as_deref() {
             let out_of_order = if strictly {
-                prev >= current
+                prev >= current.as_str()
             } else {
-                prev > current
+                prev > current.as_str()
             };
             if out_of_order {
                 return TRUE;
             }
         }
-        FALSE
+        previous = Some(current);
     }
+    FALSE
+}
+
+fn is_unsorted_raw(x: SEXP, n: R_xlen_t, strictly: bool) -> c_int {
+    let owner = active_owner();
+    let x = owner_sexp(owner, x);
+    for i in 1..n {
+        let prev = x
+            .try_raw_elt(i - 1)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let current = x
+            .try_raw_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let out_of_order = if strictly {
+            prev >= current
+        } else {
+            prev > current
+        };
+        if out_of_order {
+            return TRUE;
+        }
+    }
+    FALSE
 }
 
 fn out_of_order_i32(previous: c_int, current: c_int, strictly: bool) -> bool {
@@ -435,40 +439,36 @@ pub fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `is.primitive(x)` — `typeof(x)` is `"builtin"` or `"special"`.
 pub fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        Rf_ScalarLogical(if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
+    }
+    let t = TYPEOF(x);
+    scalar_logical(if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             TRUE
         } else {
             FALSE
         })
-    }
 }
 
 /// R's `is.generic(x)` — check if x is a generic function (simplified).
 /// Returns TRUE for CLOSXP with "generic" in name or with useMethod call.
 pub fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        // Simplified: primitives are always generic, closures need body check
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            return Rf_ScalarLogical(TRUE);
-        }
-        if t == SEXPTYPE::CLOSXP {
-            // Check if name ends with common generic names
-            // Simplified: assume all closures could be generic
-            return Rf_ScalarLogical(TRUE);
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let t = TYPEOF(x);
+    // Simplified: primitives are always generic, closures need body check
+    if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        return scalar_logical(TRUE);
+    }
+    if t == SEXPTYPE::CLOSXP {
+        // Check if name ends with common generic names
+        // Simplified: assume all closures could be generic
+        return scalar_logical(TRUE);
+    }
+    scalar_logical(FALSE)
 }
 
 // ---------------------------------------------------------------------------
@@ -477,34 +477,36 @@ pub fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `isTRUE(x)` — returns TRUE if x is exactly length-1 TRUE.
 pub fn do_is_true(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 {
-            let v = *LOGICAL(x);
-            return Rf_ScalarLogical(if v == TRUE { TRUE } else { FALSE });
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 {
+        let owner = active_owner();
+        let v = owner_sexp(owner, x)
+            .try_logical_elt(0)
+            .unwrap_or(NA_LOGICAL);
+        return scalar_logical(if v == TRUE { TRUE } else { FALSE });
+    }
+    scalar_logical(FALSE)
 }
 
 /// R's `isFALSE(x)` — returns TRUE if x is exactly length-1 FALSE.
 pub fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 {
-            let v = *LOGICAL(x);
-            return Rf_ScalarLogical(if v == FALSE { TRUE } else { FALSE });
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 {
+        let owner = active_owner();
+        let v = owner_sexp(owner, x)
+            .try_logical_elt(0)
+            .unwrap_or(NA_LOGICAL);
+        return scalar_logical(if v == FALSE { TRUE } else { FALSE });
+    }
+    scalar_logical(FALSE)
 }
 
 /// R's `anyNA(x)` — internal generic with a rooted default traversal.
@@ -552,67 +554,69 @@ pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `allNA(x)` — returns TRUE if all elements are NA.
 pub fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_ScalarLogical(FALSE);
-        }
-        for i in 0..n {
-            if !atomic_value_is_missing(x, i) {
-                return Rf_ScalarLogical(FALSE);
-            }
-        }
-        Rf_ScalarLogical(TRUE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let n = XLENGTH(x);
+    if n == 0 {
+        return scalar_logical(FALSE);
+    }
+    for i in 0..n {
+        if !atomic_value_is_missing(x, i) {
+            return scalar_logical(FALSE);
+        }
+    }
+    scalar_logical(TRUE)
 }
 
 /// R's `anyNaN(x)` — returns TRUE if any element is NaN.
 pub fn do_any_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::REALSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        for i in 0..n {
-            let v = *REAL(x).add(i as usize);
-            if v.is_nan() {
-                return Rf_ScalarLogical(TRUE);
-            }
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::REALSXP {
+        return scalar_logical(FALSE);
+    }
+    let n = XLENGTH(x);
+    let owner = active_owner();
+    let x_owned = owner_sexp(owner, x);
+    for i in 0..n {
+        let v = x_owned
+            .try_real_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if v.is_nan() {
+            return scalar_logical(TRUE);
+        }
+    }
+    scalar_logical(FALSE)
 }
 
 /// R's `allNaN(x)` — returns TRUE if all elements are NaN.
 pub fn do_all_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::REALSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_ScalarLogical(FALSE);
-        }
-        for i in 0..n {
-            let v = *REAL(x).add(i as usize);
-            if !v.is_nan() {
-                return Rf_ScalarLogical(FALSE);
-            }
-        }
-        Rf_ScalarLogical(TRUE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return scalar_logical(FALSE);
     }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::REALSXP {
+        return scalar_logical(FALSE);
+    }
+    let n = XLENGTH(x);
+    if n == 0 {
+        return scalar_logical(FALSE);
+    }
+    let owner = active_owner();
+    let x_owned = owner_sexp(owner, x);
+    for i in 0..n {
+        let v = x_owned
+            .try_real_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if !v.is_nan() {
+            return scalar_logical(FALSE);
+        }
+    }
+    scalar_logical(TRUE)
 }
