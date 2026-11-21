@@ -448,35 +448,33 @@ fn env_node(heap: &HeapIdentity, env: SEXP) -> Option<CheckedNode> {
 }
 
 pub(crate) fn env_has_hash_table(env: SEXP) -> bool {
-    instance::with_required_current_instance(|instance| unsafe {
-        env_has_hash_table_in(instance, env)
-    })
+    let Some(heap) = instance::current_heap_identity() else {
+        return false;
+    };
+    env_has_hash_table_for(&heap, env)
 }
-pub(crate) unsafe fn env_has_hash_table_in(instance: *mut instance::RInstance, env: SEXP) -> bool {
-    let heap = unsafe { instance_heap(instance) };
-    let Some(node) = env_node(&heap, env) else {
+fn env_has_hash_table_for(heap: &HeapIdentity, env: SEXP) -> bool {
+    let Some(node) = env_node(heap, env) else {
         return false;
     };
     heap.with_binding_tables(|tables| tables.promoted.contains(&node.link().unwrap()))
         .unwrap_or(false)
 }
-pub(crate) fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
-    instance::with_required_current_instance(|instance| unsafe {
-        hash_get_in(instance, env, symbol)
-    })
-}
-pub(crate) unsafe fn hash_get_in(
-    instance: *mut instance::RInstance,
-    env: SEXP,
-    symbol: SEXP,
-) -> Option<SEXP> {
+pub(crate) unsafe fn env_has_hash_table_in(instance: *mut instance::RInstance, env: SEXP) -> bool {
     let heap = unsafe { instance_heap(instance) };
-    let env = env_node(&heap, env)?;
+    env_has_hash_table_for(&heap, env)
+}
+pub(crate) fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
+    let heap = instance::current_heap_identity()?;
+    hash_get_for(&heap, env, symbol)
+}
+fn hash_get_for(heap: &HeapIdentity, env: SEXP, symbol: SEXP) -> Option<SEXP> {
+    let env = env_node(heap, env)?;
     let (_, symbol) = super::memory::checked_projection(symbol)?;
-    if !symbol.belongs_to(&heap) {
+    if !symbol.belongs_to(heap) {
         return None;
     }
-    let BindingLookup::Cell(cell) = binding_lookup(&heap, &env, &symbol)? else {
+    let BindingLookup::Cell(cell) = binding_lookup(heap, &env, &symbol)? else {
         return None;
     };
     let ResolvedLink::Node { allocation, .. } = heap.resolve_link(cell)? else {
@@ -484,15 +482,23 @@ pub(crate) unsafe fn hash_get_in(
     };
     heap.projection_of_link(heap.node_snapshot(&allocation)?.data.list().carval)
 }
+pub(crate) unsafe fn hash_get_in(
+    instance: *mut instance::RInstance,
+    env: SEXP,
+    symbol: SEXP,
+) -> Option<SEXP> {
+    let heap = unsafe { instance_heap(instance) };
+    hash_get_for(&heap, env, symbol)
+}
 
 pub(crate) fn promote_to_hash_table(env: SEXP) {
-    instance::with_required_current_instance(|instance| unsafe {
-        promote_to_hash_table_in(instance, env)
-    });
+    let Some(heap) = instance::current_heap_identity() else {
+        return;
+    };
+    promote_to_hash_table_for(&heap, env);
 }
-pub(crate) unsafe fn promote_to_hash_table_in(instance: *mut instance::RInstance, env: SEXP) {
-    let heap = unsafe { instance_heap(instance) };
-    let Some(env) = env_node(&heap, env).and_then(|node| node.link()) else {
+fn promote_to_hash_table_for(heap: &HeapIdentity, env: SEXP) {
+    let Some(env) = env_node(heap, env).and_then(|node| node.link()) else {
         return;
     };
     heap.with_binding_tables(|tables| {
@@ -500,6 +506,10 @@ pub(crate) unsafe fn promote_to_hash_table_in(instance: *mut instance::RInstance
             tables.promoted.insert(env);
         }
     });
+}
+pub(crate) unsafe fn promote_to_hash_table_in(instance: *mut instance::RInstance, env: SEXP) {
+    let heap = unsafe { instance_heap(instance) };
+    promote_to_hash_table_for(&heap, env);
 }
 
 /// Check whether a pairlist length exceeds the promotion threshold.
@@ -510,16 +520,22 @@ pub(crate) fn should_promote(pairlist_length: usize) -> bool {
 /// Remove rebuild permission for this exact environment generation. A proof
 /// of a still-live frame remains available to its other original aliases.
 pub(crate) fn remove_env(env: SEXP) {
-    instance::with_required_current_instance(|instance| unsafe { remove_env_in(instance, env) });
+    let Some(heap) = instance::current_heap_identity() else {
+        return;
+    };
+    remove_env_for(&heap, env);
 }
-pub(crate) unsafe fn remove_env_in(instance: *mut instance::RInstance, env: SEXP) {
-    let heap = unsafe { instance_heap(instance) };
-    let Some(env) = env_node(&heap, env).and_then(|node| node.link()) else {
+fn remove_env_for(heap: &HeapIdentity, env: SEXP) {
+    let Some(env) = env_node(heap, env).and_then(|node| node.link()) else {
         return;
     };
     heap.with_binding_tables(|tables| {
         tables.promoted.remove(&env);
     });
+}
+pub(crate) unsafe fn remove_env_in(instance: *mut instance::RInstance, env: SEXP) {
+    let heap = unsafe { instance_heap(instance) };
+    remove_env_for(&heap, env);
 }
 
 /// Remember that `env` is a hashed environment created at `size` (GNU `R_NewHashTable`).
@@ -531,16 +547,14 @@ pub(crate) fn mark_hashed(env: SEXP, size: i32) {
         return;
     }
     let size = if size <= 0 { 29 } else { size };
-    instance::with_required_current_instance(|inst| unsafe {
-        (*inst).env_hash_sizes.insert(env as usize, size);
+    instance::with_required_env_hash_sizes(|sizes| {
+        sizes.insert(env as usize, size);
     });
     promote_to_hash_table(env);
 }
 
 pub(crate) fn hashed_size(env: SEXP) -> Option<i32> {
-    instance::with_required_current_instance(|inst| unsafe {
-        (*inst).env_hash_sizes.get(&(env as usize)).copied()
-    })
+    instance::with_required_env_hash_sizes(|sizes| sizes.get(&(env as usize)).copied())
 }
 
 fn hashpjw(bytes: &[u8]) -> u32 {

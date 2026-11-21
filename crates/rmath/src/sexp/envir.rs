@@ -43,22 +43,22 @@ pub type EnvResult<T> = Result<T, String>;
 /// `retarget_base_closure_envs` republishes the binding, the lookup is
 /// `R_BaseEnv` itself.
 pub fn R_BaseNamespace() -> SEXP {
-    unsafe {
-        let base = super::globals::R_BaseEnv();
-        if base.is_null() {
-            return base;
-        }
-        let sym = super::symbol::install_str(".BaseNamespaceEnv");
-        let ns = R_findVarInFrame(base, sym);
-        if !ns.is_null()
-            && ns != R_UnboundValue()
-            && ns != R_NilValue()
-            && TYPEOF(ns) == SEXPTYPE::ENVSXP
-        {
-            ns
-        } else {
-            base
-        }
+    let base = super::globals::R_BaseEnv();
+    if base.is_null() {
+        return base;
+    }
+    let sym = super::symbol::install_str(".BaseNamespaceEnv");
+    // SAFETY: both inputs are live globals-owned SEXPs under the ambient
+    // runtime contract.
+    let ns = unsafe { R_findVarInFrame(base, sym) };
+    if !ns.is_null()
+        && ns != R_UnboundValue()
+        && ns != R_NilValue()
+        && TYPEOF(ns) == SEXPTYPE::ENVSXP
+    {
+        ns
+    } else {
+        base
     }
 }
 
@@ -184,17 +184,14 @@ fn binding_error(message: impl Into<String>) -> ! {
 }
 
 pub(crate) fn lock_environment_raw(env: SEXP) {
-    with_required_current_instance(|instance| unsafe {
-        // P2: single-field write; no other raw path touches the instance
-        // inside this closure.
-        (*instance).locked_environments.insert(env_key(env));
+    super::instance::with_required_binding_tables(|tables| {
+        tables.locked_environments.insert(env_key(env));
     });
 }
 
 pub(crate) fn environment_is_locked_raw(env: SEXP) -> bool {
-    with_current_instance(|instance| unsafe {
-        // P2: read-only set lookup; no ambient write intervenes.
-        (*instance).locked_environments.contains(&env_key(env))
+    super::instance::with_binding_tables(|tables| {
+        tables.locked_environments.contains(&env_key(env))
     })
     .unwrap_or(false)
 }
@@ -202,12 +199,10 @@ pub(crate) fn environment_is_locked_raw(env: SEXP) -> bool {
 pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
     // One pairlist cell, so a lock on either base env has to block the other.
     let peer = base_binding_peer(env);
-    with_required_current_instance(|instance| unsafe {
-        // P2: single-field write; no other raw path touches the instance
-        // inside this closure.
-        (*instance).locked_bindings.insert(binding_key(env, symbol));
+    super::instance::with_required_binding_tables(|tables| {
+        tables.locked_bindings.insert(binding_key(env, symbol));
         if let Some(peer) = peer {
-            (*instance)
+            tables
                 .locked_bindings
                 .insert(binding_key(peer, symbol));
         }
@@ -216,14 +211,12 @@ pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
 
 pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
     let peer = base_binding_peer(env);
-    with_required_current_instance(|instance| unsafe {
-        // P2: single-field write; no other raw path touches the instance
-        // inside this closure.
-        (*instance)
+    super::instance::with_required_binding_tables(|tables| {
+        tables
             .locked_bindings
             .remove(&binding_key(env, symbol));
         if let Some(peer) = peer {
-            (*instance)
+            tables
                 .locked_bindings
                 .remove(&binding_key(peer, symbol));
         }
@@ -232,9 +225,8 @@ pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
 
 pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
     let peer = base_binding_peer(env);
-    with_current_instance(|instance| unsafe {
-        // P2: read-only set lookup; no ambient write intervenes.
-        let locks = &(*instance).locked_bindings;
+    super::instance::with_binding_tables(|tables| {
+        let locks = &*tables.locked_bindings;
         locks.contains(&binding_key(env, symbol))
             || peer.is_some_and(|peer| locks.contains(&binding_key(peer, symbol)))
     })
@@ -242,9 +234,8 @@ pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
 }
 
 pub(crate) fn binding_is_active_raw(env: SEXP, symbol: SEXP) -> bool {
-    with_current_instance(|instance| unsafe {
-        // P2: read-only map lookup; no ambient write intervenes.
-        (*instance)
+    super::instance::with_binding_tables(|tables| {
+        tables
             .active_bindings
             .contains_key(&binding_key(env, symbol))
     })
@@ -252,9 +243,8 @@ pub(crate) fn binding_is_active_raw(env: SEXP, symbol: SEXP) -> bool {
 }
 
 fn active_binding_fun_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
-    with_current_instance(|instance| unsafe {
-        // P2: read-only map lookup; no ambient write intervenes.
-        (*instance)
+    super::instance::with_binding_tables(|tables| {
+        tables
             .active_bindings
             .get(&binding_key(env, symbol))
             .copied()
@@ -298,114 +288,104 @@ pub(crate) fn binding_exists_raw(mut env: SEXP, symbol: SEXP, inherits: bool) ->
 }
 
 pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
-    unsafe {
-        if env.is_null() || symbol.is_null() {
+    if env.is_null() || symbol.is_null() {
+        return;
+    }
+    if environment_is_locked_raw(env) {
+        binding_error("cannot remove bindings from a locked environment");
+    }
+
+    // Snapshot before SET_FRAME; afterwards the peer no longer shares the head.
+    let peer = base_binding_peer(env);
+    let mut previous = R_NilValue();
+    let mut current = FRAME(env);
+    while !current.is_null() && current != R_NilValue() {
+        let tag = TAG(current);
+        if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+            // Same cell as the peer, so a lock recorded on the other env applies.
+            if binding_is_locked_raw(env, symbol) {
+                binding_error("cannot unbind a locked binding");
+            }
+            let next = CDR(current);
+            if previous == R_NilValue() {
+                SET_FRAME(env, next);
+                mirror_base_frame(env, peer);
+            } else {
+                SETCDR(previous, next);
+            }
+            super::instance::with_required_binding_tables(|tables| {
+                let key = binding_key(env, symbol);
+                tables.active_bindings.remove(&key);
+                tables.locked_bindings.remove(&key);
+                if let Some(peer) = peer {
+                    let peer_key = binding_key(peer, symbol);
+                    tables.active_bindings.remove(&peer_key);
+                    tables.locked_bindings.remove(&peer_key);
+                }
+            });
             return;
         }
-        if environment_is_locked_raw(env) {
-            binding_error("cannot remove bindings from a locked environment");
-        }
-
-        // Snapshot before SET_FRAME; afterwards the peer no longer shares the head.
-        let peer = base_binding_peer(env);
-        let mut previous = R_NilValue();
-        let mut current = FRAME(env);
-        while !current.is_null() && current != R_NilValue() {
-            let tag = TAG(current);
-            if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
-                // Same cell as the peer, so a lock recorded on the other env applies.
-                if binding_is_locked_raw(env, symbol) {
-                    binding_error("cannot unbind a locked binding");
-                }
-                let next = CDR(current);
-                if previous == R_NilValue() {
-                    SET_FRAME(env, next);
-                    mirror_base_frame(env, peer);
-                } else {
-                    SETCDR(previous, next);
-                }
-                with_required_current_instance(|instance| {
-                    // P2: strictly-local map writes; no other raw path
-                    // touches the instance inside this closure.
-                    let key = binding_key(env, symbol);
-                    (*instance).active_bindings.remove(&key);
-                    (*instance).locked_bindings.remove(&key);
-                    if let Some(peer) = peer {
-                        let peer_key = binding_key(peer, symbol);
-                        (*instance).active_bindings.remove(&peer_key);
-                        (*instance).locked_bindings.remove(&peer_key);
-                    }
-                });
-                return;
-            }
-            previous = current;
-            current = CDR(current);
-        }
+        previous = current;
+        current = CDR(current);
     }
 }
 
 pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
-    unsafe {
-        if env.is_null() || symbol.is_null() || fun.is_null() {
-            return;
-        }
-
-        let peer = base_binding_peer(env);
-        let mut frame = super::accessors::FRAME(env);
-        while !frame.is_null() && frame != R_NilValue() {
-            let tag = super::accessors::TAG(frame);
-            if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
-                if !binding_is_active_raw(env, symbol)
-                    && super::accessors::CAR(frame) != R_UnboundValue()
-                {
-                    binding_error("symbol already has a regular binding");
-                }
-                if binding_is_locked_raw(env, symbol) {
-                    binding_error("cannot change value of locked binding");
-                }
-                SETCAR(frame, fun);
-                with_required_current_instance(|instance| {
-                    // P2: single-field write; no other raw path touches the
-                    // instance inside this closure.
-                    (*instance)
-                        .active_bindings
-                        .insert(binding_key(env, symbol), fun);
-                    if let Some(peer) = peer {
-                        (*instance)
-                            .active_bindings
-                            .insert(binding_key(peer, symbol), fun);
-                    }
-                });
-                return;
-            }
-            frame = super::accessors::CDR(frame);
-        }
-
-        if environment_is_locked_raw(env) {
-            binding_error("cannot add bindings to a locked environment");
-        }
-
-        let frame = super::accessors::FRAME(env);
-        let new_cell = Rf_cons(fun, frame);
-        if new_cell.is_null() {
-            return;
-        }
-        SETTAG(new_cell, symbol);
-        SET_FRAME(env, new_cell);
-        mirror_base_frame(env, peer);
-        with_required_current_instance(|instance| {
-            // P2: single-field write; no other raw path touches the
-            // instance inside this closure.
-            (*instance)
-                .active_bindings
-                .insert(binding_key(env, symbol), fun);
-            if let Some(peer) = peer {
-                (*instance)
-                    .active_bindings
-                    .insert(binding_key(peer, symbol), fun);
-            }
-        });
+    if env.is_null() || symbol.is_null() || fun.is_null() {
+        return;
     }
+
+    let peer = base_binding_peer(env);
+    let mut frame = super::accessors::FRAME(env);
+    while !frame.is_null() && frame != R_NilValue() {
+        let tag = super::accessors::TAG(frame);
+        if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+            if !binding_is_active_raw(env, symbol)
+                && super::accessors::CAR(frame) != R_UnboundValue()
+            {
+                binding_error("symbol already has a regular binding");
+            }
+            if binding_is_locked_raw(env, symbol) {
+                binding_error("cannot change value of locked binding");
+            }
+            SETCAR(frame, fun);
+            super::instance::with_required_binding_tables(|tables| {
+                tables
+                    .active_bindings
+                    .insert(binding_key(env, symbol), fun);
+                if let Some(peer) = peer {
+                    tables
+                        .active_bindings
+                        .insert(binding_key(peer, symbol), fun);
+                }
+            });
+            return;
+        }
+        frame = super::accessors::CDR(frame);
+    }
+
+    if environment_is_locked_raw(env) {
+        binding_error("cannot add bindings to a locked environment");
+    }
+
+    let frame = super::accessors::FRAME(env);
+    let new_cell = Rf_cons(fun, frame);
+    if new_cell.is_null() {
+        return;
+    }
+    SETTAG(new_cell, symbol);
+    SET_FRAME(env, new_cell);
+    mirror_base_frame(env, peer);
+    super::instance::with_required_binding_tables(|tables| {
+        tables
+            .active_bindings
+            .insert(binding_key(env, symbol), fun);
+        if let Some(peer) = peer {
+            tables
+                .active_bindings
+                .insert(binding_key(peer, symbol), fun);
+        }
+    });
 }
 
 fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'static> {
@@ -1831,9 +1811,7 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
 ///
 /// FFI wrapper around [`define_var_safe`].
 pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
-    unsafe {
-        let _ = define_var_updates(symbol, value, rho);
-    }
+    let _ = define_var_updates(symbol, value, rho);
 }
 
 fn increment_named_on_assign(value: SEXP) {
@@ -1847,8 +1825,9 @@ fn increment_named_on_assign(value: SEXP) {
 }
 
 /// Define or update a binding, returning whether the frame/hash were updated.
-pub(crate) unsafe fn define_var_updates(symbol: SEXP, value: SEXP, rho: SEXP) -> bool {
+pub(crate) fn define_var_updates(symbol: SEXP, value: SEXP, rho: SEXP) -> bool {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if rho.is_null() || symbol.is_null() {
             return false;
         }
@@ -1903,14 +1882,13 @@ pub(crate) unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Find a function with error reporting.
-pub unsafe fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let fun = findFun(symbol, rho);
-        if fun == R_UnboundValue() {
-            // Could not find function — would error in real implementation
-        }
-        fun
+pub fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
+    // SAFETY: inputs are live SEXPs under the ambient runtime contract.
+    let fun = unsafe { findFun(symbol, rho) };
+    if fun == R_UnboundValue() {
+        // Could not find function — would error in real implementation
     }
+    fun
 }
 
 /// Check if a symbol has a missing argument in the given environment.
@@ -1930,8 +1908,9 @@ pub unsafe fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
 }
 
 /// FFI wrapper around [`r_missing_safe`].
-pub unsafe fn R_missing(symbol: SEXP, rho: SEXP) -> c_int {
+pub fn R_missing(symbol: SEXP, rho: SEXP) -> c_int {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if symbol.is_null() || rho.is_null() {
             return 0;
         }
@@ -1944,8 +1923,10 @@ pub unsafe fn R_missing(symbol: SEXP, rho: SEXP) -> c_int {
 }
 
 /// Report an error for a missing argument.
-pub(crate) unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP) {
+pub(crate) fn R_MissingArgError(symbol: SEXP, call: SEXP) {
     unsafe {
+        // SAFETY: PRINTNAME/CHAR projections and the CStr read cover only
+        // registered live symbol storage under the ambient runtime.
         let name = if !symbol.is_null() {
             let pname = PRINTNAME(symbol);
             if !pname.is_null() {
@@ -1972,8 +1953,9 @@ pub(crate) unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP) {
 /// Find a variable in the ... (dots) arguments.
 ///
 /// FFI wrapper around [`dd_find_var_safe`].
-pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
+pub fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if symbol.is_null() || rho.is_null() {
             return R_UnboundValue();
         }
@@ -2023,7 +2005,7 @@ pub fn R_typeToChar(stype: c_int) -> SEXP {
 }
 
 /// Create a new child environment.
-pub unsafe fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
+pub fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
     NewEnvironment(frame, enclos, ptr::null_mut())
 }
 
@@ -2039,8 +2021,9 @@ pub(crate) unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
 /// Check that formals is a valid pairlist of distinct symbols.
 ///
 /// FFI wrapper around [`check_formals_safe`].
-pub unsafe fn CheckFormals(formals: SEXP) {
+pub fn CheckFormals(formals: SEXP) {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if let Some(formals) = Sexp::from_raw(formals)
             && let Err(msg) = check_formals_safe(formals)
         {
@@ -2053,8 +2036,9 @@ pub unsafe fn CheckFormals(formals: SEXP) {
 /// Add missing variable bindings for unprovided arguments.
 ///
 /// FFI wrapper around [`add_missing_vars_to_new_env_safe`].
-pub unsafe fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
+pub fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if let (Some(formals), Some(args), Some(newrho)) = (
             Sexp::from_raw(formals),
             Sexp::from_raw(args),
@@ -2068,8 +2052,9 @@ pub unsafe fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
 /// Check if a variable exists in a given frame.
 ///
 /// FFI wrapper around [`exists_var_in_frame_safe`].
-pub unsafe fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> c_int {
+pub fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> c_int {
     unsafe {
+        // SAFETY: from_raw admits only registered, still-live node storage.
         if rho.is_null() || symbol.is_null() {
             return 0;
         }

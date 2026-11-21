@@ -701,34 +701,25 @@ mod tests {
     }
 }
 
-pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
+pub fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
     super::memory_ext::cons_raw(car, cdr)
 }
 
 pub fn persistent_scalar_integer(val: c_int) -> SEXP {
-    super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner)
-            .persistent_nodes
-            .allocate_integer(val, false)
-            .unwrap_or(ptr::null_mut())
+    super::instance::with_required_persistent_heap(|heap| {
+        heap.allocate_integer(val, false).unwrap_or(ptr::null_mut())
     })
 }
 
 pub fn persistent_scalar_logical(val: c_int) -> SEXP {
-    super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner)
-            .persistent_nodes
-            .allocate_integer(val, true)
-            .unwrap_or(ptr::null_mut())
+    super::instance::with_required_persistent_heap(|heap| {
+        heap.allocate_integer(val, true).unwrap_or(ptr::null_mut())
     })
 }
 
 pub fn persistent_scalar_real(val: c_double) -> SEXP {
-    super::instance::with_required_current_instance(|owner| unsafe {
-        (*owner)
-            .persistent_nodes
-            .allocate_real(val)
-            .unwrap_or(ptr::null_mut())
+    super::instance::with_required_persistent_heap(|heap| {
+        heap.allocate_real(val).unwrap_or(ptr::null_mut())
     })
 }
 

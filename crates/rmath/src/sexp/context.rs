@@ -509,16 +509,12 @@ pub unsafe fn Rf_findcontext_in(
 
 /// Set this session's in-error flag.
 pub fn R_SetInError(flag: bool) {
-    instance::with_required_current_instance(|instance| unsafe {
-        // P2: single-field write; no other raw path touches the instance
-        // inside this closure.
-        (*instance).in_error = flag;
-    });
+    instance::with_required_in_error(|in_error| *in_error = flag);
 }
 
 /// Get this session's in-error flag.
 pub fn R_GetInError() -> bool {
-    instance::with_required_current_instance(|instance| unsafe { (*instance).in_error })
+    instance::with_required_in_error(|in_error| *in_error)
 }
 
 // ---------------------------------------------------------------------------

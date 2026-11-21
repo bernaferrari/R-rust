@@ -1215,6 +1215,101 @@ pub fn check_cancellation() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Checked ambient field lends
+// ---------------------------------------------------------------------------
+//
+// The helpers below encapsulate the raw `(*instance).field` derefs that
+// binding/environment bookkeeping performs through the ambient capability.
+// Each lends a disjoint field view for one strictly-local operation under the
+// P1/P2 discipline documented at the module head: the callback must not
+// allocate, protect, collect, or eval while the lend is live.
+
+/// Borrowed view of an instance's binding-visibility tables
+/// (`locked_environments`, `locked_bindings`, `active_bindings`).
+pub(crate) struct BindingTables<'i> {
+    pub(crate) locked_environments: &'i mut HashSet<usize>,
+    pub(crate) locked_bindings: &'i mut HashSet<(usize, usize)>,
+    pub(crate) active_bindings: &'i mut HashMap<(usize, usize), SEXP>,
+}
+
+/// Execute `f` with the current instance's binding tables, if an instance is
+/// active.
+///
+/// `f` must perform only strictly-local reads/writes on the lent tables; no
+/// ambient-capable call may run while the lend is live (P1/P2).
+pub(crate) fn with_binding_tables<R>(f: impl FnOnce(BindingTables<'_>) -> R) -> Option<R> {
+    with_current_instance(|instance| {
+        // SAFETY: disjoint strictly-local field lends under P1/P2; the
+        // closure contract above keeps the lends short and non-reentrant.
+        unsafe {
+            f(BindingTables {
+                locked_environments: &mut (*instance).locked_environments,
+                locked_bindings: &mut (*instance).locked_bindings,
+                active_bindings: &mut (*instance).active_bindings,
+            })
+        }
+    })
+}
+
+/// Execute `f` with the current instance's binding tables.
+///
+/// Panics when no runtime instance is active, mirroring
+/// [`with_required_current_instance`].
+pub(crate) fn with_required_binding_tables<R>(f: impl FnOnce(BindingTables<'_>) -> R) -> R {
+    with_binding_tables(f).expect("mutable R binding state requires an active RInstance")
+}
+
+/// Clone the active instance's heap identity, if an instance is active.
+///
+/// Callers use the snapshot for canonical node lookups without touching the
+/// raw instance pointer again.
+pub(crate) fn current_heap_identity() -> Option<super::heap::HeapIdentity> {
+    with_current_instance(|instance| {
+        // SAFETY: P2 strictly-local single-field clone; no ambient write
+        // intervenes inside the closure.
+        unsafe { (*instance).heap_identity.clone() }
+    })
+}
+
+/// Execute `f` with the current instance's hash-environment size table.
+///
+/// Same strictly-local lend contract as [`with_binding_tables`].
+pub(crate) fn with_required_env_hash_sizes<R>(
+    f: impl FnOnce(&mut hashbrown::HashMap<usize, i32>) -> R,
+) -> R {
+    with_required_current_instance(|instance| {
+        // SAFETY: P2 strictly-local field lend; `f` performs no ambient call.
+        unsafe { f(&mut (*instance).env_hash_sizes) }
+    })
+}
+
+/// Execute `f` with the current instance's persistent-node heap.
+///
+/// Same strictly-local lend contract as [`with_binding_tables`]; `f` may
+/// allocate persistent nodes (which is strictly local to this field) but must
+/// not run interpreter callbacks.
+pub(crate) fn with_required_persistent_heap<R>(
+    f: impl FnOnce(&mut PersistentHeap) -> R,
+) -> R {
+    with_required_current_instance(|instance| {
+        // SAFETY: P2 strictly-local field lend; persistent allocation touches
+        // no other instance field and runs no ambient callback.
+        unsafe { f(&mut (*instance).persistent_nodes) }
+    })
+}
+
+/// Execute `f` with the current instance's in-error flag.
+///
+/// Same strictly-local lend contract as [`with_binding_tables`].
+pub(crate) fn with_required_in_error<R>(f: impl FnOnce(&mut bool) -> R) -> R {
+    with_required_current_instance(|instance| {
+        // SAFETY: P2 strictly-local single-field lend; `f` performs no ambient
+        // call.
+        unsafe { f(&mut (*instance).in_error) }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
