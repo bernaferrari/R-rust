@@ -49,12 +49,12 @@ pub(crate) use task_callback_registration::install as install_task_callback_symb
 // ---------------------------------------------------------------------------
 
 /// Get the .Last.value symbol.
-pub unsafe fn R_LastvalueSymbol() -> SEXP {
+pub fn R_LastvalueSymbol() -> SEXP {
     unsafe { Rf_install(c".Last.value".as_ptr()) }
 }
 
 /// Get the .Random.seed symbol.
-pub unsafe fn R_SeedsSymbol() -> SEXP {
+pub fn R_SeedsSymbol() -> SEXP {
     unsafe { Rf_install(c".Random.seed".as_ptr()) }
 }
 
@@ -75,43 +75,43 @@ pub fn R_SetVisible(v: c_int) {
 }
 
 /// Get R_Interactive flag.
-pub unsafe fn R_Interactive() -> c_int {
+pub fn R_Interactive() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive })
 }
 
 /// Set R_Interactive flag.
-pub unsafe fn R_SetInteractive(v: c_int) {
+pub fn R_SetInteractive(v: c_int) {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive = v });
 }
 
 /// Get R_Quiet flag.
-pub unsafe fn R_Quiet() -> c_int {
+pub fn R_Quiet() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet })
 }
 
 /// Set R_Quiet flag.
-pub unsafe fn R_SetQuiet(v: c_int) {
+pub fn R_SetQuiet(v: c_int) {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet = v });
 }
 
 /// Get R_NoEcho flag.
-pub unsafe fn R_NoEcho() -> c_int {
+pub fn R_NoEcho() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.no_echo })
 }
 
 /// Get R_Verbose flag.
-pub unsafe fn R_Verbose() -> c_int {
+pub fn R_Verbose() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.verbose })
 }
 
 // ---------------------------------------------------------------------------
 /// Get evaluation depth.
-pub unsafe fn R_GetEvalDepth() -> c_int {
+pub fn R_GetEvalDepth() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth })
 }
 
 /// Set evaluation depth.
-pub unsafe fn R_SetEvalDepth(v: c_int) {
+pub fn R_SetEvalDepth(v: c_int) {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth = v });
 }
 
@@ -122,18 +122,18 @@ pub unsafe fn R_PPStackTop() -> c_int {
 }
 
 /// Set protection stack top.
-pub unsafe fn R_SetPPStackTop(v: c_int) {
+pub fn R_SetPPStackTop(v: c_int) {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.pp_stack_top = v });
 }
 
 // ---------------------------------------------------------------------------
 /// Get warnings collection flag.
-pub unsafe fn R_GetCollectWarnings() -> c_int {
+pub fn R_GetCollectWarnings() -> c_int {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings })
 }
 
 /// Set warnings collection flag.
-pub unsafe fn R_SetCollectWarnings(v: c_int) {
+pub fn R_SetCollectWarnings(v: c_int) {
     with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings = v });
 }
 
@@ -715,15 +715,9 @@ fn task_callback_selector(
                 .unwrap_or(TaskCallbackSelector::Missing),
             SEXPTYPE::SYMSXP => {
                 let printname = which.try_printname()?;
-                let bytes = unsafe { crate::sexp::accessors::CHAR(printname.as_raw()) };
-                if bytes.is_null() {
-                    TaskCallbackSelector::Missing
-                } else {
-                    TaskCallbackSelector::Name(
-                        unsafe { std::ffi::CStr::from_ptr(bytes) }
-                            .to_string_lossy()
-                            .into_owned(),
-                    )
+                match crate::mainutils::essentials::charsxp_utf8_lossy(&printname) {
+                    Some(name) => TaskCallbackSelector::Name(name),
+                    None => TaskCallbackSelector::Missing,
                 }
             }
             SEXPTYPE::LISTSXP => {
@@ -747,19 +741,19 @@ fn task_callback_selector(
 // Memory profiling
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_GetMaxVSize() -> u64 {
+pub fn R_GetMaxVSize() -> u64 {
     unsafe { crate::mainutils::memory_main::R_GetMaxVSize_memory() }
 }
 
-pub unsafe fn R_GetMaxNSize() -> u64 {
+pub fn R_GetMaxNSize() -> u64 {
     unsafe { crate::mainutils::memory_main::R_GetMaxNSize_memory() }
 }
 
-pub unsafe fn R_GetVSize() -> u64 {
+pub fn R_GetVSize() -> u64 {
     unsafe { crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64) }
 }
 
-pub unsafe fn R_GetNSize() -> u64 {
+pub fn R_GetNSize() -> u64 {
     unsafe { crate::sexp::memory::with_arena(|a| a.node_count() as u64) }
 }
 
@@ -868,33 +862,27 @@ mod tests {
     #[test]
     fn test_r_quiet() {
         let _session = RSession::new();
-        unsafe {
-            assert_eq!(R_Quiet(), 0);
-            R_SetQuiet(1);
-            assert_eq!(R_Quiet(), 1);
-            R_SetQuiet(0);
-        }
+        assert_eq!(R_Quiet(), 0);
+        R_SetQuiet(1);
+        assert_eq!(R_Quiet(), 1);
+        R_SetQuiet(0);
     }
 
     #[test]
     fn test_r_interactive() {
         let _session = RSession::new();
-        unsafe {
-            assert_eq!(R_Interactive(), 1);
-            R_SetInteractive(0);
-            assert_eq!(R_Interactive(), 0);
-            R_SetInteractive(1);
-        }
+        assert_eq!(R_Interactive(), 1);
+        R_SetInteractive(0);
+        assert_eq!(R_Interactive(), 0);
+        R_SetInteractive(1);
     }
 
     #[test]
     fn test_eval_depth() {
         let _session = RSession::new();
-        unsafe {
-            R_SetEvalDepth(10);
-            assert_eq!(R_GetEvalDepth(), 10);
-            R_SetEvalDepth(0);
-        }
+        R_SetEvalDepth(10);
+        assert_eq!(R_GetEvalDepth(), 10);
+        R_SetEvalDepth(0);
     }
 
     unsafe fn task_callback_closure(keep: c_int) -> SEXP {
