@@ -521,7 +521,7 @@ fn r_max<T: Ord>(a: T, b: T) -> T {
     if a > b { a } else { b }
 }
 
-unsafe fn loess_free() {
+fn loess_free() {
     with_loess_workspace_state(LoessWorkspaceState::clear);
 }
 
@@ -529,7 +529,7 @@ unsafe fn loess_free() {
 // backend supplies them yet; fail explicitly instead of returning fake fits.
 mod loess_stubs {
     use std::os::raw::{c_double, c_int};
-    pub unsafe fn lowesd(
+    pub fn lowesd(
         _iv: *mut c_int,
         _liv: *mut c_int,
         _lv: *mut c_int,
@@ -546,7 +546,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowesa(
+    pub fn lowesa(
         _trL: *mut c_double,
         _n: *mut c_int,
         _d: *mut c_int,
@@ -559,7 +559,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowesb(
+    pub fn lowesb(
         _x: *mut c_double,
         _y: *mut c_double,
         _robust: *mut c_double,
@@ -572,7 +572,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowese(
+    pub fn lowese(
         _iv: *mut c_int,
         _v: *mut c_double,
         _n: *mut c_int,
@@ -583,7 +583,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowesf(
+    pub fn lowesf(
         _x: *mut c_double,
         _y: *mut c_double,
         _weights: *mut c_double,
@@ -599,7 +599,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowesl(
+    pub fn lowesl(
         _iv: *mut c_int,
         _v: *mut c_double,
         _m: *mut c_int,
@@ -610,7 +610,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn lowesc(
+    pub fn lowesc(
         _n: *mut c_int,
         _hat_matrix: *mut c_double,
         _LL: *mut c_double,
@@ -622,7 +622,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn ehg169(
+    pub fn ehg169(
         _d: *mut c_int,
         _vc: *mut c_int,
         _nc: *mut c_int,
@@ -640,7 +640,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub unsafe fn ehg196(
+    pub fn ehg196(
         _tau: *mut c_int,
         _d: *mut c_int,
         _span: *mut c_double,
@@ -1347,7 +1347,7 @@ mod tests {
                 assert!(!state.iv.is_empty());
                 assert!(!state.v.is_empty());
             });
-            unsafe { loess_free() };
+            loess_free();
             with_loess_workspace_state(|state| {
                 assert!(state.iv.is_empty());
                 assert!(state.v.is_empty());

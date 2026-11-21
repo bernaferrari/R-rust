@@ -45,7 +45,7 @@ fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
     with_required_current_instance(|instance| f(unsafe { &mut (*instance).fexact_state }))
 }
 
-unsafe fn prterr(icode: c_int, mes: &str) {
+fn prterr(icode: c_int, mes: &str) {
     let msg = format!("FEXACT error {}.\n{}", icode, mes);
     crate::mainutils::errors::implicit_errorcall_str(
         crate::mainutils::errors::R_getCurrentCall(),
@@ -53,8 +53,8 @@ unsafe fn prterr(icode: c_int, mes: &str) {
     );
 }
 
-unsafe fn iwork(iwkmax: c_int, iwkpt: &mut c_int, number: c_int, itype: c_int) -> c_int {
-    unsafe {
+fn iwork(iwkmax: c_int, iwkpt: &mut c_int, number: c_int, itype: c_int) -> c_int {
+    {
         let i_real: c_int = 4;
         let i_int: c_int = 2;
 
@@ -2105,16 +2105,15 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
 
         let mut p: c_double = 0.;
         let mut prt: c_double = 0.;
-        let rp = REAL(pars);
 
         fexact(
             nr,
             nc,
             INTEGER(x),
             nr,
-            *rp.add(0),
-            *rp.add(1),
-            *rp.add(2),
+            REAL_ELT(pars, 0),
+            REAL_ELT(pars, 1),
+            REAL_ELT(pars, 2),
             &mut prt,
             &mut p,
             ws,
@@ -2123,7 +2122,7 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
 
         // ScalarReal: allocate a 1-element REALSXP
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        *REAL(ans).add(0) = p;
+        SET_REAL_ELT(ans, 0, p);
         ans
     }
 }
