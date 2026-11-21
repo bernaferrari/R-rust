@@ -29,44 +29,44 @@ fn run_owned_derivative(
     let fail = |message: String| -> ! {
         std::panic::panic_any(crate::sexp::context::RError { message });
     };
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let token = unsafe { OwnerToken::current() }.unwrap_or_else(|error| fail(error.to_string()));
-    let authority = StoredOwner::from_token(token);
-    let owner = authority
-        .managed()
-        .unwrap_or_else(|| fail("runtime owner unavailable".into()));
-    let _pin = owner.pin().unwrap_or_else(|error| fail(error.to_string()));
-    let first = token
-        .sexp(first)
-        .and_then(Sexp::into_owned)
-        .unwrap_or_else(|error| fail(error.to_string()));
-    let second = second
-        .map(|value| token.sexp(value).and_then(Sexp::into_owned))
-        .transpose()
-        .unwrap_or_else(|error| fail(error.to_string()));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        with_runtime(&owner, |access| operation(access, &first, second.as_ref()))
-    }));
-    authority
-        .require_active()
-        .unwrap_or_else(|error| fail(error.to_string()));
-    match result {
-        Ok(result) => result
-            .and_then(|result| result)
-            .unwrap_or_else(|error| {
-                // GNU deriv.c raises these with error(), which verror()
-                // attributes to getCurrentCall(): the enclosing closure
-                // (D/deriv), never the .External builtin call.
-                {
-                    crate::mainutils::errors::errorcall_str(
-                        crate::mainutils::errors::condition_caller_call(),
-                        &error.to_string(),
-                    );
-                }
-            })
-            .as_raw(),
-        Err(payload) => std::panic::resume_unwind(payload),
-    }
+    OwnerToken::with_current(|token| {
+        let authority = StoredOwner::from_token(token);
+        let owner = authority
+            .managed()
+            .unwrap_or_else(|| fail("runtime owner unavailable".into()));
+        let _pin = owner.pin().unwrap_or_else(|error| fail(error.to_string()));
+        let first = token
+            .sexp(first)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|error| fail(error.to_string()));
+        let second = second
+            .map(|value| token.sexp(value).and_then(Sexp::into_owned))
+            .transpose()
+            .unwrap_or_else(|error| fail(error.to_string()));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_runtime(&owner, |access| operation(access, &first, second.as_ref()))
+        }));
+        authority
+            .require_active()
+            .unwrap_or_else(|error| fail(error.to_string()));
+        match result {
+            Ok(result) => result
+                .and_then(|result| result)
+                .unwrap_or_else(|error| {
+                    // GNU deriv.c raises these with error(), which verror()
+                    // attributes to getCurrentCall(): the enclosing closure
+                    // (D/deriv), never the .External builtin call.
+                    {
+                        crate::mainutils::errors::errorcall_str(
+                            crate::mainutils::errors::condition_caller_call(),
+                            &error.to_string(),
+                        );
+                    }
+                })
+                .as_raw(),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }).unwrap_or_else(|error| fail(error.to_string()))
 }
 
 fn derivative_symbol(

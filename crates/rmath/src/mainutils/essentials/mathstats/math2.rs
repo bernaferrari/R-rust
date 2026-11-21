@@ -389,7 +389,7 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `zapsmall(x, digits = getOption("digits"))`.
 pub fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return x;

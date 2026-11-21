@@ -528,7 +528,7 @@ pub fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `manova(cbind(y1,y2) ~ g)` — two-group coefficients and residuals.
 pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let form = CAR(args);
         if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
             return R_NilValue();
@@ -1026,7 +1026,7 @@ pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `pairwise.table(compare.levels, level.names, p.adjust.method)`.
 pub fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let compare = CAR(args);
         let names = CAR(CDR(args));
         if compare.is_null() || compare == R_NilValue() {
@@ -1117,7 +1117,7 @@ pub fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `update(object)` — re-evaluate `$call`.
 pub fn do_update(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let obj = CAR(args);
         let call = list_named_elt(obj, "call");
         if call.is_null() || call == R_NilValue() {

@@ -104,28 +104,29 @@ unsafe fn compact_seq_with_result<T>(
 ) -> T {
     // The native boundary captures original authority once. The safe producer
     // owns initialized state and metadata through every allocating callback.
-    let owner = unsafe { super::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| super::context::r_error(error.to_string()));
-    let capability = super::owner::StoredOwner::from_token(owner);
-    let result = capability.with_projection(|pointer| {
-        let owner = unsafe { super::owner::OwnerToken::from_raw(pointer) };
-        let (origin, step) = match formula {
-            Formula::Int { from, step } => (from as f64, step as f64),
-            Formula::Real { from, step } => (from, step),
-        };
-        let value = super::altrep::new_sequence(
-            owner,
-            kind,
-            origin,
-            step,
-            i64::try_from(n).map_err(|_| super::object::SexpError::Altrep {
-                reason: "sequence length",
-            })?,
-        )?;
-        capability.require_active()?;
-        Ok(finish(value.as_raw()))
-    });
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    super::owner::OwnerToken::with_current(|owner| {
+        let capability = super::owner::StoredOwner::from_token(owner);
+        let result = capability.with_projection(|pointer| {
+            let owner = unsafe { super::owner::OwnerToken::from_raw(pointer) };
+            let (origin, step) = match formula {
+                Formula::Int { from, step } => (from as f64, step as f64),
+                Formula::Real { from, step } => (from, step),
+            };
+            let value = super::altrep::new_sequence(
+                owner,
+                kind,
+                origin,
+                step,
+                i64::try_from(n).map_err(|_| super::object::SexpError::Altrep {
+                    reason: "sequence length",
+                })?,
+            )?;
+            capability.require_active()?;
+            Ok(finish(value.as_raw()))
+        });
+        result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
 /// Owned copy of a compact sequence. Field arithmetic does not borrow the node.

@@ -116,7 +116,7 @@ fn attribute_snapshot_survives_detachment_during_copy_collection() {
                 return;
             }
             unsafe {
-                (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+                (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                     .memory_state
                     .gc_force_gap = 0;
             }
@@ -158,7 +158,7 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
                 return;
             }
             unsafe {
-                (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+                (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                     .memory_state
                     .gc_force_gap = 0;
             }

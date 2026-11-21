@@ -11,9 +11,7 @@ pub fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
         // GNU serialize.c CallHook evaluates LANGSXP fun(x) in GlobalEnv.
         let call = Rf_lang2(fun, x);
         let _call_guard = protect(call);
-        // SAFETY: `call` is a freshly built protected LANGSXP evaluated in
-        // the canonical global environment.
-        unsafe { Rf_eval(call, R_GlobalEnv()) }
+        Rf_eval(call, R_GlobalEnv())
     }
 }
 
@@ -215,10 +213,7 @@ pub fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
             }
             let name_text = String::from_utf8_lossy(&charsxp_as_utf8(name)).into_owned();
             let sym = install_str(&name_text);
-            // SAFETY: `env` is a caller-owned ENVSXP checked above and `sym`
-            // is a freshly installed symbol; `tmp`, when forced, is a live
-            // PROMSXP evaluated in the canonical global environment.
-            let tmp = unsafe {
+            let tmp = {
                 let mut tmp = R_findVarInFrame(env, sym);
                 if tmp == R_UnboundValue() {
                     error(&format!("object '{name_text}' not found"));

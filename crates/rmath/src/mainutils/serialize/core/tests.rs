@@ -207,26 +207,28 @@ mod bounded_frame_reader_tests {
             words.extend(compiled_constant());
             let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
             let mut reader = BinaryReader::new(&bytes);
-            let owner = OwnerToken::current().unwrap();
-            let promise = owner
-                .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
-                .unwrap()
-                .into_owned()
-                .unwrap();
-            assert_eq!(reader.pos, bytes.len());
-            assert_eq!(reader.item_depth, 0);
-            assert_eq!(reader.bc_source_depth, 0);
-            assert_eq!(TYPEOF(PRCODE(promise.as_raw())), SEXPTYPE::BCODESXP);
-            assert_eq!(PRVALUE(promise.as_raw()), R_UnboundValue());
-            owner.full_gc().unwrap();
-            let result = owner
-                .sexp(crate::sexp::envir::forcePromise(promise.as_raw()))
-                .unwrap()
-                .into_owned()
-                .unwrap();
-            owner.full_gc().unwrap();
-            assert_eq!(result.try_integer_elt(0).unwrap(), 42);
-            assert_eq!(PRVALUE(promise.as_raw()), result.as_raw());
+            OwnerToken::with_current(|owner| {
+                let promise = owner
+                    .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                assert_eq!(reader.pos, bytes.len());
+                assert_eq!(reader.item_depth, 0);
+                assert_eq!(reader.bc_source_depth, 0);
+                assert_eq!(TYPEOF(PRCODE(promise.as_raw())), SEXPTYPE::BCODESXP);
+                assert_eq!(PRVALUE(promise.as_raw()), R_UnboundValue());
+                owner.full_gc().unwrap();
+                let result = owner
+                    .sexp(crate::sexp::envir::forcePromise(promise.as_raw()))
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                owner.full_gc().unwrap();
+                assert_eq!(result.try_integer_elt(0).unwrap(), 42);
+                assert_eq!(PRVALUE(promise.as_raw()), result.as_raw());
+            })
+            .unwrap()
         });
     }
 
@@ -277,18 +279,20 @@ mod bounded_frame_reader_tests {
             let bytes = nested_vectors(96);
             let mut reader = BinaryReader::new(&bytes);
             let mut refs = ReadRefTable::new();
-            let owner = OwnerToken::current().unwrap();
-            let raw = ReadItemInternal(&mut reader, &mut refs).unwrap();
-            let result = owner.sexp(raw).unwrap().into_owned().unwrap();
-            assert_eq!(reader.item_depth, 0);
-            owner.full_gc().unwrap();
-            let mut current = result;
-            for _ in 0..96 {
-                assert_eq!(current.typeof_(), SEXPTYPE::VECSXP);
-                assert_eq!(current.len(), 1);
-                current = current.try_vector_elt(0).unwrap().into_owned().unwrap();
-            }
-            assert!(current.is_nil());
+            OwnerToken::with_current(|owner| {
+                let raw = ReadItemInternal(&mut reader, &mut refs).unwrap();
+                let result = owner.sexp(raw).unwrap().into_owned().unwrap();
+                assert_eq!(reader.item_depth, 0);
+                owner.full_gc().unwrap();
+                let mut current = result;
+                for _ in 0..96 {
+                    assert_eq!(current.typeof_(), SEXPTYPE::VECSXP);
+                    assert_eq!(current.len(), 1);
+                    current = current.try_vector_elt(0).unwrap().into_owned().unwrap();
+                }
+                assert!(current.is_nil());
+            })
+            .unwrap()
         });
     }
 
@@ -306,15 +310,17 @@ mod bounded_frame_reader_tests {
                 words.push(NILVALUE_SXP);
                 let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
                 let mut reader = BinaryReader::new(&bytes);
-                let owner = OwnerToken::current().unwrap();
-                let raw = ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap();
-                let environment = owner.sexp(raw).unwrap().into_owned().unwrap();
-                assert_eq!(crate::sexp::env_hash::env_has_hash_table(raw), hashed);
-                owner.full_gc().unwrap();
-                assert_eq!(
-                    crate::sexp::env_hash::env_has_hash_table(environment.as_raw()),
-                    hashed
-                );
+                OwnerToken::with_current(|owner| {
+                    let raw = ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap();
+                    let environment = owner.sexp(raw).unwrap().into_owned().unwrap();
+                    assert_eq!(crate::sexp::env_hash::env_has_hash_table(raw), hashed);
+                    owner.full_gc().unwrap();
+                    assert_eq!(
+                        crate::sexp::env_hash::env_has_hash_table(environment.as_raw()),
+                        hashed
+                    );
+                })
+                .unwrap()
             }
             let raw = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 29);
             assert!(crate::sexp::env_hash::env_has_hash_table(raw));
@@ -338,23 +344,25 @@ mod bounded_frame_reader_tests {
             ];
             let bytes: Vec<u8> = words.into_iter().flat_map(i32::to_ne_bytes).collect();
             let mut reader = BinaryReader::new(&bytes);
-            let owner = OwnerToken::current().unwrap();
-            let value = owner
-                .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
-                .unwrap()
-                .into_owned()
-                .unwrap();
-            let left = value.try_vector_elt(0).unwrap().into_owned().unwrap();
-            let right = value.try_vector_elt(1).unwrap().into_owned().unwrap();
-            assert_eq!(left, right);
-            assert_eq!(left.typeof_(), SEXPTYPE::ENVSXP);
-            owner.full_gc().unwrap();
-            assert_eq!(
-                value.try_vector_elt(0).unwrap(),
-                value.try_vector_elt(1).unwrap()
-            );
-            assert!(left.allocation().unwrap().is_live());
-            assert_eq!(reader.item_depth, 0);
+            OwnerToken::with_current(|owner| {
+                let value = owner
+                    .sexp(ReadItemInternal(&mut reader, &mut ReadRefTable::new()).unwrap())
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let left = value.try_vector_elt(0).unwrap().into_owned().unwrap();
+                let right = value.try_vector_elt(1).unwrap().into_owned().unwrap();
+                assert_eq!(left, right);
+                assert_eq!(left.typeof_(), SEXPTYPE::ENVSXP);
+                owner.full_gc().unwrap();
+                assert_eq!(
+                    value.try_vector_elt(0).unwrap(),
+                    value.try_vector_elt(1).unwrap()
+                );
+                assert!(left.allocation().unwrap().is_live());
+                assert_eq!(reader.item_depth, 0);
+            })
+            .unwrap()
         });
     }
 

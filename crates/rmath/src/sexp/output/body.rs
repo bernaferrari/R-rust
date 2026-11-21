@@ -36,34 +36,32 @@ pub(crate) fn first_deparse_line(text: crate::sexp::ffi::SEXP) -> Option<String>
 }
 
 pub(crate) fn primitive_args_prototype(name: &str) -> Option<crate::sexp::ffi::SEXP> {
-    unsafe {
-        let symbol = crate::sexp::symbol::install_str(name);
-        let base = crate::sexp::globals::R_BaseEnv();
-        for registry in [".ArgsEnv", ".GenericArgsEnv"] {
-            let registry_sym = crate::sexp::symbol::install_str(registry);
-            let mut env = crate::sexp::envir::R_findVarInFrame(base, registry_sym);
-            if env.is_null() || env == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            if TYPEOF(env) == SEXPTYPE::PROMSXP {
-                env = crate::eval::eval::Rf_eval(env, base);
-            }
-            if env.is_null()
-                || env == crate::sexp::globals::R_UnboundValue()
-                || TYPEOF(env) != SEXPTYPE::ENVSXP
-            {
-                continue;
-            }
-            let proto = crate::sexp::envir::R_findVarInFrame(env, symbol);
-            if !proto.is_null()
-                && proto != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(proto) == SEXPTYPE::CLOSXP
-            {
-                return Some(proto);
-            }
+    let symbol = crate::sexp::symbol::install_str(name);
+    let base = crate::sexp::globals::R_BaseEnv();
+    for registry in [".ArgsEnv", ".GenericArgsEnv"] {
+        let registry_sym = crate::sexp::symbol::install_str(registry);
+        let mut env = crate::sexp::envir::R_findVarInFrame(base, registry_sym);
+        if env.is_null() || env == crate::sexp::globals::R_UnboundValue() {
+            continue;
         }
-        None
+        if TYPEOF(env) == SEXPTYPE::PROMSXP {
+            env = crate::eval::eval::Rf_eval(env, base);
+        }
+        if env.is_null()
+            || env == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(env) != SEXPTYPE::ENVSXP
+        {
+            continue;
+        }
+        let proto = crate::sexp::envir::R_findVarInFrame(env, symbol);
+        if !proto.is_null()
+            && proto != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(proto) == SEXPTYPE::CLOSXP
+        {
+            return Some(proto);
+        }
     }
+    None
 }
 
 pub(crate) fn format_primitive(x: Sexp<'_>) -> String {

@@ -7,7 +7,7 @@ use crate::sexp::object::SexpMut;
 
 /// R's `withCallingHandlers(expr, ...)` evaluates handlers before unwinding.
 pub fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         // GNU formals `(expr, ...)`. `expr=` binds by name; other tags are handlers.
         let expr_sym = install_str("expr");
         let mut expr = crate::sexp::globals::R_MissingArg();

@@ -71,45 +71,43 @@ pub(crate) fn copy_print_dispatch_extras(args: SEXP, x: SEXP) -> SEXP {
 }
 
 pub(crate) fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
-    unsafe {
-        let path = crate::mainutils::essentials::find_package_path("methods");
-        if crate::mainutils::essentials::cached_namespace_by_name("methods").is_none()
-            && !path.is_empty()
-        {
-            let _ = crate::mainutils::essentials::load_pure_r_package(
-                "methods",
-                std::path::Path::new(&path),
-            );
-        }
-        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let symbol = crate::sexp::symbol::install_str("show");
-        let mut fun = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
-        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
-            return None;
-        }
-        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = crate::sexp::envir::forcePromise(fun);
-        }
-        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
-            return None;
-        }
-        let _fun = crate::sexp::protect::protect(fun);
-        let call = crate::sexp::constructors::Rf_lang2(fun, raw);
-        let _call = crate::sexp::protect::protect(call);
-        let env = crate::sexp::globals::R_GlobalEnv();
-        let guard = OutputCaptureGuard::start();
-        // stop() panics. Returning this buffer would look like success, so
-        // resume after saving text that was printed before the error.
-        let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::eval::eval::Rf_eval(call, env)
-        }));
-        let captured = guard.finish();
-        match evaluated {
-            Ok(_) => Some(captured.stdout.trim_end_matches('\n').to_string()),
-            Err(payload) => {
-                keep_show_stdout_before_error(&captured.stdout);
-                std::panic::resume_unwind(payload)
-            }
+    let path = crate::mainutils::essentials::find_package_path("methods");
+    if crate::mainutils::essentials::cached_namespace_by_name("methods").is_none()
+        && !path.is_empty()
+    {
+        let _ = crate::mainutils::essentials::load_pure_r_package(
+            "methods",
+            std::path::Path::new(&path),
+        );
+    }
+    let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+    let symbol = crate::sexp::symbol::install_str("show");
+    let mut fun = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
+    if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+        return None;
+    }
+    if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+        fun = crate::sexp::envir::forcePromise(fun);
+    }
+    if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+        return None;
+    }
+    let _fun = crate::sexp::protect::protect(fun);
+    let call = crate::sexp::constructors::Rf_lang2(fun, raw);
+    let _call = crate::sexp::protect::protect(call);
+    let env = crate::sexp::globals::R_GlobalEnv();
+    let guard = OutputCaptureGuard::start();
+    // stop() panics. Returning this buffer would look like success, so
+    // resume after saving text that was printed before the error.
+    let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::eval::eval::Rf_eval(call, env)
+    }));
+    let captured = guard.finish();
+    match evaluated {
+        Ok(_) => Some(captured.stdout.trim_end_matches('\n').to_string()),
+        Err(payload) => {
+            keep_show_stdout_before_error(&captured.stdout);
+            std::panic::resume_unwind(payload)
         }
     }
 }

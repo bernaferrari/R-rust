@@ -495,91 +495,91 @@ fn r_nchar(bytes: &CharacterBytes, kind: NcharType) -> c_int {
 /// Translate characters in `x`: replace characters in `old` with corresponding
 /// characters in `new`.
 pub unsafe fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP, String> {
-    // SAFETY: the translated entry point pins the original interpreter and
-    // lends no R payload while allocating or calling providers.
-    let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let _pin = owner.pin().map_err(|error| error.to_string())?;
-    let na = get_na_string();
+    OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
+        let na = get_na_string();
 
-    if old.clone().typeof_() != SEXPTYPE::STRSXP {
-        return Err("invalid 'old' argument".into());
-    }
-    if old.clone().is_empty() {
-        return Err("invalid 'old' argument".into());
-    }
-    let old_first = old.string_elt(0).ok_or("invalid 'old' argument")?;
-    if old_first.clone().as_raw() == na {
-        return Err("invalid 'old' argument".into());
-    }
-
-    if new.clone().typeof_() != SEXPTYPE::STRSXP {
-        return Err("invalid 'new' argument".into());
-    }
-    if new.clone().is_empty() {
-        return Err("invalid 'new' argument".into());
-    }
-    let new_first = new.string_elt(0).ok_or("invalid 'new' argument")?;
-    if new_first.clone().as_raw() == na {
-        return Err("invalid 'new' argument".into());
-    }
-
-    if x.clone().typeof_() != SEXPTYPE::STRSXP {
-        return Err("invalid 'x' argument".into());
-    }
-
-    // Build byte-level translation table (256 entries, identity by default)
-    let mut xtable: [u8; 256] = {
-        let mut t = [0u8; 256];
-        for i in 0..256usize {
-            t[i] = i as u8;
+        if old.clone().typeof_() != SEXPTYPE::STRSXP {
+            return Err("invalid 'old' argument".into());
         }
-        t
-    };
-
-    owner.require_active().map_err(|error| error.to_string())?;
-    let workspace = crate::mainutils::grep::regex_workspace();
-    let old_bytes = CharacterBytes::from_value(&old_first)?;
-    let new_bytes = CharacterBytes::from_value(&new_first)?;
-    let old_spec = tr_build_spec(&old_bytes.copy(&workspace, 0..old_bytes.len)?);
-    let new_spec = tr_build_spec(&new_bytes.copy(&workspace, 0..new_bytes.len)?);
-
-    // Walk both specs and build the translation table
-    let mut old_p = old_spec;
-    let mut new_p = new_spec;
-    loop {
-        let c_old = tr_get_next_char(&mut old_p);
-        let c_new = tr_get_next_char(&mut new_p);
-        if c_old == 0 {
-            break;
+        if old.clone().is_empty() {
+            return Err("invalid 'old' argument".into());
         }
-        if c_new == 0 {
-            return Err("'old' is longer than 'new'".into());
+        let old_first = old.string_elt(0).ok_or("invalid 'old' argument")?;
+        if old_first.clone().as_raw() == na {
+            return Err("invalid 'old' argument".into());
         }
-        xtable[c_old as usize] = c_new;
-    }
 
-    let factory = owner.node_factory();
-    let n = x.len();
-    let mut result = allocate_character_vector(owner, n)?;
-    for index in 0..n {
-        let element = x.try_string_elt(index).map_err(|error| error.to_string())?;
-        let translated = if element.as_raw() == na {
-            element
-        } else {
-            let bytes = CharacterBytes::from_value(&element)?;
-            let mut bytes = bytes.copy(&workspace, 0..bytes.len)?;
-            for byte in bytes.iter_mut() {
-                *byte = xtable[usize::from(*byte)];
+        if new.clone().typeof_() != SEXPTYPE::STRSXP {
+            return Err("invalid 'new' argument".into());
+        }
+        if new.clone().is_empty() {
+            return Err("invalid 'new' argument".into());
+        }
+        let new_first = new.string_elt(0).ok_or("invalid 'new' argument")?;
+        if new_first.clone().as_raw() == na {
+            return Err("invalid 'new' argument".into());
+        }
+
+        if x.clone().typeof_() != SEXPTYPE::STRSXP {
+            return Err("invalid 'x' argument".into());
+        }
+
+        // Build byte-level translation table (256 entries, identity by default)
+        let mut xtable: [u8; 256] = {
+            let mut t = [0u8; 256];
+            for i in 0..256usize {
+                t[i] = i as u8;
             }
-            factory
-                .allocate(|arena| Some(arena.alloc_charsxp(&bytes)))
-                .map_err(|error| error.to_string())?
+            t
         };
-        result
-            .try_set_string_elt(index, translated)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(result.freeze().as_raw())
+
+        owner.require_active().map_err(|error| error.to_string())?;
+        let workspace = crate::mainutils::grep::regex_workspace();
+        let old_bytes = CharacterBytes::from_value(&old_first)?;
+        let new_bytes = CharacterBytes::from_value(&new_first)?;
+        let old_spec = tr_build_spec(&old_bytes.copy(&workspace, 0..old_bytes.len)?);
+        let new_spec = tr_build_spec(&new_bytes.copy(&workspace, 0..new_bytes.len)?);
+
+        // Walk both specs and build the translation table
+        let mut old_p = old_spec;
+        let mut new_p = new_spec;
+        loop {
+            let c_old = tr_get_next_char(&mut old_p);
+            let c_new = tr_get_next_char(&mut new_p);
+            if c_old == 0 {
+                break;
+            }
+            if c_new == 0 {
+                return Err("'old' is longer than 'new'".into());
+            }
+            xtable[c_old as usize] = c_new;
+        }
+
+        let factory = owner.node_factory();
+        let n = x.len();
+        let mut result = allocate_character_vector(owner, n)?;
+        for index in 0..n {
+            let element = x.try_string_elt(index).map_err(|error| error.to_string())?;
+            let translated = if element.as_raw() == na {
+                element
+            } else {
+                let bytes = CharacterBytes::from_value(&element)?;
+                let mut bytes = bytes.copy(&workspace, 0..bytes.len)?;
+                for byte in bytes.iter_mut() {
+                    *byte = xtable[usize::from(*byte)];
+                }
+                factory
+                    .allocate(|arena| Some(arena.alloc_charsxp(&bytes)))
+                    .map_err(|error| error.to_string())?
+            };
+            result
+                .try_set_string_elt(index, translated)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(result.freeze().as_raw())
+    })
+    .map_err(|error| error.to_string())?
 }
 
 /// Translate characters in `x`: replace characters in `old` with corresponding
@@ -589,34 +589,35 @@ pub unsafe fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Resu
 /// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let owner = match OwnerToken::current() {
-            Ok(owner) => owner,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let _pin = match owner.pin() {
-            Ok(pin) => pin,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let args_s = match owner.sexp(args) {
+        match OwnerToken::with_current(|owner| {
+            let _pin = match owner.pin() {
+                Ok(pin) => pin,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let args_s = match owner.sexp(args) {
+                Ok(value) => value,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let old = match args_s.clone().try_pairlist_arg(0).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let new = match args_s.clone().try_pairlist_arg(1).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let x = match args_s.try_pairlist_arg(2) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            match chartr_safe(x, old, new) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
+            }
+        }) {
             Ok(value) => value,
             Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let old = match args_s.clone().try_pairlist_arg(0).clone() {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let new = match args_s.clone().try_pairlist_arg(1).clone() {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let x = match args_s.try_pairlist_arg(2) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        match chartr_safe(x, old, new) {
-            Ok(result) => result,
-            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
@@ -665,43 +666,45 @@ unsafe fn case_transform_safe(
         object::SexpError,
         owner::{OwnerToken, with_runtime},
     };
-    let owner = unsafe { OwnerToken::current() }?;
-    let _pin = owner.pin()?;
-    let x = x.into_owned()?;
-    let na = owner
-        .sexp(crate::sexp::globals::R_NaString())?
-        .into_owned()?;
-    let weak = owner.weak_owner().ok_or(SexpError::OwnerNotActive)?;
-    let result = with_runtime(&weak, |access| {
-        super::case_conversion::transform(access, x, na, upper)
-    })?;
-    owner.require_active()?;
-    result.map(|value| value.as_raw())
+    OwnerToken::with_current(|owner| {
+        let _pin = owner.pin()?;
+        let x = x.into_owned()?;
+        let na = owner
+            .sexp(crate::sexp::globals::R_NaString())?
+            .into_owned()?;
+        let weak = owner.weak_owner().ok_or(SexpError::OwnerNotActive)?;
+        let result = with_runtime(&weak, |access| {
+            super::case_conversion::transform(access, x, na, upper)
+        })?;
+        owner.require_active()?;
+        result.map(|value| value.as_raw())
+    })?
 }
 
 /// Shared native boundary; errors and callback panics remain recoverable R errors.
 pub(crate) unsafe fn case_entry(args: SEXP, upper: bool) -> SEXP {
     use crate::sexp::owner::OwnerToken;
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let args = owner
-        .sexp(args)
-        .and_then(Sexp::into_owned)
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let x = args
-        .try_pairlist_arg(0)
-        .and_then(Sexp::into_owned)
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    match unsafe { case_transform_safe(x, upper) } {
-        Ok(value) => value,
-        Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)) => {
-            crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
+    OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let args = owner
+            .sexp(args)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let x = args
+            .try_pairlist_arg(0)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match unsafe { case_transform_safe(x, upper) } {
+            Ok(value) => value,
+            Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)) => {
+                crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
+            }
+            Err(error) => crate::sexp::context::r_error(error.to_string()),
         }
-        Err(error) => crate::sexp::context::r_error(error.to_string()),
-    }
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -729,32 +732,32 @@ pub unsafe fn nchar_safe(
         return Err("'nchar' requires a character vector".into());
     }
 
-    // SAFETY: the translated entry point keeps the original interpreter
-    // available for these checked allocations and element writes.
-    let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let _pin = owner.pin().map_err(|error| error.to_string())?;
-    let len = x.len();
-    let value = owner
-        .node_factory()
-        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, len)))
-        .map_err(|error| error.to_string())?;
-    let mut result = SexpMut::try_from_checked(value).map_err(|error| error.to_string())?;
-    for index in 0..len {
-        let element = x.try_string_elt(index).map_err(|error| error.to_string())?;
-        let value = if element.as_raw() == na {
-            if keep_na {
-                crate::sexp::ffi::NA_INTEGER
-            } else {
-                2
-            }
-        } else {
-            r_nchar(&CharacterBytes::from_value(&element)?, type_)
-        };
-        result
-            .try_set_integer_elt(index, value)
+    OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
+        let len = x.len();
+        let value = owner
+            .node_factory()
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, len)))
             .map_err(|error| error.to_string())?;
-    }
-    Ok(result.freeze().as_raw())
+        let mut result = SexpMut::try_from_checked(value).map_err(|error| error.to_string())?;
+        for index in 0..len {
+            let element = x.try_string_elt(index).map_err(|error| error.to_string())?;
+            let value = if element.as_raw() == na {
+                if keep_na {
+                    crate::sexp::ffi::NA_INTEGER
+                } else {
+                    2
+                }
+            } else {
+                r_nchar(&CharacterBytes::from_value(&element)?, type_)
+            };
+            result
+                .try_set_integer_elt(index, value)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(result.freeze().as_raw())
+    })
+    .map_err(|error| error.to_string())?
 }
 
 /// Count the number of characters in each element of a character vector.
@@ -764,87 +767,88 @@ pub unsafe fn nchar_safe(
 pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
-            let owner = match OwnerToken::current() {
-                Ok(owner) => owner,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let _pin = match owner.pin() {
-                Ok(pin) => pin,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let args_s = match owner.sexp(args) {
-                Ok(value) => value,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
+            match OwnerToken::with_current(|owner| {
+                let _pin = match owner.pin() {
+                    Ok(pin) => pin,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+                let args_s = match owner.sexp(args) {
+                    Ok(value) => value,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
 
-            let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            let stype = match args_s.clone().try_pairlist_arg(1).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-
-            if stype.clone().typeof_() != SEXPTYPE::STRSXP || stype.clone().len() != 1 {
-                return crate::sexp::globals::R_NilValue();
-            }
-            let type_char = match stype.try_string_elt(0) {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let type_str = match type_char.try_as_string() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let type_str_trimmed = type_str.trim();
-
-            let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
-                NcharType::Bytes
-            } else if type_str_trimmed.starts_with("chars") {
-                NcharType::Chars
-            } else if type_str_trimmed.starts_with("width") {
-                NcharType::Width
-            } else {
-                return crate::sexp::globals::R_NilValue();
-            };
-
-            let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
-                Ok(s) => s,
-                Err(_) => return crate::sexp::globals::R_NilValue(),
-            };
-            let allow_na_val = as_logical(&allow_na_arg);
-            let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
-                false
-            } else {
-                allow_na_val != 0
-            };
-
-            // Parse keepNA (fourth arg, optional)
-            let nargs = XLENGTH(args);
-            let keep_na: bool;
-            if nargs >= 4 {
-                let keep_na_arg = match args_s.try_pairlist_arg(3) {
+                let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
                     Ok(s) => s,
                     Err(_) => return crate::sexp::globals::R_NilValue(),
                 };
-                let keep_na_val = as_logical(&keep_na_arg);
-                if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
-                    keep_na = type_code != NcharType::Width;
-                } else {
-                    keep_na = keep_na_val != 0;
-                }
-            } else {
-                keep_na = type_code != NcharType::Width;
-            }
 
-            if owner.require_active().is_err() {
-                return crate::sexp::globals::R_NilValue();
-            }
-            match nchar_safe(x_arg, type_code, allow_na, keep_na) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
+                let stype = match args_s.clone().try_pairlist_arg(1).clone() {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+
+                if stype.clone().typeof_() != SEXPTYPE::STRSXP || stype.clone().len() != 1 {
+                    return crate::sexp::globals::R_NilValue();
+                }
+                let type_char = match stype.try_string_elt(0) {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+                let type_str = match type_char.try_as_string() {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+                let type_str_trimmed = type_str.trim();
+
+                let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
+                    NcharType::Bytes
+                } else if type_str_trimmed.starts_with("chars") {
+                    NcharType::Chars
+                } else if type_str_trimmed.starts_with("width") {
+                    NcharType::Width
+                } else {
+                    return crate::sexp::globals::R_NilValue();
+                };
+
+                let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+                let allow_na_val = as_logical(&allow_na_arg);
+                let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
+                    false
+                } else {
+                    allow_na_val != 0
+                };
+
+                // Parse keepNA (fourth arg, optional)
+                let nargs = XLENGTH(args);
+                let keep_na: bool;
+                if nargs >= 4 {
+                    let keep_na_arg = match args_s.try_pairlist_arg(3) {
+                        Ok(s) => s,
+                        Err(_) => return crate::sexp::globals::R_NilValue(),
+                    };
+                    let keep_na_val = as_logical(&keep_na_arg);
+                    if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
+                        keep_na = type_code != NcharType::Width;
+                    } else {
+                        keep_na = keep_na_val != 0;
+                    }
+                } else {
+                    keep_na = type_code != NcharType::Width;
+                }
+
+                if owner.require_active().is_err() {
+                    return crate::sexp::globals::R_NilValue();
+                }
+                match nchar_safe(x_arg, type_code, allow_na, keep_na) {
+                    Ok(result) => result,
+                    Err(_) => crate::sexp::globals::R_NilValue(),
+                }
+            }) {
+                Ok(value) => value,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             }
         }
     }))
@@ -888,49 +892,50 @@ pub unsafe fn substr_safe<'a>(
     // gregexpr's per-match positions). The port used to iterate x's
     // length only, silently dropping the extra positions.
     let n = if len == 0 { 0 } else { len.max(k).max(l_val) };
-    // SAFETY: the translated entry point pins the original interpreter and
-    // no R payload borrow is retained across allocation.
-    let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let _pin = owner.pin().map_err(|error| error.to_string())?;
-    let workspace = crate::mainutils::grep::regex_workspace();
-    let factory = owner.node_factory();
-    let blank = factory.character("").map_err(|error| error.to_string())?;
-    let mut result = allocate_character_vector(owner, n)?;
+    OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
+        let workspace = crate::mainutils::grep::regex_workspace();
+        let factory = owner.node_factory();
+        let blank = factory.character("").map_err(|error| error.to_string())?;
+        let mut result = allocate_character_vector(owner, n)?;
 
-    for index in 0..n {
-        let start = starts
-            .integer_elt(index % k)
-            .unwrap_or(crate::sexp::ffi::NA_INTEGER);
-        let stop = stops
-            .as_ref()
-            .and_then(|value| value.integer_elt(index % l_val))
-            .unwrap_or(c_int::MAX);
-        let element = x
-            .try_string_elt(index % len)
-            .map_err(|error| error.to_string())?;
-        let character = if element.as_raw() == na {
-            element
-        } else if start == crate::sexp::ffi::NA_INTEGER || stop == crate::sexp::ffi::NA_INTEGER {
-            owner.sexp(na).map_err(|error| error.to_string())?
-        } else {
-            let bytes = CharacterBytes::from_value(&element)?;
-            let from = (start.max(1) - 1) as usize;
-            let to = usize::try_from(stop).unwrap_or(0).min(bytes.len);
-            if from >= to {
-                blank.clone()
+        for index in 0..n {
+            let start = starts
+                .integer_elt(index % k)
+                .unwrap_or(crate::sexp::ffi::NA_INTEGER);
+            let stop = stops
+                .as_ref()
+                .and_then(|value| value.integer_elt(index % l_val))
+                .unwrap_or(c_int::MAX);
+            let element = x
+                .try_string_elt(index % len)
+                .map_err(|error| error.to_string())?;
+            let character = if element.as_raw() == na {
+                element
+            } else if start == crate::sexp::ffi::NA_INTEGER || stop == crate::sexp::ffi::NA_INTEGER
+            {
+                owner.sexp(na).map_err(|error| error.to_string())?
             } else {
-                let slice = bytes.copy(&workspace, from..to)?;
-                factory
-                    .allocate(|arena| Some(arena.alloc_charsxp(&slice)))
-                    .map_err(|error| error.to_string())?
-            }
-        };
-        result
-            .try_set_string_elt(index, character)
-            .map_err(|error| error.to_string())?;
-    }
+                let bytes = CharacterBytes::from_value(&element)?;
+                let from = (start.max(1) - 1) as usize;
+                let to = usize::try_from(stop).unwrap_or(0).min(bytes.len);
+                if from >= to {
+                    blank.clone()
+                } else {
+                    let slice = bytes.copy(&workspace, from..to)?;
+                    factory
+                        .allocate(|arena| Some(arena.alloc_charsxp(&slice)))
+                        .map_err(|error| error.to_string())?
+                }
+            };
+            result
+                .try_set_string_elt(index, character)
+                .map_err(|error| error.to_string())?;
+        }
 
-    Ok(result.freeze().as_raw())
+        Ok(result.freeze().as_raw())
+    })
+    .map_err(|error| error.to_string())?
 }
 
 /// Extract substrings from a character vector.
@@ -939,37 +944,38 @@ pub unsafe fn substr_safe<'a>(
 /// Uses the shared original-runtime simple casing implementation.
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let owner = match OwnerToken::current() {
-            Ok(owner) => owner,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let _pin = match owner.pin() {
-            Ok(pin) => pin,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-        let args_s = match owner.sexp(args) {
+        match OwnerToken::with_current(|owner| {
+            let _pin = match owner.pin() {
+                Ok(pin) => pin,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let args_s = match owner.sexp(args) {
+                Ok(value) => value,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            let x = match args_s.clone().try_pairlist_arg(0).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            let sa = match args_s.clone().try_pairlist_arg(1).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            let so = match args_s.try_optional_pairlist_arg(2) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            match substr_safe(x, sa, so) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
+            }
+        }) {
             Ok(value) => value,
             Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        let x = match args_s.clone().try_pairlist_arg(0).clone() {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        let sa = match args_s.clone().try_pairlist_arg(1).clone() {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        let so = match args_s.try_optional_pairlist_arg(2) {
-            Ok(s) => s,
-            Err(_) => return crate::sexp::globals::R_NilValue(),
-        };
-
-        match substr_safe(x, sa, so) {
-            Ok(result) => result,
-            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
@@ -1495,9 +1501,11 @@ mod tests {
         unsafe {
             let t = make_lglsxp(&[1]);
             let f = make_lglsxp(&[0]);
-            let owner = OwnerToken::current().unwrap();
-            assert_eq!(as_logical(&owner.sexp(t).unwrap()), 1);
-            assert_eq!(as_logical(&owner.sexp(f).unwrap()), 0);
+            OwnerToken::with_current(|owner| {
+                assert_eq!(as_logical(&owner.sexp(t).unwrap()), 1);
+                assert_eq!(as_logical(&owner.sexp(f).unwrap()), 0);
+            })
+            .unwrap()
         }
     }
 

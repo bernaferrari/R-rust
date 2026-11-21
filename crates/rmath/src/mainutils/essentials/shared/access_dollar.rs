@@ -239,7 +239,7 @@ pub fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }

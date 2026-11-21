@@ -253,11 +253,8 @@ fn run_tsp<T>(
         &super::object::Sexp<'static>,
     ) -> Result<T, String>,
 ) -> T {
-    unsafe {
-        let fail =
-            |message: String| -> ! { std::panic::panic_any(super::context::RError { message }) };
-        let token =
-            super::owner::OwnerToken::current().unwrap_or_else(|error| fail(error.to_string()));
+    let fail = |message: String| -> ! { std::panic::panic_any(super::context::RError { message }) };
+    super::owner::OwnerToken::with_current(|token| {
         let authority = super::owner::StoredOwner::from_token(token);
         let original = authority
             .managed()
@@ -295,7 +292,8 @@ fn run_tsp<T>(
             Ok(result) => result.unwrap_or_else(|error| fail(error)),
             Err(payload) => std::panic::resume_unwind(payload),
         }
-    }
+    })
+    .unwrap_or_else(|error| fail(error.to_string()))
 }
 
 // Snapshot a dense scalar without entering an ALTREP provider so a target
@@ -743,14 +741,12 @@ fn names_allocation_error(error: super::object::SexpError) -> String {
 /// Normalize ordinary, attribute-free atomic names in the original runtime.
 /// Classed values and arrays retain their distinct names assignment paths.
 pub(crate) fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
-    unsafe {
-        if which != R_NamesSymbol() || value.is_null() || value == R_NilValue() {
-            return false;
-        }
-        // Preserve the existing no-callback path for already-sized ordinary
-        // character vectors. ALTREP lengths require checked dispatch below.
-        let token = super::owner::OwnerToken::current()
-            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    if which != R_NamesSymbol() || value.is_null() || value == R_NilValue() {
+        return false;
+    }
+    // Preserve the existing no-callback path for already-sized ordinary
+    // character vectors. ALTREP lengths require checked dispatch below.
+    super::owner::OwnerToken::with_current(|token| {
         let pin = token
             .pin()
             .unwrap_or_else(|error| super::context::r_error(error.to_string()));
@@ -996,7 +992,7 @@ pub(crate) fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
                 Ok(true)
             },
         )
-    }
+    }).unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
 struct ClassedNamesSnapshot {
@@ -1343,12 +1339,10 @@ pub(crate) fn plain_names_replacement(
     x: SEXP,
     value: SEXP,
 ) -> Option<super::object::Sexp<'static>> {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return None;
-        }
-        let token = super::owner::OwnerToken::current()
-            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+    if value.is_null() || value == R_NilValue() {
+        return None;
+    }
+    super::owner::OwnerToken::with_current(|token| {
         let pin = token
             .pin()
             .unwrap_or_else(|error| super::context::r_error(error.to_string()));
@@ -1400,7 +1394,8 @@ pub(crate) fn plain_names_replacement(
                 Ok(Some(output.freeze()))
             },
         )
-    }
+    })
+    .unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
 fn tsp_parameters(

@@ -96,16 +96,16 @@ pub fn coerce_to_complex(x: SEXP) -> SEXP {
         let raw = Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         return if raw.is_null() { R_NilValue() } else { raw };
     }
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = checked(unsafe { OwnerToken::current() });
-    let source = checked(owner.sexp(x));
-    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
-        return R_NilValue();
-    };
-    for i in 0..n {
-        checked(result.try_set_complex_elt(i, elt_complex_coerce(owner, &source, i)));
-    }
-    result.freeze().as_raw()
+    checked(OwnerToken::with_current(|owner| {
+        let source = checked(owner.sexp(x));
+        let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+            return R_NilValue();
+        };
+        for i in 0..n {
+            checked(result.try_set_complex_elt(i, elt_complex_coerce(owner, &source, i)));
+        }
+        result.freeze().as_raw()
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -129,77 +129,77 @@ pub fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     }
 
     let n = na.max(nb);
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = checked(unsafe { OwnerToken::current() });
-    let a = checked(owner.sexp(sa));
-    let b = checked(owner.sexp(sb));
-    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
-        return R_NilValue();
-    };
-    super::arithmetic::warn_if_non_multiple_recycling(na, nb);
-    checked(owner.require_active());
+    checked(OwnerToken::with_current(|owner| {
+        let a = checked(owner.sexp(sa));
+        let b = checked(owner.sexp(sb));
+        let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+            return R_NilValue();
+        };
+        super::arithmetic::warn_if_non_multiple_recycling(na, nb);
+        checked(owner.require_active());
 
-    for i in 0..n {
-        let x = elt_complex_coerce(owner, &a, i);
-        let y = elt_complex_coerce(owner, &b, i);
-        if op != "+" && op != "-" && (is_na_complex(x) || is_na_complex(y)) {
-            checked(result.try_set_complex_elt(i, NA_COMPLEX));
-            continue;
-        }
-        let val = match op {
-            "+" => {
-                let na = crate::sexp::ffi::NA_REAL;
-                let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-                Rcomplex {
-                    r: if r_na(x.r) || r_na(y.r) {
-                        na
-                    } else {
-                        x.r + y.r
-                    },
-                    i: if r_na(x.i) || r_na(y.i) {
-                        na
-                    } else {
-                        x.i + y.i
-                    },
-                }
+        for i in 0..n {
+            let x = elt_complex_coerce(owner, &a, i);
+            let y = elt_complex_coerce(owner, &b, i);
+            if op != "+" && op != "-" && (is_na_complex(x) || is_na_complex(y)) {
+                checked(result.try_set_complex_elt(i, NA_COMPLEX));
+                continue;
             }
-            "-" => Rcomplex {
-                r: x.r - y.r,
-                i: x.i - y.i,
-            },
-            "*" => Rcomplex {
-                r: x.r * y.r - x.i * y.i,
-                i: x.r * y.i + x.i * y.r,
-            },
-            "/" => {
-                let denom = y.r * y.r + y.i * y.i;
-                if denom == 0.0 {
-                    NA_COMPLEX
-                } else {
+            let val = match op {
+                "+" => {
+                    let na = crate::sexp::ffi::NA_REAL;
+                    let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
                     Rcomplex {
-                        r: (x.r * y.r + x.i * y.i) / denom,
-                        i: (x.i * y.r - x.r * y.i) / denom,
+                        r: if r_na(x.r) || r_na(y.r) {
+                            na
+                        } else {
+                            x.r + y.r
+                        },
+                        i: if r_na(x.i) || r_na(y.i) {
+                            na
+                        } else {
+                            x.i + y.i
+                        },
                     }
                 }
-            }
-            "^" => complex_pow(x, y),
-            _ => NA_COMPLEX,
-        };
+                "-" => Rcomplex {
+                    r: x.r - y.r,
+                    i: x.i - y.i,
+                },
+                "*" => Rcomplex {
+                    r: x.r * y.r - x.i * y.i,
+                    i: x.r * y.i + x.i * y.r,
+                },
+                "/" => {
+                    let denom = y.r * y.r + y.i * y.i;
+                    if denom == 0.0 {
+                        NA_COMPLEX
+                    } else {
+                        Rcomplex {
+                            r: (x.r * y.r + x.i * y.i) / denom,
+                            i: (x.i * y.r - x.r * y.i) / denom,
+                        }
+                    }
+                }
+                "^" => complex_pow(x, y),
+                _ => NA_COMPLEX,
+            };
 
-        checked(result.try_set_complex_elt(i, val));
-    }
-    let result = result.freeze();
-    // SAFETY: the checked operands and result stay rooted during attribute propagation.
-    {
-        super::arithmetic::propagate_arithmetic_attributes(
-            result.as_raw(),
-            a.as_raw(),
-            b.as_raw(),
-            n,
-        )
-    };
-    checked(owner.require_active());
-    result.as_raw()
+            checked(result.try_set_complex_elt(i, val));
+        }
+        let result = result.freeze();
+        // SAFETY: the checked operands and result stay rooted during attribute propagation.
+        {
+            super::arithmetic::propagate_arithmetic_attributes(
+                result.as_raw(),
+                a.as_raw(),
+                b.as_raw(),
+                n,
+            )
+        };
+        checked(owner.require_active());
+        result.as_raw()
+    }))
 }
 
 /// Complex power via GNU `mycpow` (integer exponents stay exact).
@@ -225,23 +225,23 @@ pub fn complex_abs_vec(sa: SEXP) -> SEXP {
     if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
         return R_NilValue();
     }
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = checked(unsafe { OwnerToken::current() });
-    let source = checked(owner.sexp(sa));
-    let n = source.len();
-    let Some(mut result) = allocate_vector(owner, SEXPTYPE::REALSXP, n) else {
-        return R_NilValue();
-    };
-    for i in 0..n {
-        let z = elt_complex_coerce(owner, &source, i);
-        let value = if is_na_complex(z) {
-            crate::sexp::ffi::NA_REAL
-        } else {
-            complex_abs(z)
+    checked(OwnerToken::with_current(|owner| {
+        let source = checked(owner.sexp(sa));
+        let n = source.len();
+        let Some(mut result) = allocate_vector(owner, SEXPTYPE::REALSXP, n) else {
+            return R_NilValue();
         };
-        checked(result.try_set_real_elt(i, value));
-    }
-    result.freeze().as_raw()
+        for i in 0..n {
+            let z = elt_complex_coerce(owner, &source, i);
+            let value = if is_na_complex(z) {
+                crate::sexp::ffi::NA_REAL
+            } else {
+                complex_abs(z)
+            };
+            checked(result.try_set_real_elt(i, value));
+        }
+        result.freeze().as_raw()
+    }))
 }
 
 /// Apply a unary complex function element-wise.
@@ -249,20 +249,20 @@ pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
     if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
         return R_NilValue();
     }
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = checked(unsafe { OwnerToken::current() });
-    let source = checked(owner.sexp(sa));
-    let n = source.len();
-    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
-        return R_NilValue();
-    };
-    for i in 0..n {
-        let z = elt_complex_coerce(owner, &source, i);
-        let value = if is_na_complex(z) { NA_COMPLEX } else { f(z) };
-        checked(owner.require_active());
-        checked(result.try_set_complex_elt(i, value));
-    }
-    result.freeze().as_raw()
+    checked(OwnerToken::with_current(|owner| {
+        let source = checked(owner.sexp(sa));
+        let n = source.len();
+        let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+            return R_NilValue();
+        };
+        for i in 0..n {
+            let z = elt_complex_coerce(owner, &source, i);
+            let value = if is_na_complex(z) { NA_COMPLEX } else { f(z) };
+            checked(owner.require_active());
+            checked(result.try_set_complex_elt(i, value));
+        }
+        result.freeze().as_raw()
+    }))
 }
 
 /// Complex square root.

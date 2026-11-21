@@ -242,7 +242,7 @@ pub(super) fn eval_arg_by_name_or_position(
     position: usize,
     rho: SEXP,
 ) -> SEXP {
-    unsafe {
+    {
         let expr = arg_by_name_or_position(args, names, position);
         if expr.is_null() || expr == R_NilValue() {
             R_NilValue()

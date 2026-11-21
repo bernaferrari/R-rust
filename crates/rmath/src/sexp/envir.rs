@@ -382,58 +382,58 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
 fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'static> {
     // This translated boundary immediately acquires actual original-domain
     // values. Argument/call nodes stay owned through collection and R reentry.
-    let owner = unsafe { super::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let env = owner
-        .sexp(env)
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let fun = owner
-        .sexp(fun)
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let value = value.map(|value| {
+    super::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let env = owner
+            .sexp(env)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let fun = owner
+            .sexp(fun)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let value = value.map(|value| {
+            owner
+                .sexp(value)
+                .unwrap_or_else(|error| binding_error(error.to_string()))
+        });
+        let factory = owner.node_factory();
+        let nil = factory.nil();
+        let args = match &value {
+            Some(value) => factory
+                .pairlist_cell(value, &nil, &nil)
+                .unwrap_or_else(|error| binding_error(error.to_string())),
+            None => nil.clone(),
+        };
+        let call = factory
+            .pairlist_cell(&fun, &args, &nil)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
         owner
-            .sexp(value)
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int());
+        let result = unsafe {
+            if fun.is_closure() {
+                crate::eval::closure::applyClosure(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    env.as_raw(),
+                    nil.as_raw(),
+                    1,
+                )
+            } else {
+                crate::eval::eval::Rf_eval(call.as_raw(), env.as_raw())
+            }
+        };
+        owner
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        owner
+            .sexp(result)
+            .and_then(Sexp::into_owned)
             .unwrap_or_else(|error| binding_error(error.to_string()))
-    });
-    let factory = owner.node_factory();
-    let nil = factory.nil();
-    let args = match &value {
-        Some(value) => factory
-            .pairlist_cell(value, &nil, &nil)
-            .unwrap_or_else(|error| binding_error(error.to_string())),
-        None => nil.clone(),
-    };
-    let call = factory
-        .pairlist_cell(&fun, &args, &nil)
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    owner
-        .require_active()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int());
-    let result = unsafe {
-        if fun.is_closure() {
-            crate::eval::closure::applyClosure(
-                call.as_raw(),
-                fun.as_raw(),
-                args.as_raw(),
-                env.as_raw(),
-                nil.as_raw(),
-                1,
-            )
-        } else {
-            crate::eval::eval::Rf_eval(call.as_raw(), env.as_raw())
-        }
-    };
-    owner
-        .require_active()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    owner
-        .sexp(result)
-        .and_then(Sexp::into_owned)
-        .unwrap_or_else(|error| binding_error(error.to_string()))
+    }).unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 /// Typed, owner-scoped environment facade.
@@ -837,9 +837,7 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
                         nil.as_raw(),
                     )
                 };
-                let raw = unsafe {
-                    crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
-                };
+                let raw = crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw());
                 authority.require_active()?;
                 let result = factory.wrap(raw)?;
                 drop(context);
@@ -933,83 +931,83 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
     if !rho.is_environment() || !symbol.is_symbol() {
         return false;
     }
-    let owner = unsafe { super::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let factory = owner.node_factory();
-    let domain = factory.domain();
-    for input in [&rho, &symbol, &value] {
-        domain
-            .link(input)
+    super::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
             .unwrap_or_else(|error| binding_error(error.to_string()));
-    }
-    let lookup = || definition_cell(&rho, &symbol).unwrap_or_else(|error| binding_error(error));
-    if let Some(cell) = lookup() {
-        update_definition_cell(owner, &rho, &symbol, &value, &cell);
-        return true;
-    }
-    if environment_is_locked_raw(rho.as_raw()) {
-        binding_error("cannot add bindings to a locked environment");
-    }
-    let previous_frame = rho
-        .try_frame()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    let new_cell = factory
-        .pairlist_cell(&value, &previous_frame, &symbol)
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    owner
-        .require_active()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    // Allocation may run collecting callbacks which prepend, replace, lock,
-    // or install an active binding. Resolve the actual current frame again;
-    // never overwrite it with the pre-allocation snapshot.
-    if let Some(cell) = lookup() {
-        update_definition_cell(owner, &rho, &symbol, &value, &cell);
-        return true;
-    }
-    if environment_is_locked_raw(rho.as_raw()) {
-        binding_error("cannot add bindings to a locked environment");
-    }
-    let frame = rho
-        .try_frame()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    // Only the owning cells and copied identities remain live while the
-    // canonical mutation updates its one existing nonowning binding index.
-    SETCDR(new_cell.as_raw(), frame.as_raw());
-    let peer = base_binding_peer(rho.as_raw());
-    let peer_owner = peer.map(|peer| {
-        domain
-            .wrap(peer)
-            .unwrap_or_else(|error| binding_error(error.to_string()))
-    });
-    {
-        SET_FRAME(rho.as_raw(), new_cell.as_raw());
-        mirror_base_frame(rho.as_raw(), peer_owner.as_ref().map(|peer| peer.as_raw()));
-    }
-    increment_named_on_assign(value.as_raw());
-    let peer_has_hash = peer_owner
-        .as_ref()
-        .is_some_and(|peer| super::env_hash::env_has_hash_table(peer.as_raw()));
-    if !super::env_hash::env_has_hash_table(rho.as_raw()) && !peer_has_hash {
-        let mut count = 0usize;
-        let mut current = new_cell;
-        while !current.is_nil() {
-            count += 1;
-            if count >= 100 {
-                super::env_hash::promote_to_hash_table(rho.as_raw());
-                break;
-            }
-            current = current
-                .try_cdr()
+        let factory = owner.node_factory();
+        let domain = factory.domain();
+        for input in [&rho, &symbol, &value] {
+            domain
+                .link(input)
                 .unwrap_or_else(|error| binding_error(error.to_string()));
         }
-    }
-    owner
-        .require_active()
-        .unwrap_or_else(|error| binding_error(error.to_string()));
-    true
+        let lookup = || definition_cell(&rho, &symbol).unwrap_or_else(|error| binding_error(error));
+        if let Some(cell) = lookup() {
+            update_definition_cell(owner, &rho, &symbol, &value, &cell);
+            return true;
+        }
+        if environment_is_locked_raw(rho.as_raw()) {
+            binding_error("cannot add bindings to a locked environment");
+        }
+        let previous_frame = rho
+            .try_frame()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let new_cell = factory
+            .pairlist_cell(&value, &previous_frame, &symbol)
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        // Allocation may run collecting callbacks which prepend, replace, lock,
+        // or install an active binding. Resolve the actual current frame again;
+        // never overwrite it with the pre-allocation snapshot.
+        if let Some(cell) = lookup() {
+            update_definition_cell(owner, &rho, &symbol, &value, &cell);
+            return true;
+        }
+        if environment_is_locked_raw(rho.as_raw()) {
+            binding_error("cannot add bindings to a locked environment");
+        }
+        let frame = rho
+            .try_frame()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        // Only the owning cells and copied identities remain live while the
+        // canonical mutation updates its one existing nonowning binding index.
+        SETCDR(new_cell.as_raw(), frame.as_raw());
+        let peer = base_binding_peer(rho.as_raw());
+        let peer_owner = peer.map(|peer| {
+            domain
+                .wrap(peer)
+                .unwrap_or_else(|error| binding_error(error.to_string()))
+        });
+        {
+            SET_FRAME(rho.as_raw(), new_cell.as_raw());
+            mirror_base_frame(rho.as_raw(), peer_owner.as_ref().map(|peer| peer.as_raw()));
+        }
+        increment_named_on_assign(value.as_raw());
+        let peer_has_hash = peer_owner
+            .as_ref()
+            .is_some_and(|peer| super::env_hash::env_has_hash_table(peer.as_raw()));
+        if !super::env_hash::env_has_hash_table(rho.as_raw()) && !peer_has_hash {
+            let mut count = 0usize;
+            let mut current = new_cell;
+            while !current.is_nil() {
+                count += 1;
+                if count >= 100 {
+                    super::env_hash::promote_to_hash_table(rho.as_raw());
+                    break;
+                }
+                current = current
+                    .try_cdr()
+                    .unwrap_or_else(|error| binding_error(error.to_string()));
+            }
+        }
+        owner
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        true
+    }).unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 /// Publish a validated workspace without an allocation or active binding
@@ -1562,12 +1560,10 @@ fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
 /// of a symbol is missing when that symbol is missing. GNU keeps the symbol
 /// as the promise code; this runtime sometimes stores the bytecode instead.
 fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> bool {
-    unsafe {
-        // Raw compatibility views do not carry the authority needed by an
-        // ALTREP provider. Capture and retain the original runtime before any
-        // instruction read can collect or reenter another session.
-        let owner = super::owner::OwnerToken::current()
-            .unwrap_or_else(|error| binding_error(error.to_string()));
+    // Raw compatibility views do not carry the authority needed by an
+    // ALTREP provider. Capture and retain the original runtime before any
+    // instruction read can collect or reenter another session.
+    super::owner::OwnerToken::with_current(|owner| {
         let _pin = owner
             .pin()
             .unwrap_or_else(|error| binding_error(error.to_string()));
@@ -1627,7 +1623,7 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> b
             return false;
         }
         propagated_missing(sym, env, depth)
-    }
+    }).unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, depth: u32) -> bool {

@@ -929,7 +929,7 @@ pub(super) fn eval_methods_ns_fun(
     where_env: SEXP,
     attach: Option<SEXP>,
 ) {
-    unsafe {
+    {
         let mut fun = find_var_in_frame(ns, install_cstr(&name));
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return;

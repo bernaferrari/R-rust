@@ -7,21 +7,23 @@ fn frame(name: &str) -> crate::sexp::context::ContextGuard {
 }
 fn frame_in(name: &str, environment: SEXP, parent: SEXP) -> crate::sexp::context::ContextGuard {
     unsafe {
-        let owner = OwnerToken::current().unwrap();
-        let factory = owner.node_factory();
-        let symbol = factory
-            .wrap(crate::sexp::symbol::install_str(name))
-            .unwrap();
-        let call = factory.call(&symbol, &factory.nil()).unwrap();
-        crate::sexp::context::begin_context_guard(
-            ctxt_flags::CTXT_FUNCTION,
-            call.as_raw(),
-            environment,
-            parent,
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        )
+        OwnerToken::with_current(|owner| {
+            let factory = owner.node_factory();
+            let symbol = factory
+                .wrap(crate::sexp::symbol::install_str(name))
+                .unwrap();
+            let call = factory.call(&symbol, &factory.nil()).unwrap();
+            crate::sexp::context::begin_context_guard(
+                ctxt_flags::CTXT_FUNCTION,
+                call.as_raw(),
+                environment,
+                parent,
+                None,
+                R_NilValue(),
+                R_NilValue(),
+            )
+        })
+        .unwrap()
     }
 }
 

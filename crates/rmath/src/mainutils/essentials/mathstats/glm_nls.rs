@@ -976,7 +976,7 @@ pub fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
 pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let form = CAR(args);
         if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
             return R_NilValue();

@@ -110,49 +110,50 @@ unsafe fn invoke_external(
     count: c_int,
     provided: usize,
 ) -> crate::sexp::object::SexpResult<Sexp<'static>> {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current()? };
-    let factory = owner.node_factory();
-    let nil = factory.nil().into_owned()?;
-    let name = factory.strings(&["rport_foreign_counter"])?.into_owned()?;
-    let routines = [
-        R_ExternalMethodDef {
-            name: c"rport_foreign_counter".as_ptr(),
-            fun: unsafe {
-                std::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, DL_FUNC>(
-                    external_counter,
-                )
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let factory = owner.node_factory();
+        let nil = factory.nil().into_owned()?;
+        let name = factory.strings(&["rport_foreign_counter"])?.into_owned()?;
+        let routines = [
+            R_ExternalMethodDef {
+                name: c"rport_foreign_counter".as_ptr(),
+                fun: unsafe {
+                    std::mem::transmute::<unsafe extern "C-unwind" fn(SEXP) -> SEXP, DL_FUNC>(
+                        external_counter,
+                    )
+                },
+                num_args: count,
             },
-            num_args: count,
-        },
-        R_ExternalMethodDef {
-            name: ptr::null(),
-            fun: None,
-            num_args: 0,
-        },
-    ];
-    unsafe {
-        R_registerRoutines(
-            R_getEmbeddingDllInfo(),
-            ptr::null(),
-            ptr::null(),
-            ptr::null(),
-            routines.as_ptr(),
-        );
-    }
-    let mut tail = nil.clone();
-    for _ in 0..provided {
-        tail = factory.pairlist_cell(&nil, &tail, &nil)?.into_owned()?;
-    }
-    let args = factory.pairlist_cell(&name, &tail, &nil)?.into_owned()?;
-    unsafe {
-        invoke_native_handler(
-            nil.as_raw(),
-            nil.as_raw(),
-            args.as_raw(),
-            nil.as_raw(),
-            crate::mainutils::native_routines::NativeInterface::External,
-        )
-    }
+            R_ExternalMethodDef {
+                name: ptr::null(),
+                fun: None,
+                num_args: 0,
+            },
+        ];
+        unsafe {
+            R_registerRoutines(
+                R_getEmbeddingDllInfo(),
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                routines.as_ptr(),
+            );
+        }
+        let mut tail = nil.clone();
+        for _ in 0..provided {
+            tail = factory.pairlist_cell(&nil, &tail, &nil)?.into_owned()?;
+        }
+        let args = factory.pairlist_cell(&name, &tail, &nil)?.into_owned()?;
+        unsafe {
+            invoke_native_handler(
+                nil.as_raw(),
+                nil.as_raw(),
+                args.as_raw(),
+                nil.as_raw(),
+                crate::mainutils::native_routines::NativeInterface::External,
+            )
+        }
+    })?
 }
 
 #[test]

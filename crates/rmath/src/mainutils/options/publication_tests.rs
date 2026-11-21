@@ -153,31 +153,33 @@ fn callback_panic(revoke: bool) {
     let observed = fired.clone();
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::sexp::session::with_instance_active(pin.as_ptr(), || {
-            let token = OwnerToken::current().unwrap();
-            let f = token.node_factory();
-            (*pin.as_ptr()).options_initialization = OptionsInitialization::Initialized;
-            (*pin.as_ptr()).options.insert(
-                "selected".into(),
-                f.strings(&["selected"]).unwrap().into_owned().unwrap(),
-            );
-            let _warm = f.wrap(Rf_install(c"selected".as_ptr())).unwrap();
-            refresh_options_binding(token);
-            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                if !observed.replace(true) {
-                    if revoke {
-                        weak.upgrade()
-                            .unwrap()
-                            .borrow_mut()
-                            .as_mut()
-                            .unwrap()
-                            .close();
+            OwnerToken::with_current(|token| {
+                let f = token.node_factory();
+                (*pin.as_ptr()).options_initialization = OptionsInitialization::Initialized;
+                (*pin.as_ptr()).options.insert(
+                    "selected".into(),
+                    f.strings(&["selected"]).unwrap().into_owned().unwrap(),
+                );
+                let _warm = f.wrap(Rf_install(c"selected".as_ptr())).unwrap();
+                refresh_options_binding(token);
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if !observed.replace(true) {
+                        if revoke {
+                            weak.upgrade()
+                                .unwrap()
+                                .borrow_mut()
+                                .as_mut()
+                                .unwrap()
+                                .close();
+                        }
+                        std::panic::panic_any(317_u32);
                     }
-                    std::panic::panic_any(317_u32);
-                }
-            }));
-            (*pin.as_ptr()).memory_state.gc_force_gap = 1;
-            (*pin.as_ptr()).memory_state.gc_force_wait = 1;
-            refresh_options_binding(token);
+                }));
+                (*pin.as_ptr()).memory_state.gc_force_gap = 1;
+                (*pin.as_ptr()).memory_state.gc_force_wait = 1;
+                refresh_options_binding(token);
+            })
+            .unwrap()
         });
     }));
     assert!(fired.get());
@@ -196,9 +198,11 @@ fn callback_panic(revoke: bool) {
             crate::sexp::session::with_instance_active(pin.as_ptr(), || {
                 (*pin.as_ptr()).memory_state.gc_force_gap = 0;
                 (*pin.as_ptr()).memory_state.gc_force_wait = 0;
-                let token = OwnerToken::current().unwrap();
-                refresh_options_binding(token);
-                assert!(!GetOptionByName("selected").is_null());
+                OwnerToken::with_current(|token| {
+                    refresh_options_binding(token);
+                    assert!(!GetOptionByName("selected").is_null());
+                })
+                .unwrap()
             });
         }
     }

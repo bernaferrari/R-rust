@@ -19,7 +19,7 @@ pub fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `strtrim(string, width - 4)` and append `"...."` (`max(6, width)` leaves
 /// something visible); `width < 0` errors, `0`/NULL keeps the full string.
 pub fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return mk_string_cstr(c"");
@@ -304,7 +304,7 @@ pub fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// `proc_time` delta (`structure(new.time - time, class="proc_time")`,
 /// base/time.R). The child-time columns stay at zero (no subprocesses).
 pub fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let before = do_proc_time(_call, _op, R_NilValue(), rho);
         let _before_guard = protect(before);

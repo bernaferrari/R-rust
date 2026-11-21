@@ -163,7 +163,7 @@ pub fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bool) {
-    unsafe {
+    {
         let mut simplify = Rf_ScalarLogical(TRUE);
         let mut _simplify_guard = None;
         let mut use_names = true;
@@ -547,7 +547,7 @@ pub(super) fn is_vapply_vector(x: SEXP) -> bool {
 /// `...`); evaluated, then read as a logical scalar. NA errors, like
 /// upstream; absent or non-logical defaults to TRUE.
 pub(super) fn vapply_use_names(args: SEXP, rho: SEXP) -> bool {
-    unsafe {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name(current).as_deref() == Some("USE.NAMES") {
@@ -668,7 +668,7 @@ pub(super) fn sexp_type_name(t: SEXPTYPE) -> &'static str {
 
 /// R's `Map(f, ...)` — apply f element-wise.
 pub fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let raw = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
         let matched = Rf_cons(raw, R_NilValue());
         let _m = protect(matched);

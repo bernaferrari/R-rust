@@ -70,9 +70,7 @@ fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -
 /// Only error-class conditions are wrapped; every other payload (warnings,
 /// messages, returns, restarts, interrupts) keeps unwinding untouched.
 fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        crate::eval::eval::Rf_eval(arg_sym, ev)
-    }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::eval::eval::Rf_eval(arg_sym, ev)));
     match result {
         Ok(value) => value,
         Err(payload) => {

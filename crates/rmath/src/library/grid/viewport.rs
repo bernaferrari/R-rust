@@ -510,8 +510,7 @@ pub unsafe fn initVP(dd: *const u8) {
     // `lang1` conses a live one-arg call.
     let vpfn = unsafe { lang1(findFun(vpfnname, vpfn_env)) };
     let _vpfn_guard = protect(vpfn);
-    // SAFETY: eval bridge — `vpfn` is the protected call built above.
-    let vp = unsafe { Rf_eval(vpfn, R_GlobalEnv()) };
+    let vp = Rf_eval(vpfn, R_GlobalEnv());
     let _vp_guard = protect(vp);
 
     // SAFETY: `dd` is the live device pointer passed by the caller.

@@ -188,8 +188,7 @@ fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
 }
 
 fn eval(x: SEXP, env: SEXP) -> SEXP {
-    // SAFETY: callers pass a protected call and a live environment.
-    unsafe { crate::eval::eval::Rf_eval(x, env) }
+    crate::eval::eval::Rf_eval(x, env)
 }
 
 fn R_strlen(s: SEXP, _type: c_int) -> c_int {
@@ -491,38 +490,38 @@ pub fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         return ptr::null_mut();
     }
     use crate::sexp::owner::OwnerToken;
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let own = |raw| {
+    OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let own = |raw| {
+            owner
+                .sexp(raw)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
+        let (call, op, args, env) = (own(call), own(op), own(args), own(env));
+        let weak = owner
+            .weak_owner()
+            .unwrap_or_else(|| crate::sexp::context::r_error("paste requires a managed runtime"));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::sexp::owner::with_runtime(&weak, |access| {
+                owned_paste::evaluate(access, &PasteNative(access), call, op, args, env)
+            })
+        }));
+        // Revocation or foreign activation must not authenticate success/unwind.
         owner
-            .sexp(raw)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-    };
-    let (call, op, args, env) = (own(call), own(op), own(args), own(env));
-    let weak = owner
-        .weak_owner()
-        .unwrap_or_else(|| crate::sexp::context::r_error("paste requires a managed runtime"));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::sexp::owner::with_runtime(&weak, |access| {
-            owned_paste::evaluate(access, &PasteNative(access), call, op, args, env)
-        })
-    }));
-    // Revocation or foreign activation must not authenticate success/unwind.
-    owner
-        .require_active()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    match outcome {
-        Ok(Ok(Ok(value))) => value.as_raw(),
-        Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
-            crate::sexp::context::r_error(message)
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match outcome {
+            Ok(Ok(Ok(value))) => value.as_raw(),
+            Ok(Ok(Err(crate::sexp::object::SexpError::EvaluationFailed { message }))) => {
+                crate::sexp::context::r_error(message)
+            }
+            Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
-        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
-        Err(payload) => std::panic::resume_unwind(payload),
-    }
+    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -540,46 +539,46 @@ pub(crate) fn do_filepath_public(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) 
 
 fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
     use crate::sexp::owner::OwnerToken;
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let own = |raw| {
+    OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let own = |raw| {
+            owner
+                .sexp(raw)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
+        let (args, env) = (own(args), own(env));
+        let weak = owner
+            .weak_owner()
+            .unwrap_or_else(|| crate::sexp::context::r_error("file.path requires a managed runtime"));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::sexp::owner::with_runtime(&weak, |access| {
+                if public {
+                    owned_path::public(access, &PasteNative(access), args, env)
+                } else {
+                    owned_path::internal(access, &PasteNative(access), args, env)
+                }
+            })
+        }));
         owner
-            .sexp(raw)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-    };
-    let (args, env) = (own(args), own(env));
-    let weak = owner
-        .weak_owner()
-        .unwrap_or_else(|| crate::sexp::context::r_error("file.path requires a managed runtime"));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::sexp::owner::with_runtime(&weak, |access| {
-            if public {
-                owned_path::public(access, &PasteNative(access), args, env)
-            } else {
-                owned_path::internal(access, &PasteNative(access), args, env)
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match outcome {
+            Ok(Ok(Ok(value))) => value.as_raw(),
+            Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)))) => {
+                crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
             }
-        })
-    }));
-    owner
-        .require_active()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    match outcome {
-        Ok(Ok(Ok(value))) => value.as_raw(),
-        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)))) => {
-            crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
+            Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(
+                crate::sexp::object::SexpError::EvaluationFailed { message },
+            )))) => crate::sexp::context::r_error(message),
+            Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(error)))) | Ok(Err(error)) => {
+                crate::sexp::context::r_error(error.to_string())
+            }
+            Err(payload) => std::panic::resume_unwind(payload),
         }
-        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(
-            crate::sexp::object::SexpError::EvaluationFailed { message },
-        )))) => crate::sexp::context::r_error(message),
-        Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(error)))) | Ok(Err(error)) => {
-            crate::sexp::context::r_error(error.to_string())
-        }
-        Err(payload) => std::panic::resume_unwind(payload),
-    }
+    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------

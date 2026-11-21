@@ -102,9 +102,7 @@ pub(crate) fn eval_call_with_loop_routing(
     rho: SEXP,
     loop_stack: &[LoopContext],
 ) -> Result<SEXP, LoopJump> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        crate::eval::eval::Rf_eval(call, rho)
-    }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::eval::eval::Rf_eval(call, rho)));
     match result {
         Ok(value) => Ok(value),
         Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {

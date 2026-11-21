@@ -2354,7 +2354,7 @@ pub fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                     let mut value = find_var_in_frame(x, sym);
                     if TYPEOF(value) == SEXPTYPE::PROMSXP {
                         // SAFETY: `value` is a live PROMSXP in environment `x`.
-                        value = unsafe { crate::eval::eval::Rf_eval(value, x) };
+                        value = crate::eval::eval::Rf_eval(value, x);
                     }
                     if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
                         entries.push((name, value));

@@ -377,7 +377,7 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `termplot(lm, plot=FALSE)` — one-term centered effects.
 pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
         let fitted = list_named_elt(obj, "fitted.values");

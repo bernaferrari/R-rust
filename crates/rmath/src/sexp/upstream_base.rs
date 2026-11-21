@@ -1755,9 +1755,8 @@ fn symbol_name(symbol: SEXP) -> Option<String> {
 
 /// Ordinary R promise: materialize the original closure only on first lookup.
 fn load_lazy_native_symbol_info(base_env: SEXP, namespace: SEXP) {
-    unsafe {
-        let result = (|| {
-            let owner = crate::sexp::owner::OwnerToken::current()?;
+    let result = (|| {
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
             let _pin = owner.pin()?;
             owner.require_active()?;
             let factory = owner.node_factory();
@@ -1780,11 +1779,11 @@ fn load_lazy_native_symbol_info(base_env: SEXP, namespace: SEXP) {
             defineVar(symbol.as_raw(), promise.as_raw(), base_env);
             SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
             owner.require_active()
-        })();
-        result.unwrap_or_else(|e: crate::sexp::object::SexpError| {
-            crate::sexp::context::r_error(e.to_string())
-        });
-    }
+        })?
+    })();
+    result.unwrap_or_else(|e: crate::sexp::object::SexpError| {
+        crate::sexp::context::r_error(e.to_string())
+    });
 }
 
 #[cfg(test)]

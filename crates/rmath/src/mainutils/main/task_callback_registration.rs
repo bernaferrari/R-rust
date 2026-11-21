@@ -341,49 +341,53 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         native_routines::{CallRoutine, NativeRoutine},
         native_symbols,
     };
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| main_error(e.to_string()));
-    let _pin = owner.pin().unwrap_or_else(|e| main_error(e.to_string()));
-    (|| -> SexpResult<()> {
-        let factory = owner.node_factory();
-        let target = factory.wrap(base_env)?.into_owned()?;
-        let call = factory.wrap(unsafe { Rf_install(c".Call".as_ptr()) })?;
-        let loader = native_symbols::symbol_pointer(
-            owner,
-            NativeRoutine::Call(CallRoutine::Args1(materialize)),
-        )?;
-        for (binding, selector) in [
-            (c".C_R_addTaskCallback", 0),
-            (c".C_R_removeTaskCallback", 1),
-            (c".C_R_getTaskCallbackNames", 2),
-            (c"addTaskCallback", 3),
-            (c"removeTaskCallback", 4),
-            (c"getTaskCallbackNames", 5),
-        ] {
-            let symbol = factory.wrap(unsafe { Rf_install(binding.as_ptr()) })?;
-            let index = factory.allocate(|a| {
-                crate::sexp::builder::scalar_integer_in(a, selector).map(|v| v.as_raw())
-            })?;
-            let arguments = factory.pairlist_cell(&index, &factory.nil(), &factory.nil())?;
-            let arguments = factory.pairlist_cell(&loader, &arguments, &factory.nil())?;
-            let expression = factory.call(&call, &arguments)?;
-            let promise = factory.promise(&expression, &target)?;
-            owner.require_active()?;
-            if !crate::sexp::envir::define_var_safe(symbol.clone(), promise.clone(), target.clone())
-            {
-                return Err(SexpError::EvaluationFailed {
-                    message: "cannot install task callback registration".into(),
-                });
-            }
-            if selector >= 3 {
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().unwrap_or_else(|e| main_error(e.to_string()));
+        (|| -> SexpResult<()> {
+            let factory = owner.node_factory();
+            let target = factory.wrap(base_env)?.into_owned()?;
+            let call = factory.wrap(unsafe { Rf_install(c".Call".as_ptr()) })?;
+            let loader = native_symbols::symbol_pointer(
+                owner,
+                NativeRoutine::Call(CallRoutine::Args1(materialize)),
+            )?;
+            for (binding, selector) in [
+                (c".C_R_addTaskCallback", 0),
+                (c".C_R_removeTaskCallback", 1),
+                (c".C_R_getTaskCallbackNames", 2),
+                (c"addTaskCallback", 3),
+                (c"removeTaskCallback", 4),
+                (c"getTaskCallbackNames", 5),
+            ] {
+                let symbol = factory.wrap(unsafe { Rf_install(binding.as_ptr()) })?;
+                let index = factory.allocate(|a| {
+                    crate::sexp::builder::scalar_integer_in(a, selector).map(|v| v.as_raw())
+                })?;
+                let arguments = factory.pairlist_cell(&index, &factory.nil(), &factory.nil())?;
+                let arguments = factory.pairlist_cell(&loader, &arguments, &factory.nil())?;
+                let expression = factory.call(&call, &arguments)?;
+                let promise = factory.promise(&expression, &target)?;
                 owner.require_active()?;
+                if !crate::sexp::envir::define_var_safe(
+                    symbol.clone(),
+                    promise.clone(),
+                    target.clone(),
+                ) {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "cannot install task callback registration".into(),
+                    });
+                }
+                if selector >= 3 {
+                    owner.require_active()?;
 
-                crate::sexp::accessors::SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
+                    crate::sexp::accessors::SET_SYMVALUE(symbol.as_raw(), promise.as_raw());
+                }
             }
-        }
-        Ok(())
-    })()
-    .unwrap_or_else(|e| main_error(e.to_string()));
+            Ok(())
+        })()
+        .unwrap_or_else(|e| main_error(e.to_string()));
+    })
+    .unwrap_or_else(|e| main_error(e.to_string()))
 }
 
 unsafe extern "C-unwind" fn materialize(index: SEXP) -> SEXP {
@@ -391,42 +395,43 @@ unsafe extern "C-unwind" fn materialize(index: SEXP) -> SEXP {
         native_routines::{CallRoutine, NativeRoutine},
         native_symbols,
     };
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| main_error(e.to_string()));
-    let _pin = owner.pin().unwrap_or_else(|e| main_error(e.to_string()));
-    (|| -> SexpResult<Sexp<'static>> {
-        let factory = owner.node_factory();
-        let index = factory.wrap(index)?.try_integer_elt(0)?;
-        owner.require_active()?;
-        if (3..=5).contains(&index) {
-            return wrappers::materialize(owner, index);
-        }
-        let (name, routine) = match index {
-            0 => ("R_addTaskCallback", CallRoutine::Args4(add)),
-            1 => ("R_removeTaskCallback", CallRoutine::Args1(remove)),
-            2 => ("R_getTaskCallbackNames", CallRoutine::Args0(names)),
-            _ => {
-                return Err(SexpError::EvaluationFailed {
-                    message: "invalid task callback registration".into(),
-                });
-            }
-        };
-        {
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().unwrap_or_else(|e| main_error(e.to_string()));
+        (|| -> SexpResult<Sexp<'static>> {
             let factory = owner.node_factory();
-            let keys = native_symbols::AttributeKeys {
-                names: factory.wrap(unsafe { Rf_install(c"names".as_ptr()) })?,
-                class: factory.wrap(unsafe { Rf_install(c"class".as_ptr()) })?,
+            let index = factory.wrap(index)?.try_integer_elt(0)?;
+            owner.require_active()?;
+            if (3..=5).contains(&index) {
+                return wrappers::materialize(owner, index);
+            }
+            let (name, routine) = match index {
+                0 => ("R_addTaskCallback", CallRoutine::Args4(add)),
+                1 => ("R_removeTaskCallback", CallRoutine::Args1(remove)),
+                2 => ("R_getTaskCallbackNames", CallRoutine::Args0(names)),
+                _ => {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "invalid task callback registration".into(),
+                    });
+                }
             };
-            native_symbols::registered_routine_info(
-                owner,
-                name,
-                "base",
-                true,
-                NativeRoutine::Call(routine),
-                &keys,
-            )
-        }
-    })()
+            {
+                let factory = owner.node_factory();
+                let keys = native_symbols::AttributeKeys {
+                    names: factory.wrap(unsafe { Rf_install(c"names".as_ptr()) })?,
+                    class: factory.wrap(unsafe { Rf_install(c"class".as_ptr()) })?,
+                };
+                native_symbols::registered_routine_info(
+                    owner,
+                    name,
+                    "base",
+                    true,
+                    NativeRoutine::Call(routine),
+                    &keys,
+                )
+            }
+        })()
+        .unwrap_or_else(|e| main_error(e.to_string()))
+        .as_raw()
+    })
     .unwrap_or_else(|e| main_error(e.to_string()))
-    .as_raw()
 }

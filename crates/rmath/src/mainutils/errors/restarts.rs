@@ -75,61 +75,59 @@ pub fn jump_to_top_ex(
     reset_console: c_int,
     ignore_restart: c_int,
 ) {
-    unsafe {
-        let old_in_error = in_error();
-        let mut have_handler = false;
+    let old_in_error = in_error();
+    let mut have_handler = false;
 
-        if try_user_handler != 0 && old_in_error < 3 {
-            if old_in_error == 0 {
-                set_in_error(1);
-            }
-            let err_opt = GetOption1(crate::sexp::symbol::install_str("error"));
-            have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
-            if have_handler {
-                let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP;
-                let is_expr = TYPEOF(err_opt) == SEXPTYPE::EXPRSXP;
-                if !is_lang && !is_expr {
-                    eprintln!("invalid option \"error\"");
+    if try_user_handler != 0 && old_in_error < 3 {
+        if old_in_error == 0 {
+            set_in_error(1);
+        }
+        let err_opt = GetOption1(crate::sexp::symbol::install_str("error"));
+        have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
+        if have_handler {
+            let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP;
+            let is_expr = TYPEOF(err_opt) == SEXPTYPE::EXPRSXP;
+            if !is_lang && !is_expr {
+                eprintln!("invalid option \"error\"");
+            } else {
+                set_in_error(3);
+                if is_lang {
+                    let _ = crate::eval::eval::Rf_eval(err_opt, globals::R_GlobalEnv());
                 } else {
-                    set_in_error(3);
-                    if is_lang {
-                        let _ = crate::eval::eval::Rf_eval(err_opt, globals::R_GlobalEnv());
-                    } else {
-                        let n = LENGTH(err_opt);
-                        for i in 0..n {
-                            let _ = crate::eval::eval::Rf_eval(
-                                crate::sexp::accessors::VECTOR_ELT(err_opt, i as R_xlen_t),
-                                globals::R_GlobalEnv(),
-                            );
-                        }
+                    let n = LENGTH(err_opt);
+                    for i in 0..n {
+                        let _ = crate::eval::eval::Rf_eval(
+                            crate::sexp::accessors::VECTOR_ELT(err_opt, i as R_xlen_t),
+                            globals::R_GlobalEnv(),
+                        );
                     }
-                    set_in_error(old_in_error);
                 }
+                set_in_error(old_in_error);
             }
-            set_in_error(old_in_error);
         }
-
-        if process_warnings != 0 && collect_warnings() > 0 {
-            PrintWarnings();
-        }
-
-        if ignore_restart == 0 {
-            try_jump_to_restart();
-        }
-
-        if traceback != 0 && old_in_error < 2 {
-            set_in_error(2);
-            let tb = R_GetTracebackOnly(0);
-            let sym = crate::sexp::symbol::install_str(".Traceback");
-            SET_SYMVALUE(sym, tb);
-            set_in_error(old_in_error);
-        }
-
-        set_in_error(0);
-        std::panic::panic_any(RSignal::Error {
-            message: "jump_to_top".to_string(),
-        });
+        set_in_error(old_in_error);
     }
+
+    if process_warnings != 0 && collect_warnings() > 0 {
+        PrintWarnings();
+    }
+
+    if ignore_restart == 0 {
+        try_jump_to_restart();
+    }
+
+    if traceback != 0 && old_in_error < 2 {
+        set_in_error(2);
+        let tb = R_GetTracebackOnly(0);
+        let sym = crate::sexp::symbol::install_str(".Traceback");
+        SET_SYMVALUE(sym, tb);
+        set_in_error(old_in_error);
+    }
+
+    set_in_error(0);
+    std::panic::panic_any(RSignal::Error {
+        message: "jump_to_top".to_string(),
+    });
 }
 
 fn try_jump_to_restart() {

@@ -27,10 +27,11 @@ pub(crate) unsafe fn apply_in_environment(
     environment: SEXP,
 ) -> SEXP {
     let result = (|| {
-        let owner = unsafe { OwnerToken::current() }?;
-        let owner = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-        with_runtime(&owner, |access| {
-            apply_owned(access, name, source, args, rho, evaluated, environment)
+        OwnerToken::with_current(|owner| {
+            let owner = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+            with_runtime(&owner, |access| {
+                apply_owned(access, name, source, args, rho, evaluated, environment)
+            })?
         })?
     })();
     result
@@ -48,8 +49,7 @@ fn evaluate(
     environment: &Sexp<'_>,
 ) -> SexpResult<Sexp<'static>> {
     access.with_native(|owner| {
-        let result =
-            unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw()) };
+        let result = crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw());
         owner.sexp(result)?.into_owned()
     })
 }

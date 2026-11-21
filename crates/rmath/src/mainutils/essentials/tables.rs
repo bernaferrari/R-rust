@@ -757,7 +757,7 @@ fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> 
 }
 
 fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if !data.is_null() && data != R_NilValue() && TYPEOF(rhs) == SEXPTYPE::SYMSXP {
             if let Some(name) = symbol_name(rhs) {
                 if let Some(column) = list_element_by_name(data, &name) {
@@ -880,7 +880,7 @@ fn deparse_one_line(expr: SEXP) -> String {
 
 /// R's `aggregate(x, by, FUN)` — aggregate numeric vectors by list columns.
 pub fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let by = CAR(CDR(args));
         let fun = CAR(CDR(CDR(args)));
@@ -1434,7 +1434,7 @@ fn aggregate_group_value(group: &AggregateByColumn, i: R_xlen_t) -> Option<Aggre
 
 /// R's `ave(x, ...)` — group averages for numeric vectors using the default mean.
 pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -1554,7 +1554,7 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// closure (tapply-based grouping with by.data.frame/by.default methods
 /// and print.by) bound from gnu_by.R.
 pub fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("by"),

@@ -602,19 +602,20 @@ pub enum RSignal {
 
 /// Capture a native projection in the original active transfer scope.
 pub(crate) fn own_control_value(value: SEXP) -> super::object::Sexp<'static> {
-    let owner =
-        unsafe { super::owner::OwnerToken::current() }.unwrap_or_else(|e| r_error(e.to_string()));
-    let pin = owner
-        .pin()
-        .unwrap_or_else(|e| r_error(e.to_string()))
-        .unwrap_or_else(|| r_error("owning control values require a managed runtime"));
-    let result = owner
-        .sexp(value)
-        .and_then(|v| v.into_owned())
-        .unwrap_or_else(|e| r_error(e.to_string()));
-    pin.require_live()
-        .unwrap_or_else(|e| r_error(e.to_string()));
-    result
+    super::owner::OwnerToken::with_current(|owner| {
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|e| r_error(e.to_string()))
+            .unwrap_or_else(|| r_error("owning control values require a managed runtime"));
+        let result = owner
+            .sexp(value)
+            .and_then(|v| v.into_owned())
+            .unwrap_or_else(|e| r_error(e.to_string()));
+        pin.require_live()
+            .unwrap_or_else(|e| r_error(e.to_string()));
+        result
+    })
+    .unwrap_or_else(|e| r_error(e.to_string()))
 }
 
 /// # Safety

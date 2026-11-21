@@ -331,7 +331,7 @@ pub fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `bquote(expr)` — quote with `.(...)` substitution.
 pub fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         if expr.is_null() {
             return R_NilValue();
@@ -362,7 +362,7 @@ pub fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
-    unsafe {
+    {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }

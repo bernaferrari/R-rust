@@ -317,7 +317,7 @@ pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
 ///
 /// GNU `stopifnot(exprs = { ... })` evaluates each brace statement.
 pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let fail = |value: SEXP| {
             if value.is_null() || TYPEOF(value) != SEXPTYPE::LGLSXP {
                 return;

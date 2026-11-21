@@ -305,794 +305,794 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             encoding::{self, Mode, NulText, TextEncoding},
             owner::OwnerToken,
         };
-        let owner =
-            OwnerToken::current().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let anchor = owner
-            .sexp(args)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let text = |raw, mode| {
-            owner
-                .require_active()
-                .and_then(|()| owner.sexp(raw))
+        OwnerToken::with_current(|owner| {
+            let _pin = owner
+                .pin()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let anchor = owner
+                .sexp(args)
                 .and_then(crate::sexp::object::Sexp::into_owned)
-                .and_then(|v| NulText::new(&v, mode, &anchor))
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-        };
-        // Stock do_sprintf raises via error(), which attributes the error to
-        // the innermost call ("Error in sprintf(...) : ..."). Attribute the
-        // raise sites here to this builtin's own applied call.
-        let error = |fmt: &std::ffi::CStr| {
-            crate::mainutils::errors::errorcall_cstr(call, fmt);
-        };
-        let mut nargs: c_int = 0;
-        let mut nfmt: c_int = 0;
-        let mut fmt: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
-        let mut fmt2: [c_char; MAXLINE + 10] = [0; MAXLINE + 10];
-        let mut bit: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
-
-        let format = CAR(args);
-        if Rf_isString(format) == 0 {
-            error(c"'fmt' is not a character vector");
-        }
-        nfmt = LENGTH(format);
-        if nfmt == 0 {
-            return Rf_allocVector(STRSXP, 0);
-        }
-        let args_rest = CDR(args);
-        nargs = crate::sexp::constructors::Rf_length(args_rest);
-        if nargs as usize >= MAXNARGS {
-            error(c"only 100 arguments are allowed");
-        }
-
-        let mut a: [SEXP; MAXNARGS] = [ptr::null_mut(); MAXNARGS];
-        let mut used: [bool; MAXNARGS] = [false; MAXNARGS];
-        let mut lens: [c_int; MAXNARGS] = [0; MAXNARGS];
-
-        let mut tmp_args = args_rest;
-        for i in 0..nargs as usize {
-            let t_ai = TYPEOF(CAR(tmp_args));
-            a[i] = CAR(tmp_args);
-            used[i] = false;
-            if t_ai == LANGSXP || t_ai == SYMSXP {
-                // sprintf.c: error(_("invalid type of argument[%d]: '%s'"),
-                //                  i+1, CHAR(type2str(t_ai)));
-                let type_name =
-                    std::ffi::CStr::from_ptr(crate::mainutils::printvector::type2str_nowarn(t_ai))
-                        .to_string_lossy()
-                        .into_owned();
-                let msg = std::ffi::CString::new(format!(
-                    "invalid type of argument[{}]: '{}'",
-                    i + 1,
-                    type_name
-                ))
-                .unwrap_or_else(|_| std::ffi::CString::new("invalid type of argument").unwrap());
-                error(&msg);
-            }
-            // sprintf.c uses length(), which walks pairlist-like nodes;
-            // the raw LENGTH() field is meaningless for them.
-            lens[i] = if t_ai == LISTSXP || t_ai == LANGSXP || t_ai == DOTSXP {
-                let mut cell = a[i];
-                let mut n: c_int = 0;
-                while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-                    n += 1;
-                    cell = CDR(cell);
-                }
-                n
-            } else {
-                LENGTH(a[i])
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let text = |raw, mode| {
+                owner
+                    .require_active()
+                    .and_then(|()| owner.sexp(raw))
+                    .and_then(crate::sexp::object::Sexp::into_owned)
+                    .and_then(|v| NulText::new(&v, mode, &anchor))
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
             };
-            if lens[i] == 0 {
+            // Stock do_sprintf raises via error(), which attributes the error to
+            // the innermost call ("Error in sprintf(...) : ..."). Attribute the
+            // raise sites here to this builtin's own applied call.
+            let error = |fmt: &std::ffi::CStr| {
+                crate::mainutils::errors::errorcall_cstr(call, fmt);
+            };
+            let mut nargs: c_int = 0;
+            let mut nfmt: c_int = 0;
+            let mut fmt: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
+            let mut fmt2: [c_char; MAXLINE + 10] = [0; MAXLINE + 10];
+            let mut bit: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
+
+            let format = CAR(args);
+            if Rf_isString(format) == 0 {
+                error(c"'fmt' is not a character vector");
+            }
+            nfmt = LENGTH(format);
+            if nfmt == 0 {
                 return Rf_allocVector(STRSXP, 0);
             }
-            tmp_args = CDR(tmp_args);
-        }
-
-        let recycling_length = |lengths: &[c_int]| {
-            let length = lengths.iter().copied().fold(nfmt, c_int::max);
-            if length % nfmt != 0 || lengths.iter().any(|n| length % n != 0) {
-                crate::mainutils::errors::errorcall_str(
-                    call,
-                    "arguments cannot be recycled to the same length",
-                );
+            let args_rest = CDR(args);
+            nargs = crate::sexp::constructors::Rf_length(args_rest);
+            if nargs as usize >= MAXNARGS {
+                error(c"only 100 arguments are allowed");
             }
-            length
-        };
-        let mut maxlen = recycling_length(&lens[..nargs as usize]);
 
-        let mut outbuff = RStringBuffer::new();
-        let mut coercion_roots = Vec::new();
-        let mut ans: SEXP = ptr::null_mut();
-        let mut _answer_root = None;
+            let mut a: [SEXP; MAXNARGS] = [ptr::null_mut(); MAXNARGS];
+            let mut used: [bool; MAXNARGS] = [false; MAXNARGS];
+            let mut lens: [c_int; MAXNARGS] = [0; MAXNARGS];
 
-        let mut ns: R_xlen_t = 0;
-        while ns < R_xlen_t::from(maxlen) {
-            let mut outputString = R_AllocStringBuffer(0, &mut outbuff);
-            *outputString = 0;
+            let mut tmp_args = args_rest;
+            for i in 0..nargs as usize {
+                let t_ai = TYPEOF(CAR(tmp_args));
+                a[i] = CAR(tmp_args);
+                used[i] = false;
+                if t_ai == LANGSXP || t_ai == SYMSXP {
+                    // sprintf.c: error(_("invalid type of argument[%d]: '%s'"),
+                    //                  i+1, CHAR(type2str(t_ai)));
+                    let type_name =
+                        std::ffi::CStr::from_ptr(crate::mainutils::printvector::type2str_nowarn(t_ai))
+                            .to_string_lossy()
+                            .into_owned();
+                    let msg = std::ffi::CString::new(format!(
+                        "invalid type of argument[{}]: '{}'",
+                        i + 1,
+                        type_name
+                    ))
+                    .unwrap_or_else(|_| std::ffi::CString::new("invalid type of argument").unwrap());
+                    error(&msg);
+                }
+                // sprintf.c uses length(), which walks pairlist-like nodes;
+                // the raw LENGTH() field is meaningless for them.
+                lens[i] = if t_ai == LISTSXP || t_ai == LANGSXP || t_ai == DOTSXP {
+                    let mut cell = a[i];
+                    let mut n: c_int = 0;
+                    while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+                        n += 1;
+                        cell = CDR(cell);
+                    }
+                    n
+                } else {
+                    LENGTH(a[i])
+                };
+                if lens[i] == 0 {
+                    return Rf_allocVector(STRSXP, 0);
+                }
+                tmp_args = CDR(tmp_args);
+            }
 
-            let mut use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
-            if !use_UTF8 {
-                for i in 0..nargs as usize {
-                    if TYPEOF(a[i]) == STRSXP
-                        && getCharCE(STRING_ELT(a[i], ns % lens[i] as R_xlen_t)) == CE_UTF8
-                    {
-                        use_UTF8 = true;
-                        break;
+            let recycling_length = |lengths: &[c_int]| {
+                let length = lengths.iter().copied().fold(nfmt, c_int::max);
+                if length % nfmt != 0 || lengths.iter().any(|n| length % n != 0) {
+                    crate::mainutils::errors::errorcall_str(
+                        call,
+                        "arguments cannot be recycled to the same length",
+                    );
+                }
+                length
+            };
+            let mut maxlen = recycling_length(&lens[..nargs as usize]);
+
+            let mut outbuff = RStringBuffer::new();
+            let mut coercion_roots = Vec::new();
+            let mut ans: SEXP = ptr::null_mut();
+            let mut _answer_root = None;
+
+            let mut ns: R_xlen_t = 0;
+            while ns < R_xlen_t::from(maxlen) {
+                let mut outputString = R_AllocStringBuffer(0, &mut outbuff);
+                *outputString = 0;
+
+                let mut use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
+                if !use_UTF8 {
+                    for i in 0..nargs as usize {
+                        if TYPEOF(a[i]) == STRSXP
+                            && getCharCE(STRING_ELT(a[i], ns % lens[i] as R_xlen_t)) == CE_UTF8
+                        {
+                            use_UTF8 = true;
+                            break;
+                        }
                     }
                 }
-            }
 
-            let mode = if use_UTF8 { Mode::Utf8 } else { Mode::Native };
-            let format_text = text(STRING_ELT(format, ns % nfmt as R_xlen_t), mode);
-            let formatString = format_text.as_ptr();
-            let n = c_strlen(formatString);
-            if n > MAXLINE {
-                error(
-                    c"'fmt' length exceeds maximal format length 8192");
-            }
+                let mode = if use_UTF8 { Mode::Utf8 } else { Mode::Native };
+                let format_text = text(STRING_ELT(format, ns % nfmt as R_xlen_t), mode);
+                let formatString = format_text.as_ptr();
+                let n = c_strlen(formatString);
+                if n > MAXLINE {
+                    error(
+                        c"'fmt' length exceeds maximal format length 8192");
+                }
 
-            let mut cur: usize = 0;
-            let mut cnt: c_int = 0;
+                let mut cur: usize = 0;
+                let mut cnt: c_int = 0;
 
-            while cur < n {
-                let mut argument_text = None;
-                let curFormat = formatString.add(cur);
-                let mut ss: *const c_char = ptr::null();
-                let chunk: usize;
+                while cur < n {
+                    let mut argument_text = None;
+                    let curFormat = formatString.add(cur);
+                    let mut ss: *const c_char = ptr::null();
+                    let chunk: usize;
 
-                if *curFormat == b'%' as c_char {
-                    if cur < n - 1 && *curFormat.add(1) == b'%' as c_char {
-                        chunk = 2;
-                        bit[0] = b'%' as c_char;
-                        bit[1] = 0;
-                    } else {
-                        let spec_chars = b"diosfeEgGxXaAs";
-                        let mut skip: usize = 0;
-                        {
-                            let mut p = curFormat.add(1);
-                            let mut found = false;
-                            while *p != 0 {
-                                let ch = *p as u8;
-                                if spec_chars.contains(&ch) {
-                                    found = true;
-                                    break;
+                    if *curFormat == b'%' as c_char {
+                        if cur < n - 1 && *curFormat.add(1) == b'%' as c_char {
+                            chunk = 2;
+                            bit[0] = b'%' as c_char;
+                            bit[1] = 0;
+                        } else {
+                            let spec_chars = b"diosfeEgGxXaAs";
+                            let mut skip: usize = 0;
+                            {
+                                let mut p = curFormat.add(1);
+                                let mut found = false;
+                                while *p != 0 {
+                                    let ch = *p as u8;
+                                    if spec_chars.contains(&ch) {
+                                        found = true;
+                                        break;
+                                    }
+                                    skip += 1;
+                                    p = p.add(1);
                                 }
-                                skip += 1;
-                                p = p.add(1);
+                                if !found {
+                                    skip = n - cur - 1;
+                                }
                             }
-                            if !found {
-                                skip = n - cur - 1;
+                            chunk = skip + 2;
+                            if cur + chunk > n {
+                                let shown = std::ffi::CStr::from_ptr(curFormat).to_string_lossy();
+                                let msg = format!("invalid format specification '{shown}'\0");
+                                error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
                             }
-                        }
-                        chunk = skip + 2;
-                        if cur + chunk > n {
-                            let shown = std::ffi::CStr::from_ptr(curFormat).to_string_lossy();
-                            let msg = format!("invalid format specification '{shown}'\0");
-                            error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
-                        }
 
-                        for j in 0..chunk {
-                            fmt[j] = *curFormat.add(j);
-                        }
-                        fmt[chunk] = 0;
+                            for j in 0..chunk {
+                                fmt[j] = *curFormat.add(j);
+                            }
+                            fmt[chunk] = 0;
 
-                        let mut nthis: c_int = -1;
+                            let mut nthis: c_int = -1;
 
-                        let fmt_len = c_strlen(fmt.as_ptr());
-                        if fmt_len > 3 {
-                            let c1 = fmt[1] as u8;
-                            if c1 >= b'1' && c1 <= b'9' {
-                                let mut v = (c1 - b'0') as c_int;
-                                if fmt[2] == b'$' as c_char {
-                                    if v > nargs as c_int {
-                                        error(c"reference to non-existent argument");
-                                    }
-                                    nthis = v - 1;
-                                    let move_len = fmt_len - 2;
-                                    let mut j = 1usize;
-                                    while j <= move_len {
-                                        fmt[j] = fmt[j + 2];
-                                        j += 1;
-                                    }
-                                    fmt[j] = 0;
-                                } else {
-                                    let c2 = fmt[2] as u8;
-                                    if c2 >= b'0'
-                                        && c2 <= b'9'
-                                        && fmt_len > 3
-                                        && fmt[3] == b'$' as c_char
-                                    {
-                                        v = 10 * v + (c2 - b'0') as c_int;
+                            let fmt_len = c_strlen(fmt.as_ptr());
+                            if fmt_len > 3 {
+                                let c1 = fmt[1] as u8;
+                                if c1 >= b'1' && c1 <= b'9' {
+                                    let mut v = (c1 - b'0') as c_int;
+                                    if fmt[2] == b'$' as c_char {
                                         if v > nargs as c_int {
                                             error(c"reference to non-existent argument");
                                         }
                                         nthis = v - 1;
-                                        let move_len = fmt_len - 3;
+                                        let move_len = fmt_len - 2;
                                         let mut j = 1usize;
                                         while j <= move_len {
-                                            fmt[j] = fmt[j + 3];
+                                            fmt[j] = fmt[j + 2];
                                             j += 1;
                                         }
                                         fmt[j] = 0;
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut has_star = false;
-                        let mut star_arg: c_int = 0;
-
-                        let mut star_idx: Option<usize> = None;
-                        for (idx, &ch) in fmt.iter().enumerate() {
-                            if ch == 0 {
-                                break;
-                            }
-                            if ch == b'*' as c_char {
-                                star_idx = Some(idx);
-                                break;
-                            }
-                        }
-
-                        if let Some(si) = star_idx {
-                            let mut nstar: c_int = -1;
-                            let star_len = c_strlen(fmt.as_ptr().add(si));
-                            if star_len > 3 {
-                                let c1 = fmt[si + 1] as u8;
-                                if c1 >= b'1' && c1 <= b'9' {
-                                    let mut v = (c1 - b'0') as c_int;
-                                    if fmt[si + 2] == b'$' as c_char {
-                                        if v > nargs as c_int {
-                                            error(c"reference to non-existent argument");
-                                        }
-                                        nstar = v - 1;
-                                        let move_len = star_len - 2;
-                                        let mut j = 1usize;
-                                        while j <= move_len {
-                                            fmt[si + j] = fmt[si + j + 2];
-                                            j += 1;
-                                        }
-                                        fmt[si + j] = 0;
                                     } else {
-                                        let c2 = fmt[si + 2] as u8;
+                                        let c2 = fmt[2] as u8;
                                         if c2 >= b'0'
                                             && c2 <= b'9'
-                                            && star_len > 3
-                                            && fmt[si + 3] == b'$' as c_char
+                                            && fmt_len > 3
+                                            && fmt[3] == b'$' as c_char
                                         {
                                             v = 10 * v + (c2 - b'0') as c_int;
                                             if v > nargs as c_int {
-                                                error(
-                                                    c"reference to non-existent argument");
+                                                error(c"reference to non-existent argument");
                                             }
-                                            nstar = v - 1;
-                                            let move_len = star_len - 3;
+                                            nthis = v - 1;
+                                            let move_len = fmt_len - 3;
                                             let mut j = 1usize;
                                             while j <= move_len {
-                                                fmt[si + j] = fmt[si + j + 3];
+                                                fmt[j] = fmt[j + 3];
+                                                j += 1;
+                                            }
+                                            fmt[j] = 0;
+                                        }
+                                    }
+                                }
+                            }
+
+                            let mut has_star = false;
+                            let mut star_arg: c_int = 0;
+
+                            let mut star_idx: Option<usize> = None;
+                            for (idx, &ch) in fmt.iter().enumerate() {
+                                if ch == 0 {
+                                    break;
+                                }
+                                if ch == b'*' as c_char {
+                                    star_idx = Some(idx);
+                                    break;
+                                }
+                            }
+
+                            if let Some(si) = star_idx {
+                                let mut nstar: c_int = -1;
+                                let star_len = c_strlen(fmt.as_ptr().add(si));
+                                if star_len > 3 {
+                                    let c1 = fmt[si + 1] as u8;
+                                    if c1 >= b'1' && c1 <= b'9' {
+                                        let mut v = (c1 - b'0') as c_int;
+                                        if fmt[si + 2] == b'$' as c_char {
+                                            if v > nargs as c_int {
+                                                error(c"reference to non-existent argument");
+                                            }
+                                            nstar = v - 1;
+                                            let move_len = star_len - 2;
+                                            let mut j = 1usize;
+                                            while j <= move_len {
+                                                fmt[si + j] = fmt[si + j + 2];
                                                 j += 1;
                                             }
                                             fmt[si + j] = 0;
+                                        } else {
+                                            let c2 = fmt[si + 2] as u8;
+                                            if c2 >= b'0'
+                                                && c2 <= b'9'
+                                                && star_len > 3
+                                                && fmt[si + 3] == b'$' as c_char
+                                            {
+                                                v = 10 * v + (c2 - b'0') as c_int;
+                                                if v > nargs as c_int {
+                                                    error(
+                                                        c"reference to non-existent argument");
+                                                }
+                                                nstar = v - 1;
+                                                let move_len = star_len - 3;
+                                                let mut j = 1usize;
+                                                while j <= move_len {
+                                                    fmt[si + j] = fmt[si + j + 3];
+                                                    j += 1;
+                                                }
+                                                fmt[si + j] = 0;
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            if nstar < 0 {
-                                if cnt >= nargs {
-                                    error(c"too few arguments");
-                                }
-                                nstar = cnt;
-                                cnt += 1;
-                            }
-
-                            {
-                                let mut found_second = false;
-                                for j in (si + 1)..fmt.len() {
-                                    if fmt[j] == 0 {
-                                        break;
+                                if nstar < 0 {
+                                    if cnt >= nargs {
+                                        error(c"too few arguments");
                                     }
-                                    if fmt[j] == b'*' as c_char {
-                                        found_second = true;
-                                        break;
+                                    nstar = cnt;
+                                    cnt += 1;
+                                }
+
+                                {
+                                    let mut found_second = false;
+                                    for j in (si + 1)..fmt.len() {
+                                        if fmt[j] == 0 {
+                                            break;
+                                        }
+                                        if fmt[j] == b'*' as c_char {
+                                            found_second = true;
+                                            break;
+                                        }
+                                    }
+                                    if found_second {
+                                        error(c"at most one asterisk '*' is supported in each conversion specification");
                                     }
                                 }
-                                if found_second {
-                                    error(c"at most one asterisk '*' is supported in each conversion specification");
+
+                                let _this = a[nstar as usize];
+                                used[nstar as usize] = true;
+
+                                if ns == 0 && TYPEOF(_this) == REALSXP {
+                                    a[nstar as usize] = coerceVector(_this, INTSXP);
                                 }
-                            }
 
-                            let _this = a[nstar as usize];
-                            used[nstar as usize] = true;
-
-                            if ns == 0 && TYPEOF(_this) == REALSXP {
-                                a[nstar as usize] = coerceVector(_this, INTSXP);
-                            }
-
-                            let this_type = TYPEOF(a[nstar as usize]);
-                            let this_len = LENGTH(a[nstar as usize]);
-                            if this_type != INTSXP
-                                || this_len < 1
-                                || *INTEGER(a[nstar as usize])
-                                    .add((ns % this_len as R_xlen_t) as usize)
-                                    == NA_INTEGER
-                            {
-                                error(
-                                    c"argument for '*' conversion specification must be a number");
-                            }
-                            star_arg = *INTEGER(a[nstar as usize])
-                                .add((ns % this_len as R_xlen_t) as usize);
-                            has_star = true;
-                        }
-
-                        let fmt_len_now = c_strlen(fmt.as_ptr());
-                        if fmt_len_now > 0 && fmt[fmt_len_now - 1] == b'%' as c_char {
-                            if has_star {
-                                let nc = crate::mainutils::r_format::r_snprintf_c(
-                                    &mut bit,
-                                    CStr::from_ptr(fmt.as_ptr()).to_bytes(),
-                                    &[star_arg.into()],
-                                ) as c_int;
-                                if nc > MAXLINE as c_int {
+                                let this_type = TYPEOF(a[nstar as usize]);
+                                let this_len = LENGTH(a[nstar as usize]);
+                                if this_type != INTSXP
+                                    || this_len < 1
+                                    || *INTEGER(a[nstar as usize])
+                                        .add((ns % this_len as R_xlen_t) as usize)
+                                        == NA_INTEGER
+                                {
                                     error(
-                                        c"required resulting string length exceeds maximal 8192");
+                                        c"argument for '*' conversion specification must be a number");
+                                }
+                                star_arg = *INTEGER(a[nstar as usize])
+                                    .add((ns % this_len as R_xlen_t) as usize);
+                                has_star = true;
+                            }
+
+                            let fmt_len_now = c_strlen(fmt.as_ptr());
+                            if fmt_len_now > 0 && fmt[fmt_len_now - 1] == b'%' as c_char {
+                                if has_star {
+                                    let nc = crate::mainutils::r_format::r_snprintf_c(
+                                        &mut bit,
+                                        CStr::from_ptr(fmt.as_ptr()).to_bytes(),
+                                        &[star_arg.into()],
+                                    ) as c_int;
+                                    if nc > MAXLINE as c_int {
+                                        error(
+                                            c"required resulting string length exceeds maximal 8192");
+                                    }
+                                } else {
+                                    c_strcpy(bit.as_mut_ptr(), fmt.as_ptr());
                                 }
                             } else {
-                                c_strcpy(bit.as_mut_ptr(), fmt.as_ptr());
-                            }
-                        } else {
-                            let did_this = false;
+                                let did_this = false;
 
-                            if nthis < 0 {
-                                if cnt >= nargs {
-                                    error(c"too few arguments");
+                                if nthis < 0 {
+                                    if cnt >= nargs {
+                                        error(c"too few arguments");
+                                    }
+                                    nthis = cnt;
+                                    cnt += 1;
                                 }
-                                nthis = cnt;
-                                cnt += 1;
-                            }
 
-                            let mut _this = a[nthis as usize];
-                            used[nthis as usize] = true;
+                                let mut _this = a[nthis as usize];
+                                used[nthis as usize] = true;
 
-                            let fmtp: *const c_char;
-                            if has_star {
-                                let mut q = fmt2.as_mut_ptr();
-                                let mut p = fmt.as_ptr();
-                                while *p != 0 {
-                                    if *p == b'*' as c_char {
-                                        let star_str = format!("{}", star_arg);
-                                        let star_bytes = star_str.as_bytes();
-                                        for &b in star_bytes.iter() {
-                                            *q = b as c_char;
+                                let fmtp: *const c_char;
+                                if has_star {
+                                    let mut q = fmt2.as_mut_ptr();
+                                    let mut p = fmt.as_ptr();
+                                    while *p != 0 {
+                                        if *p == b'*' as c_char {
+                                            let star_str = format!("{}", star_arg);
+                                            let star_bytes = star_str.as_bytes();
+                                            for &b in star_bytes.iter() {
+                                                *q = b as c_char;
+                                                q = q.add(1);
+                                            }
+                                        } else {
+                                            *q = *p;
                                             q = q.add(1);
                                         }
-                                    } else {
-                                        *q = *p;
-                                        q = q.add(1);
+                                        p = p.add(1);
                                     }
-                                    p = p.add(1);
+                                    *q = 0;
+                                    let nf = c_strlen(fmt2.as_ptr());
+                                    if nf > MAXLINE {
+                                        error(
+                                            c"'fmt' length exceeds maximal format length 8192");
+                                    }
+                                    fmtp = fmt2.as_ptr();
+                                } else {
+                                    fmtp = fmt.as_ptr();
                                 }
-                                *q = 0;
-                                let nf = c_strlen(fmt2.as_ptr());
-                                if nf > MAXLINE {
-                                    error(
-                                        c"'fmt' length exceeds maximal format length 8192");
-                                }
-                                fmtp = fmt2.as_ptr();
-                            } else {
-                                fmtp = fmt.as_ptr();
-                            }
 
-                            let thislen = crate::sexp::constructors::Rf_length(_this);
-                            if thislen == 0 {
-                                error(c"coercion has changed vector length to 0");
-                            }
-
-                            if ns == 0 {
-                                let spec = *sprintf_findspec(fmtp);
-                                let spec_b = spec as u8;
-                                if !matches!(
-                                    spec_b,
-                                    b'd' | b'i'
-                                        | b'o'
-                                        | b'u'
-                                        | b'x'
-                                        | b'X'
-                                        | b'f'
-                                        | b'F'
-                                        | b'e'
-                                        | b'E'
-                                        | b'g'
-                                        | b'G'
-                                        | b'a'
-                                        | b'A'
-                                        | b'c'
-                                        | b's'
-                                        | b'p'
-                                        | b'n'
-                                        | b'%'
-                                ) {
-                                    let shown = std::ffi::CStr::from_ptr(fmtp)
-                                        .to_string_lossy()
-                                        .replace('%', "%%");
-                                    let msg = format!("invalid format specification '{shown}'\0");
-                                    error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
+                                let thislen = crate::sexp::constructors::Rf_length(_this);
+                                if thislen == 0 {
+                                    error(c"coercion has changed vector length to 0");
                                 }
-                                let mut coerced = false;
-                                match spec as u8 {
-                                    b'd' | b'i' | b'o' | b'x' | b'X' => {
-                                        if TYPEOF(_this) == REALSXP {
-                                            let mut exactly_integer = true;
-                                            let n_vals = XLENGTH(_this);
-                                            for ii in 0..n_vals {
-                                                let r = *REAL(_this).add(ii as usize);
-                                                if R_IsNA(r) {
-                                                    continue;
+
+                                if ns == 0 {
+                                    let spec = *sprintf_findspec(fmtp);
+                                    let spec_b = spec as u8;
+                                    if !matches!(
+                                        spec_b,
+                                        b'd' | b'i'
+                                            | b'o'
+                                            | b'u'
+                                            | b'x'
+                                            | b'X'
+                                            | b'f'
+                                            | b'F'
+                                            | b'e'
+                                            | b'E'
+                                            | b'g'
+                                            | b'G'
+                                            | b'a'
+                                            | b'A'
+                                            | b'c'
+                                            | b's'
+                                            | b'p'
+                                            | b'n'
+                                            | b'%'
+                                    ) {
+                                        let shown = std::ffi::CStr::from_ptr(fmtp)
+                                            .to_string_lossy()
+                                            .replace('%', "%%");
+                                        let msg = format!("invalid format specification '{shown}'\0");
+                                        error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
+                                    }
+                                    let mut coerced = false;
+                                    match spec as u8 {
+                                        b'd' | b'i' | b'o' | b'x' | b'X' => {
+                                            if TYPEOF(_this) == REALSXP {
+                                                let mut exactly_integer = true;
+                                                let n_vals = XLENGTH(_this);
+                                                for ii in 0..n_vals {
+                                                    let r = *REAL(_this).add(ii as usize);
+                                                    if R_IsNA(r) {
+                                                        continue;
+                                                    }
+                                                    if !R_FINITE(r) || (r as c_int as c_double) != r {
+                                                        exactly_integer = false;
+                                                        break;
+                                                    }
                                                 }
-                                                if !R_FINITE(r) || (r as c_int as c_double) != r {
-                                                    exactly_integer = false;
-                                                    break;
+                                                if exactly_integer {
+                                                    _this = coerceVector(_this, INTSXP);
+                                                    coerced = true;
                                                 }
                                             }
-                                            if exactly_integer {
-                                                _this = coerceVector(_this, INTSXP);
+                                        }
+                                        b'a' | b'A' | b'e' | b'f' | b'g' | b'E' | b'G' => {
+                                            if TYPEOF(_this) != REALSXP && TYPEOF(_this) != STRSXP {
+                                                // stock evaluates as.double(<arg>) so
+                                                // methods and coercion warnings fire
+                                                // (e.g. complex -> real discards the
+                                                // imaginary part with a warning).
+                                                let tmp = crate::sexp::constructors::Rf_lang2(
+                                                    crate::sexp::symbol::Rf_install(
+                                                        b"as.double\0".as_ptr() as *const c_char,
+                                                    ),
+                                                    _this,
+                                                );
+                                                let _tmp_guard = protect(tmp);
+                                                _this = crate::eval::eval::Rf_eval(tmp, env);
                                                 coerced = true;
                                             }
                                         }
+                                        b's' => {
+                                            if TYPEOF(_this) != STRSXP {
+                                                // stock evaluates as.character(<arg>);
+                                                // the S3 dispatch may call sprintf
+                                                // recursively and grow the shared
+                                                // output buffer, so save and restore
+                                                // the partial output around the eval.
+                                                let saved: Vec<c_char> = {
+                                                    let len = c_strlen(outputString) as usize;
+                                                    std::slice::from_raw_parts(outputString, len + 1)
+                                                        .to_vec()
+                                                };
+                                                let tmp = crate::sexp::constructors::Rf_lang2(
+                                                    crate::sexp::symbol::Rf_install(
+                                                        b"as.character\0".as_ptr() as *const c_char,
+                                                    ),
+                                                    _this,
+                                                );
+                                                let _tmp_guard = protect(tmp);
+                                                _this = crate::eval::eval::Rf_eval(tmp, env);
+                                                coerced = true;
+                                                let restored = R_AllocStringBuffer(
+                                                    saved.len() as i64,
+                                                    &mut outbuff,
+                                                );
+                                                std::ptr::copy_nonoverlapping(
+                                                    saved.as_ptr(),
+                                                    restored,
+                                                    saved.len(),
+                                                );
+                                            }
+                                        }
+                                        _ => {}
                                     }
-                                    b'a' | b'A' | b'e' | b'f' | b'g' | b'E' | b'G' => {
-                                        if TYPEOF(_this) != REALSXP && TYPEOF(_this) != STRSXP {
-                                            // stock evaluates as.double(<arg>) so
-                                            // methods and coercion warnings fire
-                                            // (e.g. complex -> real discards the
-                                            // imaginary part with a warning).
-                                            let tmp = crate::sexp::constructors::Rf_lang2(
-                                                crate::sexp::symbol::Rf_install(
-                                                    b"as.double\0".as_ptr() as *const c_char,
-                                                ),
-                                                _this,
+                                    if coerced {
+                                        // Later S3 coercions may allocate or collect before this
+                                        // argument is formatted again.
+                                        coercion_roots.push(protect(_this));
+                                        let index = nthis as usize;
+                                        a[index] = _this;
+                                        let new_len = crate::sexp::constructors::Rf_length(_this);
+                                        if new_len == 0 {
+                                            crate::mainutils::errors::errorcall_str(
+                                                call,
+                                                "coercion has changed vector length to 0",
                                             );
-                                            let _tmp_guard = protect(tmp);
-                                            _this = crate::eval::eval::Rf_eval(tmp, env);
-                                            coerced = true;
+                                        }
+                                        let shrinks_maximum = lens[index] == maxlen && new_len < maxlen;
+                                        lens[index] = new_len;
+                                        if shrinks_maximum {
+                                            maxlen = recycling_length(&lens[..nargs as usize]);
                                         }
                                     }
-                                    b's' => {
-                                        if TYPEOF(_this) != STRSXP {
-                                            // stock evaluates as.character(<arg>);
-                                            // the S3 dispatch may call sprintf
-                                            // recursively and grow the shared
-                                            // output buffer, so save and restore
-                                            // the partial output around the eval.
-                                            let saved: Vec<c_char> = {
-                                                let len = c_strlen(outputString) as usize;
-                                                std::slice::from_raw_parts(outputString, len + 1)
-                                                    .to_vec()
+                                }
+
+                                let thislen = crate::sexp::constructors::Rf_length(_this);
+
+                                match TYPEOF(_this) {
+                                    LGLSXP => {
+                                        let x =
+                                            *LOGICAL(_this).add((ns % thislen as R_xlen_t) as usize);
+                                        let conv = *fmtp.add(c_strlen(fmtp).saturating_sub(1));
+                                        if conv == b's' as c_char {
+                                            let word: &[u8] = if x == NA_LOGICAL {
+                                                b"NA"
+                                            } else if x != 0 {
+                                                b"TRUE"
+                                            } else {
+                                                b"FALSE"
                                             };
-                                            let tmp = crate::sexp::constructors::Rf_lang2(
-                                                crate::sexp::symbol::Rf_install(
-                                                    b"as.character\0".as_ptr() as *const c_char,
-                                                ),
-                                                _this,
-                                            );
-                                            let _tmp_guard = protect(tmp);
-                                            _this = crate::eval::eval::Rf_eval(tmp, env);
-                                            coerced = true;
-                                            let restored = R_AllocStringBuffer(
-                                                saved.len() as i64,
-                                                &mut outbuff,
-                                            );
-                                            std::ptr::copy_nonoverlapping(
-                                                saved.as_ptr(),
-                                                restored,
-                                                saved.len(),
-                                            );
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                if coerced {
-                                    // Later S3 coercions may allocate or collect before this
-                                    // argument is formatted again.
-                                    coercion_roots.push(protect(_this));
-                                    let index = nthis as usize;
-                                    a[index] = _this;
-                                    let new_len = crate::sexp::constructors::Rf_length(_this);
-                                    if new_len == 0 {
-                                        crate::mainutils::errors::errorcall_str(
-                                            call,
-                                            "coercion has changed vector length to 0",
-                                        );
-                                    }
-                                    let shrinks_maximum = lens[index] == maxlen && new_len < maxlen;
-                                    lens[index] = new_len;
-                                    if shrinks_maximum {
-                                        maxlen = recycling_length(&lens[..nargs as usize]);
-                                    }
-                                }
-                            }
-
-                            let thislen = crate::sexp::constructors::Rf_length(_this);
-
-                            match TYPEOF(_this) {
-                                LGLSXP => {
-                                    let x =
-                                        *LOGICAL(_this).add((ns % thislen as R_xlen_t) as usize);
-                                    let conv = *fmtp.add(c_strlen(fmtp).saturating_sub(1));
-                                    if conv == b's' as c_char {
-                                        let word: &[u8] = if x == NA_LOGICAL {
-                                            b"NA"
-                                        } else if x != 0 {
-                                            b"TRUE"
-                                        } else {
-                                            b"FALSE"
-                                        };
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp).to_bytes(),
-                                            &[CArg::Str(word)],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    } else if sprintf_checkfmt(
-                                        fmtp,
-                                        b"di\0".as_ptr() as *const c_char,
-                                    ) {
-                                        error(c"invalid format '%s'; use format %d or %i for logical objects");
-                                    } else if x == NA_LOGICAL {
-                                        let fmtp_len = c_strlen(fmtp);
-                                        *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
-                                        *fmt.as_mut_ptr().add(fmtp_len) = 0;
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmt.as_ptr()).to_bytes(),
-                                            &[CArg::Str(b"NA")],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    } else {
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp).to_bytes(),
-                                            &[x.into()],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    }
-                                }
-                                INTSXP => {
-                                    let x =
-                                        *INTEGER(_this).add((ns % thislen as R_xlen_t) as usize);
-                                    if sprintf_checkfmt(fmtp, b"dioxX\0".as_ptr() as *const c_char)
-                                    {
-                                        error(c"invalid format '%s'; use format %d, %i, %o, %x or %X for integer objects");
-                                    }
-                                    if x == NA_INTEGER {
-                                        let fmtp_len = c_strlen(fmtp);
-                                        *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
-                                        *fmt.as_mut_ptr().add(fmtp_len) = 0;
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmt.as_ptr()).to_bytes(),
-                                            &[CArg::Str(b"NA")],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    } else {
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp).to_bytes(),
-                                            &[x.into()],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    }
-                                }
-                                REALSXP => {
-                                    let x = *REAL(_this).add((ns % thislen as R_xlen_t) as usize);
-                                    if sprintf_checkfmt(
-                                        fmtp,
-                                        b"aAfeEgG\0".as_ptr() as *const c_char,
-                                    ) {
-                                        let shown =
-                                            std::ffi::CStr::from_ptr(fmtp).to_string_lossy();
-                                        let msg = format!(
-                                            "invalid format '{shown}'; use format %f, %e, %g or %a for numeric objects\0"
-                                        );
-                                        error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
-                                    }
-                                    if R_FINITE(x) {
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp).to_bytes(),
-                                            &[x.into()],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    } else {
-                                        let dot = c_strchr(fmtp, b'.' as c_int);
-                                        let fmtp_buf = fmt.as_mut_ptr();
-                                        let fmtp_len = c_strlen(fmtp);
-                                        if !dot.is_null() {
-                                            let dot_off = dot.offset_from(fmtp) as usize;
-                                            *fmtp_buf.add(dot_off) = b's' as c_char;
-                                            *fmtp_buf.add(dot_off + 1) = 0;
-                                        } else {
-                                            *fmtp_buf.add(fmtp_len - 1) = b's' as c_char;
-                                            *fmtp_buf.add(fmtp_len) = 0;
-                                        }
-
-                                        let na_str: *const c_char = if R_IsNA(x) {
-                                            if c_strcspn(fmtp_buf, b" \0".as_ptr() as *const c_char)
-                                                < c_strlen(fmtp_buf)
-                                            {
-                                                b" NA\0".as_ptr() as *const c_char
-                                            } else {
-                                                b"NA\0".as_ptr() as *const c_char
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp).to_bytes(),
+                                                &[CArg::Str(word)],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
                                             }
-                                        } else if ISNAN(x) {
-                                            if c_strcspn(fmtp_buf, b" \0".as_ptr() as *const c_char)
-                                                < c_strlen(fmtp_buf)
-                                            {
-                                                b" NaN\0".as_ptr() as *const c_char
-                                            } else {
-                                                b"NaN\0".as_ptr() as *const c_char
-                                            }
-                                        } else if x == R_PosInf {
-                                            if c_strcspn(fmtp_buf, b"+\0".as_ptr() as *const c_char)
-                                                < c_strlen(fmtp_buf)
-                                            {
-                                                b"+Inf\0".as_ptr() as *const c_char
-                                            } else if c_strcspn(
-                                                fmtp_buf,
-                                                b" \0".as_ptr() as *const c_char,
-                                            ) < c_strlen(fmtp_buf)
-                                            {
-                                                b" Inf\0".as_ptr() as *const c_char
-                                            } else {
-                                                b"Inf\0".as_ptr() as *const c_char
+                                        } else if sprintf_checkfmt(
+                                            fmtp,
+                                            b"di\0".as_ptr() as *const c_char,
+                                        ) {
+                                            error(c"invalid format '%s'; use format %d or %i for logical objects");
+                                        } else if x == NA_LOGICAL {
+                                            let fmtp_len = c_strlen(fmtp);
+                                            *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
+                                            *fmt.as_mut_ptr().add(fmtp_len) = 0;
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmt.as_ptr()).to_bytes(),
+                                                &[CArg::Str(b"NA")],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
                                             }
                                         } else {
-                                            b"-Inf\0".as_ptr() as *const c_char
-                                        };
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp).to_bytes(),
+                                                &[x.into()],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
+                                        }
+                                    }
+                                    INTSXP => {
+                                        let x =
+                                            *INTEGER(_this).add((ns % thislen as R_xlen_t) as usize);
+                                        if sprintf_checkfmt(fmtp, b"dioxX\0".as_ptr() as *const c_char)
+                                        {
+                                            error(c"invalid format '%s'; use format %d, %i, %o, %x or %X for integer objects");
+                                        }
+                                        if x == NA_INTEGER {
+                                            let fmtp_len = c_strlen(fmtp);
+                                            *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
+                                            *fmt.as_mut_ptr().add(fmtp_len) = 0;
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmt.as_ptr()).to_bytes(),
+                                                &[CArg::Str(b"NA")],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
+                                        } else {
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp).to_bytes(),
+                                                &[x.into()],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
+                                        }
+                                    }
+                                    REALSXP => {
+                                        let x = *REAL(_this).add((ns % thislen as R_xlen_t) as usize);
+                                        if sprintf_checkfmt(
+                                            fmtp,
+                                            b"aAfeEgG\0".as_ptr() as *const c_char,
+                                        ) {
+                                            let shown =
+                                                std::ffi::CStr::from_ptr(fmtp).to_string_lossy();
+                                            let msg = format!(
+                                                "invalid format '{shown}'; use format %f, %e, %g or %a for numeric objects\0"
+                                            );
+                                            error(crate::mainutils::errors::cstr_until_nul(msg.as_bytes()));
+                                        }
+                                        if R_FINITE(x) {
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp).to_bytes(),
+                                                &[x.into()],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
+                                        } else {
+                                            let dot = c_strchr(fmtp, b'.' as c_int);
+                                            let fmtp_buf = fmt.as_mut_ptr();
+                                            let fmtp_len = c_strlen(fmtp);
+                                            if !dot.is_null() {
+                                                let dot_off = dot.offset_from(fmtp) as usize;
+                                                *fmtp_buf.add(dot_off) = b's' as c_char;
+                                                *fmtp_buf.add(dot_off + 1) = 0;
+                                            } else {
+                                                *fmtp_buf.add(fmtp_len - 1) = b's' as c_char;
+                                                *fmtp_buf.add(fmtp_len) = 0;
+                                            }
 
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp_buf).to_bytes(),
-                                            &[CArg::Str(CStr::from_ptr(na_str).to_bytes())],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                    }
-                                }
-                                STRSXP => {
-                                    if sprintf_checkfmt(fmtp, b"s\0".as_ptr() as *const c_char) {
-                                        error(c"invalid format '%s'; use format %s for character objects");
-                                    }
+                                            let na_str: *const c_char = if R_IsNA(x) {
+                                                if c_strcspn(fmtp_buf, b" \0".as_ptr() as *const c_char)
+                                                    < c_strlen(fmtp_buf)
+                                                {
+                                                    b" NA\0".as_ptr() as *const c_char
+                                                } else {
+                                                    b"NA\0".as_ptr() as *const c_char
+                                                }
+                                            } else if ISNAN(x) {
+                                                if c_strcspn(fmtp_buf, b" \0".as_ptr() as *const c_char)
+                                                    < c_strlen(fmtp_buf)
+                                                {
+                                                    b" NaN\0".as_ptr() as *const c_char
+                                                } else {
+                                                    b"NaN\0".as_ptr() as *const c_char
+                                                }
+                                            } else if x == R_PosInf {
+                                                if c_strcspn(fmtp_buf, b"+\0".as_ptr() as *const c_char)
+                                                    < c_strlen(fmtp_buf)
+                                                {
+                                                    b"+Inf\0".as_ptr() as *const c_char
+                                                } else if c_strcspn(
+                                                    fmtp_buf,
+                                                    b" \0".as_ptr() as *const c_char,
+                                                ) < c_strlen(fmtp_buf)
+                                                {
+                                                    b" Inf\0".as_ptr() as *const c_char
+                                                } else {
+                                                    b"Inf\0".as_ptr() as *const c_char
+                                                }
+                                            } else {
+                                                b"-Inf\0".as_ptr() as *const c_char
+                                            };
 
-                                    let elt = STRING_ELT(_this, ns % thislen as R_xlen_t);
-                                    argument_text = Some(text(elt, mode));
-                                    ss = argument_text.as_ref().unwrap().as_ptr();
-                                    if *fmtp.add(1) != b's' as c_char {
-                                        if c_strlen(ss) > MAXLINE {
-                                            warning(
-                                            c"likely truncation of character string to %d characters",
-                                            MAXLINE,
-                                            0);
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp_buf).to_bytes(),
+                                                &[CArg::Str(CStr::from_ptr(na_str).to_bytes())],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
                                         }
-                                        let nc = crate::mainutils::r_format::r_snprintf_c(
-                                            &mut bit,
-                                            CStr::from_ptr(fmtp).to_bytes(),
-                                            &[CArg::Str(CStr::from_ptr(ss).to_bytes())],
-                                        ) as c_int;
-                                        if nc > MAXLINE as c_int {
-                                            error(c"required resulting string length exceeds maximal 8192");
-                                        }
-                                        bit[MAXLINE] = 0;
-                                        ss = ptr::null();
                                     }
-                                }
-                                _ => {
-                                    error(c"unsupported type");
+                                    STRSXP => {
+                                        if sprintf_checkfmt(fmtp, b"s\0".as_ptr() as *const c_char) {
+                                            error(c"invalid format '%s'; use format %s for character objects");
+                                        }
+
+                                        let elt = STRING_ELT(_this, ns % thislen as R_xlen_t);
+                                        argument_text = Some(text(elt, mode));
+                                        ss = argument_text.as_ref().unwrap().as_ptr();
+                                        if *fmtp.add(1) != b's' as c_char {
+                                            if c_strlen(ss) > MAXLINE {
+                                                warning(
+                                                c"likely truncation of character string to %d characters",
+                                                MAXLINE,
+                                                0);
+                                            }
+                                            let nc = crate::mainutils::r_format::r_snprintf_c(
+                                                &mut bit,
+                                                CStr::from_ptr(fmtp).to_bytes(),
+                                                &[CArg::Str(CStr::from_ptr(ss).to_bytes())],
+                                            ) as c_int;
+                                            if nc > MAXLINE as c_int {
+                                                error(c"required resulting string length exceeds maximal 8192");
+                                            }
+                                            bit[MAXLINE] = 0;
+                                            ss = ptr::null();
+                                        }
+                                    }
+                                    _ => {
+                                        error(c"unsupported type");
+                                    }
                                 }
                             }
                         }
-                    }
-                } else {
-                    let ch = c_strchr(curFormat, b'%' as c_int);
-                    chunk = if !ch.is_null() {
-                        (ch as usize) - (curFormat as usize)
                     } else {
-                        c_strlen(curFormat)
-                    };
-                    for j in 0..chunk {
-                        bit[j] = *curFormat.add(j);
+                        let ch = c_strchr(curFormat, b'%' as c_int);
+                        chunk = if !ch.is_null() {
+                            (ch as usize) - (curFormat as usize)
+                        } else {
+                            c_strlen(curFormat)
+                        };
+                        for j in 0..chunk {
+                            bit[j] = *curFormat.add(j);
+                        }
+                        bit[chunk] = 0;
                     }
-                    bit[chunk] = 0;
+                    let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
+                    outputString = R_AllocStringBuffer(
+                        (c_strlen(outputString) + c_strlen(append_str)) as i64,
+                        &mut outbuff,
+                    );
+                    c_strcat(outputString, append_str);
+
+                    cur += chunk;
                 }
-                let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
-                outputString = R_AllocStringBuffer(
-                    (c_strlen(outputString) + c_strlen(append_str)) as i64,
-                    &mut outbuff,
-                );
-                c_strcat(outputString, append_str);
 
-                cur += chunk;
-            }
-
-            if ns == 0 {
-                ans = Rf_allocVector(STRSXP, maxlen);
-                _answer_root = Some(protect(ans));
-            }
-            owner
-                .require_active()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let encoding = if use_UTF8 {
-                TextEncoding::Utf8
-            } else {
-                TextEncoding::Native
-            };
-            let character = owner
-                .node_factory()
-                .allocate(|a| {
-                    encoding::allocate_character(
-                        a,
-                        CStr::from_ptr(outputString).to_bytes(),
-                        encoding,
-                    )
-                })
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            SET_STRING_ELT(ans, ns, character.as_raw());
-            ns += 1;
-        }
-
-        let mut nunused: c_int = 0;
-        for i in 0..nargs as usize {
-            if !used[i] {
-                nunused += 1;
-            }
-        }
-        if nunused > 0 {
-            if nfmt == 1 {
-                let f = text(STRING_ELT(format, 0), Mode::Native);
-                if nunused == 1 {
-                    warning(
-                        c"one argument not used by format '%s'",
-                        0,
-                        0);
+                if ns == 0 {
+                    ans = Rf_allocVector(STRSXP, maxlen);
+                    _answer_root = Some(protect(ans));
+                }
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                let encoding = if use_UTF8 {
+                    TextEncoding::Utf8
                 } else {
-                    warning(
-                        c"%d arguments not used by format '%s'",
-                        nunused as usize,
-                        0);
-                }
-                let _ = f;
-            } else {
-                if nunused == 1 {
-                    warning(
-                        c"one argument not used by format",
-                        0,
-                        0);
-                } else {
-                    warning(
-                        c"%d arguments not used by format",
-                        nunused as usize,
-                        0);
+                    TextEncoding::Native
+                };
+                let character = owner
+                    .node_factory()
+                    .allocate(|a| {
+                        encoding::allocate_character(
+                            a,
+                            CStr::from_ptr(outputString).to_bytes(),
+                            encoding,
+                        )
+                    })
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                SET_STRING_ELT(ans, ns, character.as_raw());
+                ns += 1;
+            }
+
+            let mut nunused: c_int = 0;
+            for i in 0..nargs as usize {
+                if !used[i] {
+                    nunused += 1;
                 }
             }
-        }
+            if nunused > 0 {
+                if nfmt == 1 {
+                    let f = text(STRING_ELT(format, 0), Mode::Native);
+                    if nunused == 1 {
+                        warning(
+                            c"one argument not used by format '%s'",
+                            0,
+                            0);
+                    } else {
+                        warning(
+                            c"%d arguments not used by format '%s'",
+                            nunused as usize,
+                            0);
+                    }
+                    let _ = f;
+                } else {
+                    if nunused == 1 {
+                        warning(
+                            c"one argument not used by format",
+                            0,
+                            0);
+                    } else {
+                        warning(
+                            c"%d arguments not used by format",
+                            nunused as usize,
+                            0);
+                    }
+                }
+            }
 
-        R_FreeStringBufferL(&mut outbuff);
-        ans
+            R_FreeStringBufferL(&mut outbuff);
+            ans
+        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 

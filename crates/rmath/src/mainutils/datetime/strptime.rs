@@ -176,7 +176,7 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // SET_TZONE: set now in case this gets changed by conversions.
         let tzone = if isUTC {
-            Rf_mkString(mk_char_str(&tz).as_ptr())
+            crate::sexp::constructors::mk_string_bytes(cstring_or_empty(&tz).to_bytes())
         } else {
             let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
             for (j, s) in [tz.clone(), tzname_str(0), tzname_str(1)]

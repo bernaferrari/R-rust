@@ -507,23 +507,24 @@ pub(crate) fn plot_frame_state(device: *mut std::ffi::c_void, set: Option<bool>)
 /// Opening the default device can evaluate R, so finish it before borrowing
 /// the registry and verify the original runtime before reading or changing it.
 pub(crate) fn page_question(ask: Option<bool>) -> bool {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    let device = unsafe { GEcurrentDevice() };
-    owner
-        .require_active()
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    with_device_mut(device, |device| {
-        let old = device.ask;
-        if let Some(ask) = ask {
-            device.ask = ask;
-        }
-        old
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let device = unsafe { GEcurrentDevice() };
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        with_device_mut(device, |device| {
+            let old = device.ask;
+            if let Some(ask) = ask {
+                device.ask = ask;
+            }
+            old
+        })
+        .unwrap_or_else(|| crate::sexp::context::r_error("no active graphics device"))
     })
-    .unwrap_or_else(|| crate::sexp::context::r_error("no active graphics device"))
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 pub(crate) fn reset_registry_for_tests() {

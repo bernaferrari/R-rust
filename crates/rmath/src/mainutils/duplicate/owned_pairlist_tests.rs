@@ -517,17 +517,19 @@ fn owning_pairlist_callback_can_independently_duplicate_same_source() {
         if observed.replace(observed.get() + 1) != 0 {
             return;
         }
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
-        unsafe {
-            (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-        }
-        let copy = owner
-            .sexp(unsafe { duplicate(raw) })
-            .unwrap()
-            .into_owned()
-            .unwrap();
-        *result.borrow_mut() = Some(copy);
-        crate::sexp::gengc::full_gc();
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            unsafe {
+                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+            }
+            let copy = owner
+                .sexp(unsafe { duplicate(raw) })
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            *result.borrow_mut() = Some(copy);
+            crate::sexp::gengc::full_gc();
+        })
+        .unwrap()
     }));
     force_next_gc(&session);
     let outer = factory.wrap(unsafe { duplicate(raw) }).unwrap();
@@ -561,7 +563,7 @@ fn owning_pairlist_public_copy_owns_sole_source_through_flags_and_trace() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                 .memory_state
                 .gc_force_gap = 0;
         }
@@ -678,7 +680,7 @@ fn pairlist_snapshot_workspace_refunds_when_callback_revokes_owner() {
             return;
         }
         observed.set(unsafe {
-            (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                 .arena
                 .workspace_bytes()
         });
@@ -721,8 +723,10 @@ fn owning_pairlist_detached_tail_collects_cells_but_keeps_saved_values() {
             return;
         }
         unsafe {
-            let owner = crate::sexp::owner::OwnerToken::current().unwrap();
-            (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+            crate::sexp::owner::OwnerToken::with_current(|owner| {
+                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+            })
+            .unwrap()
         }
         let mut header = heap.node_snapshot(&source_node).unwrap();
         header.data.list_mut().carval = replacement_link;
@@ -843,12 +847,14 @@ impl crate::sexp::altrep::AltrepClass for CollectingPairlistValue {
         _: i64,
     ) -> SexpResult<crate::sexp::altrep::AltrepElement<'s>> {
         self.reads.borrow_mut().push(self.value);
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();
-        let workspace = unsafe { (*owner.as_ptr()).arena.workspace_bytes() };
-        self.workspace_peak
-            .set(self.workspace_peak.get().max(workspace));
-        context.gc()?;
-        Ok(crate::sexp::altrep::AltrepElement::Integer(self.value))
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let workspace = unsafe { (*owner.as_ptr()).arena.workspace_bytes() };
+            self.workspace_peak
+                .set(self.workspace_peak.get().max(workspace));
+            context.gc()?;
+            Ok(crate::sexp::altrep::AltrepElement::Integer(self.value))
+        })
+        .unwrap()
     }
 }
 
@@ -969,7 +975,7 @@ fn owning_pairlist_thirty_two_detached_cells_preserve_saved_graph() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                 .memory_state
                 .gc_force_gap = 0;
         }

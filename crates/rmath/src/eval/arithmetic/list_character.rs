@@ -163,104 +163,106 @@ fn attributes<'a>(
 
 /// Preserve the original owner, operands and shape across coercion callbacks.
 pub(super) fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, String> {
-    let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let _pin = owner.pin().map_err(|error| error.to_string())?;
-    let factory = owner.node_factory();
-    let left = factory.wrap(left).map_err(|error| error.to_string())?;
-    let right = factory.wrap(right).map_err(|error| error.to_string())?;
-    let a = capture_shape(owner, &left)?;
-    let b = capture_shape(owner, &right)?;
-    let n = if a.len == 0 || b.len == 0 {
-        0
-    } else {
-        a.len.max(b.len)
-    };
-    if (!a.dims.is_nil() && b.dims.is_nil() && a.len > 0 && b.len > 1 && a.len % b.len != 0)
-        || (!b.dims.is_nil() && a.dims.is_nil() && b.len > 0 && a.len > 1 && b.len % a.len != 0)
-    {
-        let (product, other) = if !a.dims.is_nil() {
-            (a.len, b.len)
+    OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
+        let factory = owner.node_factory();
+        let left = factory.wrap(left).map_err(|error| error.to_string())?;
+        let right = factory.wrap(right).map_err(|error| error.to_string())?;
+        let a = capture_shape(owner, &left)?;
+        let b = capture_shape(owner, &right)?;
+        let n = if a.len == 0 || b.len == 0 {
+            0
         } else {
-            (b.len, a.len)
+            a.len.max(b.len)
         };
-        return Err(format!(
-            "dims [product {product}] do not match the length of object [{other}]"
-        ));
-    }
-    // Validate conformability before a warning or coercion can invoke R.
-    if !a.dims.is_nil() && !b.dims.is_nil() {
-        if a.dims.typeof_() != SEXPTYPE::INTSXP
-            || b.dims.typeof_() != SEXPTYPE::INTSXP
-            || a.dims.len() != b.dims.len()
+        if (!a.dims.is_nil() && b.dims.is_nil() && a.len > 0 && b.len > 1 && a.len % b.len != 0)
+            || (!b.dims.is_nil() && a.dims.is_nil() && b.len > 0 && a.len > 1 && b.len % a.len != 0)
         {
-            return Err("non-conformable arrays".into());
+            let (product, other) = if !a.dims.is_nil() {
+                (a.len, b.len)
+            } else {
+                (b.len, a.len)
+            };
+            return Err(format!(
+                "dims [product {product}] do not match the length of object [{other}]"
+            ));
         }
-        for i in 0..a.dims.len() {
-            if a.dims
-                .try_integer_elt(i)
-                .map_err(|error| error.to_string())?
-                != b.dims
-                    .try_integer_elt(i)
-                    .map_err(|error| error.to_string())?
+        // Validate conformability before a warning or coercion can invoke R.
+        if !a.dims.is_nil() && !b.dims.is_nil() {
+            if a.dims.typeof_() != SEXPTYPE::INTSXP
+                || b.dims.typeof_() != SEXPTYPE::INTSXP
+                || a.dims.len() != b.dims.len()
             {
                 return Err("non-conformable arrays".into());
             }
-        }
-    }
-    let converted = if n == 0 {
-        None
-    } else {
-        warn_if_non_multiple_recycling(a.len, b.len);
-        owner.require_active().map_err(|error| error.to_string())?;
-        Some((
-            convert(owner, &factory, &left)?,
-            convert(owner, &factory, &right)?,
-        ))
-    };
-    // The operands and their original shape remain rooted through conversion.
-    let out = factory
-        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, n)))
-        .map_err(|error| error.to_string())?;
-    let Some((a_value, b_value)) = converted else {
-        attributes(owner, &factory, &out, &a, &b, n)?;
-        return Ok(out.as_raw());
-    };
-    let na = factory
-        .wrap(R_NaString())
-        .map_err(|error| error.to_string())?;
-    for i in 0..n {
-        owner.require_active().map_err(|error| error.to_string())?;
-        let ac = a_value
-            .try_string_elt(i % a.len)
-            .map_err(|error| error.to_string())?;
-        owner.require_active().map_err(|error| error.to_string())?;
-        let bc = b_value
-            .try_string_elt(i % b.len)
-            .map_err(|error| error.to_string())?;
-        owner.require_active().map_err(|error| error.to_string())?;
-        let value = if ac.as_raw() == na.as_raw() || bc.as_raw() == na.as_raw() {
-            NA_LOGICAL
-        } else if op == "==" || op == "!=" {
-            let equal = crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) != 0;
-            if equal == (op == "==") { TRUE } else { FALSE }
-        } else {
-            let a_bytes = crate::sexp::accessors::charsxp_as_utf8(ac.as_raw());
-            let b_bytes = crate::sexp::accessors::charsxp_as_utf8(bc.as_raw());
-            let a_text = String::from_utf8_lossy(&a_bytes);
-            let b_text = String::from_utf8_lossy(&b_bytes);
-            if compare_strings(op, &a_text, &b_text) {
-                TRUE
-            } else {
-                FALSE
+            for i in 0..a.dims.len() {
+                if a.dims
+                    .try_integer_elt(i)
+                    .map_err(|error| error.to_string())?
+                    != b.dims
+                        .try_integer_elt(i)
+                        .map_err(|error| error.to_string())?
+                {
+                    return Err("non-conformable arrays".into());
+                }
             }
+        }
+        let converted = if n == 0 {
+            None
+        } else {
+            warn_if_non_multiple_recycling(a.len, b.len);
+            owner.require_active().map_err(|error| error.to_string())?;
+            Some((
+                convert(owner, &factory, &left)?,
+                convert(owner, &factory, &right)?,
+            ))
         };
-        SexpMut::try_from_checked(out.clone())
-            .and_then(|mut out| out.try_set_logical_elt(i, value))
+        // The operands and their original shape remain rooted through conversion.
+        let out = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, n)))
             .map_err(|error| error.to_string())?;
-    }
-    owner.require_active().map_err(|error| error.to_string())?;
-    attributes(owner, &factory, &out, &a, &b, n)?;
-    Ok(out.as_raw())
+        let Some((a_value, b_value)) = converted else {
+            attributes(owner, &factory, &out, &a, &b, n)?;
+            return Ok(out.as_raw());
+        };
+        let na = factory
+            .wrap(R_NaString())
+            .map_err(|error| error.to_string())?;
+        for i in 0..n {
+            owner.require_active().map_err(|error| error.to_string())?;
+            let ac = a_value
+                .try_string_elt(i % a.len)
+                .map_err(|error| error.to_string())?;
+            owner.require_active().map_err(|error| error.to_string())?;
+            let bc = b_value
+                .try_string_elt(i % b.len)
+                .map_err(|error| error.to_string())?;
+            owner.require_active().map_err(|error| error.to_string())?;
+            let value = if ac.as_raw() == na.as_raw() || bc.as_raw() == na.as_raw() {
+                NA_LOGICAL
+            } else if op == "==" || op == "!=" {
+                let equal = crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) != 0;
+                if equal == (op == "==") { TRUE } else { FALSE }
+            } else {
+                let a_bytes = crate::sexp::accessors::charsxp_as_utf8(ac.as_raw());
+                let b_bytes = crate::sexp::accessors::charsxp_as_utf8(bc.as_raw());
+                let a_text = String::from_utf8_lossy(&a_bytes);
+                let b_text = String::from_utf8_lossy(&b_bytes);
+                if compare_strings(op, &a_text, &b_text) {
+                    TRUE
+                } else {
+                    FALSE
+                }
+            };
+            SexpMut::try_from_checked(out.clone())
+                .and_then(|mut out| out.try_set_logical_elt(i, value))
+                .map_err(|error| error.to_string())?;
+        }
+        owner.require_active().map_err(|error| error.to_string())?;
+        attributes(owner, &factory, &out, &a, &b, n)?;
+        Ok(out.as_raw())
+    })
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]

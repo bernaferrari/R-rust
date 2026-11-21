@@ -290,52 +290,52 @@ pub fn validate_gnu_adapter_with_constants(
     code: SEXP,
     constants: SEXP,
 ) -> Result<bool, String> {
-    let owner =
-        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let pin = owner.pin().map_err(|error| error.to_string())?;
-    let code = owner
-        .sexp(code)
-        .and_then(Sexp::into_owned)
-        .map_err(|error| error.to_string())?;
-    if code.typeof_() != SEXPTYPE::INTSXP {
-        return Err("GNU bytecode instructions must be integers".into());
-    }
-    let code_len =
-        usize::try_from(code.len()).map_err(|_| "invalid bytecode instruction length")?;
-    let mut instructions = Vec::new();
-    instructions
-        .try_reserve_exact(code_len)
-        .map_err(|_| "cannot reserve bytecode validation instructions")?;
-    for index in 0..code_len {
-        instructions.push(
-            code.try_integer_elt(index as i64)
-                .map_err(|error| error.to_string())?,
-        );
-    }
-    let pool = owner
-        .sexp(constants)
-        .and_then(Sexp::into_owned)
-        .map_err(|error| error.to_string())?;
-    if pool.typeof_() != SEXPTYPE::VECSXP {
-        return Err("GNU bytecode has no constant pool".into());
-    }
-    let length = usize::try_from(pool.len()).map_err(|_| "invalid constant pool length")?;
-    let mut entries = Vec::new();
-    entries
-        .try_reserve_exact(length)
-        .map_err(|_| "cannot reserve constant pool")?;
-    for index in 0..length {
-        entries.push(
-            pool.try_vector_elt(index as i64)
-                .map_err(|error| error.to_string())?,
-        );
-    }
-    let (supported, _tables) =
-        validate_gnu_adapter_with_owned_constants(&instructions, &entries, &pool, &code)?;
-    if let Some(pin) = &pin {
-        pin.require_live().map_err(|error| error.to_string())?;
-    }
-    Ok(supported)
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let pin = owner.pin().map_err(|error| error.to_string())?;
+        let code = owner
+            .sexp(code)
+            .and_then(Sexp::into_owned)
+            .map_err(|error| error.to_string())?;
+        if code.typeof_() != SEXPTYPE::INTSXP {
+            return Err("GNU bytecode instructions must be integers".into());
+        }
+        let code_len =
+            usize::try_from(code.len()).map_err(|_| "invalid bytecode instruction length")?;
+        let mut instructions = Vec::new();
+        instructions
+            .try_reserve_exact(code_len)
+            .map_err(|_| "cannot reserve bytecode validation instructions")?;
+        for index in 0..code_len {
+            instructions.push(
+                code.try_integer_elt(index as i64)
+                    .map_err(|error| error.to_string())?,
+            );
+        }
+        let pool = owner
+            .sexp(constants)
+            .and_then(Sexp::into_owned)
+            .map_err(|error| error.to_string())?;
+        if pool.typeof_() != SEXPTYPE::VECSXP {
+            return Err("GNU bytecode has no constant pool".into());
+        }
+        let length = usize::try_from(pool.len()).map_err(|_| "invalid constant pool length")?;
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(length)
+            .map_err(|_| "cannot reserve constant pool")?;
+        for index in 0..length {
+            entries.push(
+                pool.try_vector_elt(index as i64)
+                    .map_err(|error| error.to_string())?,
+            );
+        }
+        let (supported, _tables) =
+            validate_gnu_adapter_with_owned_constants(&instructions, &entries, &pool, &code)?;
+        if let Some(pin) = &pin {
+            pin.require_live().map_err(|error| error.to_string())?;
+        }
+        Ok(supported)
+    }).map_err(|error| error.to_string())?
 }
 
 /// Resolve STARTFOR's end operand to the STEPFOR it owns.

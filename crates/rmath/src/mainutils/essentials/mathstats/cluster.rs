@@ -753,7 +753,7 @@ pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// GNU `heatmap(x)` — row/column leaf order from `hclust(dist())`.
 pub fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null()
@@ -820,7 +820,7 @@ pub fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `rect.hclust(tree, k=, h=)` — cluster boxes; validates `k`/`h`.
 pub fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let tree = CAR(args);
         let mut k_arg = R_NilValue();
         let mut h_arg = R_NilValue();
@@ -888,7 +888,7 @@ pub fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `dendrapply(X, FUN)` — apply `FUN` to a dendrogram (leaf vector).
 pub fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let fun = CAR(CDR(args));
         if !class_contains(x, "dendrogram") {

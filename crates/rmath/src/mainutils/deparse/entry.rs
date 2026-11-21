@@ -91,141 +91,142 @@ pub fn deparse1WithCutoff(
     unsafe {
         let allocation_error =
             || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
-        let token = OwnerToken::current().unwrap_or_else(|_| allocation_error());
-        let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
-        let original_pin = runtime.pin().unwrap_or_else(|_| allocation_error());
-        let result = with_runtime(&runtime, |access| {
-            let domain = access.domain();
-            let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
-            // Install the original owning lease before mutating print state.
-            let _restore = RestorePrint::enter(original_pin);
-            let allocator = super::owned_output::OutputAllocator::new(access, &domain)
-                .unwrap_or_else(|_| allocation_error());
+        OwnerToken::with_current(|token| {
+            let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
+            let original_pin = runtime.pin().unwrap_or_else(|_| allocation_error());
+            let result = with_runtime(&runtime, |access| {
+                let domain = access.domain();
+                let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
+                // Install the original owning lease before mutating print state.
+                let _restore = RestorePrint::enter(original_pin);
+                let allocator = super::owned_output::OutputAllocator::new(access, &domain)
+                    .unwrap_or_else(|_| allocation_error());
 
-            let mut local_data = LocalParseData::default();
-            local_data.cutoff = cutoff;
-            local_data.backtick = if backtick { 1 } else { 0 };
-            local_data.opts = opts;
-            local_data.strvec = R_NilValue();
+                let mut local_data = LocalParseData::default();
+                local_data.cutoff = cutoff;
+                local_data.backtick = if backtick { 1 } else { 0 };
+                local_data.opts = opts;
+                local_data.strvec = R_NilValue();
 
-            let mut svec = R_NilValue();
-            let mut need_ellipses = false;
+                let mut svec = R_NilValue();
+                let mut need_ellipses = false;
 
-            if nlines > 0 {
-                local_data.linenumber = nlines;
-                local_data.maxlines = nlines;
-            } else {
-                let browse_lines = get_browse_lines();
-                if browse_lines > 0 {
-                    local_data.maxlines = browse_lines + 1;
+                if nlines > 0 {
+                    local_data.linenumber = nlines;
+                    local_data.maxlines = nlines;
+                } else {
+                    let browse_lines = get_browse_lines();
+                    if browse_lines > 0 {
+                        local_data.maxlines = browse_lines + 1;
+                    }
+                    access
+                        .with_native(|_| {
+                            deparse2(input.as_raw(), svec, &mut local_data);
+                            Ok(())
+                        })
+                        .unwrap_or_else(|_| allocation_error());
+                    local_data.active = true;
+                    let browse_lines = get_browse_lines();
+                    if browse_lines > 0 && local_data.linenumber > browse_lines {
+                        local_data.linenumber = browse_lines + 1;
+                        need_ellipses = true;
+                    }
                 }
+
+                let mut output = allocator
+                    .allocate(|arena| {
+                        Some(arena.alloc_vector(SEXPTYPE::STRSXP, local_data.linenumber.into()))
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+                svec = output.as_raw();
+
                 access
                     .with_native(|_| {
                         deparse2(input.as_raw(), svec, &mut local_data);
                         Ok(())
                     })
                     .unwrap_or_else(|_| allocation_error());
-                local_data.active = true;
-                let browse_lines = get_browse_lines();
-                if browse_lines > 0 && local_data.linenumber > browse_lines {
-                    local_data.linenumber = browse_lines + 1;
-                    need_ellipses = true;
-                }
-            }
-
-            let mut output = allocator
-                .allocate(|arena| {
-                    Some(arena.alloc_vector(SEXPTYPE::STRSXP, local_data.linenumber.into()))
-                })
-                .unwrap_or_else(|_| allocation_error());
-            svec = output.as_raw();
-
-            access
-                .with_native(|_| {
-                    deparse2(input.as_raw(), svec, &mut local_data);
-                    Ok(())
-                })
-                .unwrap_or_else(|_| allocation_error());
-            if nlines > 0
-                && local_data.linenumber > 0
-                && (local_data.linenumber as i64) < nlines as i64
-            {
-                let used = local_data.linenumber;
-                let shrunk = allocator
-                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, used.into())))
-                    .unwrap_or_else(|_| allocation_error());
-                let mut shrunk = crate::sexp::object::SexpMut::try_from_checked(shrunk)
-                    .unwrap_or_else(|_| allocation_error());
-                for i in 0..used {
-                    let character = output
-                        .try_string_elt(i as i64)
+                if nlines > 0
+                    && local_data.linenumber > 0
+                    && (local_data.linenumber as i64) < nlines as i64
+                {
+                    let used = local_data.linenumber;
+                    let shrunk = allocator
+                        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, used.into())))
                         .unwrap_or_else(|_| allocation_error());
-                    shrunk
-                        .try_set_string_elt(i as i64, character)
+                    let mut shrunk = crate::sexp::object::SexpMut::try_from_checked(shrunk)
                         .unwrap_or_else(|_| allocation_error());
+                    for i in 0..used {
+                        let character = output
+                            .try_string_elt(i as i64)
+                            .unwrap_or_else(|_| allocation_error());
+                        shrunk
+                            .try_set_string_elt(i as i64, character)
+                            .unwrap_or_else(|_| allocation_error());
+                    }
+                    // The actual result stays owned through warning handlers and all
+                    // later allocations, even after the original output is dropped.
+                    output = shrunk.freeze();
+                    svec = output.as_raw();
                 }
-                // The actual result stays owned through warning handlers and all
-                // later allocations, even after the original output is dropped.
-                output = shrunk.freeze();
-                svec = output.as_raw();
-            }
 
-            if abbrev {
-                let mut data = [0u8; 14];
-                let first = output
-                    .clone()
-                    .try_string_elt(0)
-                    .unwrap_or_else(|_| allocation_error());
-                let first = first.as_raw();
-                if !first.is_null() {
-                    let name = char_cstring(first);
-                    if !name.is_none() {
-                        let bytes = name.as_deref().unwrap_or_default().to_bytes();
-                        let copy_len = std::cmp::min(bytes.len(), 10);
-                        data[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        data[copy_len] = 0;
-                        if bytes.len() > 10 {
-                            data[10] = b'.';
-                            data[11] = b'.';
-                            data[12] = b'.';
-                            data[13] = 0;
-                        } else {
+                if abbrev {
+                    let mut data = [0u8; 14];
+                    let first = output
+                        .clone()
+                        .try_string_elt(0)
+                        .unwrap_or_else(|_| allocation_error());
+                    let first = first.as_raw();
+                    if !first.is_null() {
+                        let name = char_cstring(first);
+                        if !name.is_none() {
+                            let bytes = name.as_deref().unwrap_or_default().to_bytes();
+                            let copy_len = std::cmp::min(bytes.len(), 10);
+                            data[..copy_len].copy_from_slice(&bytes[..copy_len]);
                             data[copy_len] = 0;
+                            if bytes.len() > 10 {
+                                data[10] = b'.';
+                                data[11] = b'.';
+                                data[12] = b'.';
+                                data[13] = 0;
+                            } else {
+                                data[copy_len] = 0;
+                            }
                         }
                     }
+                    let bytes = std::ffi::CStr::from_ptr(data.as_ptr().cast()).to_bytes();
+                    return allocator
+                        .allocate(|arena| {
+                            crate::sexp::builder::scalar_bytes_in(arena, bytes)
+                                .map(|value| value.as_raw())
+                        })
+                        .unwrap_or_else(|_| allocation_error());
+                } else if need_ellipses {
+                    let ellipsis = allocator
+                        .character("  ...")
+                        .unwrap_or_else(|_| allocation_error());
+                    let mut result = crate::sexp::object::SexpMut::try_from_checked(output.clone())
+                        .unwrap_or_else(|_| allocation_error());
+                    result
+                        .try_set_string_elt(get_browse_lines() as R_xlen_t, ellipsis)
+                        .unwrap_or_else(|_| allocation_error());
                 }
-                let bytes = std::ffi::CStr::from_ptr(data.as_ptr().cast()).to_bytes();
-                return allocator
-                    .allocate(|arena| {
-                        crate::sexp::builder::scalar_bytes_in(arena, bytes)
-                            .map(|value| value.as_raw())
-                    })
-                    .unwrap_or_else(|_| allocation_error());
-            } else if need_ellipses {
-                let ellipsis = allocator
-                    .character("  ...")
-                    .unwrap_or_else(|_| allocation_error());
-                let mut result = crate::sexp::object::SexpMut::try_from_checked(output.clone())
-                    .unwrap_or_else(|_| allocation_error());
-                result
-                    .try_set_string_elt(get_browse_lines() as R_xlen_t, ellipsis)
-                    .unwrap_or_else(|_| allocation_error());
-            }
 
-            if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
-                access
-                    .with_native(|_| {
-                        crate::mainutils::errors::Rf_warning1(
-                            c"deparse may be incomplete");
-                        Ok(())
-                    })
-                    .unwrap_or_else(|_| allocation_error());
-            }
+                if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
+                    access
+                        .with_native(|_| {
+                            crate::mainutils::errors::Rf_warning1(
+                                c"deparse may be incomplete");
+                            Ok(())
+                        })
+                        .unwrap_or_else(|_| allocation_error());
+                }
 
-            output
-        })
-        .unwrap_or_else(|_| allocation_error());
-        result.as_raw()
+                output
+            })
+            .unwrap_or_else(|_| allocation_error());
+            result.as_raw()
+        }).unwrap_or_else(|_| allocation_error())
     }
 }
 
@@ -468,10 +469,7 @@ pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// Used in bind.c, builtin.c, coerce.c, match.c, relop.c, and do_dput/do_dump.
 pub fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
-    unsafe {
-        let token = OwnerToken::current().unwrap_or_else(|_| {
-            buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
-        });
+    OwnerToken::with_current(|token| {
         let pin = token
             .weak_owner()
             .and_then(|owner| owner.pin().ok())
@@ -480,7 +478,9 @@ pub fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
             });
         let _restore = RestoreBrowseLines::enter(pin, 0);
         deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0)
-    }
+    }).unwrap_or_else(|_| {
+        buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
+    })
 }
 
 /// Deparse a symbolic object (call, expression, symbol) with the R-level
@@ -510,40 +510,41 @@ pub fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
         let allocation_error =
             || -> ! { buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation) };
-        let token = OwnerToken::current().unwrap_or_else(|_| allocation_error());
-        let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
-        let pin = runtime.pin().unwrap_or_else(|_| allocation_error());
-        let result = with_runtime(&runtime, |access| {
-            let domain = access.domain();
-            let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
-            let value = access
-                .with_native(|_| {
-                    Ok(crate::mainutils::options::GetOption(
-                        c"deparse.max.lines".as_ptr(),
-                    ))
-                })
-                .unwrap_or_else(|_| allocation_error());
-            let value = domain.wrap(value).unwrap_or_else(|_| allocation_error());
-            let n = access
-                .with_native(|_| Ok(crate::mainutils::coerce::asInteger(value.as_raw())))
-                .unwrap_or_else(|_| allocation_error());
-            let _restore = RestoreBrowseLines::enter(pin, if n == NA_INTEGER { 100 } else { n });
-            let raw = access
-                .with_native(|_| {
-                    Ok(deparse1WithCutoff(
-                        input.as_raw(),
-                        abbrev,
-                        DEFAULT_CUTOFF,
-                        true,
-                        opts,
-                        0,
-                    ))
-                })
-                .unwrap_or_else(|_| allocation_error());
-            domain.wrap(raw).unwrap_or_else(|_| allocation_error())
-        })
-        .unwrap_or_else(|_| allocation_error());
-        result.as_raw()
+        OwnerToken::with_current(|token| {
+            let runtime = token.weak_owner().unwrap_or_else(|| allocation_error());
+            let pin = runtime.pin().unwrap_or_else(|_| allocation_error());
+            let result = with_runtime(&runtime, |access| {
+                let domain = access.domain();
+                let input = domain.wrap(call).unwrap_or_else(|_| allocation_error());
+                let value = access
+                    .with_native(|_| {
+                        Ok(crate::mainutils::options::GetOption(
+                            c"deparse.max.lines".as_ptr(),
+                        ))
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+                let value = domain.wrap(value).unwrap_or_else(|_| allocation_error());
+                let n = access
+                    .with_native(|_| Ok(crate::mainutils::coerce::asInteger(value.as_raw())))
+                    .unwrap_or_else(|_| allocation_error());
+                let _restore = RestoreBrowseLines::enter(pin, if n == NA_INTEGER { 100 } else { n });
+                let raw = access
+                    .with_native(|_| {
+                        Ok(deparse1WithCutoff(
+                            input.as_raw(),
+                            abbrev,
+                            DEFAULT_CUTOFF,
+                            true,
+                            opts,
+                            0,
+                        ))
+                    })
+                    .unwrap_or_else(|_| allocation_error());
+                domain.wrap(raw).unwrap_or_else(|_| allocation_error())
+            })
+            .unwrap_or_else(|_| allocation_error());
+            result.as_raw()
+        }).unwrap_or_else(|_| allocation_error())
     }
 }
 

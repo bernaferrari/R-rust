@@ -596,7 +596,7 @@ mod eval_expression_tests {
 /// environment parents to the caller (`_rho`); an explicit ENVSXP `envir`
 /// is used as-is (wrapped in a child so assignments stay local).
 pub fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let envir_arg = CAR(CDR(args));
         if expr.is_null() || expr == R_NilValue() {
@@ -849,7 +849,7 @@ fn eval_body_owned(
     ) {
         return access.with_native(|owner| {
             owner
-                .sexp(unsafe { crate::eval::eval::Rf_eval(expr.as_raw(), env.as_raw()) })?
+                .sexp(crate::eval::eval::Rf_eval(expr.as_raw(), env.as_raw()))?
                 .into_owned()
         });
     }
@@ -882,7 +882,7 @@ fn eval_body_owned(
             })?;
             result = access.with_native(|owner| {
                 owner
-                    .sexp(unsafe { crate::eval::eval::Rf_eval(element.as_raw(), env.as_raw()) })?
+                    .sexp(crate::eval::eval::Rf_eval(element.as_raw(), env.as_raw()))?
                     .into_owned()
             })?;
         }

@@ -848,74 +848,76 @@ pub fn R_getS4DataSlot(x: SEXP, type_: c_int) -> SEXP {
         if x.is_null() {
             return x;
         }
-        let owner = crate::sexp::owner::OwnerToken::current().expect("active S4 owner");
-        let pin = owner.pin().expect("live S4 owner");
-        let factory = owner.node_factory();
-        let _source_root = factory.wrap(x).expect("S4 input belongs to active owner");
-        if isNull(x) {
-            return x;
-        }
-        let check_owner = || {
-            if let Some(pin) = &pin {
-                pin.require_live().expect("live S4 conversion owner");
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let pin = owner.pin().expect("live S4 owner");
+            let factory = owner.node_factory();
+            let _source_root = factory.wrap(x).expect("S4 input belongs to active owner");
+            if isNull(x) {
+                return x;
             }
-            factory
-                .require_active()
-                .expect("original S4 conversion owner");
-        };
-        let _source = protect(x);
-        let s3_symbol = Rf_install(c".S3Class".as_ptr());
-        check_owner();
-        let s3_class = getAttrib(x, s3_symbol);
-        check_owner();
-        let _class = protect(s3_class);
-        let value = if TYPEOF(x) != SEXPTYPE::OBJSXP || type_ == OBJSXP {
-            if isNull(s3_class) && type_ == OBJSXP {
-                return R_NilValue();
-            }
-            let result = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+            let check_owner = || {
+                if let Some(pin) = &pin {
+                    pin.require_live().expect("live S4 conversion owner");
+                }
+                factory
+                    .require_active()
+                    .expect("original S4 conversion owner");
+            };
+            let _source = protect(x);
+            let s3_symbol = Rf_install(c".S3Class".as_ptr());
             check_owner();
-            let _result_root = factory
-                .wrap(result)
-                .expect("S4 result belongs to original owner");
-            let _result = protect(result);
-            let class_symbol = Rf_install(c"class".as_ptr());
+            let s3_class = getAttrib(x, s3_symbol);
             check_owner();
-            setAttrib(result, class_symbol, s3_class);
-            check_owner();
-            if !isNull(s3_class) {
-                setAttrib(result, s3_symbol, R_NilValue());
+            let _class = protect(s3_class);
+            let value = if TYPEOF(x) != SEXPTYPE::OBJSXP || type_ == OBJSXP {
+                if isNull(s3_class) && type_ == OBJSXP {
+                    return R_NilValue();
+                }
+                let result = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
                 check_owner();
+                let _result_root = factory
+                    .wrap(result)
+                    .expect("S4 result belongs to original owner");
+                let _result = protect(result);
+                let class_symbol = Rf_install(c"class".as_ptr());
+                check_owner();
+                setAttrib(result, class_symbol, s3_class);
+                check_owner();
+                if !isNull(s3_class) {
+                    setAttrib(result, s3_symbol, R_NilValue());
+                    check_owner();
+                }
+                UNSET_S4_OBJECT(result);
+                if type_ == OBJSXP {
+                    return result;
+                }
+                result
+            } else {
+                let symbol = Rf_install(c".Data".as_ptr());
+                check_owner();
+                let value = getAttrib(x, symbol);
+                check_owner();
+                value
+            };
+            let _value = protect(value);
+            let value = if isNull(value) {
+                let symbol = Rf_install(c".xData".as_ptr());
+                check_owner();
+                let value = getAttrib(x, symbol);
+                check_owner();
+                value
+            } else {
+                value
+            };
+            let _value_root = factory
+                .wrap(value)
+                .expect("S4 data belongs to original owner");
+            if !isNull(value) && (type_ == ANYSXP || TYPEOF(value) == type_) {
+                value
+            } else {
+                R_NilValue()
             }
-            UNSET_S4_OBJECT(result);
-            if type_ == OBJSXP {
-                return result;
-            }
-            result
-        } else {
-            let symbol = Rf_install(c".Data".as_ptr());
-            check_owner();
-            let value = getAttrib(x, symbol);
-            check_owner();
-            value
-        };
-        let _value = protect(value);
-        let value = if isNull(value) {
-            let symbol = Rf_install(c".xData".as_ptr());
-            check_owner();
-            let value = getAttrib(x, symbol);
-            check_owner();
-            value
-        } else {
-            value
-        };
-        let _value_root = factory
-            .wrap(value)
-            .expect("S4 data belongs to original owner");
-        if !isNull(value) && (type_ == ANYSXP || TYPEOF(value) == type_) {
-            value
-        } else {
-            R_NilValue()
-        }
+        })
+        .expect("active S4 owner")
     }
 }

@@ -204,13 +204,14 @@ unsafe fn set_parse_status(status: *mut c_int, value: c_int) {
 unsafe fn with_parse_runtime<T>(
     operation: impl for<'execution> FnOnce(&'execution RuntimeAccess) -> T,
 ) -> T {
-    let token = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    let owner = token
-        .weak_owner()
-        .unwrap_or_else(|| crate::sexp::context::r_error("parsing requires a managed runtime"));
-    with_runtime(&owner, operation)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    OwnerToken::with_current(|token| {
+        let owner = token
+            .weak_owner()
+            .unwrap_or_else(|| crate::sexp::context::r_error("parsing requires a managed runtime"));
+        with_runtime(&owner, operation)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 unsafe fn parse_vector<'session>(

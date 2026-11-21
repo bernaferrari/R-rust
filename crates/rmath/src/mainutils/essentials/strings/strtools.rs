@@ -247,7 +247,7 @@ pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `strwrap(...)` — dispatch to the verbatim base closure so wrapping
 /// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
 pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("strwrap"),

@@ -72,8 +72,7 @@ fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
 
 /// Audited boundary: evaluate a live expression in a live environment.
 fn eval_sexp(expr: SEXP, env: SEXP) -> SEXP {
-    // SAFETY: evaluates under the same ambient contract as the evaluator.
-    unsafe { crate::eval::eval::Rf_eval(expr, env) }
+    crate::eval::eval::Rf_eval(expr, env)
 }
 
 /// Bind one symbol in a live environment (GNU `defineVar`).

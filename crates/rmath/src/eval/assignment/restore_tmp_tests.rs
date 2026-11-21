@@ -214,20 +214,22 @@ fn owned_restore_tmp_saved_value_survives_detachment_gc_and_unrelated_insertion(
 }
 
 fn evaluate_current(environment: &Sexp<'static>, source: &str) -> Sexp<'static> {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();
-    let factory = owner.node_factory();
-    let expression = owner
-        .with_arena(|arena| crate::eval::parser::parse(source, arena, factory.domain()))
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let factory = owner.node_factory();
+        let expression = owner
+            .with_arena(|arena| crate::eval::parser::parse(source, arena, factory.domain()))
+            .unwrap()
+            .unwrap();
+        unsafe {
+            factory.wrap(crate::eval::eval::Rf_eval(
+                expression.as_raw(),
+                environment.as_raw(),
+            ))
+        }
         .unwrap()
-        .unwrap();
-    unsafe {
-        factory.wrap(crate::eval::eval::Rf_eval(
-            expression.as_raw(),
-            environment.as_raw(),
-        ))
-    }
-    .unwrap()
-    .into_owned()
+        .into_owned()
+        .unwrap()
+    })
     .unwrap()
 }
 

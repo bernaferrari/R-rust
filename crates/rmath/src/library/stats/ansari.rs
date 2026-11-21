@@ -34,50 +34,51 @@ fn active(owner: OwnerToken<'_>) {
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
 }
 fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP {
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let m = crate::main::coerce::asInteger(sm);
-    active(owner);
-    let n = crate::main::coerce::asInteger(sn);
-    active(owner);
-    memo::Dimensions::new(m, n).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
-    let input = crate::main::coerce::coerceVector(input, SEXPTYPE::REALSXP.as_c_int());
-    active(owner);
-    let _input = crate::sexp::protect::protect(input);
-    let input = owner
-        .sexp(input)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    crate::sexp::altrep::force_materialization(&input)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    active(owner);
-    let len = input.len();
-    let output = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
-    let _output = crate::sexp::protect::protect(output);
-    let mut result = crate::sexp::SexpMut::try_from_checked(
-        owner
-            .sexp(output)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
-    )
-    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let mut memo =
-        MemoTable::new(owner, m, n).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
-    for i in 0..len {
-        let value = input
-            .try_real_elt(i)
+    OwnerToken::with_current(|owner| {
+        let m = crate::main::coerce::asInteger(sm);
+        active(owner);
+        let n = crate::main::coerce::asInteger(sn);
+        active(owner);
+        memo::Dimensions::new(m, n).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
+        let input = crate::main::coerce::coerceVector(input, SEXPTYPE::REALSXP.as_c_int());
+        active(owner);
+        let _input = crate::sexp::protect::protect(input);
+        let input = owner
+            .sexp(input)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        crate::sexp::altrep::force_materialization(&input)
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         active(owner);
-        let value = if quantile {
-            memo.quantile(owner, value)
-        } else {
-            memo.cdf(owner, value)
+        let len = input.len();
+        let output = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
+        let _output = crate::sexp::protect::protect(output);
+        let mut result = crate::sexp::SexpMut::try_from_checked(
+            owner
+                .sexp(output)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
+        )
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let mut memo = MemoTable::new(owner, m, n)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
+        for i in 0..len {
+            let value = input
+                .try_real_elt(i)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+            active(owner);
+            let value = if quantile {
+                memo.quantile(owner, value)
+            } else {
+                memo.cdf(owner, value)
+            }
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
+            result
+                .try_set_real_elt(i, value)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
-        result
-            .try_set_real_elt(i, value)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    }
-    active(owner);
-    output
+        active(owner);
+        output
+    })
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 pub fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     distribution(q, sm, sn, false)

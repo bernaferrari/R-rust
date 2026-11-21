@@ -500,29 +500,26 @@ pub(crate) fn emit_supsmu_trace(events: &super::supsmu::TraceBuffer) -> Result<(
     if crate::sexp::instance::is_cancellation_requested() {
         return Err("operation cancelled".into());
     }
-    // SAFETY: native routine dispatch and interpreted builtins both execute
-    // with the original runtime activated; upgrading and pinning its exact
-    // owner keeps output routing valid through the callback.
-    let owner =
-        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
-    let _pin = owner.pin().map_err(|error| error.to_string())?;
-    owner.require_active().map_err(|error| error.to_string())?;
-    let mut text = TraceText::<1024>::default();
-    for event in events.events() {
-        text.write_event(*event)
-            .map_err(|_| "supersmoother trace formatting failed")?;
-    }
-    // SAFETY: text is a stack-owned NUL-terminated ASCII buffer retained
-    // until Rprintf copies it into the original runtime's charged output
-    // snapshot. It contains no borrowed R payload or mutable arena loan.
-    unsafe {
-        crate::mainutils::printutils::Rprintf(text.as_c_str(), std::ptr::null_mut());
-    }
-    owner.require_active().map_err(|error| error.to_string())?;
-    if crate::sexp::instance::is_cancellation_requested() {
-        return Err("operation cancelled".into());
-    }
-    Ok(())
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
+        owner.require_active().map_err(|error| error.to_string())?;
+        let mut text = TraceText::<1024>::default();
+        for event in events.events() {
+            text.write_event(*event)
+                .map_err(|_| "supersmoother trace formatting failed")?;
+        }
+        // SAFETY: text is a stack-owned NUL-terminated ASCII buffer retained
+        // until Rprintf copies it into the original runtime's charged output
+        // snapshot. It contains no borrowed R payload or mutable arena loan.
+        unsafe {
+            crate::mainutils::printutils::Rprintf(text.as_c_str(), std::ptr::null_mut());
+        }
+        owner.require_active().map_err(|error| error.to_string())?;
+        if crate::sexp::instance::is_cancellation_requested() {
+            return Err("operation cancelled".into());
+        }
+        Ok(())
+    }).map_err(|error| error.to_string())?
 }
 
 fn write_g<const N: usize>(

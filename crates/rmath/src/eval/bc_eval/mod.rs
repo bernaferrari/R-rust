@@ -47,19 +47,19 @@ fn bc_mismatch(detail: impl Into<String>) -> ! {
 fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
     pin.require_live()
         .unwrap_or_else(|error| bc_error(error.to_string()));
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    if owner.as_ptr() != pin.as_ptr() {
-        bc_error("bytecode collection requires the original active runtime");
-    }
-    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-    crate::eval::profiling::sample_at_safe_point(owner)
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    owner
-        .require_active()
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    pin.require_live()
-        .unwrap_or_else(|error| bc_error(error.to_string()));
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        if owner.as_ptr() != pin.as_ptr() {
+            bc_error("bytecode collection requires the original active runtime");
+        }
+        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        crate::eval::profiling::sample_at_safe_point(owner)
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        pin.require_live()
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+    }).unwrap_or_else(|error| bc_error(error.to_string()))
 }
 
 /// Language object of the CALL that follows this GETFUN in the GNU stream,

@@ -192,11 +192,7 @@ pub(super) fn evaluate(
     for expression in expressions {
         result = access
             .with_native(|owner| {
-                // SAFETY: both handles are live values owned by this runtime;
-                // evaluation runs inside the ambient active owner.
-                let value = unsafe {
-                    crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
-                };
+                let value = crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw());
                 owner.sexp(value)?.into_owned()
             })
             .map_err(|e| e.to_string())?;

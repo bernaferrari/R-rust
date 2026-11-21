@@ -28,32 +28,34 @@ pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
 /// This is the equivalent of R's `eval()` from src/main/eval.c.
 /// It is the main dispatch function of the interpreter.
 ///
-/// # Safety
-///
-/// `e` and `rho` must be valid SEXP pointers (or null).
+/// Both pointers are validated (and rooted) against the active owner's heap
+/// through `SessionNodeFactory::wrap`; invalid inputs raise an R error.
 #[must_use]
-pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     if e.is_null() || rho.is_null() {
         return R_NilValue();
     }
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
-    let factory = crate::sexp::object::SessionNodeFactory::new(owner);
-    let expr = factory
-        .wrap(e)
-        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
-    let env = factory
-        .wrap(rho)
-        .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
-    match {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_expr(expr, env)
-    } {
-        Ok(result) => unsafe { super::super::jit::handle_exec_continuation(result.as_raw()) },
-        Err(msg) => {
-            std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let factory = crate::sexp::object::SessionNodeFactory::new(owner);
+        let expr = factory
+            .wrap(e)
+            .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
+        let env = factory
+            .wrap(rho)
+            .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
+        match eval_expr(expr, env) {
+            // SAFETY: `handle_exec_continuation` reads the active runtime's
+            // global context (`(*ctx).sysparent`) through the registered
+            // instance pointer. This runs on the evaluating thread while the
+            // owner is pinned by `with_current`, and `result` stays rooted
+            // until the continuation value has been re-wrapped.
+            Ok(result) => unsafe { super::super::jit::handle_exec_continuation(result.as_raw()) },
+            Err(msg) => {
+                std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
+            }
         }
-    }
+    })
+    .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()))
 }
 
 pub(crate) fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
@@ -71,7 +73,7 @@ pub(crate) fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
 
 /// Raw entry for operations being migrated to owned evaluation.
 pub(crate) fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
-    unsafe { Rf_eval(e, rho) }
+    Rf_eval(e, rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +85,7 @@ pub(crate) fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
 /// This is the equivalent of R's `evalKeepVis()` from errors.c.
 pub(crate) fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
     let _visibility = super::super::runtime::VisibilityGuard::new();
-    let val = unsafe { Rf_eval(e, rho) };
+    let val = Rf_eval(e, rho);
     val
 }
 

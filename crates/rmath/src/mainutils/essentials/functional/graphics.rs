@@ -243,7 +243,7 @@ pub fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `eff.aovlist(aovlist)` — `$qr` on each stratum.
 pub fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let aovlist = CAR(args);
         if aovlist.is_null() || aovlist == R_NilValue() || TYPEOF(aovlist) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
@@ -306,7 +306,7 @@ pub fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// GNU `screeplot.default(x)` — reads `x$sdev`.
 pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let dollar = crate::sexp::constructors::Rf_lang3(
             install_str("$"),
@@ -330,7 +330,7 @@ pub fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let dollar = Rf_lang3(install_str("$"), x, install_str("spec"));
         let _d = protect(dollar);

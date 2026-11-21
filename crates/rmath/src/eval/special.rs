@@ -349,16 +349,14 @@ pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement `invisible(x)` when it is reached through the special-form path.
 fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let expr = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(args)
-        };
-        let value = Rf_eval(expr, rho);
-        super::runtime::set_visible(FALSE);
-        value
-    }
+    let expr = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(args)
+    };
+    let value = Rf_eval(expr, rho);
+    super::runtime::set_visible(FALSE);
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -502,49 +500,47 @@ fn do_if(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `while` special form.
 fn do_while(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let cond = CAR(args);
-        let body = CADR(args);
-        let _cond_guard = protect(cond);
-        let _body_guard = protect(body);
+    let cond = CAR(args);
+    let body = CADR(args);
+    let _cond_guard = protect(cond);
+    let _body_guard = protect(body);
 
-        let _loop_ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_LOOP,
-            R_NilValue(),
-            rho,
-            crate::sexp::globals::R_BaseEnv(),
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        );
+    let _loop_ctx = crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_LOOP,
+        R_NilValue(),
+        rho,
+        crate::sexp::globals::R_BaseEnv(),
+        None,
+        R_NilValue(),
+        R_NilValue(),
+    );
 
-        crate::sexp::context::run_hoisted_loop(|| {
-            loop {
-                crate::sexp::instance::check_cancellation();
-                let cond_val = Rf_eval(cond, rho);
+    crate::sexp::context::run_hoisted_loop(|| {
+        loop {
+            crate::sexp::instance::check_cancellation();
+            let cond_val = Rf_eval(cond, rho);
 
-                let truth = crate::eval::defaults::asLogicalNoNA(cond_val, R_NilValue());
-                if truth == crate::sexp::ffi::NA_INTEGER {
-                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                        message: "missing value where TRUE/FALSE needed".to_string(),
-                    });
-                }
-                let should_continue = truth != 0;
-
-                if !should_continue {
-                    break;
-                }
-
-                let _ = Rf_eval(body, rho);
-                crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+            let truth = crate::eval::defaults::asLogicalNoNA(cond_val, R_NilValue());
+            if truth == crate::sexp::ffi::NA_INTEGER {
+                std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                    message: "missing value where TRUE/FALSE needed".to_string(),
+                });
             }
-        });
+            let should_continue = truth != 0;
 
-        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-        // eval.c do_while: loop results are invisible (R_Visible = FALSE).
-        super::runtime::set_visible(FALSE);
-        R_NilValue()
-    }
+            if !should_continue {
+                break;
+            }
+
+            let _ = Rf_eval(body, rho);
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        }
+    });
+
+    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+    // eval.c do_while: loop results are invisible (R_Visible = FALSE).
+    super::runtime::set_visible(FALSE);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -553,127 +549,125 @@ fn do_while(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `for` special form.
 fn do_for(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let var_sym = CAR(args);
-        let seq_expr = CADR(args);
-        let body = CADDR(args);
-        if Rf_isSymbol(var_sym) == 0 {
-            std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                message: "non-symbol loop variable".to_string(),
-            });
-        }
-        let _var_guard = protect(var_sym);
-        let _body_guard = protect(body);
+    let var_sym = CAR(args);
+    let seq_expr = CADR(args);
+    let body = CADDR(args);
+    if Rf_isSymbol(var_sym) == 0 {
+        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+            message: "non-symbol loop variable".to_string(),
+        });
+    }
+    let _var_guard = protect(var_sym);
+    let _body_guard = protect(body);
 
-        let mut seq_val = Rf_eval(seq_expr, rho);
-        let _original_seq_guard = protect(seq_val);
-        if crate::mainutils::essentials::sexp_has_class(seq_val, "factor") {
-            seq_val = crate::mainutils::coerce::asCharacterFactor(seq_val);
-        }
-        let _seq_guard = protect(seq_val);
-        // GNU do_for marks the sequence shared so a later `[<-` copies
-        // instead of mutating the values still to be visited.
-        crate::sexp::accessors::SET_NAMED(seq_val, 2);
+    let mut seq_val = Rf_eval(seq_expr, rho);
+    let _original_seq_guard = protect(seq_val);
+    if crate::mainutils::essentials::sexp_has_class(seq_val, "factor") {
+        seq_val = crate::mainutils::coerce::asCharacterFactor(seq_val);
+    }
+    let _seq_guard = protect(seq_val);
+    // GNU do_for marks the sequence shared so a later `[<-` copies
+    // instead of mutating the values still to be visited.
+    crate::sexp::accessors::SET_NAMED(seq_val, 2);
 
-        if TYPEOF(seq_val) != SEXPTYPE::VECSXP
-            && TYPEOF(seq_val) != SEXPTYPE::LISTSXP
-            && TYPEOF(seq_val) != SEXPTYPE::LANGSXP
-            && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP
-            && TYPEOF(seq_val) != SEXPTYPE::LGLSXP
-            && TYPEOF(seq_val) != SEXPTYPE::INTSXP
-            && TYPEOF(seq_val) != SEXPTYPE::REALSXP
-            && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP
-            && TYPEOF(seq_val) != SEXPTYPE::STRSXP
-            && TYPEOF(seq_val) != SEXPTYPE::RAWSXP
-            && TYPEOF(seq_val) != SEXPTYPE::NILSXP
-        {
-            std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                message: "invalid 'for' loop variable sequence".to_string(),
-            });
-        }
+    if TYPEOF(seq_val) != SEXPTYPE::VECSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LISTSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LANGSXP
+        && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LGLSXP
+        && TYPEOF(seq_val) != SEXPTYPE::INTSXP
+        && TYPEOF(seq_val) != SEXPTYPE::REALSXP
+        && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP
+        && TYPEOF(seq_val) != SEXPTYPE::STRSXP
+        && TYPEOF(seq_val) != SEXPTYPE::RAWSXP
+        && TYPEOF(seq_val) != SEXPTYPE::NILSXP
+    {
+        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+            message: "invalid 'for' loop variable sequence".to_string(),
+        });
+    }
 
-        let n = crate::sexp::constructors::Rf_length(seq_val) as usize;
-        let val_type = TYPEOF(seq_val);
-        // GNU R creates (or resets) the loop binding even when the sequence
-        // is empty. This is observable after `for (x in NULL) ...`.
-        crate::sexp::envir::defineVar(var_sym, R_NilValue(), rho);
-        let i = std::cell::Cell::new(0usize);
-        let list_cell_addr = std::cell::Cell::new(seq_val as usize);
-        let mut gc_counter = 0u32;
+    let n = crate::sexp::constructors::Rf_length(seq_val) as usize;
+    let val_type = TYPEOF(seq_val);
+    // GNU R creates (or resets) the loop binding even when the sequence
+    // is empty. This is observable after `for (x in NULL) ...`.
+    crate::sexp::envir::defineVar(var_sym, R_NilValue(), rho);
+    let i = std::cell::Cell::new(0usize);
+    let list_cell_addr = std::cell::Cell::new(seq_val as usize);
+    let mut gc_counter = 0u32;
 
-        let _loop_ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_LOOP,
-            R_NilValue(),
-            rho,
-            crate::sexp::globals::R_BaseEnv(),
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        );
+    let _loop_ctx = crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_LOOP,
+        R_NilValue(),
+        rho,
+        crate::sexp::globals::R_BaseEnv(),
+        None,
+        R_NilValue(),
+        R_NilValue(),
+    );
 
-        crate::sexp::context::run_hoisted_loop_with_continue(
-            || {
-                while i.get() < n {
-                    crate::sexp::instance::check_cancellation();
-                    let idx = i.get();
+    crate::sexp::context::run_hoisted_loop_with_continue(
+        || {
+            while i.get() < n {
+                crate::sexp::instance::check_cancellation();
+                let idx = i.get();
 
-                    let val = match val_type {
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            VECTOR_ELT(seq_val, idx as i64)
-                        }
-                        t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
-                            let list_cell = list_cell_addr.get() as SEXP;
-                            let v = CAR(list_cell);
-                            list_cell_addr.set(CDR(list_cell) as usize);
-                            v
-                        }
-                        t if t == SEXPTYPE::LGLSXP => {
-                            Rf_ScalarLogical(LOGICAL_ELT(seq_val, idx as i32))
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            Rf_ScalarInteger(INTEGER_ELT(seq_val, idx as i32))
-                        }
-                        t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(seq_val, idx as i32)),
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            Rf_ScalarComplex(COMPLEX_ELT(seq_val, idx as i32))
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            let scalar = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-                            SET_STRING_ELT(scalar, 0, STRING_ELT(seq_val, idx as i64));
-                            scalar
-                        }
-                        t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(seq_val, idx as i32)),
-                        _ => {
-                            std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                                message: "invalid for() loop sequence".to_string(),
-                            });
-                        }
-                    };
-                    let _val_guard = protect(val);
-
-                    if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
+                let val = match val_type {
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        VECTOR_ELT(seq_val, idx as i64)
+                    }
+                    t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+                        let list_cell = list_cell_addr.get() as SEXP;
+                        let v = CAR(list_cell);
+                        list_cell_addr.set(CDR(list_cell) as usize);
+                        v
+                    }
+                    t if t == SEXPTYPE::LGLSXP => {
+                        Rf_ScalarLogical(LOGICAL_ELT(seq_val, idx as i32))
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        Rf_ScalarInteger(INTEGER_ELT(seq_val, idx as i32))
+                    }
+                    t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(seq_val, idx as i32)),
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        Rf_ScalarComplex(COMPLEX_ELT(seq_val, idx as i32))
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        let scalar = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+                        SET_STRING_ELT(scalar, 0, STRING_ELT(seq_val, idx as i64));
+                        scalar
+                    }
+                    t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(seq_val, idx as i32)),
+                    _ => {
                         std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                            message: "failed to set `for` loop variable".to_string(),
+                            message: "invalid for() loop sequence".to_string(),
                         });
                     }
+                };
+                let _val_guard = protect(val);
 
-                    let _ = Rf_eval(body, rho);
-                    gc_counter = gc_counter.wrapping_add(1);
-                    if gc_counter % 16 == 0 {
-                        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-                    }
-                    i.set(idx + 1);
+                if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: "failed to set `for` loop variable".to_string(),
+                    });
                 }
-            },
-            || {
-                i.set(i.get() + 1);
-            },
-        );
-        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-        // eval.c do_for: loop results are invisible (R_Visible = FALSE).
-        super::runtime::set_visible(FALSE);
-        R_NilValue()
-    }
+
+                let _ = Rf_eval(body, rho);
+                gc_counter = gc_counter.wrapping_add(1);
+                if gc_counter % 16 == 0 {
+                    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+                }
+                i.set(idx + 1);
+            }
+        },
+        || {
+            i.set(i.get() + 1);
+        },
+    );
+    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+    // eval.c do_for: loop results are invisible (R_Visible = FALSE).
+    super::runtime::set_visible(FALSE);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -682,48 +676,46 @@ fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `repeat` special form.
 fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let body = CAR(args);
-        let _body_guard = protect(body);
+    let body = CAR(args);
+    let _body_guard = protect(body);
 
-        // `repeat` re-enters after each successful body evaluation, so it cannot
-        // share the single-setjmp structure used by `for`/`while`. A nested
-        // `loop {}` inside `run_hoisted_loop` would never return on success and
-        // would allocate until OOM.
-        let _loop_ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_LOOP,
-            R_NilValue(),
-            rho,
-            crate::sexp::globals::R_BaseEnv(),
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        );
-        let mut gc_counter = 0u32;
-        loop {
-            crate::sexp::instance::check_cancellation();
-            let body_result =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
+    // `repeat` re-enters after each successful body evaluation, so it cannot
+    // share the single-setjmp structure used by `for`/`while`. A nested
+    // `loop {}` inside `run_hoisted_loop` would never return on success and
+    // would allocate until OOM.
+    let _loop_ctx = crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_LOOP,
+        R_NilValue(),
+        rho,
+        crate::sexp::globals::R_BaseEnv(),
+        None,
+        R_NilValue(),
+        R_NilValue(),
+    );
+    let mut gc_counter = 0u32;
+    loop {
+        crate::sexp::instance::check_cancellation();
+        let body_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
 
-            match body_result {
-                Ok(_) => {}
-                Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
-                    crate::sexp::context::LoopAction::Break => break,
-                    crate::sexp::context::LoopAction::Continue => continue,
-                },
-            }
-
-            gc_counter = gc_counter.wrapping_add(1);
-            if gc_counter % 16 == 0 {
-                crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-            }
+        match body_result {
+            Ok(_) => {}
+            Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
+                crate::sexp::context::LoopAction::Break => break,
+                crate::sexp::context::LoopAction::Continue => continue,
+            },
         }
 
-        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-        // eval.c do_repeat: loop results are invisible (R_Visible = FALSE).
-        super::runtime::set_visible(FALSE);
-        R_NilValue()
+        gc_counter = gc_counter.wrapping_add(1);
+        if gc_counter % 16 == 0 {
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        }
     }
+
+    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+    // eval.c do_repeat: loop results are invisible (R_Visible = FALSE).
+    super::runtime::set_visible(FALSE);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -871,14 +863,12 @@ pub extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 
 /// Implement the `(` special form (parenthesized expression).
 fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
-        }
-        let value = Rf_eval(CAR(args), rho);
-        super::runtime::set_visible(TRUE);
-        value
+    if args.is_null() || args == R_NilValue() {
+        return R_NilValue();
     }
+    let value = Rf_eval(CAR(args), rho);
+    super::runtime::set_visible(TRUE);
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -887,18 +877,16 @@ fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `return` special form via findcontext + R_jumpctxt.
 fn do_return(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let val = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            Rf_eval(CAR(args), rho)
-        };
-        let _val_guard = protect(val);
-        super::context::findcontext_jump(
-            crate::sexp::context::ctxt_flags::CTXT_FUNCTION
-                | crate::sexp::context::ctxt_flags::CTXT_BROWSER,
-            rho,
-            val,
-        );
-    }
+    let val = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        Rf_eval(CAR(args), rho)
+    };
+    let _val_guard = protect(val);
+    super::context::findcontext_jump(
+        crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+            | crate::sexp::context::ctxt_flags::CTXT_BROWSER,
+        rho,
+        val,
+    );
 }

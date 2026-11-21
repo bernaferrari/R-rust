@@ -17,49 +17,50 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
 fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
     {
-        // SAFETY: called within the active interpreter; the pin below retains
-        // that owner for the whole copy.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        let value = owner
-            .sexp(class_name)
-            .and_then(|v| v.into_owned())
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        // Match GNU tests.c: coerce through asChar, including symbols, empty
-        // values and scalars. Keep both original and converted nodes rooted.
-        let numeric = matches!(
-            value.typeof_(),
-            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
-        );
-        // Bound the scalar formatting temporaries before native conversion.
-        let _numeric_workspace = if numeric {
-            Some(
-                owner
-                    .with_arena(|arena| arena.reserve_workspace(8192))
-                    .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()))
-                    .unwrap_or_else(|| {
-                        crate::sexp::context::r_error(
-                            "class name workspace exceeds session memory limit",
-                        )
-                    }),
-            )
-        } else {
-            None
-        };
-        let chars = class_name_chars(value.as_raw(), owner);
-        owner
-            .require_active()
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        let chars = owner
-            .sexp(chars)
-            .and_then(|v| v.into_owned())
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        let bytes = crate::sexp::accessors::charsxp_as_utf8(chars.as_raw());
-        AdmittedClassName::from_bytes(owner, &bytes)
-            .unwrap_or_else(|failure| crate::sexp::context::r_error(failure))
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let _pin = owner
+                .pin()
+                .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
+            let value = owner
+                .sexp(class_name)
+                .and_then(|v| v.into_owned())
+                .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
+            // Match GNU tests.c: coerce through asChar, including symbols, empty
+            // values and scalars. Keep both original and converted nodes rooted.
+            let numeric = matches!(
+                value.typeof_(),
+                SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+            );
+            // Bound the scalar formatting temporaries before native conversion.
+            let _numeric_workspace = if numeric {
+                Some(
+                    owner
+                        .with_arena(|arena| arena.reserve_workspace(8192))
+                        .unwrap_or_else(|failure| {
+                            crate::sexp::context::r_error(failure.to_string())
+                        })
+                        .unwrap_or_else(|| {
+                            crate::sexp::context::r_error(
+                                "class name workspace exceeds session memory limit",
+                            )
+                        }),
+                )
+            } else {
+                None
+            };
+            let chars = class_name_chars(value.as_raw(), owner);
+            owner
+                .require_active()
+                .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
+            let chars = owner
+                .sexp(chars)
+                .and_then(|v| v.into_owned())
+                .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
+            let bytes = crate::sexp::accessors::charsxp_as_utf8(chars.as_raw());
+            AdmittedClassName::from_bytes(owner, &bytes)
+                .unwrap_or_else(|failure| crate::sexp::context::r_error(failure))
+        })
+        .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()))
     }
 }
 

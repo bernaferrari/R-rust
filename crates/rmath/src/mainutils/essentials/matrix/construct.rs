@@ -1048,7 +1048,7 @@ pub fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// For vectors, wraps as a single-column matrix.
 /// For lists/data.frames, wraps as a matrix.
 pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let class =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());

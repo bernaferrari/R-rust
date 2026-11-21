@@ -853,29 +853,26 @@ pub fn R_execClosure(
     arglist: SEXP,
     rho: SEXP,
 ) -> Result<SEXP, crate::sexp::context::RError> {
-    unsafe {
-        let newrho = make_applyClosure_env(
-            crate::mainutils::errors::R_getCurrentCall(),
-            op,
-            arglist,
-            rho,
-        );
-        if newrho.is_null() || newrho == R_NilValue() {
-            return Err(crate::sexp::context::RError {
-                message: "failed to create closure environment".to_string(),
-            });
-        }
+    let newrho = make_applyClosure_env(
+        crate::mainutils::errors::R_getCurrentCall(),
+        op,
+        arglist,
+        rho,
+    );
+    if newrho.is_null() || newrho == R_NilValue() {
+        return Err(crate::sexp::context::RError {
+            message: "failed to create closure environment".to_string(),
+        });
+    }
 
-        let body = BODY(op);
+    let body = BODY(op);
 
-        // Use catch_unwind for error recovery
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
+    // Use catch_unwind for error recovery
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
 
-        match result {
-            Ok(val) => Ok(val),
-            Err(payload) => Err(closure_unwind_to_error(payload)),
-        }
+    match result {
+        Ok(val) => Ok(val),
+        Err(payload) => Err(closure_unwind_to_error(payload)),
     }
 }
 

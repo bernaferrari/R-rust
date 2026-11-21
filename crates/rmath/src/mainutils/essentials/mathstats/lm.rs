@@ -110,7 +110,7 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `oneway.test(x ~ g)` / `oneway.test(x, g)`.
 pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let first = CAR(args);
         let mut x = first;
         let mut g = CAR(CDR(args));
@@ -903,7 +903,7 @@ pub fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `numericDeriv(expr, theta)` — one-parameter forward difference.
 pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let theta = CAR(CDR(args));
         if expr.is_null() || expr == R_NilValue() {

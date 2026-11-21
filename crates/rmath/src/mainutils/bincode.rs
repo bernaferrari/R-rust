@@ -23,59 +23,62 @@ fn numeric_values(value: &Sexp<'_>) -> Vec<f64> {
 pub(crate) unsafe fn do_bincode(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::relop::checkArity(op, args);
-        let owner = OwnerToken::current().unwrap_or_else(|error| base_error(error.to_string()));
-        let x = crate::mainutils::coerce::coerceVector(CAR(args), SEXPTYPE::REALSXP.into());
-        let _x = protect(x);
-        let breaks = crate::mainutils::coerce::coerceVector(CADR(args), SEXPTYPE::REALSXP.into());
-        let _breaks = protect(breaks);
-        let breaks = owner
-            .sexp(breaks)
-            .unwrap_or_else(|error| base_error(error.to_string()));
-        let nb = i32::try_from(breaks.len())
-            .ok()
-            .filter(|&length| length != 0)
-            .unwrap_or_else(|| base_error("long vector 'breaks' is not supported"));
-        if nb < 2 {
-            base_error("invalid 'breaks' argument");
-        }
-        let right = crate::mainutils::coerce::asLogical(CADDR(args));
-        if right == NA_INTEGER {
-            base_error("invalid 'right' argument");
-        }
-        let include = crate::mainutils::coerce::asLogical(CADDDR(args));
-        if include == NA_INTEGER {
-            base_error("invalid 'include.lowest' argument");
-        }
-        // Conversion and ALTREP reads may run callbacks. Retain both original
-        // converted vectors throughout; the kernel only sees copied Rust data.
-        let x = owner
-            .sexp(x)
-            .unwrap_or_else(|error| base_error(error.to_string()));
-        let xs = numeric_values(&x);
-        let bounds = numeric_values(&breaks);
-        let mut codes = vec![NA_INTEGER; xs.len()];
-        super::util_main::bincode_impl(
-            xs.as_ptr(),
-            xs.len(),
-            bounds.as_ptr(),
-            nb,
-            codes.as_mut_ptr(),
-            right,
-            include,
-        );
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, codes.len() as i64);
-        let _result = protect(result);
-        let result = owner
-            .sexp(result)
-            .unwrap_or_else(|error| base_error(error.to_string()));
-        let mut result =
-            SexpMut::try_from_checked(result).unwrap_or_else(|error| base_error(error.to_string()));
-        for (index, code) in codes.into_iter().enumerate() {
-            result
-                .try_set_integer_elt(index as i64, code)
+        OwnerToken::with_current(|owner| {
+            let x = crate::mainutils::coerce::coerceVector(CAR(args), SEXPTYPE::REALSXP.into());
+            let _x = protect(x);
+            let breaks =
+                crate::mainutils::coerce::coerceVector(CADR(args), SEXPTYPE::REALSXP.into());
+            let _breaks = protect(breaks);
+            let breaks = owner
+                .sexp(breaks)
                 .unwrap_or_else(|error| base_error(error.to_string()));
-        }
-        result.freeze().as_raw()
+            let nb = i32::try_from(breaks.len())
+                .ok()
+                .filter(|&length| length != 0)
+                .unwrap_or_else(|| base_error("long vector 'breaks' is not supported"));
+            if nb < 2 {
+                base_error("invalid 'breaks' argument");
+            }
+            let right = crate::mainutils::coerce::asLogical(CADDR(args));
+            if right == NA_INTEGER {
+                base_error("invalid 'right' argument");
+            }
+            let include = crate::mainutils::coerce::asLogical(CADDDR(args));
+            if include == NA_INTEGER {
+                base_error("invalid 'include.lowest' argument");
+            }
+            // Conversion and ALTREP reads may run callbacks. Retain both original
+            // converted vectors throughout; the kernel only sees copied Rust data.
+            let x = owner
+                .sexp(x)
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            let xs = numeric_values(&x);
+            let bounds = numeric_values(&breaks);
+            let mut codes = vec![NA_INTEGER; xs.len()];
+            super::util_main::bincode_impl(
+                xs.as_ptr(),
+                xs.len(),
+                bounds.as_ptr(),
+                nb,
+                codes.as_mut_ptr(),
+                right,
+                include,
+            );
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, codes.len() as i64);
+            let _result = protect(result);
+            let result = owner
+                .sexp(result)
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            let mut result = SexpMut::try_from_checked(result)
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            for (index, code) in codes.into_iter().enumerate() {
+                result
+                    .try_set_integer_elt(index as i64, code)
+                    .unwrap_or_else(|error| base_error(error.to_string()));
+            }
+            result.freeze().as_raw()
+        })
+        .unwrap_or_else(|error| base_error(error.to_string()))
     }
 }
 

@@ -825,8 +825,9 @@ fn compatibility_mode_callback_revocation_stops_before_raw_character_reads() {
             c.gc()?;
             let chars = c.string("integer")?;
             unsafe {
-                let owner = crate::sexp::owner::OwnerToken::current()?;
-                crate::sexp::instance::revoke_instance_availability(owner.as_ptr());
+                crate::sexp::owner::OwnerToken::with_current(|owner| {
+                    crate::sexp::instance::revoke_instance_availability(owner.as_ptr());
+                })?
             }
             Ok(AltrepElement::String(chars))
         }

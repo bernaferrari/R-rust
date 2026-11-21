@@ -107,7 +107,7 @@ pub fn do_as_double_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 }
 
 /// Build a CString from an owned string (helper for the code above).
-pub(crate) fn mk_char_str(s: &str) -> CString {
+pub(crate) fn cstring_or_empty(s: &str) -> CString {
     CString::new(s).unwrap_or_default()
 }
 

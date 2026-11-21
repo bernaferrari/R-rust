@@ -58,7 +58,7 @@ pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `qqline(y)` — type-7 quartile line then `abline`.
 pub fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let y = CAR(args);
         let n = if y.is_null() || y == R_NilValue() {
             0

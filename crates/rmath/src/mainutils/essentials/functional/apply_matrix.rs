@@ -127,7 +127,7 @@ pub(super) fn extract_matrix_col(x: SEXP, nrow: R_xlen_t, _ncol: R_xlen_t, col: 
 /// - MARGIN=1: apply FUN to each row, return vector of length nrow
 /// - MARGIN=2: apply FUN to each column, return vector of length ncol
 pub fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let margin_arg = eval_arg_by_name_or_position(args, &["MARGIN"], 1, rho);
         let fun = apply_fun(_call, args, rho);
@@ -221,7 +221,7 @@ pub(super) fn is_function(value: SEXP) -> bool {
 ///
 /// Iterates unique values of INDEX, collects matching elements from X, calls FUN on each group.
 pub fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let index = CAR(CDR(args));
         let fun = CAR(CDR(CDR(args)));
@@ -536,7 +536,7 @@ pub(super) fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
 ///
 /// For each pair (x_i, y_j), computes FUN(x_i, y_j).
 pub fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let y = CAR(CDR(args));
         let fun_arg = CAR(CDR(CDR(args)));

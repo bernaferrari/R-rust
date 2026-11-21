@@ -7,47 +7,49 @@ use crate::sexp::{
 };
 
 pub fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
-    let owner = unsafe { OwnerToken::current() }.expect("active anyNA owner");
-    let pin = owner.pin().expect("live anyNA owner");
-    let f = owner.node_factory();
-    let args = f.wrap(args).expect("anyNA argument owner");
-    let call_value = (!call.is_null()).then(|| f.wrap(call).expect("anyNA call owner"));
-    let _op = (!op.is_null()).then(|| f.wrap(op).expect("anyNA operation owner"));
-    let env_value = (!env.is_null()).then(|| f.wrap(env).expect("anyNA environment owner"));
-    let check = || {
-        if let Some(pin) = &pin {
-            pin.require_live().expect("live anyNA owner after callback");
-        }
-        f.require_active()
-            .expect("original anyNA owner after callback");
-    };
-    let x = args.try_car().expect("anyNA input");
-    let tail = args.try_cdr().expect("anyNA argument tail");
-    let recursive = if is_list(&x) && !tail.is_nil() {
-        let flag = tail.try_car().expect("anyNA recursive flag");
-        let result = { super::asRbool(flag.as_raw(), call) != 0 };
+    OwnerToken::with_current(|owner| {
+        let pin = owner.pin().expect("live anyNA owner");
+        let f = owner.node_factory();
+        let args = f.wrap(args).expect("anyNA argument owner");
+        let call_value = (!call.is_null()).then(|| f.wrap(call).expect("anyNA call owner"));
+        let _op = (!op.is_null()).then(|| f.wrap(op).expect("anyNA operation owner"));
+        let env_value = (!env.is_null()).then(|| f.wrap(env).expect("anyNA environment owner"));
+        let check = || {
+            if let Some(pin) = &pin {
+                pin.require_live().expect("live anyNA owner after callback");
+            }
+            f.require_active()
+                .expect("original anyNA owner after callback");
+        };
+        let x = args.try_car().expect("anyNA input");
+        let tail = args.try_cdr().expect("anyNA argument tail");
+        let recursive = if is_list(&x) && !tail.is_nil() {
+            let flag = tail.try_car().expect("anyNA recursive flag");
+            let result = { super::asRbool(flag.as_raw(), call) != 0 };
+            check();
+            result
+        } else {
+            false
+        };
+        let dispatch = call_value
+            .as_ref()
+            .filter(|call| !call.is_nil())
+            .and_then(|call| {
+                env_value
+                    .as_ref()
+                    .filter(|env| !env.is_nil())
+                    .map(|_| NestedDispatch {
+                        call,
+                        op,
+                        args: &args,
+                        env,
+                    })
+            });
+        let result = scan(&x, recursive, env, &owner, dispatch, &check);
         check();
         result
-    } else {
-        false
-    };
-    let dispatch = call_value
-        .as_ref()
-        .filter(|call| !call.is_nil())
-        .and_then(|call| {
-            env_value
-                .as_ref()
-                .filter(|env| !env.is_nil())
-                .map(|_| NestedDispatch {
-                    call,
-                    op,
-                    args: &args,
-                    env,
-                })
-        });
-    let result = scan(&x, recursive, env, &owner, dispatch, &check);
-    check();
-    result
+    })
+    .expect("active anyNA owner")
 }
 
 fn is_list(x: &Sexp<'_>) -> bool {
@@ -62,7 +64,7 @@ fn leaf(x: &Sexp<'_>, recursive: bool, env: SEXP, check: &impl Fn()) -> bool {
     if x.is_object() || (is_list(x) && !recursive) {
         // Preserve the default method's any(is.na(x)) fallback. The owning
         // input and expression guards survive arbitrary is.na methods and GC.
-        unsafe {
+        {
             let is_na = crate::sexp::symbol::install_str("is.na");
             let any = crate::sexp::symbol::install_str("any");
             let e0 = crate::sexp::constructors::Rf_lang2(is_na, x.as_raw());

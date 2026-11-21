@@ -28,56 +28,57 @@ use crate::sexp::protect::protect;
 /// the GNU scalar/vector wrapper spelling.
 pub(crate) unsafe fn do_sample_internal(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let args = owner
-            .sexp(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let call = owner
-            .sexp(crate::mainutils::errors::R_getCurrentCall())
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || {
-            let n_arg = CAR(args.as_raw());
-            let size_arg = CAR(CDR(args.as_raw()));
-            let replace_arg = CAR(CDR(CDR(args.as_raw())));
-            let prob_arg = CAR(CDR(CDR(CDR(args.as_raw()))));
-            if XLENGTH(size_arg) != 1 {
-                crate::sexp::context::r_error("invalid 'size' argument");
-            }
-            if XLENGTH(replace_arg) != 1 {
-                crate::sexp::context::r_error("invalid 'replace' argument");
-            }
-            let replace = crate::mainutils::coerce::asLogical(replace_arg);
-            owner
-                .require_active()
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let _pin = owner
+                .pin()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if replace == crate::sexp::ffi::NA_INTEGER {
-                crate::sexp::context::r_error("invalid 'replace' argument");
-            }
-            let n = crate::mainutils::coerce::asReal(n_arg);
-            owner
-                .require_active()
+            let args = owner
+                .sexp(args)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let size = crate::mainutils::coerce::asReal(size_arg);
-            owner
-                .require_active()
+            let call = owner
+                .sexp(crate::mainutils::errors::R_getCurrentCall())
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !n.is_finite() || n < 0. || n > 4.5e15 || (size > 0. && n == 0.) {
-                crate::sexp::context::r_error("invalid first argument");
-            }
-            if !size.is_finite() || size < 0. {
-                crate::sexp::context::r_error("invalid 'size' argument");
-            }
-            if replace == 0 && size.trunc() > n {
-                crate::sexp::context::r_error(
-                    "cannot take a sample larger than the population when 'replace = FALSE'",
-                );
-            }
-            sample_int_values(n as i64, size_arg, replace_arg, prob_arg)
+            crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || {
+                let n_arg = CAR(args.as_raw());
+                let size_arg = CAR(CDR(args.as_raw()));
+                let replace_arg = CAR(CDR(CDR(args.as_raw())));
+                let prob_arg = CAR(CDR(CDR(CDR(args.as_raw()))));
+                if XLENGTH(size_arg) != 1 {
+                    crate::sexp::context::r_error("invalid 'size' argument");
+                }
+                if XLENGTH(replace_arg) != 1 {
+                    crate::sexp::context::r_error("invalid 'replace' argument");
+                }
+                let replace = crate::mainutils::coerce::asLogical(replace_arg);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if replace == crate::sexp::ffi::NA_INTEGER {
+                    crate::sexp::context::r_error("invalid 'replace' argument");
+                }
+                let n = crate::mainutils::coerce::asReal(n_arg);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let size = crate::mainutils::coerce::asReal(size_arg);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if !n.is_finite() || n < 0. || n > 4.5e15 || (size > 0. && n == 0.) {
+                    crate::sexp::context::r_error("invalid first argument");
+                }
+                if !size.is_finite() || size < 0. {
+                    crate::sexp::context::r_error("invalid 'size' argument");
+                }
+                if replace == 0 && size.trunc() > n {
+                    crate::sexp::context::r_error(
+                        "cannot take a sample larger than the population when 'replace = FALSE'",
+                    );
+                }
+                sample_int_values(n as i64, size_arg, replace_arg, prob_arg)
+            })
         })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 

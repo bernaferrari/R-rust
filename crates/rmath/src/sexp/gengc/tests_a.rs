@@ -161,16 +161,16 @@ fn collected_node_resources_reenter_only_after_collection_and_arena_lends_end() 
                 assert!(!(*owner).gc_state.in_progress);
                 assert!(!super::super::memory::is_arena_lent(owner));
             });
-            // SAFETY: the enclosing session is live throughout collection
-            // and this destructor; its exclusive arena lend has ended.
-            let owner = unsafe { super::super::owner::OwnerToken::current().unwrap() };
-            let value = owner
-                .node_factory()
-                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
-                .unwrap();
-            full_gc();
-            assert!(value.is_live());
-            self.0.set(self.0.get() + 1);
+            super::super::owner::OwnerToken::with_current(|owner| {
+                let value = owner
+                    .node_factory()
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                    .unwrap();
+                full_gc();
+                assert!(value.is_live());
+                self.0.set(self.0.get() + 1);
+            })
+            .unwrap()
         }
     }
     let session = RSession::new_for_gc_tests();

@@ -1691,9 +1691,7 @@ pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut val_guard = protect(val);
         drop(data);
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
-            // SAFETY: `val` is a live promise SEXP and `R_GlobalEnv` is the
-            // canonical global environment for this evaluation.
-            val = unsafe { Rf_eval(val, R_GlobalEnv()) };
+            val = Rf_eval(val, R_GlobalEnv());
             val_guard = protect(val);
             if !val.is_null() {
                 SET_NAMED(val, 2);

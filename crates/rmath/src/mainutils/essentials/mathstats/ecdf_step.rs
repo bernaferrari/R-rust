@@ -183,7 +183,7 @@ pub fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `getInitial(object, data)` — call `attr(object,"initial")`.
 pub fn do_get_initial(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let obj = CAR(args);
         let ini = crate::sexp::attrib_core::getAttrib(
             obj,
@@ -479,7 +479,7 @@ pub fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `plot.stepfun(x)` — knot/height coordinates (no device).
 pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let mut fun = CAR(args);
         if TYPEOF(fun) == SEXPTYPE::PROMSXP {
             fun = crate::eval::eval::Rf_eval(fun, rho);

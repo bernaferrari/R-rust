@@ -1089,70 +1089,153 @@ fn invoke_native_handler(
         object::SexpError,
         owner::{OwnerToken, with_runtime},
     };
-    let owner = unsafe { OwnerToken::current()? };
-    let managed = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-    // Primitive projections may be immortal native table entries. Capture
-    // their immutable identity before allocating a local owning operator.
-    let operator_identity =
-        unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(operator) }
-            .map(|descriptor| (descriptor.name, descriptor.op.typeof_()));
-    with_runtime(&managed, |access| {
-        let domain = access.domain();
-        let call = domain.wrap(call)?.into_owned()?;
-        let environment = domain.wrap(environment)?.into_owned()?;
-        let operands =
-            NativeOperands::capture(domain.wrap(arguments)?.into_owned()?, interface, access)?;
-        access.require_active()?;
-        let name = operands.lookup_name()?;
-        access.require_active()?;
-        let package = operands.package.as_ref().map(|(name, _, _)| name.as_str());
-        let handle = operands
-            .symbol_address
-            .as_ref()
-            .map(|address| {
-                access.with_native(|owner| crate::mainutils::native_symbols::symbol(owner, address))
-            })
-            .transpose()?;
-        let routine = if let Some(handle) = &handle {
-            Some(handle.routine()?)
-        } else {
-            name.as_deref()
-                .and_then(|name| lookup_bundled_native(name, package))
-        };
-        // Rejection happens before any argument-list construction, wrapper
-        // allocation, or native callback. The pointer descriptor is definitive.
-        if let Some(routine) = routine {
-            routine
-                .validate_request(interface, operands.payload.len())
-                .map_err(|error| native_admission_error(error.to_string()))?;
-        } else if native_extension_policy_enabled() {
-            native_extension_policy_error(call.as_raw(), &interface.to_string());
-        }
-        let result = if let Some(routine) = routine {
-            match interface {
-                NativeInterface::Call => {
-                    let pointers: Vec<_> = operands
-                        .payload
-                        .iter()
-                        .map(|(value, _)| value.as_raw())
-                        .collect();
-                    access.require_active()?;
-                    if let Some(handle) = &handle {
-                        handle.routine()?;
-                    }
-                    unsafe { routine.invoke_call(&pointers) }
-                        .map_err(|error| native_admission_error(error.to_string()))?
-                }
-                NativeInterface::External | NativeInterface::External2 => {
-                    let allocator = access.allocator(&domain)?;
-                    let list = operands.argument_list(&allocator, false, &domain.nil())?;
-                    if interface == NativeInterface::External {
+    OwnerToken::with_current(|owner| {
+        let managed = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+        // Primitive projections may be immortal native table entries. Capture
+        // their immutable identity before allocating a local owning operator.
+        let operator_identity =
+            unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(operator) }
+                .map(|descriptor| (descriptor.name, descriptor.op.typeof_()));
+        with_runtime(&managed, |access| {
+            let domain = access.domain();
+            let call = domain.wrap(call)?.into_owned()?;
+            let environment = domain.wrap(environment)?.into_owned()?;
+            let operands =
+                NativeOperands::capture(domain.wrap(arguments)?.into_owned()?, interface, access)?;
+            access.require_active()?;
+            let name = operands.lookup_name()?;
+            access.require_active()?;
+            let package = operands.package.as_ref().map(|(name, _, _)| name.as_str());
+            let handle = operands
+                .symbol_address
+                .as_ref()
+                .map(|address| {
+                    access.with_native(|owner| crate::mainutils::native_symbols::symbol(owner, address))
+                })
+                .transpose()?;
+            let routine = if let Some(handle) = &handle {
+                Some(handle.routine()?)
+            } else {
+                name.as_deref()
+                    .and_then(|name| lookup_bundled_native(name, package))
+            };
+            // Rejection happens before any argument-list construction, wrapper
+            // allocation, or native callback. The pointer descriptor is definitive.
+            if let Some(routine) = routine {
+                routine
+                    .validate_request(interface, operands.payload.len())
+                    .map_err(|error| native_admission_error(error.to_string()))?;
+            } else if native_extension_policy_enabled() {
+                native_extension_policy_error(call.as_raw(), &interface.to_string());
+            }
+            let result = if let Some(routine) = routine {
+                match interface {
+                    NativeInterface::Call => {
+                        let pointers: Vec<_> = operands
+                            .payload
+                            .iter()
+                            .map(|(value, _)| value.as_raw())
+                            .collect();
                         access.require_active()?;
                         if let Some(handle) = &handle {
                             handle.routine()?;
                         }
-                        unsafe { routine.invoke_external1(list.as_raw(), operands.payload.len()) }
-                    } else {
+                        unsafe { routine.invoke_call(&pointers) }
+                            .map_err(|error| native_admission_error(error.to_string()))?
+                    }
+                    NativeInterface::External | NativeInterface::External2 => {
+                        let allocator = access.allocator(&domain)?;
+                        let list = operands.argument_list(&allocator, false, &domain.nil())?;
+                        if interface == NativeInterface::External {
+                            access.require_active()?;
+                            if let Some(handle) = &handle {
+                                handle.routine()?;
+                            }
+                            unsafe { routine.invoke_external1(list.as_raw(), operands.payload.len()) }
+                        } else {
+                            let operator = match operator_identity {
+                                Some((name, kind)) => access.with_native(|owner| {
+                                    let pointer = unsafe {
+                                        crate::eval::primitive::make_primitive_binding(name, kind)
+                                    };
+                                    owner.sexp(pointer)?.into_owned()
+                                })?,
+                                None => domain.nil(),
+                            };
+                            access.require_active()?;
+                            if let Some(handle) = &handle {
+                                handle.routine()?;
+                            }
+                            unsafe {
+                                routine.invoke_external2(
+                                    call.as_raw(),
+                                    operator.as_raw(),
+                                    list.as_raw(),
+                                    environment.as_raw(),
+                                    operands.payload.len(),
+                                )
+                            }
+                        }
+                        .map_err(|error| native_admission_error(error.to_string()))?
+                    }
+                }
+            } else {
+                // Trusted host extensions still supply an erased foreign ABI.
+                // They are deliberately separate from typed bundled admission.
+                let allocator = access.allocator(&domain)?;
+                let list = operands.argument_list(&allocator, true, &domain.nil())?;
+                let mut function: DL_FUNC = None;
+                let mut symbol = R_RegisteredNativeSymbol::new(if interface == NativeInterface::Call {
+                    R_CALL_SYM
+                } else {
+                    R_EXTERNAL_SYM
+                });
+                let mut buffer = [0; MAX_SYMBOL_BYTES];
+                unsafe {
+                    resolveNativeRoutine(
+                        list.as_raw(),
+                        &mut function,
+                        &mut symbol,
+                        &mut buffer,
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        call.as_raw(),
+                        environment.as_raw(),
+                    );
+                }
+                access.require_active()?;
+                if function.is_none() {
+                    return Err(native_admission_error(format!(
+                        "C symbol name {:?} not in load table",
+                        name.unwrap_or_default()
+                    )));
+                }
+                symbol
+                    .validate(operands.payload.len())
+                    .map_err(native_admission_error)?;
+                let payload = operands.argument_list(&allocator, false, &domain.nil())?;
+                match interface {
+                    NativeInterface::Call => {
+                        let pointers: Vec<_> = operands
+                            .payload
+                            .iter()
+                            .map(|(value, _)| value.as_raw())
+                            .collect();
+                        access.require_active()?;
+                        unsafe {
+                            R_doDotCall(function, pointers.len() as c_int, &pointers, call.as_raw())
+                        }
+                    }
+                    NativeInterface::External => {
+                        // SAFETY: trusted host policy assumes the foreign symbol
+                        // implements this ABI. Runtime registration metadata is
+                        // tracked separately; bundled functions never reach here.
+                        let function: unsafe extern "C-unwind" fn(SEXP) -> SEXP =
+                            unsafe { std::mem::transmute_copy(&function) };
+                        access.require_active()?;
+                        unsafe { function(payload.as_raw()) }
+                    }
+                    NativeInterface::External2 => {
                         let operator = match operator_identity {
                             Some((name, kind)) => access.with_native(|owner| {
                                 let pointer = unsafe {
@@ -1162,106 +1245,24 @@ fn invoke_native_handler(
                             })?,
                             None => domain.nil(),
                         };
+                        let function: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
+                            unsafe { std::mem::transmute_copy(&function) };
                         access.require_active()?;
-                        if let Some(handle) = &handle {
-                            handle.routine()?;
-                        }
                         unsafe {
-                            routine.invoke_external2(
+                            function(
                                 call.as_raw(),
                                 operator.as_raw(),
-                                list.as_raw(),
+                                payload.as_raw(),
                                 environment.as_raw(),
-                                operands.payload.len(),
                             )
                         }
                     }
-                    .map_err(|error| native_admission_error(error.to_string()))?
                 }
-            }
-        } else {
-            // Trusted host extensions still supply an erased foreign ABI.
-            // They are deliberately separate from typed bundled admission.
-            let allocator = access.allocator(&domain)?;
-            let list = operands.argument_list(&allocator, true, &domain.nil())?;
-            let mut function: DL_FUNC = None;
-            let mut symbol = R_RegisteredNativeSymbol::new(if interface == NativeInterface::Call {
-                R_CALL_SYM
-            } else {
-                R_EXTERNAL_SYM
-            });
-            let mut buffer = [0; MAX_SYMBOL_BYTES];
-            unsafe {
-                resolveNativeRoutine(
-                    list.as_raw(),
-                    &mut function,
-                    &mut symbol,
-                    &mut buffer,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    call.as_raw(),
-                    environment.as_raw(),
-                );
-            }
+            };
             access.require_active()?;
-            if function.is_none() {
-                return Err(native_admission_error(format!(
-                    "C symbol name {:?} not in load table",
-                    name.unwrap_or_default()
-                )));
-            }
-            symbol
-                .validate(operands.payload.len())
-                .map_err(native_admission_error)?;
-            let payload = operands.argument_list(&allocator, false, &domain.nil())?;
-            match interface {
-                NativeInterface::Call => {
-                    let pointers: Vec<_> = operands
-                        .payload
-                        .iter()
-                        .map(|(value, _)| value.as_raw())
-                        .collect();
-                    access.require_active()?;
-                    unsafe {
-                        R_doDotCall(function, pointers.len() as c_int, &pointers, call.as_raw())
-                    }
-                }
-                NativeInterface::External => {
-                    // SAFETY: trusted host policy assumes the foreign symbol
-                    // implements this ABI. Runtime registration metadata is
-                    // tracked separately; bundled functions never reach here.
-                    let function: unsafe extern "C-unwind" fn(SEXP) -> SEXP =
-                        unsafe { std::mem::transmute_copy(&function) };
-                    access.require_active()?;
-                    unsafe { function(payload.as_raw()) }
-                }
-                NativeInterface::External2 => {
-                    let operator = match operator_identity {
-                        Some((name, kind)) => access.with_native(|owner| {
-                            let pointer = unsafe {
-                                crate::eval::primitive::make_primitive_binding(name, kind)
-                            };
-                            owner.sexp(pointer)?.into_owned()
-                        })?,
-                        None => domain.nil(),
-                    };
-                    let function: unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP =
-                        unsafe { std::mem::transmute_copy(&function) };
-                    access.require_active()?;
-                    unsafe {
-                        function(
-                            call.as_raw(),
-                            operator.as_raw(),
-                            payload.as_raw(),
-                            environment.as_raw(),
-                        )
-                    }
-                }
-            }
-        };
-        access.require_active()?;
-        let result = check_retval(call.as_raw(), result);
-        domain.wrap(result)?.into_owned()
+            let result = check_retval(call.as_raw(), result);
+            domain.wrap(result)?.into_owned()
+        })?
     })?
 }
 
@@ -2190,7 +2191,7 @@ mod typed_native_handler_tests {
                 .close();
         }));
         unsafe {
-            let instance = crate::sexp::owner::OwnerToken::current().unwrap().as_ptr();
+            let instance = crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap();
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
         }

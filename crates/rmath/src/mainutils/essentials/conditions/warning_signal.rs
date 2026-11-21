@@ -100,7 +100,7 @@ pub(crate) fn condition_entry_value<'s>(
 }
 
 pub(crate) fn calling_handler_stack_from_args(args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
-    unsafe {
+    {
         let factory = condition_entry_factory();
         let rho = condition_entry_value(&factory, rho);
         let mut cursor = condition_entry_value(&factory, args);

@@ -204,31 +204,33 @@ fn owned_portable_dataset_fetch_keeps_all_selected_operands_after_argument_detac
         if callback_observed.replace(true) {
             return;
         }
-        let owner = unsafe { OwnerToken::current() }.unwrap();
-        unsafe {
-            (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 0;
-        }
-        let args = domain
-            .wrap(
-                argument_identity
-                    .heap_identity()
-                    .projection_of_link(argument_identity.link().unwrap())
-                    .unwrap(),
-            )
-            .unwrap();
-        unsafe {
-            crate::sexp::accessors::SETCAR(args.as_raw(), domain.nil().as_raw());
-            crate::sexp::accessors::SETCDR(args.as_raw(), domain.nil().as_raw());
-        }
-        crate::sexp::gengc::full_gc();
-        for identity in selected.iter().flatten() {
-            assert!(
-                identity.is_live(),
-                "selected operands must own independent roots"
-            );
-            assert!(identity.root_count() > 0);
-        }
+        OwnerToken::with_current(|owner| {
+            unsafe {
+                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                (*owner.as_ptr()).memory_state.gc_force_wait = 0;
+            }
+            let args = domain
+                .wrap(
+                    argument_identity
+                        .heap_identity()
+                        .projection_of_link(argument_identity.link().unwrap())
+                        .unwrap(),
+                )
+                .unwrap();
+            unsafe {
+                crate::sexp::accessors::SETCAR(args.as_raw(), domain.nil().as_raw());
+                crate::sexp::accessors::SETCDR(args.as_raw(), domain.nil().as_raw());
+            }
+            crate::sexp::gengc::full_gc();
+            for identity in selected.iter().flatten() {
+                assert!(
+                    identity.is_live(),
+                    "selected operands must own independent roots"
+                );
+                assert!(identity.root_count() > 0);
+            }
+        })
+        .unwrap()
     }));
     first_collection(&session);
     let result = fetch_arguments(&session, &arguments);
@@ -286,12 +288,14 @@ fn owned_portable_dataset_decompressed_output_survives_its_allocation_callback()
         }
         // First allocation is the selected compressed record. The second is
         // its decoded raw output: collect while that producer is still active.
-        let owner = unsafe { OwnerToken::current() }.unwrap();
-        unsafe {
-            (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 0;
-        }
-        crate::sexp::gengc::full_gc();
+        OwnerToken::with_current(|owner| {
+            unsafe {
+                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                (*owner.as_ptr()).memory_state.gc_force_wait = 0;
+            }
+            crate::sexp::gengc::full_gc();
+        })
+        .unwrap()
     }));
     first_collection(&session);
     let result = fetch_arguments(&session, &arguments);

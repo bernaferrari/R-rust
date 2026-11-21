@@ -701,7 +701,7 @@ fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usi
 /// closure (per-column format dispatch, corrupt-frame padding, exact
 /// as.data.frame.list assembly with cut.names).
 pub fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("format.data.frame"),

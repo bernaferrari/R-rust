@@ -141,108 +141,110 @@ impl Counts {
     }
 }
 pub(super) fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    active(owner);
-    if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
-        crate::mainutils::essentials::base_error("Non-numeric argument to mathematical function");
-    }
-    let na = XLENGTH(sa);
-    let nb = XLENGTH(sb);
-    let n = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
-    // SAFETY: the owner is active. The legacy allocator keeps its typed
-    // resource error and GC retry semantics before the result is rooted.
-    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-    active(owner);
-    let _result = protect(result);
-    active(owner);
-    if n == 0 {
-        if na == 0 {
-            copy_math_attributes(owner, result, sa)
+    OwnerToken::with_current(|owner| {
+        active(owner);
+        if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
+            crate::mainutils::essentials::base_error(
+                "Non-numeric argument to mathematical function",
+            );
         }
-        return result;
-    }
-    // SAFETY: numeric inputs were validated; coercion may run providers.
-    let sa = crate::main::coerce::coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-    active(owner);
-    let _sa = protect(sa);
-    active(owner);
-    let sb = crate::main::coerce::coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-    active(owner);
-    let _sb = protect(sb);
-    active(owner);
-    let inputs = [(sa, na), (sb, nb)];
-    prepare_inputs(owner, &inputs);
-    let (lower, log) = match kind {
-        Kind::Density => (true, as_integer(owner, sI) != 0),
-        _ => (as_integer(owner, sI) != 0, as_integer(owner, sJ) != 0),
-    };
-    check_inputs(owner, &inputs);
-    let a = owner
-        .sexp(sa)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let b = owner
-        .sexp(sb)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let mut output = SexpMut::try_from_checked(
-        owner
-            .sexp(result)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
-    )
-    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let mut warn = false;
-    for i in 0..n {
-        let x = a
-            .try_real_elt(i % na)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        let size = b
-            .try_real_elt(i % nb)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let na = XLENGTH(sa);
+        let nb = XLENGTH(sb);
+        let n = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
+        // SAFETY: the owner is active. The legacy allocator keeps its typed
+        // resource error and GC retry semantics before the result is rooted.
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         active(owner);
-        let value = if R_IsNA(x) || R_IsNA(size) {
-            NA_REAL
-        } else if x.is_nan() || size.is_nan() {
-            f64::NAN
-        } else {
-            let mut counts = Counts::new(matches!(kind, Kind::Quantile));
-            let value = match kind {
-                Kind::Density => {
-                    crate::nmath::dist::signrank::dsignrank_with_count(x, size, log, |k, n| {
-                        counts.get(owner, k, n)
-                    })
-                }
-                Kind::Cdf => crate::nmath::dist::signrank::psignrank_with_count(
-                    x,
-                    size,
-                    lower,
-                    log,
-                    |k, n| counts.get(owner, k, n),
-                ),
-                Kind::Quantile => crate::nmath::dist::signrank::qsignrank_with_count(
-                    x,
-                    size,
-                    lower,
-                    log,
-                    |k, n| counts.get(owner, k, n),
-                ),
-            };
-            if value.is_nan() {
-                warn = true;
+        let _result = protect(result);
+        active(owner);
+        if n == 0 {
+            if na == 0 {
+                copy_math_attributes(owner, result, sa)
             }
-            value
-        };
+            return result;
+        }
+        // SAFETY: numeric inputs were validated; coercion may run providers.
+        let sa = crate::main::coerce::coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
         active(owner);
-        output
-            .try_set_real_elt(i, value)
+        let _sa = protect(sa);
+        active(owner);
+        let sb = crate::main::coerce::coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        active(owner);
+        let _sb = protect(sb);
+        active(owner);
+        let inputs = [(sa, na), (sb, nb)];
+        prepare_inputs(owner, &inputs);
+        let (lower, log) = match kind {
+            Kind::Density => (true, as_integer(owner, sI) != 0),
+            _ => (as_integer(owner, sI) != 0, as_integer(owner, sJ) != 0),
+        };
+        check_inputs(owner, &inputs);
+        let a = owner
+            .sexp(sa)
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    }
-    if warn {
-        nans_produced();
-    }
-    active(owner);
-    finish_math_attributes(owner, result, &inputs, n);
-    result
+        let b = owner
+            .sexp(sb)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let mut output = SexpMut::try_from_checked(
+            owner
+                .sexp(result)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
+        )
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let mut warn = false;
+        for i in 0..n {
+            let x = a
+                .try_real_elt(i % na)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+            let size = b
+                .try_real_elt(i % nb)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+            active(owner);
+            let value = if R_IsNA(x) || R_IsNA(size) {
+                NA_REAL
+            } else if x.is_nan() || size.is_nan() {
+                f64::NAN
+            } else {
+                let mut counts = Counts::new(matches!(kind, Kind::Quantile));
+                let value = match kind {
+                    Kind::Density => {
+                        crate::nmath::dist::signrank::dsignrank_with_count(x, size, log, |k, n| {
+                            counts.get(owner, k, n)
+                        })
+                    }
+                    Kind::Cdf => crate::nmath::dist::signrank::psignrank_with_count(
+                        x,
+                        size,
+                        lower,
+                        log,
+                        |k, n| counts.get(owner, k, n),
+                    ),
+                    Kind::Quantile => crate::nmath::dist::signrank::qsignrank_with_count(
+                        x,
+                        size,
+                        lower,
+                        log,
+                        |k, n| counts.get(owner, k, n),
+                    ),
+                };
+                if value.is_nan() {
+                    warn = true;
+                }
+                value
+            };
+            active(owner);
+            output
+                .try_set_real_elt(i, value)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        }
+        if warn {
+            nans_produced();
+        }
+        active(owner);
+        finish_math_attributes(owner, result, &inputs, n);
+        result
+    })
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 
 #[cfg(test)]
@@ -302,14 +304,16 @@ mod tests {
                 if observed.replace(true) {
                     return;
                 }
-                let owner = unsafe { OwnerToken::current().unwrap() };
-                unsafe {
-                    (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-                }
-                assert!(cached(owner, 10).is_none());
-                let nested = table(owner, 5);
-                assert_eq!(nested.try_real_elt(0), Ok(1.0));
-                crate::sexp::gengc::full_gc();
+                OwnerToken::with_current(|owner| {
+                    unsafe {
+                        (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                    }
+                    assert!(cached(owner, 10).is_none());
+                    let nested = table(owner, 5);
+                    assert_eq!(nested.try_real_elt(0), Ok(1.0));
+                    crate::sexp::gengc::full_gc();
+                })
+                .unwrap()
             }))
         });
         session.with_active_in(|owner| unsafe {
@@ -336,7 +340,7 @@ mod tests {
                     return;
                 }
                 unsafe {
-                    (*OwnerToken::current().unwrap().as_ptr())
+                    (*OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                         .memory_state
                         .gc_force_gap = 0;
                 }

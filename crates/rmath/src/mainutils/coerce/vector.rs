@@ -755,8 +755,7 @@ impl super::pairlist::Native for PairlistNative {
 
 fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
     let result = (|| {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
-            .weak_owner()
+        let owner = crate::sexp::owner::OwnerToken::with_current(|owner| owner.weak_owner())?
             .ok_or(crate::sexp::SexpError::RootUnavailable)?;
         crate::sexp::owner::with_runtime(&owner, |access| {
             let value = access.domain().wrap(value)?.into_owned()?;

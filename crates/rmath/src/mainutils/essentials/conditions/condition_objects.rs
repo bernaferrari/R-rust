@@ -103,7 +103,7 @@ fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
             let arguments = allocator.pairlist_cell(&argument, &domain.nil(), &domain.nil())?;
             let coercion = allocator.call(&function, &arguments)?;
             let converted = access.with_native(|original| {
-                let value = unsafe { crate::eval::eval::Rf_eval(coercion.as_raw(), base.as_raw()) };
+                let value = crate::eval::eval::Rf_eval(coercion.as_raw(), base.as_raw());
                 original.require_active()?;
                 original.sexp(value)?.into_owned()
             })?;

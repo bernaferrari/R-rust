@@ -19,27 +19,29 @@ fn owner_exit(close: bool) {
         .weak_owner()
         .unwrap();
     let mut guard = original.as_ref().unwrap().with_active(|| unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current().unwrap();
-        let factory = owner.node_factory();
-        let mut arguments = PairlistBuilder::from_factory(factory.clone());
-        for value in [
-            factory.strings(&["cleanup-owner.txt"]).unwrap(),
-            factory.strings(&["w"]).unwrap(),
-        ] {
-            arguments.push(value, None).unwrap();
-        }
-        let arguments = arguments.finish().unwrap();
-        let connection = factory
-            .wrap(crate::mainutils::connections::do_file(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                arguments.as_raw(),
-                std::ptr::null_mut(),
-            ))
-            .unwrap();
-        let mut guard = ConnectionCleanup::new(owner, true);
-        guard.attach(connection.try_integer_elt(0).unwrap());
-        guard
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let factory = owner.node_factory();
+            let mut arguments = PairlistBuilder::from_factory(factory.clone());
+            for value in [
+                factory.strings(&["cleanup-owner.txt"]).unwrap(),
+                factory.strings(&["w"]).unwrap(),
+            ] {
+                arguments.push(value, None).unwrap();
+            }
+            let arguments = arguments.finish().unwrap();
+            let connection = factory
+                .wrap(crate::mainutils::connections::do_file(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    arguments.as_raw(),
+                    std::ptr::null_mut(),
+                ))
+                .unwrap();
+            let mut guard = ConnectionCleanup::new(owner, true);
+            guard.attach(connection.try_integer_elt(0).unwrap());
+            guard
+        })
+        .unwrap()
     });
     assert_eq!(weak.allocation_strong_count(), 2);
     if close {

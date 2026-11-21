@@ -37,7 +37,7 @@ fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
 
 /// R's `exists(x, envir)` — check name exists.
 pub fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
         let sym = install_cstr(&CString::new(name.as_str()).unwrap_or_default());
@@ -518,7 +518,7 @@ pub fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `rm(list, envir)` — remove objects.
 pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         // Upstream rm is a closure: `...` dots arrive UNEVALUATED (this is
         // an unevaluated builtin) and must each be a symbol or character
         // string naming a binding; the named formals are evaluated here.

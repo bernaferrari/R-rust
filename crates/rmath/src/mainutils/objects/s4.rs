@@ -44,9 +44,7 @@ pub(crate) fn sexp_to_string(x: SEXP) -> Option<String> {
 
 /// Resolve the original methods class with owning roots through evaluation.
 pub(crate) fn make_class_by_name(name: &str) -> crate::sexp::object::Sexp<'static> {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|failure| error(&failure.to_string()));
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
         let pin = owner
             .pin()
             .unwrap_or_else(|failure| error(&failure.to_string()));
@@ -91,7 +89,8 @@ pub(crate) fn make_class_by_name(name: &str) -> crate::sexp::object::Sexp<'stati
             .wrap(result)
             .and_then(|value| value.into_owned())
             .unwrap_or_else(|failure| error(&failure.to_string()))
-    }
+    })
+    .unwrap_or_else(|failure| error(&failure.to_string()))
 }
 
 pub fn R_do_new_object(class_def: SEXP) -> SEXP {
@@ -173,11 +172,10 @@ pub fn isS4(s: SEXP) -> c_int {
 }
 
 pub fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
-    unsafe {
-        if s.is_null() {
-            return s;
-        }
-        let owner = crate::sexp::owner::OwnerToken::current().expect("active asS4 owner");
+    if s.is_null() {
+        return s;
+    }
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
         let pin = owner.pin().expect("live asS4 owner");
         let factory = owner.node_factory();
         let _source_root = factory.wrap(s).expect("asS4 input belongs to active owner");
@@ -247,7 +245,8 @@ pub fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
         }
 
         s
-    }
+    })
+    .expect("active asS4 owner")
 }
 
 // ---------------------------------------------------------------------------

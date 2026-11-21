@@ -635,7 +635,7 @@ unsafe fn ge_raster_rotate(
 
 #[inline]
 fn ge_eval_with_rho(e: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::eval::eval::Rf_eval(e, rho) }
+    crate::eval::eval::Rf_eval(e, rho)
 }
 
 fn checked_sexp(x: SEXP) -> Sexp<'static> {
@@ -1059,74 +1059,74 @@ pub fn GEunregisterSystem(registerIndex: c_int) {
 /// the returned raw value according to the usual R protection rules.
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        // Keep the original runtime allocated while callbacks may reenter or
-        // revoke it; never continue dispatch under an unrelated instance.
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            .unwrap_or_else(|| {
-                crate::sexp::context::r_error("graphics event requires a managed runtime owner")
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            // Keep the original runtime allocated while callbacks may reenter or
+            // revoke it; never continue dispatch under an unrelated instance.
+            let _pin = owner
+                .pin()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .unwrap_or_else(|| {
+                    crate::sexp::context::r_error("graphics event requires a managed runtime owner")
+                });
+            let factory = owner.node_factory();
+            let rooted_data = if data.is_null() {
+                None
+            } else {
+                Some(
+                    factory
+                        .wrap(data)
+                        .and_then(|value| value.into_owned())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                )
+            };
+            let data = rooted_data
+                .as_ref()
+                .map_or(std::ptr::null_mut(), |value| value.as_raw());
+            // Registry-owned devices have a checked identity across callbacks.
+            // Native external descriptors remain borrowed under the caller's ABI contract.
+            let device = device_registry::device_registration(headless_device(dev));
+            let systems = with_graphics_engine_state(|state| {
+                (
+                    state.graphics_system_registered,
+                    state.graphics_system_callbacks,
+                )
             });
-        let factory = owner.node_factory();
-        let rooted_data = if data.is_null() {
-            None
-        } else {
-            Some(
-                factory
-                    .wrap(data)
-                    .and_then(|value| value.into_owned())
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            )
-        };
-        let data = rooted_data
-            .as_ref()
-            .map_or(std::ptr::null_mut(), |value| value.as_raw());
-        // Registry-owned devices have a checked identity across callbacks.
-        // Native external descriptors remain borrowed under the caller's ABI contract.
-        let device = device_registry::device_registration(headless_device(dev));
-        let systems = with_graphics_engine_state(|state| {
-            (
-                state.graphics_system_registered,
-                state.graphics_system_callbacks,
-            )
-        });
-        let mut result = None;
-        for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
-            if registered {
-                if let Some(callback) = callback {
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let callback_result = callback(event, dev, data);
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    if device
-                        .is_some_and(|ticket| !device_registry::device_registration_is_live(ticket))
-                    {
-                        crate::sexp::context::r_error(
-                            "graphics device was closed during event callback",
-                        );
-                    }
-                    if !callback_result.is_null() {
-                        let value = factory
-                            .wrap(callback_result)
-                            .and_then(|value| value.into_owned())
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                        if value.as_raw() != R_NilValue() {
-                            result = Some(value);
+            let mut result = None;
+            for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
+                if registered {
+                    if let Some(callback) = callback {
+                        owner
+                            .require_active()
+                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        let callback_result = callback(event, dev, data);
+                        owner
+                            .require_active()
+                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        if device
+                            .is_some_and(|ticket| !device_registry::device_registration_is_live(ticket))
+                        {
+                            crate::sexp::context::r_error(
+                                "graphics device was closed during event callback",
+                            );
+                        }
+                        if !callback_result.is_null() {
+                            let value = factory
+                                .wrap(callback_result)
+                                .and_then(|value| value.into_owned())
+                                .unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
+                            if value.as_raw() != R_NilValue() {
+                                result = Some(value);
+                            }
                         }
                     }
                 }
             }
-        }
-        result
-            .as_ref()
-            .map_or_else(nil_value, |value| value.as_raw())
+            result
+                .as_ref()
+                .map_or_else(nil_value, |value| value.as_raw())
+        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 

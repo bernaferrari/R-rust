@@ -215,19 +215,17 @@ pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let index = if args.is_null() || args == R_NilValue() {
-            NA_INTEGER
-        } else {
-            crate::mainutils::coerce::asInteger(CAR(args))
-        };
-        let cell = dots_cell_at(current_dots(rho), index);
-        let value = CAR(cell);
-        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            Rf_eval(value, rho)
-        } else {
-            value
-        }
+    let index = if args.is_null() || args == R_NilValue() {
+        NA_INTEGER
+    } else {
+        crate::mainutils::coerce::asInteger(CAR(args))
+    };
+    let cell = dots_cell_at(current_dots(rho), index);
+    let value = CAR(cell);
+    if TYPEOF(value) == SEXPTYPE::PROMSXP {
+        Rf_eval(value, rho)
+    } else {
+        value
     }
 }
 
@@ -1313,20 +1311,18 @@ pub fn R_findBCInterpreterExpression() -> SEXP {
 /// argument is missing.
 // no_mangle removed (duplicate)
 pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let sym = CAR(args);
-        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            // Evaluate and check
-            let val = Rf_eval(sym, rho);
-            if val == R_MissingArg() {
-                Rf_ScalarLogical(TRUE)
-            } else {
-                Rf_ScalarLogical(FALSE)
-            }
+    let sym = CAR(args);
+    if TYPEOF(sym) != SEXPTYPE::SYMSXP {
+        // Evaluate and check
+        let val = Rf_eval(sym, rho);
+        if val == R_MissingArg() {
+            Rf_ScalarLogical(TRUE)
         } else {
-            let missing = crate::sexp::envir::R_missing(sym, rho);
-            Rf_ScalarLogical(missing)
+            Rf_ScalarLogical(FALSE)
         }
+    } else {
+        let missing = crate::sexp::envir::R_missing(sym, rho);
+        Rf_ScalarLogical(missing)
     }
 }
 

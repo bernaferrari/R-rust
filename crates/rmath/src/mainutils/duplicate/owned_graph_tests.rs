@@ -16,7 +16,7 @@ fn force_next_gc(session: &RSession) {
 
 fn disable_forced_gc() {
     unsafe {
-        (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+        (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
             .memory_state
             .gc_force_gap = 0;
     }

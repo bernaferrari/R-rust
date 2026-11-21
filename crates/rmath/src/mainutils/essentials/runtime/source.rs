@@ -477,7 +477,7 @@ fn eval_source_expressions(
     deparse_opts: c_int,
     max_deparse_length: usize,
 ) -> SEXP {
-    unsafe {
+    {
         let exprs = brace_or_single_expressions(exprs);
         let _exprs = protect(exprs);
         let n = if exprs.is_null() || exprs == R_NilValue() {

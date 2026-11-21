@@ -76,27 +76,25 @@ pub(crate) fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
 }
 
 pub(crate) fn format_summary_via_format(x: Sexp<'_>) -> Option<Vec<String>> {
-    unsafe {
-        let sym = crate::sexp::symbol::install_str("format");
-        let fun = crate::sexp::envir::findFun(sym, crate::sexp::globals::R_GlobalEnv());
-        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
-            return None;
-        }
-        let call = crate::sexp::constructors::Rf_lang2(fun, x.as_raw());
-        let _call = crate::sexp::protect::protect(call);
-        let res = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
-        if res.is_null() || crate::sexp::accessors::TYPEOF(res) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let n = crate::sexp::accessors::XLENGTH(res);
-        let mut values = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let charsxp = crate::sexp::accessors::STRING_ELT(res, i);
-            let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
-            values.push(String::from_utf8_lossy(&bytes).trim().to_string());
-        }
-        Some(values)
+    let sym = crate::sexp::symbol::install_str("format");
+    let fun = crate::sexp::envir::findFun(sym, crate::sexp::globals::R_GlobalEnv());
+    if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+        return None;
     }
+    let call = crate::sexp::constructors::Rf_lang2(fun, x.as_raw());
+    let _call = crate::sexp::protect::protect(call);
+    let res = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+    if res.is_null() || crate::sexp::accessors::TYPEOF(res) != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let n = crate::sexp::accessors::XLENGTH(res);
+    let mut values = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let charsxp = crate::sexp::accessors::STRING_ELT(res, i);
+        let bytes = crate::sexp::accessors::charsxp_as_utf8(charsxp);
+        values.push(String::from_utf8_lossy(&bytes).trim().to_string());
+    }
+    Some(values)
 }
 
 pub(crate) fn format_summary_default(x: Sexp<'_>) -> Option<String> {

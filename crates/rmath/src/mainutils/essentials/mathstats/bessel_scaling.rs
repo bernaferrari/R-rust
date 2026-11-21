@@ -42,7 +42,7 @@ pub(super) fn prepare(
     let raw = crate::sexp::constructors::Rf_lang3(plus.as_raw(), one.as_raw(), logical.as_raw());
     owner.require_active()?;
     let expression = root(raw)?;
-    let raw = unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw()) };
+    let raw = crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw());
     owner.require_active()?;
     root(raw)
 }

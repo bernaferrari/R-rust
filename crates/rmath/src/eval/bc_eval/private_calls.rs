@@ -211,9 +211,8 @@ pub(crate) fn private_target_call_owned(
                             environment.as_raw(),
                         );
                         access.require_active()?;
-                        let result = unsafe {
-                            super::super::eval::Rf_eval(call.as_raw(), environment.as_raw())
-                        };
+                        let result =
+                            super::super::eval::Rf_eval(call.as_raw(), environment.as_raw());
                         access.require_active()?;
                         owner.sexp(result)?.into_owned()
                     })
@@ -299,7 +298,7 @@ pub(crate) fn private_replacement_path_owned(
             })?;
             let object = access.with_native(|owner| {
                 owner
-                    .sexp(unsafe { super::super::eval::Rf_eval(root.as_raw(), lookup.as_raw()) })?
+                    .sexp(super::super::eval::Rf_eval(root.as_raw(), lookup.as_raw()))?
                     .into_owned()
             })?;
             access.require_active()?;
@@ -507,7 +506,7 @@ pub(crate) fn private_replacement_chain_owned(
             })?;
             let object = access.with_native(|owner| {
                 owner
-                    .sexp(unsafe { super::super::eval::Rf_eval(root.as_raw(), lookup.as_raw()) })?
+                    .sexp(super::super::eval::Rf_eval(root.as_raw(), lookup.as_raw()))?
                     .into_owned()
             })?;
             access.require_active()?;
@@ -632,23 +631,24 @@ pub(crate) fn with_stack_rooted<F, R>(_stack: &R_bcstack_t, extra: SEXP, f: F) -
 where
     F: FnOnce() -> R,
 {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    let weak = owner
-        .weak_owner()
-        .unwrap_or_else(|| bc_error("bytecode callback requires a runtime owner"));
-    let pin = weak
-        .pin()
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    let _extra = if extra.is_null() {
-        None
-    } else {
-        Some(own_operand(extra))
-    };
-    let result = f();
-    pin.require_live()
-        .unwrap_or_else(|error| bc_error(error.to_string()));
-    result
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let weak = owner
+            .weak_owner()
+            .unwrap_or_else(|| bc_error("bytecode callback requires a runtime owner"));
+        let pin = weak
+            .pin()
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        let _extra = if extra.is_null() {
+            None
+        } else {
+            Some(own_operand(extra))
+        };
+        let result = f();
+        pin.require_live()
+            .unwrap_or_else(|error| bc_error(error.to_string()));
+        result
+    })
+    .unwrap_or_else(|error| bc_error(error.to_string()))
 }
 
 pub(crate) fn bind_for_element(

@@ -569,42 +569,42 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
         if !is_valid_r_finalizer(fin) {
             error("finalizer must be a function or NULL");
         }
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error_| error(&error_.to_string()));
-        let factory = owner.node_factory();
-        // Inputs must stay alive until the finalizer is registered, including
-        // the weak key during allocation callbacks before registration.
-        let _inputs: Vec<_> = [key, val, fin]
-            .into_iter()
-            .filter(|raw| !raw.is_null())
-            .map(|raw| {
-                factory
-                    .wrap(raw)
-                    .unwrap_or_else(|error_| error(&error_.to_string()))
-            })
-            .collect();
-        let result = factory
-            .allocate(|arena| {
-                let key = arena.link_from_projection(key)?;
-                let val = arena.link_from_projection(val)?;
-                let fin = arena.link_from_projection(fin)?;
-                let node = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-                if node.is_null() {
-                    return None;
-                }
-                (*node).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-                    carval: key,
-                    cdrval: val,
-                    tagval: fin,
-                });
-                Some(node)
-            })
-            .unwrap_or_else(|error_| error(&error_.to_string()));
-        let s = result.as_raw();
-        if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
-            register_r_finalizer(key, fin, _onexit != 0);
-        }
-        s
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let factory = owner.node_factory();
+            // Inputs must stay alive until the finalizer is registered, including
+            // the weak key during allocation callbacks before registration.
+            let _inputs: Vec<_> = [key, val, fin]
+                .into_iter()
+                .filter(|raw| !raw.is_null())
+                .map(|raw| {
+                    factory
+                        .wrap(raw)
+                        .unwrap_or_else(|error_| error(&error_.to_string()))
+                })
+                .collect();
+            let result = factory
+                .allocate(|arena| {
+                    let key = arena.link_from_projection(key)?;
+                    let val = arena.link_from_projection(val)?;
+                    let fin = arena.link_from_projection(fin)?;
+                    let node = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+                    if node.is_null() {
+                        return None;
+                    }
+                    (*node).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
+                        carval: key,
+                        cdrval: val,
+                        tagval: fin,
+                    });
+                    Some(node)
+                })
+                .unwrap_or_else(|error_| error(&error_.to_string()));
+            let s = result.as_raw();
+            if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
+                register_r_finalizer(key, fin, _onexit != 0);
+            }
+            s
+        }).unwrap_or_else(|error_| error(&error_.to_string()))
     }
 }
 

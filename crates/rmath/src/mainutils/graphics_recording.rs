@@ -81,32 +81,32 @@ pub(crate) unsafe fn install_namespace_replay(namespace: SEXP) {
             object::SexpError,
             owner::{OwnerToken, with_runtime},
         };
-        let owner = unsafe { OwnerToken::current() }?;
-        let runtime = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-        let namespace = owner.sexp(namespace)?.into_owned()?;
-        with_runtime(&runtime, |access| {
-            let domain = access.domain();
-            let expressions = access
-                .with_arena(|arena| {
-                    crate::eval::parser::parse_expressions(
-                        include_str!("portable_replay_namespace.R"),
-                        arena,
-                        domain,
-                    )
-                })?
-                .map_err(|error| SexpError::EvaluationFailed {
-                    message: format!("invalid recording namespace wrapper: {error:?}"),
-                })?;
-            for expression in &expressions {
-                access.with_native(|token| {
-                    let value = unsafe {
-                        crate::eval::eval::Rf_eval(expression.as_raw(), namespace.as_raw())
-                    };
-                    token.sexp(value)?.into_owned()?;
-                    Ok(())
-                })?;
-            }
-            Ok(())
+        OwnerToken::with_current(|owner| {
+            let runtime = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+            let namespace = owner.sexp(namespace)?.into_owned()?;
+            with_runtime(&runtime, |access| {
+                let domain = access.domain();
+                let expressions = access
+                    .with_arena(|arena| {
+                        crate::eval::parser::parse_expressions(
+                            include_str!("portable_replay_namespace.R"),
+                            arena,
+                            domain,
+                        )
+                    })?
+                    .map_err(|error| SexpError::EvaluationFailed {
+                        message: format!("invalid recording namespace wrapper: {error:?}"),
+                    })?;
+                for expression in &expressions {
+                    access.with_native(|token| {
+                        let value =
+                            crate::eval::eval::Rf_eval(expression.as_raw(), namespace.as_raw());
+                        token.sexp(value)?.into_owned()?;
+                        Ok(())
+                    })?;
+                }
+                Ok(())
+            })?
         })?
     })();
     result.unwrap_or_else(|error: crate::sexp::object::SexpError| base_error(error.to_string()));

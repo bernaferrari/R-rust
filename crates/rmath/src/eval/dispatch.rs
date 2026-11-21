@@ -349,7 +349,7 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
                         .try_car()
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let value = factory
-                        .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                        .wrap(Rf_eval(expr.as_raw(), rho.as_raw()))
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     bumped.retain(&value);
                     result
@@ -383,7 +383,7 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
             }
         } else {
             let value = factory
-                .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                .wrap(Rf_eval(expr.as_raw(), rho.as_raw()))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             bumped.retain(&value);
             result
@@ -1398,7 +1398,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
                         expr
                     } else {
                         let value = factory
-                            .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                            .wrap(Rf_eval(expr.as_raw(), rho.as_raw()))
                             .unwrap_or_else(|error| {
                                 crate::sexp::context::r_error(error.to_string())
                             });
@@ -1420,7 +1420,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
                 expr
             } else {
                 let value = factory
-                    .wrap(unsafe { Rf_eval(expr.as_raw(), rho.as_raw()) })
+                    .wrap(Rf_eval(expr.as_raw(), rho.as_raw()))
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 bumped.retain(&value);
                 value

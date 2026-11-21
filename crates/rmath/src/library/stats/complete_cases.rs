@@ -124,66 +124,31 @@ fn check_vector_na(
 }
 
 pub fn compcases(args: SEXP) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch;
-    // the token scopes every checked element access below.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let mut len: c_int = -1;
-    let nil = R_NilValue();
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let mut len: c_int = -1;
+        let nil = R_NilValue();
 
-    let mut args_iter = CDR(args);
+        let mut args_iter = CDR(args);
 
-    // First pass: determine length
-    let mut s = args_iter;
-    while !s.is_null() && s != nil {
-        let car = CAR(s);
-        // GNU isList(NULL) is true and the inner walk is empty, so NULL is a no-op.
-        if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
-            s = CDR(s);
-            continue;
-        }
-        if Rf_isList(car) != 0 {
-            let mut t = car;
-            while !t.is_null() && t != nil {
-                let u = CAR(t);
-                if isMatrix(u) {
-                    let dim = getAttrib(u, R_DimSymbol());
-                    if len < 0 {
-                        len = dim_nrow(owner, dim);
-                    } else if len != dim_nrow(owner, dim) {
-                        Rf_error_cstr(c"not all arguments have the same length");
-
-                        return nil;
-                    }
-                } else if isVector(u) {
-                    if len < 0 {
-                        len = LENGTH(u);
-                    } else if len != LENGTH(u) {
-                        Rf_error_cstr(c"not all arguments have the same length");
-
-                        return nil;
-                    }
-                } else {
-                    Rf_error_cstr(c"invalid 'type' of argument");
-
-                    return nil;
-                }
-                t = CDR(t);
+        // First pass: determine length
+        let mut s = args_iter;
+        while !s.is_null() && s != nil {
+            let car = CAR(s);
+            // GNU isList(NULL) is true and the inner walk is empty, so NULL is a no-op.
+            if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
+                s = CDR(s);
+                continue;
             }
-        } else if isNewList(car) {
-            let mut t = car;
-            let nt = length_sexp(t);
-            if nt > 0 {
-                let mut it: c_int = 0;
-                while it < nt {
-                    let u = VECTOR_ELT(t, it as i64);
+            if Rf_isList(car) != 0 {
+                let mut t = car;
+                while !t.is_null() && t != nil {
+                    let u = CAR(t);
                     if isMatrix(u) {
                         let dim = getAttrib(u, R_DimSymbol());
                         if len < 0 {
                             len = dim_nrow(owner, dim);
                         } else if len != dim_nrow(owner, dim) {
-                            Rf_error_cstr(
-                                c"not all arguments have the same length"
-                            );
+                            Rf_error_cstr(c"not all arguments have the same length");
 
                             return nil;
                         }
@@ -191,9 +156,7 @@ pub fn compcases(args: SEXP) -> SEXP {
                         if len < 0 {
                             len = LENGTH(u);
                         } else if len != LENGTH(u) {
-                            Rf_error_cstr(
-                                c"not all arguments have the same length"
-                            );
+                            Rf_error_cstr(c"not all arguments have the same length");
 
                             return nil;
                         }
@@ -202,88 +165,124 @@ pub fn compcases(args: SEXP) -> SEXP {
 
                         return nil;
                     }
-                    it += 1;
+                    t = CDR(t);
                 }
-            } else {
-                let u = getAttrib(t, R_RowNamesSymbol());
-                if !u.is_null() && u != nil {
-                    if len < 0 {
-                        len = LENGTH(u);
-                    } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER) {
-                        Rf_error_cstr(c"not all arguments have the same length");
+            } else if isNewList(car) {
+                let mut t = car;
+                let nt = length_sexp(t);
+                if nt > 0 {
+                    let mut it: c_int = 0;
+                    while it < nt {
+                        let u = VECTOR_ELT(t, it as i64);
+                        if isMatrix(u) {
+                            let dim = getAttrib(u, R_DimSymbol());
+                            if len < 0 {
+                                len = dim_nrow(owner, dim);
+                            } else if len != dim_nrow(owner, dim) {
+                                Rf_error_cstr(
+                                    c"not all arguments have the same length"
+                                );
 
-                        return nil;
+                                return nil;
+                            }
+                        } else if isVector(u) {
+                            if len < 0 {
+                                len = LENGTH(u);
+                            } else if len != LENGTH(u) {
+                                Rf_error_cstr(
+                                    c"not all arguments have the same length"
+                                );
+
+                                return nil;
+                            }
+                        } else {
+                            Rf_error_cstr(c"invalid 'type' of argument");
+
+                            return nil;
+                        }
+                        it += 1;
+                    }
+                } else {
+                    let u = getAttrib(t, R_RowNamesSymbol());
+                    if !u.is_null() && u != nil {
+                        if len < 0 {
+                            len = LENGTH(u);
+                        } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER) {
+                            Rf_error_cstr(c"not all arguments have the same length");
+
+                            return nil;
+                        }
                     }
                 }
-            }
-        } else if isMatrix(car) {
-            let dim = getAttrib(car, R_DimSymbol());
-            if len < 0 {
-                len = dim_nrow(owner, dim);
-            } else if len != dim_nrow(owner, dim) {
-                Rf_error_cstr(c"not all arguments have the same length");
+            } else if isMatrix(car) {
+                let dim = getAttrib(car, R_DimSymbol());
+                if len < 0 {
+                    len = dim_nrow(owner, dim);
+                } else if len != dim_nrow(owner, dim) {
+                    Rf_error_cstr(c"not all arguments have the same length");
+
+                    return nil;
+                }
+            } else if isVector(car) {
+                if len < 0 {
+                    len = LENGTH(car);
+                } else if len != LENGTH(car) {
+                    Rf_error_cstr(c"not all arguments have the same length");
+
+                    return nil;
+                }
+            } else {
+                Rf_error_cstr(c"invalid 'type' of argument");
 
                 return nil;
             }
-        } else if isVector(car) {
-            if len < 0 {
-                len = LENGTH(car);
-            } else if len != LENGTH(car) {
-                Rf_error_cstr(c"not all arguments have the same length");
+            s = CDR(s);
+        }
 
-                return nil;
-            }
-        } else {
-            Rf_error_cstr(c"invalid 'type' of argument");
+        if len < 0 {
+            Rf_error_cstr(c"no input has determined the number of cases");
 
             return nil;
         }
-        s = CDR(s);
-    }
 
-    if len < 0 {
-        Rf_error_cstr(c"no input has determined the number of cases");
+        let rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+        let _rval_guard = protect_sexp(rval);
+        let mut rval_buf = vec![1; len as usize];
 
-        return nil;
-    }
-
-    let rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
-    let _rval_guard = protect_sexp(rval);
-    let mut rval_buf = vec![1; len as usize];
-
-    // Second pass: check for NAs
-    s = args_iter;
-    while !s.is_null() && s != nil {
-        let car = CAR(s);
-        if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
+        // Second pass: check for NAs
+        s = args_iter;
+        while !s.is_null() && s != nil {
+            let car = CAR(s);
+            if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
+                s = CDR(s);
+                continue;
+            }
+            if Rf_isList(car) != 0 {
+                let mut t = car;
+                while !t.is_null() && t != nil {
+                    let u = CAR(t);
+                    check_vector_na(owner, u, &mut rval_buf, len);
+                    t = CDR(t);
+                }
+            } else if isNewList(car) {
+                let t = car;
+                let nt = length_sexp(t);
+                let mut it: c_int = 0;
+                while it < nt {
+                    let u = VECTOR_ELT(t, it as i64);
+                    check_vector_na(owner, u, &mut rval_buf, len);
+                    it += 1;
+                }
+            } else {
+                check_vector_na(owner, car, &mut rval_buf, len);
+            }
             s = CDR(s);
-            continue;
         }
-        if Rf_isList(car) != 0 {
-            let mut t = car;
-            while !t.is_null() && t != nil {
-                let u = CAR(t);
-                check_vector_na(owner, u, &mut rval_buf, len);
-                t = CDR(t);
-            }
-        } else if isNewList(car) {
-            let t = car;
-            let nt = length_sexp(t);
-            let mut it: c_int = 0;
-            while it < nt {
-                let u = VECTOR_ELT(t, it as i64);
-                check_vector_na(owner, u, &mut rval_buf, len);
-                it += 1;
-            }
-        } else {
-            check_vector_na(owner, car, &mut rval_buf, len);
-        }
-        s = CDR(s);
-    }
 
-    let mut rval_out = checked(SexpMut::try_from_checked(checked(owner.sexp(rval))));
-    for (index, value) in rval_buf.iter().enumerate() {
-        checked(rval_out.try_set_logical_elt(index as R_xlen_t, *value));
-    }
-    rval
+        let mut rval_out = checked(SexpMut::try_from_checked(checked(owner.sexp(rval))));
+        for (index, value) in rval_buf.iter().enumerate() {
+            checked(rval_out.try_set_logical_elt(index as R_xlen_t, *value));
+        }
+        rval
+    }))
 }

@@ -96,100 +96,98 @@ fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: SEXP) {
 /// Default method for `$`. Performs partial matching on pair-list and
 /// vector-list names, and also handles environment subsetting.
 pub fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let _input_guard = protect(input);
-        let mut x = x;
-        let _x_guard = protect(x);
+    let _input_guard = protect(input);
+    let mut x = x;
+    let _x_guard = protect(x);
 
-        /* Get the length of the input string for partial matching */
-        let slen = char_bytes(input).len();
+    /* Get the length of the input string for partial matching */
+    let slen = char_bytes(input).len();
 
-        // GNU subset.c: S4 classes extending environment store the env in .xData.
-        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
-            x = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ANYSXP.as_c_int());
-            if x.is_null() || x == R_NilValue() {
-                std::panic::panic_any(RError {
-                    message: "$ operator not defined for this S4 class".to_string(),
-                });
-            }
-            let _extracted = protect(x);
+    // GNU subset.c: S4 classes extending environment store the env in .xData.
+    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
+        x = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ANYSXP.as_c_int());
+        if x.is_null() || x == R_NilValue() {
+            std::panic::panic_any(RError {
+                message: "$ operator not defined for this S4 class".to_string(),
+            });
         }
+        let _extracted = protect(x);
+    }
 
-        /* Pair-list / language / nil case */
-        if isPairListOrNil(x) {
-            let mut xmatch: SEXP = R_NilValue();
-            let mut havematch: c_int = 0;
-            let mut y = x;
-            while !isNull(y) {
-                match pstrmatch(TAG(y), input, slen) {
-                    pmatch::EXACT_MATCH => {
-                        let result = CAR(y);
-                        RAISE_NAMED(result, NAMED(x));
-                        return result;
-                    }
-                    pmatch::PARTIAL_MATCH => {
-                        havematch += 1;
-                        xmatch = y;
-                    }
-                    pmatch::NO_MATCH => {}
+    /* Pair-list / language / nil case */
+    if isPairListOrNil(x) {
+        let mut xmatch: SEXP = R_NilValue();
+        let mut havematch: c_int = 0;
+        let mut y = x;
+        while !isNull(y) {
+            match pstrmatch(TAG(y), input, slen) {
+                pmatch::EXACT_MATCH => {
+                    let result = CAR(y);
+                    RAISE_NAMED(result, NAMED(x));
+                    return result;
                 }
-                y = CDR(y);
-            }
-            if havematch == 1 {
-                /* unique partial match */
-                warn_partial_match_dollar_condition(call, input, TAG(xmatch));
-                let result = CAR(xmatch);
-                RAISE_NAMED(result, NAMED(x));
-                return result;
-            }
-            return R_NilValue();
-        }
-
-        /* Vector list case */
-        if isVectorList(x) {
-            let nlist = getAttrib(x, sym_Names());
-            let n = xlength(nlist);
-            let mut imatch: R_xlen_t = -1;
-            let mut havematch: c_int = 0;
-
-            for i in 0..n {
-                match pstrmatch(STRING_ELT(nlist, i), input, slen) {
-                    pmatch::EXACT_MATCH => {
-                        let result = VECTOR_ELT(x, i);
-                        RAISE_NAMED(result, NAMED(x));
-                        return result;
-                    }
-                    pmatch::PARTIAL_MATCH => {
-                        havematch += 1;
-                        if havematch == 1 {
-                            /* For partial matches, mark NAMEDMAX to prevent aliasing */
-                            let val = VECTOR_ELT(x, i);
-                            ENSURE_NAMEDMAX(val);
-                            SET_VECTOR_ELT(x, i, val);
-                        }
-                        imatch = i;
-                    }
-                    pmatch::NO_MATCH => {}
+                pmatch::PARTIAL_MATCH => {
+                    havematch += 1;
+                    xmatch = y;
                 }
+                pmatch::NO_MATCH => {}
             }
+            y = CDR(y);
+        }
+        if havematch == 1 {
+            /* unique partial match */
+            warn_partial_match_dollar_condition(call, input, TAG(xmatch));
+            let result = CAR(xmatch);
+            RAISE_NAMED(result, NAMED(x));
+            return result;
+        }
+        return R_NilValue();
+    }
 
-            if havematch == 1 {
-                /* unique partial match */
-                warn_partial_match_dollar_condition(call, input, STRING_ELT(nlist, imatch));
-                let result = VECTOR_ELT(x, imatch);
-                RAISE_NAMED(result, NAMED(x));
-                return result;
+    /* Vector list case */
+    if isVectorList(x) {
+        let nlist = getAttrib(x, sym_Names());
+        let n = xlength(nlist);
+        let mut imatch: R_xlen_t = -1;
+        let mut havematch: c_int = 0;
+
+        for i in 0..n {
+            match pstrmatch(STRING_ELT(nlist, i), input, slen) {
+                pmatch::EXACT_MATCH => {
+                    let result = VECTOR_ELT(x, i);
+                    RAISE_NAMED(result, NAMED(x));
+                    return result;
+                }
+                pmatch::PARTIAL_MATCH => {
+                    havematch += 1;
+                    if havematch == 1 {
+                        /* For partial matches, mark NAMEDMAX to prevent aliasing */
+                        let val = VECTOR_ELT(x, i);
+                        ENSURE_NAMEDMAX(val);
+                        SET_VECTOR_ELT(x, i, val);
+                    }
+                    imatch = i;
+                }
+                pmatch::NO_MATCH => {}
             }
-            return R_NilValue();
         }
 
-        /* Environment case */
-        if isEnvironment(x) {
-            let sym = installTrChar(input);
-            let mut y = R_findVarInFrame(x, sym);
-            if isPromise(y) {
-                let owner = crate::sexp::owner::OwnerToken::current()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if havematch == 1 {
+            /* unique partial match */
+            warn_partial_match_dollar_condition(call, input, STRING_ELT(nlist, imatch));
+            let result = VECTOR_ELT(x, imatch);
+            RAISE_NAMED(result, NAMED(x));
+            return result;
+        }
+        return R_NilValue();
+    }
+
+    /* Environment case */
+    if isEnvironment(x) {
+        let sym = installTrChar(input);
+        let mut y = R_findVarInFrame(x, sym);
+        if isPromise(y) {
+            crate::sexp::owner::OwnerToken::with_current(|owner| {
                 let promise = owner
                     .sexp(y)
                     .and_then(crate::sexp::object::Sexp::into_owned)
@@ -203,29 +201,27 @@ pub fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                 authority
                     .require_active()
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            }
-            if y != R_UnboundValue() {
-                if NAMED(y) != 0 {
-                    ENSURE_NAMEDMAX(y);
-                } else {
-                    RAISE_NAMED(y, NAMED(x));
-                }
-                return y;
-            }
-            return R_NilValue();
+            })
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         }
-
-        /* Atomic vector case */
-        if isVectorAtomic(x) {
-            let _ = call;
-            crate::mainutils::errors::errorcall_str(
-                call,
-                "$ operator is invalid for atomic vectors",
-            );
+        if y != R_UnboundValue() {
+            if NAMED(y) != 0 {
+                ENSURE_NAMEDMAX(y);
+            } else {
+                RAISE_NAMED(y, NAMED(x));
+            }
+            return y;
         }
-
-        /* Default: not subsettable */
-        errorcallNotSubsettable(x, call);
-        R_NilValue() /* unreachable */
+        return R_NilValue();
     }
+
+    /* Atomic vector case */
+    if isVectorAtomic(x) {
+        let _ = call;
+        crate::mainutils::errors::errorcall_str(call, "$ operator is invalid for atomic vectors");
+    }
+
+    /* Default: not subsettable */
+    errorcallNotSubsettable(x, call);
+    R_NilValue() /* unreachable */
 }

@@ -148,7 +148,7 @@ fn apply_custom_replacement(
                 crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
                     .map_err(|message| SexpError::EvaluationFailed { message })?
             } else {
-                let result = unsafe { Rf_eval(setter.as_raw(), environment.as_raw()) };
+                let result = Rf_eval(setter.as_raw(), environment.as_raw());
                 owner.sexp(result).ok()
             };
             let Some(function) = function else {
@@ -286,53 +286,51 @@ fn apply_custom_replacement(
 ///
 /// `op` carries PRIMVAL: 1 or 3 for `<-`/`=`, 2 for `<<-`.
 pub fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if args == R_NilValue() || CDR(args) == R_NilValue() || CDDR(args) != R_NilValue() {
-            error("wrong argument count for assignment");
+    if args == R_NilValue() || CDR(args) == R_NilValue() || CDDR(args) != R_NilValue() {
+        error("wrong argument count for assignment");
+    }
+
+    let lhs = CAR(args);
+    let primval = crate::mainutils::relop::PRIMVAL(op);
+
+    match TYPEOF(lhs) {
+        t if t == SEXPTYPE::STRSXP => {
+            let sym = crate::mainutils::subset::installTrChar(STRING_ELT(lhs, 0));
+            let rhs = Rf_eval(CADR(args), rho);
+            let _rhs_guard = protect(rhs);
+            assign_to_symbol(sym, rhs, primval, rho);
+            rhs
         }
-
-        let lhs = CAR(args);
-        let primval = crate::mainutils::relop::PRIMVAL(op);
-
-        match TYPEOF(lhs) {
-            t if t == SEXPTYPE::STRSXP => {
-                let sym = crate::mainutils::subset::installTrChar(STRING_ELT(lhs, 0));
-                let rhs = Rf_eval(CADR(args), rho);
-                let _rhs_guard = protect(rhs);
-                assign_to_symbol(sym, rhs, primval, rho);
-                rhs
+        t if t == SEXPTYPE::SYMSXP => {
+            let rhs_expr = CADR(args);
+            let rhs = Rf_eval(rhs_expr, rho);
+            let _rhs_guard = protect(rhs);
+            // `b <- a` and `c <- b <- a` share one value, so the object
+            // must be NAMED 2 and `[[<-` duplicates. `a <- f()` is a fresh
+            // call and stays at 1 (`named(m)` after `m <- matrix()` is 1).
+            let rhs_head = if TYPEOF(rhs_expr) == SEXPTYPE::LANGSXP {
+                CAR(rhs_expr)
+            } else {
+                R_NilValue()
+            };
+            let already_bound = TYPEOF(rhs_expr) == SEXPTYPE::SYMSXP
+                || (TYPEOF(rhs_head) == SEXPTYPE::SYMSXP
+                    && matches!(
+                        symbol_name(rhs_head).as_deref(),
+                        Some("<-") | Some("=") | Some("<<-")
+                    ));
+            if already_bound && NAMED(rhs) == 1 {
+                crate::sexp::accessors::SET_NAMED(rhs, 2);
             }
-            t if t == SEXPTYPE::SYMSXP => {
-                let rhs_expr = CADR(args);
-                let rhs = Rf_eval(rhs_expr, rho);
-                let _rhs_guard = protect(rhs);
-                // `b <- a` and `c <- b <- a` share one value, so the object
-                // must be NAMED 2 and `[[<-` duplicates. `a <- f()` is a fresh
-                // call and stays at 1 (`named(m)` after `m <- matrix()` is 1).
-                let rhs_head = if TYPEOF(rhs_expr) == SEXPTYPE::LANGSXP {
-                    CAR(rhs_expr)
-                } else {
-                    R_NilValue()
-                };
-                let already_bound = TYPEOF(rhs_expr) == SEXPTYPE::SYMSXP
-                    || (TYPEOF(rhs_head) == SEXPTYPE::SYMSXP
-                        && matches!(
-                            symbol_name(rhs_head).as_deref(),
-                            Some("<-") | Some("=") | Some("<<-")
-                        ));
-                if already_bound && NAMED(rhs) == 1 {
-                    crate::sexp::accessors::SET_NAMED(rhs, 2);
-                }
-                assign_to_symbol(lhs, rhs, primval, rho);
-                rhs
-            }
-            t if t == SEXPTYPE::LANGSXP => {
-                super::runtime::set_visible(FALSE);
-                return applydefine(call, op, args, rho);
-            }
-            _ => {
-                error("invalid (do_set) left-hand side to assignment");
-            }
+            assign_to_symbol(lhs, rhs, primval, rho);
+            rhs
+        }
+        t if t == SEXPTYPE::LANGSXP => {
+            super::runtime::set_visible(FALSE);
+            return applydefine(call, op, args, rho);
+        }
+        _ => {
+            error("invalid (do_set) left-hand side to assignment");
         }
     }
 }
@@ -370,19 +368,17 @@ fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
 ///
 /// This is the equivalent of R's `evalseq()` in eval.c.
 pub fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if expr.is_null() || expr == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let mut result = R_NilValue();
-        let mut current = expr;
-        while !current.is_null() && current != R_NilValue() {
-            result = Rf_eval(CAR(current), rho);
-            current = CDR(current);
-        }
-        result
+    if expr.is_null() || expr == R_NilValue() {
+        return R_NilValue();
     }
+
+    let mut result = R_NilValue();
+    let mut current = expr;
+    while !current.is_null() && current != R_NilValue() {
+        result = Rf_eval(CAR(current), rho);
+        current = CDR(current);
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -398,116 +394,88 @@ pub fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
 /// Ported from applydefine() in eval.c:3367.
 pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let own = |raw| {
-            factory
-                .wrap(raw)
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let _pin = owner
+                .pin()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let factory = owner.node_factory();
+            let own = |raw| {
+                factory
+                    .wrap(raw)
+                    .and_then(Sexp::into_owned)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            };
+            let _call = own(call);
+            let arguments = own(args);
+            let environment = own(rho);
+            let lhs = arguments
+                .try_car()
                 .and_then(Sexp::into_owned)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let _call = own(call);
-        let arguments = own(args);
-        let environment = own(rho);
-        let lhs = arguments
-            .try_car()
-            .and_then(Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let rhs_expression = arguments
-            .try_cdr()
-            .and_then(|cell| cell.try_car())
-            .and_then(Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let flat = FlatReplacement::capture(&lhs)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let expr = lhs.as_raw();
-        if expr.is_null() || expr == R_NilValue() {
-            error("invalid complex assignment");
-        }
-
-        let rhs_owned = own(Rf_eval(rhs_expression.as_raw(), environment.as_raw()));
-        owner
-            .require_active()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let rhs = rhs_owned.as_raw();
-        // GNU begincontext(CTXT_CCODE) happens after the RHS eval, so a
-        // direct `[[<-` in the right-hand side keeps its own call.
-        let _source_call = SourceAssignCall::enter(call);
-
-        // GNU evaluates the RHS before discovering an invalid callable head,
-        // but it rejects that head before evaluating any target/index
-        // expressions. Do not turn an unsupported dynamic head into a
-        // successful no-op assignment.
-        let mut assignment_level = expr;
-        while TYPEOF(assignment_level) == SEXPTYPE::LANGSXP {
-            if replacement_fun_head(CAR(assignment_level)) == R_NilValue() {
-                error("invalid function in complex assignment");
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let rhs_expression = arguments
+                .try_cdr()
+                .and_then(|cell| cell.try_car())
+                .and_then(Sexp::into_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let flat = FlatReplacement::capture(&lhs)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let expr = lhs.as_raw();
+            if expr.is_null() || expr == R_NilValue() {
+                error("invalid complex assignment");
             }
-            assignment_level = CADR(assignment_level);
-        }
 
-        let primval = crate::mainutils::relop::PRIMVAL(op);
-        let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
+            let rhs_owned = own(Rf_eval(rhs_expression.as_raw(), environment.as_raw()));
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let rhs = rhs_owned.as_raw();
+            // GNU begincontext(CTXT_CCODE) happens after the RHS eval, so a
+            // direct `[[<-` in the right-hand side keeps its own call.
+            let _source_call = SourceAssignCall::enter(call);
 
-        if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
-            // GNU applydefine: evalseq the first argument, then
-            // `*tmp*` replacement calls while the base is still a call.
-            // Keep the cached RHS distinct from the expression observed by
-            // setter promises. Outward setters receive GNU's *vtmp* code.
-            crate::sexp::accessors::SET_NAMED(rhs, 2);
-            let tmp_owned = own(crate::sexp::symbol::install_str("*tmp*"));
-            let modified_expression = own(crate::sexp::symbol::install_str("*vtmp*"));
-            let tmp_sym = tmp_owned.as_raw();
-            let restore_tmp =
-                restore_tmp::RestoreTmp::capture(environment.clone(), tmp_owned.clone())
-                    .unwrap_or_else(|error| {
-                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                            message: error.to_string(),
-                        })
-                    });
-            restore_tmp
-                .run(|| {
-                    let mut lhs_expr = expr;
-                    let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
-                    let _chain_guard = protect(chain);
-                    let mut current_rhs = rhs_owned.clone();
-                    let mut current_expression = rhs_expression.clone();
-                    while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
-                        let assign_fn = replacement_fun_head(CAR(lhs_expr));
-                        if assign_fn == R_NilValue() {
-                            break;
-                        }
-                        crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
-                        let repl = replace_tmp_call(
-                            &own(assign_fn),
-                            &tmp_owned,
-                            &own(CDDR(lhs_expr)),
-                            &current_rhs,
-                            &current_expression,
-                            &environment,
-                        )
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                        current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
-                        owner.require_active().unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
+            // GNU evaluates the RHS before discovering an invalid callable head,
+            // but it rejects that head before evaluating any target/index
+            // expressions. Do not turn an unsupported dynamic head into a
+            // successful no-op assignment.
+            let mut assignment_level = expr;
+            while TYPEOF(assignment_level) == SEXPTYPE::LANGSXP {
+                if replacement_fun_head(CAR(assignment_level)) == R_NilValue() {
+                    error("invalid function in complex assignment");
+                }
+                assignment_level = CADR(assignment_level);
+            }
+
+            let primval = crate::mainutils::relop::PRIMVAL(op);
+            let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
+
+            if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
+                // GNU applydefine: evalseq the first argument, then
+                // `*tmp*` replacement calls while the base is still a call.
+                // Keep the cached RHS distinct from the expression observed by
+                // setter promises. Outward setters receive GNU's *vtmp* code.
+                crate::sexp::accessors::SET_NAMED(rhs, 2);
+                let tmp_owned = own(crate::sexp::symbol::install_str("*tmp*"));
+                let modified_expression = own(crate::sexp::symbol::install_str("*vtmp*"));
+                let tmp_sym = tmp_owned.as_raw();
+                let restore_tmp =
+                    restore_tmp::RestoreTmp::capture(environment.clone(), tmp_owned.clone())
+                        .unwrap_or_else(|error| {
+                            std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                                message: error.to_string(),
+                            })
                         });
-                        current_expression = modified_expression.clone();
-                        let next = CDR(chain);
-                        if !next.is_null()
-                            && next != R_NilValue()
-                            && TYPEOF(next) == SEXPTYPE::LISTSXP
-                        {
-                            chain = next;
-                        }
-                        lhs_expr = CADR(lhs_expr);
-                    }
-                    if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
-                        let assign_fn = replacement_fun_head(CAR(lhs_expr));
-                        if assign_fn != R_NilValue() {
+                restore_tmp
+                    .run(|| {
+                        let mut lhs_expr = expr;
+                        let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
+                        let _chain_guard = protect(chain);
+                        let mut current_rhs = rhs_owned.clone();
+                        let mut current_expression = rhs_expression.clone();
+                        while TYPEOF(CADR(lhs_expr)) == SEXPTYPE::LANGSXP {
+                            let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                            if assign_fn == R_NilValue() {
+                                break;
+                            }
                             crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
                             let repl = replace_tmp_call(
                                 &own(assign_fn),
@@ -517,177 +485,205 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                 &current_expression,
                                 &environment,
                             )
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
+                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                             current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
                             owner.require_active().unwrap_or_else(|error| {
                                 crate::sexp::context::r_error(error.to_string())
                             });
+                            current_expression = modified_expression.clone();
+                            let next = CDR(chain);
+                            if !next.is_null()
+                                && next != R_NilValue()
+                                && TYPEOF(next) == SEXPTYPE::LISTSXP
+                            {
+                                chain = next;
+                            }
+                            lhs_expr = CADR(lhs_expr);
                         }
-                    }
-
-                    let var_sym = CADR(lhs_expr);
-                    if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                        bind_assignment(var_sym, current_rhs.as_raw(), primval, rho);
-                    }
-                })
-                .unwrap_or_else(|error| {
-                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                        message: error.to_string(),
-                    })
-                });
-            super::runtime::set_visible(FALSE);
-            rhs
-        } else {
-            // Simple single-level assignment: x[i] <- val
-            let lhs = expr;
-            let func_sym = flat
-                .as_ref()
-                .map_or_else(|| CAR(lhs), |syntax| syntax.function.as_raw());
-
-            let assign_fn_owned = own(replacement_fun_head(func_sym));
-            let assign_fn = assign_fn_owned.as_raw();
-
-            if assign_fn == R_NilValue() {
-                return rhs;
-            }
-
-            let object_expression = flat
-                .as_ref()
-                .map_or_else(|| CADR(lhs), |syntax| syntax.object.as_raw());
-            let target_env = if forcelocal == 0 && TYPEOF(object_expression) == SEXPTYPE::SYMSXP {
-                let enc = crate::sexp::accessors::ENCLOS(rho);
-                if enc.is_null() || enc == R_NilValue() {
-                    rho
-                } else {
-                    enc
-                }
-            } else {
-                rho
-            };
-            let target_owned = own(Rf_eval(object_expression, target_env));
-            owner
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let target_expr = target_owned.as_raw();
-            let var_sym_early = object_expression;
-            let mut target_expr = target_expr;
-            if TYPEOF(var_sym_early) == SEXPTYPE::SYMSXP
-                && crate::sexp::envir::binding_is_locked_raw(rho, var_sym_early)
-            {
-                target_expr = crate::mainutils::duplicate::shallow_duplicate(target_expr);
-                let _locked_dup = protect(target_expr);
-            }
-
-            let _target_guard = protect(target_expr);
-
-            if let Some(syntax) = &flat {
-                let target = own(target_expr);
-                if let Some(result) = apply_custom_replacement(
-                    syntax,
-                    &assign_fn_owned,
-                    &target,
-                    &rhs_owned,
-                    &rhs_expression,
-                    &environment,
-                )
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                {
-                    bind_assignment(
-                        syntax.object.as_raw(),
-                        result.as_raw(),
-                        primval,
-                        environment.as_raw(),
-                    );
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    super::runtime::set_visible(FALSE);
-                    return rhs_owned.as_raw();
-                }
-            }
-
-            if symbol_name(func_sym).as_deref() == Some("$")
-                && TYPEOF(target_expr) == SEXPTYPE::ENVSXP
-                && let Some(field_sym) = dollar_field_symbol(CAR(CDDR(lhs)))
-            {
-                crate::sexp::envir::defineVar(field_sym, rhs, target_expr);
-                super::runtime::set_visible(FALSE);
-                return rhs;
-            }
-
-            let call_args = CDDR(lhs);
-            let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
-            let factory = SessionNodeFactory::new(
-                crate::sexp::owner::OwnerToken::current()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            );
-            // Keep the evaluated subscript chain owned throughout conversion,
-            // replacement-call allocation and the final writeback.
-            let slot_subs = if raw_subscript {
-                None
-            } else {
-                let target = factory
-                    .wrap(target_expr)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let mut target_links = super::dispatch::NamedArguments::new();
-                target_links.retain(&target);
-                let call_args = factory
-                    .wrap(call_args)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let environment = factory
-                    .wrap(rho)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                Some(super::dispatch::evalListKeepMissing(call_args, environment))
-            };
-            let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
-            if slot_subs.is_some() {
-                let mut cell = evaluated_subs;
-                while !cell.is_null() && cell != R_NilValue() {
-                    let sub = CAR(cell);
-                    if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
-                        let name = crate::sexp::accessors::PRINTNAME(sub);
-                        if !name.is_null() && name != R_NilValue() {
-                            let value = factory
-                                .wrap(crate::sexp::constructors::Rf_mkString(
-                                    crate::sexp::accessors::CHAR(name),
-                                ))
+                        if TYPEOF(lhs_expr) == SEXPTYPE::LANGSXP {
+                            let assign_fn = replacement_fun_head(CAR(lhs_expr));
+                            if assign_fn != R_NilValue() {
+                                crate::sexp::envir::defineVar(tmp_sym, CAR(chain), rho);
+                                let repl = replace_tmp_call(
+                                    &own(assign_fn),
+                                    &tmp_owned,
+                                    &own(CDDR(lhs_expr)),
+                                    &current_rhs,
+                                    &current_expression,
+                                    &environment,
+                                )
                                 .unwrap_or_else(|error| {
                                     crate::sexp::context::r_error(error.to_string())
                                 });
-                            crate::sexp::accessors::SETCAR(cell, value.as_raw());
+                                current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
+                                owner.require_active().unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
+                            }
                         }
-                    }
-                    cell = CDR(cell);
-                }
-            }
 
-            let result = if symbol_name(func_sym).as_deref() == Some("[")
-                && let Some(result) = try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
-            {
-                result
+                        let var_sym = CADR(lhs_expr);
+                        if !var_sym.is_null() && TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
+                            bind_assignment(var_sym, current_rhs.as_raw(), primval, rho);
+                        }
+                    })
+                    .unwrap_or_else(|error| {
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                            message: error.to_string(),
+                        })
+                    });
+                super::runtime::set_visible(FALSE);
+                rhs
             } else {
-                let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
-                let _arg_list_guard = protect(arg_list);
-                let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
-                if !repl_call.is_null() {
-                    crate::sexp::accessors::SET_TYPEOF(repl_call, SEXPTYPE::LANGSXP.as_c_int());
+                // Simple single-level assignment: x[i] <- val
+                let lhs = expr;
+                let func_sym = flat
+                    .as_ref()
+                    .map_or_else(|| CAR(lhs), |syntax| syntax.function.as_raw());
+
+                let assign_fn_owned = own(replacement_fun_head(func_sym));
+                let assign_fn = assign_fn_owned.as_raw();
+
+                if assign_fn == R_NilValue() {
+                    return rhs;
                 }
-                let _repl_call_guard = protect(repl_call);
 
-                apply_replacement_call(assign_fn, repl_call, arg_list, rho)
-            };
-            let _result_guard = protect(result);
+                let object_expression = flat
+                    .as_ref()
+                    .map_or_else(|| CADR(lhs), |syntax| syntax.object.as_raw());
+                let target_env = if forcelocal == 0 && TYPEOF(object_expression) == SEXPTYPE::SYMSXP {
+                    let enc = crate::sexp::accessors::ENCLOS(rho);
+                    if enc.is_null() || enc == R_NilValue() {
+                        rho
+                    } else {
+                        enc
+                    }
+                } else {
+                    rho
+                };
+                let target_owned = own(Rf_eval(object_expression, target_env));
+                owner
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let target_expr = target_owned.as_raw();
+                let var_sym_early = object_expression;
+                let mut target_expr = target_expr;
+                if TYPEOF(var_sym_early) == SEXPTYPE::SYMSXP
+                    && crate::sexp::envir::binding_is_locked_raw(rho, var_sym_early)
+                {
+                    target_expr = crate::mainutils::duplicate::shallow_duplicate(target_expr);
+                    let _locked_dup = protect(target_expr);
+                }
 
-            let var_sym = CADR(lhs);
-            if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                bind_assignment(var_sym, result, primval, rho);
+                let _target_guard = protect(target_expr);
+
+                if let Some(syntax) = &flat {
+                    let target = own(target_expr);
+                    if let Some(result) = apply_custom_replacement(
+                        syntax,
+                        &assign_fn_owned,
+                        &target,
+                        &rhs_owned,
+                        &rhs_expression,
+                        &environment,
+                    )
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    {
+                        bind_assignment(
+                            syntax.object.as_raw(),
+                            result.as_raw(),
+                            primval,
+                            environment.as_raw(),
+                        );
+                        owner
+                            .require_active()
+                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        super::runtime::set_visible(FALSE);
+                        return rhs_owned.as_raw();
+                    }
+                }
+
+                if symbol_name(func_sym).as_deref() == Some("$")
+                    && TYPEOF(target_expr) == SEXPTYPE::ENVSXP
+                    && let Some(field_sym) = dollar_field_symbol(CAR(CDDR(lhs)))
+                {
+                    crate::sexp::envir::defineVar(field_sym, rhs, target_expr);
+                    super::runtime::set_visible(FALSE);
+                    return rhs;
+                }
+
+                let call_args = CDDR(lhs);
+                let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
+                let factory = SessionNodeFactory::new(
+                    crate::sexp::owner::OwnerToken::current()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                );
+                // Keep the evaluated subscript chain owned throughout conversion,
+                // replacement-call allocation and the final writeback.
+                let slot_subs = if raw_subscript {
+                    None
+                } else {
+                    let target = factory
+                        .wrap(target_expr)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    let mut target_links = super::dispatch::NamedArguments::new();
+                    target_links.retain(&target);
+                    let call_args = factory
+                        .wrap(call_args)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    let environment = factory
+                        .wrap(rho)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    Some(super::dispatch::evalListKeepMissing(call_args, environment))
+                };
+                let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
+                if slot_subs.is_some() {
+                    let mut cell = evaluated_subs;
+                    while !cell.is_null() && cell != R_NilValue() {
+                        let sub = CAR(cell);
+                        if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
+                            let name = crate::sexp::accessors::PRINTNAME(sub);
+                            if !name.is_null() && name != R_NilValue() {
+                                let value = factory
+                                    .wrap(crate::sexp::constructors::Rf_mkString(
+                                        crate::sexp::accessors::CHAR(name),
+                                    ))
+                                    .unwrap_or_else(|error| {
+                                        crate::sexp::context::r_error(error.to_string())
+                                    });
+                                crate::sexp::accessors::SETCAR(cell, value.as_raw());
+                            }
+                        }
+                        cell = CDR(cell);
+                    }
+                }
+
+                let result = if symbol_name(func_sym).as_deref() == Some("[")
+                    && let Some(result) = try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+                {
+                    result
+                } else {
+                    let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
+                    let _arg_list_guard = protect(arg_list);
+                    let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                    if !repl_call.is_null() {
+                        crate::sexp::accessors::SET_TYPEOF(repl_call, SEXPTYPE::LANGSXP.as_c_int());
+                    }
+                    let _repl_call_guard = protect(repl_call);
+
+                    apply_replacement_call(assign_fn, repl_call, arg_list, rho)
+                };
+                let _result_guard = protect(result);
+
+                let var_sym = CADR(lhs);
+                if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
+                    bind_assignment(var_sym, result, primval, rho);
+                }
+
+                super::runtime::set_visible(FALSE);
+                rhs
             }
-
-            super::runtime::set_visible(FALSE);
-            rhs
-        }
+        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 

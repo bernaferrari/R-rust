@@ -416,9 +416,8 @@ pub(super) unsafe fn invoke(
     environment: SEXP,
     interface: BufferInterface,
 ) -> SexpResult<Sexp<'static>> {
-    let managed = unsafe { OwnerToken::current()? }
-        .weak_owner()
-        .ok_or(SexpError::RootUnavailable)?;
+    let managed =
+        OwnerToken::with_current(|owner| owner.weak_owner())?.ok_or(SexpError::RootUnavailable)?;
     let operator_identity =
         unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(operator) }
             .map(|descriptor| (descriptor.name, descriptor.op.typeof_()));

@@ -4,7 +4,7 @@ use super::*;
 /// through `convert` (GNU's `lapply(list(...), function(e) ...)`) and the
 /// `recursive` formal dropped. Tags are preserved.
 fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP {
-    unsafe {
+    {
         let mut out = R_NilValue();
         let mut tail: SEXP = std::ptr::null_mut();
         let mut guards: Vec<crate::sexp::protect::ProtectGuard<'static>> = Vec::new();

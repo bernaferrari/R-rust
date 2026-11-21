@@ -71,7 +71,7 @@ fn try_methods_bind(
 }
 
 fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return x;
         }

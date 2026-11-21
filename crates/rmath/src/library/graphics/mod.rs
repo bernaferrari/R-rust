@@ -78,36 +78,37 @@ fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> SEXP {
     unsafe {
         let result = (|| {
             use crate::sexp::object::{SessionNodeFactory, SexpResult};
-            let owner = crate::sexp::owner::OwnerToken::current()?;
-            let _pin = owner.pin()?;
-            let factory = SessionNodeFactory::new(owner);
-            let input = owner.sexp(args)?.into_owned()?;
-            let mut cursor = input.try_cdr()?.into_owned()?;
-            let mut labels = Vec::new();
-            for name in formals {
-                if cursor.is_nil() {
-                    break;
+            crate::sexp::owner::OwnerToken::with_current(|owner| {
+                let _pin = owner.pin()?;
+                let factory = SessionNodeFactory::new(owner);
+                let input = owner.sexp(args)?.into_owned()?;
+                let mut cursor = input.try_cdr()?.into_owned()?;
+                let mut labels = Vec::new();
+                for name in formals {
+                    if cursor.is_nil() {
+                        break;
+                    }
+                    labels.push((name, cursor.try_car()?.into_owned()?));
+                    cursor = cursor.try_cdr()?.into_owned()?;
                 }
-                labels.push((name, cursor.try_car()?.into_owned()?));
-                cursor = cursor.try_cdr()?.into_owned()?;
-            }
-            let mut built = cursor;
-            for (name, value) in labels.into_iter().rev() {
+                let mut built = cursor;
+                for (name, value) in labels.into_iter().rev() {
+                    owner.require_active()?;
+                    let name = std::ffi::CString::new(*name).expect("static graphics formal");
+                    let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+                    owner.require_active()?;
+                    let tag = owner.sexp(symbol)?.into_owned()?;
+                    built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
+                }
                 owner.require_active()?;
-                let name = std::ffi::CString::new(*name).expect("static graphics formal");
-                let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+                let drawn = if name == "rasterImage" {
+                    crate::mainutils::portable_plot::native_raster_image(built.as_raw())
+                } else {
+                    crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
+                };
                 owner.require_active()?;
-                let tag = owner.sexp(symbol)?.into_owned()?;
-                built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
-            }
-            owner.require_active()?;
-            let drawn = if name == "rasterImage" {
-                crate::mainutils::portable_plot::native_raster_image(built.as_raw())
-            } else {
-                crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
-            };
-            owner.require_active()?;
-            SexpResult::Ok(drawn)
+                SexpResult::Ok(drawn)
+            })?
         })();
         result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
@@ -117,10 +118,9 @@ fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> SEXP {
 /// Expand its original owned x/y values before the common positional adapter.
 #[cfg(feature = "renderplot-device")]
 fn draw_portable_text(args: SEXP) -> SEXP {
-    unsafe {
-        let result = (|| {
-            use crate::sexp::object::{SessionNodeFactory, SexpError, SexpResult};
-            let owner = crate::sexp::owner::OwnerToken::current()?;
+    let result = (|| {
+        use crate::sexp::object::{SessionNodeFactory, SexpError, SexpResult};
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
             let _pin = owner.pin()?;
             let factory = SessionNodeFactory::new(owner);
             let input = owner.sexp(args)?.into_owned()?;
@@ -148,9 +148,9 @@ fn draw_portable_text(args: SEXP) -> SEXP {
             );
             owner.require_active()?;
             SexpResult::Ok(drawn)
-        })();
-        result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-    }
+        })?
+    })();
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// GNU `plot.xy` passes one xy.coords list, then type, pch, lty, col, bg, cex, lwd.

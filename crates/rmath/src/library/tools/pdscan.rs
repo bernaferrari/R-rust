@@ -96,10 +96,11 @@ fn scan(access: &RuntimeAccess, input: &Sexp<'static>) -> SexpResult<Sexp<'stati
 
 pub(super) unsafe extern "C-unwind" fn package_dependencies_scan(input: SEXP) -> SEXP {
     let result = (|| {
-        let owner = unsafe { OwnerToken::current() }?;
-        let value = owner.sexp(input)?.into_owned()?;
-        let runtime = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-        with_runtime(&runtime, |access| scan(access, &value))?
+        OwnerToken::with_current(|owner| {
+            let value = owner.sexp(input)?.into_owned()?;
+            let runtime = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+            with_runtime(&runtime, |access| scan(access, &value))?
+        })?
     })();
     result
         .unwrap_or_else(|error| match error {

@@ -2,7 +2,7 @@ use super::*;
 
 /// R's `withRestarts(expr, ...)` — evaluate an expression with dynamic restarts.
 pub fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let scope = ScopedRestartStack::capture();
         let args = restart_owned(args);
         let expr = args
@@ -124,7 +124,7 @@ fn restart_stack_from_args(
     rho: SEXP,
     old_stack: SEXP,
 ) -> crate::sexp::object::Sexp<'static> {
-    unsafe {
+    {
         let factory = condition_entry_factory();
         let rho = restart_owned(rho);
         let mut cursor = restart_owned(args);
@@ -191,7 +191,7 @@ fn deparse_assert_expr(expr: SEXP) -> String {
 
 /// GNU `tools::assertError(expr)` — require `expr` to signal an error.
 pub fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -224,7 +224,7 @@ pub fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `tools::assertWarning(expr)` — require a warning, reject a bare error.
 pub fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);
         let before = crate::mainutils::errors::collect_warnings();
@@ -271,7 +271,7 @@ pub fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `tools::assertCondition(expr)` — require any condition.
 pub fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);
         let before = crate::mainutils::errors::collect_warnings();

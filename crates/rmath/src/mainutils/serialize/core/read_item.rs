@@ -41,66 +41,68 @@ type ImportedMetadata = [crate::sexp::object::Sexp<'static>; 2];
 
 fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     use crate::sexp::{instance::RuntimeValue, object::SexpError, owner::OwnerToken};
-    // SAFETY: metadata lookup runs inside an evaluated unserialize call
-    // where the current runtime owner is live.
-    let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
-    if owner.weak_owner().is_none() {
-        return Ok(None); // Explicitly borrowed native fixtures retain their old path.
-    }
-    let _pin = owner.pin().map_err(|e| e.to_string())?;
-    let pointer = owner.as_ptr();
-    // No state loan crosses allocation, collection, or provider callbacks.
-    // SAFETY: `pointer` is the pinned current owner; the cache field read
-    // is strictly local with no callback inside the borrow.
-    let cached = unsafe {
-        (*pointer)
-            .serialize_state
-            .imported_bytecode_metadata
-            .clone()
-    };
-    if let [Some(marker), Some(hint)] = cached.map(|value| value.owned()) {
-        return Ok(Some([marker, hint]));
-    }
-    let factory = owner.node_factory();
-    let make = |number| {
-        let value = factory
-            .allocate(|arena| {
-                crate::sexp::builder::scalar_integer_in(arena, number).map(|value| value.as_raw())
-            })?
-            .into_owned()?;
-        let node = value.allocation()?;
-        let heap = node.heap_identity();
-        let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-        header.sxpinfo.set_named(3);
-        heap.replace_node(node, header)
-            .ok_or(SexpError::StaleAllocation)?;
-        Ok::<_, SexpError>(value)
-    };
-    let marker = make(crate::eval::bytecode::GNU_BC_DIALECT_MARKER).map_err(|e| e.to_string())?;
-    let hint = make(4).map_err(|e| e.to_string())?;
-    owner.require_active().map_err(|e| e.to_string())?;
-    // Allocation callbacks may have initialized this same owner's cache.
-    // Preserve that publication and release our redundant temporary cells.
-    // SAFETY: `pointer` is the pinned current owner; the cache field read
-    // is strictly local with no callback inside the borrow.
-    let published = unsafe {
-        (*pointer)
-            .serialize_state
-            .imported_bytecode_metadata
-            .clone()
-    };
-    if let [Some(marker), Some(hint)] = published.map(|value| value.owned()) {
-        return Ok(Some([marker, hint]));
-    }
-    // SAFETY: `pointer` is the pinned current owner; the cache publish is
-    // a strictly local field store with no callback inside the borrow.
-    unsafe {
-        (*pointer).serialize_state.imported_bytecode_metadata = [
-            RuntimeValue::from_owned(marker.clone()),
-            RuntimeValue::from_owned(hint.clone()),
-        ];
-    }
-    Ok(Some([marker, hint]))
+    OwnerToken::with_current(|owner| {
+        if owner.weak_owner().is_none() {
+            return Ok(None); // Explicitly borrowed native fixtures retain their old path.
+        }
+        let _pin = owner.pin().map_err(|e| e.to_string())?;
+        let pointer = owner.as_ptr();
+        // No state loan crosses allocation, collection, or provider callbacks.
+        // SAFETY: `pointer` is the pinned current owner; the cache field read
+        // is strictly local with no callback inside the borrow.
+        let cached = unsafe {
+            (*pointer)
+                .serialize_state
+                .imported_bytecode_metadata
+                .clone()
+        };
+        if let [Some(marker), Some(hint)] = cached.map(|value| value.owned()) {
+            return Ok(Some([marker, hint]));
+        }
+        let factory = owner.node_factory();
+        let make = |number| {
+            let value = factory
+                .allocate(|arena| {
+                    crate::sexp::builder::scalar_integer_in(arena, number)
+                        .map(|value| value.as_raw())
+                })?
+                .into_owned()?;
+            let node = value.allocation()?;
+            let heap = node.heap_identity();
+            let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+            header.sxpinfo.set_named(3);
+            heap.replace_node(node, header)
+                .ok_or(SexpError::StaleAllocation)?;
+            Ok::<_, SexpError>(value)
+        };
+        let marker =
+            make(crate::eval::bytecode::GNU_BC_DIALECT_MARKER).map_err(|e| e.to_string())?;
+        let hint = make(4).map_err(|e| e.to_string())?;
+        owner.require_active().map_err(|e| e.to_string())?;
+        // Allocation callbacks may have initialized this same owner's cache.
+        // Preserve that publication and release our redundant temporary cells.
+        // SAFETY: `pointer` is the pinned current owner; the cache field read
+        // is strictly local with no callback inside the borrow.
+        let published = unsafe {
+            (*pointer)
+                .serialize_state
+                .imported_bytecode_metadata
+                .clone()
+        };
+        if let [Some(marker), Some(hint)] = published.map(|value| value.owned()) {
+            return Ok(Some([marker, hint]));
+        }
+        // SAFETY: `pointer` is the pinned current owner; the cache publish is
+        // a strictly local field store with no callback inside the borrow.
+        unsafe {
+            (*pointer).serialize_state.imported_bytecode_metadata = [
+                RuntimeValue::from_owned(marker.clone()),
+                RuntimeValue::from_owned(hint.clone()),
+            ];
+        }
+        Ok(Some([marker, hint]))
+    })
+    .map_err(|e| e.to_string())?
 }
 
 // Read GNU compiler constants completely and retain the instruction stream in

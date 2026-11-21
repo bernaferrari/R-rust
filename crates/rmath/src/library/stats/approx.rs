@@ -176,24 +176,25 @@ fn R_approxtest(
     Ok(())
 }
 pub fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let x = x_input(owner, x);
-    let y = real_input(owner, y);
-    paired(&x, &y);
-    let method = integer_parameter(owner, method);
-    let f = real_parameter(owner, f);
-    let na_rm = logical_parameter(owner, na_rm);
-    // Preserve native REAL's eager materialization without retaining pointers
-    // from earlier inputs across later providers or reentrant collection.
-    prepare_real(owner, &x);
-    prepare_real(owner, &y);
-    paired(&x, &y);
-    if let Err(message) = R_approxtest(&x, &y, method, f, na_rm, owner) {
-        crate::main::errors::Rf_error_cstr(&message);
-    }
-    active(owner);
-    R_NilValue()
+    OwnerToken::with_current(|owner| {
+        let x = x_input(owner, x);
+        let y = real_input(owner, y);
+        paired(&x, &y);
+        let method = integer_parameter(owner, method);
+        let f = real_parameter(owner, f);
+        let na_rm = logical_parameter(owner, na_rm);
+        // Preserve native REAL's eager materialization without retaining pointers
+        // from earlier inputs across later providers or reentrant collection.
+        prepare_real(owner, &x);
+        prepare_real(owner, &y);
+        paired(&x, &y);
+        if let Err(message) = R_approxtest(&x, &y, method, f, na_rm, owner) {
+            crate::main::errors::Rf_error_cstr(&message);
+        }
+        active(owner);
+        R_NilValue()
+    })
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 pub fn Approx(
     x: SEXP,
@@ -205,55 +206,56 @@ pub fn Approx(
     f: SEXP,
     na_rm: SEXP,
 ) -> SEXP {
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let x = x_input(owner, x);
-    let y = real_input(owner, y);
-    paired(&x, &y);
-    let xout = coerceVector(v, SEXPTYPE::REALSXP.as_c_int());
-    active(owner);
-    let _xout_guard = protect_sexp(xout);
-    let xout = real_input(owner, xout);
-    let yout = Rf_allocVector3(SEXPTYPE::REALSXP, xout.len());
-    let _yout_guard = protect_sexp(yout);
-    let mut output = SexpMut::try_from_checked(real_input(owner, yout))
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let kind = integer_parameter(owner, method);
-    let ylow = real_parameter(owner, yleft);
-    let yhigh = real_parameter(owner, yright);
-    let f = real_parameter(owner, f);
-    let _na_rm = logical_parameter(owner, na_rm);
-    prepare_real(owner, &x);
-    prepare_real(owner, &y);
-    prepare_real(owner, &xout);
-    paired(&x, &y);
-    if xout.len() != output.len() {
-        crate::mainutils::essentials::base_error(
-            "approx(): query length changed during evaluation",
-        );
-    }
-    let meth = appr_meth {
-        ylow,
-        yhigh,
-        f1: 1.0 - f,
-        f2: f,
-        kind,
-    };
-    // Checked handles and copied elements cross callbacks, never exported payload pointers.
-    for i in 0..xout.len() {
-        let v = read_real(owner, &xout, i);
-        let value = if v.is_nan() {
-            v
-        } else {
-            approx1(v, &x, &y, &meth, owner)
-        };
+    OwnerToken::with_current(|owner| {
+        let x = x_input(owner, x);
+        let y = real_input(owner, y);
+        paired(&x, &y);
+        let xout = coerceVector(v, SEXPTYPE::REALSXP.as_c_int());
         active(owner);
-        output
-            .try_set_real_elt(i, value)
+        let _xout_guard = protect_sexp(xout);
+        let xout = real_input(owner, xout);
+        let yout = Rf_allocVector3(SEXPTYPE::REALSXP, xout.len());
+        let _yout_guard = protect_sexp(yout);
+        let mut output = SexpMut::try_from_checked(real_input(owner, yout))
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    }
-    active(owner);
-    yout
+        let kind = integer_parameter(owner, method);
+        let ylow = real_parameter(owner, yleft);
+        let yhigh = real_parameter(owner, yright);
+        let f = real_parameter(owner, f);
+        let _na_rm = logical_parameter(owner, na_rm);
+        prepare_real(owner, &x);
+        prepare_real(owner, &y);
+        prepare_real(owner, &xout);
+        paired(&x, &y);
+        if xout.len() != output.len() {
+            crate::mainutils::essentials::base_error(
+                "approx(): query length changed during evaluation",
+            );
+        }
+        let meth = appr_meth {
+            ylow,
+            yhigh,
+            f1: 1.0 - f,
+            f2: f,
+            kind,
+        };
+        // Checked handles and copied elements cross callbacks, never exported payload pointers.
+        for i in 0..xout.len() {
+            let v = read_real(owner, &xout, i);
+            let value = if v.is_nan() {
+                v
+            } else {
+                approx1(v, &x, &y, &meth, owner)
+            };
+            active(owner);
+            output
+                .try_set_real_elt(i, value)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        }
+        active(owner);
+        yout
+    })
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 
 /// GNU `approx(x, y, xout)`.

@@ -30,7 +30,7 @@ pub(super) unsafe fn save(
         }
         if options.eval_promises && TYPEOF(value) == SEXPTYPE::PROMSXP {
             let promise = bindings.wrap(value).unwrap_or_else(fail);
-            value = unsafe { crate::eval::eval::Rf_eval(promise.as_raw(), envir.as_raw()) };
+            value = crate::eval::eval::Rf_eval(promise.as_raw(), envir.as_raw());
             owner.require_active().unwrap_or_else(fail);
         }
         let value = bindings.wrap(value).unwrap_or_else(fail);

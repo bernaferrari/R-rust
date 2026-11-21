@@ -861,71 +861,134 @@ fn random_n<const K: usize>(
     sample: impl Fn([c_double; K]) -> c_double,
     type_: SEXPTYPE,
 ) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    for argument in sargs {
-        if !isNumeric(argument) {
-            crate::mainutils::essentials::base_error("invalid arguments");
-        }
-    }
-    let n = result_length(owner, sn);
-    if n == 0 {
-        // SAFETY: the owner is active; a zero-length result skips coercion
-        // and sampling entirely, matching the legacy dispatch order.
-        return {
-            let x = Rf_allocVector3(type_, 0);
-            let _x_guard = protect(x);
-            x
-        };
-    }
-    if sargs
-        .iter()
-        .any(|argument| checked(owner.sexp(*argument)).len() < 1)
-    {
-        // The owner is active; the fresh vector is protected while its
-        // payload is filled for the checked extent n.
-        let x = Rf_allocVector3(type_, n);
-        let _x_guard = protect(x);
-        let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
-        for i in 0..n {
-            if type_ == SEXPTYPE::INTSXP {
-                checked(output.try_set_integer_elt(i, NA_INTEGER));
-            } else {
-                checked(output.try_set_real_elt(i, NA_REAL));
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        for argument in sargs {
+            if !isNumeric(argument) {
+                crate::mainutils::essentials::base_error("invalid arguments");
             }
         }
-        // SAFETY: the warning is dispatched under the active runtime.
+        let n = result_length(owner, sn);
+        if n == 0 {
+            // SAFETY: the owner is active; a zero-length result skips coercion
+            // and sampling entirely, matching the legacy dispatch order.
+            return {
+                let x = Rf_allocVector3(type_, 0);
+                let _x_guard = protect(x);
+                x
+            };
+        }
+        if sargs
+            .iter()
+            .any(|argument| checked(owner.sexp(*argument)).len() < 1)
         {
-            crate::mainutils::errors::Rf_warning1(c"NAs produced")
+            // The owner is active; the fresh vector is protected while its
+            // payload is filled for the checked extent n.
+            let x = Rf_allocVector3(type_, n);
+            let _x_guard = protect(x);
+            let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
+            for i in 0..n {
+                if type_ == SEXPTYPE::INTSXP {
+                    checked(output.try_set_integer_elt(i, NA_INTEGER));
+                } else {
+                    checked(output.try_set_real_elt(i, NA_REAL));
+                }
+            }
+            // SAFETY: the warning is dispatched under the active runtime.
+            {
+                crate::mainutils::errors::Rf_warning1(c"NAs produced")
+            };
+            return x;
+        }
+
+        // SAFETY: the owner is active. The legacy allocator/coercion keep their
+        // typed resource error and GC retry semantics; every result is protected
+        // inside the same block before it can be collected.
+        let (coerced, _arg_guards) = {
+            let coerced: [SEXP; K] = sargs.map(|s| coerceVector(s, SEXPTYPE::REALSXP.as_c_int()));
+            let guards = coerced.map(|s| protect(s));
+            (coerced, guards)
         };
-        return x;
-    }
+        let sources = coerced.map(|c| checked(owner.sexp(c)));
+        let lens: [R_xlen_t; K] = std::array::from_fn(|i| sources[i].len());
 
-    // SAFETY: the owner is active. The legacy allocator/coercion keep their
-    // typed resource error and GC retry semantics; every result is protected
-    // inside the same block before it can be collected.
-    let (coerced, _arg_guards) = {
-        let coerced: [SEXP; K] = sargs.map(|s| coerceVector(s, SEXPTYPE::REALSXP.as_c_int()));
-        let guards = coerced.map(|s| protect(s));
-        (coerced, guards)
-    };
-    let sources = coerced.map(|c| checked(owner.sexp(c)));
-    let lens: [R_xlen_t; K] = std::array::from_fn(|i| sources[i].len());
-
-    // SAFETY: RNG state is process-global behind the interpreter lock; the
-    // loan covers the whole sampling region including any overflow result
-    // allocation, so the state is released exactly once per dispatch.
-    {
-        GetRNGstate();
-        let mut naflag = false;
-        if type_ == SEXPTYPE::INTSXP {
+        // SAFETY: RNG state is process-global behind the interpreter lock; the
+        // loan covers the whole sampling region including any overflow result
+        // allocation, so the state is released exactly once per dispatch.
+        {
+            GetRNGstate();
+            let mut naflag = false;
+            if type_ == SEXPTYPE::INTSXP {
+                let x = Rf_allocVector3(type_, n);
+                let _x_guard = protect(x);
+                let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
+                let mut cursors = [0i64; K];
+                let mut i0: R_xlen_t = 0;
+                let mut overflow_rx = 0.0f64;
+                let mut overflow = false;
+                for i in 0..n {
+                    let draw = sample(std::array::from_fn(|j| {
+                        checked(sources[j].try_real_elt(cursors[j]))
+                    }));
+                    for (cursor, length) in cursors.iter_mut().zip(lens) {
+                        *cursor += 1;
+                        if *cursor == length {
+                            *cursor = 0;
+                        }
+                    }
+                    if ISNAN(draw) {
+                        naflag = true;
+                        checked(output.try_set_integer_elt(i, NA_INTEGER));
+                    } else if draw > c_int::MAX as c_double || draw <= c_int::MIN as c_double {
+                        i0 = i;
+                        overflow_rx = draw;
+                        overflow = true;
+                        break;
+                    } else {
+                        checked(output.try_set_integer_elt(i, draw as c_int));
+                    }
+                }
+                if overflow {
+                    let xr = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                    let _xr_guard = protect(xr);
+                    let mut real_out = checked(SexpMut::try_from_checked(checked(owner.sexp(xr))));
+                    for i in 0..i0 {
+                        let value = output.integer_elt(i).unwrap_or_else(|| {
+                            crate::mainutils::essentials::base_error("integer result read failed")
+                        });
+                        checked(real_out.try_set_real_elt(i, value as c_double));
+                    }
+                    checked(real_out.try_set_real_elt(i0, overflow_rx));
+                    for i in (i0 + 1)..n {
+                        let draw = sample(std::array::from_fn(|j| {
+                            checked(sources[j].try_real_elt(cursors[j]))
+                        }));
+                        for (cursor, length) in cursors.iter_mut().zip(lens) {
+                            *cursor += 1;
+                            if *cursor == length {
+                                *cursor = 0;
+                            }
+                        }
+                        if ISNAN(draw) {
+                            naflag = true;
+                        }
+                        checked(real_out.try_set_real_elt(i, draw));
+                    }
+                    PutRNGstate();
+                    if naflag {
+                        crate::mainutils::errors::Rf_warning1(c"NAs produced");
+                    }
+                    return xr;
+                }
+                PutRNGstate();
+                if naflag {
+                    crate::mainutils::errors::Rf_warning1(c"NAs produced");
+                }
+                return x;
+            }
             let x = Rf_allocVector3(type_, n);
             let _x_guard = protect(x);
             let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
             let mut cursors = [0i64; K];
-            let mut i0: R_xlen_t = 0;
-            let mut overflow_rx = 0.0f64;
-            let mut overflow = false;
             for i in 0..n {
                 let draw = sample(std::array::from_fn(|j| {
                     checked(sources[j].try_real_elt(cursors[j]))
@@ -938,79 +1001,16 @@ fn random_n<const K: usize>(
                 }
                 if ISNAN(draw) {
                     naflag = true;
-                    checked(output.try_set_integer_elt(i, NA_INTEGER));
-                } else if draw > c_int::MAX as c_double || draw <= c_int::MIN as c_double {
-                    i0 = i;
-                    overflow_rx = draw;
-                    overflow = true;
-                    break;
-                } else {
-                    checked(output.try_set_integer_elt(i, draw as c_int));
                 }
-            }
-            if overflow {
-                let xr = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-                let _xr_guard = protect(xr);
-                let mut real_out = checked(SexpMut::try_from_checked(checked(owner.sexp(xr))));
-                for i in 0..i0 {
-                    let value = output.integer_elt(i).unwrap_or_else(|| {
-                        crate::mainutils::essentials::base_error("integer result read failed")
-                    });
-                    checked(real_out.try_set_real_elt(i, value as c_double));
-                }
-                checked(real_out.try_set_real_elt(i0, overflow_rx));
-                for i in (i0 + 1)..n {
-                    let draw = sample(std::array::from_fn(|j| {
-                        checked(sources[j].try_real_elt(cursors[j]))
-                    }));
-                    for (cursor, length) in cursors.iter_mut().zip(lens) {
-                        *cursor += 1;
-                        if *cursor == length {
-                            *cursor = 0;
-                        }
-                    }
-                    if ISNAN(draw) {
-                        naflag = true;
-                    }
-                    checked(real_out.try_set_real_elt(i, draw));
-                }
-                PutRNGstate();
-                if naflag {
-                    crate::mainutils::errors::Rf_warning1(c"NAs produced");
-                }
-                return xr;
+                checked(output.try_set_real_elt(i, draw));
             }
             PutRNGstate();
             if naflag {
                 crate::mainutils::errors::Rf_warning1(c"NAs produced");
             }
-            return x;
+            x
         }
-        let x = Rf_allocVector3(type_, n);
-        let _x_guard = protect(x);
-        let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
-        let mut cursors = [0i64; K];
-        for i in 0..n {
-            let draw = sample(std::array::from_fn(|j| {
-                checked(sources[j].try_real_elt(cursors[j]))
-            }));
-            for (cursor, length) in cursors.iter_mut().zip(lens) {
-                *cursor += 1;
-                if *cursor == length {
-                    *cursor = 0;
-                }
-            }
-            if ISNAN(draw) {
-                naflag = true;
-            }
-            checked(output.try_set_real_elt(i, draw));
-        }
-        PutRNGstate();
-        if naflag {
-            crate::mainutils::errors::Rf_warning1(c"NAs produced");
-        }
-        x
-    }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1255,52 +1255,52 @@ fn fixup_prob(p: &mut [c_double]) {
 // ---------------------------------------------------------------------------
 
 pub fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let n = as_integer(owner, sn);
-    let size = as_integer(owner, ssize);
-    if n == NA_INTEGER || n < 0 {
-        Rf_error_cstr(c"invalid first argument 'n'");
-        return R_NilValue();
-    }
-    if size == NA_INTEGER || size < 0 {
-        Rf_error_cstr(c"invalid second argument 'size'");
-        return R_NilValue();
-    }
-    let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
-    let k = LENGTH(prob);
-    let _prob_guard = protect(prob);
-    let prob_sexp = checked(owner.sexp(prob));
-    let mut prob_buf = vec![0.0; k as usize];
-    for (i, value) in prob_buf.iter_mut().enumerate() {
-        *value = checked(prob_sexp.try_real_elt(i as R_xlen_t));
-    }
-    fixup_prob(&mut prob_buf);
-
-    GetRNGstate();
-    let ans = allocMatrix(owner, SEXPTYPE::INTSXP.into(), k, n);
-    let _ans_guard = protect(ans);
-    let mut cells = checked(SexpMut::try_from_checked(checked(owner.sexp(ans))));
-    let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
-    for i in 0..n as usize {
-        crate::nmath::dist::multinom::rmultinom_inner(size, &prob_buf, &mut rn_buf);
-        // Copy f64 results to integer output
-        for j in 0..k as usize {
-            checked(
-                cells.try_set_integer_elt((i * k as usize + j) as R_xlen_t, rn_buf[j] as c_int),
-            );
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let n = as_integer(owner, sn);
+        let size = as_integer(owner, ssize);
+        if n == NA_INTEGER || n < 0 {
+            Rf_error_cstr(c"invalid first argument 'n'");
+            return R_NilValue();
         }
-    }
-    PutRNGstate();
+        if size == NA_INTEGER || size < 0 {
+            Rf_error_cstr(c"invalid second argument 'size'");
+            return R_NilValue();
+        }
+        let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
+        let k = LENGTH(prob);
+        let _prob_guard = protect(prob);
+        let prob_sexp = checked(owner.sexp(prob));
+        let mut prob_buf = vec![0.0; k as usize];
+        for (i, value) in prob_buf.iter_mut().enumerate() {
+            *value = checked(prob_sexp.try_real_elt(i as R_xlen_t));
+        }
+        fixup_prob(&mut prob_buf);
 
-    let nms = getAttrib(prob, R_NamesSymbol());
-    if Rf_isNull(nms) == 0 {
-        let dimnms = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        let _dimnms_guard = protect(dimnms);
-        SET_VECTOR_ELT(dimnms, 0, nms);
-        setAttrib(ans, R_DimNamesSymbol(), dimnms);
-    }
-    ans
+        GetRNGstate();
+        let ans = allocMatrix(owner, SEXPTYPE::INTSXP.into(), k, n);
+        let _ans_guard = protect(ans);
+        let mut cells = checked(SexpMut::try_from_checked(checked(owner.sexp(ans))));
+        let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
+        for i in 0..n as usize {
+            crate::nmath::dist::multinom::rmultinom_inner(size, &prob_buf, &mut rn_buf);
+            // Copy f64 results to integer output
+            for j in 0..k as usize {
+                checked(
+                    cells.try_set_integer_elt((i * k as usize + j) as R_xlen_t, rn_buf[j] as c_int),
+                );
+            }
+        }
+        PutRNGstate();
+
+        let nms = getAttrib(prob, R_NamesSymbol());
+        if Rf_isNull(nms) == 0 {
+            let dimnms = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _dimnms_guard = protect(dimnms);
+            SET_VECTOR_ELT(dimnms, 0, nms);
+            setAttrib(ans, R_DimNamesSymbol(), dimnms);
+        }
+        ans
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1308,64 +1308,64 @@ pub fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let nr = LENGTH(r);
-    let nc = LENGTH(c);
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let nr = LENGTH(r);
+        let nc = LENGTH(c);
 
-    if TYPEOF(n) != SEXPTYPE::INTSXP
-        || LENGTH(n) == 0
-        || TYPEOF(r) != SEXPTYPE::INTSXP
-        || nr <= 1
-        || TYPEOF(c) != SEXPTYPE::INTSXP
-        || nc <= 1
-    {
-        Rf_error_cstr(c"invalid arguments");
-        return R_NilValue();
-    }
-
-    let n_of_samples = checked(owner.sexp(n)).integer_elt(0).unwrap_or(NA_INTEGER);
-    let r_sexp = checked(owner.sexp(r));
-    let c_sexp = checked(owner.sexp(c));
-    let row_sums: Vec<c_int> = r_sexp.clone().iter_integer().collect();
-    let col_sums: Vec<c_int> = c_sexp.clone().iter_integer().collect();
-
-    // Compute total cases as sum of row sums
-    let mut n_of_cases: c_int = 0;
-    for value in &row_sums {
-        n_of_cases += *value;
-    }
-
-    // Log-factorials
-    let mut fact = vec![0.0f64; (n_of_cases + 1) as usize];
-    for i in 1..=n_of_cases as usize {
-        fact[i] = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
-    }
-
-    let mut jwork = vec![0; nc as usize];
-    let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
-    let _ans_guard = protect(ans);
-
-    GetRNGstate();
-
-    for i in 0..n_of_samples {
-        let tmp = allocMatrix(owner, SEXPTYPE::INTSXP.into(), nr, nc);
-        let _tmp_guard = protect(tmp);
-        // Buffers satisfy the dimension contract; degenerate margins are
-        // rejected by the checked wrapper instead of producing garbage.
-        let mut table = vec![0; (nr * nc) as usize];
-        let _ = rcont2_slices(
-            nr, nc, &row_sums, &col_sums, n_of_cases, &fact, &mut jwork, &mut table,
-        );
-        let mut tmp_out = checked(SexpMut::try_from_checked(checked(owner.sexp(tmp))));
-        for (index, value) in table.iter().enumerate() {
-            checked(tmp_out.try_set_integer_elt(index as R_xlen_t, *value));
+        if TYPEOF(n) != SEXPTYPE::INTSXP
+            || LENGTH(n) == 0
+            || TYPEOF(r) != SEXPTYPE::INTSXP
+            || nr <= 1
+            || TYPEOF(c) != SEXPTYPE::INTSXP
+            || nc <= 1
+        {
+            Rf_error_cstr(c"invalid arguments");
+            return R_NilValue();
         }
-        SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
-    }
 
-    PutRNGstate();
-    ans
+        let n_of_samples = checked(owner.sexp(n)).integer_elt(0).unwrap_or(NA_INTEGER);
+        let r_sexp = checked(owner.sexp(r));
+        let c_sexp = checked(owner.sexp(c));
+        let row_sums: Vec<c_int> = r_sexp.clone().iter_integer().collect();
+        let col_sums: Vec<c_int> = c_sexp.clone().iter_integer().collect();
+
+        // Compute total cases as sum of row sums
+        let mut n_of_cases: c_int = 0;
+        for value in &row_sums {
+            n_of_cases += *value;
+        }
+
+        // Log-factorials
+        let mut fact = vec![0.0f64; (n_of_cases + 1) as usize];
+        for i in 1..=n_of_cases as usize {
+            fact[i] = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
+        }
+
+        let mut jwork = vec![0; nc as usize];
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
+        let _ans_guard = protect(ans);
+
+        GetRNGstate();
+
+        for i in 0..n_of_samples {
+            let tmp = allocMatrix(owner, SEXPTYPE::INTSXP.into(), nr, nc);
+            let _tmp_guard = protect(tmp);
+            // Buffers satisfy the dimension contract; degenerate margins are
+            // rejected by the checked wrapper instead of producing garbage.
+            let mut table = vec![0; (nr * nc) as usize];
+            let _ = rcont2_slices(
+                nr, nc, &row_sums, &col_sums, n_of_cases, &fact, &mut jwork, &mut table,
+            );
+            let mut tmp_out = checked(SexpMut::try_from_checked(checked(owner.sexp(tmp))));
+            for (index, value) in table.iter().enumerate() {
+                checked(tmp_out.try_set_integer_elt(index as R_xlen_t, *value));
+            }
+            SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
+        }
+
+        PutRNGstate();
+        ans
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1504,13 +1504,13 @@ pub fn do_rchisq_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // SAFETY: builtin dispatch holds the runtime lock across this call.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let m = match_formals(call, args, &["n", "rate"]);
-    let n = require_slot(call, m[0], "n");
-    let mut guards = Vec::new();
-    let scale = reciprocal_vector(owner, with_default(m[1], 1.0, &mut guards));
-    do_rexp(n, scale)
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let m = match_formals(call, args, &["n", "rate"]);
+        let n = require_slot(call, m[0], "n");
+        let mut guards = Vec::new();
+        let scale = reciprocal_vector(owner, with_default(m[1], 1.0, &mut guards));
+        do_rexp(n, scale)
+    }))
 }
 
 pub fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1530,29 +1530,29 @@ pub fn do_rpois_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // SAFETY: builtin dispatch holds the runtime lock across this call.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let m = match_formals(call, args, &["n", "df", "ncp"]);
-    let n = require_slot(call, m[0], "n");
-    let df = require_slot(call, m[1], "df");
-    let ncp = m[2];
-    if adapter_absent(ncp) {
-        do_rt(n, df)
-    } else {
-        // rnorm(n, ncp)/sqrt(rchisq(n, df)/df): two full passes, in the
-        // stock closure's draw order (normals first, then chisq).
-        let mut guards = Vec::new();
-        let one = with_default(R_NilValue(), 1.0, &mut guards);
-        let z = do_rnorm(n, ncp, one);
-        let _z_guard = protect(z);
-        let chi = do_rchisq(n, df);
-        let _chi_guard = protect(chi);
-        let ratio = vector_binop(owner, chi, df, div);
-        let _ratio_guard = protect(ratio);
-        let root = sqrt_vector(owner, ratio);
-        let _root_guard = protect(root);
-        vector_binop(owner, z, root, div)
-    }
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let m = match_formals(call, args, &["n", "df", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let df = require_slot(call, m[1], "df");
+        let ncp = m[2];
+        if adapter_absent(ncp) {
+            do_rt(n, df)
+        } else {
+            // rnorm(n, ncp)/sqrt(rchisq(n, df)/df): two full passes, in the
+            // stock closure's draw order (normals first, then chisq).
+            let mut guards = Vec::new();
+            let one = with_default(R_NilValue(), 1.0, &mut guards);
+            let z = do_rnorm(n, ncp, one);
+            let _z_guard = protect(z);
+            let chi = do_rchisq(n, df);
+            let _chi_guard = protect(chi);
+            let ratio = vector_binop(owner, chi, df, div);
+            let _ratio_guard = protect(ratio);
+            let root = sqrt_vector(owner, ratio);
+            let _root_guard = protect(root);
+            vector_binop(owner, z, root, div)
+        }
+    }))
 }
 
 pub fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1564,29 +1564,29 @@ pub fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // SAFETY: builtin dispatch holds the runtime lock across this call.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let m = match_formals(call, args, &["n", "shape1", "shape2", "ncp"]);
-    let n = require_slot(call, m[0], "n");
-    let shape1 = require_slot(call, m[1], "shape1");
-    let shape2 = require_slot(call, m[2], "shape2");
-    let ncp = m[3];
-    if adapter_absent(ncp) {
-        do_rbeta(n, shape1, shape2)
-    } else {
-        // X <- rchisq(n, 2*shape1, ncp); X/(X + rchisq(n, 2*shape2))
-        let df1 = scaled_vector(owner, shape1, 2.0);
-        let _df1_guard = protect(df1);
-        let x = do_rnchisq(n, df1, ncp);
-        let _x_guard = protect(x);
-        let df2 = scaled_vector(owner, shape2, 2.0);
-        let _df2_guard = protect(df2);
-        let y = do_rchisq(n, df2);
-        let _y_guard = protect(y);
-        let sum = vector_binop(owner, x, y, add);
-        let _sum_guard = protect(sum);
-        vector_binop(owner, x, sum, div)
-    }
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let m = match_formals(call, args, &["n", "shape1", "shape2", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let shape1 = require_slot(call, m[1], "shape1");
+        let shape2 = require_slot(call, m[2], "shape2");
+        let ncp = m[3];
+        if adapter_absent(ncp) {
+            do_rbeta(n, shape1, shape2)
+        } else {
+            // X <- rchisq(n, 2*shape1, ncp); X/(X + rchisq(n, 2*shape2))
+            let df1 = scaled_vector(owner, shape1, 2.0);
+            let _df1_guard = protect(df1);
+            let x = do_rnchisq(n, df1, ncp);
+            let _x_guard = protect(x);
+            let df2 = scaled_vector(owner, shape2, 2.0);
+            let _df2_guard = protect(df2);
+            let y = do_rchisq(n, df2);
+            let _y_guard = protect(y);
+            let sum = vector_binop(owner, x, y, add);
+            let _sum_guard = protect(sum);
+            vector_binop(owner, x, sum, div)
+        }
+    }))
 }
 
 pub fn do_rbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -1633,60 +1633,60 @@ pub fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_rf_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // SAFETY: builtin dispatch holds the runtime lock across this call.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let m = match_formals(call, args, &["n", "df1", "df2", "ncp"]);
-    let n = require_slot(call, m[0], "n");
-    let df1 = require_slot(call, m[1], "df1");
-    let df2 = require_slot(call, m[2], "df2");
-    if adapter_absent(m[3]) {
-        do_rf(n, df1, df2)
-    } else {
-        // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
-        let num0 = do_rnchisq(n, df1, m[3]);
-        let _num0_guard = protect(num0);
-        let num = vector_binop(owner, num0, df1, div);
-        let _num_guard = protect(num);
-        let den0 = do_rchisq(n, df2);
-        let _den0_guard = protect(den0);
-        let den = vector_binop(owner, den0, df2, div);
-        let _den_guard = protect(den);
-        vector_binop(owner, num, den, div)
-    }
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let m = match_formals(call, args, &["n", "df1", "df2", "ncp"]);
+        let n = require_slot(call, m[0], "n");
+        let df1 = require_slot(call, m[1], "df1");
+        let df2 = require_slot(call, m[2], "df2");
+        if adapter_absent(m[3]) {
+            do_rf(n, df1, df2)
+        } else {
+            // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
+            let num0 = do_rnchisq(n, df1, m[3]);
+            let _num0_guard = protect(num0);
+            let num = vector_binop(owner, num0, df1, div);
+            let _num_guard = protect(num);
+            let den0 = do_rchisq(n, df2);
+            let _den0_guard = protect(den0);
+            let den = vector_binop(owner, den0, df2, div);
+            let _den_guard = protect(den);
+            vector_binop(owner, num, den, div)
+        }
+    }))
 }
 
 pub fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    // SAFETY: builtin dispatch holds the runtime lock across this call.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let m = match_formals(call, args, &["n", "shape", "rate", "scale"]);
-    let n = require_slot(call, m[0], "n");
-    let shape = require_slot(call, m[1], "shape");
-    let rate = m[2];
-    let scale = m[3];
-    let mut guards = Vec::new();
-    let rate_present = !adapter_absent(rate);
-    let scale_present = !adapter_absent(scale);
-    if rate_present && scale_present {
-        // |rate * scale - 1| < 1e-15 -> warning, else error (stock)
-        let rv = coerceVector(rate, SEXPTYPE::REALSXP.as_c_int());
-        let _rv_guard = protect(rv);
-        let sv = coerceVector(scale, SEXPTYPE::REALSXP.as_c_int());
-        let _sv_guard = protect(sv);
-        let r0 = checked(owner.sexp(rv)).real_elt(0).unwrap_or(NA_REAL);
-        let s0 = checked(owner.sexp(sv)).real_elt(0).unwrap_or(NA_REAL);
-        if (r0 * s0 - 1.0).abs() < 1e-15 {
-            let msg = c"specify 'rate' or 'scale' but not both";
-            crate::main::errors::Rf_warningcall1(call, &msg);
-        } else {
-            crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let m = match_formals(call, args, &["n", "shape", "rate", "scale"]);
+        let n = require_slot(call, m[0], "n");
+        let shape = require_slot(call, m[1], "shape");
+        let rate = m[2];
+        let scale = m[3];
+        let mut guards = Vec::new();
+        let rate_present = !adapter_absent(rate);
+        let scale_present = !adapter_absent(scale);
+        if rate_present && scale_present {
+            // |rate * scale - 1| < 1e-15 -> warning, else error (stock)
+            let rv = coerceVector(rate, SEXPTYPE::REALSXP.as_c_int());
+            let _rv_guard = protect(rv);
+            let sv = coerceVector(scale, SEXPTYPE::REALSXP.as_c_int());
+            let _sv_guard = protect(sv);
+            let r0 = checked(owner.sexp(rv)).real_elt(0).unwrap_or(NA_REAL);
+            let s0 = checked(owner.sexp(sv)).real_elt(0).unwrap_or(NA_REAL);
+            if (r0 * s0 - 1.0).abs() < 1e-15 {
+                let msg = c"specify 'rate' or 'scale' but not both";
+                crate::main::errors::Rf_warningcall1(call, &msg);
+            } else {
+                crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
+            }
         }
-    }
-    let scale_arg = if scale_present {
-        scale
-    } else {
-        reciprocal_vector(owner, with_default(rate, 1.0, &mut guards))
-    };
-    do_rgamma(n, shape, scale_arg)
+        let scale_arg = if scale_present {
+            scale
+        } else {
+            reciprocal_vector(owner, with_default(rate, 1.0, &mut guards))
+        };
+        do_rgamma(n, shape, scale_arg)
+    }))
 }
 
 pub fn do_rlnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

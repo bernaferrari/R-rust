@@ -73,14 +73,14 @@ pub(crate) fn regex_workspace() -> RegexWorkspace {
         return RegexWorkspace::standalone();
     }
     unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|_| workspace::memory_error());
-        let _pin = owner.pin().unwrap_or_else(|_| workspace::memory_error());
-        // This immutable sibling capability remains valid during a registered
-        // mutable arena lend and observes the same live original budget cells.
-        let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
-        let availability = crate::sexp::instance::instance_liveness(owner.as_ptr());
-        RegexWorkspace::new(ledger, availability)
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let _pin = owner.pin().unwrap_or_else(|_| workspace::memory_error());
+            // This immutable sibling capability remains valid during a registered
+            // mutable arena lend and observes the same live original budget cells.
+            let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
+            let availability = crate::sexp::instance::instance_liveness(owner.as_ptr());
+            RegexWorkspace::new(ledger, availability)
+        }).unwrap_or_else(|_| workspace::memory_error())
     }
 }
 

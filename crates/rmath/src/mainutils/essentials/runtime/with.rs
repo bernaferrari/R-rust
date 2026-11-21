@@ -41,7 +41,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `with(data, expr)` — evaluate expr in a data/list environment.
 pub fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let data_expr = arg_by_name_or_position(args, &["data"], 0);
         let expr = arg_by_name_or_position(args, &["expr"], 1);
         if expr.is_null() || expr == R_NilValue() {
@@ -92,7 +92,7 @@ pub(crate) fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
 
 /// R's `within(data, expr)` — modify data by evaluating expr (simplified).
 pub fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let data = CAR(args);
         let expr = CAR(CDR(args));
         if data.is_null() || data == R_NilValue() {
@@ -109,7 +109,7 @@ pub fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `transform.data.frame`: eval extras in the data, then replace/add columns.
 pub fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let data_expr = CAR(args);
         if data_expr.is_null() || data_expr == R_NilValue() {
             return R_NilValue();

@@ -182,6 +182,50 @@ pub fn Rf_allocList(n: c_int) -> SEXP {
     }
 }
 
+/// Run one arena allocation for the active owner, raising an R error when no
+/// live owner is active or its arena is already lent.
+fn alloc_in_current_arena(f: impl FnOnce(&mut memory::RArena) -> SEXP) -> SEXP {
+    crate::sexp::owner::OwnerToken::with_current(|owner| owner.with_arena(f))
+        .and_then(|result| result)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Create a CHARSXP from Rust-owned bytes.
+///
+/// Safe spelling of [`Rf_mkCharLen`] / [`Rf_mkChar`]: the bytes are stored
+/// verbatim (a C string read by `Rf_mkChar` never contains an interior NUL,
+/// so `mk_char_bytes(cstring.to_bytes())` is identical to
+/// `Rf_mkChar(cstring.as_ptr())`).
+pub fn mk_char_bytes(bytes: &[u8]) -> SEXP {
+    require_allocation(alloc_in_current_arena(|arena| arena.alloc_charsxp(bytes)))
+}
+
+/// Create a CHARSXP from Rust text; see [`mk_char_bytes`].
+pub fn mk_char_str(text: &str) -> SEXP {
+    mk_char_bytes(text.as_bytes())
+}
+
+/// Create a scalar STRSXP from Rust-owned bytes; safe spelling of
+/// [`Rf_mkString`] with the same allocation sequence.
+pub fn mk_string_bytes(bytes: &[u8]) -> SEXP {
+    require_allocation(alloc_in_current_arena(|arena| {
+        let charsxp = arena.alloc_charsxp(bytes);
+        if charsxp.is_null() {
+            return ptr::null_mut();
+        }
+        let strsxp = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+        if !strsxp.is_null() && arena.set_reference_element(strsxp, 0, charsxp).is_none() {
+            return ptr::null_mut();
+        }
+        strsxp
+    }))
+}
+
+/// Create a scalar STRSXP from Rust text; see [`mk_string_bytes`].
+pub fn mk_string_str(text: &str) -> SEXP {
+    mk_string_bytes(text.as_bytes())
+}
+
 /// Create a CHARSXP from a C string.
 pub unsafe fn Rf_mkChar(s: *const c_char) -> SEXP {
     unsafe {

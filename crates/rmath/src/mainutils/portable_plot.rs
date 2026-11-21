@@ -408,17 +408,17 @@ fn style(args: SEXP, size: f32) -> Style {
             par_numbers("lwd")
         } else {
             let result = (|| {
-                // SAFETY: runs inside an evaluated R call with a live session.
-                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?;
-                let _pin = owner.pin()?;
-                let input = owner.sexp(lwd)?.into_owned()?;
-                let raw = crate::mainutils::coerce::coerceVector(
-                    input.as_raw(),
-                    SEXPTYPE::REALSXP.as_c_int(),
-                );
-                owner.require_active()?;
-                let converted = owner.sexp(raw)?.into_owned()?;
-                crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+                crate::sexp::owner::OwnerToken::with_current(|owner| {
+                    let _pin = owner.pin()?;
+                    let input = owner.sexp(lwd)?.into_owned()?;
+                    let raw = crate::mainutils::coerce::coerceVector(
+                        input.as_raw(),
+                        SEXPTYPE::REALSXP.as_c_int(),
+                    );
+                    owner.require_active()?;
+                    let converted = owner.sexp(raw)?.into_owned()?;
+                    crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+                })?
             })();
             result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         };
@@ -530,17 +530,17 @@ fn coordinate_values(value: SEXP) -> Vec<f64> {
             return values(value);
         }
         let result = (|| {
-            // SAFETY: runs inside an evaluated R call with a live session.
-            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?;
-            let _pin = owner.pin()?;
-            let input = owner.sexp(value)?.into_owned()?;
-            let raw = crate::mainutils::coerce::coerceVector(
-                input.as_raw(),
-                SEXPTYPE::REALSXP.as_c_int(),
-            );
-            owner.require_active()?;
-            let converted = owner.sexp(raw)?.into_owned()?;
-            crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+            crate::sexp::owner::OwnerToken::with_current(|owner| {
+                let _pin = owner.pin()?;
+                let input = owner.sexp(value)?.into_owned()?;
+                let raw = crate::mainutils::coerce::coerceVector(
+                    input.as_raw(),
+                    SEXPTYPE::REALSXP.as_c_int(),
+                );
+                owner.require_active()?;
+                let converted = owner.sexp(raw)?.into_owned()?;
+                crate::sexp::object::SexpResult::Ok(values(converted.as_raw()))
+            })?
         })();
         result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
@@ -1200,115 +1200,33 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
         object::{SexpError, SexpMut},
         owner::OwnerToken,
     };
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let _pin = owner
-        .pin()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        owner.require_active()?;
-        let args = owner.sexp(args)?;
-        let x = args.try_car()?;
-        if x.typeof_() != SEXPTYPE::REALSXP {
-            base_error("invalid 'x' argument");
-        }
-        let length = x.len();
-        let rest = args.try_cdr()?;
-        let from_arg = rest.try_car()?;
-        let to_cell = rest.try_cdr()?;
-        let to_arg = to_cell.try_car()?;
-        let from = crate::mainutils::coerce::asInteger(from_arg.as_raw());
-        owner.require_active()?;
-        if from == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&from) {
-            base_error("invalid 'from' argument");
-        }
-        let to = crate::mainutils::coerce::asInteger(to_arg.as_raw());
-        owner.require_active()?;
-        if to == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&to) {
-            base_error("invalid 'to' argument");
-        }
-        if args.try_car()? != x
-            || args.try_cdr()? != rest
-            || rest.try_car()? != from_arg
-            || rest.try_cdr()? != to_cell
-            || to_cell.try_car()? != to_arg
-            || x.typeof_() != SEXPTYPE::REALSXP
-            || x.len() != length
-        {
-            return Err(SexpError::EvaluationFailed {
-                message: "graphics input changed during conversion".into(),
-            });
-        }
-        let (installed, recording) = with_required_current_instance(|inst| unsafe {
-            (
-                (*inst).portable_graphics.current,
-                (*inst).graphics_recording.clone(),
-            )
-        });
-        let backend = crate::library::grdevices::device_registry::active_target();
-        let (width, height) = if let Some(c) = installed {
-            (
-                f64::from(c.device[2] - c.device[0]),
-                f64::from(c.device[3] - c.device[1]),
-            )
-        } else if let Some(target) = backend.as_ref().filter(|target| target.is_pdf()) {
-            let (w, h) = target.dimensions();
-            (f64::from(w), f64::from(h))
-        } else {
-            let scene = recording.as_ref().ok_or(SexpError::EvaluationFailed {
-                message: "graphics device dimensions unavailable".into(),
-            })?;
-            let scene = scene
-                .try_borrow()
-                .map_err(|_| SexpError::EvaluationFailed {
-                    message: "graphics recording is busy".into(),
-                })?;
-            let (w, h) = scene.dimensions();
-            (f64::from(w), f64::from(h))
-        };
-        owner.require_active()?;
-        let snapshot = crate::library::graphics::par::conversion_layout_snapshot(width, height);
-        let (coordinates, has_frame) = if let Some(c) = installed {
-            (c, true)
-        } else {
-            let rect = |r: [f64; 4]| [r[0] as f32, r[1] as f32, r[2] as f32, r[3] as f32];
-            (
-                Coordinates {
-                    limits: [0.0, 1.0, 0.0, 1.0],
-                    rect: rect(snapshot.regions.plot),
-                    figure: rect(snapshot.regions.figure),
-                    device: rect(snapshot.regions.device),
-                    log: [false, false],
-                },
-                false,
-            )
-        };
-        let geometry = ConversionGeometry::capture(coordinates, has_frame, &snapshot);
-        let check_state = || -> crate::sexp::object::SexpResult<()> {
+    OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             owner.require_active()?;
-            let (now_installed, now_recording) = with_required_current_instance(|inst| unsafe {
-                (
-                    (*inst).portable_graphics.current,
-                    (*inst).graphics_recording.clone(),
-                )
-            });
-            let now_backend = crate::library::grdevices::device_registry::active_target();
-            let same_recording = match (&recording, &now_recording) {
-                (None, None) => true,
-                (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, b),
-                _ => false,
-            };
-            let same_backend = match (&backend, &now_backend) {
-                (None, None) => true,
-                (Some(a), Some(b)) => a.same_device(b),
-                _ => false,
-            };
-            if now_installed != installed
-                || !same_recording
-                || !same_backend
-                || crate::library::graphics::par::conversion_layout_snapshot(width, height)
-                    != snapshot
-                || args.try_car()? != x
+            let args = owner.sexp(args)?;
+            let x = args.try_car()?;
+            if x.typeof_() != SEXPTYPE::REALSXP {
+                base_error("invalid 'x' argument");
+            }
+            let length = x.len();
+            let rest = args.try_cdr()?;
+            let from_arg = rest.try_car()?;
+            let to_cell = rest.try_cdr()?;
+            let to_arg = to_cell.try_car()?;
+            let from = crate::mainutils::coerce::asInteger(from_arg.as_raw());
+            owner.require_active()?;
+            if from == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&from) {
+                base_error("invalid 'from' argument");
+            }
+            let to = crate::mainutils::coerce::asInteger(to_arg.as_raw());
+            owner.require_active()?;
+            if to == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&to) {
+                base_error("invalid 'to' argument");
+            }
+            if args.try_car()? != x
                 || args.try_cdr()? != rest
                 || rest.try_car()? != from_arg
                 || rest.try_cdr()? != to_cell
@@ -1317,44 +1235,126 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
                 || x.len() != length
             {
                 return Err(SexpError::EvaluationFailed {
-                    message: "graphics state changed during conversion".into(),
+                    message: "graphics input changed during conversion".into(),
                 });
             }
-            Ok(())
-        };
-        let raw = crate::mainutils::duplicate::Rf_duplicate(x.as_raw());
-        check_state()?;
-        let result = owner.sexp(raw)?;
-        if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length {
-            return Err(SexpError::EvaluationFailed {
-                message: "graphics input changed during conversion".into(),
+            let (installed, recording) = with_required_current_instance(|inst| unsafe {
+                (
+                    (*inst).portable_graphics.current,
+                    (*inst).graphics_recording.clone(),
+                )
             });
-        }
-        let mut result = SexpMut::try_from_checked(result)?;
-        for index in 0..length {
-            let value = result.try_real_elt(index);
+            let backend = crate::library::grdevices::device_registry::active_target();
+            let (width, height) = if let Some(c) = installed {
+                (
+                    f64::from(c.device[2] - c.device[0]),
+                    f64::from(c.device[3] - c.device[1]),
+                )
+            } else if let Some(target) = backend.as_ref().filter(|target| target.is_pdf()) {
+                let (w, h) = target.dimensions();
+                (f64::from(w), f64::from(h))
+            } else {
+                let scene = recording.as_ref().ok_or(SexpError::EvaluationFailed {
+                    message: "graphics device dimensions unavailable".into(),
+                })?;
+                let scene = scene
+                    .try_borrow()
+                    .map_err(|_| SexpError::EvaluationFailed {
+                        message: "graphics recording is busy".into(),
+                    })?;
+                let (w, h) = scene.dimensions();
+                (f64::from(w), f64::from(h))
+            };
+            owner.require_active()?;
+            let snapshot = crate::library::graphics::par::conversion_layout_snapshot(width, height);
+            let (coordinates, has_frame) = if let Some(c) = installed {
+                (c, true)
+            } else {
+                let rect = |r: [f64; 4]| [r[0] as f32, r[1] as f32, r[2] as f32, r[3] as f32];
+                (
+                    Coordinates {
+                        limits: [0.0, 1.0, 0.0, 1.0],
+                        rect: rect(snapshot.regions.plot),
+                        figure: rect(snapshot.regions.figure),
+                        device: rect(snapshot.regions.device),
+                        log: [false, false],
+                    },
+                    false,
+                )
+            };
+            let geometry = ConversionGeometry::capture(coordinates, has_frame, &snapshot);
+            let check_state = || -> crate::sexp::object::SexpResult<()> {
+                owner.require_active()?;
+                let (now_installed, now_recording) = with_required_current_instance(|inst| unsafe {
+                    (
+                        (*inst).portable_graphics.current,
+                        (*inst).graphics_recording.clone(),
+                    )
+                });
+                let now_backend = crate::library::grdevices::device_registry::active_target();
+                let same_recording = match (&recording, &now_recording) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, b),
+                    _ => false,
+                };
+                let same_backend = match (&backend, &now_backend) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => a.same_device(b),
+                    _ => false,
+                };
+                if now_installed != installed
+                    || !same_recording
+                    || !same_backend
+                    || crate::library::graphics::par::conversion_layout_snapshot(width, height)
+                        != snapshot
+                    || args.try_car()? != x
+                    || args.try_cdr()? != rest
+                    || rest.try_car()? != from_arg
+                    || rest.try_cdr()? != to_cell
+                    || to_cell.try_car()? != to_arg
+                    || x.typeof_() != SEXPTYPE::REALSXP
+                    || x.len() != length
+                {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "graphics state changed during conversion".into(),
+                    });
+                }
+                Ok(())
+            };
+            let raw = crate::mainutils::duplicate::Rf_duplicate(x.as_raw());
             check_state()?;
-            let device = location_to_device(&geometry, vertical, from - 1, value?);
-            let converted = device_to_location(&geometry, vertical, to - 1, device);
-            let written = result.try_set_real_elt(index, converted);
-            check_state()?;
-            written?;
-            if result.len() != length || x.len() != length {
+            let result = owner.sexp(raw)?;
+            if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length {
                 return Err(SexpError::EvaluationFailed {
                     message: "graphics input changed during conversion".into(),
                 });
             }
+            let mut result = SexpMut::try_from_checked(result)?;
+            for index in 0..length {
+                let value = result.try_real_elt(index);
+                check_state()?;
+                let device = location_to_device(&geometry, vertical, from - 1, value?);
+                let converted = device_to_location(&geometry, vertical, to - 1, device);
+                let written = result.try_set_real_elt(index, converted);
+                check_state()?;
+                written?;
+                if result.len() != length || x.len() != length {
+                    return Err(SexpError::EvaluationFailed {
+                        message: "graphics input changed during conversion".into(),
+                    });
+                }
+            }
+            Ok(result.freeze().as_raw())
+        }));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match outcome {
+            Ok(Ok(value)) => value,
+            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
-        Ok(result.freeze().as_raw())
-    }));
-    owner
-        .require_active()
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    match outcome {
-        Ok(Ok(value)) => value,
-        Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
-        Err(payload) => std::panic::resume_unwind(payload),
-    }
+    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {

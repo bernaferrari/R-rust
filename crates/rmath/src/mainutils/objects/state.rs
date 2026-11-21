@@ -26,10 +26,11 @@ pub(crate) fn with_objects_runtime<T>(
     operation: impl FnOnce(&RuntimeAccess) -> SexpResult<T>,
 ) -> T {
     require_objects((|| {
-        let owner = unsafe { OwnerToken::current() }?;
-        let owner = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
-        let _transfers = crate::sexp::transfer::TransferScopeGuard::enter(owner.clone())?;
-        with_runtime(&owner, operation)?
+        OwnerToken::with_current(|owner| {
+            let owner = owner.weak_owner().ok_or(SexpError::RootUnavailable)?;
+            let _transfers = crate::sexp::transfer::TransferScopeGuard::enter(owner.clone())?;
+            with_runtime(&owner, operation)?
+        })?
     })())
 }
 
@@ -52,7 +53,7 @@ pub(crate) fn evaluate_s4_value(
     let expression = domain.wrap(expression.as_raw())?;
     let environment = domain.wrap(environment.as_raw())?;
     access.with_native(|owner| {
-        let value = unsafe { Rf_eval(expression.as_raw(), environment.as_raw()) };
+        let value = Rf_eval(expression.as_raw(), environment.as_raw());
         owner.sexp(value)?.into_owned()
     })
 }

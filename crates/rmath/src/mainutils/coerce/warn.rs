@@ -140,8 +140,7 @@ pub fn isVectorizable(x: SEXP) -> bool {
     let result = (|| {
         // SAFETY: this translated entry supplies the active original owner;
         // the closed execution scope retains it through provider callbacks.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
-            .weak_owner()
+        let owner = crate::sexp::owner::OwnerToken::with_current(|owner| owner.weak_owner())?
             .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
         crate::sexp::owner::with_runtime(&owner, |access| {
             let value = access.domain().wrap(x)?.into_owned()?;
@@ -320,8 +319,7 @@ pub fn CoercionWarning(warn: c_int) {
         return;
     }
     let result: crate::sexp::object::SexpResult<()> = (|| {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
-            .weak_owner()
+        let owner = crate::sexp::owner::OwnerToken::with_current(|owner| owner.weak_owner())?
             .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
         crate::sexp::owner::with_runtime(&owner, |access| {
             // The existing session-local warning scope owns the override.

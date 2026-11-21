@@ -804,7 +804,9 @@ fn bessel_warning_uses_its_detached_session_owner() {
         assert_eq!(value, 0.0);
         assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
         assert_eq!(
-            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            unsafe {
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap()
+            },
             p
         );
     });
@@ -828,7 +830,9 @@ fn bessel_warning_uses_its_detached_session_owner() {
             }));
             assert!(error.is_err(), "warn=2 must stop the {func:?} calculation");
             assert_eq!(
-                unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+                unsafe {
+                    crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap()
+                },
                 p
             );
             assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
@@ -922,7 +926,9 @@ fn bessel_warning_revocation_case(func: RBesselFunc, x: f64, alpha: f64) {
         assert!(revoked.get());
         assert!(!owner.is_live());
         assert_eq!(
-            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            unsafe {
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap()
+            },
             p
         );
         assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
@@ -1037,14 +1043,16 @@ fn bessel_workspace_remains_charged_during_warning_gc() {
         static OBSERVED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
     fn inspect(_: &str) {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
-        let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
-        OBSERVED.with(|value| value.set(bytes));
-        crate::sexp::gengc::full_gc();
-        assert_eq!(
-            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
-            bytes
-        );
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            OBSERVED.with(|value| value.set(bytes));
+            crate::sexp::gengc::full_gc();
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                bytes
+            );
+        })
+        .unwrap()
     }
     struct ResetHook;
     impl Drop for ResetHook {
@@ -1090,15 +1098,17 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
         static EVENTS: std::cell::RefCell<Vec<(String, usize)>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     fn inspect(message: &str) {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
-        let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
-        EVENTS.with(|events| events.borrow_mut().push((message.to_owned(), bytes)));
-        crate::sexp::gengc::full_gc();
-        assert_eq!(crate::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
-        assert_eq!(
-            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
-            bytes
-        );
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            EVENTS.with(|events| events.borrow_mut().push((message.to_owned(), bytes)));
+            crate::sexp::gengc::full_gc();
+            assert_eq!(crate::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                bytes
+            );
+        })
+        .unwrap()
     }
     struct ResetHook;
     impl Drop for ResetHook {
@@ -1139,7 +1149,9 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
             f64::NEG_INFINITY
         );
         assert_eq!(
-            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            unsafe {
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap()
+            },
             p
         );
         assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);

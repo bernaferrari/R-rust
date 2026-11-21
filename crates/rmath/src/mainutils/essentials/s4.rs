@@ -802,7 +802,7 @@ fn strip_s4_data_part(value: SEXP) -> SEXP {
 }
 
 fn R_data_part(obj: SEXP) -> SEXP {
-    unsafe {
+    {
         if !IN_GET_DATA_PART.with(std::cell::Cell::get) {
             if let Some(fun) = methods_exported_closure(c"getDataPart") {
                 if let Some(methods) =
@@ -1191,7 +1191,7 @@ pub fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
 /// S4 objects (including `new("classRepresentation")`) keep slots in
 /// ATTRIB, not as VECSXP names. `NULL` is stored as GNU `pseudo_NULL`.
 pub fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
-    unsafe {
+    {
         if obj.is_null() || obj == R_NilValue() {
             std::panic::panic_any(RError {
                 message: "attempt to set slot on NULL object".to_string(),

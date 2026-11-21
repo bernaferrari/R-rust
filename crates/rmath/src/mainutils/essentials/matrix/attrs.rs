@@ -981,7 +981,7 @@ pub fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
-    unsafe {
+    {
         let _namespace = protect(namespace);
         let base = crate::sexp::envir::R_BaseNamespace();
         if namespace == base || !exported {
@@ -1318,7 +1318,7 @@ pub fn structure_attr_name(name: &str) -> &str {
 /// name in call order (`structure(.OBJSXP, dim=)` construct side; the deparse
 /// side landed separately with SyncErrDep).
 pub fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::eval::eval::Rf_eval(x, rho);

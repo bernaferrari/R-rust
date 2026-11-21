@@ -335,7 +335,7 @@ pub fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// C-level warnings (`Rf_warning` → collection) are dropped before collection,
 /// matching upstream's muffle restart.
 pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
@@ -398,7 +398,7 @@ pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// R's `suppressMessages(expr)` — evaluate expr with captured diagnostics suppressed.
 pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();

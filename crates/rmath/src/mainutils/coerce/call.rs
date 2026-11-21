@@ -15,7 +15,7 @@ pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::ffi::SEXPTYPE;
     use std::ptr;
 
-    unsafe {
+    {
         if crate::sexp::constructors::Rf_length(args) < 1 {
             Rf_error_cstr(c"'name' is missing");
         }
@@ -95,7 +95,7 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::protect::protect;
 
-    unsafe {
+    {
         let fun = CAR(args);
         let envir = CADDR(args);
         let cargs = CADR(args);
@@ -364,7 +364,7 @@ pub fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::memory_ext::NewEnvironment;
     use crate::sexp::protect::protect;
 
-    unsafe {
+    {
         let (expr, env_arg) = match_substitute_args(args);
 
         let mut env = if env_arg == R_MissingArg() {

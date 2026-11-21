@@ -12,8 +12,7 @@ fn required<T>(value: SexpResult<T>) -> T {
 }
 
 pub(super) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let owner = required(OwnerToken::current());
+    required(OwnerToken::with_current(|owner| {
         let pin = required(owner.pin());
         let factory = owner.node_factory();
         let arguments = required(factory.wrap(args));
@@ -57,7 +56,7 @@ pub(super) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         required(owner.require_active());
         value.as_raw()
-    }
+    }))
 }
 
 #[cfg(test)]

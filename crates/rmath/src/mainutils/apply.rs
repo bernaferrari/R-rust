@@ -307,27 +307,25 @@ fn length(x: SEXP) -> c_int {
 /// Takes a LANGSXP expression `e`, forces the first `n` promises in its
 /// argument list, then evaluates the function call.
 unsafe fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
-    unsafe {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::LANGSXP {
-            return Rf_eval(e, rho);
-        }
-
-        // Force the first n promises in CDR(e)
-        let mut count: c_int = 0;
-        let mut current = CDR(e);
-        while !current.is_null() && current != R_NilValue() && count < n {
-            let val = CAR(current);
-            if TYPEOF(val) == SEXPTYPE::PROMSXP {
-                let forced_val = forcePromise(val);
-                SETCAR(current, forced_val);
-            }
-            count += 1;
-            current = CDR(current);
-        }
-
-        // Evaluate the call
-        Rf_eval(e, rho)
+    if e.is_null() || TYPEOF(e) != SEXPTYPE::LANGSXP {
+        return Rf_eval(e, rho);
     }
+
+    // Force the first n promises in CDR(e)
+    let mut count: c_int = 0;
+    let mut current = CDR(e);
+    while !current.is_null() && current != R_NilValue() && count < n {
+        let val = CAR(current);
+        if TYPEOF(val) == SEXPTYPE::PROMSXP {
+            let forced_val = forcePromise(val);
+            SETCAR(current, forced_val);
+        }
+        count += 1;
+        current = CDR(current);
+    }
+
+    // Evaluate the call
+    Rf_eval(e, rho)
 }
 
 /// error helper: print message and panic with RError.

@@ -1022,36 +1022,37 @@ pub fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) ->
     unsafe {
         if TYPEOF(spackage) == SEXPTYPE::EXTPTRSXP {
             let result = (|| {
-                let owner = crate::sexp::owner::OwnerToken::current()?;
-                let _pin = owner.pin()?;
-                owner.require_active()?;
-                let factory = owner.node_factory();
-                // Retain all caller graphs before an ALTREP name provider runs.
-                let name = factory.wrap(sname)?.into_owned()?;
-                let package = factory.wrap(spackage)?.into_owned()?;
-                let registration = factory.wrap(_with_registration)?.into_owned()?;
-                let library = crate::mainutils::native_symbols::library(owner, &package)?;
-                if name.typeof_() != SEXPTYPE::STRSXP || name.len() != 1 {
-                    return Err(crate::mainutils::native_symbols::invalid_symbol());
-                }
-                let character = name.try_string_elt(0)?;
-                let name = crate::mainutils::native_symbols::name(owner, &character)?;
-                owner.require_active()?;
-                let keys = crate::mainutils::native_symbols::AttributeKeys {
-                    names: factory.wrap(R_NamesSymbol())?,
-                    class: factory.wrap(R_ClassSymbol())?,
-                };
-                let registered = registration.try_logical_elt(0)? != FALSE;
-                let package = library.package()?;
-                let result = crate::mainutils::native_symbols::symbol_info(
-                    owner,
-                    name.as_str(),
-                    package,
-                    registered,
-                    &keys,
-                )?;
-                library.package()?;
-                Ok(result.unwrap_or_else(|| factory.nil().into_owned().unwrap()))
+                crate::sexp::owner::OwnerToken::with_current(|owner| {
+                    let _pin = owner.pin()?;
+                    owner.require_active()?;
+                    let factory = owner.node_factory();
+                    // Retain all caller graphs before an ALTREP name provider runs.
+                    let name = factory.wrap(sname)?.into_owned()?;
+                    let package = factory.wrap(spackage)?.into_owned()?;
+                    let registration = factory.wrap(_with_registration)?.into_owned()?;
+                    let library = crate::mainutils::native_symbols::library(owner, &package)?;
+                    if name.typeof_() != SEXPTYPE::STRSXP || name.len() != 1 {
+                        return Err(crate::mainutils::native_symbols::invalid_symbol());
+                    }
+                    let character = name.try_string_elt(0)?;
+                    let name = crate::mainutils::native_symbols::name(owner, &character)?;
+                    owner.require_active()?;
+                    let keys = crate::mainutils::native_symbols::AttributeKeys {
+                        names: factory.wrap(R_NamesSymbol())?,
+                        class: factory.wrap(R_ClassSymbol())?,
+                    };
+                    let registered = registration.try_logical_elt(0)? != FALSE;
+                    let package = library.package()?;
+                    let result = crate::mainutils::native_symbols::symbol_info(
+                        owner,
+                        name.as_str(),
+                        package,
+                        registered,
+                        &keys,
+                    )?;
+                    library.package()?;
+                    Ok(result.unwrap_or_else(|| factory.nil().into_owned().unwrap()))
+                })?
             })();
             return result
                 .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
@@ -1132,9 +1133,8 @@ pub fn R_getDllTable() -> SEXP {
 }
 
 fn bundled_dll_table_entry() -> SEXP {
-    unsafe {
-        let result = (|| {
-            let owner = crate::sexp::owner::OwnerToken::current()?;
+    let result = (|| {
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
             let _pin = owner.pin()?;
             owner.require_active()?;
             let factory = owner.node_factory();
@@ -1145,11 +1145,11 @@ fn bundled_dll_table_entry() -> SEXP {
             let table = crate::mainutils::native_symbols::dll_table(owner, &keys)?;
             owner.require_active()?;
             Ok(table)
-        })();
-        result
-            .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
-            .as_raw()
-    }
+        })?
+    })();
+    result
+        .unwrap_or_else(|e: crate::sexp::object::SexpError| error(&e.to_string()))
+        .as_raw()
 }
 
 fn legacy_foreign_dll_table() -> SEXP {

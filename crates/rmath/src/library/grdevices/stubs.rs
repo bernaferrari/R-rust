@@ -120,40 +120,40 @@ pub(crate) fn bmVersion() -> SEXP {
 pub fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     {
-        // SAFETY: the R session owning `args` is active on this thread.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let arguments = owner
-            .sexp(args)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let authority = crate::sexp::owner::StoredOwner::from_value(&arguments)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let value = arguments
-            .try_cdr()
-            .and_then(|tail| tail.try_car())
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let ask = if value.is_nil() {
-            None
-        } else {
-            let logical = crate::mainutils::coerce::asLogical(value.as_raw());
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let arguments = owner
+                .sexp(args)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let authority = crate::sexp::owner::StoredOwner::from_value(&arguments)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let _pin = owner
+                .pin()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let value = arguments
+                .try_cdr()
+                .and_then(|tail| tail.try_car())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let ask = if value.is_nil() {
+                None
+            } else {
+                let logical = crate::mainutils::coerce::asLogical(value.as_raw());
+                authority
+                    .require_active()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if logical == crate::sexp::ffi::NA_LOGICAL {
+                    crate::sexp::context::r_error("invalid 'ask' argument");
+                }
+                Some(logical != 0)
+            };
+            let old = super::device_registry::page_question(ask);
             authority
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if logical == crate::sexp::ffi::NA_LOGICAL {
-                crate::sexp::context::r_error("invalid 'ask' argument");
-            }
-            Some(logical != 0)
-        };
-        let old = super::device_registry::page_question(ask);
-        authority
-            .require_active()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let result = crate::sexp::constructors::Rf_ScalarLogical(old as std::os::raw::c_int);
-        crate::sexp::globals::set_R_Visible(ask.is_none() as std::os::raw::c_int);
-        result
+            let result = crate::sexp::constructors::Rf_ScalarLogical(old as std::os::raw::c_int);
+            crate::sexp::globals::set_R_Visible(ask.is_none() as std::os::raw::c_int);
+            result
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }

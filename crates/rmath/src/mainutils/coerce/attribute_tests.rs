@@ -31,7 +31,7 @@ fn coercion_attributes_keep_detached_nested_values_rooted_across_gc() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
                 .memory_state
                 .gc_force_gap = 0;
         }

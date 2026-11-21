@@ -776,8 +776,7 @@ pub fn shallow_duplicate(s: SEXP) -> SEXP {
 fn duplicate_logical_singleton(
     singleton: crate::sexp::globals::SingletonLease,
 ) -> SexpResult<Sexp<'static>> {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current()? }
-        .weak_owner()
+    let owner = crate::sexp::owner::OwnerToken::with_current(|owner| owner.weak_owner())?
         .ok_or(SexpError::RootUnavailable)?;
     crate::sexp::owner::with_runtime(&owner, |access| {
         let value = singleton
@@ -2288,8 +2287,10 @@ mod tests {
             assert_eq!(header.data.closure().formals, expected_formals);
             assert_eq!(header.data.closure().body, expected_body);
             unsafe {
-                let owner = crate::sexp::owner::OwnerToken::current().unwrap();
-                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::sexp::owner::OwnerToken::with_current(|owner| {
+                    (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                })
+                .unwrap()
             }
             let mut source_header = heap.node_snapshot(&source_node).unwrap();
             source_header.data.closure_mut().formals = nil_link;

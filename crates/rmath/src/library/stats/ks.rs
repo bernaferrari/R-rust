@@ -167,47 +167,47 @@ fn k2x(owner: OwnerToken<'_>, n: i32, d: c_double) -> Result<c_double, String> {
 
 /// `C_pkolmogorov_two_exact(q, n)` — vectorised in `q`.
 pub fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let n = crate::mainutils::coerce::asInteger(sn);
-    owner
-        .require_active()
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let quantiles = owner
-        .sexp(sq)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    if quantiles.typeof_() != SEXPTYPE::REALSXP {
-        crate::mainutils::essentials::base_error("exact KS quantiles must be numeric");
-    }
-    // Preserve GNU REAL materialization, retaining checked handles, not pointers.
-    crate::sexp::altrep::force_materialization(&quantiles)
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    owner
-        .require_active()
-        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let len = quantiles.len();
-    let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
-    let _ans_guard = protect(ans);
-    let mut output = crate::sexp::SexpMut::try_from_checked(
+    OwnerToken::with_current(|owner| {
+        let n = crate::mainutils::coerce::asInteger(sn);
         owner
-            .sexp(ans)
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
-    )
-    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    for i in 0..len {
-        let d = quantiles
-            .try_real_elt(i)
+            .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        let probability =
-            k2x(owner, n, d).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
-        output
-            .try_set_real_elt(i, probability)
+        let quantiles = owner
+            .sexp(sq)
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    }
-    owner
-        .require_active()
+        if quantiles.typeof_() != SEXPTYPE::REALSXP {
+            crate::mainutils::essentials::base_error("exact KS quantiles must be numeric");
+        }
+        // Preserve GNU REAL materialization, retaining checked handles, not pointers.
+        crate::sexp::altrep::force_materialization(&quantiles)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let len = quantiles.len();
+        let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
+        let _ans_guard = protect(ans);
+        let mut output = crate::sexp::SexpMut::try_from_checked(
+            owner
+                .sexp(ans)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
+        )
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    ans
+        for i in 0..len {
+            let d = quantiles
+                .try_real_elt(i)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+            let probability =
+                k2x(owner, n, d).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
+            output
+                .try_set_real_elt(i, probability)
+                .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        }
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        ans
+    }).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------

@@ -403,8 +403,7 @@ fn force_promise(prom: SEXP) -> SEXP {
 
 /// GNU `eval(call, rho)` of a protected call.
 fn eval_in(call: SEXP, rho: SEXP) -> SEXP {
-    // SAFETY: callers protect `call` and pass a live environment.
-    unsafe { crate::eval::eval::Rf_eval(call, rho) }
+    crate::eval::eval::Rf_eval(call, rho)
 }
 
 /// GNU `duplicate`.

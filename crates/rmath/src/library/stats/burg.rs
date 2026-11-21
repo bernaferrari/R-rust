@@ -84,59 +84,59 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 }
 
 pub fn Burg(x: SEXP, order: SEXP) -> SEXP {
-    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
-    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
-    let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-    let _x_guard = protect(x);
-    let n = LENGTH(x);
-    let pmax = asInteger(order);
-    let pmax_usize = non_negative_usize(pmax, b"'order.max' must be non-negative\0");
-    if n <= pmax {
-        error(b"'order.max' must be smaller than the number of observations\0");
-    }
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _x_guard = protect(x);
+        let n = LENGTH(x);
+        let pmax = asInteger(order);
+        let pmax_usize = non_negative_usize(pmax, b"'order.max' must be non-negative\0");
+        if n <= pmax {
+            error(b"'order.max' must be smaller than the number of observations\0");
+        }
 
-    let coefs = Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax);
-    let _coefs_guard = protect(coefs);
-    let var1 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
-    let _var1_guard = protect(var1);
-    let var2 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
-    let _var2_guard = protect(var2);
+        let coefs = Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax);
+        let _coefs_guard = protect(coefs);
+        let var1 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
+        let _var1_guard = protect(var1);
+        let var2 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
+        let _var2_guard = protect(var2);
 
-    let x_value = checked(owner.sexp(x));
-    let x_values: Vec<c_double> = (0..x_value.len())
-        .map(|i| checked(x_value.try_real_elt(i)))
-        .collect();
-    let mut coefs_values = vec![0.0; pmax_usize * pmax_usize];
-    let mut var1_values = vec![0.0; pmax_usize + 1];
-    let mut var2_values = vec![0.0; pmax_usize + 1];
-    burg_values(
-        &x_values,
-        pmax_usize,
-        &mut coefs_values,
-        &mut var1_values,
-        &mut var2_values,
-    );
-    let mut coefs_out = checked(SexpMut::try_from_checked(checked(owner.sexp(coefs))));
-    for (i, &v) in coefs_values.iter().enumerate() {
-        checked(coefs_out.try_set_real_elt(i as R_xlen_t, v));
-    }
-    let mut var1_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var1))));
-    for (i, &v) in var1_values.iter().enumerate() {
-        checked(var1_out.try_set_real_elt(i as R_xlen_t, v));
-    }
-    let mut var2_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var2))));
-    for (i, &v) in var2_values.iter().enumerate() {
-        checked(var2_out.try_set_real_elt(i as R_xlen_t, v));
-    }
+        let x_value = checked(owner.sexp(x));
+        let x_values: Vec<c_double> = (0..x_value.len())
+            .map(|i| checked(x_value.try_real_elt(i)))
+            .collect();
+        let mut coefs_values = vec![0.0; pmax_usize * pmax_usize];
+        let mut var1_values = vec![0.0; pmax_usize + 1];
+        let mut var2_values = vec![0.0; pmax_usize + 1];
+        burg_values(
+            &x_values,
+            pmax_usize,
+            &mut coefs_values,
+            &mut var1_values,
+            &mut var2_values,
+        );
+        let mut coefs_out = checked(SexpMut::try_from_checked(checked(owner.sexp(coefs))));
+        for (i, &v) in coefs_values.iter().enumerate() {
+            checked(coefs_out.try_set_real_elt(i as R_xlen_t, v));
+        }
+        let mut var1_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var1))));
+        for (i, &v) in var1_values.iter().enumerate() {
+            checked(var1_out.try_set_real_elt(i as R_xlen_t, v));
+        }
+        let mut var2_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var2))));
+        for (i, &v) in var2_values.iter().enumerate() {
+            checked(var2_out.try_set_real_elt(i as R_xlen_t, v));
+        }
 
-    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-    let _ans_guard = protect(ans);
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+        let _ans_guard = protect(ans);
 
-    SET_VECTOR_ELT(ans, 0, coefs);
-    SET_VECTOR_ELT(ans, 1, var1);
-    SET_VECTOR_ELT(ans, 2, var2);
+        SET_VECTOR_ELT(ans, 0, coefs);
+        SET_VECTOR_ELT(ans, 1, var1);
+        SET_VECTOR_ELT(ans, 2, var2);
 
-    ans
+        ans
+    }))
 }
 
 // SAFETY: registered .Fortran routine; the dispatch passes live workspaces

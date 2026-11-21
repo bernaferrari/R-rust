@@ -24,41 +24,42 @@ fn checked<T>(result: SexpResult<T>) -> T {
 }
 
 pub(super) fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SEXP {
-    let owner = checked(unsafe { OwnerToken::current() });
-    let _pin = checked(owner.pin());
-    let op = checked(owner.sexp(op).and_then(Sexp::into_owned));
-    let args = checked(owner.sexp(args).and_then(Sexp::into_owned));
-    let weak = owner
-        .weak_owner()
-        .unwrap_or_else(|| context::r_error("error buffers require a managed runtime"));
-    let result = checked(crate::sexp::owner::with_runtime(
-        &weak,
-        |access| -> SexpResult<Sexp<'static>> {
-            access.with_native(|original| {
-                {
-                    super::checkArity(op.as_raw(), args.as_raw())
-                };
-                original.require_active()
-            })?;
-            if write {
-                let snapshot = super::byte_buffer::argument(access, &args)?;
+    checked(OwnerToken::with_current(|owner| {
+        let _pin = checked(owner.pin());
+        let op = checked(owner.sexp(op).and_then(Sexp::into_owned));
+        let args = checked(owner.sexp(args).and_then(Sexp::into_owned));
+        let weak = owner
+            .weak_owner()
+            .unwrap_or_else(|| context::r_error("error buffers require a managed runtime"));
+        let result = checked(crate::sexp::owner::with_runtime(
+            &weak,
+            |access| -> SexpResult<Sexp<'static>> {
                 access.with_native(|original| {
-                    super::state::set_error_buffer_snapshot(snapshot);
+                    {
+                        super::checkArity(op.as_raw(), args.as_raw())
+                    };
                     original.require_active()
                 })?;
-                Ok(access.domain().nil())
-            } else {
-                let snapshot = access.with_native(|original| {
-                    let snapshot = super::state::error_buffer_snapshot();
-                    original.require_active()?;
-                    Ok(snapshot)
-                })?;
-                snapshot.value(access)
-            }
-        },
-    ));
-    checked(owner.require_active());
-    checked(result).as_raw()
+                if write {
+                    let snapshot = super::byte_buffer::argument(access, &args)?;
+                    access.with_native(|original| {
+                        super::state::set_error_buffer_snapshot(snapshot);
+                        original.require_active()
+                    })?;
+                    Ok(access.domain().nil())
+                } else {
+                    let snapshot = access.with_native(|original| {
+                        let snapshot = super::state::error_buffer_snapshot();
+                        original.require_active()?;
+                        Ok(snapshot)
+                    })?;
+                    snapshot.value(access)
+                }
+            },
+        ));
+        checked(owner.require_active());
+        checked(result).as_raw()
+    }))
 }
 
 /// Signal canonical byte-preserving condition data in its original runtime.
@@ -115,11 +116,12 @@ fn owned(value: Sexp<'_>) -> Sexp<'static> {
     checked(value.into_owned())
 }
 fn factory_and_pin() -> (SessionNodeFactory<'static>, OwnerPin) {
-    let token = checked(unsafe { OwnerToken::current() });
-    let pin = checked(token.pin())
-        .unwrap_or_else(|| context::r_error("condition scopes require a managed runtime"));
-    let owner = token.weak_owner().expect("pinned managed runtime");
-    (checked(owner.node_factory()), pin)
+    checked(OwnerToken::with_current(|token| {
+        let pin = checked(token.pin())
+            .unwrap_or_else(|| context::r_error("condition scopes require a managed runtime"));
+        let owner = token.weak_owner().expect("pinned managed runtime");
+        (checked(owner.node_factory()), pin)
+    }))
 }
 
 struct HandlerStackScope {
