@@ -188,7 +188,7 @@ pub(crate) fn read_bc_source(
         // SAFETY: `code` and `constants` are live vectors validated by
         // their wire types above; the adapter validator reads their raw
         // layouts.
-        if !unsafe { crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants) }?
+        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants)?
         {
             return Ok(VECTOR_ELT(constants, 0));
         }

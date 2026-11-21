@@ -243,7 +243,7 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
         if stype == SEXPTYPE::BCODESXP {
             // SAFETY: `s` is a caller-rooted live BCODESXP; the predicate
             // reads its raw vector layout.
-            if unsafe { crate::eval::bc_eval::BCODE_IS_GNU(s) } {
+            if crate::eval::bc_eval::BCODE_IS_GNU(s) {
                 writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
                 writer.write_i32(1); // GNU WriteBC repetition table length.
                 write_gnu_bc_payload(s, ref_table, writer, 0);

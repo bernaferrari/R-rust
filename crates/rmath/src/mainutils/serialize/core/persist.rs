@@ -188,9 +188,7 @@ pub(crate) fn write_gnu_bc_payload(
     writer: &mut BinaryWriter,
     depth: usize,
 ) {
-    // SAFETY: the retained boundary covers the GNU bytecode accessors and
-    // stream validator; every other operation uses checked accessors.
-    unsafe {
+    {
         if depth >= 128 {
             error("GNU bytecode nesting exceeds 128 levels");
         }
