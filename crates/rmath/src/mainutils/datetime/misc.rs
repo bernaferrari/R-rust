@@ -24,7 +24,7 @@ fn r_round_digits(x: f64, digits: i32) -> f64 {
     (x * p).round() / p
 }
 
-pub(crate) unsafe fn as_character_real(
+pub(crate) fn as_character_real(
     call: SEXP,
     op: SEXP,
     env: SEXP,
@@ -71,7 +71,7 @@ pub(crate) unsafe fn as_character_real(
 }
 
 /// GNU `as.double.POSIXlt <- function(x, ...) as.double(as.POSIXct(x))`.
-pub unsafe fn do_as_double_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_as_double_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
@@ -132,7 +132,7 @@ pub(crate) fn tzname_str(idx: usize) -> String {
 /// Convert a Date (numeric days since epoch) to a POSIXlt list in UTC.
 ///
 /// Ported from `do_D2POSIXlt()` in datetime.c.
-pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         // GNU do_D2POSIXlt: optional second arg tz; empty -> "UTC".
@@ -220,7 +220,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 ///
 /// Ported from `do_POSIXlt2D()` in datetime.c.
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);
@@ -298,21 +298,26 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 }
 
 fn logical_arg_true(arg: SEXP, default: bool) -> bool {
-    unsafe {
-        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
-            return default;
-        }
-        if TYPEOF(arg) == SEXPTYPE::LGLSXP && XLENGTH(arg) > 0 {
-            return *INTEGER(arg) == TRUE;
-        }
-        if TYPEOF(arg) == SEXPTYPE::INTSXP && XLENGTH(arg) > 0 {
-            return *INTEGER(arg) != 0 && *INTEGER(arg) != NA_INTEGER;
-        }
-        default
+    if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+        return default;
     }
+    let a = wrapped(arg);
+    if TYPEOF(arg) == SEXPTYPE::LGLSXP && XLENGTH(arg) > 0 {
+        return a
+            .try_logical_elt(0)
+            .map(|v| v == TRUE)
+            .unwrap_or(default);
+    }
+    if TYPEOF(arg) == SEXPTYPE::INTSXP && XLENGTH(arg) > 0 {
+        return a
+            .try_integer_elt(0)
+            .map(|v| v != 0 && v != NA_INTEGER)
+            .unwrap_or(default);
+    }
+    default
 }
 
-unsafe fn recycle_posixlt_year_names(ans: SEXP, src: SEXP, n: R_xlen_t) {
+fn recycle_posixlt_year_names(ans: SEXP, src: SEXP, n: R_xlen_t) {
     unsafe {
         if n <= 0 || XLENGTH(src) < 6 || XLENGTH(ans) < 6 {
             return;
@@ -335,7 +340,7 @@ unsafe fn recycle_posixlt_year_names(ans: SEXP, src: SEXP, n: R_xlen_t) {
     }
 }
 
-unsafe fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {
+fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {
     unsafe {
         let ni = XLENGTH(src);
         if ni == n {
@@ -375,7 +380,7 @@ unsafe fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {
     }
 }
 
-unsafe fn balance_posixlt_fill_only(
+fn balance_posixlt_fill_only(
     x: SEXP,
     n: R_xlen_t,
     nlen: &[i64; 11],
@@ -409,7 +414,7 @@ unsafe fn balance_posixlt_fill_only(
 }
 
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
-pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let matched = match_named_then_positional(call, args, &["x", "fill.only", "classed"]);
 
@@ -628,7 +633,7 @@ pub unsafe fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 ///
 /// Returns a difftime object (numeric with "units" attribute).
 /// Ported from the R difftime() logic.
-pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let time1 = CADR(args); // second arg in pairlist
         let time2 = CADDR(args); // third arg
@@ -694,7 +699,7 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// Construct a POSIXct from date/time components.
 ///
 /// Ported from `ISOdatetime()` in datetime.c.
-pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let year = CAR(args);
         let month = CADR(args);

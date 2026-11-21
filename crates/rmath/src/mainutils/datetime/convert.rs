@@ -211,7 +211,7 @@ fn tz_is_utc(tz: &str) -> bool {
     )
 }
 
-pub(crate) unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
+pub(crate) fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
     unsafe {
         if lt.is_null() || lt == R_NilValue() || TYPEOF(lt) != SEXPTYPE::VECSXP {
             return false;
@@ -242,7 +242,7 @@ pub(crate) unsafe fn posixlt_parses_every_string(lt: SEXP, x: SEXP) -> bool {
     }
 }
 
-unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
+fn posixlt_has_valid_time(x: SEXP) -> bool {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP || XLENGTH(x) < 1 {
             return false;
@@ -264,7 +264,7 @@ unsafe fn posixlt_has_valid_time(x: SEXP) -> bool {
 
 /// GNU `as.POSIXlt.default` uses `missing(tz)`. A supplied non-empty tz
 /// only relabels `tzone` on an existing POSIXlt.
-pub(crate) unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
+pub(crate) fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
     unsafe {
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -291,7 +291,7 @@ pub(crate) unsafe fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn set_posixlt_balanced(ans: SEXP) {
+pub(crate) fn set_posixlt_balanced(ans: SEXP) {
     unsafe {
         setAttrib(
             ans,
@@ -325,7 +325,7 @@ fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn finish_posixlt(ans: SEXP, ansnames: SEXP, tzone: SEXP) {
+pub(crate) fn finish_posixlt(ans: SEXP, ansnames: SEXP, tzone: SEXP) {
     unsafe {
         setAttrib(ans, R_NamesSymbol(), ansnames);
         let klass = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
@@ -341,7 +341,7 @@ pub(crate) unsafe fn finish_posixlt(ans: SEXP, ansnames: SEXP, tzone: SEXP) {
 }
 
 /// GNU `.Internal(as.POSIXlt(x, tz))` for numeric POSIXct seconds.
-pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
+pub fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
     unsafe {
         let is_utc = tz_is_utc(tz);
         let tzsi = TzSetup::prepare();
@@ -434,7 +434,7 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
 /// Convert a POSIXct numeric vector to a POSIXlt list.
 ///
 /// Ported from `do_asPOSIXlt()` in datetime.c.
-pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
@@ -461,7 +461,7 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 /// Convert a POSIXlt list to a POSIXct numeric vector.
 ///
 /// Ported from `do_asPOSIXct()` in datetime.c.
-pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);
@@ -479,7 +479,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 /// Convert fields in their requested time zone. Both native and GNU-facing
 /// callers use the same owner-scoped override before calling mktime.
-pub unsafe fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
+pub fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
     unsafe {
         let _x_guard = protect(x);
         if TYPEOF(x) != SEXPTYPE::VECSXP || XLENGTH(x) < 9 {
