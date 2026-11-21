@@ -7,7 +7,6 @@
 
 #![allow(non_snake_case)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
 
@@ -71,20 +70,20 @@ fn boxed_germanic_plural() -> *const expression {
 ///
 /// Equivalent to `strtoul(nplurals, &endp, 10)` for decimal parsing.
 fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
-    unsafe {
-        let mut n: c_ulong = 0;
-        let mut p = s;
-        while !p.is_null() && *p != 0 {
-            let ch = *p as u8;
-            if ch < b'0' || ch > b'9' {
-                break;
-            }
-            n = n.wrapping_mul(10).wrapping_add((ch - b'0') as c_ulong);
-            p = p.add(1);
-        }
-        *endp = p;
-        n
+    let Some(text) = cstr(s) else {
+        *endp = s;
+        return 0;
+    };
+    let bytes = text.to_bytes();
+    let mut n: c_ulong = 0;
+    let mut i = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        n = n.wrapping_mul(10).wrapping_add((bytes[i] - b'0') as c_ulong);
+        i += 1;
     }
+    // Point `endp` just past the consumed digits inside `s`.
+    *endp = bytes[i..].as_ptr() as *const c_char;
+    n
 }
 
 // ---------------------------------------------------------------------------
@@ -106,51 +105,60 @@ pub fn libintl_gettext_extract_plural(
     pluralp: *mut *const expression,
     npluralsp: *mut c_ulong,
 ) {
-    unsafe {
-        if !nullentry.is_null() {
-            let entry = CStr::from_ptr(nullentry).to_bytes();
-            let entry_str = std::str::from_utf8_unchecked(entry);
+    if let Some(entry_cstr) = cstr(nullentry) {
+        let entry = entry_cstr.to_bytes();
+        let entry_str = std::str::from_utf8(entry).unwrap_or("");
 
-            let plural_pos = entry_str.find("plural=");
-            let nplurals_pos = entry_str.find("nplurals=");
+        let plural_pos = entry_str.find("plural=");
+        let nplurals_pos = entry_str.find("nplurals=");
 
-            if let (Some(plural_p), Some(nplurals_p)) = (plural_pos, nplurals_pos) {
-                let nplurals_start = nplurals_p + 9; // skip "nplurals="
+        if let (Some(plural_p), Some(nplurals_p)) = (plural_pos, nplurals_pos) {
+            let nplurals_start = nplurals_p + 9; // skip "nplurals="
 
-                // Skip leading whitespace.
-                let bytes = entry_str.as_bytes();
-                let mut offset = nplurals_start;
-                while offset < bytes.len() && (bytes[offset] as char).is_whitespace() {
-                    offset += 1;
-                }
+            // Skip leading whitespace.
+            let bytes = entry_str.as_bytes();
+            let mut offset = nplurals_start;
+            while offset < bytes.len() && (bytes[offset] as char).is_whitespace() {
+                offset += 1;
+            }
 
-                // Must start with a digit.
-                if offset < bytes.len() && bytes[offset] >= b'0' && bytes[offset] <= b'9' {
-                    let mut endp: *const c_char = ptr::null();
-                    let n = parse_ulong(nullentry.add(nplurals_start), &mut endp);
+            // Must start with a digit.
+            if offset < bytes.len() && bytes[offset].is_ascii_digit() {
+                // `nplurals_start` is inside `entry`, so this pointer is
+                // still inside `nullentry`'s NUL-terminated buffer.
+                let startp = bytes[nplurals_start..].as_ptr() as *const c_char;
+                let mut endp: *const c_char = ptr::null();
+                let n = parse_ulong(startp, &mut endp);
 
-                    if endp != nullentry.add(nplurals_start) {
-                        *npluralsp = n;
+                if endp != startp {
+                    if let Some(p) = ptr_mut(npluralsp) {
+                        *p = n;
+                    }
 
-                        // Try to parse the plural expression.
-                        let plural_start = plural_p + 7; // skip "plural="
-                        let mut args = parse_args {
-                            cp: nullentry.add(plural_start),
-                            res: ptr::null_mut(),
-                        };
+                    // Try to parse the plural expression.
+                    let plural_start = plural_p + 7; // skip "plural="
+                    let mut args = parse_args {
+                        cp: bytes[plural_start..].as_ptr() as *const c_char,
+                        res: ptr::null_mut(),
+                    };
 
-                        if PLURAL_PARSE(&mut args) == 0 {
-                            *pluralp = args.res;
-                            return;
+                    if PLURAL_PARSE(&mut args) == 0 {
+                        if let Some(p) = ptr_mut(pluralp) {
+                            *p = args.res;
                         }
+                        return;
                     }
                 }
             }
         }
+    }
 
-        // Fall back to Germanic plural form.
-        *pluralp = boxed_germanic_plural();
-        *npluralsp = 2;
+    // Fall back to Germanic plural form.
+    if let Some(p) = ptr_mut(pluralp) {
+        *p = boxed_germanic_plural();
+    }
+    if let Some(p) = ptr_mut(npluralsp) {
+        *p = 2;
     }
 }
 
@@ -168,9 +176,10 @@ pub fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
 
 /// Recursive internal evaluator for plural expression trees.
 fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
-    unsafe {
-        let exp = &*pexp;
-        match exp.operation {
+    let Some(exp) = ptr_ref(pexp) else {
+        return 0;
+    };
+    match exp.operation {
             expression_operator::var => n,
 
             expression_operator::num => exp.val.get_num(),
@@ -267,7 +276,6 @@ fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
                     plural_eval_internal(exp.val.get_args()[2], n)
                 }
             }
-        }
     }
 }
 
