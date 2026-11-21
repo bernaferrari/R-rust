@@ -151,7 +151,12 @@ fn alloc_c_string(len: usize) -> *mut c_char {
     }
 }
 
-fn free_c_string(p: *mut c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_c_string(p: *mut c_char) {
     unsafe {
         if p.is_null() {
             return;
@@ -173,7 +178,12 @@ fn alloc_boxed<T>() -> *mut T {
     }
 }
 
-fn free_boxed<T>(p: *mut T) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_boxed<T>(p: *mut T) {
     unsafe {
         if p.is_null() {
             return;
@@ -190,7 +200,13 @@ fn free_boxed<T>(p: *mut T) {
 /// init_con - initialize connection fields that don't depend on the connection type.
 /// Simplified version of Rf_init_con from connections.c.
 /// Sets mode, isopen=false, text=true, canread/canwrite/canseek, blocking=true, etc.
-fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mode: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mode: *const c_char) {
     unsafe {
         (*new).enc = enc;
         // Copy mode string (max 4 chars + null)
@@ -268,7 +284,13 @@ extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
 
 /// listencleanup - close the listening socket on error/jump.
 /// Matches C: static void listencleanup(void *data)
-fn listencleanup(data: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn listencleanup(data: *mut c_void) {
     unsafe {
         let psock = data as *mut c_int;
         if !psock.is_null() {
@@ -283,7 +305,13 @@ fn listencleanup(data: *mut c_void) {
 
 /// sock_open - open a socket connection (server or client).
 /// Matches C: static Rboolean sock_open(Rconnection con)
-fn sock_open(con: Rconnection) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn sock_open(con: Rconnection) -> c_int {
     unsafe {
         if con.is_null() {
             return R_FALSE;
@@ -428,7 +456,13 @@ fn sock_open(con: Rconnection) -> c_int {
 
 /// sock_close - close a socket connection.
 /// Matches C: static void sock_close(Rconnection con)
-fn sock_close(con: Rconnection) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn sock_close(con: Rconnection) {
     unsafe {
         if con.is_null() {
             return;
@@ -447,7 +481,13 @@ fn sock_close(con: Rconnection) {
 
 /// servsock_close - close a server socket connection.
 /// Matches C: static void servsock_close(Rconnection con)
-fn servsock_close(con: Rconnection) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn servsock_close(con: Rconnection) {
     unsafe {
         if con.is_null() {
             return;
@@ -467,7 +507,13 @@ fn servsock_close(con: Rconnection) {
 /// sock_read_helper - read `size` bytes from the socket connection into `ptr`.
 /// Uses an internal 4096-byte buffer for efficiency.
 /// Matches C: static ssize_t sock_read_helper(Rconnection con, void *ptr, size_t size)
-fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: size_t) -> ssize_t {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: size_t) -> ssize_t {
     unsafe {
         if con.is_null() {
             return -1;
@@ -550,9 +596,16 @@ fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: size_t) ->
 
 /// sock_fgetc_internal - read a single character from a socket connection.
 /// Matches C: static int sock_fgetc_internal(Rconnection con)
-fn sock_fgetc_internal(con: Rconnection) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn sock_fgetc_internal(con: Rconnection) -> c_int {
     let mut c: u8 = 0;
-    let n = sock_read_helper(con, &mut c as *mut u8 as *mut c_void, 1);
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    let n = unsafe { sock_read_helper(con, &mut c as *mut u8 as *mut c_void, 1) };
     if n == 1 { c as c_int } else { R_EOF }
 }
 
@@ -562,7 +615,13 @@ fn sock_fgetc_internal(con: Rconnection) -> c_int {
 
 /// sock_read - read `nitems` objects of `size` bytes each from socket.
 /// Matches C: static size_t sock_read(void *ptr, size_t size, size_t nitems, Rconnection con)
-extern "C" fn sock_read(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn sock_read(
     ptr: *mut c_void,
     size: size_t,
     nitems: size_t,
@@ -571,7 +630,8 @@ extern "C" fn sock_read(
     if size == 0 {
         return 0;
     }
-    let n = sock_read_helper(con, ptr, size * nitems) / (size as ssize_t);
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    let n = unsafe { sock_read_helper(con, ptr, size * nitems) } / (size as ssize_t);
     if n > 0 { n as size_t } else { 0 }
 }
 
@@ -581,7 +641,13 @@ extern "C" fn sock_read(
 
 /// sock_write - write `nitems` objects of `size` bytes each to socket.
 /// Matches C: static size_t sock_write(const void *ptr, size_t size, size_t nitems, Rconnection con)
-extern "C" fn sock_write(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn sock_write(
     ptr: *const c_void,
     size: size_t,
     nitems: size_t,
@@ -609,23 +675,51 @@ extern "C" fn sock_write(
 // ---------------------------------------------------------------------------
 
 /// Trampoline for sock_open to match the Rconn.open function pointer signature.
-extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
-    sock_open(con)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    unsafe { sock_open(con) }
 }
 
 /// Trampoline for sock_close to match the Rconn.close function pointer signature.
-extern "C" fn sock_close_trampoline(con: *mut Rconn) {
-    sock_close(con);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn sock_close_trampoline(con: *mut Rconn) {
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    unsafe { sock_close(con) };
 }
 
 /// Trampoline for servsock_close to match the Rconn.close function pointer signature.
-extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
-    servsock_close(con);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    unsafe { servsock_close(con) };
 }
 
 /// Trampoline for sock_fgetc_internal to match the Rconn.fgetc_internal function pointer signature.
-extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
-    sock_fgetc_internal(con)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    unsafe { sock_fgetc_internal(con) }
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +730,13 @@ extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
 /// Allocates and initializes the Rconn struct with socket-specific fields.
 /// Matches C: Rconnection in_R_newsock(const char *host, int port, int server,
 ///              int serverfd, const char * const mode, int timeout, int options)
-pub(crate) fn in_R_newsock(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn in_R_newsock(
     host: *const c_char,
     port: c_int,
     server: c_int,

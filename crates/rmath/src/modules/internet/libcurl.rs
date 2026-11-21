@@ -273,7 +273,13 @@ fn ftp_errstr(status: c_long) -> *const c_char {
 }
 
 /// streql - compare two C strings for equality
-fn streql(a: *const c_char, b: *const c_char) -> bool {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
     unsafe {
         if a.is_null() || b.is_null() {
             return false;
@@ -377,7 +383,12 @@ fn header_ptr(index: usize) -> *const c_char {
     with_libcurl_state(|state| state.headers[index].as_ptr())
 }
 
-fn push_header(buffer: *const c_char, len: usize) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn push_header(buffer: *const c_char, len: usize) {
     with_libcurl_state(|state| {
         let used = state.headers_used as usize;
         if used >= MAX_HEADERS {
@@ -394,14 +405,26 @@ fn push_header(buffer: *const c_char, len: usize) {
 }
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
-fn rcvHeaders(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void) -> size_t {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn rcvHeaders(
+    buffer: *mut c_void,
+    size: size_t,
+    nmemb: size_t,
+    _userp: *mut c_void,
+) -> size_t {
     let d = buffer as *mut c_char;
     let result = size * nmemb;
     let res = if result > 2048 { 2048 } else { result };
     if (headers_used() as usize) >= MAX_HEADERS {
         return result;
     }
-    push_header(d, res);
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    unsafe { push_header(d, res) };
     result
 }
 
@@ -414,7 +437,12 @@ fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void
 // handle_cleanup - cleanup handler for curl easy handles
 // ============================================================
 
-fn handle_cleanup(data: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn handle_cleanup(data: *mut c_void) {
     unsafe {
         let hnd = data as *mut CURL;
         if !hnd.is_null() {
@@ -446,7 +474,13 @@ struct download_cleanup_info {
 }
 
 /// download_cleanup_url - clean up a single URL at given index
-fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
     unsafe {
         let c_ref = &mut *c;
         if !c_ref.out.is_null() && !(*c_ref.out.add(i as usize)).is_null() {
@@ -496,7 +530,13 @@ fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
 }
 
 /// download_cleanup - cleanup all resources for a batch download
-fn download_cleanup(data: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_cleanup(data: *mut c_void) {
     unsafe {
         let c = data as *mut download_cleanup_info;
         if c.is_null() {
@@ -518,7 +558,13 @@ fn download_cleanup(data: *mut c_void) {
 }
 
 /// download_report_url_error - report a download error based on libcurl message
-fn download_report_url_error(msg: *mut CURLMsg) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_report_url_error(msg: *mut CURLMsg) {
     unsafe {
         let mut url: *const c_char = std::ptr::null();
         let mut status: c_long = 0;
@@ -581,7 +627,13 @@ fn download_report_url_error(msg: *mut CURLMsg) {
 }
 
 /// curlMultiCheckerrs - check curl_multi_info_read for errors, return count
-fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
     unsafe {
         let mut retval: c_int = 0;
         let mut n: c_int = 1;
@@ -600,7 +652,12 @@ fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
 // curlCommon - common curl handle setup
 // ============================================================
 
-fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
     unsafe {
         if verify != 0 {
             if let Ok(bundle) = std::env::var("CURL_CA_BUNDLE") {
@@ -688,8 +745,14 @@ fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 // ============================================================
 
 /// putdashes - print download progress dashes (Unix)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[cfg(unix)]
-fn putdashes(pold: *mut c_int, new: c_int) {
+unsafe fn putdashes(pold: *mut c_int, new: c_int) {
     unsafe {
         let old_val = *pold;
         for _i in old_val..new {
@@ -705,7 +768,13 @@ fn putdashes(pold: *mut c_int, new: c_int) {
 fn putdashes(_pold: *mut c_int, _new: c_int) {}
 
 /// progress - download progress callback (single URL)
-fn progress(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn progress(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -765,7 +834,13 @@ fn progress(
 }
 
 /// progress_multi - download progress callback (multi URL) - implements absolute-time timeout
-fn progress_multi(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn progress_multi(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -787,7 +862,13 @@ fn progress_multi(
 }
 
 /// prereq_multi - pre-request callback for multi downloads
-fn prereq_multi(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn prereq_multi(
     clientp: *mut c_void,
     _conn_primary_ip: *mut c_char,
     _conn_local_ip: *mut c_char,
@@ -809,7 +890,13 @@ fn prereq_multi(
 
 /// download_add_url - open file, create easy handle, add to multi-handle.
 /// Returns 0 on success. Reports errors only when mustWork != 0.
-fn download_add_url(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_add_url(
     i: c_int,
     scmd: SEXP,
     mode: *const c_char,
@@ -900,7 +987,13 @@ fn download_add_url(
 }
 
 /// download_add_one_url - add one URL to the multi-handle, possibly trying multiple URLs
-fn download_add_one_url(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_add_one_url(
     i_ptr: *mut c_int,
     scmd: SEXP,
     mode: *const c_char,
@@ -922,7 +1015,13 @@ fn download_add_one_url(
 }
 
 /// download_try_add_urls - try adding up to n URLs to the multi-handle
-fn download_try_add_urls(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_try_add_urls(
     i_ptr: *mut c_int,
     n: c_int,
     scmd: SEXP,
@@ -947,7 +1046,13 @@ fn download_try_add_urls(
 }
 
 /// download_close_finished - clean up finished downloads from multi handle
-fn download_close_finished(c: *mut download_cleanup_info) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn download_close_finished(c: *mut download_cleanup_info) {
     unsafe {
         let c_ref = &mut *c;
         let mut n: c_int = 1;
@@ -1500,7 +1605,13 @@ fn GetOption1(tag: SEXP) -> SEXP {
 }
 
 /// install - intern a symbol name
-fn install(name: *const c_char) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn install(name: *const c_char) -> SEXP {
     unsafe { crate::sexp::symbol::Rf_install(name) }
 }
 

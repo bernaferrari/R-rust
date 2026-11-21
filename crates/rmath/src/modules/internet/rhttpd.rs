@@ -230,7 +230,10 @@ fn R_FindNamespace(_name: SEXP) -> SEXP {
     R_NilValue()
 }
 
-fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
+/// # Safety
+///
+/// If `fun` is `Some`, calling it with `data` must be sound.
+unsafe fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
     unsafe {
         if let Some(fun) = fun {
             fun(data);
@@ -287,7 +290,13 @@ fn first_init() {
 // ============================================================
 
 /// Free a C string allocated by alloc_c_string. Null-safe.
-fn free_c_string(s: *mut c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_c_string(s: *mut c_char) {
     unsafe {
         if s.is_null() {
             return;
@@ -299,7 +308,13 @@ fn free_c_string(s: *mut c_char) {
 }
 
 /// Duplicate a C string using std::alloc instead of libc::strdup.
-fn alloc_c_string(s: *const c_char) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return std::ptr::null_mut();
@@ -319,7 +334,13 @@ fn alloc_c_string(s: *const c_char) -> *mut c_char {
 // ---------------------------------------------------------------------------
 
 /// C `strlen` over a NUL-terminated byte string.
-fn c_strlen(s: *const c_char) -> usize {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strlen(s: *const c_char) -> usize {
     unsafe {
         if s.is_null() {
             return 0;
@@ -335,7 +356,13 @@ fn c_strlen(s: *const c_char) -> usize {
 }
 
 /// C `strcmp` comparing bytes as unsigned chars.
-fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         let empty = b"\0";
         let mut pa = if a.is_null() {
@@ -364,7 +391,13 @@ fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
 }
 
 /// C `strncmp` comparing at most `n` bytes, stopping at a NUL.
-fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
     unsafe {
         if n == 0 {
             return 0;
@@ -398,7 +431,13 @@ fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
 
 /// C `strchr`: pointer to the first occurrence of `c` (NUL matches the
 /// terminator), or NULL.
-fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return std::ptr::null_mut();
@@ -419,7 +458,13 @@ fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
 }
 
 /// C `strcpy`: copy `src` including the NUL terminator.
-fn c_strcpy(dest: *mut c_char, src: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
     unsafe {
         if dest.is_null() || src.is_null() {
             return;
@@ -439,7 +484,13 @@ fn c_strcpy(dest: *mut c_char, src: *const c_char) {
 }
 
 /// C `atol`: skip leading whitespace, optional sign, parse decimal digits.
-fn c_atol(s: *const c_char) -> c_long {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_atol(s: *const c_char) -> c_long {
     unsafe {
         if s.is_null() {
             return 0;
@@ -467,17 +518,35 @@ fn c_atol(s: *const c_char) -> c_long {
 }
 
 /// C `memcpy`: copy `n` bytes between non-overlapping regions.
-fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
     unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n) }
 }
 
 /// C `memmove`: copy `n` bytes between possibly-overlapping regions.
-fn c_memmove(dest: *mut c_void, src: *const c_void, n: usize) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_memmove(dest: *mut c_void, src: *const c_void, n: usize) {
     unsafe { std::ptr::copy(src as *const u8, dest as *mut u8, n) }
 }
 
 /// C `memset`: fill `n` bytes with `c`.
-fn c_memset(s: *mut c_void, c: c_int, n: usize) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_memset(s: *mut c_void, c: c_int, n: usize) {
     unsafe { std::ptr::write_bytes(s as *mut u8, c as u8, n) }
 }
 
@@ -493,7 +562,13 @@ fn alloc_raw(size: size_t) -> *mut c_void {
 }
 
 /// Free memory allocated by alloc_raw.
-fn free_raw(p: *mut c_void, size: size_t) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_raw(p: *mut c_void, size: size_t) {
     unsafe {
         if p.is_null() || size == 0 {
             return;
@@ -505,7 +580,13 @@ fn free_raw(p: *mut c_void, size: size_t) {
 
 /// Free buffers starting from the tail.
 /// Safety: buf must have been allocated by alloc_buffer (via std::alloc).
-fn free_buffer(buf: *mut Buffer) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_buffer(buf: *mut Buffer) {
     unsafe {
         if buf.is_null() {
             return;
@@ -525,7 +606,13 @@ fn free_buffer(buf: *mut Buffer) {
 
 /// Allocate a new buffer with `size` bytes of data space after the Buffer header.
 /// Uses Rust std::alloc to avoid any C allocator dependency.
-fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
     unsafe {
         let total_size = core::mem::size_of::<Buffer>() + size as usize;
         let layout = Layout::from_size_align_unchecked(total_size, core::mem::align_of::<Buffer>());
@@ -545,7 +632,13 @@ fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
 }
 
 /// Convert doubly-linked buffers into one big raw vector
-fn collect_buffers(buf: *mut Buffer) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
     unsafe {
         if buf.is_null() {
             return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
@@ -581,7 +674,13 @@ fn collect_buffers(buf: *mut Buffer) -> SEXP {
 // ============================================================
 
 /// Finalize a worker (close socket, free resources)
-fn finalize_worker(c: *mut HttpdConn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn finalize_worker(c: *mut HttpdConn) {
     unsafe {
         // On Unix, remove input handler
         if !(*c).ih.is_null() {
@@ -606,7 +705,13 @@ fn finalize_worker(c: *mut HttpdConn) {
 }
 
 /// Add a worker to the worker list. Returns 0 on success, -1 if full.
-fn add_worker(c: *mut HttpdConn) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
         while i < MAX_WORKERS as c_uint {
@@ -625,7 +730,13 @@ fn add_worker(c: *mut HttpdConn) -> c_int {
 }
 
 /// Remove a worker from the list. If thread-owned, set THREAD_DISPOSE flag.
-fn remove_worker(c: *mut HttpdConn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn remove_worker(c: *mut HttpdConn) {
     unsafe {
         if c.is_null() {
             return;
@@ -652,7 +763,13 @@ fn remove_worker(c: *mut HttpdConn) {
 // ============================================================
 
 /// Build a sockaddr_in structure
-fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
     unsafe {
         c_memset(sa as *mut c_void, 0, core::mem::size_of::<sockaddr_in>());
         (*sa).sin_family = AF_INET as libc::sa_family_t;
@@ -667,7 +784,13 @@ fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut socka
 }
 
 /// Send data on a socket, handling SIGPIPE
-fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
         with_httpd_state(|state| state.ignore_sigpipe = 1);
@@ -691,7 +814,13 @@ fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
 }
 
 /// Send `HTTP/x.x` plus the text (which should be of the form `"status message"`).
-fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
     unsafe {
         let sig = http_sig(&*c);
         let l = c_strlen(text);
@@ -722,7 +851,13 @@ fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
 // ============================================================
 
 /// Decode URI in place (decoding never expands)
-fn uri_decode(s: *mut c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn uri_decode(s: *mut c_char) {
     unsafe {
         let mut src = s;
         let mut dst = s;
@@ -769,7 +904,13 @@ fn uri_decode(s: *mut c_char) {
 }
 
 /// Decode a single hex character from URI encoding (advances the pointer)
-fn hex_decode(s: *mut *mut c_char) -> u8 {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn hex_decode(s: *mut *mut c_char) -> u8 {
     unsafe {
         let mut ec: u8 = 0;
         let ch = **s;
@@ -803,7 +944,13 @@ fn hex_decode(s: *mut *mut c_char) -> u8 {
 // ============================================================
 
 /// Parse a query string into a named character vector - must NOT be URI decoded
-fn parse_query(query: *mut c_char) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn parse_query(query: *mut c_char) -> SEXP {
     unsafe {
         let mut parts: c_int = 0;
         let mut s = query;
@@ -878,7 +1025,13 @@ fn parse_query(query: *mut c_char) -> SEXP {
 // ============================================================
 
 /// Create an object representing the request body.
-fn parse_request_body(c: *mut HttpdConn) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
     unsafe {
         if c.is_null() || (*c).body.is_null() {
             return R_NilValue();
@@ -920,7 +1073,13 @@ fn parse_request_body(c: *mut HttpdConn) -> SEXP {
 // ============================================================
 
 /// Finalize a request - for HTTP/1.0, close the connection
-fn fin_request(c: *mut HttpdConn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fin_request(c: *mut HttpdConn) {
     unsafe {
         if !is_http_1_1(&*c) {
             (*c).attr |= CONNECTION_CLOSE;
@@ -933,7 +1092,13 @@ fn fin_request(c: *mut HttpdConn) {
 // ============================================================
 
 /// Returns an httpd handler (closure) for a given path.
-fn handler_for_path(path: *const c_char) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn handler_for_path(path: *const c_char) -> SEXP {
     unsafe {
         if !path.is_null() && c_strncmp(path, b"/custom/\0".as_ptr() as *const c_char, 8) == 0 {
             let mut c = path.offset(8);
@@ -993,7 +1158,13 @@ fn handler_for_path(path: *const c_char) -> SEXP {
 // ============================================================
 
 /// Process a request by calling the httpd() function in R
-fn process_request_(ptr: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn process_request_(ptr: *mut c_void) {
     unsafe {
         let c = ptr as *mut HttpdConn;
         let mut ct: *const c_char = b"text/html\0".as_ptr() as *const c_char;
@@ -1252,9 +1423,16 @@ fn process_request_(ptr: *mut c_void) {
 }
 
 /// Process request - wraps the actual call with ToplevelExec
-fn process_request(c: *mut HttpdConn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn process_request(c: *mut HttpdConn) {
     with_httpd_state(|state| state.in_process = 1);
-    R_ToplevelExec(Some(process_request_), c as *mut c_void);
+    // SAFETY: `process_request_` expects the `HttpdConn` pointer `c` this function was given.
+    unsafe { R_ToplevelExec(Some(process_request_), c as *mut c_void) };
     with_httpd_state(|state| state.in_process = 0);
 }
 
@@ -1263,7 +1441,13 @@ fn process_request(c: *mut HttpdConn) {
 // ============================================================
 
 /// Remove . and (most) .. from "p" following RFC 3986, 5.2.4.
-fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
     unsafe {
         let in_len = c_strlen(p);
         let mut inp_buf = Vec::with_capacity(in_len + 1);
@@ -1372,7 +1556,13 @@ fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
 // ============================================================
 
 /// Reset a worker so it can process a new request (keep-alive)
-fn reset_worker(c: *mut HttpdConn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn reset_worker(c: *mut HttpdConn) {
     unsafe {
         free_c_string((*c).url);
         (*c).url = std::ptr::null_mut();
@@ -1398,7 +1588,13 @@ fn reset_worker(c: *mut HttpdConn) {
 // ============================================================
 
 /// This function is called to fetch new data from the client connection socket and process it.
-fn worker_input_handler(data: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn worker_input_handler(data: *mut c_void) {
     unsafe {
         let c = data as *mut HttpdConn;
         if c.is_null() {
@@ -1925,7 +2121,13 @@ fn srv_input_handler(_data: *mut c_void) {
 
 /// Create an HTTP daemon on the given IP and port.
 /// Returns 0 on success, -1 on general error, -2 if address already in use.
-pub(crate) fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     unsafe {
         let reuse: c_int = 1;
         let mut srv_sa: sockaddr_in = std::mem::zeroed();

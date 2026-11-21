@@ -195,7 +195,13 @@ pub(crate) fn R_set_nodelay(s: c_int) -> c_int {
 // --- Internal helper (module-private, no #[no_mangle]) ---
 
 /// Sock_error - set error fields in a Sock_error_t and return -1
-fn Sock_error(perr: *mut Sock_error_t, e: c_int, he: c_int) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn Sock_error(perr: *mut Sock_error_t, e: c_int, he: c_int) -> c_int {
     unsafe {
         if !perr.is_null() {
             (*perr).error = e;
@@ -229,7 +235,17 @@ pub(crate) fn Sock_init() -> c_int {
 
 /// Sock_open - open a socket for listening (socket + bind + listen)
 /// Signature: int Sock_open(Sock_port_t port, int blocking, Sock_error_t perr)
-pub(crate) fn Sock_open(port: Sock_port_t, blocking: c_int, perr: *mut Sock_error_t) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_open(
+    port: Sock_port_t,
+    blocking: c_int,
+    perr: *mut Sock_error_t,
+) -> c_int {
     unsafe {
         let sock = socket(AF_INET, SOCK_STREAM, 0);
         if R_invalid_socket(sock) != 0 {
@@ -294,7 +310,13 @@ pub(crate) fn Sock_open(port: Sock_port_t, blocking: c_int, perr: *mut Sock_erro
 /// If cname is non-null and buflen > 0, writes the hostname of the connecting
 /// peer into cname (truncated to buflen-1 chars).
 /// Signature: int Sock_listen(int fd, char *cname, int buflen, Sock_error_t perr)
-pub(crate) fn Sock_listen(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_listen(
     fd: c_int,
     cname: *mut c_char,
     buflen: c_int,
@@ -354,7 +376,13 @@ pub(crate) fn Sock_listen(
 
 /// Sock_connect - open and connect to a socket on a remote host
 /// Signature: int Sock_connect(Sock_port_t port, char *sname, Sock_error_t perr)
-pub(crate) fn Sock_connect(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_connect(
     port: Sock_port_t,
     sname: *mut c_char,
     perr: *mut Sock_error_t,
@@ -423,7 +451,13 @@ pub(crate) fn Sock_connect(
 
 /// Sock_close - close a socket
 /// Signature: int Sock_close(int fd, Sock_error_t perr)
-pub(crate) fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -> c_int {
     unsafe {
         if close(fd) < 0 {
             Sock_error(perr, get_errno(), 0)
@@ -435,7 +469,13 @@ pub(crate) fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -> c_int {
 
 /// Sock_read - read from a socket (using recv, with EINTR retry)
 /// Signature: ssize_t Sock_read(int fd, void *buf, size_t size, Sock_error_t perr)
-pub(crate) fn Sock_read(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_read(
     fd: c_int,
     buf: *mut c_void,
     sz: size_t,
@@ -459,7 +499,13 @@ pub(crate) fn Sock_read(
 
 /// Sock_write - write to a socket (using send, with EINTR retry)
 /// Signature: ssize_t Sock_write(int fd, const void *buf, size_t size, Sock_error_t perr)
-pub(crate) fn Sock_write(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn Sock_write(
     fd: c_int,
     buf: *const c_void,
     sz: size_t,

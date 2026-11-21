@@ -101,7 +101,12 @@ fn asLogical_val(x: SEXP) -> c_int {
 
 // Helper: safe CStr to Rust &str
 #[inline]
-fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
     unsafe {
         if s.is_null() {
             return "";
@@ -215,13 +220,20 @@ fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
 /// Returns a boxed inetconn on success, null on failure.
 ///
 /// This is the Unix equivalent of the Windows wininet-based in_R_HTTPOpen2.
-fn http_open(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn http_open(
     url: *const c_char,
     agent: *const c_char,
     headers: *const c_char,
     _cacheOK: c_int,
 ) -> *mut c_void {
-    let url_str = match cstr_to_str(url) {
+    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+    let url_str = match unsafe { cstr_to_str(url) } {
         "" => return ptr::null_mut(),
         s => s,
     };
@@ -239,7 +251,8 @@ fn http_open(
     let agent_str = if agent.is_null() {
         "RMath-Rust/1.0"
     } else {
-        cstr_to_str(agent)
+        // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+        unsafe { cstr_to_str(agent) }
     };
 
     // Open TCP connection
@@ -263,7 +276,8 @@ fn http_open(
 
     // Add custom headers if provided
     if !headers.is_null() {
-        let headers_str = cstr_to_str(headers);
+        // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
+        let headers_str = unsafe { cstr_to_str(headers) };
         if !headers_str.is_empty() {
             // Split on newlines and add each header
             for line in headers_str.split('\n') {
@@ -376,7 +390,13 @@ fn http_open(
 
 /// http_read - read data from an open HTTP connection.
 /// Returns number of bytes read, 0 on EOF, -1 on error.
-fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
     unsafe {
         let conn = ctx as *mut inetconn;
         if conn.is_null() || (*conn).fd < 0 {
@@ -390,7 +410,13 @@ fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
 }
 
 /// http_close - close an open HTTP connection and free resources.
-fn http_close(ctx: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn http_close(ctx: *mut c_void) {
     unsafe {
         let conn = ctx as *mut inetconn;
         if conn.is_null() {
@@ -470,7 +496,13 @@ fn parse_content_type(headers: &str) -> Option<String> {
 /// This is the Unix implementation of the file:// branch in in_do_download.
 ///
 /// Returns 0 on success, 1 on failure.
-fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -> c_int {
     unsafe {
         let url_str = cstr_to_str(url);
         let file_str = cstr_to_str(file);
@@ -541,7 +573,13 @@ fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -
 /// This is the Unix implementation of the http:// branch in in_do_download.
 ///
 /// Returns 0 on success, 1 on failure.
-fn http_download(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn http_download(
     url: *const c_char,
     file: *const c_char,
     mode: *const c_char,

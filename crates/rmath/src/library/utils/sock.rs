@@ -90,14 +90,16 @@ pub fn sockclose(sport: SEXP) -> SEXP {
     if sock <= 0 {
         Rf_error(b"attempt to close invalid socket\0".as_ptr() as *const c_char);
     }
-    in_Rsockclose(&mut sock);
+    // SAFETY: `sock` is a live local `c_int`.
+    unsafe { in_Rsockclose(&mut sock) };
     Rf_ScalarLogical(sock)
 }
 
 pub fn sockopen(sport: SEXP) -> SEXP {
     require_scalar(sport, b"invalid 'port' argument\0");
     let mut port = asInteger(sport);
-    in_Rsockopen(&mut port);
+    // SAFETY: `port` is a live local `c_int`.
+    unsafe { in_Rsockopen(&mut port) };
     Rf_ScalarInteger(port)
 }
 
