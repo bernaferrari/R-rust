@@ -40,17 +40,25 @@ fn env_dialog_input() -> Option<String> {
         .or_else(|| env::var("GRAPHAPP_DIALOG_INPUT").ok())
 }
 
-fn cstr_to_string(ptr: *const c_char) -> String {
-    cstr(ptr).map_or_else(String::new, |s| s.to_string_lossy().into_owned())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn cstr_to_string(ptr: *const c_char) -> String {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    (unsafe { cstr(ptr) }).map_or_else(String::new, |s| s.to_string_lossy().into_owned())
 }
 
 fn make_graphapp_string(value: &str) -> *mut c_char {
     if let Ok(cstr) = CString::new(value) {
-        strings::new_string(cstr.as_ptr())
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        unsafe { strings::new_string(cstr.as_ptr()) }
     } else {
         let filtered: String = value.chars().filter(|ch| *ch != '\0').collect();
         match CString::new(filtered) {
-            Ok(cstr) => strings::new_string(cstr.as_ptr()),
+            // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+            Ok(cstr) => unsafe { strings::new_string(cstr.as_ptr()) },
             Err(_) => ptr::null_mut(),
         }
     }
@@ -75,14 +83,20 @@ fn select_path(default_name: String, dir: String) -> String {
     }
 }
 
-fn copy_into_buffer(result: &str, strbuf: *mut c_char, bufsize: c_int) -> *mut c_char {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn copy_into_buffer(result: &str, strbuf: *mut c_char, bufsize: c_int) -> *mut c_char {
     if strbuf.is_null() || bufsize <= 0 {
         return ptr::null_mut();
     }
     let bytes = result.as_bytes();
     let max_copy = (bufsize as usize).saturating_sub(1).min(bytes.len());
     // Zero and fill the caller's `bufsize`-byte buffer.
-    if let Some(buf) = slice_mut(strbuf as *mut u8, bufsize as usize) {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(buf) = unsafe { slice_mut(strbuf as *mut u8, bufsize as usize) } {
         buf.fill(0);
         buf[..max_copy].copy_from_slice(&bytes[..max_copy]);
         buf[max_copy] = 0;
@@ -96,13 +110,21 @@ fn remember_message(kind: c_int, text: &str) {
 
 fn change_dir_if_allowed(path: &Path) -> bool {
     let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
-        ptr_mut(inst).is_some_and(|i| i.eval_state.capabilities.allow_environment_mutation)
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        (unsafe { ptr_mut(inst) })
+            .is_some_and(|i| i.eval_state.capabilities.allow_environment_mutation)
     });
     allowed && env::set_current_dir(path).is_ok()
 }
 
-fn write_status(obj: object, text: &str) {
-    let Some(data) = obj_mut(obj) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_status(obj: object, text: &str) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { obj_mut(obj) }) else {
         return;
     };
     data.status.fill(0);
@@ -117,8 +139,14 @@ fn write_status(obj: object, text: &str) {
     }
 }
 
-pub fn apperror(errstr: *const c_char) {
-    let text = cstr_to_string(errstr);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn apperror(errstr: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let text = unsafe { cstr_to_string(errstr) };
     let message = if text.is_empty() {
         "Unspecified error".to_owned()
     } else {
@@ -128,8 +156,14 @@ pub fn apperror(errstr: *const c_char) {
     eprintln!("graphapp error: {message}");
 }
 
-pub fn askok(info: *const c_char) {
-    let text = cstr_to_string(info);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askok(info: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let text = unsafe { cstr_to_string(info) };
     remember_message(1, &text);
 }
 
@@ -148,24 +182,50 @@ pub fn askyesnocancel(_question: *const c_char) -> c_int {
     dialog_choice(CANCEL)
 }
 
-pub fn askstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub fn askpassword(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askpassword(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub fn askfilename(title: *const c_char, default_name: *const c_char) -> *mut c_char {
-    askfilenamewithdir(title, default_name, ptr::null())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askfilename(title: *const c_char, default_name: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `askfilenamewithdir`'s contract per this function's own `# Safety` requirements.
+    unsafe { askfilenamewithdir(title, default_name, ptr::null()) }
 }
 
-pub fn askfilenamewithdir(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askfilenamewithdir(
     _title: *const c_char,
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -173,17 +233,29 @@ pub fn askfilenamewithdir(
     }
 }
 
-pub fn askfilesave(title: *const c_char, default_name: *const c_char) -> *mut c_char {
-    askfilesavewithdir(title, default_name, ptr::null())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askfilesave(title: *const c_char, default_name: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `askfilesavewithdir`'s contract per this function's own `# Safety` requirements.
+    unsafe { askfilesavewithdir(title, default_name, ptr::null()) }
 }
 
 pub fn askUserPass(_title: *const c_char) -> *mut c_char {
     make_graphapp_string(&selected_text(String::new()))
 }
 
-pub fn setuserfilter(filter: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setuserfilter(filter: *const c_char) {
     with_graphapp_runtime(|runtime| {
-        runtime.dialogs.user_filter = CString::new(cstr_to_string(filter)).ok();
+        // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+        runtime.dialogs.user_filter = CString::new(unsafe { cstr_to_string(filter) }).ok();
     });
 }
 
@@ -193,16 +265,30 @@ pub fn askchangedir() {
     }
 }
 
-pub fn askcdstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askcdstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub fn askfilesavewithdir(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askfilesavewithdir(
     _title: *const c_char,
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -210,7 +296,12 @@ pub fn askfilesavewithdir(
     }
 }
 
-pub fn askfilenames(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn askfilenames(
     _title: *const c_char,
     default_name: *const c_char,
     _multi: c_int,
@@ -220,8 +311,12 @@ pub fn askfilenames(
     bufsize: c_int,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
-    copy_into_buffer(&value, strbuf, bufsize)
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
+    // SAFETY: forwarded raw pointers satisfy `copy_into_buffer`'s contract per this function's own `# Safety` requirements.
+    unsafe { copy_into_buffer(&value, strbuf, bufsize) }
 }
 
 pub fn countFilenames(strbuf: *const c_char) -> c_int {
@@ -233,7 +328,8 @@ pub fn countFilenames(strbuf: *const c_char) -> c_int {
     loop {
         // Step through the caller's multi-NUL-terminated buffer.
         let current = strbuf.wrapping_add(offset);
-        let Some(segment) = cstr(current) else {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        let Some(segment) = (unsafe { cstr(current) }) else {
             break;
         };
         if segment.to_bytes().is_empty() {
@@ -245,10 +341,17 @@ pub fn countFilenames(strbuf: *const c_char) -> c_int {
     count
 }
 
-pub fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
-    let message = cstr_to_string(text);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `cstr_to_string`'s contract per this function's own `# Safety` requirements.
+    let message = unsafe { cstr_to_string(text) };
     remember_message(typ, &message);
-    write_status(obj, &message);
+    // SAFETY: forwarded raw pointers satisfy `write_status`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_status(obj, &message) };
 }
 
 #[cfg(test)]
@@ -308,7 +411,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
 
         let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
-        myMessageBox(ptr::null_mut(), text.as_ptr(), 7);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { myMessageBox(ptr::null_mut(), text.as_ptr(), 7) };
         assert_eq!(
             with_graphapp_runtime(|runtime| runtime.dialogs.last_message.clone()),
             Some((7, "hello".to_owned()))

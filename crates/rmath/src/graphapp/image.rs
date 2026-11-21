@@ -107,8 +107,10 @@ pub fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
         return ptr::null_mut();
     }
     let img = memory::memalloc_bytes(std::mem::size_of::<imagedata>()) as image;
-    let Some(data) = ptr_mut(img) else {
-        memory::memfree(pixels);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let Some(data) = (unsafe { ptr_mut(img) }) else {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        unsafe { memory::memfree(pixels) };
         return ptr::null_mut();
     };
     data.width = width;
@@ -120,50 +122,97 @@ pub fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
 }
 
 /// Copy an image.
-pub fn copyimage(img: image) -> image {
-    let Some(src) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn copyimage(img: image) -> image {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(src) = (unsafe { ptr_ref(img) }) else {
         return ptr::null_mut();
     };
     let new_img = newimage(src.width, src.height, src.depth);
     if !new_img.is_null() {
-        setpixels(new_img, src.pixels);
-        setpalette(new_img, src.cmapsize, src.cmap);
+        // SAFETY: forwarded raw pointers satisfy `setpixels`'s contract per this function's own `# Safety` requirements.
+        unsafe { setpixels(new_img, src.pixels) };
+        // SAFETY: forwarded raw pointers satisfy `setpalette`'s contract per this function's own `# Safety` requirements.
+        unsafe { setpalette(new_img, src.cmapsize, src.cmap) };
     }
     new_img
 }
 
 /// Delete an image.
-pub fn delimage(img: image) {
-    let Some(data) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn delimage(img: image) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_ref(img) }) else {
         return;
     };
     if !data.cmap.is_null() {
-        memory::memfree(data.cmap as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(data.cmap as *mut u8) };
     }
     if !data.pixels.is_null() {
-        memory::memfree(data.pixels);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(data.pixels) };
     }
-    memory::memfree(img as *mut u8);
+    // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+    unsafe { memory::memfree(img as *mut u8) };
 }
 
 /// Get the depth of an image.
-pub fn imagedepth(img: image) -> c_int {
-    ptr_ref(img).map_or(0, |data| data.depth)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn imagedepth(img: image) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(0, |data| data.depth)
 }
 
 /// Get the width of an image.
-pub fn imagewidth(img: image) -> c_int {
-    ptr_ref(img).map_or(0, |data| data.width)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn imagewidth(img: image) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(0, |data| data.width)
 }
 
 /// Get the height of an image.
-pub fn imageheight(img: image) -> c_int {
-    ptr_ref(img).map_or(0, |data| data.height)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn imageheight(img: image) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(0, |data| data.height)
 }
 
 /// Set the pixels of an image.
-pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
-    let Some(data) = ptr_mut(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_mut(img) }) else {
         return;
     };
     let length = data.width * data.height;
@@ -176,8 +225,10 @@ pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
         // Copy `byte_len` bytes from the caller's buffer into the owned
         // pixel allocation; both are at least that long by construction.
         if let (Some(dest), Some(src)) = (
-            slice_mut(data.pixels, byte_len),
-            slice_ref(pixels, byte_len),
+            // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_mut(data.pixels, byte_len) },
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_ref(pixels, byte_len) },
         ) {
             dest.copy_from_slice(src);
         }
@@ -185,13 +236,27 @@ pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
 }
 
 /// Get the pixel array of an image.
-pub fn getpixels(img: image) -> *mut super::types::GAbyte {
-    ptr_ref(img).map_or(ptr::null_mut(), |data| data.pixels)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getpixels(img: image) -> *mut super::types::GAbyte {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(ptr::null_mut(), |data| data.pixels)
 }
 
 /// Set the colour palette of an image.
-pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
-    let Some(data) = ptr_mut(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_mut(img) }) else {
         return;
     };
     let new_cmap = if cmapsize > 0 && !cmap.is_null() {
@@ -205,8 +270,10 @@ pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
         // Copy `cmapsize` entries from the caller's palette into the new
         // allocation sized exactly for them.
         if let (Some(dest), Some(src)) = (
-            slice_mut(replacement, cmapsize as usize),
-            slice_ref(cmap, cmapsize as usize),
+            // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_mut(replacement, cmapsize as usize) },
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_ref(cmap, cmapsize as usize) },
         ) {
             dest.copy_from_slice(src);
         }
@@ -215,38 +282,63 @@ pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
         ptr::null_mut()
     };
     // Publish only after copying: callers may pass the current palette.
-    memory::memfree(data.cmap as *mut u8);
+    // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+    unsafe { memory::memfree(data.cmap as *mut u8) };
     data.cmap = new_cmap;
     data.cmapsize = if new_cmap.is_null() { 0 } else { cmapsize };
 }
 
 /// Get the colour palette of an image.
-pub fn getpalette(img: image) -> *mut rgb {
-    ptr_ref(img).map_or(ptr::null_mut(), |data| data.cmap)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getpalette(img: image) -> *mut rgb {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(ptr::null_mut(), |data| data.cmap)
 }
 
 /// Get the palette size.
-pub fn getpalettesize(img: image) -> c_int {
-    ptr_ref(img).map_or(0, |data| data.cmapsize)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getpalettesize(img: image) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(img) }).map_or(0, |data| data.cmapsize)
 }
 
 /// Convert a 32-bit image to 8-bit.
-pub fn convert32to8(img: image) -> image {
-    let Some(src) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn convert32to8(img: image) -> image {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(src) = (unsafe { ptr_ref(img) }) else {
         return ptr::null_mut();
     };
     if src.depth <= 8 {
-        return copyimage(img);
+        // SAFETY: forwarded raw pointers satisfy `copyimage`'s contract per this function's own `# Safety` requirements.
+        return unsafe { copyimage(img) };
     }
 
     let dest = newimage(src.width, src.height, 8);
-    let Some(dest_data) = ptr_mut(dest) else {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(dest_data) = (unsafe { ptr_mut(dest) }) else {
         return ptr::null_mut();
     };
 
     let len = (src.width * src.height).max(0) as usize;
     // Borrow the owned source rgb buffer of `len` entries.
-    let Some(src_pixels) = slice_ref(src.pixels as *const rgb, len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(src_pixels) = (unsafe { slice_ref(src.pixels as *const rgb, len) }) else {
         return dest;
     };
     let mut palette: Vec<rgb> = Vec::with_capacity(256);
@@ -261,11 +353,13 @@ pub fn convert32to8(img: image) -> image {
         palette.push(Black);
     }
 
-    setpalette(dest, palette.len() as c_int, palette.as_mut_ptr());
+    // SAFETY: forwarded raw pointers satisfy `setpalette`'s contract per this function's own `# Safety` requirements.
+    unsafe { setpalette(dest, palette.len() as c_int, palette.as_mut_ptr()) };
 
     // Write palette indices into the owned destination byte buffer of
     // `len` entries.
-    let Some(dest_pixels) = slice_mut(dest_data.pixels, len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(dest_pixels) = (unsafe { slice_mut(dest_data.pixels, len) }) else {
         return dest;
     };
     for (i, &c) in src_pixels.iter().enumerate() {
@@ -282,12 +376,20 @@ pub fn convert32to8(img: image) -> image {
 }
 
 /// Convert an 8-bit image to 32-bit.
-pub fn convert8to32(img: image) -> image {
-    let Some(src) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn convert8to32(img: image) -> image {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(src) = (unsafe { ptr_ref(img) }) else {
         return ptr::null_mut();
     };
     let new_img = newimage(src.width, src.height, 32);
-    let Some(new_data) = ptr_mut(new_img) else {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(new_data) = (unsafe { ptr_mut(new_img) }) else {
         return ptr::null_mut();
     };
     let length = (src.width * src.height).max(0) as usize;
@@ -295,11 +397,14 @@ pub fn convert8to32(img: image) -> image {
 
     // Borrow the owned source index buffer, palette, and destination
     // rgb buffer; each holds `length` or `cmapsize` entries.
-    let Some(pixel8) = slice_ref(src.pixels, length) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(pixel8) = (unsafe { slice_ref(src.pixels, length) }) else {
         return new_img;
     };
-    let palette = slice_ref(src.cmap, cmapsize).unwrap_or(&[]);
-    let Some(pixel32) = slice_mut(new_data.pixels as *mut rgb, length) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let palette = unsafe { slice_ref(src.cmap, cmapsize) }.unwrap_or(&[]);
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(pixel32) = (unsafe { slice_mut(new_data.pixels as *mut rgb, length) }) else {
         return new_img;
     };
 
@@ -315,8 +420,15 @@ pub fn convert8to32(img: image) -> image {
 }
 
 /// Sort an image's colour map and remap indexed pixels to keep colours stable.
-pub fn sortpalette(img: image) {
-    let Some(data) = ptr_mut(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn sortpalette(img: image) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_mut(img) }) else {
         return;
     };
     if data.depth > 8 || data.cmapsize <= 1 || data.cmap.is_null() {
@@ -328,10 +440,12 @@ pub fn sortpalette(img: image) {
 
     // Rewrite the owned palette and index buffers in place; the palette
     // has `cmapsize` entries and the index buffer has `len` bytes.
-    let Some(cmap) = slice_mut(data.cmap, cmapsize) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(cmap) = (unsafe { slice_mut(data.cmap, cmapsize) }) else {
         return;
     };
-    let Some(pixels) = slice_mut(data.pixels, len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(pixels) = (unsafe { slice_mut(data.pixels, len) }) else {
         return;
     };
 
@@ -353,11 +467,18 @@ pub fn sortpalette(img: image) {
 }
 
 /// Scale an image.
-pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn scaleimage(src: image, dr: rect, sr: rect) -> image {
     if dr.width <= 0 || dr.height <= 0 {
         return ptr::null_mut();
     }
-    let Some(src_data) = ptr_ref(src) else {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(src_data) = (unsafe { ptr_ref(src) }) else {
         return ptr::null_mut();
     };
     let dest = newimage(dr.width, dr.height, src_data.depth);
@@ -366,7 +487,8 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
     }
 
     if src_data.depth <= 8 {
-        setpalette(dest, src_data.cmapsize, src_data.cmap);
+        // SAFETY: forwarded raw pointers satisfy `setpalette`'s contract per this function's own `# Safety` requirements.
+        unsafe { setpalette(dest, src_data.cmapsize, src_data.cmap) };
     }
 
     let source_rect = if sr.width > 0 && sr.height > 0 {
@@ -386,14 +508,17 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
     let src_len = (src_width * src_height).max(0) as usize;
     let dest_len = (dr.width * dr.height) as usize;
     let src_pixels = src_data.pixels;
-    let dest_pixels = ptr_ref(dest).map_or(ptr::null_mut(), |d| d.pixels);
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let dest_pixels = unsafe { ptr_ref(dest) }.map_or(ptr::null_mut(), |d| d.pixels);
 
     // Copy sampled entries between the owned source and destination
     // pixel buffers; `sample_coordinate` clamps indices into range.
     if src_depth <= 8 {
         let (Some(src_px), Some(dest_px)) = (
-            slice_ref(src_pixels, src_len),
-            slice_mut(dest_pixels, dest_len),
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_ref(src_pixels, src_len) },
+            // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_mut(dest_pixels, dest_len) },
         ) else {
             return dest;
         };
@@ -407,8 +532,10 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
         }
     } else {
         let (Some(src_px), Some(dest_px)) = (
-            slice_ref(src_pixels as *const rgb, src_len),
-            slice_mut(dest_pixels as *mut rgb, dest_len),
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_ref(src_pixels as *const rgb, src_len) },
+            // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_mut(dest_pixels as *mut rgb, dest_len) },
         ) else {
             return dest;
         };
@@ -426,8 +553,15 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
 }
 
 /// Get pixel value from an image.
-pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    let Some(data) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_ref(img) }) else {
         return Transparent;
     };
     if x < 0 || x >= data.width || y < 0 || y >= data.height {
@@ -437,16 +571,19 @@ pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
     let len = (data.width * data.height).max(0) as usize;
     if data.depth <= 8 {
         // Read one byte from the owned index buffer.
-        let Some(pixels) = slice_ref(data.pixels, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(pixels) = (unsafe { slice_ref(data.pixels, len) }) else {
             return Transparent;
         };
         let value = pixels[index];
         // Read one entry from the owned palette.
-        let palette = slice_ref(data.cmap, data.cmapsize.max(0) as usize).unwrap_or(&[]);
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let palette = unsafe { slice_ref(data.cmap, data.cmapsize.max(0) as usize) }.unwrap_or(&[]);
         palette.get(value as usize).copied().unwrap_or(Black)
     } else {
         // Read one rgb entry from the owned pixel buffer.
-        let Some(pixels) = slice_ref(data.pixels as *const rgb, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(pixels) = (unsafe { slice_ref(data.pixels as *const rgb, len) }) else {
             return Transparent;
         };
         let pixel = pixels[index];
@@ -459,9 +596,16 @@ pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Get monochrome pixel value.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[allow(clippy::if_same_then_else)]
-pub fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    let pixel = get_image_pixel(img, x, y);
+pub unsafe fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
+    // SAFETY: forwarded raw pointers satisfy `get_image_pixel`'s contract per this function's own `# Safety` requirements.
+    let pixel = unsafe { get_image_pixel(img, x, y) };
     if pixel == Transparent {
         Transparent
     } else {
@@ -482,8 +626,15 @@ pub fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Get grey pixel value.
-pub fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    let pixel = get_image_pixel(img, x, y);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
+    // SAFETY: forwarded raw pointers satisfy `get_image_pixel`'s contract per this function's own `# Safety` requirements.
+    let pixel = unsafe { get_image_pixel(img, x, y) };
     if pixel == Transparent {
         Transparent
     } else {
@@ -507,8 +658,15 @@ pub fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Check if image has transparent pixels.
-pub fn has_transparent_pixels(img: image) -> c_int {
-    let Some(data) = ptr_ref(img) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn has_transparent_pixels(img: image) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_ref(img) }) else {
         return 0;
     };
     let len = (data.width * data.height).max(0) as usize;
@@ -517,10 +675,12 @@ pub fn has_transparent_pixels(img: image) -> c_int {
             return 0;
         }
         // Scan the owned index buffer and its `cmapsize`-entry palette.
-        let Some(pixels) = slice_ref(data.pixels, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(pixels) = (unsafe { slice_ref(data.pixels, len) }) else {
             return 0;
         };
-        let Some(cmap) = slice_ref(data.cmap, data.cmapsize as usize) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(cmap) = (unsafe { slice_ref(data.cmap, data.cmapsize as usize) }) else {
             return 0;
         };
         for &b in pixels {
@@ -531,7 +691,8 @@ pub fn has_transparent_pixels(img: image) -> c_int {
         0
     } else {
         // Scan the owned 32-bit pixel buffer of `len` entries.
-        let Some(pixels) = slice_ref(data.pixels as *const rgb, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(pixels) = (unsafe { slice_ref(data.pixels as *const rgb, len) }) else {
             return 0;
         };
         for &pixel in pixels {

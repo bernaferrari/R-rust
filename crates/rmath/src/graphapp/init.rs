@@ -81,8 +81,14 @@ pub fn BringToTop(w: window, stay: c_int) {
     with_graphapp_runtime(|runtime| runtime.app.topmost_dialogs = i32::from(stay != 0));
 }
 
-pub fn getHandle(w: window) -> *mut c_void {
-    obj_ref(w).map_or(ptr::null_mut(), |data| data.handle)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getHandle(w: window) -> *mut c_void {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(w) }).map_or(ptr::null_mut(), |data| data.handle)
 }
 
 pub fn GA_msgWindow(c: window, typ: c_int) {

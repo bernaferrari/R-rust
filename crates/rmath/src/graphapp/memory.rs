@@ -24,7 +24,12 @@ struct MemHeader {
 
 const HEADER_SIZE: usize = std::mem::size_of::<MemHeader>();
 
-fn header_for_data(data: *mut u8) -> *mut MemHeader {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn header_for_data(data: *mut u8) -> *mut MemHeader {
     unsafe { data.sub(HEADER_SIZE) as *mut MemHeader }
 }
 
@@ -74,7 +79,13 @@ pub fn memalloc(size: c_long) -> *mut u8 {
 }
 
 /// Reallocate memory to a new size.
-pub fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
     unsafe {
         if new_size <= 0 {
             if !a.is_null() {
@@ -120,7 +131,13 @@ pub fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
 }
 
 /// Get the length of an allocated block.
-pub fn memlength(a: *mut u8) -> c_long {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn memlength(a: *mut u8) -> c_long {
     unsafe {
         if a.is_null() {
             0
@@ -131,7 +148,13 @@ pub fn memlength(a: *mut u8) -> c_long {
 }
 
 /// Free a previously allocated block.
-pub fn memfree(a: *mut u8) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn memfree(a: *mut u8) {
     unsafe {
         if a.is_null() {
             return;
@@ -145,7 +168,13 @@ pub fn memfree(a: *mut u8) {
 }
 
 /// Expand a block by appending extra bytes at the end.
-pub fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
     if extra == 0 {
         return a;
     }
@@ -157,26 +186,39 @@ pub fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
     if extra < 0 {
         return ptr::null_mut();
     }
-    let size = memlength(a);
+    // SAFETY: forwarded raw pointers satisfy `memlength`'s contract per this function's own `# Safety` requirements.
+    let size = unsafe { memlength(a) };
     let Some(new_size) = size.checked_add(extra) else {
         return ptr::null_mut();
     };
-    memrealloc(a, new_size)
+    // SAFETY: forwarded raw pointers satisfy `memrealloc`'s contract per this function's own `# Safety` requirements.
+    unsafe { memrealloc(a, new_size) }
 }
 
 /// Join two blocks: append b to a and return the result.
-pub fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
-    let size = memlength(a);
-    let extra = memlength(b);
-    let result = memexpand(a, extra);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
+    // SAFETY: forwarded raw pointers satisfy `memlength`'s contract per this function's own `# Safety` requirements.
+    let size = unsafe { memlength(a) };
+    // SAFETY: forwarded raw pointers satisfy `memlength`'s contract per this function's own `# Safety` requirements.
+    let extra = unsafe { memlength(b) };
+    // SAFETY: forwarded raw pointers satisfy `memexpand`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { memexpand(a, extra) };
     if !result.is_null() && !b.is_null() {
         let source = if a == b { result } else { b };
         // Copy `extra` bytes of the source payload after a's grown
         // `size`-byte region; both fit by construction.
         let total = (size + extra).max(0) as usize;
         if let (Some(src), Some(tail)) = (
-            slice_ref(source, extra.max(0) as usize),
-            slice_mut(result, total).and_then(|s| s.get_mut(size.max(0) as usize..)),
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            unsafe { slice_ref(source, extra.max(0) as usize) },
+            // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+            (unsafe { slice_mut(result, total) }).and_then(|s| s.get_mut(size.max(0) as usize..)),
         ) {
             tail.copy_from_slice(src);
         }
@@ -201,10 +243,12 @@ mod tests {
             let data = memalloc(size);
             assert!(!data.is_null());
             assert_eq!(data.addr() % required_alignment, 0);
-            let grown = memrealloc(data, 256);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            let grown = unsafe { memrealloc(data, 256) };
             assert!(!grown.is_null());
             assert_eq!(grown.addr() % required_alignment, 0);
-            memfree(grown);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { memfree(grown) };
         }
     }
 

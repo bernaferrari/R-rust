@@ -1354,9 +1354,16 @@ fn strcmpi(s1: &str, s2: &str) -> i32 {
 }
 
 /// Look up a colour by name. Returns Transparent if not found.
-pub fn nametorgb(name: *const c_char) -> rgb {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn nametorgb(name: *const c_char) -> rgb {
     {
-        let s = match cstr(name).and_then(|c| c.to_str().ok()) {
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        let s = match unsafe { cstr(name) }.and_then(|c| c.to_str().ok()) {
             Some(s) => s,
             None => return Transparent,
         };

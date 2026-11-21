@@ -747,8 +747,12 @@ pub fn rcanon(r: rect) -> rect {
 ///
 /// GraphApp objects live in the runtime-owned arena for the lifetime of
 /// the process, so the returned reference borrows the handle's pointee.
+///
+/// # Safety
+///
+/// `obj` must be null or a live GraphApp object valid for shared reads for the lifetime `'a`.
 #[inline]
-pub fn obj_ref<'a>(obj: objptr) -> Option<&'a ObjInfo> {
+pub unsafe fn obj_ref<'a>(obj: objptr) -> Option<&'a ObjInfo> {
     unsafe { obj.as_ref() }
 }
 
@@ -756,20 +760,34 @@ pub fn obj_ref<'a>(obj: objptr) -> Option<&'a ObjInfo> {
 ///
 /// Callers must ensure no conflicting borrow of the same object exists,
 /// matching the C API's single-threaded object model.
+///
+/// # Safety
+///
+/// `obj` must be null or a live GraphApp object valid for exclusive access for the lifetime `'a`,
+/// with no other live reference to it.
 #[inline]
-pub fn obj_mut<'a>(obj: objptr) -> Option<&'a mut ObjInfo> {
+pub unsafe fn obj_mut<'a>(obj: objptr) -> Option<&'a mut ObjInfo> {
     unsafe { obj.as_mut() }
 }
 
 /// Null-checked mutable borrow of an interior object pointer.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for exclusive reads/writes of `T` for the lifetime `'a`, with no
+/// other live reference to the pointee.
 #[inline]
-pub fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+pub unsafe fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
     unsafe { ptr.as_mut() }
 }
 
 /// Null-checked shared borrow of an interior object pointer.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for shared reads of `T` for the caller-chosen lifetime `'a`.
 #[inline]
-pub fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+pub unsafe fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
 }
 
@@ -777,8 +795,12 @@ pub fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
 ///
 /// Callers guarantee the pointer is valid and NUL-terminated, matching
 /// the C API's `char *` contract.
+///
+/// # Safety
+///
+/// `s` must be null or point to a NUL-terminated string that stays live and unmodified for `'a`.
 #[inline]
-pub fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
+pub unsafe fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
     if s.is_null() {
         None
     } else {
@@ -790,8 +812,12 @@ pub fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
 ///
 /// Callers guarantee the buffer holds at least `len` elements, matching
 /// the C API's buffer-and-length contract.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for shared reads of `len` elements for the lifetime `'a`.
 #[inline]
-pub fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+pub unsafe fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
     if ptr.is_null() {
         if len == 0 { Some(&[]) } else { None }
     } else {
@@ -803,8 +829,12 @@ pub fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
 ///
 /// Callers must ensure no conflicting borrow of the buffer exists,
 /// matching the C API's single-threaded object model.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for exclusive reads/writes of `len` elements for the lifetime `'a`.
 #[inline]
-pub fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
+pub unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
     if ptr.is_null() {
         if len == 0 { Some(&mut []) } else { None }
     } else {
@@ -816,20 +846,44 @@ pub fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
 // Object property accessors
 // ============================================================
 
-pub fn objdepth(obj: objptr) -> c_int {
-    obj_ref(obj).map_or(0, |obj| obj.depth)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn objdepth(obj: objptr) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(obj) }).map_or(0, |obj| obj.depth)
 }
 
-pub fn objrect(obj: objptr) -> rect {
-    obj_ref(obj).map_or(rect::default(), |obj| obj.rect)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn objrect(obj: objptr) -> rect {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(obj) }).map_or(rect::default(), |obj| obj.rect)
 }
 
-pub fn objwidth(obj: objptr) -> c_int {
-    obj_ref(obj).map_or(0, |obj| obj.rect.width)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn objwidth(obj: objptr) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(obj) }).map_or(0, |obj| obj.rect.width)
 }
 
-pub fn objheight(obj: objptr) -> c_int {
-    obj_ref(obj).map_or(0, |obj| obj.rect.height)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn objheight(obj: objptr) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(obj) }).map_or(0, |obj| obj.rect.height)
 }
 
 /// Null pointer constant for convenience.

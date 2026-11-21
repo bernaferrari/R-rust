@@ -111,19 +111,22 @@ pub extern "C" fn drawpoint(p: point) {
 /// Draw a line between two points.
 pub fn drawline(p1: point, p2: point) {
     let ds = get_current_drawstate();
-    gdraw::gdrawline(ds.dest, ds.linewidth, lSolid, ds.hue, p1, p2, 0, 0, 0, 0.0);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gdrawline(ds.dest, ds.linewidth, lSolid, ds.hue, p1, p2, 0, 0, 0, 0.0) };
 }
 
 /// Draw a rectangle outline.
 pub fn drawrect(r: rect) {
     let ds = get_current_drawstate();
-    gdraw::gdrawrect(ds.dest, ds.linewidth, lSolid, ds.hue, r, 0, 0, 0, 0.0);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gdrawrect(ds.dest, ds.linewidth, lSolid, ds.hue, r, 0, 0, 0, 0.0) };
 }
 
 /// Fill a rectangle.
 pub fn fillrect(r: rect) {
     let ds = get_current_drawstate();
-    gdraw::gfillrect(ds.dest, ds.hue, r);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gfillrect(ds.dest, ds.hue, r) };
 }
 
 /// Draw an arc within the bounding rectangle.
@@ -141,13 +144,15 @@ pub fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 /// Draw an ellipse.
 pub fn drawellipse(r: rect) {
     let ds = get_current_drawstate();
-    gdraw::gdrawellipse(ds.dest, ds.linewidth, ds.hue, r, 0, 0, 0, 0.0);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gdrawellipse(ds.dest, ds.linewidth, ds.hue, r, 0, 0, 0, 0.0) };
 }
 
 /// Fill an ellipse.
 pub fn fillellipse(r: rect) {
     let ds = get_current_drawstate();
-    gdraw::gfillellipse(ds.dest, ds.hue, r);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gfillellipse(ds.dest, ds.hue, r) };
 }
 
 /// Old fillellipse using platform Ellipse function.
@@ -166,36 +171,71 @@ pub fn fillroundrect(r: rect) {
 }
 
 /// Draw a polygon.
-pub fn drawpolygon(p: *mut point, n: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
     let ds = get_current_drawstate();
-    gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
+    // SAFETY: forwarded raw pointers satisfy `gdrawpolygon`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0) };
 }
 
 /// Fill a polygon.
-pub fn fillpolygon(p: *mut point, n: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
     let ds = get_current_drawstate();
-    gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
+    // SAFETY: forwarded raw pointers satisfy `gfillpolygon`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gfillpolygon(ds.dest, ds.hue, p, n) };
 }
 
 /// Draw a string at the given position.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[allow(clippy::if_same_then_else)]
-pub fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
+pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
     if s.is_null() {
         return 0;
     }
     let ds = get_current_drawstate();
-    gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
+    // SAFETY: forwarded raw pointers satisfy `gdrawstr`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s) }
 }
 
 /// Get the bounding rectangle of a string with the given font.
-pub fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
     let ds = get_current_drawstate();
-    gdraw::gstrrect(ds.dest, f, s)
+    // SAFETY: forwarded raw pointers satisfy `gstrrect`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gstrrect(ds.dest, f, s) }
 }
 
 /// Get the size of a string with the given font.
-pub fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
-    let r = strrect(f, s);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
+    // SAFETY: forwarded raw pointers satisfy `strrect`'s contract per this function's own `# Safety` requirements.
+    let r = unsafe { strrect(f, s) };
     point {
         x: r.width,
         y: r.height,
@@ -203,8 +243,15 @@ pub fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
 }
 
 /// Get the width of a string with the given font.
-pub fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
-    strrect(f, s).width
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `strrect`'s contract per this function's own `# Safety` requirements.
+    (unsafe { strrect(f, s) }).width
 }
 
 /// Get a pixel colour.
@@ -216,12 +263,20 @@ pub fn getpixel(p: point) -> rgb {
 /// Set a pixel colour.
 pub fn setpixel(p: point, c: rgb) {
     let ds = get_current_drawstate();
-    gdraw::gsetpixel(ds.dest, p, c);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::gsetpixel(ds.dest, p, c) };
 }
 
 /// Bit-block transfer.
-pub fn bitblt(db: bitmap, sb: bitmap, p: point, r: rect, _mode: c_int) {
-    gdraw::gbitblt(db, sb, p, r);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn bitblt(db: bitmap, sb: bitmap, p: point, r: rect, _mode: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `gbitblt`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gbitblt(db, sb, p, r) };
 }
 
 /// Scroll a rectangle.
@@ -231,8 +286,15 @@ pub fn scrollrect(dp: point, r: rect) {
 }
 
 /// Copy a rectangle from source to current destination.
-pub fn copyrect(sb: bitmap, p: point, r: rect) {
-    bitblt(currentdrawing() as bitmap, sb, p, r, currentmode());
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn copyrect(sb: bitmap, p: point, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `bitblt`'s contract per this function's own `# Safety` requirements.
+    unsafe { bitblt(currentdrawing() as bitmap, sb, p, r, currentmode()) };
 }
 
 /// Texture-fill a rectangle with a bitmap.
@@ -243,13 +305,21 @@ pub fn texturerect(_sb: bitmap, _dr: rect) {}
 /// Invert a rectangle.
 pub fn invertrect(r: rect) {
     let ds = get_current_drawstate();
-    gdraw::ginvert(ds.dest, r);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::ginvert(ds.dest, r) };
 }
 
 /// Draw an image.
-pub fn drawimage(img: image, dr: rect, sr: rect) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn drawimage(img: image, dr: rect, sr: rect) {
     let ds = get_current_drawstate();
-    gdraw::gdrawimage(ds.dest, img, dr, sr);
+    // SAFETY: forwarded raw pointers satisfy `gdrawimage`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdraw::gdrawimage(ds.dest, img, dr, sr) };
 }
 
 /// Draw an image in monochrome.
@@ -275,7 +345,8 @@ pub fn drawbrighter(_img: image, _dr: rect, _sr: rect) {}
 /// Get the clipping rectangle.
 pub fn getcliprect() -> rect {
     let ds = get_current_drawstate();
-    gdraw::ggetcliprect(ds.dest)
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { gdraw::ggetcliprect(ds.dest) }
 }
 
 /// Set the clipping rectangle.
@@ -287,23 +358,38 @@ pub fn setcliprect(r: rect) {
 /// Copy the current draw state.
 pub fn copydrawstate() -> drawstate {
     let ds = super::memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
-    if let Some(state) = ptr_mut(ds) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(state) = unsafe { ptr_mut(ds) } {
         *state = with_graphapp_runtime(|runtime| runtime.current_drawstate.clone());
     }
     ds
 }
 
 /// Set the draw state.
-pub extern "C" fn setdrawstate(saved: drawstate) {
-    if let Some(state) = ptr_ref(saved) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn setdrawstate(saved: drawstate) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(state) = unsafe { ptr_ref(saved) } {
         let state = state.clone();
         with_graphapp_runtime(|runtime| runtime.current_drawstate = state);
     }
 }
 
 /// Restore a draw state (alias for setdrawstate).
-pub extern "C" fn restoredrawstate(saved: drawstate) {
-    setdrawstate(saved);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn restoredrawstate(saved: drawstate) {
+    // SAFETY: forwarded raw pointers satisfy `setdrawstate`'s contract per this function's own `# Safety` requirements.
+    unsafe { setdrawstate(saved) };
 }
 
 /// Reset the draw state to defaults.

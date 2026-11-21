@@ -9,13 +9,20 @@ use std::os::raw::{c_char, c_int};
 use super::types::{cstr, obj_mut};
 use super::windows;
 
-fn write_status_bytes(text: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_status_bytes(text: *const c_char) {
     let window = windows::get_current_window();
-    let Some(data) = obj_mut(window) else {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { obj_mut(window) }) else {
         return;
     };
     data.status.fill(0);
-    let Some(text) = cstr(text) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(text) = (unsafe { cstr(text) }) else {
         return;
     };
     for (idx, &byte) in text
@@ -34,12 +41,24 @@ pub fn addstatusbar() -> c_int {
 pub fn delstatusbar() -> c_int {
     0
 }
-pub fn setstatus(text: *const c_char) {
-    write_status_bytes(text);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setstatus(text: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `write_status_bytes`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_status_bytes(text) };
 }
 
-pub fn updatestatus(text: *const c_char) {
-    write_status_bytes(text);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn updatestatus(text: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `write_status_bytes`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_status_bytes(text) };
 }
 
 #[cfg(test)]

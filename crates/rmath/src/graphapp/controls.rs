@@ -15,18 +15,30 @@ use std::ptr;
 use super::types::*;
 use super::{image as image_api, memory, objects, strings, windows};
 
-fn first_list_item(list: *const *const c_char) -> *const c_char {
-    ptr_ref(list).copied().unwrap_or(ptr::null())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn first_list_item(list: *const *const c_char) -> *const c_char {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { ptr_ref(list) }).copied().unwrap_or(ptr::null())
 }
 
-fn list_length(list: *const *const c_char) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn list_length(list: *const *const c_char) -> c_int {
     if list.is_null() {
         return 0;
     }
     let mut len = 0;
     loop {
         // Walk the caller's NULL-terminated pointer array.
-        let item = ptr_ref(list.wrapping_add(len as usize))
+        // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+        let item = unsafe { ptr_ref(list.wrapping_add(len as usize)) }
             .copied()
             .unwrap_or(ptr::null());
         if item.is_null() {
@@ -39,7 +51,8 @@ fn list_length(list: *const *const c_char) -> c_int {
 
 fn alloc_drawstate(dest: drawing) -> drawstate {
     let state = memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
-    if let Some(state) = ptr_mut(state) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(state) = unsafe { ptr_mut(state) } {
         *state = drawstruct {
             dest,
             hue: Black,
@@ -49,18 +62,31 @@ fn alloc_drawstate(dest: drawing) -> drawstate {
     state
 }
 
-fn new_control_object(kind: c_int, text: *const c_char, r: rect, with_drawstate: bool) -> control {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn new_control_object(
+    kind: c_int,
+    text: *const c_char,
+    r: rect,
+    with_drawstate: bool,
+) -> control {
     objects::init_objects();
     let parent = windows::get_current_window();
-    let obj = objects::new_object(kind, ptr::null_mut(), parent);
-    let Some(obj) = obj_mut(obj) else {
+    // SAFETY: forwarded raw pointers satisfy `new_object`'s contract per this function's own `# Safety` requirements.
+    let obj = unsafe { objects::new_object(kind, ptr::null_mut(), parent) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(obj) = (unsafe { obj_mut(obj) }) else {
         return ptr::null_mut();
     };
     obj.rect = r;
     obj.state = GA_Visible | GA_Enabled;
     obj.fg = Black;
     obj.bg = White;
-    obj.text = strings::new_string(text);
+    // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+    obj.text = unsafe { strings::new_string(text) };
     if with_drawstate {
         obj.drawstate = alloc_drawstate(obj);
     }
@@ -68,18 +94,22 @@ fn new_control_object(kind: c_int, text: *const c_char, r: rect, with_drawstate:
 }
 
 fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap {
-    let bitmap = new_control_object(
-        BitmapObject,
-        ptr::null(),
-        rect {
-            x: 0,
-            y: 0,
-            width,
-            height,
-        },
-        false,
-    );
-    let Some(bitmap) = obj_mut(bitmap) else {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let bitmap = unsafe {
+        new_control_object(
+            BitmapObject,
+            ptr::null(),
+            rect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            false,
+        )
+    };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let Some(bitmap) = (unsafe { obj_mut(bitmap) }) else {
         return ptr::null_mut();
     };
     let normalized_depth = if depth <= 8 { 8 } else { 32 };
@@ -88,168 +118,370 @@ fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap {
     bitmap
 }
 
-fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
-    let Some(img) = obj_ref(bitmap).map(|b| b.img) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(img) = unsafe { obj_ref(bitmap) }.map(|b| b.img) else {
         return;
     };
     if img.is_null() || data.is_null() {
         return;
     }
-    image_api::setpixels(img, data);
+    // SAFETY: forwarded raw pointers satisfy `setpixels`'s contract per this function's own `# Safety` requirements.
+    unsafe { image_api::setpixels(img, data) };
 }
 
-pub fn setaction(c: control, fn_: actionfn) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setaction(c: control, fn_: actionfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.action = fn_;
     }
 }
-pub fn sethit(c: control, fn_: intfn) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn sethit(c: control, fn_: intfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.hit = fn_;
     }
 }
-pub fn setdel(c: control, fn_: actionfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setdel(c: control, fn_: actionfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.die = fn_;
     }
 }
-pub fn setclose(c: control, fn_: actionfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setclose(c: control, fn_: actionfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.close = fn_;
     }
 }
-pub fn setredraw(c: control, fn_: drawfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setredraw(c: control, fn_: drawfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.redraw = fn_;
     }
 }
-pub fn setresize(c: control, fn_: drawfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setresize(c: control, fn_: drawfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.resize = fn_;
     }
 }
-pub fn setkeydown(c: control, fn_: keyfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setkeydown(c: control, fn_: keyfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.keydown = fn_;
     }
 }
-pub fn setkeyaction(c: control, fn_: keyfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setkeyaction(c: control, fn_: keyfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.keyaction = fn_;
     }
 }
-pub fn setmousedown(c: control, fn_: mousefn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setmousedown(c: control, fn_: mousefn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.mousedown = fn_;
     }
 }
-pub fn setmousedrag(c: control, fn_: mousefn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setmousedrag(c: control, fn_: mousefn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.mousedrag = fn_;
     }
 }
-pub fn setmouseup(c: control, fn_: mousefn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setmouseup(c: control, fn_: mousefn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.mouseup = fn_;
     }
 }
-pub fn setmousemove(c: control, fn_: mousefn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setmousemove(c: control, fn_: mousefn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.mousemove = fn_;
     }
 }
-pub fn setmouserepeat(c: control, fn_: mousefn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setmouserepeat(c: control, fn_: mousefn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.mouserepeat = fn_;
     }
 }
-pub fn setdrop(c: control, fn_: dropfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setdrop(c: control, fn_: dropfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.drop = fn_;
     }
 }
-pub fn setonfocus(c: control, fn_: actionfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setonfocus(c: control, fn_: actionfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.focus = fn_;
     }
 }
-pub fn setim(c: control, fn_: imfn) {
-    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setim(c: control, fn_: imfn) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(call) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.call) }) {
         call.im = fn_;
     }
 }
 
-pub fn clear(c: control) {
-    draw(c);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn clear(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `draw`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw(c) };
 }
-pub fn draw(c: control) {
-    let Some(obj) = obj_ref(c) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn draw(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(obj) = (unsafe { obj_ref(c) }) else {
+        return;
+    };
     if (obj.state & GA_Visible) == 0 {
         return;
     }
-    if let Some(redraw) = ptr_ref(obj.call).and_then(|call| call.redraw) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(redraw) = unsafe { ptr_ref(obj.call) }.and_then(|call| call.redraw) {
         redraw(c, obj.rect);
     }
 }
-pub fn redraw(c: control) {
-    draw(c);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn redraw(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `draw`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw(c) };
 }
-pub fn resize(c: control, r: rect) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn resize(c: control, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.rect = r;
     }
 }
-pub fn show_control(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn show_control(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state |= GA_Visible;
     }
 }
-pub fn hide_control(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn hide_control(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state &= !GA_Visible;
     }
 }
-pub fn isvisible(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| if (c.state & GA_Visible) != 0 { 1 } else { 0 })
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn isvisible(c: control) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(0, |c| if (c.state & GA_Visible) != 0 { 1 } else { 0 })
 }
-pub fn enable(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn enable(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state |= GA_Enabled;
     }
 }
-pub fn disable(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn disable(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state &= !GA_Enabled;
     }
 }
-pub fn isenabled(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| if (c.state & GA_Enabled) != 0 { 1 } else { 0 })
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn isenabled(c: control) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(0, |c| if (c.state & GA_Enabled) != 0 { 1 } else { 0 })
 }
-pub fn check(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn check(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state |= GA_Checked;
     }
 }
-pub fn uncheck(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn uncheck(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state &= !GA_Checked;
     }
 }
-pub fn ischecked(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| if (c.state & GA_Checked) != 0 { 1 } else { 0 })
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ischecked(c: control) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(0, |c| if (c.state & GA_Checked) != 0 { 1 } else { 0 })
 }
-pub fn highlight(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn highlight(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state |= GA_Highlighted;
     }
 }
-pub fn unhighlight(c: control) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn unhighlight(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.state &= !GA_Highlighted;
     }
 }
-pub fn ishighlighted(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ishighlighted(c: control) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(0, |c| {
         if (c.state & GA_Highlighted) != 0 {
             1
         } else {
@@ -257,8 +489,14 @@ pub fn ishighlighted(c: control) -> c_int {
         }
     })
 }
-pub fn flashcontrol(c: control) {
-    let Some(state) = obj_ref(c).map(|obj| obj.state) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn flashcontrol(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(state) = unsafe { obj_ref(c) }.map(|obj| obj.state) else {
         return;
     };
     if (state & GA_Enabled) == 0 {
@@ -266,164 +504,312 @@ pub fn flashcontrol(c: control) {
     }
 
     let was_armed = (state & GA_Armed) != 0;
-    if let Some(obj) = obj_mut(c) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(obj) = unsafe { obj_mut(c) } {
         obj.state |= GA_Armed;
     }
-    redraw(c);
+    // SAFETY: forwarded raw pointers satisfy `redraw`'s contract per this function's own `# Safety` requirements.
+    unsafe { redraw(c) };
     if !was_armed {
-        if let Some(obj) = obj_mut(c) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(obj) = unsafe { obj_mut(c) } {
             obj.state &= !GA_Armed;
         }
     }
-    redraw(c);
+    // SAFETY: forwarded raw pointers satisfy `redraw`'s contract per this function's own `# Safety` requirements.
+    unsafe { redraw(c) };
 }
-pub fn activatecontrol(c: control) {
-    let Some(state) = obj_ref(c).map(|obj| obj.state) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn activatecontrol(c: control) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(state) = unsafe { obj_ref(c) }.map(|obj| obj.state) else {
         return;
     };
     if (state & GA_Enabled) == 0 {
         return;
     }
 
-    flashcontrol(c);
+    // SAFETY: forwarded raw pointers satisfy `flashcontrol`'s contract per this function's own `# Safety` requirements.
+    unsafe { flashcontrol(c) };
 
-    let focus = obj_ref(c)
-        .and_then(|obj| ptr_ref(obj.call))
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let focus = unsafe { obj_ref(c) }
+        // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+        .and_then(|obj| unsafe { ptr_ref(obj.call) })
         .and_then(|call| call.focus);
     if let Some(focus) = focus {
         focus(c);
     }
-    if let Some(action) = obj_ref(c).and_then(|obj| obj.action) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(action) = unsafe { obj_ref(c) }.and_then(|obj| obj.action) {
         action(c);
     }
 }
 
-pub fn settext(c: control, text: *const c_char) {
-    let Some(c) = obj_mut(c) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn settext(c: control, text: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(c) = (unsafe { obj_mut(c) }) else {
+        return;
+    };
     if !c.text.is_null() {
-        super::memory::memfree(c.text as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { super::memory::memfree(c.text as *mut u8) };
     }
-    c.text = super::strings::new_string(text);
+    // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+    c.text = unsafe { super::strings::new_string(text) };
 }
-pub fn GA_gettext(c: control) -> *mut c_char {
-    obj_ref(c).map_or(ptr::null_mut(), |c| c.text)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GA_gettext(c: control) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(ptr::null_mut(), |c| c.text)
 }
 #[allow(clippy::if_same_then_else)]
-pub fn gettextfont(c: control) -> font {
-    obj_ref(c)
-        .and_then(|c| ptr_ref(c.drawstate))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gettextfont(c: control) -> font {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) })
+        // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+        .and_then(|c| unsafe { ptr_ref(c.drawstate) })
         .map_or(ptr::null_mut(), |ds| ds.fnt)
 }
-pub fn settextfont(c: control, f: font) {
-    if let Some(ds) = obj_ref(c).and_then(|c| ptr_mut(c.drawstate)) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn settextfont(c: control, f: font) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(ds) = unsafe { obj_ref(c) }.and_then(|c| unsafe { ptr_mut(c.drawstate) }) {
         ds.fnt = f;
     }
 }
-pub fn setforeground(c: control, fg: rgb) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setforeground(c: control, fg: rgb) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.fg = fg;
     }
 }
-pub fn getforeground(c: control) -> rgb {
-    obj_ref(c).map_or(Black, |c| c.fg)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getforeground(c: control) -> rgb {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(Black, |c| c.fg)
 }
-pub fn setbackground(c: control, bg: rgb) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setbackground(c: control, bg: rgb) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.bg = bg;
     }
 }
-pub fn getbackground(c: control) -> rgb {
-    obj_ref(c).map_or(Transparent, |c| c.bg)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getbackground(c: control) -> rgb {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(Transparent, |c| c.bg)
 }
-pub fn setvalue(c: control, value: c_int) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setvalue(c: control, value: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.value = value;
     }
 }
-pub fn getvalue(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| c.value)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getvalue(c: control) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(0, |c| c.value)
 }
-pub fn setdata(c: control, data: *mut c_void) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setdata(c: control, data: *mut c_void) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.data = data;
     }
 }
-pub fn getdata(c: control) -> *mut c_void {
-    obj_ref(c).map_or(ptr::null_mut(), |c| c.data)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getdata(c: control) -> *mut c_void {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(ptr::null_mut(), |c| c.data)
 }
-pub fn parentwindow(c: control) -> window {
-    obj_ref(c).map_or(ptr::null_mut(), |c| c.parent)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn parentwindow(c: control) -> window {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(c) }).map_or(ptr::null_mut(), |c| c.parent)
 }
 
-pub fn newcontrol(text: *const c_char, r: rect) -> control {
-    new_control_object(ControlObject, text, r, false)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newcontrol(text: *const c_char, r: rect) -> control {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { new_control_object(ControlObject, text, r, false) }
 }
 pub fn newdrawing(r: rect, fn_: drawfn) -> drawing {
-    let drawing = new_control_object(UserObject, ptr::null(), r, true);
-    if let Some(call) = obj_ref(drawing).and_then(|d| ptr_mut(d.call)) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let drawing = unsafe { new_control_object(UserObject, ptr::null(), r, true) };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(call) = unsafe { obj_ref(drawing) }.and_then(|d| unsafe { ptr_mut(d.call) }) {
         call.redraw = fn_;
     }
     drawing
 }
 pub fn newpicture(img: image, r: rect) -> drawing {
     let picture = newdrawing(r, None);
-    if let Some(picture) = obj_mut(picture) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(picture) = unsafe { obj_mut(picture) } {
         picture.img = img;
     }
     picture
 }
-pub fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
-    let button = new_control_object(ButtonObject, text, r, false);
-    if let Some(button) = obj_mut(button) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    let button = unsafe { new_control_object(ButtonObject, text, r, false) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(button) = unsafe { obj_mut(button) } {
         button.action = fn_;
     }
     button
 }
 pub fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
-    let button = newbutton(ptr::null(), r, fn_);
-    if let Some(button) = obj_mut(button) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let button = unsafe { newbutton(ptr::null(), r, fn_) };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(button) = unsafe { obj_mut(button) } {
         button.img = img;
     }
     button
 }
-pub fn setimage(c: control, img: image) {
-    if let Some(c) = obj_mut(c) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setimage(c: control, img: image) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(c) = unsafe { obj_mut(c) } {
         c.img = img;
     }
 }
-pub fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
-    let checkbox = new_control_object(CheckboxObject, text, r, false);
-    if let Some(checkbox) = obj_mut(checkbox) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    let checkbox = unsafe { new_control_object(CheckboxObject, text, r, false) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(checkbox) = unsafe { obj_mut(checkbox) } {
         checkbox.action = fn_;
     }
     checkbox
 }
 pub fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
-    let checkbox = newcheckbox(ptr::null(), r, fn_);
-    if let Some(checkbox) = obj_mut(checkbox) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let checkbox = unsafe { newcheckbox(ptr::null(), r, fn_) };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(checkbox) = unsafe { obj_mut(checkbox) } {
         checkbox.img = img;
     }
     checkbox
 }
-pub fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutton {
-    let button = new_control_object(RadioObject, text, r, false);
-    if let Some(button) = obj_mut(button) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutton {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    let button = unsafe { new_control_object(RadioObject, text, r, false) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(button) = unsafe { obj_mut(button) } {
         button.action = fn_;
     }
     button
 }
 pub fn newradiogroup() -> radiogroup {
-    new_control_object(RadiogroupObject, ptr::null(), rect::default(), false)
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { new_control_object(RadiogroupObject, ptr::null(), rect::default(), false) }
 }
 pub fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scrollbar {
-    let scrollbar = new_control_object(ScrollbarObject, ptr::null(), r, false);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let scrollbar = unsafe { new_control_object(ScrollbarObject, ptr::null(), r, false) };
     if !scrollbar.is_null() {
-        changescrollbar(scrollbar, 0, max, pagesize);
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        unsafe { changescrollbar(scrollbar, 0, max, pagesize) };
     }
     scrollbar
 }
-pub fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
-    let Some(s) = obj_mut(s) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(s) = (unsafe { obj_mut(s) }) else {
+        return;
+    };
 
     let max = max.max(0);
     let size = size.clamp(0, max);
@@ -433,80 +819,183 @@ pub fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
     s.size = size;
     s.value = where_.clamp(0, limit);
 }
-pub fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
-    let label = new_control_object(LabelObject, text, r, false);
-    if let Some(label) = obj_mut(label) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    let label = unsafe { new_control_object(LabelObject, text, r, false) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(label) = unsafe { obj_mut(label) } {
         label.value = alignment;
     }
     label
 }
-pub fn newfield(text: *const c_char, r: rect) -> field {
-    new_control_object(FieldObject, text, r, true)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newfield(text: *const c_char, r: rect) -> field {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { new_control_object(FieldObject, text, r, true) }
 }
-pub fn newpassword(text: *const c_char, r: rect) -> field {
-    let field = newfield(text, r);
-    if let Some(field) = obj_mut(field) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newpassword(text: *const c_char, r: rect) -> field {
+    // SAFETY: forwarded raw pointers satisfy `newfield`'s contract per this function's own `# Safety` requirements.
+    let field = unsafe { newfield(text, r) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(field) = unsafe { obj_mut(field) } {
         field.flags |= 1;
     }
     field
 }
-pub fn newtextbox(text: *const c_char, r: rect) -> textbox {
-    new_control_object(TextboxObject, text, r, true)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newtextbox(text: *const c_char, r: rect) -> textbox {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { new_control_object(TextboxObject, text, r, true) }
 }
-pub fn newtextarea(text: *const c_char, r: rect) -> textbox {
-    newtextbox(text, r)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newtextarea(text: *const c_char, r: rect) -> textbox {
+    // SAFETY: forwarded raw pointers satisfy `newtextbox`'s contract per this function's own `# Safety` requirements.
+    unsafe { newtextbox(text, r) }
 }
-pub fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
-    newtextbox(text, r)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
+    // SAFETY: forwarded raw pointers satisfy `newtextbox`'s contract per this function's own `# Safety` requirements.
+    unsafe { newtextbox(text, r) }
 }
-pub fn newlistbox(list: *const *const c_char, r: rect, _fn_: scrollfn, dble: actionfn) -> listbox {
-    let listbox = new_control_object(ListboxObject, first_list_item(list), r, false);
-    if let Some(listbox) = obj_mut(listbox) {
-        listbox.max = list_length(list);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newlistbox(
+    list: *const *const c_char,
+    r: rect,
+    _fn_: scrollfn,
+    dble: actionfn,
+) -> listbox {
+    // SAFETY: forwarded raw pointers satisfy `new_control_object`'s contract per this function's own `# Safety` requirements.
+    let listbox = unsafe { new_control_object(ListboxObject, first_list_item(list), r, false) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(listbox) = unsafe { obj_mut(listbox) } {
+        // SAFETY: forwarded raw pointers satisfy `list_length`'s contract per this function's own `# Safety` requirements.
+        listbox.max = unsafe { list_length(list) };
         listbox.value = -1;
         listbox.dble = dble;
     }
     listbox
 }
-pub fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
-    let listbox = newlistbox(list, r, fn_, None);
-    if let Some(listbox) = obj_mut(listbox) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
+    // SAFETY: forwarded raw pointers satisfy `newlistbox`'s contract per this function's own `# Safety` requirements.
+    let listbox = unsafe { newlistbox(list, r, fn_, None) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(listbox) = unsafe { obj_mut(listbox) } {
         listbox.kind = DroplistObject;
     }
     listbox
 }
-pub fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
-    let listbox = newlistbox(list, r, fn_, None);
-    if let Some(listbox) = obj_mut(listbox) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
+    // SAFETY: forwarded raw pointers satisfy `newlistbox`'s contract per this function's own `# Safety` requirements.
+    let listbox = unsafe { newlistbox(list, r, fn_, None) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(listbox) = unsafe { obj_mut(listbox) } {
         listbox.kind = DropfieldObject;
     }
     listbox
 }
-pub fn newmultilist(list: *const *const c_char, r: rect, fn_: scrollfn, dble: actionfn) -> listbox {
-    let listbox = newlistbox(list, r, fn_, dble);
-    if let Some(listbox) = obj_mut(listbox) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newmultilist(
+    list: *const *const c_char,
+    r: rect,
+    fn_: scrollfn,
+    dble: actionfn,
+) -> listbox {
+    // SAFETY: forwarded raw pointers satisfy `newlistbox`'s contract per this function's own `# Safety` requirements.
+    let listbox = unsafe { newlistbox(list, r, fn_, dble) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(listbox) = unsafe { obj_mut(listbox) } {
         listbox.kind = MultilistObject;
     }
     listbox
 }
-pub fn isselected(b: listbox, index: c_int) -> c_int {
-    obj_ref(b).map_or(0, |b| if b.value == index { 1 } else { 0 })
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn isselected(b: listbox, index: c_int) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(b) }).map_or(0, |b| if b.value == index { 1 } else { 0 })
 }
-pub fn setlistitem(b: listbox, index: c_int) {
-    if let Some(b) = obj_mut(b) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setlistitem(b: listbox, index: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(b) = unsafe { obj_mut(b) } {
         b.value = index.max(-1);
     }
 }
-pub fn getlistitem(b: listbox) -> c_int {
-    obj_ref(b).map_or(-1, |b| b.value)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getlistitem(b: listbox) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(b) }).map_or(-1, |b| b.value)
 }
-pub fn changelistbox(b: listbox, list: *const *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn changelistbox(b: listbox, list: *const *const c_char) {
     if b.is_null() {
         return;
     }
-    settext(b, first_list_item(list));
-    if let Some(b) = obj_mut(b) {
-        b.max = list_length(list);
+    // SAFETY: forwarded raw pointers satisfy `settext`'s contract per this function's own `# Safety` requirements.
+    unsafe { settext(b, first_list_item(list)) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(b) = unsafe { obj_mut(b) } {
+        // SAFETY: forwarded raw pointers satisfy `list_length`'s contract per this function's own `# Safety` requirements.
+        b.max = unsafe { list_length(list) };
         b.value = -1;
     }
 }
@@ -517,30 +1006,56 @@ pub fn newprogressbar(
     incr: c_int,
     smooth: c_int,
 ) -> progressbar {
-    let progress = new_control_object(ProgressbarObject, ptr::null(), r, false);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let progress = unsafe { new_control_object(ProgressbarObject, ptr::null(), r, false) };
     if !progress.is_null() {
-        setprogressbarrange(progress, pmin, pmax);
-        if let Some(progress) = obj_mut(progress) {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        unsafe { setprogressbarrange(progress, pmin, pmax) };
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        if let Some(progress) = unsafe { obj_mut(progress) } {
             progress.data = incr as usize as *mut c_void;
             progress.flags = smooth as c_long;
         }
     }
     progress
 }
-pub fn setprogressbar(obj: progressbar, n: c_int) {
-    let Some(obj) = obj_mut(obj) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setprogressbar(obj: progressbar, n: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(obj) = (unsafe { obj_mut(obj) }) else {
+        return;
+    };
 
     let min = obj.size.min(obj.max);
     let max = obj.max.max(obj.size);
     obj.value = n.clamp(min, max);
 }
-pub fn stepprogressbar(obj: progressbar, n: c_int) {
-    if let Some(value) = obj_ref(obj).map(|obj| obj.value) {
-        setprogressbar(obj, value.saturating_add(n));
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn stepprogressbar(obj: progressbar, n: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(value) = unsafe { obj_ref(obj) }.map(|obj| obj.value) {
+        // SAFETY: forwarded raw pointers satisfy `setprogressbar`'s contract per this function's own `# Safety` requirements.
+        unsafe { setprogressbar(obj, value.saturating_add(n)) };
     }
 }
-pub fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
-    let Some(obj) = obj_mut(obj) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(obj) = (unsafe { obj_mut(obj) }) else {
+        return;
+    };
 
     let (min, max) = if pbmin <= pbmax {
         (pbmin, pbmax)
@@ -569,38 +1084,66 @@ pub fn newmenuitem(_name: *const c_char, _key: c_int, _fn_: menufn) -> menuitem 
 pub fn undotext(_t: textbox) {}
 pub fn cuttext(_t: textbox) {}
 pub fn copytext(_t: textbox) {}
-pub fn cleartext(t: textbox) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn cleartext(t: textbox) {
     if !t.is_null() {
-        settext(t, ptr::null());
-        selecttext(t, 0, 0);
+        // SAFETY: forwarded raw pointers satisfy `settext`'s contract per this function's own `# Safety` requirements.
+        unsafe { settext(t, ptr::null()) };
+        // SAFETY: forwarded raw pointers satisfy `selecttext`'s contract per this function's own `# Safety` requirements.
+        unsafe { selecttext(t, 0, 0) };
     }
 }
 pub fn pastetext(_t: textbox) {}
-pub fn inserttext(t: textbox, text: *const c_char) {
-    let Some(obj) = obj_mut(t) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn inserttext(t: textbox, text: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(obj) = (unsafe { obj_mut(t) }) else {
+        return;
+    };
     if text.is_null() {
         return;
     }
 
     let old_text = obj.text;
     let combined = if old_text.is_null() {
-        super::strings::new_string(text)
+        // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+        unsafe { super::strings::new_string(text) }
     } else {
-        super::strings::add_strings(old_text, text)
+        // SAFETY: forwarded raw pointers satisfy `add_strings`'s contract per this function's own `# Safety` requirements.
+        unsafe { super::strings::add_strings(old_text, text) }
     };
     if combined.is_null() {
         return;
     }
     if !old_text.is_null() {
-        super::strings::del_string(old_text);
+        // SAFETY: forwarded raw pointers satisfy `del_string`'s contract per this function's own `# Safety` requirements.
+        unsafe { super::strings::del_string(old_text) };
     }
     obj.text = combined;
 
-    let end = super::strings::string_length(obj.text);
-    selecttext(t, end, end);
+    // SAFETY: forwarded raw pointers satisfy `string_length`'s contract per this function's own `# Safety` requirements.
+    let end = unsafe { super::strings::string_length(obj.text) };
+    // SAFETY: forwarded raw pointers satisfy `selecttext`'s contract per this function's own `# Safety` requirements.
+    unsafe { selecttext(t, end, end) };
 }
-pub fn selecttext(t: textbox, start: c_long, end: c_long) {
-    let Some(t) = obj_mut(t) else { return };
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn selecttext(t: textbox, start: c_long, end: c_long) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(t) = (unsafe { obj_mut(t) }) else {
+        return;
+    };
 
     let start = start.max(0);
     let end = end.max(0);
@@ -613,31 +1156,54 @@ pub fn selecttext(t: textbox, start: c_long, end: c_long) {
     t.caretx = start as c_int;
     t.carety = end as c_int;
 }
-pub fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
-    let selection = obj_ref(t).map_or((0, 0), |t| (t.caretx as c_long, t.carety as c_long));
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let selection =
+        unsafe { obj_ref(t) }.map_or((0, 0), |t| (t.caretx as c_long, t.carety as c_long));
 
-    if let Some(start) = ptr_mut(start) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(start) = unsafe { ptr_mut(start) } {
         *start = selection.0;
     }
-    if let Some(end) = ptr_mut(end) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(end) = unsafe { ptr_mut(end) } {
         *end = selection.1;
     }
 }
 
 // Font functions
-pub fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
     objects::init_objects();
-    let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
-    let Some(font) = obj_mut(font) else {
+    // SAFETY: forwarded raw pointers satisfy `new_object`'s contract per this function's own `# Safety` requirements.
+    let font = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(font) = (unsafe { obj_mut(font) }) else {
         return ptr::null_mut();
     };
-    font.text = strings::new_string(name);
+    // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+    font.text = unsafe { strings::new_string(name) };
     font.value = size.max(1);
     font.flags = style as c_long;
     font
 }
-pub fn fontwidth(f: font) -> c_int {
-    obj_ref(f).map_or(0, |f| {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fontwidth(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(f) }).map_or(0, |f| {
         if (f.flags & FixedWidth as c_long) != 0 {
             (f.value / 2).max(1)
         } else {
@@ -645,23 +1211,53 @@ pub fn fontwidth(f: font) -> c_int {
         }
     })
 }
-pub fn fontheight(f: font) -> c_int {
-    obj_ref(f).map_or(0, |f| f.value.max(1))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fontheight(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    (unsafe { obj_ref(f) }).map_or(0, |f| f.value.max(1))
 }
-pub fn fontascent(f: font) -> c_int {
-    let height = fontheight(f);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fontascent(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `fontheight`'s contract per this function's own `# Safety` requirements.
+    let height = unsafe { fontheight(f) };
     (height * 3) / 4
 }
-pub fn fontdescent(f: font) -> c_int {
-    fontheight(f).saturating_sub(fontascent(f))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fontdescent(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `fontheight`'s contract per this function's own `# Safety` requirements.
+    (unsafe { fontheight(f) }).saturating_sub(unsafe { fontascent(f) })
 }
 
 // Height alias
-pub fn getheight(f: font) -> c_int {
-    fontheight(f)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getheight(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `fontheight`'s contract per this function's own `# Safety` requirements.
+    unsafe { fontheight(f) }
 }
-pub fn getdescent(f: font) -> c_int {
-    fontdescent(f)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getdescent(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `fontdescent`'s contract per this function's own `# Safety` requirements.
+    unsafe { fontdescent(f) }
 }
 
 // Image control
@@ -670,40 +1266,72 @@ pub fn newbitmap(width: c_int, height: c_int, depth: c_int) -> bitmap {
 }
 pub fn loadbitmap(name: *const c_char) -> bitmap {
     let img = loadimage(name);
-    imagetobitmap(img)
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { imagetobitmap(img) }
 }
-pub fn imagetobitmap(img: image) -> bitmap {
-    let Some((width, height, depth)) = ptr_ref(img).map(|img| (img.width, img.height, img.depth))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn imagetobitmap(img: image) -> bitmap {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some((width, height, depth)) =
+        unsafe { ptr_ref(img) }.map(|img| (img.width, img.height, img.depth))
     else {
         return ptr::null_mut();
     };
     let bitmap = new_bitmap_object(width, height, depth);
-    if let Some(bitmap) = obj_mut(bitmap) {
-        image_api::delimage(bitmap.img);
-        bitmap.img = image_api::copyimage(img);
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(bitmap) = unsafe { obj_mut(bitmap) } {
+        // SAFETY: forwarded raw pointers satisfy `delimage`'s contract per this function's own `# Safety` requirements.
+        unsafe { image_api::delimage(bitmap.img) };
+        // SAFETY: forwarded raw pointers satisfy `copyimage`'s contract per this function's own `# Safety` requirements.
+        bitmap.img = unsafe { image_api::copyimage(img) };
     }
     bitmap
 }
-pub fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
     let bitmap = new_bitmap_object(width, height, depth);
-    set_bitmap_pixels(bitmap, data);
+    // SAFETY: forwarded raw pointers satisfy `set_bitmap_pixels`'s contract per this function's own `# Safety` requirements.
+    unsafe { set_bitmap_pixels(bitmap, data) };
     bitmap
 }
-pub fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
-    set_bitmap_pixels(b, data)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
+    // SAFETY: forwarded raw pointers satisfy `set_bitmap_pixels`'s contract per this function's own `# Safety` requirements.
+    unsafe { set_bitmap_pixels(b, data) }
 }
-pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
-    let Some(img) = obj_ref(b).map(|b| b.img) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(img) = unsafe { obj_ref(b) }.map(|b| b.img) else {
         return;
     };
     if img.is_null() || data.is_null() {
         return;
     }
-    let pixels = image_api::getpixels(img);
+    // SAFETY: forwarded raw pointers satisfy `getpixels`'s contract per this function's own `# Safety` requirements.
+    let pixels = unsafe { image_api::getpixels(img) };
     if pixels.is_null() {
         return;
     }
-    let Some((width, height, depth)) = ptr_ref(img).map(|img| (img.width, img.height, img.depth))
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some((width, height, depth)) =
+        unsafe { ptr_ref(img) }.map(|img| (img.width, img.height, img.depth))
     else {
         return;
     };
@@ -715,25 +1343,40 @@ pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
     };
     // Copy `byte_len` bytes into the caller-provided buffer; the length
     // is derived from the image dimensions recorded above.
-    if let (Some(dest), Some(src)) = (slice_mut(data, byte_len), slice_ref(pixels, byte_len)) {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    if let (Some(dest), Some(src)) = (unsafe { slice_mut(data, byte_len) }, unsafe {
+        slice_ref(pixels, byte_len)
+    }) {
         dest.copy_from_slice(src);
     }
 }
-pub fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
-    let Some(img) = obj_ref(b).map(|b| b.img) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(img) = unsafe { obj_ref(b) }.map(|b| b.img) else {
         return;
     };
-    let Some(data) = ptr_mut(data) else { return };
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_mut(data) }) else {
+        return;
+    };
     if img.is_null() {
         return;
     }
-    *data = image_api::getpixels(img);
+    // SAFETY: forwarded raw pointers satisfy `getpixels`'s contract per this function's own `# Safety` requirements.
+    *data = unsafe { image_api::getpixels(img) };
 }
 
 // Cursor functions
 pub fn newcursor(hotspot: point, img: image) -> cursor {
-    let cursor = new_control_object(CursorObject, ptr::null(), rect::default(), false);
-    if let Some(cursor) = obj_mut(cursor) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let cursor = unsafe { new_control_object(CursorObject, ptr::null(), rect::default(), false) };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(cursor) = unsafe { obj_mut(cursor) } {
         cursor.rect.x = hotspot.x;
         cursor.rect.y = hotspot.y;
         cursor.img = img;
@@ -743,10 +1386,16 @@ pub fn newcursor(hotspot: point, img: image) -> cursor {
 pub fn createcursor(offset: point, _white_mask: *mut GAbyte, _black_shape: *mut GAbyte) -> cursor {
     newcursor(offset, ptr::null_mut())
 }
-pub fn loadcursor(name: *const c_char) -> cursor {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn loadcursor(name: *const c_char) -> cursor {
     let cursor = newcursor(point::default(), ptr::null_mut());
     if !cursor.is_null() {
-        settext(cursor, name);
+        // SAFETY: forwarded raw pointers satisfy `settext`'s contract per this function's own `# Safety` requirements.
+        unsafe { settext(cursor, name) };
     }
     cursor
 }
@@ -755,11 +1404,18 @@ pub fn loadcursor(name: *const c_char) -> cursor {
 pub fn loadimage(_filename: *const c_char) -> image {
     ptr::null_mut()
 }
-pub fn saveimage(img: image, filename: *const c_char) {
-    let Some(data) = ptr_ref(img) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn saveimage(img: image, filename: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { ptr_ref(img) }) else {
         return;
     };
-    let Some(path) = cstr(filename).and_then(|f| f.to_str().ok()) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(path) = unsafe { cstr(filename) }.and_then(|f| f.to_str().ok()) else {
         return;
     };
     let Ok(mut file) = File::create(path) else {
@@ -770,9 +1426,11 @@ pub fn saveimage(img: image, filename: *const c_char) {
 
     if data.depth <= 8 {
         let _ = writeln!(file, "P5\n{} {}\n255", width, height);
-        let pixels = image_api::getpixels(img);
+        // SAFETY: forwarded raw pointers satisfy `getpixels`'s contract per this function's own `# Safety` requirements.
+        let pixels = unsafe { image_api::getpixels(img) };
         // Read `width * height` bytes from the owned pixel buffer.
-        if let Some(bytes) = slice_ref(pixels, (width * height) as usize) {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        if let Some(bytes) = unsafe { slice_ref(pixels, (width * height) as usize) } {
             let _ = file.write_all(bytes);
         }
         return;
@@ -781,7 +1439,8 @@ pub fn saveimage(img: image, filename: *const c_char) {
     let _ = writeln!(file, "P6\n{} {}\n255", width, height);
     for y in 0..height {
         for x in 0..width {
-            let pixel = image_api::get_image_pixel(img, x, y);
+            // SAFETY: forwarded raw pointers satisfy `get_image_pixel`'s contract per this function's own `# Safety` requirements.
+            let pixel = unsafe { image_api::get_image_pixel(img, x, y) };
             let bytes = [
                 getred(pixel) as u8,
                 getgreen(pixel) as u8,
@@ -869,11 +1528,14 @@ mod tests {
         REDRAW_CALLS.with(|calls| calls.set(0));
         call.redraw = Some(record_redraw);
 
-        draw(control);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { draw(control) };
         REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 0));
 
-        show_control(control);
-        draw(control);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { show_control(control) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { draw(control) };
         REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 1));
     }
 

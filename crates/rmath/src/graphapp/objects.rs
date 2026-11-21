@@ -20,7 +20,10 @@ pub fn init_objects() {
         return;
     }
     let obj = memory::memalloc_bytes(std::mem::size_of::<ObjInfo>()) as object;
-    let Some(base) = obj_mut(obj) else { return };
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let Some(base) = (unsafe { obj_mut(obj) }) else {
+        return;
+    };
     *base = ObjInfo {
         kind: BaseObject,
         next: obj,
@@ -30,61 +33,85 @@ pub fn init_objects() {
     with_graphapp_runtime(|runtime| runtime.objects.base_object = obj);
 }
 
-fn add_object(obj: object, parent: object) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn add_object(obj: object, parent: object) {
     let parent = if parent.is_null() {
         with_graphapp_runtime(|runtime| runtime.objects.base_object)
     } else {
         parent
     };
 
-    let child = obj_ref(parent).map_or(ptr::null_mut(), |p| p.child);
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let child = unsafe { obj_ref(parent) }.map_or(ptr::null_mut(), |p| p.child);
     if !child.is_null() {
-        let prev = obj_ref(child).map_or(ptr::null_mut(), |c| c.prev);
-        if let Some(o) = obj_mut(obj) {
+        // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+        let prev = unsafe { obj_ref(child) }.map_or(ptr::null_mut(), |c| c.prev);
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(o) = unsafe { obj_mut(obj) } {
             o.prev = prev;
             o.next = child;
         }
-        if let Some(prev) = obj_mut(prev) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(prev) = unsafe { obj_mut(prev) } {
             prev.next = obj;
         }
-        if let Some(child) = obj_mut(child) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(child) = unsafe { obj_mut(child) } {
             child.prev = obj;
         }
     } else {
-        if let Some(o) = obj_mut(obj) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(o) = unsafe { obj_mut(obj) } {
             o.next = obj;
             o.prev = obj;
         }
-        if let Some(parent) = obj_mut(parent) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(parent) = unsafe { obj_mut(parent) } {
             parent.child = obj;
         }
     }
-    if let Some(o) = obj_mut(obj) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(o) = unsafe { obj_mut(obj) } {
         o.parent = parent;
     }
 }
 
-fn remove_object(obj: object) {
-    let Some((next, prev, parent)) = obj_ref(obj).map(|o| (o.next, o.prev, o.parent)) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn remove_object(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some((next, prev, parent)) = unsafe { obj_ref(obj) }.map(|o| (o.next, o.prev, o.parent))
+    else {
         return;
     };
     let final_next = if !next.is_null() && next != obj {
-        if let Some(prev) = obj_mut(prev) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(prev) = unsafe { obj_mut(prev) } {
             prev.next = next;
         }
-        if let Some(next) = obj_mut(next) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(next) = unsafe { obj_mut(next) } {
             next.prev = prev;
         }
         next
     } else {
-        if let Some(o) = obj_mut(obj) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(o) = unsafe { obj_mut(obj) } {
             o.next = ptr::null_mut();
             o.prev = ptr::null_mut();
         }
         ptr::null_mut()
     };
     if !parent.is_null() {
-        if let Some(parent) = obj_mut(parent) {
+        // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(parent) = unsafe { obj_mut(parent) } {
             if parent.child == obj {
                 parent.child = final_next;
             }
@@ -93,22 +120,40 @@ fn remove_object(obj: object) {
 }
 
 /// Bring an object to the front of its sibling list.
-pub fn move_to_front(obj: object) {
-    let Some(parent) = obj_ref(obj).map(|o| o.parent) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn move_to_front(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(parent) = unsafe { obj_ref(obj) }.map(|o| o.parent) else {
         return;
     };
-    remove_object(obj);
-    add_object(obj, parent);
-    if let Some(parent) = obj_mut(parent) {
+    // SAFETY: forwarded raw pointers satisfy `remove_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { remove_object(obj) };
+    // SAFETY: forwarded raw pointers satisfy `add_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { add_object(obj, parent) };
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(parent) = unsafe { obj_mut(parent) } {
         parent.child = obj;
     }
 }
 
 /// Call a function on all objects in a sibling list.
-pub fn apply_to_list(first: object, fn_: actionfn) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn apply_to_list(first: object, fn_: actionfn) {
     let Some(fn_) = fn_ else { return };
-    let Some(start) = obj_ref(first)
-        .and_then(|f| obj_ref(f.parent))
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(start) = unsafe { obj_ref(first) }
+        // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+        .and_then(|f| unsafe { obj_ref(f.parent) })
         .map(|p| p.child)
     else {
         return;
@@ -116,7 +161,8 @@ pub fn apply_to_list(first: object, fn_: actionfn) {
     let mut obj = first;
     loop {
         fn_(obj);
-        let Some(next) = obj_ref(obj).map(|o| o.next) else {
+        // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(next) = unsafe { obj_ref(obj) }.map(|o| o.next) else {
             return;
         };
         obj = next;
@@ -127,8 +173,17 @@ pub fn apply_to_list(first: object, fn_: actionfn) {
 }
 
 /// Decrease the reference count of an object.
-pub fn decrease_refcount(obj: object) {
-    let Some(o) = obj_mut(obj) else { return };
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn decrease_refcount(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(o) = (unsafe { obj_mut(obj) }) else {
+        return;
+    };
     if o.refcount <= 0 {
         return;
     }
@@ -139,7 +194,8 @@ pub fn decrease_refcount(obj: object) {
 
     // Add to deletion list
     let new_node = memory::memalloc_bytes(std::mem::size_of::<DelNode>()) as *mut DelNode;
-    let Some(node) = ptr_mut(new_node) else {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(node) = (unsafe { ptr_mut(new_node) }) else {
         return;
     };
     node.obj = obj;
@@ -147,10 +203,12 @@ pub fn decrease_refcount(obj: object) {
     node.prev = new_node;
 
     let del_base = with_graphapp_runtime(|runtime| runtime.objects.deletion_base);
-    if let Some(base) = ptr_mut(del_base) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(base) = unsafe { ptr_mut(del_base) } {
         node.prev = base.prev;
         node.next = del_base;
-        if let Some(prev) = ptr_mut(node.prev) {
+        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(prev) = unsafe { ptr_mut(node.prev) } {
             prev.next = new_node;
         }
         base.prev = new_node;
@@ -160,8 +218,15 @@ pub fn decrease_refcount(obj: object) {
 }
 
 /// Increase the reference count of an object.
-pub fn increase_refcount(obj: object) {
-    if let Some(o) = obj_mut(obj) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn increase_refcount(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(o) = unsafe { obj_mut(obj) } {
         if o.refcount >= 0 {
             o.refcount += 1;
         }
@@ -169,20 +234,35 @@ pub fn increase_refcount(obj: object) {
 }
 
 /// Protect an object from deletion by setting refcount to -1.
-pub fn protect_object(obj: object) {
-    if let Some(o) = obj_mut(obj) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn protect_object(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(o) = unsafe { obj_mut(obj) } {
         o.refcount = -1;
     }
 }
 
-fn remove_delnode(n: *mut DelNode) {
-    let Some((next, prev)) = ptr_ref(n).map(|n| (n.next, n.prev)) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn remove_delnode(n: *mut DelNode) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some((next, prev)) = unsafe { ptr_ref(n) }.map(|n| (n.next, n.prev)) else {
         return;
     };
-    if let Some(prev) = ptr_mut(prev) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(prev) = unsafe { ptr_mut(prev) } {
         prev.next = next;
     }
-    if let Some(next) = ptr_mut(next) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(next) = unsafe { ptr_mut(next) } {
         next.prev = prev;
     }
     if n == next {
@@ -190,7 +270,8 @@ fn remove_delnode(n: *mut DelNode) {
     } else if n == with_graphapp_runtime(|runtime| runtime.objects.deletion_base) {
         with_graphapp_runtime(|runtime| runtime.objects.deletion_base = next);
     }
-    memory::memfree(n as *mut u8);
+    // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+    unsafe { memory::memfree(n as *mut u8) };
 }
 
 fn remove_deleted_object(obj: object) {
@@ -199,17 +280,20 @@ fn remove_deleted_object(obj: object) {
         return;
     }
     let mut next = del_base;
-    let Some(last) = ptr_ref(next).map(|n| n.prev) else {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let Some(last) = unsafe { ptr_ref(next) }.map(|n| n.prev) else {
         return;
     };
     loop {
         let n = next;
-        let Some((entry_obj, entry_next)) = ptr_ref(n).map(|n| (n.obj, n.next)) else {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        let Some((entry_obj, entry_next)) = unsafe { ptr_ref(n) }.map(|n| (n.obj, n.next)) else {
             return;
         };
         next = entry_next;
         if entry_obj == obj {
-            remove_delnode(n);
+            // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+            unsafe { remove_delnode(n) };
         }
         if n == last {
             break;
@@ -217,52 +301,92 @@ fn remove_deleted_object(obj: object) {
     }
 }
 
-fn del_object(obj: object) {
-    while let Some(child) = obj_ref(obj).map(|o| o.child).filter(|c| !c.is_null()) {
-        del_object(child);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn del_object(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    while let Some(child) = unsafe { obj_ref(obj) }
+        .map(|o| o.child)
+        .filter(|c| !c.is_null())
+    {
+        // SAFETY: forwarded raw pointers satisfy `del_object`'s contract per this function's own `# Safety` requirements.
+        unsafe { del_object(child) };
     }
-    free_object(obj);
+    // SAFETY: forwarded raw pointers satisfy `free_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { free_object(obj) };
 }
 
-fn update_app_globals(obj: object) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn update_app_globals(obj: object) {
     // These need to be set when the corresponding modules are initialized
     // For now, stub out the global drawstate reference
-    if obj_ref(obj).map_or(false, |o| !o.drawstate.is_null()) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if unsafe { obj_ref(obj) }.map_or(false, |o| !o.drawstate.is_null()) {
         // Keep the global drawstate hook in sync if a live drawstate tracker is added.
     }
 }
 
-fn free_private(obj: object) {
-    remove_object(obj);
-    let die = obj_ref(obj)
-        .and_then(|o| ptr_ref(o.call))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_private(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `remove_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { remove_object(obj) };
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let die = unsafe { obj_ref(obj) }
+        // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+        .and_then(|o| unsafe { ptr_ref(o.call) })
         .and_then(|call| call.die);
     if let Some(die) = die {
         die(obj);
     }
-    update_app_globals(obj);
+    // SAFETY: forwarded raw pointers satisfy `update_app_globals`'s contract per this function's own `# Safety` requirements.
+    unsafe { update_app_globals(obj) };
     // del_context(obj); // handled by context module
-    if let Some(die) = obj_ref(obj).and_then(|o| o.die) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    if let Some(die) = unsafe { obj_ref(obj) }.and_then(|o| o.die) {
         die(obj);
     }
     remove_deleted_object(obj);
 }
 
-fn free_object(obj: object) {
-    free_private(obj);
-    let Some((drawstate, text, call)) = obj_ref(obj).map(|o| (o.drawstate, o.text, o.call)) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_object(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `free_private`'s contract per this function's own `# Safety` requirements.
+    unsafe { free_private(obj) };
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some((drawstate, text, call)) =
+        unsafe { obj_ref(obj) }.map(|o| (o.drawstate, o.text, o.call))
+    else {
         return;
     };
     if !drawstate.is_null() {
-        memory::memfree(drawstate as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(drawstate as *mut u8) };
     }
     if !text.is_null() {
-        memory::memfree(text as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(text as *mut u8) };
     }
     if !call.is_null() {
-        memory::memfree(call as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(call as *mut u8) };
     }
-    memory::memfree(obj as *mut u8);
+    // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+    unsafe { memory::memfree(obj as *mut u8) };
 }
 
 /// Traverse the deletion list and delete every object.
@@ -274,12 +398,15 @@ pub fn deletion_traversal() {
             if del_base.is_null() {
                 break;
             }
-            let Some(obj) = ptr_ref(del_base).map(|d| d.obj) else {
+            // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+            let Some(obj) = unsafe { ptr_ref(del_base) }.map(|d| d.obj) else {
                 break;
             };
             if !obj.is_null() {
-                if obj_ref(obj).map_or(0, |o| o.refcount) == 0 {
-                    del_object(obj);
+                // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+                if unsafe { obj_ref(obj) }.map_or(0, |o| o.refcount) == 0 {
+                    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+                    unsafe { del_object(obj) };
                 } else {
                     remove_deleted_object(obj);
                 }
@@ -290,9 +417,16 @@ pub fn deletion_traversal() {
 }
 
 /// Create and return a new object with a refcount of 1.
-pub fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
     let obj = memory::memalloc_bytes(std::mem::size_of::<ObjInfo>()) as object;
-    let Some(o) = obj_mut(obj) else {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(o) = (unsafe { obj_mut(obj) }) else {
         return ptr::null_mut();
     };
     *o = ObjInfo {
@@ -305,20 +439,29 @@ pub fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
 
     if (kind & ControlObject) != 0 {
         let call = memory::memalloc_bytes(std::mem::size_of::<callinfo>()) as *mut callinfo;
-        let Some(call_ref) = ptr_mut(call) else {
-            memory::memfree(obj as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+        let Some(call_ref) = (unsafe { ptr_mut(call) }) else {
+            // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+            unsafe { memory::memfree(obj as *mut u8) };
             return ptr::null_mut();
         };
         *call_ref = callinfo::default();
         o.call = call;
     }
 
-    add_object(obj, parent);
+    // SAFETY: forwarded raw pointers satisfy `add_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { add_object(obj, parent) };
     obj
 }
 
-fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
-    let Some(o) = obj_ref(obj) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(o) = (unsafe { obj_ref(obj) }) else {
         return ptr::null_mut();
     };
     if !handle.is_null() && o.handle == handle {
@@ -334,8 +477,15 @@ fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) -> obje
 }
 
 /// Perform a multi-child tree traversal to find an object.
-pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
-    let Some(child) = obj_ref(top).map(|t| t.child) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(child) = unsafe { obj_ref(top) }.map(|t| t.child) else {
         return ptr::null_mut();
     };
     if child.is_null() {
@@ -346,12 +496,14 @@ pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> o
     let mut obj = first_object;
 
     while obj != top {
-        let found = match_object(obj, handle, id, key);
+        // SAFETY: forwarded raw pointers satisfy `match_object`'s contract per this function's own `# Safety` requirements.
+        let found = unsafe { match_object(obj, handle, id, key) };
         if !found.is_null() {
             return found;
         }
 
-        let Some(o) = obj_ref(obj) else {
+        // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(o) = (unsafe { obj_ref(obj) }) else {
             return ptr::null_mut();
         };
         if !o.child.is_null() {
@@ -363,18 +515,21 @@ pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> o
         }
 
         while obj == first_object {
-            let Some(parent) = obj_ref(obj).map(|o| o.parent) else {
+            // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+            let Some(parent) = unsafe { obj_ref(obj) }.map(|o| o.parent) else {
                 return ptr::null_mut();
             };
             obj = parent;
             if obj == top || obj.is_null() {
                 break;
             }
-            let Some((parent, next)) = obj_ref(obj).map(|o| (o.parent, o.next)) else {
+            // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+            let Some((parent, next)) = unsafe { obj_ref(obj) }.map(|o| (o.parent, o.next)) else {
                 return ptr::null_mut();
             };
             if !parent.is_null() {
-                first_object = obj_ref(parent).map_or(ptr::null_mut(), |p| p.child);
+                // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+                first_object = unsafe { obj_ref(parent) }.map_or(ptr::null_mut(), |p| p.child);
                 obj = next;
             } else {
                 break;
@@ -386,24 +541,42 @@ pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> o
 }
 
 /// Find an object in the tree.
-pub fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
-    tree_search(
-        with_graphapp_runtime(|runtime| runtime.objects.base_object),
-        handle,
-        id,
-        key,
-    )
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
+    // SAFETY: forwarded raw pointers satisfy `tree_search`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        tree_search(
+            with_graphapp_runtime(|runtime| runtime.objects.base_object),
+            handle,
+            id,
+            key,
+        )
+    }
 }
 
 /// Remove a menu item from the hierarchy.
-pub fn remove_menu_item(obj: object) {
-    let Some(die) = obj_ref(obj).and_then(|o| o.die) else {
-        remove_object(obj);
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn remove_menu_item(obj: object) {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(die) = unsafe { obj_ref(obj) }.and_then(|o| o.die) else {
+        // SAFETY: forwarded raw pointers satisfy `remove_object`'s contract per this function's own `# Safety` requirements.
+        unsafe { remove_object(obj) };
         remove_deleted_object(obj);
         return;
     };
     die(obj);
-    remove_object(obj);
+    // SAFETY: forwarded raw pointers satisfy `remove_object`'s contract per this function's own `# Safety` requirements.
+    unsafe { remove_object(obj) };
     remove_deleted_object(obj);
 }
 
@@ -413,10 +586,16 @@ pub fn finish_objects() {
     if base.is_null() {
         return;
     }
-    while let Some(child) = obj_ref(base).map(|b| b.child).filter(|c| !c.is_null()) {
-        free_object(child);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    while let Some(child) = unsafe { obj_ref(base) }
+        .map(|b| b.child)
+        .filter(|c| !c.is_null())
+    {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        unsafe { free_object(child) };
     }
-    free_object(base);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { free_object(base) };
     with_graphapp_runtime(|runtime| runtime.objects.base_object = ptr::null_mut());
 }
 
@@ -437,7 +616,8 @@ fn find_valid_sibling(obj: object, next_dir: bool) -> object {
     let first = obj;
     let mut o = obj;
     loop {
-        let Some(o_ref) = obj_ref(o) else {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        let Some(o_ref) = (unsafe { obj_ref(o) }) else {
             return first;
         };
         if (o_ref.kind & ControlObject) != 0
@@ -447,7 +627,9 @@ fn find_valid_sibling(obj: object, next_dir: bool) -> object {
         {
             return o;
         }
-        let Some(next) = obj_ref(o).map(|o| if next_dir { o.next } else { o.prev }) else {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        let Some(next) = unsafe { obj_ref(o) }.map(|o| if next_dir { o.next } else { o.prev })
+        else {
             return first;
         };
         o = next;
@@ -459,8 +641,15 @@ fn find_valid_sibling(obj: object, next_dir: bool) -> object {
 }
 
 /// Delete an object (public API).
-pub fn delobj(obj: objptr) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn delobj(obj: objptr) {
     if !obj.is_null() {
-        decrease_refcount(obj);
+        // SAFETY: forwarded raw pointers satisfy `decrease_refcount`'s contract per this function's own `# Safety` requirements.
+        unsafe { decrease_refcount(obj) };
     }
 }

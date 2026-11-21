@@ -16,14 +16,22 @@ use super::types::{cstr, ptr_mut, slice_mut};
 
 /// Create and return a newly allocated copy of a string.
 /// Null strings are converted into empty strings.
-pub fn new_string(src: *const c_char) -> *mut c_char {
-    match cstr(src) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn new_string(src: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    match unsafe { cstr(src) } {
         Some(s) => new_string_from_bytes(s.to_bytes()),
         None => {
             // Allocate empty string
             let p = memory::memalloc(1);
             // Terminate the fresh 1-byte allocation.
-            if let Some(b) = ptr_mut(p) {
+            // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+            if let Some(b) = unsafe { ptr_mut(p) } {
                 *b = 0;
             }
             p as *mut c_char
@@ -32,36 +40,65 @@ pub fn new_string(src: *const c_char) -> *mut c_char {
 }
 
 /// Delete a previously allocated string.
-pub fn del_string(str: *const c_char) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn del_string(str: *const c_char) {
     if !str.is_null() {
-        memory::memfree(str as *mut u8);
+        // SAFETY: forwarded raw pointers satisfy `memfree`'s contract per this function's own `# Safety` requirements.
+        unsafe { memory::memfree(str as *mut u8) };
     }
 }
 
 /// String length. Returns 0 for null strings.
-pub fn string_length(s: *const c_char) -> c_long {
-    cstr(s).map_or(0, |s| s.to_bytes().len() as c_long)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn string_length(s: *const c_char) -> c_long {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    (unsafe { cstr(s) }).map_or(0, |s| s.to_bytes().len() as c_long)
 }
 
 /// Copy a string. Avoids doing anything to null strings.
-pub fn copy_string(dest: *mut c_char, src: *const c_char) {
-    let Some(s) = cstr(src) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn copy_string(dest: *mut c_char, src: *const c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(s) = (unsafe { cstr(src) }) else {
         return;
     };
     // Copy `src` up to and including its NUL; callers guarantee `dest`
     // has room for the whole string.
     let bytes = s.to_bytes_with_nul();
-    if let Some(d) = slice_mut(dest as *mut u8, bytes.len()) {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(d) = unsafe { slice_mut(dest as *mut u8, bytes.len()) } {
         d.copy_from_slice(bytes);
     }
 }
 
 /// String comparison. Null == null, null == "", "" == null.
-pub fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
     if s1 == s2 {
         return 0;
     }
-    match (cstr(s1), cstr(s2)) {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    match (unsafe { cstr(s1) }, unsafe { cstr(s2) }) {
         (None, None) => 0,
         (None, Some(b)) => {
             if b.to_bytes().is_empty() {
@@ -106,7 +143,8 @@ fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
         return ptr::null_mut();
     }
     // Fill the fresh `len + 1`-byte allocation, NUL included.
-    if let Some(buf) = slice_mut(out as *mut u8, len + 1) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(buf) = unsafe { slice_mut(out as *mut u8, len + 1) } {
         for (d, &b) in buf.iter_mut().zip(bytes.iter().take(len)) {
             *d = b;
         }
@@ -116,24 +154,37 @@ fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
 }
 
 /// Append two strings. The returned string is newly allocated and caller-owned.
-pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
     if s1.is_null() {
-        return new_string(s2);
+        // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+        return unsafe { new_string(s2) };
     }
     if s2.is_null() {
-        return new_string(s1);
+        // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+        return unsafe { new_string(s1) };
     }
 
-    let len1 = string_length(s1);
-    let len2 = string_length(s2);
+    // SAFETY: forwarded raw pointers satisfy `string_length`'s contract per this function's own `# Safety` requirements.
+    let len1 = unsafe { string_length(s1) };
+    // SAFETY: forwarded raw pointers satisfy `string_length`'s contract per this function's own `# Safety` requirements.
+    let len2 = unsafe { string_length(s2) };
     let buf = memory::memalloc(len1 + len2 + 1) as *mut c_char;
     if !buf.is_null() {
-        copy_string(buf, s1);
+        // SAFETY: forwarded raw pointers satisfy `copy_string`'s contract per this function's own `# Safety` requirements.
+        unsafe { copy_string(buf, s1) };
         // Move `len1` bytes into the fresh `len1 + len2 + 1`-byte buffer.
-        let tail = slice_mut(buf as *mut u8, (len1 + len2 + 1) as usize)
+        // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+        let tail = unsafe { slice_mut(buf as *mut u8, (len1 + len2 + 1) as usize) }
             .and_then(|b| b.get_mut(len1 as usize..))
             .map_or(ptr::null_mut(), |t| t.as_mut_ptr() as *mut c_char);
-        copy_string(tail, s2);
+        // SAFETY: forwarded raw pointers satisfy `copy_string`'s contract per this function's own `# Safety` requirements.
+        unsafe { copy_string(tail, s2) };
     }
     buf
 }
@@ -142,7 +193,8 @@ pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
 pub fn char_to_string(ch: c_char) -> *mut c_char {
     let out = memory::memalloc(2) as *mut c_char;
     // Fill the fresh 2-byte allocation.
-    if let Some(b) = slice_mut(out, 2) {
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(b) = unsafe { slice_mut(out, 2) } {
         b[0] = ch;
         b[1] = 0;
     }
@@ -162,9 +214,17 @@ pub fn float_to_string(f: f32) -> *mut c_char {
 }
 
 /// Case-insensitive string comparison.
-pub fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
-    let a = cstr(s).map_or(&[][..], |s| s.to_bytes());
-    let b = cstr(t).map_or(&[][..], |s| s.to_bytes());
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let a = unsafe { cstr(s) }.map_or(&[][..], |s| s.to_bytes());
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let b = unsafe { cstr(t) }.map_or(&[][..], |s| s.to_bytes());
     let mut diff: c_int = 0;
     let mut i = 0usize;
 
@@ -187,8 +247,15 @@ pub fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
 }
 
 /// Convert \n to \r\n. The returned string must be freed.
-pub fn to_dos_string(text: *const c_char) -> *mut c_char {
-    let Some(text) = cstr(text) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn to_dos_string(text: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(text) = (unsafe { cstr(text) }) else {
         return ptr::null_mut();
     };
     let bytes = text.to_bytes();
@@ -209,7 +276,8 @@ pub fn to_dos_string(text: *const c_char) -> *mut c_char {
     }
 
     // Write the converted bytes into the fresh `length + 1`-byte buffer.
-    if let Some(out) = slice_mut(newstr as *mut u8, length + 1) {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(out) = unsafe { slice_mut(newstr as *mut u8, length + 1) } {
         let mut w = 0usize;
         prev = 0;
         for &b in bytes {
@@ -228,8 +296,15 @@ pub fn to_dos_string(text: *const c_char) -> *mut c_char {
 }
 
 /// Strip carriage returns. The returned string must be freed.
-pub fn to_c_string(text: *const c_char) -> *mut c_char {
-    let Some(text) = cstr(text) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn to_c_string(text: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(text) = (unsafe { cstr(text) }) else {
         return ptr::null_mut();
     };
     let bytes = text.to_bytes();
@@ -248,7 +323,8 @@ pub fn to_c_string(text: *const c_char) -> *mut c_char {
     }
 
     // Write the converted bytes into the fresh `length + 1`-byte buffer.
-    if let Some(out) = slice_mut(newstr as *mut u8, length + 1) {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(out) = unsafe { slice_mut(newstr as *mut u8, length + 1) } {
         let mut w = 0usize;
         let mut i = 0usize;
         while i < bytes.len() {

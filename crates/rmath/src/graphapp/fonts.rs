@@ -15,7 +15,8 @@ use super::strings;
 use super::types::*;
 
 fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
-    let obj = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let obj = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
     if obj.is_null() {
         return ptr::null_mut();
     }
@@ -24,8 +25,10 @@ fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     bytes.extend_from_slice(name.as_bytes());
     bytes.push(0);
 
-    if let Some(data) = obj_mut(obj) {
-        data.text = strings::new_string(bytes.as_ptr() as *const core::ffi::c_char);
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    if let Some(data) = unsafe { obj_mut(obj) } {
+        // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+        data.text = unsafe { strings::new_string(bytes.as_ptr() as *const core::ffi::c_char) };
         data.state = style as _;
         data.value = size;
         data.size = size;

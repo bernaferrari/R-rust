@@ -609,17 +609,34 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 }
 
 /// Extract a Framebuffer pointer from an ObjInfo's handle field.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[inline]
-pub fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
-    let handle = obj_ref(obj)?.handle;
+pub unsafe fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let handle = unsafe { obj_ref(obj) }?.handle;
     if handle.is_null() {
         return None;
     }
     Some(MutPtr(handle as *mut Framebuffer))
 }
 
-pub fn attach_framebuffer(obj: objptr, width: c_int, height: c_int) -> Option<*mut Framebuffer> {
-    let data = obj_mut(obj)?;
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn attach_framebuffer(
+    obj: objptr,
+    width: c_int,
+    height: c_int,
+) -> Option<*mut Framebuffer> {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let data = unsafe { obj_mut(obj) }?;
     let fb = Box::into_raw(Box::new(Framebuffer::new(width, height)));
     data.handle = fb as *mut c_void;
     data.depth = 32;
@@ -628,8 +645,14 @@ pub fn attach_framebuffer(obj: objptr, width: c_int, height: c_int) -> Option<*m
     Some(fb)
 }
 
-pub fn detach_framebuffer(obj: objptr) {
-    let Some(data) = obj_mut(obj) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn detach_framebuffer(obj: objptr) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(data) = (unsafe { obj_mut(obj) }) else {
         return;
     };
     let handle = data.handle;
@@ -642,7 +665,8 @@ pub fn detach_framebuffer(obj: objptr) {
 
 pub fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
     let ds = super::drawing::get_current_drawstate();
-    let handle = obj_ref(ds.dest)?.handle;
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    let handle = unsafe { obj_ref(ds.dest) }?.handle;
     if handle.is_null() {
         return None;
     }
@@ -650,8 +674,14 @@ pub fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
 }
 
 #[inline]
-pub fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
-    let handle = obj_ref(d)?.handle;
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
+    // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+    let handle = unsafe { obj_ref(d) }?.handle;
     if handle.is_null() {
         return None;
     }

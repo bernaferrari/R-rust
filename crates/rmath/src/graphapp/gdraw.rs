@@ -60,18 +60,30 @@ fn point_in_rect(p: point, r: rect) -> bool {
         .unwrap_or(false)
 }
 
-fn object_rect(d: drawing) -> Option<rect> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn object_rect(d: drawing) -> Option<rect> {
     let addr = d as usize;
     if d.is_null() || addr < 4096 || addr % std::mem::align_of::<ObjInfo>() != 0 {
         None
     } else {
-        let r = obj_ref(d).map(|o| o.rect)?;
+        // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+        let r = unsafe { obj_ref(d) }.map(|o| o.rect)?;
         rect_bounds(r).map(|_| r)
     }
 }
 
-fn get_clip(d: drawing, state: &DrawingState) -> Option<rect> {
-    state.clip.or_else(|| object_rect(d))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn get_clip(d: drawing, state: &DrawingState) -> Option<rect> {
+    // SAFETY: forwarded raw pointers satisfy `object_rect`'s contract per this function's own `# Safety` requirements.
+    state.clip.or_else(|| unsafe { object_rect(d) })
 }
 
 fn with_state<R>(d: drawing, f: impl FnOnce(&DrawingState) -> R) -> R {
@@ -107,13 +119,19 @@ fn blend_rgb(dst: rgb, src: rgb, alpha: c_int) -> rgb {
     )
 }
 
-fn set_pixel_if_visible(d: drawing, x: c_int, y: c_int, color: rgb) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn set_pixel_if_visible(d: drawing, x: c_int, y: c_int, color: rgb) {
     if d.is_null() {
         return;
     }
     with_state_mut(d, |state| {
         let p = point { x, y };
-        if get_clip(d, state)
+        // SAFETY: forwarded raw pointers satisfy `get_clip`'s contract per this function's own `# Safety` requirements.
+        if unsafe { get_clip(d, state) }
             .map(|clip| point_in_rect(p, clip))
             .unwrap_or(true)
         {
@@ -128,16 +146,27 @@ fn get_pixel_state(d: drawing, x: c_int, y: c_int) -> rgb {
     })
 }
 
-fn stamp_square(d: drawing, center: point, width: c_int, color: rgb) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn stamp_square(d: drawing, center: point, width: c_int, color: rgb) {
     let radius = (width.max(1) - 1) / 2;
     for y in center.y - radius..=center.y + radius {
         for x in center.x - radius..=center.x + radius {
-            set_pixel_if_visible(d, x, y, color);
+            // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+            unsafe { set_pixel_if_visible(d, x, y, color) };
         }
     }
 }
 
-fn draw_line_segment(d: drawing, width: c_int, color: rgb, p1: point, p2: point) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn draw_line_segment(d: drawing, width: c_int, color: rgb, p1: point, p2: point) {
     let mut x0 = p1.x;
     let mut y0 = p1.y;
     let x1 = p2.x;
@@ -149,7 +178,8 @@ fn draw_line_segment(d: drawing, width: c_int, color: rgb, p1: point, p2: point)
     let mut err = dx + dy;
 
     loop {
-        stamp_square(d, point { x: x0, y: y0 }, width, color);
+        // SAFETY: forwarded raw pointers satisfy `stamp_square`'s contract per this function's own `# Safety` requirements.
+        unsafe { stamp_square(d, point { x: x0, y: y0 }, width, color) };
         if x0 == x1 && y0 == y1 {
             break;
         }
@@ -165,31 +195,48 @@ fn draw_line_segment(d: drawing, width: c_int, color: rgb, p1: point, p2: point)
     }
 }
 
-fn fill_rect_pixels(d: drawing, r: rect, color: rgb) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fill_rect_pixels(d: drawing, r: rect, color: rgb) {
     if rect_area(r).unwrap_or(usize::MAX) > MAX_RASTER_PIXELS {
         let r = normalized_rect(r);
-        set_pixel_if_visible(d, r.x, r.y, color);
-        set_pixel_if_visible(d, r.x + r.width.saturating_sub(1), r.y, color);
-        set_pixel_if_visible(d, r.x, r.y + r.height.saturating_sub(1), color);
-        set_pixel_if_visible(
-            d,
-            r.x + r.width.saturating_sub(1),
-            r.y + r.height.saturating_sub(1),
-            color,
-        );
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, r.x, r.y, color) };
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, r.x + r.width.saturating_sub(1), r.y, color) };
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, r.x, r.y + r.height.saturating_sub(1), color) };
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            set_pixel_if_visible(
+                d,
+                r.x + r.width.saturating_sub(1),
+                r.y + r.height.saturating_sub(1),
+                color,
+            )
+        };
         return;
     }
 
     if let Some((x0, y0, x1, y1)) = rect_bounds(r) {
         for y in y0..y1 {
             for x in x0..x1 {
-                set_pixel_if_visible(d, x, y, color);
+                // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+                unsafe { set_pixel_if_visible(d, x, y, color) };
             }
         }
     }
 }
 
-fn draw_rect_outline(d: drawing, width: c_int, color: rgb, r: rect) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn draw_rect_outline(d: drawing, width: c_int, color: rgb, r: rect) {
     let r = normalized_rect(r);
     if r.width <= 0 || r.height <= 0 {
         return;
@@ -208,10 +255,14 @@ fn draw_rect_outline(d: drawing, width: c_int, color: rgb, r: rect) {
         x: r.x + r.width.saturating_sub(1),
         y: r.y + r.height.saturating_sub(1),
     };
-    draw_line_segment(d, width, color, tl, tr);
-    draw_line_segment(d, width, color, tl, bl);
-    draw_line_segment(d, width, color, tr, br);
-    draw_line_segment(d, width, color, bl, br);
+    // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_line_segment(d, width, color, tl, tr) };
+    // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_line_segment(d, width, color, tl, bl) };
+    // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_line_segment(d, width, color, tr, br) };
+    // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_line_segment(d, width, color, bl, br) };
 }
 
 fn ellipse_contains(center_x: f64, center_y: f64, rx: f64, ry: f64, x: c_int, y: c_int) -> bool {
@@ -223,13 +274,19 @@ fn ellipse_contains(center_x: f64, center_y: f64, rx: f64, ry: f64, x: c_int, y:
     (dx * dx) + (dy * dy) <= 1.0
 }
 
-fn draw_ellipse_impl(d: drawing, width: c_int, color: rgb, r: rect, fill: bool) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn draw_ellipse_impl(d: drawing, width: c_int, color: rgb, r: rect, fill: bool) {
     let r = normalized_rect(r);
     if r.width <= 0 || r.height <= 0 {
         return;
     }
     if rect_area(r).unwrap_or(usize::MAX) > MAX_RASTER_PIXELS {
-        draw_rect_outline(d, width.max(1), color, r);
+        // SAFETY: forwarded raw pointers satisfy `draw_rect_outline`'s contract per this function's own `# Safety` requirements.
+        unsafe { draw_rect_outline(d, width.max(1), color, r) };
         return;
     }
 
@@ -249,19 +306,26 @@ fn draw_ellipse_impl(d: drawing, width: c_int, color: rgb, r: rect, fill: bool) 
                 }
                 let in_inner = ellipse_contains(cx, cy, inner_rx, inner_ry, x, y);
                 if fill || !in_inner {
-                    set_pixel_if_visible(d, x, y, color);
+                    // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+                    unsafe { set_pixel_if_visible(d, x, y, color) };
                 }
             }
         }
     }
 }
 
-fn points_from_raw(p: *mut point, n: c_int) -> Vec<point> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn points_from_raw(p: *mut point, n: c_int) -> Vec<point> {
     if p.is_null() || n <= 0 {
         Vec::new()
     } else {
         // Borrow the caller's `n`-point array.
-        slice_ref(p, n as usize).map_or_else(Vec::new, |s| s.to_vec())
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        (unsafe { slice_ref(p, n as usize) }).map_or_else(Vec::new, |s| s.to_vec())
     }
 }
 
@@ -330,7 +394,12 @@ fn point_in_polygon_winding(points: &[point], x: f64, y: f64) -> bool {
     winding != 0
 }
 
-fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
     if points.len() < 3 {
         return;
     }
@@ -338,18 +407,21 @@ fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
         return;
     };
     if rect_area(bounds).unwrap_or(usize::MAX) > MAX_RASTER_PIXELS {
-        gdrawpolygon(
-            d,
-            1,
-            lSolid,
-            color,
-            points.as_ptr() as *mut point,
-            points.len() as c_int,
-            0,
-            0,
-            0,
-            0.0,
-        );
+        // SAFETY: forwarded raw pointers satisfy `gdrawpolygon`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            gdrawpolygon(
+                d,
+                1,
+                lSolid,
+                color,
+                points.as_ptr() as *mut point,
+                points.len() as c_int,
+                0,
+                0,
+                0,
+                0.0,
+            )
+        };
 
         return;
     }
@@ -364,17 +436,29 @@ fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
                 point_in_polygon_winding(points, x as f64 + 0.5, y as f64 + 0.5)
             };
             if inside {
-                set_pixel_if_visible(d, x, y, color);
+                // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+                unsafe { set_pixel_if_visible(d, x, y, color) };
             }
         }
     }
 }
 
-fn c_string_len(s: *const c_char) -> usize {
-    cstr(s).map_or(0, |s| s.to_bytes().len())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn c_string_len(s: *const c_char) -> usize {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    (unsafe { cstr(s) }).map_or(0, |s| s.to_bytes().len())
 }
 
-fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
     if codepoints.is_null() {
         return Vec::new();
     }
@@ -382,7 +466,8 @@ fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
     match count {
         Some(max) => {
             // Borrow the caller's `max`-codepoint array.
-            slice_ref(codepoints, max.max(0) as usize)
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            (unsafe { slice_ref(codepoints, max.max(0) as usize) })
                 .unwrap_or(&[])
                 .iter()
                 .map(|&v| to_char(v))
@@ -393,7 +478,10 @@ fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
             let mut chars = Vec::new();
             let mut idx = 0usize;
             loop {
-                let value = ptr_ref(codepoints.wrapping_add(idx)).copied().unwrap_or(0);
+                // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+                let value = unsafe { ptr_ref(codepoints.wrapping_add(idx)) }
+                    .copied()
+                    .unwrap_or(0);
                 if value == 0 {
                     break;
                 }
@@ -405,7 +493,12 @@ fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
     }
 }
 
-fn font_info(f: font) -> FontInfo {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn font_info(f: font) -> FontInfo {
     if f.is_null() {
         return FontInfo {
             height: DEFAULT_FONT_HEIGHT,
@@ -422,7 +515,8 @@ fn font_info(f: font) -> FontInfo {
             .get(&font_key(f))
             .copied()
             .unwrap_or_else(|| {
-                obj_ref(f).map_or(FontInfo::default(), |f| FontInfo {
+                // SAFETY: forwarded raw pointers satisfy `obj_ref`'s contract per this function's own `# Safety` requirements.
+                (unsafe { obj_ref(f) }).map_or(FontInfo::default(), |f| FontInfo {
                     height: f.value.max(1),
                     style: f.flags as c_int,
                     quality: f.max,
@@ -432,8 +526,14 @@ fn font_info(f: font) -> FontInfo {
     })
 }
 
-fn font_char_width(f: font) -> c_int {
-    let info = font_info(f);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn font_char_width(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `font_info`'s contract per this function's own `# Safety` requirements.
+    let info = unsafe { font_info(f) };
     let base = (info.height.max(1) + 1) / 2;
     if (info.style & FixedWidth) != 0 {
         base
@@ -442,22 +542,46 @@ fn font_char_width(f: font) -> c_int {
     }
 }
 
-fn text_width(f: font, len: usize) -> c_int {
-    font_char_width(f).saturating_mul(len as c_int)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn text_width(f: font, len: usize) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `font_char_width`'s contract per this function's own `# Safety` requirements.
+    (unsafe { font_char_width(f) }).saturating_mul(len as c_int)
 }
 
-fn text_height(f: font) -> c_int {
-    font_info(f).height.max(1)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn text_height(f: font) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `font_info`'s contract per this function's own `# Safety` requirements.
+    (unsafe { font_info(f) }).height.max(1)
 }
 
-fn write_metric(out: *mut c_int, value: c_int) {
-    if let Some(out) = ptr_mut(out) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_metric(out: *mut c_int, value: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(out) = unsafe { ptr_mut(out) } {
         *out = value;
     }
 }
 
-fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
-    let img = ptr_ref(img)?;
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let img = unsafe { ptr_ref(img) }?;
     if img.pixels.is_null() {
         return None;
     }
@@ -472,14 +596,17 @@ fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
     if depth >= 32 {
         // Borrow the owned 4-bytes-per-pixel buffer of `total` pixels.
         let offset = index.checked_mul(4)?;
-        let pixels = slice_ref(img.pixels, total.checked_mul(4)?)?;
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let pixels = unsafe { slice_ref(img.pixels, total.checked_mul(4)?) }?;
         let base = pixels.get(offset..offset + 3)?;
         Some(rgb_make(base[0] as rgb, base[1] as rgb, base[2] as rgb))
     } else if depth >= 8 {
         // Borrow the owned index buffer of `total` pixels and palette.
-        let pixels = slice_ref(img.pixels, total)?;
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let pixels = unsafe { slice_ref(img.pixels, total) }?;
         let value = *pixels.get(index)? as usize;
-        let cmap = slice_ref(img.cmap, img.cmapsize.max(0) as usize).unwrap_or(&[]);
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let cmap = unsafe { slice_ref(img.cmap, img.cmapsize.max(0) as usize) }.unwrap_or(&[]);
         if let Some(&col) = cmap.get(value) {
             Some(col)
         } else {
@@ -490,7 +617,12 @@ fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
     }
 }
 
-fn draw_image_into_rect(d: drawing, img: image, dr: rect, sr: rect, mask: Option<image>) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn draw_image_into_rect(d: drawing, img: image, dr: rect, sr: rect, mask: Option<image>) {
     let Some((dx0, dy0, dx1, dy1)) = rect_bounds(dr) else {
         return;
     };
@@ -516,20 +648,29 @@ fn draw_image_into_rect(d: drawing, img: image, dr: rect, sr: rect, mask: Option
             let sx = sx0 + dx * src_w / dst_w;
             let sy = sy0 + dy * src_h / dst_h;
             if let Some(mask_img) = mask {
-                let mask_pixel = read_image_pixel(mask_img, sx, sy).unwrap_or(Black);
+                // SAFETY: forwarded raw pointers satisfy `read_image_pixel`'s contract per this function's own `# Safety` requirements.
+                let mask_pixel = unsafe { read_image_pixel(mask_img, sx, sy) }.unwrap_or(Black);
                 if mask_pixel == Black {
                     continue;
                 }
             }
-            if let Some(pixel) = read_image_pixel(img, sx, sy) {
-                set_pixel_if_visible(d, dx0 + dx, dy0 + dy, pixel);
+            // SAFETY: forwarded raw pointers satisfy `read_image_pixel`'s contract per this function's own `# Safety` requirements.
+            if let Some(pixel) = unsafe { read_image_pixel(img, sx, sy) } {
+                // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+                unsafe { set_pixel_if_visible(d, dx0 + dx, dy0 + dy, pixel) };
             }
         }
     }
 }
 
-pub fn ggetcliprect(d: drawing) -> rect {
-    with_state(d, |state| get_clip(d, state).unwrap_or_default())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ggetcliprect(d: drawing) -> rect {
+    // SAFETY: forwarded raw pointers satisfy `get_clip`'s contract per this function's own `# Safety` requirements.
+    with_state(d, |state| unsafe { get_clip(d, state) }.unwrap_or_default())
 }
 
 pub fn gsetcliprect(d: drawing, r: rect) {
@@ -541,7 +682,12 @@ pub fn gsetcliprect(d: drawing, r: rect) {
     });
 }
 
-pub fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
@@ -556,7 +702,8 @@ pub fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
         }
     }
     for (x, y, color) in copied {
-        set_pixel_if_visible(db, x, y, color);
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(db, x, y, color) };
     }
 }
 
@@ -580,14 +727,20 @@ pub fn gscroll(d: drawing, dp: point, r: rect) {
     });
 }
 
-pub fn ginvert(d: drawing, r: rect) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ginvert(d: drawing, r: rect) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
     for y in y0..y1 {
         for x in x0..x1 {
             let color = rgb_invert(ggetpixel(d, point { x, y }));
-            set_pixel_if_visible(d, x, y, color);
+            // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+            unsafe { set_pixel_if_visible(d, x, y, color) };
         }
     }
 }
@@ -596,11 +749,22 @@ pub fn ggetpixel(d: drawing, p: point) -> rgb {
     get_pixel_state(d, p.x, p.y)
 }
 
-pub fn gsetpixel(d: drawing, p: point, c: rgb) {
-    set_pixel_if_visible(d, p.x, p.y, c);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gsetpixel(d: drawing, p: point, c: rgb) {
+    // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+    unsafe { set_pixel_if_visible(d, p.x, p.y, c) };
 }
 
-pub fn gdrawline(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawline(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -612,10 +776,16 @@ pub fn gdrawline(
     _ljoin: c_int,
     _lmitre: f32,
 ) {
-    draw_line_segment(d, width.max(1), c, p1, p2);
+    // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_line_segment(d, width.max(1), c, p1, p2) };
 }
 
-pub fn gdrawrect(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawrect(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -626,18 +796,36 @@ pub fn gdrawrect(
     _ljoin: c_int,
     _lmitre: f32,
 ) {
-    draw_rect_outline(d, width.max(1), c, r);
+    // SAFETY: forwarded raw pointers satisfy `draw_rect_outline`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_rect_outline(d, width.max(1), c, r) };
 }
 
-pub fn gfillrect(d: drawing, fill: rgb, r: rect) {
-    fill_rect_pixels(d, r, fill);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gfillrect(d: drawing, fill: rgb, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `fill_rect_pixels`'s contract per this function's own `# Safety` requirements.
+    unsafe { fill_rect_pixels(d, r, fill) };
 }
 
-pub fn gcopy(d: drawing, d2: drawing, r: rect) {
-    gbitblt(d, d2, point { x: r.x, y: r.y }, r);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gcopy(d: drawing, d2: drawing, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `gbitblt`'s contract per this function's own `# Safety` requirements.
+    unsafe { gbitblt(d, d2, point { x: r.x, y: r.y }, r) };
 }
 
-pub fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
@@ -645,26 +833,40 @@ pub fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
         for x in x0..x1 {
             let src = ggetpixel(d2, point { x, y });
             let dst = ggetpixel(d, point { x, y });
-            set_pixel_if_visible(d, x, y, blend_rgb(dst, src, alpha));
+            // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+            unsafe { set_pixel_if_visible(d, x, y, blend_rgb(dst, src, alpha)) };
         }
     }
 }
 
-pub fn gcopyalpha2(d: drawing, src: image, r: rect) {
-    gdrawimage(
-        d,
-        src,
-        r,
-        rect {
-            x: 0,
-            y: 0,
-            width: r.width,
-            height: r.height,
-        },
-    );
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gcopyalpha2(d: drawing, src: image, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `gdrawimage`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        gdrawimage(
+            d,
+            src,
+            r,
+            rect {
+                x: 0,
+                y: 0,
+                width: r.width,
+                height: r.height,
+            },
+        )
+    };
 }
 
-pub fn gdrawellipse(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawellipse(
     d: drawing,
     width: c_int,
     border: rgb,
@@ -674,14 +876,26 @@ pub fn gdrawellipse(
     _ljoin: c_int,
     _lmitre: f32,
 ) {
-    draw_ellipse_impl(d, width.max(1), border, r, false);
+    // SAFETY: forwarded raw pointers satisfy `draw_ellipse_impl`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_ellipse_impl(d, width.max(1), border, r, false) };
 }
 
-pub fn gfillellipse(d: drawing, fill: rgb, r: rect) {
-    draw_ellipse_impl(d, 1, fill, r, true);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gfillellipse(d: drawing, fill: rgb, r: rect) {
+    // SAFETY: forwarded raw pointers satisfy `draw_ellipse_impl`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_ellipse_impl(d, 1, fill, r, true) };
 }
 
-pub fn gdrawpolyline(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawpolyline(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -694,25 +908,35 @@ pub fn gdrawpolyline(
     _ljoin: c_int,
     _lmitre: f32,
 ) {
-    let points = points_from_raw(p, n);
+    // SAFETY: forwarded raw pointers satisfy `points_from_raw`'s contract per this function's own `# Safety` requirements.
+    let points = unsafe { points_from_raw(p, n) };
     if points.len() < 2 {
         return;
     }
     for segment in points.windows(2) {
-        draw_line_segment(d, width.max(1), c, segment[0], segment[1]);
+        // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+        unsafe { draw_line_segment(d, width.max(1), c, segment[0], segment[1]) };
     }
     if closepath != 0 {
-        draw_line_segment(
-            d,
-            width.max(1),
-            c,
-            *points.last().unwrap_or(&points[0]),
-            points[0],
-        );
+        // SAFETY: forwarded raw pointers satisfy `draw_line_segment`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            draw_line_segment(
+                d,
+                width.max(1),
+                c,
+                *points.last().unwrap_or(&points[0]),
+                points[0],
+            )
+        };
     }
 }
 
-pub fn gdrawpolygon(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawpolygon(
     d: drawing,
     width: c_int,
     style: c_int,
@@ -724,7 +948,8 @@ pub fn gdrawpolygon(
     ljoin: c_int,
     lmitre: f32,
 ) {
-    gdrawpolyline(d, width, style, c, p, n, 1, fast, lend, ljoin, lmitre);
+    // SAFETY: forwarded raw pointers satisfy `gdrawpolyline`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdrawpolyline(d, width, style, c, p, n, 1, fast, lend, ljoin, lmitre) };
 }
 
 pub fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
@@ -734,13 +959,31 @@ pub fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
     with_state_mut(d, |state| state.odd_even_fill = oddeven != 0);
 }
 
-pub fn gfillpolygon(d: drawing, fill: rgb, p: *mut point, n: c_int) {
-    let points = points_from_raw(p, n);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gfillpolygon(d: drawing, fill: rgb, p: *mut point, n: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `points_from_raw`'s contract per this function's own `# Safety` requirements.
+    let points = unsafe { points_from_raw(p, n) };
     let odd_even = with_state(d, |state| state.odd_even_fill);
-    fill_polygon_impl(d, &points, fill, odd_even);
+    // SAFETY: forwarded raw pointers satisfy `fill_polygon_impl`'s contract per this function's own `# Safety` requirements.
+    unsafe { fill_polygon_impl(d, &points, fill, odd_even) };
 }
 
-pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper: *mut c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gfillpolypolygon(
+    d: drawing,
+    fill: rgb,
+    p: *mut point,
+    npoly: c_int,
+    nper: *mut c_int,
+) {
     if p.is_null() || nper.is_null() || npoly <= 0 {
         return;
     }
@@ -748,11 +991,13 @@ pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper
     let mut offset = 0usize;
     // Borrow the caller's `npoly`-entry count array and the point array
     // holding `sum(nper)` points.
-    let Some(counts) = slice_ref(nper, npoly as usize) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(counts) = (unsafe { slice_ref(nper, npoly as usize) }) else {
         return;
     };
     let total: usize = counts.iter().map(|&c| c.max(0) as usize).sum();
-    let Some(all_points) = slice_ref(p, total) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(all_points) = (unsafe { slice_ref(p, total) }) else {
         return;
     };
     for &count in counts {
@@ -760,59 +1005,113 @@ pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper
         if count == 0 {
             continue;
         }
-        fill_polygon_impl(d, &all_points[offset..offset + count], fill, odd_even);
+        // SAFETY: forwarded raw pointers satisfy `fill_polygon_impl`'s contract per this function's own `# Safety` requirements.
+        unsafe { fill_polygon_impl(d, &all_points[offset..offset + count], fill, odd_even) };
         offset += count;
     }
 }
 
-pub fn gdrawimage(d: drawing, img: image, dr: rect, sr: rect) {
-    draw_image_into_rect(d, img, dr, sr, None);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawimage(d: drawing, img: image, dr: rect, sr: rect) {
+    // SAFETY: forwarded raw pointers satisfy `draw_image_into_rect`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_image_into_rect(d, img, dr, sr, None) };
 }
 
-pub fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
-    draw_image_into_rect(d, img, dr, sr, Some(mask));
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
+    // SAFETY: forwarded raw pointers satisfy `draw_image_into_rect`'s contract per this function's own `# Safety` requirements.
+    unsafe { draw_image_into_rect(d, img, dr, sr, Some(mask)) };
 }
 
-pub fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
-    let width = gstrwidth(d, f, s);
-    let char_w = font_char_width(f).max(1);
-    let len = c_string_len(s) as c_int;
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `gstrwidth`'s contract per this function's own `# Safety` requirements.
+    let width = unsafe { gstrwidth(d, f, s) };
+    // SAFETY: forwarded raw pointers satisfy `font_char_width`'s contract per this function's own `# Safety` requirements.
+    let char_w = unsafe { font_char_width(f) }.max(1);
+    // SAFETY: forwarded raw pointers satisfy `c_string_len`'s contract per this function's own `# Safety` requirements.
+    let len = unsafe { c_string_len(s) } as c_int;
     for idx in 0..len {
-        set_pixel_if_visible(d, p.x + idx * char_w, p.y, c);
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, p.x + idx * char_w, p.y, c) };
     }
     width
 }
 
-pub fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
-    let width = gstrwidth(d, f, s);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
+    // SAFETY: forwarded raw pointers satisfy `gstrwidth`'s contract per this function's own `# Safety` requirements.
+    let width = unsafe { gstrwidth(d, f, s) };
     let start = point {
         x: p.x - (hadj * width as f64).round() as c_int,
         y: p.y,
     };
-    gdrawstr(d, f, c, start, s);
+    // SAFETY: forwarded raw pointers satisfy `gdrawstr`'s contract per this function's own `# Safety` requirements.
+    unsafe { gdrawstr(d, f, c, start, s) };
 }
 
-pub fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
     rect {
         x: 0,
         y: 0,
-        width: gstrwidth(ptr::null_mut(), f, s),
-        height: text_height(f),
+        // SAFETY: forwarded raw pointers satisfy `gstrwidth`'s contract per this function's own `# Safety` requirements.
+        width: unsafe { gstrwidth(ptr::null_mut(), f, s) },
+        // SAFETY: forwarded raw pointers satisfy `text_height`'s contract per this function's own `# Safety` requirements.
+        height: unsafe { text_height(f) },
     }
 }
 
-pub fn gstrsize(_d: drawing, f: font, s: *const c_char) -> point {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gstrsize(_d: drawing, f: font, s: *const c_char) -> point {
     point {
-        x: gstrwidth(ptr::null_mut(), f, s),
-        y: text_height(f),
+        // SAFETY: forwarded raw pointers satisfy `gstrwidth`'s contract per this function's own `# Safety` requirements.
+        x: unsafe { gstrwidth(ptr::null_mut(), f, s) },
+        // SAFETY: forwarded raw pointers satisfy `text_height`'s contract per this function's own `# Safety` requirements.
+        y: unsafe { text_height(f) },
     }
 }
 
-pub fn gstrwidth(_d: drawing, f: font, s: *const c_char) -> c_int {
-    text_width(f, c_string_len(s))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gstrwidth(_d: drawing, f: font, s: *const c_char) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `text_width`'s contract per this function's own `# Safety` requirements.
+    unsafe { text_width(f, c_string_len(s)) }
 }
 
-pub fn gcharmetric(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gcharmetric(
     _d: drawing,
     f: font,
     _c: c_int,
@@ -820,14 +1119,23 @@ pub fn gcharmetric(
     descent: *mut c_int,
     width: *mut c_int,
 ) {
-    let height = text_height(f);
+    // SAFETY: forwarded raw pointers satisfy `text_height`'s contract per this function's own `# Safety` requirements.
+    let height = unsafe { text_height(f) };
     let asc = (height * 3) / 4;
-    write_metric(ascent, asc);
-    write_metric(descent, height - asc);
-    write_metric(width, font_char_width(f));
+    // SAFETY: forwarded raw pointers satisfy `write_metric`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_metric(ascent, asc) };
+    // SAFETY: forwarded raw pointers satisfy `write_metric`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_metric(descent, height - asc) };
+    // SAFETY: forwarded raw pointers satisfy `write_metric`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_metric(width, font_char_width(f)) };
 }
 
-pub fn gnewfont(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gnewfont(
     d: drawing,
     face: *const c_char,
     style: c_int,
@@ -835,10 +1143,16 @@ pub fn gnewfont(
     rot: f64,
     usePoints: c_int,
 ) -> font {
-    gnewfont2(d, face, style, size, rot, usePoints, 0)
+    // SAFETY: forwarded raw pointers satisfy `gnewfont2`'s contract per this function's own `# Safety` requirements.
+    unsafe { gnewfont2(d, face, style, size, rot, usePoints, 0) }
 }
 
-pub fn gnewfont2(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gnewfont2(
     _d: drawing,
     face: *const c_char,
     style: c_int,
@@ -848,12 +1162,15 @@ pub fn gnewfont2(
     quality: c_int,
 ) -> font {
     objects::init_objects();
-    let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
+    // SAFETY: forwarded raw pointers satisfy `new_object`'s contract per this function's own `# Safety` requirements.
+    let font = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
     if font.is_null() {
         return ptr::null_mut();
     }
-    if let Some(f) = obj_mut(font) {
-        f.text = strings::new_string(face);
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(f) = unsafe { obj_mut(font) } {
+        // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+        f.text = unsafe { strings::new_string(face) };
         f.flags = style as _;
         f.value = size.max(1);
         f.size = usePoints;
@@ -873,14 +1190,22 @@ pub fn gnewfont2(
     font
 }
 
-pub fn ghasfixedwidth(f: font) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ghasfixedwidth(f: font) -> c_int {
     if f.is_null() {
         return 0;
     }
-    let style = font_info(f).style;
-    let face_is_mono = obj_ref(f)
+    // SAFETY: forwarded raw pointers satisfy `font_info`'s contract per this function's own `# Safety` requirements.
+    let style = unsafe { font_info(f) }.style;
+    // SAFETY: `f` is a live font per this function's contract, and its `text`
+    // field is null or a NUL-terminated face name owned by the object.
+    let face_is_mono = (unsafe { obj_ref(f) })
         .map(|f| f.text as *const c_char)
-        .and_then(cstr)
+        .and_then(|text| unsafe { cstr(text) })
         .map(|s| s.to_string_lossy().to_ascii_lowercase().contains("mono"))
         .unwrap_or(false);
     if (style & FixedWidth) != 0 || face_is_mono {
@@ -890,15 +1215,23 @@ pub fn ghasfixedwidth(f: font) -> c_int {
     }
 }
 
-pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn newfield_no_border(text: *const c_char, r: rect) -> field {
     objects::init_objects();
-    let field = objects::new_object(FieldObject, ptr::null_mut(), ptr::null_mut());
+    // SAFETY: forwarded raw pointers satisfy `new_object`'s contract per this function's own `# Safety` requirements.
+    let field = unsafe { objects::new_object(FieldObject, ptr::null_mut(), ptr::null_mut()) };
     if field.is_null() {
         return ptr::null_mut();
     }
-    if let Some(f) = obj_mut(field) {
+    // SAFETY: forwarded raw pointers satisfy `obj_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(f) = unsafe { obj_mut(field) } {
         f.rect = normalized_rect(r);
-        f.text = strings::new_string(text);
+        // SAFETY: forwarded raw pointers satisfy `new_string`'s contract per this function's own `# Safety` requirements.
+        f.text = unsafe { strings::new_string(text) };
         f.state |= GA_Visible | GA_Enabled;
         f.bg = White;
         f.fg = Black;
@@ -906,21 +1239,41 @@ pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
     field
 }
 
-pub fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
-    let chars = wide_string(s, None);
-    let width = text_width(f, chars.len());
-    let char_w = font_char_width(f).max(1);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `wide_string`'s contract per this function's own `# Safety` requirements.
+    let chars = unsafe { wide_string(s, None) };
+    // SAFETY: forwarded raw pointers satisfy `text_width`'s contract per this function's own `# Safety` requirements.
+    let width = unsafe { text_width(f, chars.len()) };
+    // SAFETY: forwarded raw pointers satisfy `font_char_width`'s contract per this function's own `# Safety` requirements.
+    let char_w = unsafe { font_char_width(f) }.max(1);
     for (idx, _) in chars.iter().enumerate() {
-        set_pixel_if_visible(d, p.x + idx as c_int * char_w, p.y, c);
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, p.x + idx as c_int * char_w, p.y, c) };
     }
     width
 }
 
-pub fn gwcswidth(_d: drawing, f: font, s: *const c_int) -> c_int {
-    text_width(f, wide_string(s, None).len())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gwcswidth(_d: drawing, f: font, s: *const c_int) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `text_width`'s contract per this function's own `# Safety` requirements.
+    unsafe { text_width(f, wide_string(s, None).len()) }
 }
 
-pub fn gwcharmetric(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gwcharmetric(
     d: drawing,
     f: font,
     c: c_int,
@@ -928,21 +1281,45 @@ pub fn gwcharmetric(
     descent: *mut c_int,
     width: *mut c_int,
 ) {
-    gcharmetric(d, f, c, ascent, descent, width);
+    // SAFETY: forwarded raw pointers satisfy `gcharmetric`'s contract per this function's own `# Safety` requirements.
+    unsafe { gcharmetric(d, f, c, ascent, descent, width) };
 }
 
-pub fn gwdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_int, cnt: c_int, hadj: f64) {
-    let chars = wide_string(s, Some(cnt));
-    let width = text_width(f, chars.len());
-    let char_w = font_char_width(f).max(1);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gwdrawstr1(
+    d: drawing,
+    f: font,
+    c: rgb,
+    p: point,
+    s: *const c_int,
+    cnt: c_int,
+    hadj: f64,
+) {
+    // SAFETY: forwarded raw pointers satisfy `wide_string`'s contract per this function's own `# Safety` requirements.
+    let chars = unsafe { wide_string(s, Some(cnt)) };
+    // SAFETY: forwarded raw pointers satisfy `text_width`'s contract per this function's own `# Safety` requirements.
+    let width = unsafe { text_width(f, chars.len()) };
+    // SAFETY: forwarded raw pointers satisfy `font_char_width`'s contract per this function's own `# Safety` requirements.
+    let char_w = unsafe { font_char_width(f) }.max(1);
     let start_x = p.x - (hadj * width as f64).round() as c_int;
     for (idx, _) in chars.iter().enumerate() {
-        set_pixel_if_visible(d, start_x + idx as c_int * char_w, p.y, c);
+        // SAFETY: forwarded raw pointers satisfy `set_pixel_if_visible`'s contract per this function's own `# Safety` requirements.
+        unsafe { set_pixel_if_visible(d, start_x + idx as c_int * char_w, p.y, c) };
     }
 }
 
-pub fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
-    text_width(f, c_string_len(s))
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `text_width`'s contract per this function's own `# Safety` requirements.
+    unsafe { text_width(f, c_string_len(s)) }
 }
 
 #[cfg(test)]
@@ -964,10 +1341,13 @@ mod tests {
                 height: 2,
             },
         );
-        gsetpixel(drawing, point { x: 0, y: 0 }, White);
-        gsetpixel(drawing, point { x: 1, y: 1 }, White);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { gsetpixel(drawing, point { x: 0, y: 0 }, White) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { gsetpixel(drawing, point { x: 1, y: 1 }, White) };
 
-        assert_eq!(ggetcliprect(drawing).width, 2);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { ggetcliprect(drawing) }.width, 2);
         assert_eq!(ggetpixel(drawing, point { x: 0, y: 0 }), Black);
         assert_eq!(ggetpixel(drawing, point { x: 1, y: 1 }), White);
     }
@@ -978,7 +1358,8 @@ mod tests {
         let src = 2usize as drawing;
         let dst = 3usize as drawing;
 
-        gfillrect(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { gfillrect(
             src,
             gaRed,
             rect {
@@ -987,8 +1368,9 @@ mod tests {
                 width: 2,
                 height: 2,
             },
-        );
-        gbitblt(
+        ) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { gbitblt(
             dst,
             src,
             point { x: 4, y: 5 },
@@ -998,7 +1380,7 @@ mod tests {
                 width: 2,
                 height: 2,
             },
-        );
+        ) };
         assert_eq!(ggetpixel(dst, point { x: 4, y: 5 }), gaRed);
 
         gscroll(
@@ -1020,21 +1402,25 @@ mod tests {
         let face = CString::new("Mono").unwrap_or_else(|e| panic!("{e}"));
         let text = CString::new("abcd").unwrap_or_else(|e| panic!("{e}"));
 
-        let font = gnewfont2(ptr::null_mut(), face.as_ptr(), FixedWidth, 12, 0.0, 1, 2);
-        assert_eq!(ghasfixedwidth(font), 1);
-        assert_eq!(gstrwidth(ptr::null_mut(), font, text.as_ptr()), 24);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let font = unsafe { gnewfont2(ptr::null_mut(), face.as_ptr(), FixedWidth, 12, 0.0, 1, 2) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { ghasfixedwidth(font) }, 1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { gstrwidth(ptr::null_mut(), font, text.as_ptr()) }, 24);
 
         let mut ascent = 0;
         let mut descent = 0;
         let mut width = 0;
-        gcharmetric(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { gcharmetric(
             ptr::null_mut(),
             font,
             'a' as c_int,
             &mut ascent,
             &mut descent,
             &mut width,
-        );
+        ) };
         assert_eq!(width, 6);
         assert_eq!(ascent + descent, 12);
     }

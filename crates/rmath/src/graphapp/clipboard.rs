@@ -17,8 +17,14 @@ fn set_clipboard_bytes(bytes: &[u8]) {
 
 pub fn copytoclipboard(_src: drawing) {}
 
-pub fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
-    let Some(s) = cstr(str_) else {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(s) = (unsafe { cstr(str_) }) else {
         set_clipboard_bytes(&[]);
         return 0;
     };
@@ -27,7 +33,12 @@ pub fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
     bytes.len() as c_int
 }
 
-pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_int {
     if str_.is_null() || n <= 0 {
         return 0;
     }
@@ -36,7 +47,8 @@ pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_in
         let count = runtime.clipboard_text.len().min((n - 1) as usize);
         // Write up to `n - 1` bytes plus NUL into the caller's `n`-byte
         // buffer.
-        if let Some(out) = slice_mut(str_ as *mut u8, n as usize) {
+        // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(out) = unsafe { slice_mut(str_ as *mut u8, n as usize) } {
             out[..count].copy_from_slice(&runtime.clipboard_text[..count]);
             out[count] = 0;
         }

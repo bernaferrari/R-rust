@@ -11,7 +11,8 @@ use super::runtime::with_graphapp_runtime;
 use super::types::*;
 
 fn alloc_cursor() -> cursor {
-    objects::new_object(CursorObject, ptr::null_mut(), ptr::null_mut())
+    // SAFETY: pointer arguments are null, locals/literals of this caller, or GraphApp handles taken from the live object tree or registry (objects stay allocated until deleted).
+    unsafe { objects::new_object(CursorObject, ptr::null_mut(), ptr::null_mut()) }
 }
 
 macro_rules! ensure_cursor {
