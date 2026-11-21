@@ -136,13 +136,11 @@ fn find_var_in_frame(rho: SEXP, symbol: SEXP) -> SEXP {
 
 /// Audited boundary: deep duplicate of a live object.
 fn duplicate_sexp(x: SEXP) -> SEXP {
-    // SAFETY: duplicate copies a live object under the active runtime.
     duplicate(x)
 }
 
 /// Audited boundary: shallow duplicate of a live object.
 fn shallow_duplicate(x: SEXP) -> SEXP {
-    // SAFETY: shallow_duplicate copies a live object under the active runtime.
     crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
@@ -260,7 +258,7 @@ pub fn asVecSize(x: SEXP) -> R_xlen_t {
 // do_delayed — delayedAssign()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_delayed(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_delayed(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         if Rf_isString(CAR(args)) == 0 || LENGTH(CAR(args)) == 0 {
@@ -294,7 +292,7 @@ pub unsafe fn do_delayed(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // do_makelazy — makeLazy()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_makelazy(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_makelazy(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let names = CAR(args);
@@ -335,7 +333,7 @@ pub unsafe fn do_makelazy(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 // do_onexit — on.exit()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let _ = (call, op);
         // SAFETY: delegates to the audited on.exit implementation on live args.
@@ -346,7 +344,7 @@ pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `returnValue(default)`. The value parked on the current context
 /// before `on.exit` runs; an error or a frame that did not return uses
 /// the already-evaluated default.
-pub unsafe fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let value = context_return_value();
         if !value.is_null() {
@@ -364,7 +362,7 @@ pub unsafe fn do_returnValue(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 // do_args — args()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let mut input = CAR(args);
@@ -421,7 +419,7 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_formals, do_body, do_bodyCode
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let mut input = CAR(args);
@@ -441,7 +439,7 @@ pub unsafe fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_body(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_body(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let input = CAR(args);
@@ -458,7 +456,7 @@ pub unsafe fn do_body(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_bodyCode(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bodyCode(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let input = CAR(args);
@@ -476,7 +474,7 @@ pub unsafe fn do_bodyCode(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 // do_envir — environment()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let _ = rho;
@@ -498,7 +496,7 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_envirgets — environment<-()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         // GNU: no check1arg. CAR is the object, CADR the replacement env.
@@ -539,7 +537,7 @@ pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 // do_newenv — new.env()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_newenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_newenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let mut hash = FALSE;
@@ -579,7 +577,7 @@ pub unsafe fn do_newenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_parentenv, do_parentenvgets, do_envirName
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let env = CAR(args);
@@ -593,7 +591,7 @@ pub unsafe fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-pub unsafe fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let env = CAR(args);
@@ -609,7 +607,7 @@ pub unsafe fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-pub unsafe fn do_envirName(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_envirName(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let env = CAR(args);
@@ -634,7 +632,7 @@ pub unsafe fn do_envirName(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // do_cat — cat() (simplified for embedded use)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_cat(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cat(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         // In embedded/headless mode, cat() is a no-op
@@ -647,7 +645,7 @@ pub unsafe fn do_cat(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_makelist — list()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let n = Rf_length(args);
         let s = Rf_allocVector(SEXPTYPE::VECSXP, n);
@@ -691,7 +689,7 @@ pub unsafe fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // do_expression — expression()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let n = Rf_length(args);
         let s = Rf_allocVector(SEXPTYPE::EXPRSXP, n);
@@ -710,7 +708,7 @@ pub unsafe fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 // do_makevector — vector()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_makevector(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_makevector(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let mode = CAR(args);
@@ -770,7 +768,7 @@ pub unsafe fn do_makevector(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
 // xlengthgets / lengthgets / do_lengthgets — length<-()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
+pub fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
     {
         if len == XLENGTH(x) {
             return x;
@@ -920,12 +918,11 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
     }
 }
 
-pub unsafe fn lengthgets(x: SEXP, len: c_int) -> SEXP {
-    // SAFETY: delegates to the checked-length setter on a live vector.
-    unsafe { xlengthgets(x, len as R_xlen_t) }
+pub fn lengthgets(x: SEXP, len: c_int) -> SEXP {
+    xlengthgets(x, len as R_xlen_t)
 }
 
-pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         check_arity(op, args);
         let x = CAR(args);
@@ -955,8 +952,7 @@ pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if len_val == -999 {
             error("invalid 'length' argument");
         }
-        // SAFETY: resizes a live vector under the active runtime.
-        unsafe { xlengthgets(x, len_val) }
+        xlengthgets(x, len_val)
     }
 }
 
@@ -964,7 +960,7 @@ pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // do_switch — switch() (SPECIALSXP)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let nargs = Rf_length(args);
         if nargs < 1 {

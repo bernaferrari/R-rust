@@ -261,7 +261,6 @@ pub(crate) fn class_gets(x: SEXP, class: SEXP) -> SEXP {
 #[inline]
 pub(crate) fn duplicate(x: SEXP) -> SEXP {
     let _ = checked(x);
-    // SAFETY: `x` was just validated as a live registered object.
     crate::main::duplicate::Rf_duplicate(x)
 }
 

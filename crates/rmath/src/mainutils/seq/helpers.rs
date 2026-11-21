@@ -281,7 +281,7 @@ pub fn asLogical(x: SEXP) -> c_int {
 }
 
 pub fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
-    unsafe { crate::mainutils::builtin::xlengthgets(x, len) }
+    crate::mainutils::builtin::xlengthgets(x, len)
 }
 
 pub fn shallow_duplicate(x: SEXP) -> SEXP {

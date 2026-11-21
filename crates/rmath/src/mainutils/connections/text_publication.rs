@@ -179,9 +179,7 @@ fn build<'owner>(
     let length = R_xlen_t::try_from(lines.len())
         .unwrap_or_else(|_| r_error("too many text connection lines"));
     let answer = if let Some(old) = old {
-        let raw = call(owner, connection, || unsafe {
-            // SAFETY: `old` is a checked owning handle; xlengthgets resizes
-            // the live STRSXP in place.
+        let raw = call(owner, connection, || {
             crate::mainutils::builtin::xlengthgets(old.as_raw(), length)
         });
         factory

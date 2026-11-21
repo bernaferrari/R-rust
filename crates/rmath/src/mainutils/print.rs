@@ -413,7 +413,6 @@ fn eval_in(call: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `duplicate`.
 fn duplicate_value(x: SEXP) -> SEXP {
-    // SAFETY: `x` is a live value being printed.
     crate::mainutils::duplicate::Rf_duplicate(x)
 }
 

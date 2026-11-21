@@ -454,7 +454,6 @@ unsafe fn in_chull(
 /// x is a two-column numeric matrix.
 pub fn chull(x: SEXP) -> SEXP {
     {
-        // SAFETY: `x` is a live object in the owning session for `nrows`.
         let n = nrows(x as *const std::ffi::c_void);
         if n <= 0 {
             return Rf_allocVector(SEXPTYPE::INTSXP, 0);

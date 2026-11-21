@@ -180,7 +180,6 @@ use crate::mainutils::printvector::printVector;
 // ---------------------------------------------------------------------------
 
 fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
-    // SAFETY: `s` is a live CHARSXP element read under the checked contract.
     crate::mainutils::printutils::Rstrlen(s, quote)
 }
 

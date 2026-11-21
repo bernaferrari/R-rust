@@ -1409,8 +1409,6 @@ fn tsp_parameters(
     input: &super::object::Sexp<'static>,
 ) -> Result<super::object::Sexp<'static>, String> {
     super::tsp::normalize(access, object, input, |access| {
-        // SAFETY: the adapter pins the original owner and owns the option
-        // before scalar dispatch; no payload loan crosses that callback.
         access
             .with_native(|owner| {
                 let option =

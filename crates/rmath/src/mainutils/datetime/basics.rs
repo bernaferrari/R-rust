@@ -80,11 +80,10 @@ pub(crate) fn recycle_posixlt_component(x: SEXP, n: R_xlen_t) -> SEXP {
     if nx == n {
         return x;
     }
-    // SAFETY: audited boundary — length-extension primitive on a live vector.
     if nx <= 0 {
-        return unsafe { crate::mainutils::builtin::xlengthgets(x, n) };
+        return crate::mainutils::builtin::xlengthgets(x, n);
     }
-    let y = unsafe { crate::mainutils::builtin::xlengthgets(x, n) };
+    let y = crate::mainutils::builtin::xlengthgets(x, n);
     let source = wrapped(x);
     let mut out = mutable_vector(y);
     match TYPEOF(x) {
