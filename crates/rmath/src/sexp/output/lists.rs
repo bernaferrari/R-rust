@@ -86,35 +86,33 @@ pub(crate) fn for_each_printable_attribute(
         .try_attrib()
         .unwrap_or_else(|error| super::super::context::r_error(error.to_string()));
     let mut attrs = original.clone();
-    unsafe {
-        while !attrs.is_nil() {
-            if let Some(name) = printable_attribute_name(attrs.as_raw())
-                && !is_structural_print_attribute(&name)
-                && !is_hidden_noquote_class(&name, x.clone())
-            {
-                let value = attrs
-                    .try_car()
-                    .unwrap_or_else(|error| super::super::context::r_error(error.to_string()));
-                if !value.is_nil() {
-                    if name == "class" {
-                        match class_for_print(value.as_raw()) {
-                            ClassForPrint::Omit => {}
-                            ClassForPrint::Keep => print(&name, value),
-                            ClassForPrint::Filtered(filtered, _guard) => {
-                                let filtered = Sexp::from_raw(filtered)
-                                    .expect("protected filtered class vector");
-                                print(&name, filtered);
-                            }
+    while !attrs.is_nil() {
+        if let Some(name) = printable_attribute_name(attrs.as_raw())
+            && !is_structural_print_attribute(&name)
+            && !is_hidden_noquote_class(&name, x.clone())
+        {
+            let value = attrs
+                .try_car()
+                .unwrap_or_else(|error| super::super::context::r_error(error.to_string()));
+            if !value.is_nil() {
+                if name == "class" {
+                    match class_for_print(value.as_raw()) {
+                        ClassForPrint::Omit => {}
+                        ClassForPrint::Keep => print(&name, value),
+                        ClassForPrint::Filtered(filtered, _guard) => {
+                            let filtered = unsafe { Sexp::from_raw(filtered) }
+                                .expect("protected filtered class vector");
+                            print(&name, filtered);
                         }
-                    } else {
-                        print(&name, value);
                     }
+                } else {
+                    print(&name, value);
                 }
             }
-            attrs = attrs
-                .try_cdr()
-                .unwrap_or_else(|error| super::super::context::r_error(error.to_string()));
         }
+        attrs = attrs
+            .try_cdr()
+            .unwrap_or_else(|error| super::super::context::r_error(error.to_string()));
     }
 }
 
@@ -168,41 +166,37 @@ pub(crate) fn has_class(x: Sexp<'_>, class_name: &str) -> bool {
 }
 
 pub(crate) fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
-    unsafe {
-        let row_names = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::symbol::install_str("row.names"),
-        );
-        if let Some(row_names) = Sexp::from_raw(row_names)
-            && row_names.clone().typeof_() == SEXPTYPE::INTSXP
-            && row_names.clone().len() == 2
-            && row_names.integer_elt(0) == Some(NA_INTEGER)
-            && let Some(last) = row_names.integer_elt(1)
-            && last < 0
-        {
-            return -(last as R_xlen_t);
-        }
+    let row_names = crate::sexp::attrib_core::getAttrib(
+        x.clone().as_raw(),
+        crate::sexp::symbol::install_str("row.names"),
+    );
+    if let Some(row_names) = unsafe { Sexp::from_raw(row_names) }
+        && row_names.clone().typeof_() == SEXPTYPE::INTSXP
+        && row_names.clone().len() == 2
+        && row_names.integer_elt(0) == Some(NA_INTEGER)
+        && let Some(last) = row_names.integer_elt(1)
+        && last < 0
+    {
+        return -(last as R_xlen_t);
     }
     x.iter_vector().map(|col| col.len()).max().unwrap_or(0)
 }
 
 pub(crate) fn data_frame_row_labels(x: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> {
-    unsafe {
-        let row_names = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::symbol::install_str("row.names"),
-        );
-        if let Some(row_names) = Sexp::from_raw(row_names)
-            && row_names.clone().typeof_() == SEXPTYPE::STRSXP
-            && row_names.clone().len() == nrow
-        {
-            return (0..nrow)
-                .map(|i| match string_element_text(row_names.clone(), i) {
-                    Some(Some(value)) => value.to_string(),
-                    Some(None) | None => (i + 1).to_string(),
-                })
-                .collect();
-        }
+    let row_names = crate::sexp::attrib_core::getAttrib(
+        x.clone().as_raw(),
+        crate::sexp::symbol::install_str("row.names"),
+    );
+    if let Some(row_names) = unsafe { Sexp::from_raw(row_names) }
+        && row_names.clone().typeof_() == SEXPTYPE::STRSXP
+        && row_names.clone().len() == nrow
+    {
+        return (0..nrow)
+            .map(|i| match string_element_text(row_names.clone(), i) {
+                Some(Some(value)) => value.to_string(),
+                Some(None) | None => (i + 1).to_string(),
+            })
+            .collect();
     }
     (1..=nrow).map(|i| i.to_string()).collect()
 }
@@ -362,31 +356,29 @@ pub(crate) fn format_pairlist(x: Sexp<'_>) -> String {
 }
 
 pub(crate) fn format_pairlist_with_path(x: Sexp<'_>, path: &str) -> String {
-    unsafe {
-        let mut sections = Vec::new();
-        let mut cell = x.clone().as_raw();
-        let mut index = 0usize;
-        while !cell.is_null() && cell != R_NilValue() && TYPEOF(cell) == SEXPTYPE::LISTSXP {
-            let tag = match printable_attribute_name(cell) {
-                Some(name) if !name.is_empty() => list_name_tag(&name),
-                _ => format!("[[{}]]", index + 1),
-            };
-            let header = format!("{path}{tag}");
-            let body = if let Some(elem) = Sexp::from_raw(CAR(cell)) {
-                format_list_child(elem, &header)
-            } else {
-                "NULL".to_string()
-            };
-            sections.push(format!("{header}\n{body}"));
-            cell = CDR(cell);
-            index += 1;
-        }
-
-        if sections.is_empty() {
-            return format_with_printable_attributes("NULL".to_string(), x);
-        }
-        format_list_body_with_attributes(sections.join("\n\n"), x)
+    let mut sections = Vec::new();
+    let mut cell = x.clone().as_raw();
+    let mut index = 0usize;
+    while !cell.is_null() && cell != R_NilValue() && TYPEOF(cell) == SEXPTYPE::LISTSXP {
+        let tag = match printable_attribute_name(cell) {
+            Some(name) if !name.is_empty() => list_name_tag(&name),
+            _ => format!("[[{}]]", index + 1),
+        };
+        let header = format!("{path}{tag}");
+        let body = if let Some(elem) = unsafe { Sexp::from_raw(CAR(cell)) } {
+            format_list_child(elem, &header)
+        } else {
+            "NULL".to_string()
+        };
+        sections.push(format!("{header}\n{body}"));
+        cell = CDR(cell);
+        index += 1;
     }
+
+    if sections.is_empty() {
+        return format_with_printable_attributes("NULL".to_string(), x);
+    }
+    format_list_body_with_attributes(sections.join("\n\n"), x)
 }
 
 pub(crate) fn format_list_child(elem: Sexp<'_>, path: &str) -> String {

@@ -211,20 +211,18 @@ pub(crate) fn format_posixlt_vector(x: Sexp<'_>) -> String {
 }
 
 pub(crate) fn difftime_units(x: Sexp<'_>) -> String {
-    unsafe {
-        let units = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::symbol::install_str("units"),
-        );
-        if let Some(units) = Sexp::from_raw(units)
-            && units.clone().typeof_() == SEXPTYPE::STRSXP
-            && units.clone().len() > 0
-            && let Some(Some(value)) = string_element_text(units, 0)
-        {
-            return value.to_string();
-        }
-        "secs".to_string()
+    let units = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::symbol::install_str("units"),
+    );
+    if let Some(units) = unsafe { Sexp::from_raw(units) }
+        && units.clone().typeof_() == SEXPTYPE::STRSXP
+        && units.clone().len() > 0
+        && let Some(Some(value)) = string_element_text(units, 0)
+    {
+        return value.to_string();
     }
+    "secs".to_string()
 }
 
 /// GNU `print.difftime` (base/R/datetime.R).

@@ -3,27 +3,25 @@
 use super::*;
 
 pub(crate) fn array_dims(x: Sexp<'_>) -> Option<Vec<usize>> {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
-        let dim = Sexp::from_raw(dim)?;
-        if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() < 3 {
-            return None;
-        }
-        let mut dims = Vec::with_capacity(dim.clone().len() as usize);
-        let mut product = 1usize;
-        for i in 0..dim.clone().len() {
-            let n = dim.clone().integer_elt(i)? as usize;
-            product = product.checked_mul(n)?;
-            dims.push(n);
-        }
-        if product > x.len() as usize {
-            return None;
-        }
-        Some(dims)
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x.clone().as_raw(),
+        crate::sexp::attrib_core::R_DimSymbol(),
+    );
+    let dim = unsafe { Sexp::from_raw(dim) }?;
+    if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() < 3 {
+        return None;
     }
+    let mut dims = Vec::with_capacity(dim.clone().len() as usize);
+    let mut product = 1usize;
+    for i in 0..dim.clone().len() {
+        let n = dim.clone().integer_elt(i)? as usize;
+        product = product.checked_mul(n)?;
+        dims.push(n);
+    }
+    if product > x.len() as usize {
+        return None;
+    }
+    Some(dims)
 }
 
 pub(crate) fn ceil_div(a: usize, b: usize) -> usize {

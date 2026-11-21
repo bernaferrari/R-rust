@@ -18,22 +18,20 @@ fn align_columns(text: &str, width: usize, right: bool) -> String {
 }
 
 pub(crate) fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
-        let dim = Sexp::from_raw(dim)?;
-        if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() != 2 {
-            return None;
-        }
-        let nrow = dim.clone().integer_elt(0)? as usize;
-        let ncol = dim.integer_elt(1)? as usize;
-        if nrow.checked_mul(ncol)? > x.len() as usize {
-            return None;
-        }
-        Some((nrow, ncol))
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x.clone().as_raw(),
+        crate::sexp::attrib_core::R_DimSymbol(),
+    );
+    let dim = unsafe { Sexp::from_raw(dim) }?;
+    if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() != 2 {
+        return None;
     }
+    let nrow = dim.clone().integer_elt(0)? as usize;
+    let ncol = dim.integer_elt(1)? as usize;
+    if nrow.checked_mul(ncol)? > x.len() as usize {
+        return None;
+    }
+    Some((nrow, ncol))
 }
 
 pub(crate) struct MatrixDimnames {
@@ -85,49 +83,47 @@ pub(crate) fn matrix_dimname_titles(dimnames: SEXP) -> (Option<String>, Option<S
 }
 
 pub(crate) fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDimnames {
-    unsafe {
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
-        let Some(dimnames) = Sexp::from_raw(dimnames) else {
-            return empty_matrix_dimnames();
-        };
-        if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
-            return empty_matrix_dimnames();
-        }
-        let (row_title, col_title) = matrix_dimname_titles(dimnames.clone().as_raw());
-        // Dimname entries print as labels: an NA name renders "<NA>" (GNU
-        // EncodeString in MatrixColumnLabel/MatrixRowLabel) instead of
-        // discarding the whole dimname vector.
-        let row_names = string_vector_labels(crate::sexp::accessors::VECTOR_ELT(
-            dimnames.clone().as_raw(),
-            0,
-        ))
-        .filter(|names| names.len() >= nrow)
-        .map(|names| {
-            names
-                .into_iter()
-                .take(nrow)
-                .map(|s| escape_printed_text(&s, false))
-                .collect()
-        });
-        let col_names =
-            string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
-                .filter(|names| names.len() >= ncol)
-                .map(|names| {
-                    names
-                        .into_iter()
-                        .take(ncol)
-                        .map(|s| escape_printed_text(&s, false))
-                        .collect()
-                });
-        MatrixDimnames {
-            rows: row_names,
-            cols: col_names,
-            row_title,
-            col_title,
-        }
+    let dimnames = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+    );
+    let Some(dimnames) = (unsafe { Sexp::from_raw(dimnames) }) else {
+        return empty_matrix_dimnames();
+    };
+    if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
+        return empty_matrix_dimnames();
+    }
+    let (row_title, col_title) = matrix_dimname_titles(dimnames.clone().as_raw());
+    // Dimname entries print as labels: an NA name renders "<NA>" (GNU
+    // EncodeString in MatrixColumnLabel/MatrixRowLabel) instead of
+    // discarding the whole dimname vector.
+    let row_names = string_vector_labels(crate::sexp::accessors::VECTOR_ELT(
+        dimnames.clone().as_raw(),
+        0,
+    ))
+    .filter(|names| names.len() >= nrow)
+    .map(|names| {
+        names
+            .into_iter()
+            .take(nrow)
+            .map(|s| escape_printed_text(&s, false))
+            .collect()
+    });
+    let col_names =
+        string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
+            .filter(|names| names.len() >= ncol)
+            .map(|names| {
+                names
+                    .into_iter()
+                    .take(ncol)
+                    .map(|s| escape_printed_text(&s, false))
+                    .collect()
+            });
+    MatrixDimnames {
+        rows: row_names,
+        cols: col_names,
+        row_title,
+        col_title,
     }
 }
 
@@ -261,30 +257,28 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
 }
 
 pub(crate) fn print_max_cells() -> usize {
-    unsafe {
-        let extras = print_dispatch_extras();
-        let mut cur = extras;
-        while !cur.is_null() && cur != R_NilValue() {
-            if printable_attribute_name(cur).as_deref() == Some("max") {
-                let value = CAR(cur);
-                if !value.is_null() && value != R_NilValue() {
-                    if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
-                        let n = *crate::sexp::accessors::INTEGER(value);
-                        if n >= 0 {
-                            return n as usize;
-                        }
-                    } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
-                        let n = *crate::sexp::accessors::REAL(value);
-                        if n.is_finite() && n >= 0.0 {
-                            return n as usize;
-                        }
+    let extras = print_dispatch_extras();
+    let mut cur = extras;
+    while !cur.is_null() && cur != R_NilValue() {
+        if printable_attribute_name(cur).as_deref() == Some("max") {
+            let value = CAR(cur);
+            if !value.is_null() && value != R_NilValue() {
+                if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+                    let n = crate::sexp::accessors::INTEGER_ELT(value, 0);
+                    if n >= 0 {
+                        return n as usize;
+                    }
+                } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                    let n = crate::sexp::accessors::REAL_ELT(value, 0);
+                    if n.is_finite() && n >= 0.0 {
+                        return n as usize;
                     }
                 }
             }
-            cur = CDR(cur);
         }
-        crate::mainutils::options::GetOptionMaxPrint().max(0) as usize
+        cur = CDR(cur);
     }
+    unsafe { crate::mainutils::options::GetOptionMaxPrint() }.max(0) as usize
 }
 
 /// GNU `print.default(..., quote=)` default TRUE; NA becomes TRUE.

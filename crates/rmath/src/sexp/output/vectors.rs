@@ -78,13 +78,11 @@ pub(crate) fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
 }
 
 pub(crate) fn has_names_attribute(x: Sexp<'_>) -> bool {
-    unsafe {
-        let names = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        Sexp::from_raw(names).is_some_and(|names| names.typeof_() == SEXPTYPE::STRSXP)
-    }
+    let names = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::attrib_core::R_NamesSymbol(),
+    );
+    unsafe { Sexp::from_raw(names) }.is_some_and(|names| names.typeof_() == SEXPTYPE::STRSXP)
 }
 
 pub(crate) fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String> {
@@ -246,17 +244,15 @@ pub(crate) fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
 }
 
 pub(crate) fn table_title(x: Sexp<'_>) -> Option<String> {
-    unsafe {
-        let title = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::symbol::install_str("table.name"),
-        );
-        let title = Sexp::from_raw(title)?;
-        if title.clone().typeof_() != SEXPTYPE::STRSXP || title.clone().len() == 0 {
-            return None;
-        }
-        string_element_text(title, 0).flatten()
+    let title = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::symbol::install_str("table.name"),
+    );
+    let title = unsafe { Sexp::from_raw(title) }?;
+    if title.clone().typeof_() != SEXPTYPE::STRSXP || title.clone().len() == 0 {
+        return None;
     }
+    string_element_text(title, 0).flatten()
 }
 
 pub(crate) fn format_table(x: Sexp<'_>) -> Option<String> {
@@ -819,31 +815,29 @@ pub(crate) fn format_vector_stock_n(x: Sexp, quote: bool, max_override: Option<i
 /// GNU PrintValueRec passes names(dimnames)[1] as the named-vector title.
 /// An empty title still emits its line; a missing title label prints "NA".
 pub(crate) fn one_dim_array_title(x: Sexp<'_>) -> Option<String> {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::attrib_core::R_DimSymbol(),
-        );
-        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
-            return None;
-        }
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
-        if dimnames.is_null() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
-            return None;
-        }
-        let names = crate::sexp::attrib_core::getAttrib(
-            dimnames,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        let names = Sexp::from_raw(names)?;
-        if names.typeof_() != SEXPTYPE::STRSXP || names.len() == 0 {
-            return None;
-        }
-        Some(string_element_text(names, 0)?.unwrap_or_else(|| "NA".to_string()))
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::attrib_core::R_DimSymbol(),
+    );
+    if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
+        return None;
     }
+    let dimnames = crate::sexp::attrib_core::getAttrib(
+        x.as_raw(),
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+    );
+    if dimnames.is_null() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        return None;
+    }
+    let names = crate::sexp::attrib_core::getAttrib(
+        dimnames,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+    );
+    let names = unsafe { Sexp::from_raw(names) }?;
+    if names.typeof_() != SEXPTYPE::STRSXP || names.len() == 0 {
+        return None;
+    }
+    Some(string_element_text(names, 0)?.unwrap_or_else(|| "NA".to_string()))
 }
 
 /// Names used by stock printNamedVector.
@@ -852,40 +846,36 @@ pub(crate) fn one_dim_array_title(x: Sexp<'_>) -> Option<String> {
 /// A 1-d array with a `names` attribute but empty dimnames prints
 /// without a header. Fall back to the names attribute for non-arrays.
 pub(crate) fn names_sexp(x: Sexp<'_>) -> Option<Sexp<'_>> {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x.clone().as_raw(),
+        crate::sexp::attrib_core::R_DimSymbol(),
+    );
+    let candidate = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+        let dimnames = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
-            crate::sexp::attrib_core::R_DimSymbol(),
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
         );
-        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
-            let dimnames = crate::sexp::attrib_core::getAttrib(
-                x.clone().as_raw(),
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-            );
-            if !dimnames.is_null()
-                && dimnames != crate::sexp::globals::R_NilValue()
-                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
-                && XLENGTH(dimnames) >= 1
-            {
-                let row = VECTOR_ELT(dimnames, 0);
-                if let Some(row) = Sexp::from_raw(row)
-                    && row.clone().typeof_() == SEXPTYPE::STRSXP
-                    && row.clone().len() == x.len()
-                {
-                    return Some(row);
-                }
-            }
+        if !dimnames.is_null()
+            && dimnames != crate::sexp::globals::R_NilValue()
+            && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+            && XLENGTH(dimnames) >= 1
+        {
+            VECTOR_ELT(dimnames, 0)
+        } else {
             return None;
         }
-        let names = crate::sexp::attrib_core::getAttrib(
+    } else {
+        crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        let names = Sexp::from_raw(names)?;
-        if names.clone().typeof_() == SEXPTYPE::STRSXP && names.clone().len() == x.len() {
-            Some(names)
-        } else {
-            None
-        }
+        )
+    };
+    // SAFETY: `candidate` was just read from a live attribute chain owned by
+    // `x`; the from_raw boundary checks the tag before use below.
+    let names = unsafe { Sexp::from_raw(candidate) }?;
+    if names.clone().typeof_() == SEXPTYPE::STRSXP && names.clone().len() == x.len() {
+        Some(names)
+    } else {
+        None
     }
 }
