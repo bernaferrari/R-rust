@@ -773,9 +773,8 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     } else {
         // Translated native callers may supply an unrooted address view. Capture
         // its checked original domain once before callbacks; the wrap below
-        // rejects foreign, retired or unregistered storage. The unsafe caller
-        // supplies the borrowed-owner lifetime for standalone native fixtures.
-        unsafe { OwnerToken::current() }.map(StoredOwner::from_token)
+        // rejects foreign, retired or unregistered storage.
+        OwnerToken::current().map(StoredOwner::from_token)
     }
     .map_err(|error| sexp_err("promise authority", error))?;
 

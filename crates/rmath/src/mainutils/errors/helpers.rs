@@ -11,9 +11,7 @@ use super::*;
 /// error-path entry points inside the active session, so the token's
 /// retain/exclusion contract matches the raw accessors this replaces.
 fn owned(pointer: SEXP) -> crate::sexp::object::Sexp<'static> {
-    // SAFETY: argument pointers name live, rooted R objects in the active
-    // session — the ambient contract of the raw accessors below.
-    unsafe { crate::sexp::owner::OwnerToken::current() }
+    crate::sexp::owner::OwnerToken::current()
         .and_then(|owner| owner.sexp(pointer))
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }

@@ -356,15 +356,11 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
         state,
         published: None,
     };
-    // SAFETY: the interpreter holds the runtime lock across dispatch; the
-    // token borrows the interpreter-held owner for this call only.
-    let owner = unsafe {
-        crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: error.to_string(),
-            })
+    let owner = crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: error.to_string(),
         })
-    };
+    });
     let factory = owner.node_factory();
     let result = factory
         .allocate(|arena| {

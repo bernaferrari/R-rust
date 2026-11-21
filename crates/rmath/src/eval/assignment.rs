@@ -710,13 +710,10 @@ fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
         return Some(field);
     }
     if TYPEOF(field) == SEXPTYPE::STRSXP && XLENGTH(field) > 0 {
-        // SAFETY: the translated caller retains the active runtime, and
         // installTrChar only inspects a checked STRSXP element.
-        return unsafe {
-            let owner = crate::sexp::owner::OwnerToken::current().ok()?;
-            let charsxp = owner.sexp(field).ok()?.try_string_elt(0).ok()?;
-            Some(crate::mainutils::subset::installTrChar(charsxp.as_raw()))
-        };
+        let owner = crate::sexp::owner::OwnerToken::current().ok()?;
+        let charsxp = owner.sexp(field).ok()?.try_string_elt(0).ok()?;
+        return Some(crate::mainutils::subset::installTrChar(charsxp.as_raw()));
     }
     None
 }
@@ -822,8 +819,7 @@ fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<
         return None;
     }
 
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
+    let owner = crate::sexp::owner::OwnerToken::current().ok()?;
     let mut target_mut =
         crate::sexp::object::SexpMut::try_from_checked(owner.sexp(target).ok()?).ok()?;
 

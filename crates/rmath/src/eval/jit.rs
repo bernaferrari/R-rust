@@ -138,8 +138,7 @@ fn hash(data: &[u8], mut h: R_exprhash_t) -> R_exprhash_t {
 
 /// Wrap a hashed node's payload for checked scalar element reads.
 fn hash_payload_sexp(e: SEXP) -> Option<Sexp<'static>> {
-    // SAFETY: the translated caller retains the active runtime.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
+    let owner = crate::sexp::owner::OwnerToken::current().ok()?;
     owner.sexp(e).ok()?.into_owned().ok()
 }
 

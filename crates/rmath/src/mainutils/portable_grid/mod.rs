@@ -37,8 +37,7 @@ pub(crate) use viewports::*;
 /// boundary cannot lapse between the check and the wrap.
 fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
     crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: portable grid helpers only run inside evaluated R calls.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| base_error(error.to_string())),
     )
 }

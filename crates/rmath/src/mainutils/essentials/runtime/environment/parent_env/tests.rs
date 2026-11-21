@@ -175,7 +175,7 @@ fn provider_case(close: bool) {
         );
     } else {
         let value = result.unwrap();
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
+        let owner = crate::sexp::owner::OwnerToken::current().unwrap();
         let value = owner.sexp(value).unwrap().into_owned().unwrap();
         assert_eq!(value.try_enclos().unwrap().as_raw(), parent.as_raw());
     }

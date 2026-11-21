@@ -545,9 +545,8 @@ pub fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
                 let fail = |error: crate::sexp::object::SexpError| -> ! {
                     crate::sexp::context::r_error(error.to_string())
                 };
-                // SAFETY: the R session owning `x` is active on this thread.
-                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-                    .unwrap_or_else(|error| fail(error));
+                let owner =
+                    crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| fail(error));
                 let _pin = owner.pin().unwrap_or_else(|error| fail(error));
                 let parent = owner.sexp(x).unwrap_or_else(|error| fail(error));
                 let character = parent

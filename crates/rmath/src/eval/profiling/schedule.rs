@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn profiling_clocks_require_no_runtime_and_distinguish_sleep_from_cpu_time() {
         std::thread::spawn(|| {
-            assert!(unsafe { crate::sexp::owner::OwnerToken::current() }.is_err());
+            assert!(crate::sexp::owner::OwnerToken::current().is_err());
             let elapsed = Clock::Elapsed(Instant::now());
             let wall_before = elapsed.now().unwrap();
             let cpu_before = Clock::ThreadCpu.now().unwrap();

@@ -11,8 +11,7 @@ fn checked<T>(result: SexpResult<T>) -> T {
 /// active inside every do_* entry point below.
 fn sexp_factory() -> SessionNodeFactory<'static> {
     SessionNodeFactory::new(
-        // SAFETY: the caller retains the active runtime for the lease scope.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     )
 }

@@ -43,7 +43,7 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // Capture once and install automatic roots before the first callback.
     // Raw entry points are normalized here into the actual active heap.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+    let owner = crate::sexp::owner::OwnerToken::current()
         .map_err(|err| sexp_err("evaluation owner", err))?;
     let factory = crate::sexp::object::SessionNodeFactory::new(owner);
     let expr = factory

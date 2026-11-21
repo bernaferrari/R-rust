@@ -165,7 +165,7 @@ fn warning_handler_stack(f: &SessionNodeFactory<'_>) -> Sexp<'static> {
         ));
     }
     let body = crate::sexp::owner::with_runtime(
-        &unsafe { crate::sexp::owner::OwnerToken::current() }
+        &crate::sexp::owner::OwnerToken::current()
             .unwrap()
             .weak_owner()
             .unwrap(),

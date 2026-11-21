@@ -241,7 +241,7 @@ pub fn try_catch_owned(
     // Raw managed evaluation may enter without RSession's activation guard.
     // This catcher publishes exiting transfers, so retain their original
     // scope through handler/finally execution. Nested activations reuse it.
-    let owner = checked(unsafe { OwnerToken::current() })
+    let owner = checked(OwnerToken::current())
         .weak_owner()
         .expect("pinned managed condition owner");
     let _transfers = checked(crate::sexp::transfer::TransferScopeGuard::enter(owner));
@@ -430,7 +430,7 @@ pub(crate) fn calling_native(
     };
     let nil = factory.nil();
     if let Some(handler) = handler {
-        let owner = checked(unsafe { OwnerToken::current() })
+        let owner = checked(OwnerToken::current())
             .weak_owner()
             .expect("managed native scope");
         let callback = Rc::new(NativeCallingHandler {

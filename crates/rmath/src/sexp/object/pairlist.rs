@@ -67,15 +67,10 @@ pub(crate) struct PairlistBuilder<'a> {
 }
 
 impl<'a> PairlistBuilder<'a> {
-    /// Start an incremental list in the active owner.
-    ///
-    /// # Safety
-    /// The active owner must remain live for `'a`. Each append must run with
-    /// that owner active, with no outstanding Rust payload borrow of a cell.
-    pub(crate) unsafe fn new() -> Self {
-        // SAFETY: caller supplies the active owner lifetime and excludes loans.
-        let owner =
-            unsafe { crate::sexp::owner::OwnerToken::current() }.expect("active pairlist owner");
+    /// Start an incremental list in the active owner. Appends re-validate the
+    /// owner (liveness and activity) through the checked node factory.
+    pub(crate) fn new() -> Self {
+        let owner = crate::sexp::owner::OwnerToken::current().expect("active pairlist owner");
         Self::new_in(owner)
     }
 
@@ -303,7 +298,7 @@ mod tests {
         let tag_value = session.sexp(tag).expect("tag belongs to session");
 
         // SAFETY: session outlives the builder and no cell payload is borrowed.
-        let mut builder = unsafe { PairlistBuilder::new() };
+        let mut builder = PairlistBuilder::new();
         builder.push(first_value, Some(tag_value)).unwrap();
         builder.push(second_value, None).unwrap();
         let list_owner = builder.finish().expect("pairlist");

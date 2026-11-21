@@ -69,8 +69,7 @@ pub(crate) fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t {
     }
     let hashtab = HASHTAB(rho);
     if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
-        // SAFETY: the translated caller retains the active runtime.
-        if let Ok(owner) = unsafe { crate::sexp::owner::OwnerToken::current() }
+        if let Ok(owner) = crate::sexp::owner::OwnerToken::current()
             && let Ok(hashtab) = owner.sexp(hashtab)
         {
             for i in 0..hashtab.len() {

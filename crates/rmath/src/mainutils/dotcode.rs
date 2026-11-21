@@ -2166,11 +2166,9 @@ mod typed_native_handler_tests {
     fn owning_native_external_denies_publication_after_callback_close() {
         // No RefCell loan or RSession reference is held across the callback.
         let session = RSession::new_for_gc_tests();
-        let factory = unsafe {
-            crate::sexp::owner::OwnerToken::current()
-                .unwrap()
-                .node_factory()
-        };
+        let factory = crate::sexp::owner::OwnerToken::current()
+            .unwrap()
+            .node_factory();
         let nil = factory.nil().into_owned().unwrap();
         let operator = operator(&session, NativeInterface::External);
         let arguments = make_arguments(&factory, "C_devcur", &[]);
@@ -2270,11 +2268,9 @@ mod typed_native_handler_tests {
                 let (factory, nil, operator, arguments) = {
                     let borrowed = sessions.borrow();
                     let session = borrowed.as_ref().unwrap();
-                    let factory = unsafe {
-                        crate::sexp::owner::OwnerToken::current()
-                            .unwrap()
-                            .node_factory()
-                    };
+                    let factory = crate::sexp::owner::OwnerToken::current()
+                        .unwrap()
+                        .node_factory();
                     let nil = factory.nil().into_owned().unwrap();
                     let operator = operator(session, NativeInterface::Call);
                     let class = session

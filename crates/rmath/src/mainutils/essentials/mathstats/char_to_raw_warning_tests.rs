@@ -7,7 +7,7 @@ const MESSAGE: &str =
     "argument should be a character vector of length 1\nall but the first element will be ignored";
 const CALL: &str = "charToRaw(c(\"first\", \"ignored\"))";
 fn fixture(f: &SessionNodeFactory<'_>) -> (Sexp<'static>, Sexp<'static>) {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();
+    let owner = crate::sexp::owner::OwnerToken::current().unwrap();
     let c = f
         .wrap(unsafe { crate::sexp::symbol::Rf_install(c"c".as_ptr()) })
         .unwrap();
@@ -176,7 +176,7 @@ fn collecting_handler(f: &SessionNodeFactory<'_>) -> Sexp<'static> {
             env.clone()
         ));
     }
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+    let owner = crate::sexp::owner::OwnerToken::current()
         .unwrap()
         .weak_owner()
         .unwrap();

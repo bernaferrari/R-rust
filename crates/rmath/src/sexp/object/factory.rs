@@ -19,7 +19,7 @@ pub(crate) struct NodeDomain<'session> {
     singletons: crate::sexp::globals::SingletonPoolLease,
     owner_identity: usize,
     runtime_owner: Option<WeakOwner>,
-    borrowed_pointer: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
+    borrowed_pointer: Option<crate::sexp::owner::BorrowedOwnerRef>,
     _session: std::marker::PhantomData<&'session crate::sexp::session::RSession>,
 }
 
@@ -80,7 +80,7 @@ impl<'session> NodeDomain<'session> {
             heap,
             availability,
             singletons: crate::sexp::globals::immutable_singleton_pool(),
-            owner_identity: pointer.as_ptr().addr(),
+            owner_identity: pointer.identity().as_ptr().addr(),
             runtime_owner: None,
             borrowed_pointer: Some(pointer),
             _session: std::marker::PhantomData,

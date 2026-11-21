@@ -135,9 +135,8 @@ pub unsafe fn vmmin(
         absolute_tolerance: abstol,
         relative_tolerance: reltol,
     };
-    // SAFETY: the legacy boundary retains the active interpreter for the call.
     // The standalone optimizer can also be called with no R session.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok();
+    let owner = crate::sexp::owner::OwnerToken::current().ok();
     let result =
         minimize_bfgs(point, mask, &mut objective, settings, owner).unwrap_or_else(|message| {
             let message = std::ffi::CString::new(message).unwrap_or_default();

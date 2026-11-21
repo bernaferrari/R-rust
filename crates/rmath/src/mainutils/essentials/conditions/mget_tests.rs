@@ -359,12 +359,12 @@ fn exercise_collecting_names(close: bool, detach_binding_during_force: bool) {
         collected.set(collected.get() + 1);
         if detach_binding_during_force && collected.get() == 2 && !detached_callback.replace(true) {
             crate::sexp::envir::remove_binding_raw(environment_ptr, symbol_ptr);
-            unsafe {
-                crate::sexp::owner::OwnerToken::current()
-                    .unwrap()
-                    .full_gc()
-                    .unwrap();
-            }
+
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap()
+                .full_gc()
+                .unwrap();
+
             assert!(
                 promise_identity.is_live(),
                 "selected promise must remain owned after its binding is removed"

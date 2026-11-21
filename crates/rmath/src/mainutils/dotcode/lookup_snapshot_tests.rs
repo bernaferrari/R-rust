@@ -90,7 +90,7 @@ impl AltrepClass for DetachingPackage {
             "original lookup child must be retained by the operation, not the detached container"
         );
         // Genuine nested .Call reentry, with no runtime facade or RefCell loan.
-        let factory = unsafe { crate::sexp::owner::OwnerToken::current()? }.node_factory();
+        let factory = crate::sexp::owner::OwnerToken::current()?.node_factory();
         let nil = factory.nil().into_owned()?;
         let name = factory.strings(&["C_R_identC"])?.into_owned()?;
         let value = factory.strings(&["nested"])?.into_owned()?;

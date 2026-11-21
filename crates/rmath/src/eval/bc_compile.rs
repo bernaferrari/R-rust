@@ -1147,25 +1147,23 @@ pub(crate) fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
 /// Try to compile `expr` to bytecode. Returns `None` when the expression is too
 /// complex for the minimal compiler.
 pub fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
-    unsafe {
-        let source_owned = own_operand(expr);
-        let pin = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| compiler_error(error.to_string()))
-            .pin()
-            .unwrap_or_else(|error| compiler_error(error.to_string()))
-            .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
-        let expr = source_owned.as_raw();
-        let mut compiler = BytecodeCompiler::new(_rho);
-        if !compiler.compile_expr(expr) {
-            pin.require_live()
-                .unwrap_or_else(|error| compiler_error(error.to_string()));
-            return None;
-        }
-        let result = own_operand(compiler.finish(expr));
+    let source_owned = own_operand(expr);
+    let pin = crate::sexp::owner::OwnerToken::current()
+        .unwrap_or_else(|error| compiler_error(error.to_string()))
+        .pin()
+        .unwrap_or_else(|error| compiler_error(error.to_string()))
+        .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
+    let expr = source_owned.as_raw();
+    let mut compiler = BytecodeCompiler::new(_rho);
+    if !compiler.compile_expr(expr) {
         pin.require_live()
             .unwrap_or_else(|error| compiler_error(error.to_string()));
-        Some(result.as_raw())
+        return None;
     }
+    let result = own_operand(compiler.finish(expr));
+    pin.require_live()
+        .unwrap_or_else(|error| compiler_error(error.to_string()));
+    Some(result.as_raw())
 }
 
 /// Try to compile a closure body and install bytecode on success.

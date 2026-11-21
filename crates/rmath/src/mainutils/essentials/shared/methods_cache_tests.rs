@@ -4,7 +4,7 @@ use crate::sexp::{object::Sexp, session::RSession};
 use std::ffi::CStr;
 
 fn binding(environment: Sexp<'static>, name: &CStr) -> Sexp<'static> {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();
+    let owner = crate::sexp::owner::OwnerToken::current().unwrap();
     let symbol = owner.sexp(unsafe { Rf_install(name.as_ptr()) }).unwrap();
     let value = unsafe { crate::sexp::envir::find_var_in_frame_result(environment, symbol) }
         .unwrap()

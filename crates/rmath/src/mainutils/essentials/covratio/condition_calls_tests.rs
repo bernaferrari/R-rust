@@ -16,7 +16,7 @@ fn text(f: &SessionNodeFactory<'_>, call: &Sexp<'_>) -> String {
 }
 fn collected(f: &SessionNodeFactory<'_>) -> Vec<String> {
     let count = crate::mainutils::errors::collect_warnings();
-    let weak = unsafe { crate::sexp::owner::OwnerToken::current() }
+    let weak = crate::sexp::owner::OwnerToken::current()
         .unwrap()
         .weak_owner()
         .unwrap();
@@ -172,7 +172,7 @@ fn covratio_condition_calls_warn_two_preserves_original_error_call() {
         );
         let (call, _, _) = crate::mainutils::errors::take_recorded_error_call().unwrap();
         assert_eq!(text(&f, &call), STUDENTIZED);
-        let pin = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let pin = crate::sexp::owner::OwnerToken::current()
             .unwrap()
             .weak_owner()
             .unwrap()
@@ -218,7 +218,7 @@ fn warning_handler_stack(f: &SessionNodeFactory<'_>) -> Sexp<'static> {
         ));
     }
     let body = crate::sexp::owner::with_runtime(
-        &unsafe { crate::sexp::owner::OwnerToken::current() }
+        &crate::sexp::owner::OwnerToken::current()
             .unwrap()
             .weak_owner()
             .unwrap(),

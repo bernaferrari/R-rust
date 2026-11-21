@@ -784,6 +784,8 @@ fn session_owner_handle(value: &Sexp<'_>) -> Option<GuardOwner> {
             } else {
                 value
                     .session_owner_ptr
+                    .and_then(crate::sexp::owner::BorrowedOwnerRef::live)
+                    // SAFETY: `live` validated the borrowed owner generation.
                     .map(|pointer| unsafe { GuardOwner::new(pointer.as_ptr()) })
             }
         }

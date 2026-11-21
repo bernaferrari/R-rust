@@ -356,7 +356,7 @@ impl Default for EvalControlState {
 pub struct RInstance {
     // Only this allocation owns a strong token. It is invalidated before any
     // owned field is destroyed; weak observers never prolong its lifetime.
-    liveness: Option<Rc<()>>,
+    liveness: Option<LivenessOwner>,
     /// Weak capability of the sole stable session allocation; never a second runtime.
     pub(crate) runtime_owner: Option<super::owner::WeakOwner>,
     /// Immutable ownership domain; readable while the arena is lent.
@@ -614,7 +614,7 @@ impl RInstance {
             super::protect::LegacyProtectionStack::new(heap_identity.byte_ledger());
         let preserve_stack = super::protect::PreservedRoots::new(heap_identity.byte_ledger());
         RInstance {
-            liveness: Some(Rc::new(())),
+            liveness: Some(LivenessOwner::new()),
             runtime_owner: None,
             heap_identity,
             arena,
@@ -915,7 +915,160 @@ pub(crate) unsafe fn revoke_instance_availability(instance: *mut RInstance) {
 /// A returned observer can subsequently outlive that allocation safely.
 pub(crate) unsafe fn instance_liveness(instance: *mut RInstance) -> InstanceLiveness {
     let token = unsafe { &(*instance).liveness };
-    InstanceLiveness(token.as_ref().map_or_else(Weak::new, Rc::downgrade))
+    InstanceLiveness(
+        token
+            .as_ref()
+            .map_or_else(Weak::new, |owner| Rc::downgrade(&owner.strong)),
+    )
+}
+
+/// Snapshot an owner's copyable teardown generation; see [`InstanceGeneration`].
+/// # Safety
+/// The pointer must refer to a live allocation when this function is called.
+/// The returned witness can subsequently outlive that allocation safely.
+pub(crate) unsafe fn instance_generation(instance: *mut RInstance) -> InstanceGeneration {
+    let token = unsafe { &(*instance).liveness };
+    token
+        .as_ref()
+        .map_or(InstanceGeneration::DEAD, |owner| owner.generation)
+}
+
+/// The strong side of both teardown witnesses. Dropping it (explicit
+/// revocation or `RInstance::drop`) revokes the weak [`InstanceLiveness`]
+/// observers and the copyable [`InstanceGeneration`] witnesses together,
+/// before any other instance field is released.
+struct LivenessOwner {
+    strong: Rc<()>,
+    generation: InstanceGeneration,
+}
+
+impl LivenessOwner {
+    fn new() -> Self {
+        Self {
+            strong: Rc::new(()),
+            generation: InstanceGeneration::acquire(),
+        }
+    }
+}
+
+impl Drop for LivenessOwner {
+    fn drop(&mut self) {
+        self.generation.release();
+    }
+}
+
+thread_local! {
+    /// Owners whose `error_state` is currently lent as `&mut ErrorState`.
+    /// `RInstance` is thread-confined, so a per-thread set sees every lend.
+    static LENT_ERROR_STATES: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
+
+struct ErrorStateLend(usize);
+
+impl Drop for ErrorStateLend {
+    fn drop(&mut self) {
+        // `try_with`: a lend released during thread-local teardown must not abort.
+        let _ = LENT_ERROR_STATES.try_with(|lent| {
+            let mut lent = lent.borrow_mut();
+            if let Some(index) = lent.iter().rposition(|&address| address == self.0) {
+                lent.swap_remove(index);
+            }
+        });
+    }
+}
+
+/// Whether `instance`'s error state is currently lent exclusively.
+pub(crate) fn is_error_state_lent(instance: *mut RInstance) -> bool {
+    LENT_ERROR_STATES.with(|lent| lent.borrow().contains(&instance.addr()))
+}
+
+/// Lend `instance.error_state` exclusively for a strictly-local update.
+///
+/// A nested lend of the same owner's error state (for example from a callback
+/// that re-enters an error-state accessor) panics instead of creating a second
+/// aliasing `&mut ErrorState`, mirroring the arena lend check.
+/// # Safety
+/// `instance` points to a live owner allocation for the duration of the call,
+/// and no whole-instance Rust reference overlaps the lend.
+pub(crate) unsafe fn with_error_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut ErrorState) -> R,
+) -> R {
+    let address = instance.addr();
+    LENT_ERROR_STATES.with(|lent| {
+        let mut lent = lent.borrow_mut();
+        assert!(
+            !lent.contains(&address),
+            "reentrant error-state access; release the error state before re-entering it"
+        );
+        lent.push(address);
+    });
+    let _lend = ErrorStateLend(address);
+    // SAFETY: the caller guarantees a live owner; the lend set above excludes
+    // every other `&mut ErrorState` for this owner until `_lend` drops.
+    f(unsafe { &mut (*instance).error_state })
+}
+
+/// Recycled generation cells. A cell is only ever leaked once and then reused,
+/// so the pool is bounded by the peak number of simultaneously live owners.
+static GENERATION_CELLS: std::sync::Mutex<Vec<&'static std::sync::atomic::AtomicU64>> =
+    std::sync::Mutex::new(Vec::new());
+/// Generations are never reissued, so a recycled cell cannot revive a stale
+/// witness (no ABA): each witness compares against its own unique value.
+static NEXT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static DEAD_GENERATION_CELL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A `Copy` teardown witness for one `RInstance`.
+///
+/// Unlike [`InstanceLiveness`] (a `Weak`), this can be embedded in `Copy`
+/// capabilities such as `OwnerToken`. It is a `'static` cell plus the unique
+/// generation the owner stored in it; the owner overwrites the cell with `0`
+/// before any of its fields are torn down. `is_live()` therefore implies the
+/// original owner allocation has not started teardown (and so has not been
+/// freed), and distinguishes a different owner later placed at the same
+/// address. Generation `0` is never issued.
+#[derive(Clone, Copy)]
+pub(crate) struct InstanceGeneration {
+    cell: &'static std::sync::atomic::AtomicU64,
+    generation: u64,
+}
+
+impl InstanceGeneration {
+    /// A witness that is never live.
+    pub(crate) const DEAD: Self = Self {
+        cell: &DEAD_GENERATION_CELL,
+        generation: 0,
+    };
+
+    fn acquire() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(generation, 0, "instance generation counter exhausted");
+        let recycled = GENERATION_CELLS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pop();
+        let cell = recycled.unwrap_or_else(|| Box::leak(Box::new(AtomicU64::new(0))));
+        cell.store(generation, Ordering::Release);
+        Self { cell, generation }
+    }
+
+    fn release(self) {
+        use std::sync::atomic::Ordering;
+        if self.generation == 0 {
+            return;
+        }
+        self.cell.store(0, Ordering::Release);
+        GENERATION_CELLS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(self.cell);
+    }
+
+    pub(crate) fn is_live(self) -> bool {
+        self.generation != 0
+            && self.cell.load(std::sync::atomic::Ordering::Acquire) == self.generation
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -928,6 +1081,7 @@ pub(crate) unsafe fn instance_liveness(instance: *mut RInstance) -> InstanceLive
 pub(crate) struct BorrowedRuntime {
     pointer: *mut RInstance,
     liveness: InstanceLiveness,
+    generation: InstanceGeneration,
     heap: super::heap::HeapIdentity,
 }
 
@@ -935,12 +1089,15 @@ impl BorrowedRuntime {
     pub(crate) fn snapshots(
         &self,
     ) -> (
-        std::ptr::NonNull<RInstance>,
+        super::owner::BorrowedOwnerRef,
         InstanceLiveness,
         super::heap::HeapIdentity,
     ) {
         (
-            std::ptr::NonNull::new(self.pointer).expect("installed borrowed runtime"),
+            super::owner::BorrowedOwnerRef::new(
+                std::ptr::NonNull::new(self.pointer).expect("installed borrowed runtime"),
+                self.generation,
+            ),
             self.liveness.clone(),
             self.heap.clone(),
         )
@@ -960,6 +1117,7 @@ impl CurrentRuntime {
             None => Self::Borrowed(BorrowedRuntime {
                 pointer,
                 liveness: unsafe { instance_liveness(pointer) },
+                generation: unsafe { instance_generation(pointer) },
                 // SAFETY: installation requires a live standalone instance.
                 // Snapshot the immutable heap capability before publishing it.
                 heap: unsafe { (*pointer).heap_identity.clone() },

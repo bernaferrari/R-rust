@@ -39,7 +39,7 @@ fn utf8_sub_bytes(bytes: &[u8]) -> String {
 }
 
 fn reserve_dcf(bytes: usize) -> crate::sexp::memory::TransientReservation {
-    unsafe { crate::sexp::owner::OwnerToken::current() }
+    crate::sexp::owner::OwnerToken::current()
         .ok()
         .and_then(|owner| {
             owner

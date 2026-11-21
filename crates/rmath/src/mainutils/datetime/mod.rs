@@ -84,8 +84,7 @@ pub use strptime::*;
 /// only run while the evaluator holds a session.
 fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
     crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: datetime helpers only run inside evaluated R calls.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(error.to_string())),
     )
 }

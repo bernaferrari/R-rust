@@ -257,9 +257,7 @@ pub fn inherits_class(x: SEXP, class_name: &str) -> bool {
 /// Audited boundary: connection builtins only run inside evaluated R
 /// calls, where the current runtime owner is live.
 pub(crate) fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
-    // SAFETY: connection builtins only run inside evaluated R calls.
-    unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| r_error(&error.to_string()))
+    crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| r_error(&error.to_string()))
 }
 
 /// Audited boundary: copy UTF-8 text into a fresh CHARSXP node.

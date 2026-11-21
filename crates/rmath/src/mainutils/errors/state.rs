@@ -31,9 +31,11 @@ pub(super) fn with_error_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
-    // SAFETY: the current instance pointer is live for the closure; the lend
-    // covers only its error-state fields and no callback reenters it.
-    instance::with_required_current_instance(|instance| unsafe { f(&mut (*instance).error_state) })
+    // SAFETY: the current instance pointer is live for the closure; the
+    // checked lend covers only its error-state fields.
+    instance::with_required_current_instance(|instance| unsafe {
+        instance::with_error_state_in(instance, f)
+    })
 }
 
 /// Like [`with_error_state`], but `None` without an active instance.
@@ -41,9 +43,11 @@ pub(super) fn with_current_error_state<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
-    // SAFETY: the current instance pointer is live for the closure; the lend
-    // covers only its error-state fields and no callback reenters it.
-    instance::with_current_instance(|instance| unsafe { f(&mut (*instance).error_state) })
+    // SAFETY: the current instance pointer is live for the closure; the
+    // checked lend covers only its error-state fields.
+    instance::with_current_instance(|instance| unsafe {
+        instance::with_error_state_in(instance, f)
+    })
 }
 
 pub(super) fn r_warn_length() -> c_int {

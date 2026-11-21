@@ -8,8 +8,7 @@ struct CoercionEntry<'s> {
 }
 impl<'s> CoercionEntry<'s> {
     fn new(source: &Sexp<'s>) -> Result<Self, String> {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .map_err(|error| error.to_string())?;
+        let owner = crate::sexp::owner::OwnerToken::current().map_err(|error| error.to_string())?;
         let pin = owner.pin().map_err(|error| error.to_string())?;
         let factory = owner.node_factory();
         factory

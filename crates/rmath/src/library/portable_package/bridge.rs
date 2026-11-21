@@ -6,11 +6,10 @@ use crate::sexp::{
 
 pub(super) fn base() -> SexpResult<Sexp<'static>> {
     // SAFETY: invoked only by the translated package/session entry while active.
-    unsafe {
-        OwnerToken::current()?
-            .sexp(crate::sexp::globals::R_BaseEnv())?
-            .into_owned()
-    }
+
+    OwnerToken::current()?
+        .sexp(crate::sexp::globals::R_BaseEnv())?
+        .into_owned()
 }
 
 pub(super) fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {

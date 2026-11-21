@@ -44,73 +44,64 @@ fn choose_ops_method(
     reverse: bool,
     rho: SEXP,
 ) -> bool {
-    unsafe {
-        let newrho = NewEnvironment(R_NilValue(), rho, R_NilValue());
-        let _rho_guard = protect(newrho);
-        let reverse_value = Rf_ScalarLogical(if reverse { TRUE } else { FALSE });
-        let _reverse_guard = protect(reverse_value);
-        let mut actuals = PairlistBuilder::new();
-        for (name, value) in [
-            (c"x", x),
-            (c"y", y),
-            (c"mx", mx),
-            (c"my", my),
-            (c"cl", call),
-            (c"rev", reverse_value),
-        ] {
-            let symbol = crate::sexp::symbol::install_str(name.to_str().unwrap());
-            crate::sexp::envir::defineVar(symbol, value, newrho);
-            let named = crate::sexp::accessors::NAMED(value);
-            if named < 2 {
-                crate::sexp::accessors::SET_NAMED(value, named + 1);
-            }
-            actuals
-                .push_cell(
-                    actuals
-                        .wrap(symbol)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    None,
-                )
-                .unwrap_or_else(|_| {
-                    crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
-                });
+    let newrho = NewEnvironment(R_NilValue(), rho, R_NilValue());
+    let _rho_guard = protect(newrho);
+    let reverse_value = Rf_ScalarLogical(if reverse { TRUE } else { FALSE });
+    let _reverse_guard = protect(reverse_value);
+    let mut actuals = PairlistBuilder::new();
+    for (name, value) in [
+        (c"x", x),
+        (c"y", y),
+        (c"mx", mx),
+        (c"my", my),
+        (c"cl", call),
+        (c"rev", reverse_value),
+    ] {
+        let symbol = crate::sexp::symbol::install_str(name.to_str().unwrap());
+        crate::sexp::envir::defineVar(symbol, value, newrho);
+        let named = crate::sexp::accessors::NAMED(value);
+        if named < 2 {
+            crate::sexp::accessors::SET_NAMED(value, named + 1);
         }
-        let actuals_owner = actuals.finish().unwrap_or_else(|_| {
-            crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
-        });
-        let actuals = actuals_owner.as_raw();
-        let head = Rf_lang3(
-            crate::sexp::symbol::install_str("::"),
-            crate::sexp::symbol::install_str("base"),
-            crate::sexp::symbol::install_str("chooseOpsMethod"),
-        );
-        let _head_guard = protect(head);
-        let expression = Rf_lang2(head, R_NilValue());
-        SETCDR(expression, actuals);
-        let _expression_guard = protect(expression);
-        let fun = R_findVar(
-            crate::sexp::symbol::install_str("chooseOpsMethod"),
-            super::runtime::base_env(),
-        );
-        let result = crate::eval::closure::applyClosure(
-            expression,
-            fun,
-            actuals,
-            newrho,
-            R_NilValue(),
-            TRUE,
-        );
-        let _result_guard = protect(result);
-        result != R_NilValue() && crate::mainutils::coerce::asRbool(result, call) != FALSE
+        actuals
+            .push_cell(
+                actuals
+                    .wrap(symbol)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                None,
+            )
+            .unwrap_or_else(|_| {
+                crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
+            });
     }
+    let actuals_owner = actuals.finish().unwrap_or_else(|_| {
+        crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
+    });
+    let actuals = actuals_owner.as_raw();
+    let head = Rf_lang3(
+        crate::sexp::symbol::install_str("::"),
+        crate::sexp::symbol::install_str("base"),
+        crate::sexp::symbol::install_str("chooseOpsMethod"),
+    );
+    let _head_guard = protect(head);
+    let expression = Rf_lang2(head, R_NilValue());
+    SETCDR(expression, actuals);
+    let _expression_guard = protect(expression);
+    let fun = R_findVar(
+        crate::sexp::symbol::install_str("chooseOpsMethod"),
+        super::runtime::base_env(),
+    );
+    let result =
+        crate::eval::closure::applyClosure(expression, fun, actuals, newrho, R_NilValue(), TRUE);
+    let _result_guard = protect(result);
+    result != R_NilValue() && crate::mainutils::coerce::asRbool(result, call) != FALSE
 }
 
 fn method_name_is(method: SEXP, name: &[u8]) -> bool {
     if method.is_null() || TYPEOF(method) != SEXPTYPE::SYMSXP {
         return false;
     }
-    // SAFETY: the translated caller retains the active runtime.
-    let Ok(owner) = (unsafe { crate::sexp::owner::OwnerToken::current() }) else {
+    let Ok(owner) = crate::sexp::owner::OwnerToken::current() else {
         return false;
     };
     owner
@@ -282,7 +273,7 @@ fn admit_summary_dispatch_result<'s>(factory: &SessionNodeFactory<'s>, value: SE
 /// The caller retains this owner for `'s` and excludes overlapping payload loans.
 pub(super) fn active_argument_factory<'s>() -> SessionNodeFactory<'s> {
     SessionNodeFactory::new(
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     )
 }
@@ -537,9 +528,8 @@ fn evalArgs<'a>(
     call: SEXP,
     _argument_offset: c_int,
 ) -> Sexp<'a> {
-    // SAFETY: this translated dispatch boundary retains the active owner.
     let factory = SessionNodeFactory::new(
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     );
     if dropmissing != 0 {

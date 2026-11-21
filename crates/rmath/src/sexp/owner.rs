@@ -157,14 +157,15 @@ impl OwnerPin {
 
     /// Lend this owner's error state for a strictly-local update.
     ///
-    /// Same strictly-local lend contract as [`Self::with_output_capture`].
+    /// Same strictly-local lend contract as [`Self::with_output_capture`]. A
+    /// nested lend of the same owner's error state panics instead of aliasing.
     pub(crate) fn with_error_state<R>(
         &self,
         f: impl FnOnce(&mut super::instance::ErrorState) -> R,
     ) -> R {
-        // SAFETY: the pin retains the original live allocation; this is a
-        // strictly-local single-field lend under the contract above.
-        unsafe { f(&mut (*self.as_ptr()).error_state) }
+        // SAFETY: the pin retains the original allocation; the checked lend
+        // excludes any other `&mut ErrorState` for this owner.
+        unsafe { super::instance::with_error_state_in(self.as_ptr(), f) }
     }
 }
 
@@ -280,8 +281,12 @@ impl<'session> StoredOwner<'session> {
             owner.pin()?;
             return Ok(Self::Managed(owner.clone()));
         }
-        let pointer = value.session_owner_ptr.ok_or(SexpError::RootUnavailable)?;
-        // The borrowed view retains its explicitly proven fixture lifetime.
+        let pointer = value
+            .session_owner_ptr
+            .and_then(BorrowedOwnerRef::live)
+            .ok_or(SexpError::RootUnavailable)?;
+        // SAFETY: `live` just validated the owner generation, so the owner
+        // has not begun teardown and its generation can be snapshotted.
         Ok(Self::from_token(unsafe {
             OwnerToken::from_raw(pointer.as_ptr())
         }))
@@ -308,10 +313,13 @@ impl<'session> StoredOwner<'session> {
         }
     }
 
-    pub(crate) fn borrowed_pointer(&self) -> Option<NonNull<RInstance>> {
+    pub(crate) fn borrowed_pointer(&self) -> Option<BorrowedOwnerRef> {
         match self {
             Self::Managed(_) => None,
-            Self::Borrowed { token, .. } => NonNull::new(token.as_ptr()),
+            Self::Borrowed { token, .. } => Some(BorrowedOwnerRef {
+                pointer: token.pointer,
+                generation: token.generation,
+            }),
         }
     }
 
@@ -401,35 +409,117 @@ impl<'session> StoredOwner<'session> {
     }
 }
 
+/// A borrowed (non-managed) owner address recorded in a value, paired with
+/// the owner generation observed when the value was produced. Dereferencing
+/// requires [`Self::live`], so a value that outlives its borrowed fixture
+/// owner can no longer reach the freed instance.
+#[derive(Clone, Copy)]
+pub(crate) struct BorrowedOwnerRef {
+    pointer: NonNull<RInstance>,
+    generation: super::instance::InstanceGeneration,
+}
+
+impl std::fmt::Debug for BorrowedOwnerRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BorrowedOwnerRef")
+            .field("pointer", &self.pointer)
+            .field("live", &self.generation.is_live())
+            .finish()
+    }
+}
+
+impl BorrowedOwnerRef {
+    pub(crate) fn new(
+        pointer: NonNull<RInstance>,
+        generation: super::instance::InstanceGeneration,
+    ) -> Self {
+        Self {
+            pointer,
+            generation,
+        }
+    }
+
+    /// Identity comparison only; never dereference this address directly.
+    pub(crate) fn identity(self) -> NonNull<RInstance> {
+        self.pointer
+    }
+
+    /// The owner address while its original owner has not begun teardown.
+    pub(crate) fn live(self) -> Option<NonNull<RInstance>> {
+        self.generation.is_live().then_some(self.pointer)
+    }
+}
+
+/// A copyable, self-validating handle to one interpreter owner.
+///
+/// Soundness does not rest on `'session`: the token snapshots the owner's
+/// [`InstanceGeneration`](super::instance::InstanceGeneration) while the
+/// pointer is known live, and every method that dereferences the pointer first
+/// checks that generation. The owner revokes its generation before any field
+/// is torn down or freed, and owners are thread-confined while tokens are
+/// `!Send` (`PhantomData<Rc<()>>`), so nothing can revoke the owner between a
+/// successful check and the immediately following field access. A token
+/// retained past teardown therefore reports `RootUnavailable` / `None` (or
+/// raises an R error for the infallible field lends) instead of reading freed
+/// memory, and a different owner later allocated at the same address has a
+/// different generation.
 #[derive(Clone, Copy)]
 pub(crate) struct OwnerToken<'session> {
     pointer: NonNull<RInstance>,
+    generation: super::instance::InstanceGeneration,
     _lifetime: PhantomData<(&'session RSession, Rc<()>)>,
 }
 
 impl<'session> OwnerToken<'session> {
-    /// Bridge an already-proven raw owner into the checked lifetime layer.
+    /// Bridge a raw owner pointer into the checked token layer.
     ///
     /// # Safety
-    /// The original writable owner allocation outlives `'session`. No whole
-    /// instance or arena borrow may overlap token operations. Rust payload
-    /// loans must exclude mutation and R execution through this token.
+    /// `pointer` refers to a live `RInstance` allocation at the time of the
+    /// call (its generation is read here) whose address stays stable while
+    /// it is live. Later token operations validate liveness themselves.
     pub(crate) unsafe fn from_raw(pointer: *mut RInstance) -> Self {
+        let pointer = NonNull::new(pointer).expect("live owner pointer");
         Self {
-            pointer: NonNull::new(pointer).expect("live owner pointer"),
+            // SAFETY: the caller guarantees the owner is live right now.
+            generation: unsafe { super::instance::instance_generation(pointer.as_ptr()) },
+            pointer,
             _lifetime: PhantomData,
         }
     }
 
-    /// Capture the explicitly active owner at a translated raw boundary.
+    /// Capture this thread's active owner.
     ///
-    /// # Safety
-    /// The caller retains this writable owner for `'session` and excludes
-    /// overlapping instance, arena and payload loans across token operations.
-    pub(crate) unsafe fn current() -> SexpResult<Self> {
+    /// The `'static` lifetime is not a liveness claim: the token re-validates
+    /// its owner generation before every dereference, so retaining it past
+    /// runtime teardown yields errors rather than undefined behaviour.
+    pub(crate) fn current() -> SexpResult<OwnerToken<'static>> {
         let pointer = super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
-        // SAFETY: the raw entry boundary supplies the original owner lifetime.
-        Ok(unsafe { Self::from_raw(pointer) })
+        // SAFETY: `current_instance_ptr` only reports an installed owner whose
+        // liveness witness is still live, and nothing runs between that check
+        // and the generation snapshot.
+        Ok(unsafe { OwnerToken::from_raw(pointer) })
+    }
+
+    /// Whether the token's original owner has not begun teardown.
+    pub(crate) fn is_live(self) -> bool {
+        self.generation.is_live()
+    }
+
+    /// `RootUnavailable` once the original owner has been revoked.
+    pub(crate) fn require_live(self) -> SexpResult<()> {
+        if self.is_live() {
+            Ok(())
+        } else {
+            Err(SexpError::RootUnavailable)
+        }
+    }
+
+    /// Infallible field lends raise an R error on a revoked owner, matching
+    /// how their call sites already report unavailable owners.
+    fn require_live_or_r_error(self) {
+        if let Err(error) = self.require_live() {
+            super::context::r_error(error.to_string());
+        }
     }
 
     /// Run `operation` with a token for this thread's active runtime.
@@ -463,9 +553,9 @@ impl<'session> OwnerToken<'session> {
         if super::memory::is_arena_lent(self.as_ptr()) {
             return Err(SexpError::OwnerNotActive);
         }
-        // SAFETY: the lifetime-bound token retains the owner, and the checked
-        // lend state excludes an overlapping arena loan. Field-local lending
-        // ends before deferred callbacks and GC run.
+        // SAFETY: `require_active` just validated the owner generation, and
+        // the checked lend state excludes an overlapping arena loan.
+        // Field-local lending ends before deferred callbacks and GC run.
         let result = unsafe { super::memory::with_arena_in(self.as_ptr(), f) };
         if let Some(pin) = &_pin {
             pin.require_live()?;
@@ -478,32 +568,55 @@ impl<'session> OwnerToken<'session> {
         self.pointer.as_ptr()
     }
 
+    /// The owner's managed capability; `None` for a borrowed fixture owner or
+    /// once the original owner has been revoked.
     pub(crate) fn weak_owner(self) -> Option<WeakOwner> {
-        // SAFETY: this token is created only at a lifetime-bound raw entry.
+        if !self.is_live() {
+            return None;
+        }
+        // SAFETY: the generation check above proves the owner has not begun
+        // teardown, and this short field clone runs no callback.
         unsafe { (*self.as_ptr()).runtime_owner.clone() }
     }
 
+    /// Pin a managed owner (`None` for a live borrowed fixture owner).
     pub(crate) fn pin(self) -> SexpResult<Option<OwnerPin>> {
+        self.require_live()?;
         self.weak_owner().map(|owner| owner.pin()).transpose()
     }
 
     /// Capture immutable allocation-domain and availability capabilities before
     /// lending the arena. Later node wrapping needs no instance field access.
+    ///
+    /// Raises an R error once the original owner has been revoked; see
+    /// [`Self::try_node_factory`] for the fallible form.
     pub(crate) fn node_factory(self) -> super::object::SessionNodeFactory<'session> {
+        self.try_node_factory()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    }
+
+    /// Fallible [`Self::node_factory`]: `RootUnavailable` on a revoked owner.
+    pub(crate) fn try_node_factory(
+        self,
+    ) -> SexpResult<super::object::SessionNodeFactory<'session>> {
+        self.require_live()?;
         if let Some(owner) = self.weak_owner() {
-            return owner
-                .node_factory()
-                .expect("live managed node factory owner");
+            return owner.node_factory();
         }
-        // SAFETY: the token's lifetime retains the physical owner. This short
-        // field access ends before the factory can be used inside an arena lend.
+        // SAFETY: the generation check above proves the owner is live. This
+        // short field access ends before the factory can be used inside an
+        // arena lend.
         let (heap, availability) = unsafe {
             (
                 (*self.as_ptr()).heap_identity.clone(),
                 super::instance::instance_liveness(self.as_ptr()),
             )
         };
-        super::object::SessionNodeFactory::from_snapshot(self, heap, availability)
+        Ok(super::object::SessionNodeFactory::from_snapshot(
+            self,
+            heap,
+            availability,
+        ))
     }
 
     /// Validate and root a pointer in this owner, even if another is active.
@@ -519,8 +632,10 @@ impl<'session> OwnerToken<'session> {
         self,
         f: impl FnOnce(&std::cell::RefCell<super::output::OutputCaptureState>) -> R,
     ) -> R {
-        // SAFETY: the token's lifetime retains the owner; this is a
-        // strictly-local single-field lend under the contract above.
+        self.require_live_or_r_error();
+        // SAFETY: the owner generation was just validated; this is a
+        // strictly-local shared lend of a `RefCell` (interior mutability is
+        // dynamically checked), so nested lends cannot alias mutably.
         unsafe { f(&(*self.as_ptr()).output_capture) }
     }
 
@@ -530,13 +645,15 @@ impl<'session> OwnerToken<'session> {
         self,
         f: impl FnOnce(&crate::mainutils::connections::ConnectionsState) -> R,
     ) -> R {
-        // SAFETY: the token's lifetime retains the owner; this is a
-        // strictly-local single-field lend under the contract above.
+        self.require_live_or_r_error();
+        // SAFETY: the owner generation was just validated; this is a
+        // strictly-local shared lend (no `&mut` path to this field exists).
         unsafe { f(&(*self.as_ptr()).connections_state) }
     }
 
     /// Collection callbacks use ambient R dispatch, so require this owner active.
     pub(crate) fn require_active(self) -> SexpResult<()> {
+        self.require_live()?;
         if self.weak_owner().is_some_and(|owner| !owner.is_live()) {
             return Err(SexpError::RootUnavailable);
         }
@@ -550,7 +667,8 @@ impl<'session> OwnerToken<'session> {
     pub(crate) fn minor_gc(self) -> SexpResult<(usize, usize)> {
         let _pin = self.pin()?;
         self.require_active()?;
-        // SAFETY: the token retains its live owner and excludes Rust payload loans.
+        // SAFETY: `require_active` validated the owner generation; Rust
+        // payload loans are excluded by the collector's own lend checks.
         let result = unsafe { super::gengc::minor_gc_in(self.as_ptr()) };
         if let Some(pin) = &_pin {
             pin.require_live()?;
@@ -790,5 +908,136 @@ mod tests {
             ));
             assert_eq!(reads.get(), 1);
         }
+    }
+
+    #[test]
+    fn live_token_paths_are_unchanged() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let token = OwnerToken::current().unwrap();
+            assert!(token.is_live());
+            assert!(token.require_active().is_ok());
+            assert!(token.weak_owner().is_some());
+            assert!(token.pin().unwrap().is_some());
+            assert!(token.try_node_factory().is_ok());
+            assert!(!token.with_output_capture(|capture| capture.borrow().is_capturing()));
+            let _ = token.with_connections_state(|state| state.sink.sink_number);
+            let pointer = token
+                .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+                .unwrap();
+            assert!(!pointer.is_null());
+            assert!(token.minor_gc().is_ok());
+        });
+    }
+
+    #[test]
+    fn token_retained_past_runtime_teardown_reports_unavailable() {
+        let session = RSession::new_for_gc_tests();
+        // `current()` is safe and yields a `'static` token that safe code can
+        // keep after the runtime is gone.
+        let token = session.with_active(|| OwnerToken::current().unwrap());
+        assert!(token.is_live());
+        drop(session);
+        // A later runtime may reuse the freed address; the generation differs.
+        let replacement = RSession::new_for_gc_tests();
+        replacement.with_active(|| {
+            assert!(!token.is_live());
+            assert!(token.weak_owner().is_none());
+            assert!(matches!(
+                token.require_live(),
+                Err(SexpError::RootUnavailable)
+            ));
+            assert!(matches!(token.pin(), Err(SexpError::RootUnavailable)));
+            assert!(matches!(
+                token.require_active(),
+                Err(SexpError::RootUnavailable)
+            ));
+            assert!(matches!(
+                token.try_node_factory(),
+                Err(SexpError::RootUnavailable)
+            ));
+            assert!(matches!(
+                token.with_arena(|_| ()),
+                Err(SexpError::RootUnavailable)
+            ));
+            assert!(matches!(token.minor_gc(), Err(SexpError::RootUnavailable)));
+            assert!(matches!(token.full_gc(), Err(SexpError::RootUnavailable)));
+            // Infallible lends raise an R error rather than dereferencing.
+            let lend = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                token.with_output_capture(|_| ())
+            }));
+            assert!(lend.is_err());
+            // The replacement runtime's own token is unaffected.
+            assert!(OwnerToken::current().unwrap().require_active().is_ok());
+        });
+    }
+
+    #[test]
+    fn token_rejects_explicitly_closed_runtime() {
+        let mut session = RSession::new_for_gc_tests();
+        let token = session.with_active(|| OwnerToken::current().unwrap());
+        session.close();
+        assert!(!token.is_live());
+        assert!(token.weak_owner().is_none());
+        assert!(matches!(token.pin(), Err(SexpError::RootUnavailable)));
+        drop(session);
+        assert!(!token.is_live());
+    }
+
+    #[test]
+    fn nested_error_state_lend_is_rejected() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let pin = OwnerToken::current().unwrap().pin().unwrap().unwrap();
+            let nested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pin.with_error_state(|_outer| pin.with_error_state(|_inner| ()))
+            }));
+            assert!(nested.is_err(), "a second &mut ErrorState must not be lent");
+            assert!(!super::super::instance::is_error_state_lent(pin.as_ptr()));
+            // The unwind released the outer lend; normal lends still work.
+            pin.with_error_state(|state| state.toplevel_expr_no = 3);
+            assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 3);
+            pin.with_error_state(|state| state.toplevel_expr_no = 0);
+        });
+    }
+
+    #[test]
+    fn borrowed_owner_value_rejects_revoked_fixture_owner() {
+        let mut instance = Box::new(super::super::instance::RInstance::new());
+        let pointer: *mut RInstance = &mut *instance;
+        // SAFETY: the boxed fixture is live and pinned for this test.
+        let token = unsafe { OwnerToken::from_raw(pointer) };
+        assert!(token.weak_owner().is_none(), "standalone fixture owner");
+        // SAFETY: the fixture stays live across the activation.
+        let value = unsafe {
+            crate::sexp::session::with_instance_active(pointer, || {
+                let raw = token
+                    .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+                    .unwrap();
+                token.sexp(raw).unwrap()
+            })
+        };
+        assert!(
+            value
+                .session_owner_ptr
+                .is_some_and(|owner| owner.live().is_some())
+        );
+        assert!(StoredOwner::from_value(&value).is_ok());
+        // SAFETY: the fixture is live; nothing borrows its availability field.
+        unsafe { super::super::instance::revoke_instance_availability(pointer) };
+        assert!(!token.is_live());
+        assert!(
+            value
+                .session_owner_ptr
+                .is_some_and(|owner| owner.live().is_none())
+        );
+        assert!(matches!(
+            StoredOwner::from_value(&value),
+            Err(SexpError::RootUnavailable) | Err(SexpError::StaleAllocation)
+        ));
+        assert!(value.node_factory().is_err());
+        drop(value);
+        drop(instance);
+        assert!(!token.is_live());
     }
 }

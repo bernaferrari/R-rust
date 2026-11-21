@@ -196,12 +196,8 @@ impl<'a> PrimitiveCall<'a> {
         let factory = if let Ok(factory) = checked_factory {
             factory
         } else {
-            // SAFETY: raw evaluator entry points retain the active owner for
-            // the application lifetime. Normalize their internal raw views
-            // into counted handles before any provider or primitive runs.
             SessionNodeFactory::new(
-                unsafe { crate::sexp::owner::OwnerToken::current() }
-                    .map_err(|error| error.to_string())?,
+                crate::sexp::owner::OwnerToken::current().map_err(|error| error.to_string())?,
             )
         };
         factory

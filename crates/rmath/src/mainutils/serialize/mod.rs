@@ -131,8 +131,7 @@ fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> b
 /// Audited boundary: serialize builtins only run inside evaluated R calls,
 /// where the current runtime owner is live.
 fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
-    // SAFETY: serialize builtins only run inside evaluated R calls.
-    unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap_or_else(|e| error(&e.to_string()))
+    crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()))
 }
 
 fn call_arg_tag_name(node: SEXP) -> Option<String> {

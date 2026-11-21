@@ -360,9 +360,7 @@ pub(super) fn make_condition(
     use crate::sexp::object::{SessionNodeFactory, SexpError, SexpMut, SexpResult};
 
     let build = || -> SexpResult<crate::sexp::object::Sexp<'_>> {
-        // SAFETY: the translated condition entry retains the active owner.
-        let factory =
-            SessionNodeFactory::new(unsafe { crate::sexp::owner::OwnerToken::current() }?);
+        let factory = SessionNodeFactory::new(crate::sexp::owner::OwnerToken::current()?);
         let call = if call.is_null() {
             factory.nil()
         } else {

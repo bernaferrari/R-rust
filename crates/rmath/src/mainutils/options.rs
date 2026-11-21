@@ -327,9 +327,7 @@ fn mk_string_from_char(s: SEXP) -> SEXP {
 
 /// Active owner for options storage.
 fn current_owner() -> SexpResult<OwnerToken<'static>> {
-    // SAFETY: options entry points run on the active original owner and hold
-    // no instance, arena or payload loan across token operations.
-    unsafe { OwnerToken::current() }
+    OwnerToken::current()
 }
 
 /// asChar -- get the first string element as a CHARSXP.

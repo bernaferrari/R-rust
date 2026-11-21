@@ -12,7 +12,7 @@ thread_local! {
 
 fn assert_installations_cleared() {
     assert!(super::super::instance::current_instance_ptr().is_none());
-    assert!(unsafe { rmath_nmath::rng::swap_rng(None) }.is_none());
+    assert!(rmath_nmath::rng::swap_rng(None).is_none());
     let mut temporary = rmath_nmath::MathState::default();
     let previous = rmath_nmath::state::replace_state(&mut temporary);
     rmath_nmath::state::restore_state(None);
@@ -81,7 +81,7 @@ fn collection_cleanup_skips_retired_owner_for_full_minor_and_pending_gc() {
         // An environment binding makes the explicit collection preamble add a
         // real temporary protection entry, whose cleanup must skip a dead owner.
         let value = session
-            .sexp(unsafe { super::super::constructors::Rf_ScalarInteger(39) })
+            .sexp(super::super::constructors::Rf_ScalarInteger(39))
             .unwrap();
         assert!(session.define_var("protected_binding", value));
         // Only fixture setup uses raw runtime state. The triggering collection

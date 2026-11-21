@@ -29,7 +29,7 @@ fn formula_arguments<'s>(
     let head = factory
         .wrap(unsafe { crate::sexp::symbol::Rf_install(c"~".as_ptr()) })
         .unwrap();
-    let weak = unsafe { crate::sexp::owner::OwnerToken::current() }
+    let weak = crate::sexp::owner::OwnerToken::current()
         .unwrap()
         .weak_owner()
         .unwrap();

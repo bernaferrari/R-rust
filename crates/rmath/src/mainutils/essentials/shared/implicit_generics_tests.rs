@@ -146,7 +146,7 @@ fn registration_parser_collecting_callback(revoke: bool) {
         rc::Rc,
     };
     let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
-    let (owner, instance, namespace) = facade.borrow().as_ref().unwrap().with_active(|| unsafe {
+    let (owner, instance, namespace) = facade.borrow().as_ref().unwrap().with_active(|| {
         let token = crate::sexp::owner::OwnerToken::current().unwrap();
         let owner = token.weak_owner().unwrap();
         let namespace = token

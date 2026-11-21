@@ -764,28 +764,26 @@ unsafe fn workspace_codec(value: SEXP, ascii: bool) -> Option<&'static str> {
     }
 }
 
-unsafe fn workspace_owner() -> crate::sexp::owner::OwnerToken<'static> {
-    unsafe { crate::sexp::owner::OwnerToken::current() }
+fn workspace_owner() -> crate::sexp::owner::OwnerToken<'static> {
+    crate::sexp::owner::OwnerToken::current()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// The evaluated .Internal(save()) path writes an uncompressed workspace.
 pub unsafe fn do_save(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::relop::checkArity(op, args);
-        let owner = workspace_owner();
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        let _args = protect(args);
-        let names = names_from_save_list(CAR(args));
-        let opts = workspace_file::SaveOptions {
-            ascii: workspace_flag(CADDR(args), false),
-            version: workspace_version(CAR(CDR(CDR(CDR(args))))),
-            codec: None,
-            eval_promises: workspace_flag(CAR(CDR(CDR(CDR(CDR(CDR(args)))))), true),
-        };
-        workspace_file::save(owner, &names, CADR(args), CAD5R(args), opts);
-        R_NilValue()
-    }
+    crate::mainutils::relop::checkArity(op, args);
+    let owner = workspace_owner();
+    let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+    let _args = protect(args);
+    let names = names_from_save_list(CAR(args));
+    let opts = workspace_file::SaveOptions {
+        ascii: workspace_flag(CADDR(args), false),
+        version: workspace_version(CAR(CDR(CDR(CDR(args))))),
+        codec: None,
+        eval_promises: workspace_flag(CAR(CDR(CDR(CDR(CDR(CDR(args)))))), true),
+    };
+    workspace_file::save(owner, &names, CADR(args), CAD5R(args), opts);
+    R_NilValue()
 }
 
 /// User-facing save() resolves every requested object before publishing bytes.

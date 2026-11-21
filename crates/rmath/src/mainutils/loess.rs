@@ -33,8 +33,7 @@ fn check_execution() -> Result<(), String> {
 /// Checked node factory bound to the active runtime session.
 fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
     crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: LOESS helpers only run inside evaluated R calls.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(error.to_string())),
     )
 }

@@ -19,7 +19,7 @@ fn stack_error(message: impl Into<String>) -> ! {
 /// # Safety
 /// `value` must be a live native projection at this boundary.
 pub(super) fn own_operand(value: SEXP) -> Sexp<'static> {
-    unsafe { crate::sexp::owner::OwnerToken::current() }
+    crate::sexp::owner::OwnerToken::current()
         .and_then(|owner| owner.sexp(value))
         .and_then(Sexp::into_owned)
         .unwrap_or_else(|error| stack_error(format!("invalid bytecode operand: {error}")))

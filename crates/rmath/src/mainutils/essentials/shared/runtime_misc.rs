@@ -8,21 +8,16 @@ use std::os::raw::c_double;
 
 pub(crate) use crate::sexp::symbol::install_str;
 
-/// Capture the active original owner for checked element access.
-///
-/// SAFETY: these translated helpers run inside the evaluator on the active
-/// original owner; argument pointers arrive rooted by the caller's graph and
-/// no arena or payload loan is held across the acquisition.
+/// Capture the active original owner for checked element access, raising an
+/// R error without one. The `'static` token is sound to retain: every token
+/// operation re-validates the owner generation before dereferencing it.
 pub(crate) fn active_owner() -> OwnerToken<'static> {
     current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Capture the active original owner, reporting a missing owner as an error.
-///
-/// SAFETY: same contract as [`active_owner`]; the evaluator retains the
-/// active owner across the builtin call that reaches these helpers.
 pub(crate) fn current_owner() -> crate::sexp::object::SexpResult<OwnerToken<'static>> {
-    unsafe { OwnerToken::current() }
+    OwnerToken::current()
 }
 
 /// Root a raw SEXP in `owner` for checked element access.

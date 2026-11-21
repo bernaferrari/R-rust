@@ -144,7 +144,7 @@ pub struct Sexp<'a> {
     owner: SexpOwner,
     node: Option<crate::sexp::heap::CheckedNode>,
     pub(crate) runtime_owner: Option<crate::sexp::owner::WeakOwner>,
-    pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
+    pub(crate) session_owner_ptr: Option<crate::sexp::owner::BorrowedOwnerRef>,
     root: Option<std::rc::Rc<crate::sexp::heap::NodeRootLease>>,
     singleton: Option<crate::sexp::globals::SingletonLease>,
     singletons: Option<crate::sexp::globals::SingletonPoolLease>,
@@ -536,11 +536,15 @@ impl<'a> Sexp<'a> {
         if let Some(owner) = &self.runtime_owner {
             return owner.node_factory();
         }
-        let owner = self.session_owner_ptr.ok_or(SexpError::RootUnavailable)?;
+        let owner = self
+            .session_owner_ptr
+            .and_then(crate::sexp::owner::BorrowedOwnerRef::live)
+            .ok_or(SexpError::RootUnavailable)?;
         if self.node.is_none() || self.owner != SexpOwner::Session(owner.as_ptr().addr()) {
             return Err(SexpError::RootUnavailable);
         }
-        // Borrow-bound standalone translated owner; never accepted by into_owned.
+        // Borrowed standalone translated owner; never accepted by into_owned.
+        // SAFETY: `live` just validated the owner generation.
         let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(owner.as_ptr()) };
         let factory = SessionNodeFactory::new(owner);
         factory.wrap(self.ptr)?;
@@ -637,10 +641,11 @@ impl<'a> Sexp<'a> {
         let header = self.header();
         if header.sxpinfo.alt() && header.payload.is_empty() {
             let pin = self.pin_runtime()?;
-            let pointer = pin
-                .as_ref()
-                .map(|owner| owner.as_ptr())
-                .or_else(|| self.session_owner_ptr.map(|owner| owner.as_ptr()));
+            let pointer = pin.as_ref().map(|owner| owner.as_ptr()).or_else(|| {
+                self.session_owner_ptr
+                    .and_then(crate::sexp::owner::BorrowedOwnerRef::live)
+                    .map(|owner| owner.as_ptr())
+            });
             if let Some(owner) = pointer {
                 // The owner is retained by this handle. Each callback runs after
                 // header copying, with no instance or R payload borrow alive.
@@ -857,10 +862,11 @@ impl<'a> Sexp<'a> {
     /// Standalone arenas have no generational collector or ambient owner.
     fn remember_child(&self, child: &Sexp<'_>) -> SexpResult<()> {
         let pin = self.pin_runtime()?;
-        let pointer = pin
-            .as_ref()
-            .map(|owner| owner.as_ptr())
-            .or_else(|| self.session_owner_ptr.map(|owner| owner.as_ptr()));
+        let pointer = pin.as_ref().map(|owner| owner.as_ptr()).or_else(|| {
+            self.session_owner_ptr
+                .and_then(crate::sexp::owner::BorrowedOwnerRef::live)
+                .map(|owner| owner.as_ptr())
+        });
         if let Some(owner) = pointer {
             // SAFETY: the operation pins the owner and both live nodes;
             // check_child_owner precedes this strictly-local state update.

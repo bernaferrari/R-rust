@@ -84,8 +84,7 @@ fn get_R_print_full() -> MutPtr<R_PrintData> {
 /// Checked node factory bound to the active runtime session.
 fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
     crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: matrix printing only runs inside evaluated R calls.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     )
 }

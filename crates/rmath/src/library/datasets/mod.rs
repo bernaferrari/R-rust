@@ -95,12 +95,11 @@ pub(crate) fn fetch(
 
 fn current_base() -> Result<Sexp<'static>, String> {
     // SAFETY: this translated package entry is called under its original active runtime.
-    unsafe {
-        OwnerToken::current()
-            .and_then(|owner| owner.sexp(crate::sexp::globals::R_BaseEnv()))
-            .and_then(Sexp::into_owned)
-            .map_err(|e| e.to_string())
-    }
+
+    OwnerToken::current()
+        .and_then(|owner| owner.sexp(crate::sexp::globals::R_BaseEnv()))
+        .and_then(Sexp::into_owned)
+        .map_err(|e| e.to_string())
 }
 
 fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {

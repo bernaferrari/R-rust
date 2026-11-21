@@ -2973,7 +2973,7 @@ mod tests {
         let foreign = crate::sexp::session::RSession::construct_detached(
             crate::sexp::session::RSession::new_for_gc_tests,
         );
-        let value = foreign.with_active(|| unsafe {
+        let value = foreign.with_active(|| {
             let raw = Rf_ScalarInteger(123);
             crate::sexp::owner::OwnerToken::current()
                 .unwrap()
@@ -3007,7 +3007,7 @@ mod tests {
         let foreign = crate::sexp::session::RSession::construct_detached(
             crate::sexp::session::RSession::new_for_gc_tests,
         );
-        let value = foreign.with_active(|| unsafe {
+        let value = foreign.with_active(|| {
             let raw = Rf_ScalarInteger(19);
             crate::sexp::owner::OwnerToken::current()
                 .unwrap()

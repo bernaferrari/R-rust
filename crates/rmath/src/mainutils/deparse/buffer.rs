@@ -47,7 +47,7 @@ pub unsafe fn writeline(data: *mut LocalParseData) {
     let data = unsafe { &mut *data };
     if !isNull(data.strvec) && data.linenumber < data.maxlines {
         // Capture the output's owning token before allocating the character.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));
         let runtime = owner
             .weak_owner()

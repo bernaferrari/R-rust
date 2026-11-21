@@ -1423,8 +1423,7 @@ pub extern "C" fn killDevice(dev: c_int) {
 /// drops pending output, so an aborted evaluation cannot replace a prior file.
 pub(super) fn close_device(label: c_int) -> Result<(), String> {
     #[cfg(feature = "renderplot-device")]
-    let owner =
-        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
+    let owner = crate::sexp::owner::OwnerToken::current().map_err(|error| error.to_string())?;
     let Some(_removed) = remove_device(label) else {
         return Ok(());
     };

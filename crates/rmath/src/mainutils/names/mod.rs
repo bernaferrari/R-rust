@@ -325,8 +325,7 @@ pub fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         });
     }
     let factory = crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: the do_* boundary retains the active runtime.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     );
     let name_str = factory
@@ -975,8 +974,7 @@ pub fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             false
         } else {
             let factory = crate::sexp::object::SessionNodeFactory::new(
-                // SAFETY: the do_* boundary retains the active runtime.
-                unsafe { crate::sexp::owner::OwnerToken::current() }
+                crate::sexp::owner::OwnerToken::current()
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
             );
             let value = factory
@@ -1020,8 +1018,7 @@ fn builtin_names_from_funtab(internal: bool) -> Vec<Vec<u8>> {
 
 fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
     let factory = crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: the do_* boundary retains the active runtime.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     );
     let result = factory

@@ -56,9 +56,7 @@ fn unique_error(message: impl Into<String>) -> ! {
 /// builtin evaluation, where the current instance is the rightful
 /// allocation owner.
 fn session_factory() -> SexpResult<SessionNodeFactory<'static>> {
-    // SAFETY: builtin evaluation runs on the interpreter thread with a live
-    // current instance; the token only scopes this factory's allocations.
-    let owner = unsafe { OwnerToken::current() }?;
+    let owner = OwnerToken::current()?;
     Ok(owner.node_factory())
 }
 

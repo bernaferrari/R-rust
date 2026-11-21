@@ -46,7 +46,7 @@ fn workspace_save_denial_preserves_admitted_browser_file() {
     session
         .put_browser_file("workspace.RData", b"prior workspace")
         .unwrap();
-    session.with_active(|| unsafe {
+    session.with_active(|| {
         let owner = workspace_owner();
         let envir = R_GlobalEnv();
         let name = crate::sexp::symbol::install_str("workspace_value");
@@ -93,7 +93,7 @@ fn workspace_save_of_unsupported_value_does_not_replace_file() {
     session
         .put_browser_file("workspace.RData", b"prior workspace")
         .unwrap();
-    session.with_active(|| unsafe {
+    session.with_active(|| {
         let owner = workspace_owner();
         let envir = R_GlobalEnv();
         let name = crate::sexp::symbol::install_str("workspace_value");

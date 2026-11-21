@@ -30,8 +30,7 @@ fn error(msg: &str) -> ! {
 /// Checked node factory bound to the active runtime session.
 fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
     crate::sexp::object::SessionNodeFactory::new(
-        // SAFETY: sort helpers only run inside evaluated R calls.
-        unsafe { crate::sexp::owner::OwnerToken::current() }
+        crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
     )
 }

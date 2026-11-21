@@ -28,12 +28,12 @@ pub use writer::*;
 #[cfg(test)]
 impl WriteHashTable {
     pub fn new() -> Self {
-        Self::for_owner(&unsafe { crate::sexp::owner::OwnerToken::current().unwrap() })
+        Self::for_owner(&crate::sexp::owner::OwnerToken::current().unwrap())
     }
 }
 #[cfg(test)]
 impl ReadRefTable {
     pub fn new() -> Self {
-        Self::for_owner(&unsafe { crate::sexp::owner::OwnerToken::current().unwrap() })
+        Self::for_owner(&crate::sexp::owner::OwnerToken::current().unwrap())
     }
 }

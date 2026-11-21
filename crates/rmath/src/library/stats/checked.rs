@@ -21,9 +21,7 @@ pub(crate) fn checked<T>(result: SexpResult<T>) -> T {
 
 /// The runtime owner retained by the active R call.
 pub(crate) fn current_owner() -> OwnerToken<'static> {
-    // SAFETY: stats adapters only run inside evaluated R calls, where the
-    // interpreter retains the current runtime owner across the dispatch.
-    checked(unsafe { OwnerToken::current() })
+    checked(OwnerToken::current())
 }
 
 /// Checked node factory bound to the active runtime session.

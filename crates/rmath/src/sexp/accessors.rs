@@ -681,7 +681,7 @@ unsafe fn raw_value<'s>(
     super::object::Sexp<'s>,
     Option<std::rc::Rc<super::heap::NodeRootLease>>,
 ) {
-    if let Ok(owner) = unsafe { super::owner::OwnerToken::current() }
+    if let Ok(owner) = super::owner::OwnerToken::current()
         && let Ok(value) = owner.sexp(pointer)
     {
         return (value, None);

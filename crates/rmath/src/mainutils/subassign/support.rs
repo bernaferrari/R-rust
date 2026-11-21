@@ -35,10 +35,7 @@ use super::*;
 
 /// The active session's owner token for this raw boundary.
 pub(crate) fn owner() -> crate::sexp::owner::OwnerToken<'static> {
-    // SAFETY: callers are translated entry points inside the active session;
-    // the token's retain/exclusion contract matches the ambient contract the
-    // raw allocators and accessors in this module already require.
-    unsafe { crate::sexp::owner::OwnerToken::current() }
+    crate::sexp::owner::OwnerToken::current()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 

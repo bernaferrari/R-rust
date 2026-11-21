@@ -125,13 +125,22 @@ pub(super) fn owner<'s>(object: &Sexp<'s>) -> SexpResult<OwnerToken<'s>> {
     let pointer = pin
         .as_ref()
         .map(|owner| owner.as_ptr())
-        .or_else(|| object.session_owner_ptr.map(|owner| owner.as_ptr()))
+        .or_else(|| {
+            object
+                .session_owner_ptr
+                .and_then(crate::sexp::owner::BorrowedOwnerRef::live)
+                .map(|owner| owner.as_ptr())
+        })
         .ok_or(SexpError::UncheckedMutation)?;
     // The enclosing operation retains its original pin through callbacks.
     Ok(unsafe { OwnerToken::from_raw(pointer) })
 }
 pub(super) fn activate<T>(owner: OwnerToken<'_>, callback: impl FnOnce() -> T) -> T {
-    // SAFETY: only a lifetime-bound checked owner capability enters here.
+    if let Err(error) = owner.require_live() {
+        crate::sexp::context::r_error(error.to_string());
+    }
+    // SAFETY: the token's owner generation was just validated, so the owner
+    // has not begun teardown when the activation guard snapshots it.
     unsafe { with_instance_active(owner.as_ptr(), callback) }
 }
 
