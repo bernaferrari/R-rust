@@ -79,8 +79,8 @@ pub(crate) const TRC2: f64 = 0.77756015077810708036;
  * ============================== */
 
 #[inline]
-pub(crate) unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
-    unsafe { crate::sexp::accessors::REAL_ELT(x, index) }
+pub(crate) fn numeric(x: SEXP, index: c_int) -> f64 {
+    crate::library::grid::real_elt(x, index as R_xlen_t)
 }
 
 /* ==============================
@@ -138,30 +138,31 @@ pub unsafe fn getDeviceSize(dd: pGEDevDesc) -> (c_double, c_double) {
  * deviceChanged
  * ============================== */
 
-pub(crate) unsafe fn deviceChanged(
+pub(crate) fn deviceChanged(
     devWidthCM: c_double,
     devHeightCM: c_double,
     currentvp: SEXP,
 ) -> bool {
-    unsafe {
-        let mut result = false;
-        let pvpDevWidthCM = VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t);
-        let _width_guard = protect(pvpDevWidthCM);
-        let pvpDevHeightCM = VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t);
-        let _height_guard = protect(pvpDevHeightCM);
-        use crate::sexp::accessors::{REAL_ELT, SET_REAL_ELT};
-        if (REAL_ELT(pvpDevWidthCM, 0) - devWidthCM).abs() > 1e-6 {
-            result = true;
-            SET_REAL_ELT(pvpDevWidthCM, 0, devWidthCM);
-            SET_VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t, pvpDevWidthCM);
-        }
-        if (REAL_ELT(pvpDevHeightCM, 0) - devHeightCM).abs() > 1e-6 {
-            result = true;
-            SET_REAL_ELT(pvpDevHeightCM, 0, devHeightCM);
-            SET_VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t, pvpDevHeightCM);
-        }
-        result
+    let mut result = false;
+    let pvpDevWidthCM = crate::library::grid::vector_elt(currentvp, PVP_DEVWIDTHCM as R_xlen_t);
+    let _width_guard = crate::library::grid::protect(pvpDevWidthCM);
+    let pvpDevHeightCM = crate::library::grid::vector_elt(currentvp, PVP_DEVHEIGHTCM as R_xlen_t);
+    let _height_guard = crate::library::grid::protect(pvpDevHeightCM);
+    if (crate::library::grid::real_elt(pvpDevWidthCM, 0) - devWidthCM).abs() > 1e-6 {
+        result = true;
+        crate::library::grid::set_real_elt(pvpDevWidthCM, 0, devWidthCM);
+        crate::library::grid::set_vector_elt(currentvp, PVP_DEVWIDTHCM as R_xlen_t, pvpDevWidthCM);
     }
+    if (crate::library::grid::real_elt(pvpDevHeightCM, 0) - devHeightCM).abs() > 1e-6 {
+        result = true;
+        crate::library::grid::set_real_elt(pvpDevHeightCM, 0, devHeightCM);
+        crate::library::grid::set_vector_elt(
+            currentvp,
+            PVP_DEVHEIGHTCM as R_xlen_t,
+            pvpDevHeightCM,
+        );
+    }
+    result
 }
 
 /* ==============================
