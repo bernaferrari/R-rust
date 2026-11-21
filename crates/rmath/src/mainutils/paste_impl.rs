@@ -138,11 +138,11 @@ fn PrintDefaults() {
 }
 
 unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeLogical(x, w) }
+    crate::mainutils::printutils::EncodeLogical(x, w)
 }
 
 unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeInteger(x, w) }
+    crate::mainutils::printutils::EncodeInteger(x, w)
 }
 
 unsafe fn EncodeReal0(
@@ -156,7 +156,7 @@ unsafe fn EncodeReal0(
 }
 
 unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeEnvironment(x) }
+    crate::mainutils::printutils::EncodeEnvironment(x)
 }
 
 unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
@@ -1013,7 +1013,7 @@ pub fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 .map(|i| src.try_logical_elt(i).unwrap_or_else(|e| checked(e)))
                 .collect();
             w = if n > 0 {
-                crate::mainutils::format::logical_field_width(&data)
+                crate::mainutils::format::logical_field_width(data)
             } else {
                 1
             };

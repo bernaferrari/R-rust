@@ -199,15 +199,12 @@ unsafe fn encoded_owned(p: *const c_char) -> Option<Vec<u8>> {
 
 /// Owned `EncodeLogical` result.
 pub(crate) fn encode_logical_bytes(x: c_int, w: c_int) -> Option<Vec<u8>> {
-    // SAFETY: EncodeLogical returns a static or session-buffer C string that
-    // is copied before any further encoder call can reuse the buffer.
-    unsafe { encoded_owned(EncodeLogical(x, w)) }
+    Some(encode_logical_text(x, w))
 }
 
 /// Owned `EncodeInteger` result.
 pub(crate) fn encode_integer_bytes(x: c_int, w: c_int) -> Option<Vec<u8>> {
-    // SAFETY: as for `encode_logical_bytes`.
-    unsafe { encoded_owned(EncodeInteger(x, w)) }
+    Some(encode_integer_text(x, w))
 }
 
 /// Owned `EncodeReal0` result.
@@ -218,8 +215,7 @@ pub(crate) fn encode_real0_bytes(
     e: c_int,
     dec: &CStr,
 ) -> Option<Vec<u8>> {
-    // SAFETY: `dec` is a live C string; the result is copied immediately.
-    unsafe { encoded_owned(EncodeReal0(x, w, d, e, dec.as_ptr())) }
+    Some(encode_real0_text(x, w, d, e, dec.to_bytes()))
 }
 
 /// Owned `EncodeComplex` result.
@@ -231,16 +227,14 @@ pub(crate) fn encode_complex_bytes(
     wi: c_int,
     di: c_int,
     ei: c_int,
-    dec: &CStr,
+    _dec: &CStr,
 ) -> Option<Vec<u8>> {
-    // SAFETY: `dec` is a live C string; the result is copied immediately.
-    unsafe { encoded_owned(EncodeComplex(x, wr, dr, er, wi, di, ei, dec.as_ptr())) }
+    Some(encode_complex_text(x, wr, dr, er, wi, di, ei))
 }
 
 /// Owned `EncodeEnvironment` result.
 pub(crate) fn encode_environment_bytes(x: SEXP) -> Option<Vec<u8>> {
-    // SAFETY: the session buffer result is copied immediately.
-    unsafe { encoded_owned(EncodeEnvironment(x)) }
+    Some(encode_environment_text(x))
 }
 
 /// Owned `EncodeString` result.
@@ -257,6 +251,28 @@ pub(crate) fn encode_string_bytes(
 /// Owned `EncodeChar` result.
 pub(crate) fn encode_char_bytes(x: SEXP) -> Option<Vec<u8>> {
     encode_string_bytes(x, 0, 0, Rprt_adj::left)
+}
+
+/// Run `f` on the active session's retained encode buffers.
+fn with_encode_buffers<R>(f: impl FnOnce(&mut PrintUtilsState) -> R) -> R {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        // SAFETY: `inst` is the pinned current instance; `f` only copies
+        // bytes into its buffers and runs no callbacks.
+        f(unsafe { &mut (*inst).eval_state.printutils })
+    })
+}
+
+/// Raw bytes of the print NA string (GNU `CHAR(R_print.na_string)`).
+fn na_string_bytes_from_print(rp: RPrint, noquote: bool) -> Vec<u8> {
+    let na = if noquote {
+        rp.na_string_noquote
+    } else {
+        rp.na_string
+    };
+    if na.is_null() {
+        return b"NA".to_vec();
+    }
+    charsxp_bytes(na as SEXP)
 }
 
 fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
@@ -409,50 +425,43 @@ pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
 ///
 /// Returns a pointer into the active session's print buffer. `x` is the logical
 /// value (NA_LOGICAL for NA), `w` is the minimum field width.
-pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
-    unsafe {
-        let rp = current_R_print();
-        let na = na_string_owned_from_print(rp, false);
+pub fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
+    let text = encode_logical_text(x, w);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_logical, &text))
+}
 
-        // Fast path: exact-width matches
-        if x == NA_LOGICAL {
-            if w == rp.na_width {
-                return na_string_ptr_from_print(rp, false);
-            }
-        } else if x != 0 {
-            if w == 4 {
-                return b"TRUE\0".as_ptr() as *const c_char;
-            }
-        } else {
-            if w == 5 {
-                return b"FALSE\0".as_ptr() as *const c_char;
-            }
+/// Text of [`EncodeLogical`]: GNU right-justified `TRUE`/`FALSE`/NA cell.
+pub(crate) fn encode_logical_text(x: c_int, w: c_int) -> Vec<u8> {
+    let rp = current_R_print();
+    // Fast path: exact-width matches
+    if x == NA_LOGICAL {
+        if w == rp.na_width {
+            return na_string_bytes_from_print(rp, false);
         }
-
-        let val = if x == NA_LOGICAL {
-            na
-        } else if x != 0 {
-            "TRUE".to_string()
-        } else {
-            "FALSE".to_string()
-        };
-
-        let width = w as usize;
-        let mw = if width < NB - 1 { width } else { NB - 1 };
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_logical;
-            // Right-justify into buffer
-            let val_bytes = val.as_bytes();
-            let val_len = val_bytes.len().min(mw);
-            buf.fill(b' ');
-            let start = mw - val_len;
-            buf[start..mw].copy_from_slice(&val_bytes[..val_len]);
-            buf[mw] = 0; // null-terminate
-
-            buf.as_ptr() as *const c_char
-        })
+    } else if x != 0 {
+        if w == 4 {
+            return b"TRUE".to_vec();
+        }
+    } else if w == 5 {
+        return b"FALSE".to_vec();
     }
+
+    let val = if x == NA_LOGICAL {
+        na_string_owned_from_print(rp, false)
+    } else if x != 0 {
+        "TRUE".to_string()
+    } else {
+        "FALSE".to_string()
+    };
+
+    let width = w as usize;
+    let mw = if width < NB - 1 { width } else { NB - 1 };
+    // Right-justify into an `mw`-byte cell.
+    let val_bytes = val.as_bytes();
+    let val_len = val_bytes.len().min(mw);
+    let mut out = vec![b' '; mw];
+    out[mw - val_len..].copy_from_slice(&val_bytes[..val_len]);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -463,29 +472,27 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 ///
 /// Returns a pointer into the active session's print buffer. `x` is the integer
 /// value (NA_INTEGER for NA), `w` is the minimum field width.
-pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
-    unsafe {
-        let val = if x == NA_INTEGER {
-            na_string_str()
-        } else {
-            format!("{}", x)
-        };
-        // GNU `%*d` width is a minimum. `trim=TRUE` passes 0 and must still
-        // emit every digit; `format(100L, width=1)` is `"100"`, not `"1"`.
-        let requested = if w <= 0 { 0 } else { w as usize };
-        let width = val.len().max(requested);
-        let mw = if width < NB - 1 { width } else { NB - 1 };
+pub fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
+    let text = encode_integer_text(x, w);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_integer, &text))
+}
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_integer;
-            let val_len = val.len().min(mw);
-            let start = mw - val_len;
-            buf[..mw].fill(b' ');
-            buf[start..mw].copy_from_slice(&val.as_bytes()[..val_len]);
-            buf[mw] = 0;
-            buf.as_ptr() as *const c_char
-        })
-    }
+/// Text of [`EncodeInteger`]: GNU `%*d` (minimum width) or the NA string.
+pub(crate) fn encode_integer_text(x: c_int, w: c_int) -> Vec<u8> {
+    let val = if x == NA_INTEGER {
+        na_string_str()
+    } else {
+        format!("{}", x)
+    };
+    // GNU `%*d` width is a minimum. `trim=TRUE` passes 0 and must still
+    // emit every digit; `format(100L, width=1)` is `"100"`, not `"1"`.
+    let requested = if w <= 0 { 0 } else { w as usize };
+    let width = val.len().max(requested);
+    let mw = if width < NB - 1 { width } else { NB - 1 };
+    let val_len = val.len().min(mw);
+    let mut out = vec![b' '; mw];
+    out[mw - val_len..].copy_from_slice(&val.as_bytes()[..val_len]);
+    out
 }
 
 /// Detect R's NA real (a NaN with R's specific NA payload).
@@ -549,31 +556,34 @@ fn format_real_printf_style(
 
 /// Write a formatted real into one of the per-instance encode buffers,
 /// replacing "." with the requested decimal mark when needed.
-fn store_real_formatted(buf: &mut [u8], formatted: &str, dec: &str) -> *const c_char {
+/// GNU OutDec substitution of `formatted` as stored in a `cap`-byte buffer.
+fn real_text_with_dec(formatted: &str, dec: &str, cap: usize) -> Vec<u8> {
+    let limit = cap - 1;
+    let mut out = Vec::with_capacity(formatted.len().min(limit));
     if dec != "." {
-        let mut idx = 0usize;
         for ch in formatted.chars() {
             if ch == '.' {
                 for dc in dec.chars() {
-                    if idx < buf.len() - 1 {
-                        buf[idx] = dc as u8;
-                        idx += 1;
+                    if out.len() < limit {
+                        out.push(dc as u8);
                     }
                 }
-            } else {
-                if idx < buf.len() - 1 {
-                    buf[idx] = ch as u8;
-                    idx += 1;
-                }
+            } else if out.len() < limit {
+                out.push(ch as u8);
             }
         }
-        buf[idx] = 0;
     } else {
         let bytes = formatted.as_bytes();
-        let len = bytes.len().min(buf.len() - 1);
-        buf[..len].copy_from_slice(&bytes[..len]);
-        buf[len] = 0;
+        out.extend_from_slice(&bytes[..bytes.len().min(limit)]);
     }
+    out
+}
+
+/// Copy `text` into a retained encode buffer as a NUL-terminated C string.
+fn store_text(buf: &mut [u8], text: &[u8]) -> *const c_char {
+    let len = text.len().min(buf.len() - 1);
+    buf[..len].copy_from_slice(&text[..len]);
+    buf[len] = 0;
     buf.as_ptr() as *const c_char
 }
 
@@ -595,24 +605,24 @@ pub unsafe fn EncodeReal0(
     e: c_int,
     dec: *const c_char,
 ) -> *const c_char {
-    unsafe {
-        let dec_str = if dec.is_null() {
-            "."
-        } else {
-            CStr::from_ptr(dec).to_str().unwrap_or(".")
-        };
+    let dec_bytes: &[u8] = if dec.is_null() {
+        b"."
+    } else {
+        // SAFETY: the caller passes a live NUL-terminated separator.
+        unsafe { CStr::from_ptr(dec) }.to_bytes()
+    };
+    let text = encode_real0_text(x, w, d, e, dec_bytes);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
+}
 
-        // IEEE: normalize signed zero
-        let x = if x == 0.0 { 0.0 } else { x };
-
-        let na = na_string_str();
-        let formatted = format_real_printf_style(x, w, d, e, false, &na);
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_real0;
-            store_real_formatted(buf, &formatted, dec_str)
-        })
-    }
+/// Text of [`EncodeReal0`] with decimal separator `dec`.
+pub(crate) fn encode_real0_text(x: f64, w: c_int, d: c_int, e: c_int, dec: &[u8]) -> Vec<u8> {
+    let dec_str = std::str::from_utf8(dec).unwrap_or(".");
+    // IEEE: normalize signed zero
+    let x = if x == 0.0 { 0.0 } else { x };
+    let na = na_string_str();
+    let formatted = format_real_printf_style(x, w, d, e, false, &na);
+    real_text_with_dec(&formatted, dec_str, 2 * NB)
 }
 
 // ---------------------------------------------------------------------------
@@ -749,7 +759,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
 /// `wr`, `dr`, `er` are width, digits, scientific flag for the real part.
 /// `wi`, `di`, `ei` are width, digits, scientific flag for the imaginary part.
 /// `dec` is the decimal separator string.
-pub unsafe fn EncodeComplex(
+pub fn EncodeComplex(
     x: Rcomplex,
     wr: c_int,
     dr: c_int,
@@ -757,52 +767,49 @@ pub unsafe fn EncodeComplex(
     wi: c_int,
     di: c_int,
     ei: c_int,
-    dec: *const c_char,
+    _dec: *const c_char,
 ) -> *const c_char {
-    unsafe {
-        let dec_str = if dec.is_null() {
-            "."
-        } else {
-            CStr::from_ptr(dec).to_str().unwrap_or(".")
-        };
-        let _ = dec_str;
+    let text = encode_complex_text(x, wr, dr, er, wi, di, ei);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_complex, &text))
+}
 
-        // Normalize signed zeros
-        let r = if x.r == 0.0 { 0.0 } else { x.r };
-        let mut i = if x.i == 0.0 { 0.0 } else { x.i };
+/// Text of [`EncodeComplex`] (the decimal separator is not applied).
+pub(crate) fn encode_complex_text(
+    x: Rcomplex,
+    wr: c_int,
+    dr: c_int,
+    er: c_int,
+    wi: c_int,
+    di: c_int,
+    ei: c_int,
+) -> Vec<u8> {
+    // Normalize signed zeros
+    let r = if x.r == 0.0 { 0.0 } else { x.r };
+    let mut i = if x.i == 0.0 { 0.0 } else { x.i };
 
-        let na = na_string_str();
+    let na = na_string_str();
 
-        // Stock pads the NA string over the combined real+imaginary width
-        // (`"%*s"` with `wr+wi+2`), otherwise encodes each part with its own
-        // width/digits/scientific flag and joins them with the sign and "i".
-        let result = if r_real_is_na(r) || r_real_is_na(i) {
-            let wtot = (wr + wi + 2) as usize;
-            let mw = wtot.min(NB - 1);
-            format!("{na:>mw$}")
-        } else {
-            let re = format_real_printf_style(r, wr, dr, er, false, &na);
-            let flag_neg_im = i < 0.0;
-            if flag_neg_im {
-                i = -i;
-            }
-            let im = format_real_printf_style(i, wi, di, ei, false, &na);
-            // A printed imaginary part of exactly "0" loses its sign, as in
-            // stock (`if (streql(Im, "0")) flagNegIm = FALSE;`).
-            let flag_neg_im = if im == "0" { false } else { flag_neg_im };
-            format!("{}{}{im}i", re, if flag_neg_im { "-" } else { "+" })
-        };
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_complex;
-            let bytes = result.as_bytes();
-            let len = bytes.len().min(NB + 2);
-            buf[..len].copy_from_slice(&bytes[..len]);
-            buf[len] = 0;
-
-            buf.as_ptr() as *const c_char
-        })
-    }
+    // Stock pads the NA string over the combined real+imaginary width
+    // (`"%*s"` with `wr+wi+2`), otherwise encodes each part with its own
+    // width/digits/scientific flag and joins them with the sign and "i".
+    let result = if r_real_is_na(r) || r_real_is_na(i) {
+        let wtot = (wr + wi + 2) as usize;
+        let mw = wtot.min(NB - 1);
+        format!("{na:>mw$}")
+    } else {
+        let re = format_real_printf_style(r, wr, dr, er, false, &na);
+        let flag_neg_im = i < 0.0;
+        if flag_neg_im {
+            i = -i;
+        }
+        let im = format_real_printf_style(i, wi, di, ei, false, &na);
+        // A printed imaginary part of exactly "0" loses its sign, as in
+        // stock (`if (streql(Im, "0")) flagNegIm = FALSE;`).
+        let flag_neg_im = if im == "0" { false } else { flag_neg_im };
+        format!("{}{}{im}i", re, if flag_neg_im { "-" } else { "+" })
+    };
+    let bytes = result.into_bytes();
+    bytes[..bytes.len().min(NB + 2)].to_vec()
 }
 
 // ---------------------------------------------------------------------------
@@ -811,24 +818,22 @@ pub unsafe fn EncodeComplex(
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
 pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
-    unsafe {
-        let prefix_str = if prefix.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(prefix).to_str().unwrap_or_default()
-        };
+    let prefix_bytes: &[u8] = if prefix.is_null() {
+        b""
+    } else {
+        // SAFETY: the caller passes a live NUL-terminated prefix.
+        unsafe { CStr::from_ptr(prefix) }.to_bytes()
+    };
+    let text = encode_raw_text(x, prefix_bytes);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_raw, &text))
+}
 
-        let s = format!("{}{:02x}", prefix_str, x);
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_raw;
-            let bytes = s.as_bytes();
-            let len = bytes.len().min(9);
-            buf[..len].copy_from_slice(&bytes[..len]);
-            buf[len] = 0;
-
-            buf.as_ptr() as *const c_char
-        })
-    }
+/// Text of [`EncodeRaw`]: `prefix` then two lowercase hex digits.
+pub(crate) fn encode_raw_text(x: Rbyte, prefix: &[u8]) -> Vec<u8> {
+    let prefix_str = std::str::from_utf8(prefix).unwrap_or_default();
+    let s = format!("{}{:02x}", prefix_str, x);
+    let bytes = s.into_bytes();
+    bytes[..bytes.len().min(9)].to_vec()
 }
 
 // ---------------------------------------------------------------------------
@@ -959,24 +964,24 @@ pub fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Encode an environment SEXP for display (GNU printutils.c EncodeEnvironment).
-pub unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        let buf = &mut (*inst).eval_state.printutils.encode_environment;
-        let s = if x == crate::sexp::globals::R_GlobalEnv() {
-            "<environment: R_GlobalEnv>".to_string()
-        } else if x == crate::sexp::globals::R_BaseEnv() {
-            "<environment: base>".to_string()
-        } else if x == crate::sexp::globals::R_EmptyEnv() {
-            "<environment: R_EmptyEnv>".to_string()
-        } else {
-            format!("<environment: {:p}>", x)
-        };
-        let bytes = s.as_bytes();
-        let n = bytes.len().min(buf.len() - 1);
-        buf[..n].copy_from_slice(&bytes[..n]);
-        buf[n] = 0;
-        buf.as_ptr() as *const c_char
-    })
+pub fn EncodeEnvironment(x: SEXP) -> *const c_char {
+    let text = encode_environment_text(x);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_environment, &text))
+}
+
+/// Text of [`EncodeEnvironment`].
+pub(crate) fn encode_environment_text(x: SEXP) -> Vec<u8> {
+    let s = if x == crate::sexp::globals::R_GlobalEnv() {
+        "<environment: R_GlobalEnv>".to_string()
+    } else if x == crate::sexp::globals::R_BaseEnv() {
+        "<environment: base>".to_string()
+    } else if x == crate::sexp::globals::R_EmptyEnv() {
+        "<environment: R_EmptyEnv>".to_string()
+    } else {
+        format!("<environment: {:p}>", x)
+    };
+    let bytes = s.into_bytes();
+    bytes[..bytes.len().min(999)].to_vec()
 }
 
 /// Encode an external pointer SEXP for display.

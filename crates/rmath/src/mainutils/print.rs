@@ -1018,7 +1018,7 @@ fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     _t if _t == SEXPTYPE::LGLSXP => {
                         if LENGTH(s_i) == 1 {
                             let x = crate::mainutils::essentials::logical_elt_checked(s_i, 0);
-                            let w = crate::mainutils::format::logical_field_width(&[x]);
+                            let w = crate::mainutils::format::logical_field_width([x]);
                             if let Some(bytes) =
                                 crate::mainutils::printutils::encode_logical_bytes(x, w)
                             {

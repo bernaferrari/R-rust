@@ -43,7 +43,7 @@ fn double_centre_square(a: &mut [c_double], n: usize) {
 /// # Safety
 /// A must be a valid REALSXP matrix pointer.
 pub unsafe fn DoubleCentre(A: SEXP) -> SEXP {
-    let n = unsafe { nrows(A as *const std::ffi::c_void) };
+    let n = nrows(A as *const std::ffi::c_void);
     if n <= 0 {
         return A;
     }

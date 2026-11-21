@@ -468,7 +468,7 @@ fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
 
 /// Get the value of a single option by name (CString).
 /// Returns the SEXP value or R_NilValue if not found.
-fn GetOptionByName(name: &str) -> SEXP {
+pub(crate) fn GetOptionByName(name: &str) -> SEXP {
     InitOptions();
     existing_option(name)
 }

@@ -23,7 +23,7 @@ pub fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let which_len = LENGTH(which);
     let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
 
-    let n = unsafe { nrows(merge as *const std::ffi::c_void) + 1 };
+    let n = nrows(merge as *const std::ffi::c_void) + 1;
 
     // Using 1-based indices
     let mut sing = vec![true; (n + 1) as usize];

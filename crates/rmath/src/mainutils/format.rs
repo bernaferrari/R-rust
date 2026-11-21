@@ -12,7 +12,7 @@
 
 use std::os::raw::{c_double, c_int, c_void};
 
-use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
+use crate::sexp::accessors::STRING_ELT;
 use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP};
 
@@ -413,7 +413,7 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
 }
 
 /// Display width of one character element, including quoting and NA widths.
-pub(crate) unsafe fn string_element_width(element: SEXP, quote: c_int) -> c_int {
+pub(crate) fn string_element_width(element: SEXP, quote: c_int) -> c_int {
     if element.is_null() || element == crate::sexp::globals::R_NaString() {
         if quote != 0 {
             current_R_print().na_width
@@ -432,18 +432,30 @@ pub(crate) unsafe fn string_element_width(element: SEXP, quote: c_int) -> c_int 
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
-    unsafe {
-        let mut xmax: c_int = 0;
+    // SAFETY: the caller guarantees `fieldwidth` is writable.
+    unsafe { *fieldwidth = string_width_s(x, n, quote) };
+}
 
-        for i in 0..n {
-            let si = STRING_ELT(x, i);
-            let l = string_element_width(si, quote);
-            if l > xmax {
-                xmax = l;
-            }
+/// Field width of the first `n` elements of a STRSXP (GNU `formatString`).
+pub(crate) fn string_width_s(x: SEXP, n: R_xlen_t, quote: c_int) -> c_int {
+    let mut xmax: c_int = 0;
+    for i in 0..n {
+        let si = STRING_ELT(x, i);
+        let l = string_element_width(si, quote);
+        if l > xmax {
+            xmax = l;
         }
-        *fieldwidth = xmax;
     }
+    xmax
+}
+
+/// Checked read handle for a live vector in the active session.
+fn checked_vector(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    crate::mainutils::essentials::owner_sexp(crate::mainutils::essentials::active_owner(), x)
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -462,13 +474,15 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
     }
     // SAFETY: the caller guarantees `x` addresses `n` logicals and that
     // `fieldwidth` is writable.
-    unsafe { *fieldwidth = logical_field_width(std::slice::from_raw_parts(x, n as usize)) };
+    unsafe {
+        *fieldwidth = logical_field_width(std::slice::from_raw_parts(x, n as usize).iter().copied())
+    };
 }
 
 /// Slice form of [`formatLogical`]: field width of the logical values `x`.
-pub(crate) fn logical_field_width(x: &[c_int]) -> c_int {
+pub(crate) fn logical_field_width(x: impl IntoIterator<Item = c_int>) -> c_int {
     let mut fieldwidth = 1;
-    for &xi in x {
+    for xi in x {
         if xi == NA_LOGICAL {
             if fieldwidth < current_R_print().na_width {
                 fieldwidth = current_R_print().na_width;
@@ -494,21 +508,20 @@ pub(crate) fn logical_field_width(x: &[c_int]) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        if fieldwidth.is_null() {
-            return;
-        }
-        *fieldwidth = 1;
-        if x.is_null() || n == 0 {
-            return;
-        }
-        let px = LOGICAL(x);
-        let mut tmpfieldwidth = 1;
-        formatLogical(px, n, &mut tmpfieldwidth);
-        if tmpfieldwidth > *fieldwidth {
-            *fieldwidth = tmpfieldwidth;
-        }
+    if fieldwidth.is_null() {
+        return;
     }
+    // SAFETY: `fieldwidth` is non-null and writable by the caller's contract.
+    unsafe { *fieldwidth = logical_width_s(x, n) };
+}
+
+/// Field width of the first `n` elements of a LGLSXP (GNU `formatLogicalS`).
+pub(crate) fn logical_width_s(x: SEXP, n: R_xlen_t) -> c_int {
+    if x.is_null() || n <= 0 {
+        return 1;
+    }
+    let src = checked_vector(x);
+    logical_field_width((0..n).map(|i| checked(src.try_logical_elt(i)))).max(1)
 }
 
 // ---------------------------------------------------------------------------
@@ -765,17 +778,8 @@ fn int_run_width(origin: i128, step: i128, n: R_xlen_t) -> c_int {
 }
 
 fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
-    let mut tmpw = 0;
-    let mut tmpd = 0;
-    let mut tmpe = 0;
-    unsafe {
-        formatReal(REAL(x), n, &mut tmpw, &mut tmpd, &mut tmpe, nsmall);
-    }
-    RealField {
-        w: tmpw,
-        d: tmpd,
-        e: tmpe,
-    }
+    let src = checked_vector(x);
+    real_field(n, nsmall, |i| checked(src.try_real_elt(i)))
 }
 
 // ---------------------------------------------------------------------------
@@ -786,23 +790,26 @@ fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
-    let width = if x.is_null() || n == 0 {
+    let width = integer_width_s(x, n);
+    if !fieldwidth.is_null() {
+        // SAFETY: the caller guarantees a non-null `fieldwidth` is writable.
+        unsafe { *fieldwidth = width };
+    }
+}
+
+/// Field width of the first `n` elements of an INTSXP (GNU `formatIntegerS`).
+pub(crate) fn integer_width_s(x: SEXP, n: R_xlen_t) -> c_int {
+    if x.is_null() || n == 0 {
         1
     } else if let Some(seq) = unexpanded_int(x) {
         // The formula covers every length, including those above `c_int::MAX`.
         // INTEGER() would allocate the payload.
         compact_int_width(seq, 0, n).max(1)
+    } else if n < 0 {
+        1
     } else {
-        let mut tmpfw = 1;
-        unsafe {
-            formatInteger(INTEGER(x), n, &mut tmpfw);
-        }
-        tmpfw.max(1)
-    };
-    unsafe {
-        if !fieldwidth.is_null() {
-            *fieldwidth = width;
-        }
+        let src = checked_vector(x);
+        integer_field_width(n, |i| checked(src.try_integer_elt(i))).max(1)
     }
 }
 
@@ -1252,34 +1259,32 @@ pub unsafe fn formatRealS(
     e: *mut c_int,
     nsmall: c_int,
 ) {
-    unsafe {
-        if !w.is_null() {
-            *w = 0;
+    let fmt = real_field_s(x, n, nsmall);
+    for (out, value) in [(w, fmt.w), (d, fmt.d), (e, fmt.e)] {
+        if !out.is_null() {
+            // SAFETY: the caller guarantees non-null outputs are writable.
+            unsafe { *out = value };
         }
-        if !d.is_null() {
-            *d = 0;
-        }
-        if !e.is_null() {
-            *e = 0;
-        }
-        if x.is_null() || n == 0 {
-            return;
-        }
-        let fmt = if let Some(seq) = unexpanded_real(x) {
-            // The formula covers every length. REAL() would allocate the payload.
-            compact_real_field(seq, 0, n, nsmall)
-        } else {
-            buffered_real_field(x, n, nsmall)
-        };
-        if !w.is_null() && fmt.w > *w {
-            *w = fmt.w;
-        }
-        if !d.is_null() && *d == 0 && fmt.d != 0 {
-            *d = fmt.d;
-        }
-        if !e.is_null() && fmt.e > *e {
-            *e = fmt.e;
-        }
+    }
+}
+
+/// `(w, d, e)` of the first `n` elements of a REALSXP (GNU `formatRealS`).
+pub(crate) fn real_field_s(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
+    if x.is_null() || n == 0 {
+        return RealField { w: 0, d: 0, e: 0 };
+    }
+    let fmt = if let Some(seq) = unexpanded_real(x) {
+        // The formula covers every length. REAL() would allocate the payload.
+        compact_real_field(seq, 0, n, nsmall)
+    } else if n < 0 {
+        RealField { w: 0, d: 0, e: 0 }
+    } else {
+        buffered_real_field(x, n, nsmall)
+    };
+    RealField {
+        w: fmt.w.max(0),
+        d: fmt.d,
+        e: fmt.e.max(0),
     }
 }
 
@@ -1400,44 +1405,28 @@ pub unsafe fn formatComplexS(
     ei: *mut c_int,
     nsmall: c_int,
 ) {
+    let f = complex_field_s(x, n, nsmall);
+    // SAFETY: the caller guarantees all six outputs are writable.
     unsafe {
-        *wr = 0;
-        *wi = 0;
-        *dr = 0;
-        *di = 0;
-        *er = 0;
-        *ei = 0;
-        if x.is_null() || n == 0 {
-            return;
-        }
-        let px = COMPLEX(x);
-        let mut tmpwr: c_int = 0;
-        let mut tmpdr: c_int = 0;
-        let mut tmper: c_int = 0;
-        let mut tmpwi: c_int = 0;
-        let mut tmpdi: c_int = 0;
-        let mut tmpei: c_int = 0;
-        formatComplex(
-            px, n, &mut tmpwr, &mut tmpdr, &mut tmper, &mut tmpwi, &mut tmpdi, &mut tmpei, nsmall,
-        );
-        if tmpwr > *wr {
-            *wr = tmpwr;
-        }
-        if tmpdr != 0 && *dr == 0 {
-            *dr = tmpdr;
-        }
-        if tmper > *er {
-            *er = tmper;
-        }
-        if tmpwi > *wi {
-            *wi = tmpwi;
-        }
-        if tmpdi != 0 && *di == 0 {
-            *di = tmpdi;
-        }
-        if tmpei > *ei {
-            *ei = tmpei;
-        }
+        (*wr, *dr, *er, *wi, *di, *ei) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
+    }
+}
+
+/// Field parameters of the first `n` elements of a CPLXSXP (GNU `formatComplexS`).
+pub(crate) fn complex_field_s(x: SEXP, n: R_xlen_t, nsmall: c_int) -> ComplexField {
+    if x.is_null() || n <= 0 {
+        return ComplexField::default();
+    }
+    let src = checked_vector(x);
+    let data: Vec<Rcomplex> = (0..n).map(|i| checked(src.try_complex_elt(i))).collect();
+    let f = complex_field(&data, nsmall);
+    ComplexField {
+        wr: f.wr.max(0),
+        dr: f.dr,
+        er: f.er.max(0),
+        wi: f.wi.max(0),
+        di: f.di,
+        ei: f.ei.max(0),
     }
 }
 

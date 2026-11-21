@@ -12,7 +12,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use crate::eval::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
+use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
 use crate::sexp::accessors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
@@ -80,48 +80,6 @@ fn libc_isspace(c: c_char) -> bool {
         || byte == b'\r'
         || byte == b'\x0b'
         || byte == b'\x0c'
-}
-
-#[inline]
-unsafe fn libc_strncmp(s1: *const c_char, s2: &[u8], n: usize) -> c_int {
-    unsafe {
-        let mut p1 = s1;
-        let mut p2 = s2.as_ptr();
-        for _ in 0..n {
-            let c1 = *p1 as i8;
-            let c2 = *p2 as i8;
-            if c1 != c2 {
-                return (c1 - c2) as c_int;
-            }
-            if c1 == 0 {
-                return 0;
-            }
-            p1 = p1.add(1);
-            p2 = p2.add(1);
-        }
-        0
-    }
-}
-
-#[inline]
-unsafe fn libc_strncasecmp(s1: *const c_char, s2: &[u8], n: usize) -> c_int {
-    unsafe {
-        let mut p1 = s1;
-        let mut p2 = s2.as_ptr();
-        for _ in 0..n {
-            let c1 = to_lower(*p1 as u8) as i8;
-            let c2 = to_lower(*p2 as u8) as i8;
-            if c1 != c2 {
-                return (c1 - c2) as c_int;
-            }
-            if *p1 == 0 {
-                return 0;
-            }
-            p1 = p1.add(1);
-            p2 = p2.add(1);
-        }
-        0
-    }
 }
 
 #[inline]
@@ -976,17 +934,19 @@ pub unsafe fn bincode_impl(
 ///
 /// Equivalent of R's `nrows()` from util.c.
 /// Uses the "dim" attribute: returns dims[0].
-pub unsafe fn nrows(s: *const c_void) -> c_int {
-    unsafe {
-        let x = s as SEXP;
-        if x.is_null() || x == R_NilValue() {
-            return -1;
-        }
-        let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            return LENGTH(x);
-        }
-        if LENGTH(dim) >= 1 { *INTEGER(dim) } else { -1 }
+pub fn nrows(s: *const c_void) -> c_int {
+    let x = s as SEXP;
+    if x.is_null() || x == R_NilValue() {
+        return -1;
+    }
+    let dim = getAttrib(x, R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() {
+        return LENGTH(x);
+    }
+    if LENGTH(dim) >= 1 {
+        crate::mainutils::essentials::integer_elt_checked(dim, 0)
+    } else {
+        -1
     }
 }
 
@@ -994,21 +954,19 @@ pub unsafe fn nrows(s: *const c_void) -> c_int {
 ///
 /// Equivalent of R's `ncols()` from util.c.
 /// Uses the "dim" attribute: returns dims[1] if ndim >= 2, else 1.
-pub unsafe fn ncols(s: *const c_void) -> c_int {
-    unsafe {
-        let x = s as SEXP;
-        if x.is_null() || x == R_NilValue() {
-            return -1;
-        }
-        let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            return 1;
-        }
-        if LENGTH(dim) >= 2 {
-            *INTEGER(dim).add(1)
-        } else {
-            1
-        }
+pub fn ncols(s: *const c_void) -> c_int {
+    let x = s as SEXP;
+    if x.is_null() || x == R_NilValue() {
+        return -1;
+    }
+    let dim = getAttrib(x, R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() {
+        return 1;
+    }
+    if LENGTH(dim) >= 2 {
+        crate::mainutils::essentials::integer_elt_checked(dim, 1)
+    } else {
+        1
     }
 }
 
@@ -1044,88 +1002,80 @@ pub unsafe fn asChar(x: *const c_void) -> *const c_void {
 /// Check if an object inherits from "ordered" class.
 ///
 /// Equivalent of R's `isUnordered()` from util.c.
-pub unsafe fn isUnordered(s: *const c_void) -> Rboolean {
-    unsafe {
-        let x = s as SEXP;
-        if x.is_null() || x == R_NilValue() {
-            return FALSE;
-        }
-        let klass = getAttrib(x, R_ClassSymbol());
-        if klass.is_null() || klass == R_NilValue() {
-            return FALSE;
-        }
-        let n = LENGTH(klass);
-        for i in 0..n {
-            let elt = STRING_ELT(klass, i as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
-            }
-            let p = CHAR(elt);
-            if !p.is_null() {
-                let cs = CStr::from_ptr(p);
-                if let Ok(s) = cs.to_str()
-                    && (s == "unordered" || s == "factor")
-                {
-                    return TRUE;
-                }
-            }
-        }
-        FALSE
+pub fn isUnordered(s: *const c_void) -> Rboolean {
+    let x = s as SEXP;
+    if x.is_null() || x == R_NilValue() {
+        return FALSE;
     }
+    let klass = getAttrib(x, R_ClassSymbol());
+    if klass.is_null() || klass == R_NilValue() {
+        return FALSE;
+    }
+    let n = LENGTH(klass);
+    for i in 0..n {
+        let elt = STRING_ELT(klass, i as R_xlen_t);
+        if elt.is_null() || elt == R_NilValue() {
+            continue;
+        }
+        let bytes = crate::mainutils::printutils::charsxp_bytes(elt);
+        {
+            if let Ok(s) = std::str::from_utf8(&bytes)
+                && (s == "unordered" || s == "factor")
+            {
+                return TRUE;
+            }
+        }
+    }
+    FALSE
 }
 
 /// Check if an object inherits from "ordered" class.
 ///
 /// Equivalent of R's `isOrdered()` from util.c.
-pub unsafe fn isOrdered(s: *const c_void) -> Rboolean {
-    unsafe {
-        let x = s as SEXP;
-        if x.is_null() || x == R_NilValue() {
-            return FALSE;
-        }
-        let klass = getAttrib(x, R_ClassSymbol());
-        if klass.is_null() || klass == R_NilValue() {
-            return FALSE;
-        }
-        let n = LENGTH(klass);
-        for i in 0..n {
-            let elt = STRING_ELT(klass, i as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
-            }
-            let p = CHAR(elt);
-            if !p.is_null() {
-                let cs = CStr::from_ptr(p);
-                if let Ok(s) = cs.to_str()
-                    && s == "ordered"
-                {
-                    return TRUE;
-                }
-            }
-        }
-        FALSE
+pub fn isOrdered(s: *const c_void) -> Rboolean {
+    let x = s as SEXP;
+    if x.is_null() || x == R_NilValue() {
+        return FALSE;
     }
+    let klass = getAttrib(x, R_ClassSymbol());
+    if klass.is_null() || klass == R_NilValue() {
+        return FALSE;
+    }
+    let n = LENGTH(klass);
+    for i in 0..n {
+        let elt = STRING_ELT(klass, i as R_xlen_t);
+        if elt.is_null() || elt == R_NilValue() {
+            continue;
+        }
+        let bytes = crate::mainutils::printutils::charsxp_bytes(elt);
+        {
+            if let Ok(s) = std::str::from_utf8(&bytes)
+                && s == "ordered"
+            {
+                return TRUE;
+            }
+        }
+    }
+    FALSE
 }
 
 /// Test if a SEXP is TRUE (handles NA, length != 1).
 ///
 /// Equivalent of R's `R_isTRUE()` from util.c.
 /// Returns TRUE only for a length-1 logical vector with value 1.
-pub unsafe fn R_isTRUE(x: *const c_void) -> Rboolean {
-    unsafe {
-        let s = x as SEXP;
-        if s.is_null() || s == R_NilValue() {
-            return FALSE;
-        }
-        if TYPEOF(s) != SEXPTYPE::LGLSXP {
-            return FALSE;
-        }
-        if LENGTH(s) != 1 {
-            return FALSE;
-        }
-        let v = *LOGICAL(s);
-        if v == 1 { TRUE } else { FALSE }
+pub fn R_isTRUE(x: *const c_void) -> Rboolean {
+    let s = x as SEXP;
+    if s.is_null() || s == R_NilValue() {
+        return FALSE;
     }
+    if TYPEOF(s) != SEXPTYPE::LGLSXP {
+        return FALSE;
+    }
+    if LENGTH(s) != 1 {
+        return FALSE;
+    }
+    let v = crate::mainutils::essentials::logical_elt_checked(s, 0);
+    if v == 1 { TRUE } else { FALSE }
 }
 
 /// Convert a type name string to SEXPTYPE integer value.
@@ -1208,17 +1158,16 @@ pub unsafe fn isBlankString(s: *const c_char) -> Rboolean {
 /// Check if a CHARSXP contains only whitespace.
 ///
 /// Equivalent of R's `StringBlank()` from util.c.
-pub unsafe fn StringBlank(x: *const c_void) -> Rboolean {
-    unsafe {
-        let s = x as SEXP;
-        if s.is_null() || s == R_NilValue() {
-            return TRUE;
-        }
-        let p = CHAR(s);
-        if p.is_null() {
-            return TRUE;
-        }
-        isBlankString(p)
+pub fn StringBlank(x: *const c_void) -> Rboolean {
+    let s = x as SEXP;
+    if s.is_null() || s == R_NilValue() {
+        return TRUE;
+    }
+    let bytes = crate::mainutils::printutils::charsxp_bytes(s);
+    if bytes.iter().all(|&b| libc_isspace(b as c_char)) {
+        TRUE
+    } else {
+        FALSE
     }
 }
 

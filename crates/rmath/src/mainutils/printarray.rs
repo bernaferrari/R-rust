@@ -7,13 +7,11 @@
 //! Provides printMatrix() and printArray() for displaying R matrices and arrays.
 //! Also provides format*Matrix() functions for determining column widths.
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::printvector::GetMatrixDimnames;
-use crate::sexp::accessors::{
-    COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-};
+use crate::sexp::accessors::{LENGTH, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
 use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::ffi::R_xlen_t;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, Rcomplex, SEXP};
@@ -102,36 +100,6 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
     result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-/// Checked base pointer into a live LGLSXP/INTSXP buffer.
-fn logical_ptr(x: SEXP) -> *const c_int {
-    // SAFETY: `x` is a live logical vector; its buffer outlives the call.
-    unsafe { LOGICAL(x) }
-}
-
-/// Checked base pointer into a live INTSXP buffer.
-fn integer_ptr(x: SEXP) -> *mut c_int {
-    // SAFETY: `x` is a live integer vector; its buffer outlives the call.
-    unsafe { INTEGER(x) }
-}
-
-/// Checked base pointer into a live REALSXP buffer.
-fn real_ptr(x: SEXP) -> *mut c_double {
-    // SAFETY: `x` is a live real vector; its buffer outlives the call.
-    unsafe { REAL(x) }
-}
-
-/// Checked base pointer into a live CPLXSXP buffer.
-fn complex_ptr(x: SEXP) -> *const Rcomplex {
-    // SAFETY: `x` is a live complex vector; its buffer outlives the call.
-    unsafe { COMPLEX(x) }
-}
-
-/// Checked base pointer into a live RAWSXP buffer.
-fn raw_ptr(x: SEXP) -> *mut Rbyte {
-    // SAFETY: `x` is a live raw vector; its buffer outlives the call.
-    unsafe { RAW(x) }
-}
-
 /// NUL-terminated pointer text (null maps to "").
 fn cstr_text<'a>(s: *const c_char) -> &'a str {
     if s.is_null() {
@@ -145,28 +113,26 @@ fn cstr_text<'a>(s: *const c_char) -> &'a str {
 
 /// Encode a string element to owned text (null encodes as "").
 fn encode_label(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> String {
-    // SAFETY: EncodeString returns a NUL-terminated static buffer or null.
-    let enc = unsafe { crate::mainutils::printutils::EncodeString(s, w, quote, justify) };
-    cstr_text(enc).to_string()
+    crate::mainutils::printutils::encode_string_bytes(s, w, quote, justify)
+        .map(text_string)
+        .unwrap_or_default()
 }
 
 /// Encode a logical value to owned text.
 fn encode_logical(x: c_int, w: c_int) -> String {
-    // SAFETY: EncodeLogical returns a NUL-terminated static buffer.
-    cstr_text(unsafe { EncodeLogical(x, w) }).to_string()
+    text_string(crate::mainutils::printutils::encode_logical_text(x, w))
 }
 
 /// Encode an integer value to owned text.
 fn encode_integer(x: c_int, w: c_int) -> String {
-    // SAFETY: EncodeInteger returns a NUL-terminated static buffer.
-    cstr_text(unsafe { EncodeInteger(x, w) }).to_string()
+    text_string(crate::mainutils::printutils::encode_integer_text(x, w))
 }
 
-/// Encode a real value to owned text.
-fn encode_real(x: c_double, w: c_int, d: c_int, e: c_int, outdec: *const c_char) -> String {
-    // SAFETY: EncodeReal0 returns a NUL-terminated static buffer; `outdec`
-    // points at the static OUT_DEC pair.
-    cstr_text(unsafe { EncodeReal0(x, w, d, e, outdec) }).to_string()
+/// Encode a real value to owned text (decimal mark `.`).
+fn encode_real(x: c_double, w: c_int, d: c_int, e: c_int) -> String {
+    text_string(crate::mainutils::printutils::encode_real0_text(
+        x, w, d, e, b".",
+    ))
 }
 
 /// Encode a complex value to owned text.
@@ -178,17 +144,20 @@ fn encode_complex(
     wi: c_int,
     di: c_int,
     ei: c_int,
-    outdec: *const c_char,
 ) -> String {
-    // SAFETY: EncodeComplex returns a NUL-terminated static buffer; `outdec`
-    // points at the static OUT_DEC pair.
-    cstr_text(unsafe { EncodeComplex(z, wr, dr, er, wi, di, ei, outdec) }).to_string()
+    text_string(crate::mainutils::printutils::encode_complex_text(
+        z, wr, dr, er, wi, di, ei,
+    ))
 }
 
-/// Encode a raw byte to owned text.
-fn encode_raw(x: u8, prefix: *const c_char) -> String {
-    // SAFETY: EncodeRaw returns a NUL-terminated static buffer.
-    cstr_text(unsafe { EncodeRaw(x, prefix) }).to_string()
+/// Encode a raw byte to owned text (no prefix).
+fn encode_raw(x: u8) -> String {
+    text_string(crate::mainutils::printutils::encode_raw_text(x, b""))
+}
+
+/// Encoder bytes as text; invalid UTF-8 reads as empty, like `CStr::to_str`.
+fn text_string(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -196,13 +165,10 @@ fn encode_raw(x: u8, prefix: *const c_char) -> String {
 // ---------------------------------------------------------------------------
 
 use crate::mainutils::format::{
-    RealField, compact_int_width, compact_real_field, formatComplex, formatInteger, formatLogical,
-    formatRaw, formatReal, integer_field_width, real_field,
+    RealField, compact_int_width, compact_real_field, integer_field_width, real_field,
 };
 use crate::mainutils::printutils::IndexWidth_xlen as IndexWidth;
-use crate::mainutils::printutils::{
-    EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0, Rprt_adj,
-};
+use crate::mainutils::printutils::Rprt_adj;
 use crate::mainutils::printvector::printVector;
 
 // ---------------------------------------------------------------------------
@@ -487,7 +453,7 @@ fn print_logical_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = logical_ptr(sx);
+        let base = Cells::new(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
 
@@ -495,12 +461,13 @@ fn print_logical_matrix(
         for j in 0..c as usize {
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
-                let col_ptr = in_column(base, len, start, rows);
-                let mut fw: c_int = 0;
-                // SAFETY: `col_ptr` is null or a live in-range column slice of
-                // `rows` elements; `fw` is a live out parameter.
-                unsafe { formatLogical(col_ptr, rows, &mut fw) };
-                w[j] = fw;
+                w[j] = if base.column_in_range(start, rows) && rows > 0 {
+                    crate::mainutils::format::logical_field_width(
+                        (0..rows).map(|i| base.logical(start + i)),
+                    )
+                } else {
+                    1
+                };
             } else {
                 w[j] = 0;
             }
@@ -553,7 +520,7 @@ fn print_logical_matrix(
                     if print_ij {
                         for j in jmin..jmax {
                             let val = logical_at(
-                                base,
+                                &base,
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
@@ -600,51 +567,94 @@ fn element_index(offset: R_xlen_t, col: R_xlen_t, row: R_xlen_t, nrow: R_xlen_t)
         .unwrap_or(R_xlen_t::MAX)
 }
 
-/// Pointer to a contiguous in-range column, or null when that slice is not
-/// inside the buffer. A null pointer is not offset.
-fn in_column<T>(data: *const T, len: R_xlen_t, start: R_xlen_t, n: R_xlen_t) -> *const T {
-    if data.is_null() || start < 0 || n < 0 || start > len || n > len.saturating_sub(start) {
-        return std::ptr::null();
-    }
-    match usize::try_from(start) {
-        Ok(index) => unsafe { data.add(index) },
-        Err(_) => std::ptr::null(),
-    }
+/// Checked element source for one matrix payload. Out-of-range or absent
+/// cells read as the type's missing value, matching the former bounded
+/// buffer loads.
+struct Cells {
+    src: Option<crate::sexp::object::Sexp<'static>>,
+    len: R_xlen_t,
 }
 
-fn load_at<T: Copy>(data: *const T, len: R_xlen_t, index: R_xlen_t, missing: T) -> T {
-    if data.is_null() || index < 0 || index >= len {
-        return missing;
+impl Cells {
+    fn new(x: SEXP) -> Self {
+        Cells {
+            src: Some(wrapped(x)),
+            len: XLENGTH(x),
+        }
     }
-    match usize::try_from(index) {
-        Ok(i) => unsafe { *data.add(i) },
-        Err(_) => missing,
+
+    /// A payload with no readable buffer (compact sequences): every cell is missing.
+    fn absent(x: SEXP) -> Self {
+        Cells {
+            src: None,
+            len: XLENGTH(x),
+        }
     }
-}
 
-fn logical_at(data: *const c_int, len: R_xlen_t, index: R_xlen_t) -> c_int {
-    load_at(data, len, index, NA_LOGICAL)
-}
+    /// Whether `n` cells from `start` form a readable in-range column.
+    fn column_in_range(&self, start: R_xlen_t, n: R_xlen_t) -> bool {
+        self.src.is_some()
+            && start >= 0
+            && n >= 0
+            && start <= self.len
+            && n <= self.len.saturating_sub(start)
+    }
 
-fn complex_at(data: *const Rcomplex, len: R_xlen_t, index: R_xlen_t) -> Rcomplex {
-    load_at(
-        data,
-        len,
-        index,
-        Rcomplex {
+    fn read<T>(
+        &self,
+        index: R_xlen_t,
+        missing: T,
+        elt: impl FnOnce(
+            &crate::sexp::object::Sexp<'static>,
+            R_xlen_t,
+        ) -> crate::sexp::object::SexpResult<T>,
+    ) -> T {
+        match &self.src {
+            Some(src) if index >= 0 && index < self.len => checked(elt(src, index)),
+            _ => missing,
+        }
+    }
+
+    fn logical(&self, index: R_xlen_t) -> c_int {
+        self.read(index, NA_LOGICAL, |src, i| src.try_logical_elt(i))
+    }
+
+    fn integer(&self, index: R_xlen_t) -> c_int {
+        self.read(index, NA_INTEGER, |src, i| src.try_integer_elt(i))
+    }
+
+    fn real(&self, index: R_xlen_t) -> c_double {
+        self.read(index, NA_REAL, |src, i| src.try_real_elt(i))
+    }
+
+    fn complex(&self, index: R_xlen_t) -> Rcomplex {
+        let missing = Rcomplex {
             r: NA_REAL,
             i: NA_REAL,
-        },
-    )
+        };
+        self.read(index, missing, |src, i| src.try_complex_elt(i))
+    }
+
+    fn raw(&self, index: R_xlen_t) -> Rbyte {
+        self.read(index, 0, |src, i| src.try_raw_elt(i))
+    }
 }
 
-fn raw_at(data: *const Rbyte, len: R_xlen_t, index: R_xlen_t) -> Rbyte {
-    load_at(data, len, index, 0)
+fn logical_at(data: &Cells, _len: R_xlen_t, index: R_xlen_t) -> c_int {
+    data.logical(index)
+}
+
+fn complex_at(data: &Cells, _len: R_xlen_t, index: R_xlen_t) -> Rcomplex {
+    data.complex(index)
+}
+
+fn raw_at(data: &Cells, _len: R_xlen_t, index: R_xlen_t) -> Rbyte {
+    data.raw(index)
 }
 
 fn int_width_at(
     seq: Option<CompactSeq>,
-    data: *mut c_int,
+    data: &Cells,
     len: R_xlen_t,
     start: R_xlen_t,
     n: R_xlen_t,
@@ -652,37 +662,25 @@ fn int_width_at(
     if let Some(seq) = seq {
         return compact_int_width(seq, start, n);
     }
-    if data.is_null() {
-        let mut fw = 0;
-        unsafe {
-            formatInteger(std::ptr::null(), n, &mut fw);
-        }
-        return fw;
-    }
-    let col = in_column(data, len, start, n);
-    if !col.is_null() {
-        let mut fw = 0;
-        unsafe {
-            formatInteger(col, n, &mut fw);
-        }
-        return fw;
+    if data.src.is_none() || (data.column_in_range(start, n) && n <= 0) {
+        // GNU formatInteger on a null pointer or empty span.
+        return 1;
     }
     integer_field_width(n, |i| {
-        let index = start.checked_add(i).unwrap_or(R_xlen_t::MAX);
-        load_at(data, len, index, NA_INTEGER)
+        data.integer(start.checked_add(i).unwrap_or(R_xlen_t::MAX))
     })
 }
 
-fn int_at(seq: Option<CompactSeq>, data: *mut c_int, len: R_xlen_t, index: R_xlen_t) -> c_int {
+fn int_at(seq: Option<CompactSeq>, data: &Cells, _len: R_xlen_t, index: R_xlen_t) -> c_int {
     if let Some(seq) = seq {
         return seq.int_or_na(index);
     }
-    load_at(data, len, index, NA_INTEGER)
+    data.integer(index)
 }
 
 fn real_format_at(
     seq: Option<CompactSeq>,
-    data: *mut c_double,
+    data: &Cells,
     len: R_xlen_t,
     start: R_xlen_t,
     n: R_xlen_t,
@@ -690,41 +688,20 @@ fn real_format_at(
     if let Some(seq) = seq {
         return compact_real_field(seq, start, n, 0);
     }
-    if data.is_null() {
-        let mut w = 0;
-        let mut d = 0;
-        let mut e = 0;
-        unsafe {
-            formatReal(std::ptr::null(), n, &mut w, &mut d, &mut e, 0);
-        }
-        return RealField { w, d, e };
-    }
-    let col = in_column(data, len, start, n);
-    if !col.is_null() {
-        let mut w = 0;
-        let mut d = 0;
-        let mut e = 0;
-        unsafe {
-            formatReal(col, n, &mut w, &mut d, &mut e, 0);
-        }
-        return RealField { w, d, e };
+    if data.src.is_none() || n <= 0 {
+        // GNU formatReal on a null pointer or empty span.
+        return RealField { w: 0, d: 0, e: 0 };
     }
     real_field(n, 0, |i| {
-        let index = start.checked_add(i).unwrap_or(R_xlen_t::MAX);
-        load_at(data, len, index, NA_REAL)
+        data.real(start.checked_add(i).unwrap_or(R_xlen_t::MAX))
     })
 }
 
-fn real_at(
-    seq: Option<CompactSeq>,
-    data: *mut c_double,
-    len: R_xlen_t,
-    index: R_xlen_t,
-) -> c_double {
+fn real_at(seq: Option<CompactSeq>, data: &Cells, _len: R_xlen_t, index: R_xlen_t) -> c_double {
     if let Some(seq) = seq {
         return seq.real_or_na(index);
     }
-    load_at(data, len, index, NA_REAL)
+    data.real(index)
 }
 
 // ---------------------------------------------------------------------------
@@ -754,9 +731,9 @@ fn print_integer_matrix(
 
         let seq = unexpanded_int(sx);
         let data = if seq.is_some() {
-            ptr::null_mut()
+            Cells::absent(sx)
         } else {
-            integer_ptr(sx)
+            Cells::new(sx)
         };
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
@@ -764,7 +741,7 @@ fn print_integer_matrix(
         for j in 0..c as usize {
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
-                let fw = int_width_at(seq, data, len, start, rows);
+                let fw = int_width_at(seq, &data, len, start, rows);
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -816,7 +793,7 @@ fn print_integer_matrix(
                         for j in jmin..jmax {
                             let val = int_at(
                                 seq,
-                                data,
+                                &data,
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
@@ -860,18 +837,17 @@ fn print_real_matrix(
 
         let seq = unexpanded_real(sx);
         let data = if seq.is_some() {
-            ptr::null_mut()
+            Cells::absent(sx)
         } else {
-            real_ptr(sx)
+            Cells::new(sx)
         };
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
-        let dec_ptr = OUT_DEC.as_ptr();
 
         for j in 0..c as usize {
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
-                let fmt = real_format_at(seq, data, len, start, rows);
+                let fmt = real_format_at(seq, &data, len, start, rows);
                 w[j] = fmt.w;
                 d[j] = fmt.d;
                 e[j] = fmt.e;
@@ -925,11 +901,11 @@ fn print_real_matrix(
                         for j in jmin..jmax {
                             let val = real_at(
                                 seq,
-                                data,
+                                &data,
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
-                            eprint!("{}", encode_real(val, w[j], d[j], e[j], dec_ptr));
+                            eprint!("{}", encode_real(val, w[j], d[j], e[j]));
                         }
                     }
                 }
@@ -971,23 +947,21 @@ fn print_complex_matrix(
         let mut ei = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = complex_ptr(sx);
+        let base = Cells::new(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
-        let dec_ptr = OUT_DEC.as_ptr();
 
         for j in 0..c as usize {
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
-                let col_ptr = in_column(base, len, start, rows);
-                // SAFETY: `col_ptr` is null or a live in-range column slice
-                // of `rows` elements; the w/d/e out parameters are live.
-                unsafe {
-                    formatComplex(
-                        col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j], &mut di[j],
-                        &mut ei[j], 0,
-                    );
-                }
+                let f = if base.column_in_range(start, rows) && rows > 0 {
+                    let column: Vec<Rcomplex> =
+                        (0..rows).map(|i| base.complex(start + i)).collect();
+                    crate::mainutils::format::complex_field(&column, 0)
+                } else {
+                    crate::mainutils::format::ComplexField::default()
+                };
+                (wr[j], dr[j], er[j], wi[j], di[j], ei[j]) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
                 w[j] = wr[j] + wi[j] + 2;
             } else {
                 w[j] = 0;
@@ -1038,12 +1012,12 @@ fn print_complex_matrix(
                     if print_ij {
                         for j in jmin..jmax {
                             let cx = complex_at(
-                                base,
+                                &base,
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
                             let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                                encode_real(NA_REAL, w[j], 0, 0, dec_ptr)
+                                encode_real(NA_REAL, w[j], 0, 0)
                             } else {
                                 encode_complex(
                                     cx,
@@ -1053,7 +1027,6 @@ fn print_complex_matrix(
                                     wi[j],
                                     di[j],
                                     ei[j],
-                                    dec_ptr,
                                 )
                             };
                             eprint!("{}", s);
@@ -1221,19 +1194,15 @@ fn print_raw_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = raw_ptr(sx);
+        let base = Cells::new(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
 
         for j in 0..c as usize {
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
-                let col_ptr = in_column(base, len, start, rows);
-                let mut fw: c_int = 0;
-                // SAFETY: `col_ptr` is null or a live in-range column slice of
-                // `rows` elements; `fw` is a live out parameter.
-                unsafe { formatRaw(col_ptr as *const c_void, rows, &mut fw) };
-                w[j] = fw;
+                // GNU formatRaw: always two hex digits.
+                w[j] = 2;
             } else {
                 w[j] = 0;
             }
@@ -1283,7 +1252,7 @@ fn print_raw_matrix(
                     if print_ij {
                         for j in jmin..jmax {
                             let val = raw_at(
-                                base,
+                                &base,
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
@@ -1291,7 +1260,7 @@ fn print_raw_matrix(
                             if pad > 0 {
                                 eprint!("{:width$}", "", width = pad as usize);
                             }
-                            eprint!("{}", encode_raw(val, std::ptr::null()));
+                            eprint!("{}", encode_raw(val));
                         }
                     }
                 }
@@ -1323,8 +1292,8 @@ pub unsafe fn printMatrix(
         }
 
         let rp = get_R_print_full();
-        let pdim = integer_ptr(dim);
-        if pdim.is_null() {
+        // An empty dim has no payload to read (formerly a null INTEGER()).
+        if XLENGTH(dim) == 0 {
             return;
         }
         let dims = wrapped(dim);
@@ -1438,8 +1407,8 @@ pub fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP
 
         // ndim >= 3
         let rp = get_R_print_full();
-        let pdim = integer_ptr(dim);
-        if pdim.is_null() {
+        // An empty dim has no payload to read (formerly a null INTEGER()).
+        if XLENGTH(dim) == 0 {
             return;
         }
 
@@ -1598,14 +1567,18 @@ pub unsafe fn formatLogicalMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
         let len = XLENGTH(x);
         let columns = column_count(len, n);
 
-        let data = LOGICAL(x);
+        let data = Cells::new(x);
         let mut max_w: c_int = 0;
 
         for j in 0..columns {
-            let mut fw: c_int = 0;
             let start = column_start(0, j as R_xlen_t, n);
-            let col_ptr = in_column(data, len, start, n);
-            formatLogical(col_ptr, n, &mut fw);
+            let fw = if data.column_in_range(start, n) {
+                crate::mainutils::format::logical_field_width(
+                    (0..n).map(|i| data.logical(start + i)),
+                )
+            } else {
+                1
+            };
             if fw > max_w {
                 max_w = fw;
             }
@@ -1631,15 +1604,15 @@ pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
 
         let seq = unexpanded_int(x);
         let data = if seq.is_some() {
-            ptr::null_mut()
+            Cells::absent(x)
         } else {
-            INTEGER(x)
+            Cells::new(x)
         };
         let mut max_w: c_int = 0;
 
         for j in 0..columns {
             let start = column_start(0, j as R_xlen_t, n);
-            let fw = int_width_at(seq, data, len, start, n);
+            let fw = int_width_at(seq, &data, len, start, n);
             if fw > max_w {
                 max_w = fw;
             }
@@ -1665,9 +1638,9 @@ pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_in
 
         let seq = unexpanded_real(x);
         let data = if seq.is_some() {
-            ptr::null_mut()
+            Cells::absent(x)
         } else {
-            REAL(x)
+            Cells::new(x)
         };
         let mut max_w: c_int = 0;
         let mut best_d: c_int = 0;
@@ -1675,7 +1648,7 @@ pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_in
 
         for j in 0..columns {
             let start = column_start(0, j as R_xlen_t, n);
-            let fmt = real_format_at(seq, data, len, start, n);
+            let fmt = real_format_at(seq, &data, len, start, n);
             if fmt.w > max_w {
                 max_w = fmt.w;
                 best_d = fmt.d;
@@ -1716,7 +1689,7 @@ pub unsafe fn formatComplexMatrix(
         let len = XLENGTH(x);
         let columns = column_count(len, n);
 
-        let data = COMPLEX(x);
+        let data = Cells::new(x);
         let mut max_wr: c_int = 0;
         let mut best_dr: c_int = 0;
         let mut best_er: c_int = 0;
@@ -1725,17 +1698,14 @@ pub unsafe fn formatComplexMatrix(
         let mut best_ei: c_int = 0;
 
         for j in 0..columns {
-            let mut fwr: c_int = 0;
-            let mut fdr: c_int = 0;
-            let mut fer: c_int = 0;
-            let mut fwi: c_int = 0;
-            let mut fdi: c_int = 0;
-            let mut fei: c_int = 0;
             let start = column_start(0, j as R_xlen_t, n);
-            let col_ptr = in_column(data, len, start, n);
-            formatComplex(
-                col_ptr, n, &mut fwr, &mut fdr, &mut fer, &mut fwi, &mut fdi, &mut fei, 0,
-            );
+            let f = if data.column_in_range(start, n) {
+                let column: Vec<Rcomplex> = (0..n).map(|i| data.complex(start + i)).collect();
+                crate::mainutils::format::complex_field(&column, 0)
+            } else {
+                crate::mainutils::format::ComplexField::default()
+            };
+            let (fwr, fdr, fer, fwi, fdi, fei) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
             if fwr > max_wr {
                 max_wr = fwr;
                 best_dr = fdr;
