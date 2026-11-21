@@ -57,10 +57,8 @@ impl SplineBuilder {
         }
 
         let point = SplinePoint {
-            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-            x: unsafe { toDeviceX(x / 1200.0, GE_INCHES, self.dd) },
-            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-            y: unsafe { toDeviceY(y / 1200.0, GE_INCHES, self.dd) },
+            x: toDeviceX(x / 1200.0, GE_INCHES, self.dd),
+            y: toDeviceY(y / 1200.0, GE_INCHES, self.dd),
         };
         self.points.push(point);
     }
@@ -169,12 +167,7 @@ fn blended_point(k: c_double, t: c_double, s1: c_double, s2: c_double) -> [c_dou
     [a0, a1, a2, a3]
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn step_computing(
+fn step_computing(
     k: c_double,
     px: &[c_double; 4],
     py: &[c_double; 4],
@@ -219,10 +212,8 @@ unsafe fn step_computing(
     let mut start_to_end_dist = (xlength * xlength + ylength * ylength).sqrt();
 
     let (dev_width, dev_height) = (
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
-        (unsafe { fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd) }) * 1200.0,
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
-        (unsafe { fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd) }) * 1200.0,
+        (fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd)) * 1200.0,
+        (fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd)) * 1200.0,
     );
     let dev_diag = (dev_width * dev_width + dev_height * dev_height).sqrt();
     if start_to_end_dist > dev_diag {
@@ -271,12 +262,7 @@ fn spline_last_segment_computing(
     point_adding(&blended_point(k, 1.0, s1, s2), px, py, out);
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn copy_control_point(
+fn copy_control_point(
     pi: usize,
     i: usize,
     x: &[c_double],
@@ -289,20 +275,13 @@ unsafe fn copy_control_point(
 ) {
     let idx = i % x.len();
 
-    // SAFETY: forwarded raw pointers satisfy `fromDeviceX`'s contract per this function's own `# Safety` requirements.
-    px[pi] = unsafe { fromDeviceX(x[idx], GE_INCHES, dd) } * 1200.0;
-    // SAFETY: forwarded raw pointers satisfy `fromDeviceY`'s contract per this function's own `# Safety` requirements.
-    py[pi] = unsafe { fromDeviceY(y[idx], GE_INCHES, dd) } * 1200.0;
+    px[pi] = fromDeviceX(x[idx], GE_INCHES, dd) * 1200.0;
+    py[pi] = fromDeviceY(y[idx], GE_INCHES, dd) * 1200.0;
 
     ps[pi] = s[idx];
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn next_control_points(
+fn next_control_points(
     k: usize,
     x: &[c_double],
     y: &[c_double],
@@ -312,14 +291,10 @@ unsafe fn next_control_points(
     ps: &mut [c_double; 4],
     dd: PGEDevDesc,
 ) {
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(0, k, x, y, s, px, py, ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(1, k + 1, x, y, s, px, py, ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(2, k + 2, x, y, s, px, py, ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(3, k + 3, x, y, s, px, py, ps, dd) };
+    copy_control_point(0, k, x, y, s, px, py, ps, dd);
+    copy_control_point(1, k + 1, x, y, s, px, py, ps, dd);
+    copy_control_point(2, k + 2, x, y, s, px, py, ps, dd);
+    copy_control_point(3, k + 3, x, y, s, px, py, ps, dd);
 }
 
 fn validate_inputs(x: &[c_double], y: &[c_double], s: &[c_double]) {
@@ -328,12 +303,7 @@ fn validate_inputs(x: &[c_double], y: &[c_double], s: &[c_double]) {
     }
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn compute_open_spline_points(
+pub fn compute_open_spline_points(
     x: &[c_double],
     y: &[c_double],
     s: &[c_double],
@@ -356,57 +326,42 @@ pub unsafe fn compute_open_spline_points(
     let mut step = 0.0;
 
     if rep_ends {
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(0, 0, x, y, s, &mut px, &mut py, &mut ps, dd) };
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd) };
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
+        copy_control_point(0, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
 
         if x.len() == 2 {
-            // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-            unsafe { copy_control_point(3, 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
+            copy_control_point(3, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
         } else {
-            // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-            unsafe { copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd) };
+            copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd);
         }
 
         let mut k = 0usize;
         loop {
-            // SAFETY: forwarded raw pointers satisfy `step_computing`'s contract per this function's own `# Safety` requirements.
-            step = unsafe { step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd) };
+            step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
             spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
             if k + 3 >= x.len() {
                 break;
             }
-            // SAFETY: forwarded raw pointers satisfy `next_control_points`'s contract per this function's own `# Safety` requirements.
-            unsafe { next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd) };
+            next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
             k += 1;
         }
 
         if x.len() == 2 {
-            // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-            unsafe { copy_control_point(0, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd) };
+            copy_control_point(0, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd);
         } else {
-            // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-            unsafe { copy_control_point(0, x.len() - 3, x, y, s, &mut px, &mut py, &mut ps, dd) };
+            copy_control_point(0, x.len() - 3, x, y, s, &mut px, &mut py, &mut ps, dd);
         }
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(1, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd) };
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(2, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
-        // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-        unsafe { copy_control_point(3, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
-        // SAFETY: forwarded raw pointers satisfy `step_computing`'s contract per this function's own `# Safety` requirements.
-        step = unsafe { step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd) };
+        copy_control_point(1, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(2, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(3, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+        step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
         spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
         out.add_point(px[3], py[3]);
     } else {
         for k in 0..(x.len() - 3) {
-            // SAFETY: forwarded raw pointers satisfy `next_control_points`'s contract per this function's own `# Safety` requirements.
-            unsafe { next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd) };
-            // SAFETY: forwarded raw pointers satisfy `step_computing`'s contract per this function's own `# Safety` requirements.
-            step = unsafe { step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd) };
+            next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
+            step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
             spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
         }
         spline_last_segment_computing((x.len() - 4) as c_double, &px, &py, ps[1], ps[2], &mut out);
@@ -415,12 +370,7 @@ pub unsafe fn compute_open_spline_points(
     out.into_points()
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn compute_closed_spline_points(
+pub fn compute_closed_spline_points(
     x: &[c_double],
     y: &[c_double],
     s: &[c_double],
@@ -437,63 +387,18 @@ pub unsafe fn compute_closed_spline_points(
     let mut py = [0.0; 4];
     let mut ps = [0.0; 4];
 
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(0, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd) };
-    // SAFETY: forwarded raw pointers satisfy `copy_control_point`'s contract per this function's own `# Safety` requirements.
-    unsafe { copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd) };
+    copy_control_point(0, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd);
 
     for k in 0..x.len() {
-        // SAFETY: forwarded raw pointers satisfy `step_computing`'s contract per this function's own `# Safety` requirements.
-        let step = unsafe { step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd) };
+        let step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
         spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
-        // SAFETY: forwarded raw pointers satisfy `next_control_points`'s contract per this function's own `# Safety` requirements.
-        unsafe { next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd) };
+        next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
     }
 
     out.into_points()
-}
-
-pub unsafe fn compute_open_spline(
-    n: c_int,
-    x: *const c_double,
-    y: *const c_double,
-    s: *const c_double,
-    rep_ends: bool,
-    precision: c_double,
-    dd: PGEDevDesc,
-) -> Vec<SplinePoint> {
-    if n < 0 || x.is_null() || y.is_null() || s.is_null() {
-        r_error(c"invalid xspline control point input");
-    }
-    let len = n as usize;
-    let x = unsafe { std::slice::from_raw_parts(x, len) };
-    let y = unsafe { std::slice::from_raw_parts(y, len) };
-    let s = unsafe { std::slice::from_raw_parts(s, len) };
-    // SAFETY: forwarded raw pointers satisfy `compute_open_spline_points`'s contract per this function's own `# Safety` requirements.
-    unsafe { compute_open_spline_points(x, y, s, rep_ends, precision, dd) }
-}
-
-pub unsafe fn compute_closed_spline(
-    n: c_int,
-    x: *const c_double,
-    y: *const c_double,
-    s: *const c_double,
-    precision: c_double,
-    dd: PGEDevDesc,
-) -> Vec<SplinePoint> {
-    if n < 0 || x.is_null() || y.is_null() || s.is_null() {
-        r_error(c"invalid xspline control point input");
-    }
-    let len = n as usize;
-    let x = unsafe { std::slice::from_raw_parts(x, len) };
-    let y = unsafe { std::slice::from_raw_parts(y, len) };
-    let s = unsafe { std::slice::from_raw_parts(s, len) };
-    // SAFETY: forwarded raw pointers satisfy `compute_closed_spline_points`'s contract per this function's own `# Safety` requirements.
-    unsafe { compute_closed_spline_points(x, y, s, precision, dd) }
 }
 
 #[cfg(test)]
@@ -507,8 +412,7 @@ mod tests {
         let s = [0.0, 0.0, 0.0];
 
         let points =
-            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-            unsafe { compute_open_spline_points(&x, &y, &s, true, HIGH_PRECISION, std::ptr::null_mut()) };
+            compute_open_spline_points(&x, &y, &s, true, HIGH_PRECISION, std::ptr::null_mut());
 
         assert!(!points.is_empty());
         assert_eq!(points.last().unwrap().x, 2.0);
@@ -520,14 +424,8 @@ mod tests {
         let y = [0.0, 0.0, 1.0];
         let s = [0.0, 0.0, 0.0];
 
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let first = unsafe {
-            compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut())
-        };
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let second = unsafe {
-            compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut())
-        };
+        let first = compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut());
+        let second = compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut());
 
         assert_eq!(first, second);
         assert!(first.len() >= 3);

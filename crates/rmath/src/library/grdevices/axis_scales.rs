@@ -13,8 +13,6 @@ use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
-use super::colors::mk_char_ptr;
-
 /// R_CreateAtVector - create an axis tick vector.
 pub fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP {
     {
@@ -213,7 +211,7 @@ fn g_axis_pars(min: &mut f64, max: &mut f64, n: &mut c_int, logflag: bool) {
             gl_pretty(min, max, n);
         }
     } else {
-        unsafe { crate::mainutils::engine::GEPretty(min, max, n) };
+        crate::mainutils::engine::GEPretty(min, max, n);
     }
 
     let t = max.abs().max(min.abs());
@@ -255,7 +253,7 @@ fn gl_pretty(ul: &mut f64, uh: &mut f64, n: &mut c_int) {
     let p1 = ul.log10().ceil() as i32;
     let p2 = uh.log10().floor() as i32;
     if p2 <= p1 {
-        unsafe { crate::mainutils::engine::GEPretty(ul, uh, n) };
+        crate::mainutils::engine::GEPretty(ul, uh, n);
         *n = -*n;
     } else {
         *ul = 10_f64.powi(p1);

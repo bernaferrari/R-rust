@@ -214,8 +214,7 @@ pub fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP) {
 
 /// Callable from R code: set a grid state element.
 pub fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let dd = getDevice();
     setGridStateElement(dd, integer_elt(elementIndex, 0), value);
     R_NilValue()
 }
@@ -301,8 +300,6 @@ pub fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
             set_vector_elt(result, 1, R_NilValue());
             let pkgName = mk_string("grid");
             let _pkg_name_guard = protect(pkgName);
-            // SAFETY: `result` and `pkgName` are live protected objects;
-            // `install` returns a live interned symbol.
 
             attrib_core::setAttrib(result, install("pkgName"), pkgName);
         }

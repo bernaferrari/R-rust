@@ -82,17 +82,7 @@ fn killDevice(_dev: c_int) {
     device_registry::killDevice(_dev)
 }
 
-/// Stub: get device by number. Returns null.
-fn GEgetDevice(_dev: c_int) -> pGEDevDesc {
-    device_registry::GEgetDevice(_dev)
-}
-
-/// Stub: current device descriptor, opening the default device if needed.
-fn GEcurrentDevice() -> pGEDevDesc {
-    // SAFETY: the registry entry point opens the default device behind the
-    // engine boundary; the returned descriptor is registry-owned.
-    unsafe { device_registry::GEcurrentDevice() }
-}
+use device_registry::{GEcurrentDevice, GEgetDevice};
 
 /// Return whether the registry currently has no real devices.
 fn NoDevices() -> c_int {
@@ -391,8 +381,7 @@ pub fn devcapture(args: SEXP) -> SEXP {
         native = 0;
     }
 
-    // SAFETY: `_gdd` is a registry-owned descriptor lent by GEcurrentDevice.
-    let raster = unsafe { device_registry::GECap(_gdd) };
+    let raster = device_registry::GECap(_gdd);
     // GECap returns R_NilValue when unsupported
     if Rf_isNull(raster) != 0 {
         return raster;
@@ -419,9 +408,7 @@ pub fn devcapture(args: SEXP) -> SEXP {
         let col = (i % ncol) + 1;
         let row = (i / ncol) + 1;
         let idx = ((col - 1) * nrow + row - 1) as R_xlen_t;
-        // SAFETY: `col2name` lends a static NUL-terminated color name that
-        // `Rf_mkChar` copies during the call.
-        let charsexp = unsafe { Rf_mkChar(col2name(INTEGER_ELT(raster, i) as c_uint)) };
+        let charsexp = super::colors::mk_col2name_char(INTEGER_ELT(raster, i) as c_uint);
         SET_STRING_ELT(image, idx, charsexp);
         i += 1;
     }

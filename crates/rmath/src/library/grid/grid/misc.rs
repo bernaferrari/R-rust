@@ -6,41 +6,32 @@ use crate::library::grid::{
 
 pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
     {
-        // SAFETY: device registry bridge.
-        let dd = unsafe { getDevice() };
+        let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = gridStateElement(dd, GSS_GPAR);
 
-        // SAFETY: `currentvp`/`dd` keep their raw device-state contracts.
         let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
-            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-            { unsafe { getViewportTransform(currentvp, dd) } };
+            { getViewportTransform(currentvp, dd) };
 
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
-        // SAFETY: `dd` is the live device returned above.
         {
-            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-            unsafe { GEMode(1, dd) }
+            GEMode(1, dd)
         };
 
         /*
          * Only set ONE clip rectangle (i.e., NOT vectorised)
          */
-        let mut gc_buf: [u8; 256] = [0; 256];
-        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_buf = R_GE_gcontext::zeroed();
+        let gc = Some(&gc_buf);
         gcontextFromgpar(currentgp, 0, gc, dd);
 
         let mut xx: c_double;
         let mut yy: c_double;
-        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-        (xx, yy) =
-            unsafe { transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
-        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-        let ww = unsafe { transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd) };
-        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-        let hh = unsafe { transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd) };
+        (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+        let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
+        let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
 
         /*
          * We can ONLY clip if the total rotation angle is zero.
@@ -62,20 +53,13 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
             /*
              * The graphics engine only takes device coordinates
              */
-            // SAFETY: `dd` is the live device; `toDevice*` are engine
-            // coordinate bridges over the device state.
             let (ww_dev, hh_dev) = {
-                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-                xx = unsafe { toDeviceX(xx, GE_INCHES, dd) };
-                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-                yy = unsafe { toDeviceY(yy, GE_INCHES, dd) };
-                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-                let ww_dev = unsafe { toDeviceWidth(ww, GE_INCHES, dd) };
-                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-                let hh_dev = unsafe { toDeviceHeight(hh, GE_INCHES, dd) };
+                xx = toDeviceX(xx, GE_INCHES, dd);
+                yy = toDeviceY(yy, GE_INCHES, dd);
+                let ww_dev = toDeviceWidth(ww, GE_INCHES, dd);
+                let hh_dev = toDeviceHeight(hh, GE_INCHES, dd);
                 if xx.is_finite() && yy.is_finite() && ww_dev.is_finite() && hh_dev.is_finite() {
-                    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-                    unsafe { GESetClip(xx, yy, xx + ww_dev, yy + hh_dev, dd) };
+                    GESetClip(xx, yy, xx + ww_dev, yy + hh_dev, dd);
                 }
                 (ww_dev, hh_dev)
             };
@@ -96,17 +80,13 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
                 set_vector_elt(currentvp, PVP_CLIPRECT as R_xlen_t, currentClip);
             }
         } else {
-            // SAFETY: static format string, no arguments.
             {
                 Rf_warning_cstr(c"unable to clip to rotated rectangle")
             };
         }
 
-        // SAFETY: `dd` is the live device; engine mode teardown mirrors
-        // the `GEMode(1, dd)` above.
         {
-            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-            unsafe { GEMode(0, dd) }
+            GEMode(0, dd)
         };
         R_NilValue()
     }
@@ -129,7 +109,6 @@ pub fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
     {
         let mut min = numeric(scale, 0);
         let mut max = numeric(scale, 1);
-        // SAFETY: `n_` is a live object lent by the R caller.
         let mut n = { crate::main::coerce::asInteger(n_) };
         let mut temp: f64;
 
@@ -140,8 +119,7 @@ pub fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
             max = temp;
         }
 
-        // SAFETY: all three arguments are live local scalars.
-        unsafe { GEPretty(&mut min, &mut max, &mut n) };
+        GEPretty(&mut min, &mut max, &mut n);
 
         if swap {
             temp = min;
@@ -185,8 +163,7 @@ pub fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
 
 pub fn L_stringMetric(label: SEXP) -> SEXP {
     {
-        // SAFETY: device registry bridge.
-        let dd = unsafe { getDevice() };
+        let dd = getDevice();
         let currentgp = gridStateElement(dd, GSS_GPAR);
         let n = if !label.is_null() && label != R_NilValue() {
             LENGTH(label)
@@ -201,8 +178,8 @@ pub fn L_stringMetric(label: SEXP) -> SEXP {
         let width_vec = alloc_vector(SEXPTYPE::REALSXP, n);
         let _width_guard = protect(width_vec);
 
-        let mut gc: [u8; 256] = [0; 256];
-        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
+        let gc = R_GE_gcontext::zeroed();
+        gcontextFromgpar(currentgp, 0, Some(&gc), dd);
 
         for i in 0..n as R_xlen_t {
             let mut ascent: f64 = 0.0;
@@ -211,31 +188,24 @@ pub fn L_stringMetric(label: SEXP) -> SEXP {
             if TYPEOF(label) == SEXPTYPE::EXPRSXP {
                 GEExpressionMetric(
                     vector_elt(label, i),
-                    gc.as_ptr() as pGEcontext,
+                    Some(&gc),
                     &mut ascent,
                     &mut descent,
                     &mut width,
                     dd,
                 );
             } else {
-                let s = char_ptr(string_elt(label, i));
+                let s = crate::library::grid::char_cstring(string_elt(label, i));
                 let ce = getCharCE(string_elt(label, i));
-                // SAFETY: `s` is the NUL-terminated CHAR payload of a live
-                // string element; `dd` is the live device.
-                {
-                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    unsafe {
                         GEStrMetric(
-                            s,
+                    Some(&s),
                             ce,
-                            gc.as_ptr() as pGEcontext,
+                    Some(&gc),
                             &mut ascent,
                             &mut descent,
                             &mut width,
                             dd,
-                        )
-                    }
-                };
+                );
             }
             set_real_elt(ascent_vec, i, ascent);
             set_real_elt(descent_vec, i, descent);

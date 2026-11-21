@@ -337,7 +337,7 @@ pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
 
 pub fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         crate::mainutils::portable_plot::plot_default(call, op, args, rho)
     }
     #[cfg(not(feature = "renderplot-device"))]
@@ -599,7 +599,7 @@ pub(super) fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
 
 pub fn do_plot_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         crate::mainutils::portable_plot::draw_builtin("plot.window", args)
     }
     #[cfg(not(feature = "renderplot-device"))]
@@ -758,7 +758,7 @@ macro_rules! portable_graphics_handlers {
     ($($handler:ident => $name:literal),* $(,)?) => {$(
         pub fn $handler(_call:SEXP,_op:SEXP,args:SEXP,_rho:SEXP)->SEXP {
             #[cfg(feature="renderplot-device")]
-            unsafe {crate::mainutils::portable_plot::draw_builtin($name,args)}
+            {crate::mainutils::portable_plot::draw_builtin($name,args)}
             #[cfg(not(feature="renderplot-device"))]
             {let _=args; { crate::sexp::globals::R_NilValue() }}
         }
@@ -772,7 +772,7 @@ portable_graphics_handlers! {
 
 pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         return crate::mainutils::portable_plot::draw_builtin("axis", args);
     }
     #[cfg(not(feature = "renderplot-device"))]
@@ -855,7 +855,7 @@ pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // No active device: GEcurrentDevice evaluates options("device").
     // A closure that opens nothing is an error (PR#15883).
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         crate::mainutils::portable_plot::draw_builtin("plot.new", args)
     }
     #[cfg(not(feature = "renderplot-device"))]
@@ -863,7 +863,7 @@ pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _ = args;
         // GNU plot.new opens options("device") when nothing is active.
         // PR#15883: a closure that opens no device is an error, not success.
-        unsafe {
+        {
             let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
         }
         crate::library::graphics::graphics::set_plot_new_state();
@@ -874,7 +874,7 @@ pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `rect(...)` — no device: `plot.new has not been called yet`.
 pub fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         crate::mainutils::portable_plot::draw_builtin("rect", args)
     }
     #[cfg(not(feature = "renderplot-device"))]
@@ -888,7 +888,7 @@ pub fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `abline(...)` — no device: `plot.new has not been called yet`.
 pub fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
-    unsafe {
+    {
         crate::mainutils::portable_plot::draw_builtin("abline", args)
     }
     #[cfg(not(feature = "renderplot-device"))]

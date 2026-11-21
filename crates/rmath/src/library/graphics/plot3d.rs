@@ -165,21 +165,13 @@ fn set_vt_identity() {
 
 /// Transform a 3D vector by a 4x4 transformation matrix.
 /// Real implementation of the matrix-vector product.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn TransVector(u: &Vector3d, t: *const Trans3d, v: &mut Vector3d) {
-    unsafe {
-        for i in 0..4 {
-            let mut sum = 0.0;
-            for j in 0..4 {
-                sum += u[j] * (*t)[j][i];
-            }
-            v[i] = sum;
+fn TransVector(u: &Vector3d, t: &Trans3d, v: &mut Vector3d) {
+    for i in 0..4 {
+        let mut sum = 0.0;
+        for j in 0..4 {
+            sum += u[j] * t[j][i];
         }
+        v[i] = sum;
     }
 }
 
@@ -203,28 +195,19 @@ fn Accumulate(t: &Trans3d) {
 }
 
 /// Set a 4x4 transformation matrix to the identity.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn SetToIdentity(t: *mut Trans3d) {
-    unsafe {
-        for i in 0..4 {
-            for j in 0..4 {
-                (*t)[i][j] = 0.0;
-            }
-            (*t)[i][i] = 1.0;
+fn SetToIdentity(t: &mut Trans3d) {
+    for i in 0..4 {
+        for j in 0..4 {
+            t[i][j] = 0.0;
         }
+        t[i][i] = 1.0;
     }
 }
 
 /// Apply a translation to the viewing transformation.
 fn Translate(x: c_double, y: c_double, z: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     t[3][0] = x;
     t[3][1] = y;
     t[3][2] = z;
@@ -234,8 +217,7 @@ fn Translate(x: c_double, y: c_double, z: c_double) {
 /// Apply a scaling to the viewing transformation.
 fn Scale(x: c_double, y: c_double, z: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     t[0][0] = x;
     t[1][1] = y;
     t[2][2] = z;
@@ -245,8 +227,7 @@ fn Scale(x: c_double, y: c_double, z: c_double) {
 /// Apply a rotation about the X axis to the viewing transformation.
 fn XRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -260,8 +241,7 @@ fn XRotate(angle: c_double) {
 /// Apply a rotation about the Y axis to the viewing transformation.
 fn YRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -275,8 +255,7 @@ fn YRotate(angle: c_double) {
 /// Apply a rotation about the Z axis to the viewing transformation.
 fn ZRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -290,8 +269,7 @@ fn ZRotate(angle: c_double) {
 /// Apply a perspective projection to the viewing transformation.
 fn Perspective(d: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
+    SetToIdentity(&mut t);
     t[2][3] = -1.0 / d;
     Accumulate(&t);
 }
@@ -308,8 +286,7 @@ fn SetUpLight(theta: c_double, phi: c_double) {
     ZRotate(theta);
     let vt_val = with_plot3d_state(|state| state.vt);
     let mut light: [c_double; 4] = [0.0; 4];
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { TransVector(&u, &vt_val, &mut light) };
+    TransVector(&u, &vt_val, &mut light);
     with_plot3d_state(|state| state.light = light);
 }
 
@@ -468,80 +445,58 @@ pub(crate) fn FindPolygonVertices(
 
 /// For each facet, determine the farthest point from the eye.
 /// Sorting facets by depth yields an occlusion-compatible ordering.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn DepthOrder(
-    z: *const c_double,
-    x: *const c_double,
-    y: *const c_double,
+/// `x`/`y` hold the `nx`/`ny` grid coordinates; `depth`/`indx` hold one
+/// entry per facet, `(nx - 1) * (ny - 1)`.
+fn DepthOrder(
+    _z: &[c_double],
+    x: &[c_double],
+    y: &[c_double],
     nx: c_int,
     ny: c_int,
-    depth: *mut c_double,
-    indx: *mut c_int,
+    depth: &mut [c_double],
+    indx: &mut [c_int],
 ) {
     let nx1 = nx - 1;
     let ny1 = ny - 1;
-    for i in 0..(nx1 * ny1) as usize {
-        unsafe {
-            *indx.add(i) = i as c_int;
-        }
+    let facets = (nx1 * ny1) as usize;
+    for (i, slot) in indx[..facets].iter_mut().enumerate() {
+        *slot = i as c_int;
     }
     for i in 0..nx1 as usize {
         for j in 0..ny1 as usize {
             let mut d = -DBL_MAX;
             for ii in 0..=1 {
                 for jj in 0..=1 {
-                    let mut u: Vector3d = [0.0; 4];
                     let mut v: Vector3d = [0.0; 4];
-                    unsafe {
-                        u[0] = *x.add(i + ii as usize);
-                        u[1] = *y.add(j + jj as usize);
-                    }
-                    u[2] = 0.0;
-                    u[3] = 1.0;
+                    let u: Vector3d = [x[i + ii], y[j + jj], 0.0, 1.0];
                     if u[0].is_finite() && u[1].is_finite() && u[2].is_finite() {
                         let vt_val = with_plot3d_state(|state| state.vt);
-                        // SAFETY: forwarded raw pointers satisfy `TransVector`'s contract per this function's own `# Safety` requirements.
-                        unsafe { TransVector(&u, &vt_val, &mut v) };
+                        TransVector(&u, &vt_val, &mut v);
                         if v[3] > d {
                             d = v[3];
                         }
                     }
                 }
             }
-            unsafe {
-                *depth.add(i + j * nx1 as usize) = -d;
-            }
+            depth[i + j * nx1 as usize] = -d;
         }
     }
-    unsafe {
-        rsort_with_index(depth, indx, nx1 * ny1);
-    }
+    let (depth, indx) = (&mut depth[..facets], &mut indx[..facets]);
+    // SAFETY: both buffers are live, exclusively borrowed slices holding the
+    // `nx1 * ny1` elements the sort reads and permutes.
+    unsafe { rsort_with_index(depth.as_mut_ptr(), indx.as_mut_ptr(), nx1 * ny1) };
 }
 
 /// Check that limits are valid: both finite and strictly increasing.
 /// Returns true if valid; sets center `c` and scale `s`.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn LimitCheck(lim: *const c_double, c: &mut c_double, s: &mut c_double) -> bool {
-    unsafe {
-        let l0 = *lim.add(0);
-        let l1 = *lim.add(1);
-        if !l0.is_finite() || !l1.is_finite() || l0 >= l1 {
-            return false;
-        }
-        *s = 0.5 * (l1 - l0).abs();
-        *c = 0.5 * (l1 + l0);
-        true
+fn LimitCheck(lim: [c_double; 2], c: &mut c_double, s: &mut c_double) -> bool {
+    let [l0, l1] = lim;
+    if !l0.is_finite() || !l1.is_finite() || l0 >= l1 {
+        return false;
     }
+    *s = 0.5 * (l1 - l0).abs();
+    *c = 0.5 * (l1 + l0);
+    true
 }
 
 /* ========================================================================
@@ -1113,13 +1068,13 @@ pub fn C_persp(args: SEXP) -> SEXP {
         let mut _zc = 0.0;
         let mut _zs = 0.0;
 
-        if !LimitCheck(REAL(xlim), &mut _xc, &mut _xs) {
+        if !LimitCheck([*REAL(xlim), *REAL(xlim).add(1)], &mut _xc, &mut _xs) {
             plot3d_error("persp xlim values must be finite and distinct");
         }
-        if !LimitCheck(REAL(ylim), &mut _yc, &mut _ys) {
+        if !LimitCheck([*REAL(ylim), *REAL(ylim).add(1)], &mut _yc, &mut _ys) {
             plot3d_error("persp ylim values must be finite and distinct");
         }
-        if !LimitCheck(REAL(zlim), &mut _zc, &mut _zs) {
+        if !LimitCheck([*REAL(zlim), *REAL(zlim).add(1)], &mut _zc, &mut _zs) {
             plot3d_error("persp zlim values must be finite and distinct");
         }
 
@@ -1240,13 +1195,13 @@ pub fn C_persp(args: SEXP) -> SEXP {
         let _indx_guard = protect(indx);
 
         DepthOrder(
-            REAL(z),
-            REAL(x),
-            REAL(y),
+            std::slice::from_raw_parts(REAL(z), (nr * nc) as usize),
+            std::slice::from_raw_parts(REAL(x), LENGTH(x) as usize),
+            std::slice::from_raw_parts(REAL(y), LENGTH(y) as usize),
             nr,
             nc,
-            REAL(depth),
-            INTEGER(indx),
+            std::slice::from_raw_parts_mut(REAL(depth), facet_count as usize),
+            std::slice::from_raw_parts_mut(INTEGER(indx), facet_count as usize),
         );
 
         #[cfg(feature = "renderplot-device")]
@@ -1492,42 +1447,41 @@ mod tests {
     #[test]
     fn plot3d_entrypoints_error_on_missing_arguments() {
         let _session = RSession::new();
-        unsafe {
-            let args = Rf_cons(R_NilValue(), R_NilValue());
 
-            // GNU plot3d.c runs GCheckState(dd) before touching arguments:
-            // with no plot frame established the entrypoint reports the
-            // plot.new error, never the argument error.
-            crate::library::graphics::graphics::GSetState(0, std::ptr::null_mut());
-            let unframed = assert_r_error(|| {
-                C_filledcontour(args);
-            });
-            assert!(
-                unframed
-                    .message
-                    .contains("plot.new has not been called yet"),
-                "{}",
-                unframed.message
-            );
+        let args = Rf_cons(R_NilValue(), R_NilValue());
 
-            // With a frame established (plot.new called), the missing
-            // arguments surface as argument errors.
-            crate::library::graphics::graphics::set_plot_new_state();
-            let image = assert_r_error(|| {
-                C_image(args);
-            });
-            assert!(image.message.contains("image requires"));
+        // GNU plot3d.c runs GCheckState(dd) before touching arguments:
+        // with no plot frame established the entrypoint reports the
+        // plot.new error, never the argument error.
+        crate::library::graphics::graphics::GSetState(0, std::ptr::null_mut());
+        let unframed = assert_r_error(|| {
+            C_filledcontour(args);
+        });
+        assert!(
+            unframed
+                .message
+                .contains("plot.new has not been called yet"),
+            "{}",
+            unframed.message
+        );
 
-            let contour = assert_r_error(|| {
-                C_contour(args);
-            });
-            assert!(contour.message.contains("contour requires"));
+        // With a frame established (plot.new called), the missing
+        // arguments surface as argument errors.
+        crate::library::graphics::graphics::set_plot_new_state();
+        let image = assert_r_error(|| {
+            C_image(args);
+        });
+        assert!(image.message.contains("image requires"));
 
-            let filled = assert_r_error(|| {
-                C_filledcontour(args);
-            });
-            assert!(filled.message.contains("filled.contour requires"));
-        }
+        let contour = assert_r_error(|| {
+            C_contour(args);
+        });
+        assert!(contour.message.contains("contour requires"));
+
+        let filled = assert_r_error(|| {
+            C_filledcontour(args);
+        });
+        assert!(filled.message.contains("filled.contour requires"));
     }
 
     #[test]

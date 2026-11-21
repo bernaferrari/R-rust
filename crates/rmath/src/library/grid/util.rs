@@ -66,27 +66,16 @@ fn fmin2(x: f64, y: f64) -> f64 {
 
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
+pub fn getListElement(list: SEXP, name: &str) -> SEXP {
     let mut elmt: SEXP = R_NilValue();
-    if str.is_null() {
-        return elmt;
-    }
     let names = get_attrib(list, crate::attrib_core::R_NamesSymbol());
     if names.is_null() {
         return elmt;
     }
     let len = LENGTH(list) as i32;
-    // SAFETY: `str` is a borrowed NUL-terminated name supplied by the caller.
-    let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
         let name_str = string_value_elt(names, i as R_xlen_t).unwrap_or_default();
-        if name_str == target_str {
+        if name_str == name {
             elmt = vector_elt(list, i as R_xlen_t);
             break;
         }
@@ -94,27 +83,16 @@ pub unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
     elmt
 }
 
-/// Set the list element named str to value.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn setListElement(list: SEXP, str: *const c_char, value: SEXP) {
-    if str.is_null() {
-        return;
-    }
+/// Set the list element named `name` to value.
+pub fn setListElement(list: SEXP, name: &str, value: SEXP) {
     let names = get_attrib(list, crate::attrib_core::R_NamesSymbol());
     if names.is_null() {
         return;
     }
     let len = LENGTH(list) as i32;
-    // SAFETY: `str` is a borrowed NUL-terminated name supplied by the caller.
-    let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
         let name_str = string_value_elt(names, i as R_xlen_t).unwrap_or_default();
-        if name_str == target_str {
+        if name_str == name {
             set_vector_elt(list, i as R_xlen_t, value);
             break;
         }
@@ -242,13 +220,7 @@ pub fn intersect(r1: LRect, r2: LRect) -> c_int {
 
 /// Calculate the bounding rectangle for a string.
 /// x and y are assumed to be in INCHES.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn textRect(
+pub fn textRect(
     x: c_double,
     y: c_double,
     text: SEXP,
@@ -283,36 +255,13 @@ pub unsafe fn textRect(
         let idx = ((i % text_len) + text_len) % text_len;
         if TYPEOF(text) == SEXPTYPE::EXPRSXP {
             let expr = vector_elt(text, idx as R_xlen_t);
-            // SAFETY: `gc`/`dd` are engine-owned device pointers lent by the
-            // grid entry point.
-
-            // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
-            w = unsafe { fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void) };
-            // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
-            h = unsafe { fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void) };
+            w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd);
+            h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd);
         } else {
-            let string = char_ptr(string_elt(text, idx as R_xlen_t));
+            let string = crate::library::grid::char_cstring(string_elt(text, idx as R_xlen_t));
             let enc = CE_SYMBOL;
-            // SAFETY: `string` points into a live CHARSXP just validated by
-            // `string_elt`; `gc`/`dd` are engine-owned device pointers lent by
-            // the grid entry point.
-
-            // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
-            w = unsafe {
-                fromDeviceWidth(
-                    GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
-                    1,
-                    dd as *mut c_void,
-                )
-            };
-            // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
-            h = unsafe {
-                fromDeviceHeight(
-                    GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
-                    1,
-                    dd as *mut c_void,
-                )
-            };
+            w = fromDeviceWidth(GEStrWidth(Some(&string), enc, gc, dd), 1, dd);
+            h = fromDeviceHeight(GEStrHeight(Some(&string), enc, gc, dd), 1, dd);
         }
 
         if !w.is_finite() || !h.is_finite() {

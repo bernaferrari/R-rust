@@ -11,8 +11,6 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
-use super::colors::mk_char_ptr;
-
 fn unsupported(name: &str) -> ! {
     Rf_error_unimplemented(name);
     unreachable!("Rf_error_unimplemented returned");
@@ -53,32 +51,38 @@ fn do_bmVersion() -> SEXP {
         let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         let _nms_guard = protect(nms);
 
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             nms,
             0 as R_xlen_t,
             crate::sexp::constructors::mk_char_str("libpng"),
         );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             nms,
             1 as R_xlen_t,
             crate::sexp::constructors::mk_char_str("jpeg"),
         );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             nms,
             2 as R_xlen_t,
             crate::sexp::constructors::mk_char_str("libtiff"),
         );
 
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             ans,
             0 as R_xlen_t,
             crate::sexp::constructors::mk_char_str(""),
         );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             ans,
             1 as R_xlen_t,
             crate::sexp::constructors::mk_char_str(""),
         );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(
             ans,
             2 as R_xlen_t,

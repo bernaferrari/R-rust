@@ -125,8 +125,6 @@ pub fn gpLineTypeSXP(gp: SEXP) -> SEXP {
 
 pub fn gpLineType(gp: SEXP, i: c_int) -> c_int {
     let linetype = gpLineTypeSXP(gp);
-    // SAFETY: `linetype` is a live checked gpar element and `i` is the
-    // caller's recycle index, as in the original C.
     ge::GE_LTYpar(linetype, i) as c_int
 }
 
@@ -186,8 +184,6 @@ pub fn gpLineEndSXP(gp: SEXP) -> SEXP {
 
 pub fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
     let lineend = gpLineEndSXP(gp);
-    // SAFETY: `lineend` is a live checked gpar element and `i` is the
-    // caller's recycle index, as in the original C.
     ge::GE_LENDpar(lineend, i)
 }
 
@@ -197,8 +193,6 @@ pub fn gpLineJoinSXP(gp: SEXP) -> SEXP {
 
 pub fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
     let linejoin = gpLineJoinSXP(gp);
-    // SAFETY: `linejoin` is a live checked gpar element and `i` is the
-    // caller's recycle index, as in the original C.
     ge::GE_LJOINpar(linejoin, i)
 }
 
@@ -330,7 +324,7 @@ pub fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
 
 pub fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
     let gp = resolveGPar(_gp, 0);
-    if gp.is_null() || Rf_isNull(gp) != 0 || _gc.is_null() {
+    if gp.is_null() || Rf_isNull(gp) != 0 || _gc.is_none() {
         return;
     }
 
@@ -562,11 +556,10 @@ mod tests {
     #[test]
     fn test_gp_color_null_falls_back_to_transparent_white() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+
             assert_eq!(gpCol(R_NilValue(), 0), R_TRANWHITE);
             assert_eq!(gpFill(R_NilValue(), 0), R_TRANWHITE);
         }
-    }
 
     #[test]
     fn test_gp_lineend_and_join_delegate_to_engine_parsers() {
@@ -599,7 +592,7 @@ mod tests {
             let _gp_guard = protect(gp);
             let mut flags = [c_int::MIN; GP_FONTFACE as usize + 1];
 
-            initGContext(gp, ptr::null(), ptr::null_mut(), &mut flags, ptr::null());
+            initGContext(gp, None, ptr::null_mut(), &mut flags, None);
 
             assert_eq!(flags[GP_COL as usize], 1);
             assert_eq!(flags[GP_LWD as usize], 1);
@@ -607,7 +600,7 @@ mod tests {
             assert_eq!(flags[GP_LINEJOIN as usize], 0);
 
             flags.fill(c_int::MIN);
-            updateGContext(gp, 0, ptr::null(), ptr::null_mut(), &mut flags, ptr::null());
+            updateGContext(gp, 0, None, ptr::null_mut(), &mut flags, None);
             assert_eq!(flags[GP_COL as usize], 1);
             assert_eq!(flags[GP_LWD as usize], 1);
             assert_eq!(flags[GP_FONTFAMILY as usize], 0);
@@ -621,8 +614,7 @@ mod tests {
  * ============================== */
 
 pub fn L_getGPar() -> SEXP {
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
@@ -630,8 +622,7 @@ pub fn L_getGPar() -> SEXP {
 }
 
 pub fn L_setGPar(gpars: SEXP) -> SEXP {
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let dd = getDevice();
     if !dd.is_null() {
         setGridStateElement(dd, GSS_GPAR, gpars);
     }
@@ -639,8 +630,7 @@ pub fn L_setGPar(gpars: SEXP) -> SEXP {
 }
 
 pub fn L_getGPsaved() -> SEXP {
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
@@ -648,8 +638,7 @@ pub fn L_getGPsaved() -> SEXP {
 }
 
 pub fn L_setGPsaved(gpars: SEXP) -> SEXP {
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let dd = getDevice();
     if !dd.is_null() {
         setGridStateElement(dd, GSS_GPSAVED, gpars);
     }

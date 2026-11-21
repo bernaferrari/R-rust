@@ -1,9 +1,5 @@
 use super::*;
 
-pub(crate) unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
-}
-
 pub(crate) fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
     let tail = Rf_cons(arg3, R_NilValue());
     let tail = Rf_cons(arg2, tail);
@@ -34,18 +30,12 @@ pub(crate) fn GEExpressionMetric(
     *width = 0.0;
 }
 
-pub(crate) unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
-    unsafe {
-        release_grid_definitions(
-            dd as crate::mainutils::graphics_ffi::pGEDevDesc,
-            clear_groups,
-        );
-    }
+pub(crate) fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
+    release_grid_definitions(dd.cast(), clear_groups);
 }
 
-pub(crate) unsafe fn initVP(dd: pGEDevDesc) {
-    // SAFETY: forwarded raw pointers satisfy `initVP`'s contract per this function's own `# Safety` requirements.
-    unsafe { crate::library::grid::viewport::initVP(dd as *const u8) };
+pub(crate) fn initVP(dd: pGEDevDesc) {
+    crate::library::grid::viewport::initVP(dd as *const u8);
 }
 
 /* ==============================
@@ -105,21 +95,20 @@ pub(crate) fn fmax2(a: f64, b: f64) -> f64 {
  * getDevice
  * ============================== */
 
-pub unsafe fn getDevice() -> pGEDevDesc {
-    unsafe { GEcurrentDevice() }
+/// The current device (engine `GEcurrentDevice`) as an opaque registry key.
+pub fn getDevice() -> pGEDevDesc {
+    crate::library::grdevices::device_registry::GEcurrentDevice().cast()
 }
 
 /* ==============================
  * getDeviceSize
  * ============================== */
 
-pub unsafe fn getDeviceSize(dd: pGEDevDesc) -> (c_double, c_double) {
+pub fn getDeviceSize(dd: pGEDevDesc) -> (c_double, c_double) {
     // Prefer device-driven conversion helpers when available.
     // In headless mode these still give deterministic non-zero sizes.
-    // SAFETY: forwarded raw pointers satisfy `toDeviceWidth`'s contract per this function's own `# Safety` requirements.
-    let mut width_in = unsafe { toDeviceWidth(1.0, GE_INCHES, dd) }.abs();
-    // SAFETY: forwarded raw pointers satisfy `toDeviceHeight`'s contract per this function's own `# Safety` requirements.
-    let mut height_in = unsafe { toDeviceHeight(1.0, GE_INCHES, dd) }.abs();
+    let mut width_in = toDeviceWidth(1.0, GE_INCHES, dd).abs();
+    let mut height_in = toDeviceHeight(1.0, GE_INCHES, dd).abs();
     if !width_in.is_finite() || width_in == 0.0 {
         width_in = 1.0;
     }

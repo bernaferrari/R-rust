@@ -24,6 +24,54 @@ pub(crate) unsafe fn mk_char_ptr(name: *const c_char) -> SEXP {
     unsafe { Rf_mkChar(name) }
 }
 
+#[inline]
+fn hex_pair(v: u32) -> [u8; 2] {
+    [
+        HEX_DIGITS[((v >> 4) & 0x0F) as usize],
+        HEX_DIGITS[(v & 0x0F) as usize],
+    ]
+}
+
+/// `mkChar(RGB2rgb(r, g, b))`: the `#RRGGBB` CHARSXP, formatted locally
+/// instead of through the shared colour buffer.
+pub(crate) fn mk_rgb_char(r: u32, g: u32, b: u32) -> SEXP {
+    let ([r0, r1], [g0, g1], [b0, b1]) = (hex_pair(r), hex_pair(g), hex_pair(b));
+    crate::sexp::constructors::mk_char_bytes(&[b'#', r0, r1, g0, g1, b0, b1])
+}
+
+/// `mkChar(RGBA2rgb(r, g, b, a))`: the `#RRGGBBAA` CHARSXP.
+pub(crate) fn mk_rgba_char(r: u32, g: u32, b: u32, a: u32) -> SEXP {
+    let ([r0, r1], [g0, g1], [b0, b1], [a0, a1]) =
+        (hex_pair(r), hex_pair(g), hex_pair(b), hex_pair(a));
+    crate::sexp::constructors::mk_char_bytes(&[b'#', r0, r1, g0, g1, b0, b1, a0, a1])
+}
+
+/// `mkChar` of a NUL-terminated byte table entry (bytes before the first NUL).
+pub(crate) fn mk_char_nul_terminated(name: &[u8]) -> SEXP {
+    let bytes = name.split(|b| *b == 0).next().unwrap_or(&[]);
+    crate::sexp::constructors::mk_char_bytes(bytes)
+}
+
+/// `mkChar(incol2name(col))` without lending the shared colour buffer.
+pub(crate) fn mk_col2name_char(col: c_uint) -> SEXP {
+    let (r, g, b, a) = (col & 0xFF, (col >> 8) & 0xFF, (col >> 16) & 0xFF, col >> 24);
+    if R_OPAQUE(col) != 0 {
+        for entry in COLOR_DATA_BASE.iter() {
+            if entry.name.is_empty() {
+                break;
+            }
+            if col == entry.code {
+                return mk_char_nul_terminated(entry.name);
+            }
+        }
+        mk_rgb_char(r, g, b)
+    } else if R_TRANSPARENT(col) != 0 {
+        crate::sexp::constructors::mk_char_str("transparent")
+    } else {
+        mk_rgba_char(r, g, b, a)
+    }
+}
+
 pub(crate) fn isMatrix(x: SEXP) -> bool {
     let dim = getAttrib(x, R_DimSymbol());
     Rf_isNull(dim) == 0 && LENGTH(dim) == 2

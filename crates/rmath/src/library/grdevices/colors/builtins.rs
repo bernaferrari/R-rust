@@ -66,10 +66,7 @@ pub fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     c,
                     i as R_xlen_t,
-                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    unsafe {
-                        mk_char_ptr(RGB2rgb_func(ScaleColor(r), ScaleColor(g), ScaleColor(b)))
-                    },
+                    mk_rgb_char(ScaleColor(r), ScaleColor(g), ScaleColor(b)),
                 );
                 i += 1;
             }
@@ -95,15 +92,7 @@ pub fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     c,
                     i as R_xlen_t,
-                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    unsafe {
-                        mk_char_ptr(RGBA2rgb_func(
-                            ScaleColor(r),
-                            ScaleColor(g),
-                            ScaleColor(b),
-                            ScaleAlpha(aa),
-                        ))
-                    },
+                    mk_rgba_char(ScaleColor(r), ScaleColor(g), ScaleColor(b), ScaleAlpha(aa)),
                 );
                 i += 1;
             }
@@ -179,8 +168,7 @@ pub fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                         SET_STRING_ELT(
                             ans,
                             i as R_xlen_t,
-                            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                            unsafe { mk_char_ptr(RGB2rgb_func(ir as u32, ig as u32, ib as u32)) },
+                            mk_rgb_char(ir as u32, ig as u32, ib as u32),
                         );
                     }
                 } else {
@@ -215,15 +203,7 @@ pub fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                         SET_STRING_ELT(
                             ans,
                             i as R_xlen_t,
-                            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                            unsafe {
-                                mk_char_ptr(RGBA2rgb_func(
-                                    ir as u32,
-                                    ig as u32,
-                                    ib as u32,
-                                    ScaleAlpha(A),
-                                ))
-                            },
+                            mk_rgba_char(ir as u32, ig as u32, ib as u32, ScaleAlpha(A)),
                         );
                     }
                 } else {
@@ -314,9 +294,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sg = CheckColor(INTEGER_ELT(g, (i % ng) as c_int));
                     let sb = CheckColor(INTEGER_ELT(b, (i % nb) as c_int));
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGB2rgb_func(sr, sg, sb))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgb_char(sr, sg, sb));
                     i += 1;
                 }
             } else {
@@ -327,9 +305,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sb = CheckColor(INTEGER_ELT(b, (i % nb) as c_int));
                     let sa = CheckAlpha(INTEGER_ELT(a, (i % na) as c_int));
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgba_char(sr, sg, sb, sa));
                     i += 1;
                 }
             }
@@ -341,9 +317,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int));
                     let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int));
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGB2rgb_func(sr, sg, sb))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgb_char(sr, sg, sb));
                     i += 1;
                 }
             } else {
@@ -354,9 +328,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int));
                     let sa = ScaleAlpha(REAL_ELT(a, (i % na) as c_int));
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgba_char(sr, sg, sb, sa));
                     i += 1;
                 }
             }
@@ -368,9 +340,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int) / mV);
                     let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int) / mV);
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGB2rgb_func(sr, sg, sb))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgb_char(sr, sg, sb));
                     i += 1;
                 }
             } else {
@@ -381,9 +351,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
                     let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int) / mV);
                     let sa = ScaleAlpha(REAL_ELT(a, (i % na) as c_int) / mV);
                     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    SET_STRING_ELT(c, i as R_xlen_t, unsafe {
-                        mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa))
-                    });
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_rgba_char(sr, sg, sb, sa));
                     i += 1;
                 }
             }
@@ -426,10 +394,7 @@ pub fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
-                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    unsafe {
-                        mk_char_ptr(RGB2rgb_func(ilevel as u32, ilevel as u32, ilevel as u32))
-                    },
+                    mk_rgb_char(ilevel as u32, ilevel as u32, ilevel as u32),
                 );
                 i += 1;
             }
@@ -447,15 +412,7 @@ pub fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
-                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                    unsafe {
-                        mk_char_ptr(RGBA2rgb_func(
-                            ilevel as u32,
-                            ilevel as u32,
-                            ilevel as u32,
-                            ScaleAlpha(aa),
-                        ))
-                    },
+                    mk_rgba_char(ilevel as u32, ilevel as u32, ilevel as u32, ScaleAlpha(aa)),
                 );
                 i += 1;
             }
@@ -480,14 +437,18 @@ pub fn do_RGB2hsv(rgb: SEXP) -> SEXP {
         }
         let n = INTEGER_ELT(dd, 1) as usize;
 
-        let ans = allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int);
+        // SAFETY: allocation runs on the R session thread that owns `rgb`.
+        let ans = unsafe { allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int) };
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         guards.push(protect(names));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("h"));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("s"));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("v"));
         SET_VECTOR_ELT(dmns, 0, names);
 
@@ -545,16 +506,21 @@ pub fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
         guards.push(protect(colors));
 
         let n = LENGTH(colors) as usize;
-        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int);
+        // SAFETY: allocation runs on the R session thread that owns `colors`.
+        let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int) };
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph);
         guards.push(protect(names));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("red"));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("green"));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("blue"));
         if alph != 0 {
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             SET_STRING_ELT(names, 3, crate::sexp::constructors::mk_char_str("alpha"));
         }
         SET_VECTOR_ELT(dmns, 0, names);
@@ -602,12 +568,7 @@ pub fn do_colors() -> SEXP {
             if entry.name.is_empty() {
                 break;
             }
-            SET_STRING_ELT(
-                ans,
-                i as R_xlen_t,
-                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                unsafe { mk_char_ptr(entry.name.as_ptr() as *const c_char) },
-            );
+            SET_STRING_ELT(ans, i as R_xlen_t, mk_char_nul_terminated(entry.name));
             i += 1;
         }
         ans
@@ -622,7 +583,7 @@ pub fn do_colors() -> SEXP {
 // standard four-argument form, so these thin wrappers unpack `args`.
 use crate::sexp::accessors::{CAR, CDR};
 
-pub unsafe fn do_col2rgb_builtin(
+pub fn do_col2rgb_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     args: *mut crate::sexp::ffi::SexprecCore,
@@ -649,7 +610,7 @@ pub unsafe fn do_col2rgb_builtin(
     }
 }
 
-pub unsafe fn do_colors_builtin(
+pub fn do_colors_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     _args: *mut crate::sexp::ffi::SexprecCore,
@@ -658,7 +619,7 @@ pub unsafe fn do_colors_builtin(
     do_colors()
 }
 
-pub unsafe fn do_palette_builtin(
+pub fn do_palette_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     args: *mut crate::sexp::ffi::SexprecCore,
@@ -679,7 +640,7 @@ pub unsafe fn do_palette_builtin(
     }
 }
 
-pub unsafe fn do_rgb_builtin(
+pub fn do_rgb_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     args: *mut crate::sexp::ffi::SexprecCore,
@@ -756,7 +717,7 @@ pub unsafe fn do_rgb_builtin(
     }
 }
 
-pub unsafe fn do_hsv_builtin(
+pub fn do_hsv_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     args: *mut crate::sexp::ffi::SexprecCore,
@@ -780,7 +741,7 @@ pub unsafe fn do_hsv_builtin(
     }
 }
 
-pub unsafe fn do_gray_builtin(
+pub fn do_gray_builtin(
     _call: *mut crate::sexp::ffi::SexprecCore,
     _op: *mut crate::sexp::ffi::SexprecCore,
     args: *mut crate::sexp::ffi::SexprecCore,

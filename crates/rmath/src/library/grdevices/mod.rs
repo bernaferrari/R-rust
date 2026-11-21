@@ -19,16 +19,16 @@ mod stubs;
 #[cfg(feature = "renderplot-device")]
 pub(crate) mod target;
 
-unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devps::PDF(args)
 }
-unsafe extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devps::PostScript(args)
 }
-unsafe extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     init::cairoProps(which)
 }
-unsafe extern "C-unwind" fn c_dev_ask_new_page(
+extern "C-unwind" fn c_dev_ask_new_page(
     call: crate::sexp::ffi::SEXP,
     op: crate::sexp::ffi::SEXP,
     args: crate::sexp::ffi::SEXP,
@@ -36,51 +36,49 @@ unsafe extern "C-unwind" fn c_dev_ask_new_page(
 ) -> crate::sexp::ffi::SEXP {
     stubs::devAskNewPage(call, op, args, env)
 }
-unsafe extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devholdflush(args)
 }
-unsafe extern "C-unwind" fn c_devcur(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devcur(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcur(args)
 }
-unsafe extern "C-unwind" fn c_devoff(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devoff(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devoff(args)
 }
-unsafe extern "C-unwind" fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devset(args)
 }
-unsafe extern "C-unwind" fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcontrol(args)
 }
-unsafe extern "C-unwind" fn c_devdisplaylist(
-    args: crate::sexp::ffi::SEXP,
-) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devdisplaylist(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devdisplaylist(args)
 }
-unsafe extern "C-unwind" fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devcap(args)
 }
-unsafe extern "C-unwind" fn c_devsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devsize(args)
 }
-unsafe extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devnext(args)
 }
-unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devprev(args)
 }
-unsafe extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     colors::do_palette(args)
 }
-unsafe extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
+extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     colors::do_palette2(args)
 }
-unsafe extern "C-unwind" fn c_col2rgb(
+extern "C-unwind" fn c_col2rgb(
     colors: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     self::colors::do_col2rgb(colors, alpha)
 }
-unsafe extern "C-unwind" fn c_create_at(
+extern "C-unwind" fn c_create_at(
     axp: crate::sexp::ffi::SEXP,
     usr: crate::sexp::ffi::SEXP,
     nint: crate::sexp::ffi::SEXP,
@@ -88,20 +86,20 @@ unsafe extern "C-unwind" fn c_create_at(
 ) -> crate::sexp::ffi::SEXP {
     axis_scales::R_CreateAtVector(axp, usr, nint, is_log)
 }
-unsafe extern "C-unwind" fn c_g_axis_pars(
+extern "C-unwind" fn c_g_axis_pars(
     usr: crate::sexp::ffi::SEXP,
     is_log: crate::sexp::ffi::SEXP,
     nint: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     axis_scales::R_GAxisPars(usr, is_log, nint)
 }
-unsafe extern "C-unwind" fn c_gray(
+extern "C-unwind" fn c_gray(
     lev: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
     colors::do_gray(lev, alpha)
 }
-unsafe extern "C-unwind" fn c_hsv(
+extern "C-unwind" fn c_hsv(
     h: crate::sexp::ffi::SEXP,
     s: crate::sexp::ffi::SEXP,
     v: crate::sexp::ffi::SEXP,
@@ -109,7 +107,7 @@ unsafe extern "C-unwind" fn c_hsv(
 ) -> crate::sexp::ffi::SEXP {
     colors::do_hsv(h, s, v, a)
 }
-unsafe extern "C-unwind" fn c_hcl(
+extern "C-unwind" fn c_hcl(
     h: crate::sexp::ffi::SEXP,
     c: crate::sexp::ffi::SEXP,
     l: crate::sexp::ffi::SEXP,
@@ -118,7 +116,7 @@ unsafe extern "C-unwind" fn c_hcl(
 ) -> crate::sexp::ffi::SEXP {
     colors::do_hcl(h, c, l, a, fixup)
 }
-unsafe extern "C-unwind" fn c_rgb(
+extern "C-unwind" fn c_rgb(
     r: crate::sexp::ffi::SEXP,
     g: crate::sexp::ffi::SEXP,
     b: crate::sexp::ffi::SEXP,
@@ -231,38 +229,39 @@ pub(crate) fn lookup_external(
 }
 
 pub fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
-    for name in [
-        "C_cairoProps",
-        "C_PDF",
-        "C_PostScript",
-        "C_palette",
-        "C_palette2",
-        "C_devholdflush",
-        "C_devAskNewPage",
-        "C_devcur",
-        "C_devoff",
-        "C_devset",
-        "C_devcontrol",
-        "C_devdisplaylist",
-        "C_devcap",
-        "C_devsize",
-        "C_devnext",
-        "C_devprev",
-        "C_R_CreateAtVector",
-        "C_R_GAxisPars",
-        "C_gray",
-        "C_col2rgb",
-        "C_hsv",
-        "C_hcl",
-        "C_rgb",
-        "C_getSnapshot",
-        "C_playSnapshot",
-    ] {
-        let cname = std::ffi::CString::new(name).unwrap_or_default();
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::install_cstr(&cname),
-            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
-            env,
-        );
+    {
+        for name in [
+            "C_cairoProps",
+            "C_PDF",
+            "C_PostScript",
+            "C_palette",
+            "C_palette2",
+            "C_devholdflush",
+            "C_devAskNewPage",
+            "C_devcur",
+            "C_devoff",
+            "C_devset",
+            "C_devcontrol",
+            "C_devdisplaylist",
+            "C_devcap",
+            "C_devsize",
+            "C_devnext",
+            "C_devprev",
+            "C_R_CreateAtVector",
+            "C_R_GAxisPars",
+            "C_gray",
+            "C_col2rgb",
+            "C_hsv",
+            "C_hcl",
+            "C_rgb",
+            "C_getSnapshot",
+            "C_playSnapshot",
+        ] {
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::install_str(name),
+                crate::sexp::constructors::mk_string_str(name),
+                env,
+            );
+        }
     }
 }

@@ -273,13 +273,14 @@ pub struct LViewportContext {
 
 /* ==================== GE stubs ==================== */
 
-/// Stub for pGEDevDesc (graphics engine device descriptor pointer).
-/// Will be replaced when the GE is ported.
+/// Graphics device handle: an opaque device-registry key that grid only
+/// passes to the engine, never dereferences.
 pub type pGEDevDesc = *mut c_void;
 
-/// Stub for pGEcontext (graphics engine context pointer).
-/// Will be replaced when the GE is ported.
-pub type pGEcontext = *const c_void;
+/// Graphics context: `None` where GNU grid would pass a null `pGEcontext`.
+pub type pGEcontext<'a> = Option<&'a R_GE_gcontext>;
+
+pub use crate::mainutils::graphics_ffi::R_GE_gcontext;
 
 /// Stub for GEevent type.
 pub type GEevent = c_int;

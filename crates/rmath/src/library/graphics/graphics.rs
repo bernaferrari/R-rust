@@ -31,12 +31,12 @@
  *  par.rs and is NOT duplicated here.
  */
 
-use std::ffi::c_void;
+use std::ffi::{CStr, c_void};
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
 use crate::mainutils::engine;
 
-use super::par::{GPar, gpptr};
+use super::par::GPar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
@@ -135,10 +135,10 @@ fn graphics_unit_to_engine(unit: GUnit) -> Option<c_int> {
     }
 }
 
-unsafe fn gpar_for_device<'a>(dd: pGEDevDesc) -> Option<&'a GPar> {
-    // SAFETY: the graphics parameters live inside the device descriptor for as
-    // long as the descriptor is alive; callers only read from the projection.
-    unsafe { (gpptr(dd) as *const GPar).as_ref() }
+/// Snapshot of the device's graphics parameters; the copy keeps no parameter
+/// state borrowed while conversions query string metrics.
+fn gpar_for_device(dd: pGEDevDesc) -> Option<GPar> {
+    super::par::gpar_get(dd)
 }
 
 fn x_usr_to_npc(x: c_double, gp: Option<&GPar>) -> c_double {
@@ -231,238 +231,212 @@ fn y_ndc_to_nfc(y: c_double, gp: Option<&GPar>) -> c_double {
     (y - bottom) / (top - bottom)
 }
 
-unsafe fn x_chars_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let cex = gp.map_or(1.0, |gp| gp.cex);
-        let width = GStrWidth(c"m".as_ptr(), 0, DEVICE, dd);
-        x * cex * width
-    }
+fn x_chars_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
+    let cex = gp.map_or(1.0, |gp| gp.cex);
+    let width = GStrWidth(Some(c"m"), 0, DEVICE, dd);
+    x * cex * width
 }
 
-unsafe fn y_chars_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let cex = gp.map_or(1.0, |gp| gp.cex);
-        let height = GStrHeight(c"m".as_ptr(), 0, DEVICE, dd);
-        y * cex * height
-    }
+fn y_chars_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
+    let cex = gp.map_or(1.0, |gp| gp.cex);
+    let height = GStrHeight(Some(c"m"), 0, DEVICE, dd);
+    y * cex * height
 }
 
-unsafe fn x_lines_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let lheight = gp.map_or(1.0, |gp| gp.lheight);
-        x_chars_to_device(x * lheight, gp, dd)
-    }
+fn x_lines_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
+    let lheight = gp.map_or(1.0, |gp| gp.lheight);
+    x_chars_to_device(x * lheight, gp, dd)
 }
 
-unsafe fn y_lines_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let lheight = gp.map_or(1.0, |gp| gp.lheight);
-        y_chars_to_device(y * lheight, gp, dd)
-    }
+fn y_lines_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
+    let lheight = gp.map_or(1.0, |gp| gp.lheight);
+    y_chars_to_device(y * lheight, gp, dd)
 }
 
-unsafe fn x_to_device_units(x: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        if fromUnits == DEVICE {
-            return x;
+fn x_to_device_units(x: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if fromUnits == DEVICE {
+        return x;
+    }
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    match fromUnits {
+        USER => {
+            let npc = x_usr_to_npc(x, gp);
+            let ndc = x_npc_to_ndc(npc, gp);
+            engine::toDeviceX(ndc, engine::GE_NDC, dd)
         }
-        let gp = gpar_for_device(dd);
-        match fromUnits {
-            USER => {
-                let npc = x_usr_to_npc(x, gp);
-                let ndc = x_npc_to_ndc(npc, gp);
-                engine::toDeviceX(ndc, engine::GE_NDC, dd)
-            }
-            NFC => {
-                let ndc = x_nfc_to_ndc(x, gp);
-                engine::toDeviceX(ndc, engine::GE_NDC, dd)
-            }
-            NPC => {
-                let ndc = x_npc_to_ndc(x, gp);
-                engine::toDeviceX(ndc, engine::GE_NDC, dd)
-            }
-            LINES => x_lines_to_device(x, gp, dd),
-            CHARS => x_chars_to_device(x, gp, dd),
-            _ => {
-                if let Some(from) = graphics_unit_to_engine(fromUnits) {
-                    engine::toDeviceX(x, from, dd)
-                } else {
-                    graphics_error(format!(
-                        "unsupported source unit {fromUnits} for x coordinate conversion"
-                    ));
-                }
+        NFC => {
+            let ndc = x_nfc_to_ndc(x, gp);
+            engine::toDeviceX(ndc, engine::GE_NDC, dd)
+        }
+        NPC => {
+            let ndc = x_npc_to_ndc(x, gp);
+            engine::toDeviceX(ndc, engine::GE_NDC, dd)
+        }
+        LINES => x_lines_to_device(x, gp, dd),
+        CHARS => x_chars_to_device(x, gp, dd),
+        _ => {
+            if let Some(from) = graphics_unit_to_engine(fromUnits) {
+                engine::toDeviceX(x, from, dd)
+            } else {
+                graphics_error(format!(
+                    "unsupported source unit {fromUnits} for x coordinate conversion"
+                ));
             }
         }
     }
 }
 
-unsafe fn y_to_device_units(y: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        if fromUnits == DEVICE {
-            return y;
+fn y_to_device_units(y: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if fromUnits == DEVICE {
+        return y;
+    }
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    match fromUnits {
+        USER => {
+            let npc = y_usr_to_npc(y, gp);
+            let ndc = y_npc_to_ndc(npc, gp);
+            engine::toDeviceY(ndc, engine::GE_NDC, dd)
         }
-        let gp = gpar_for_device(dd);
-        match fromUnits {
-            USER => {
-                let npc = y_usr_to_npc(y, gp);
-                let ndc = y_npc_to_ndc(npc, gp);
-                engine::toDeviceY(ndc, engine::GE_NDC, dd)
-            }
-            NFC => {
-                let ndc = y_nfc_to_ndc(y, gp);
-                engine::toDeviceY(ndc, engine::GE_NDC, dd)
-            }
-            NPC => {
-                let ndc = y_npc_to_ndc(y, gp);
-                engine::toDeviceY(ndc, engine::GE_NDC, dd)
-            }
-            LINES => y_lines_to_device(y, gp, dd),
-            CHARS => y_chars_to_device(y, gp, dd),
-            _ => {
-                if let Some(from) = graphics_unit_to_engine(fromUnits) {
-                    engine::toDeviceY(y, from, dd)
-                } else {
-                    graphics_error(format!(
-                        "unsupported source unit {fromUnits} for y coordinate conversion"
-                    ));
-                }
+        NFC => {
+            let ndc = y_nfc_to_ndc(y, gp);
+            engine::toDeviceY(ndc, engine::GE_NDC, dd)
+        }
+        NPC => {
+            let ndc = y_npc_to_ndc(y, gp);
+            engine::toDeviceY(ndc, engine::GE_NDC, dd)
+        }
+        LINES => y_lines_to_device(y, gp, dd),
+        CHARS => y_chars_to_device(y, gp, dd),
+        _ => {
+            if let Some(from) = graphics_unit_to_engine(fromUnits) {
+                engine::toDeviceY(y, from, dd)
+            } else {
+                graphics_error(format!(
+                    "unsupported source unit {fromUnits} for y coordinate conversion"
+                ));
             }
         }
     }
 }
 
-unsafe fn x_from_device_units(x: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        if toUnits == DEVICE {
-            return x;
+fn x_from_device_units(x: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if toUnits == DEVICE {
+        return x;
+    }
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    match toUnits {
+        USER => {
+            let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
+            let npc = x_ndc_to_npc(ndc, gp);
+            x_npc_to_usr(npc, gp)
         }
-        let gp = gpar_for_device(dd);
-        match toUnits {
-            USER => {
-                let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
-                let npc = x_ndc_to_npc(ndc, gp);
-                x_npc_to_usr(npc, gp)
+        NFC => {
+            let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
+            x_ndc_to_nfc(ndc, gp)
+        }
+        NPC => {
+            let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
+            x_ndc_to_npc(ndc, gp)
+        }
+        LINES | CHARS => {
+            let device = x;
+            let chars = if device == 0.0 {
+                0.0
+            } else {
+                let width = x_chars_to_device(1.0, gp, dd);
+                if width == 0.0 { 0.0 } else { device / width }
+            };
+            if toUnits == CHARS {
+                chars
+            } else {
+                let lheight = gp.map_or(1.0, |gp| gp.lheight);
+                if lheight == 0.0 { 0.0 } else { chars / lheight }
             }
-            NFC => {
-                let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
-                x_ndc_to_nfc(ndc, gp)
-            }
-            NPC => {
-                let ndc = engine::fromDeviceX(x, engine::GE_NDC, dd);
-                x_ndc_to_npc(ndc, gp)
-            }
-            LINES | CHARS => {
-                let device = x;
-                let chars = if device == 0.0 {
-                    0.0
-                } else {
-                    let width = x_chars_to_device(1.0, gp, dd);
-                    if width == 0.0 { 0.0 } else { device / width }
-                };
-                if toUnits == CHARS {
-                    chars
-                } else {
-                    let lheight = gp.map_or(1.0, |gp| gp.lheight);
-                    if lheight == 0.0 { 0.0 } else { chars / lheight }
-                }
-            }
-            _ => {
-                if let Some(to) = graphics_unit_to_engine(toUnits) {
-                    engine::fromDeviceX(x, to, dd)
-                } else {
-                    graphics_error(format!(
-                        "unsupported target unit {toUnits} for x coordinate conversion"
-                    ));
-                }
+        }
+        _ => {
+            if let Some(to) = graphics_unit_to_engine(toUnits) {
+                engine::fromDeviceX(x, to, dd)
+            } else {
+                graphics_error(format!(
+                    "unsupported target unit {toUnits} for x coordinate conversion"
+                ));
             }
         }
     }
 }
 
-unsafe fn y_from_device_units(y: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        if toUnits == DEVICE {
-            return y;
+fn y_from_device_units(y: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if toUnits == DEVICE {
+        return y;
+    }
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    match toUnits {
+        USER => {
+            let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
+            let npc = y_ndc_to_npc(ndc, gp);
+            y_npc_to_usr(npc, gp)
         }
-        let gp = gpar_for_device(dd);
-        match toUnits {
-            USER => {
-                let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
-                let npc = y_ndc_to_npc(ndc, gp);
-                y_npc_to_usr(npc, gp)
+        NFC => {
+            let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
+            y_ndc_to_nfc(ndc, gp)
+        }
+        NPC => {
+            let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
+            y_ndc_to_npc(ndc, gp)
+        }
+        LINES | CHARS => {
+            let device = y;
+            let chars = if device == 0.0 {
+                0.0
+            } else {
+                let height = y_chars_to_device(1.0, gp, dd);
+                if height == 0.0 { 0.0 } else { device / height }
+            };
+            if toUnits == CHARS {
+                chars
+            } else {
+                let lheight = gp.map_or(1.0, |gp| gp.lheight);
+                if lheight == 0.0 { 0.0 } else { chars / lheight }
             }
-            NFC => {
-                let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
-                y_ndc_to_nfc(ndc, gp)
-            }
-            NPC => {
-                let ndc = engine::fromDeviceY(y, engine::GE_NDC, dd);
-                y_ndc_to_npc(ndc, gp)
-            }
-            LINES | CHARS => {
-                let device = y;
-                let chars = if device == 0.0 {
-                    0.0
-                } else {
-                    let height = y_chars_to_device(1.0, gp, dd);
-                    if height == 0.0 { 0.0 } else { device / height }
-                };
-                if toUnits == CHARS {
-                    chars
-                } else {
-                    let lheight = gp.map_or(1.0, |gp| gp.lheight);
-                    if lheight == 0.0 { 0.0 } else { chars / lheight }
-                }
-            }
-            _ => {
-                if let Some(to) = graphics_unit_to_engine(toUnits) {
-                    engine::fromDeviceY(y, to, dd)
-                } else {
-                    graphics_error(format!(
-                        "unsupported target unit {toUnits} for y coordinate conversion"
-                    ));
-                }
+        }
+        _ => {
+            if let Some(to) = graphics_unit_to_engine(toUnits) {
+                engine::fromDeviceY(y, to, dd)
+            } else {
+                graphics_error(format!(
+                    "unsupported target unit {toUnits} for y coordinate conversion"
+                ));
             }
         }
     }
 }
 
 /// GConvertXUnits -- convert a single x value between unit systems.
-pub unsafe fn GConvertXUnits(
-    x: c_double,
-    fromUnits: GUnit,
-    toUnits: GUnit,
-    dd: pGEDevDesc,
-) -> c_double {
-    unsafe {
-        if fromUnits == toUnits {
-            return x;
-        }
-        if dd.is_null() {
-            graphics_error("graphics coordinate conversion requires a graphics device backend");
-        }
-        let device = x_to_device_units(x, fromUnits, dd);
-        x_from_device_units(device, toUnits, dd)
+pub fn GConvertXUnits(x: c_double, fromUnits: GUnit, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if fromUnits == toUnits {
+        return x;
     }
+    if dd.is_null() {
+        graphics_error("graphics coordinate conversion requires a graphics device backend");
+    }
+    let device = x_to_device_units(x, fromUnits, dd);
+    x_from_device_units(device, toUnits, dd)
 }
 
 /// GConvertYUnits -- convert a single y value between unit systems.
-pub unsafe fn GConvertYUnits(
-    y: c_double,
-    fromUnits: GUnit,
-    toUnits: GUnit,
-    dd: pGEDevDesc,
-) -> c_double {
-    unsafe {
-        if fromUnits == toUnits {
-            return y;
-        }
-        if dd.is_null() {
-            graphics_error("graphics coordinate conversion requires a graphics device backend");
-        }
-        let device = y_to_device_units(y, fromUnits, dd);
-        y_from_device_units(device, toUnits, dd)
+pub fn GConvertYUnits(y: c_double, fromUnits: GUnit, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    if fromUnits == toUnits {
+        return y;
     }
+    if dd.is_null() {
+        graphics_error("graphics coordinate conversion requires a graphics device backend");
+    }
+    let device = y_to_device_units(y, fromUnits, dd);
+    y_from_device_units(device, toUnits, dd)
 }
 
 /* ========================================================================
@@ -470,61 +444,57 @@ pub unsafe fn GConvertYUnits(
  * ======================================================================== */
 
 /// xDevtoNDC -- convert x from device coordinates to NDC.
-pub unsafe fn xDevtoNDC(x: c_double, dd: pGEDevDesc) -> c_double {
-    // SAFETY: forwarded raw pointers satisfy `fromDeviceX`'s contract per this function's own `# Safety` requirements.
-    unsafe { engine::fromDeviceX(x, 1, dd) }
+pub fn xDevtoNDC(x: c_double, dd: pGEDevDesc) -> c_double {
+    engine::fromDeviceX(x, 1, dd)
 }
 
 /// yDevtoNDC -- convert y from device coordinates to NDC.
-pub unsafe fn yDevtoNDC(y: c_double, dd: pGEDevDesc) -> c_double {
-    // SAFETY: forwarded raw pointers satisfy `fromDeviceY`'s contract per this function's own `# Safety` requirements.
-    unsafe { engine::fromDeviceY(y, 1, dd) }
+pub fn yDevtoNDC(y: c_double, dd: pGEDevDesc) -> c_double {
+    engine::fromDeviceY(y, 1, dd)
 }
 
 /// xDevtoNFC -- convert x from device coordinates to NFC.
-pub unsafe fn xDevtoNFC(x: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { x_from_device_units(x, NFC, dd) }
+pub fn xDevtoNFC(x: c_double, dd: pGEDevDesc) -> c_double {
+    x_from_device_units(x, NFC, dd)
 }
 
 /// yDevtoNFC -- convert y from device coordinates to NFC.
-pub unsafe fn yDevtoNFC(y: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { y_from_device_units(y, NFC, dd) }
+pub fn yDevtoNFC(y: c_double, dd: pGEDevDesc) -> c_double {
+    y_from_device_units(y, NFC, dd)
 }
 
 /// xDevtoNPC -- convert x from device coordinates to NPC.
-pub unsafe fn xDevtoNPC(x: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { x_from_device_units(x, NPC, dd) }
+pub fn xDevtoNPC(x: c_double, dd: pGEDevDesc) -> c_double {
+    x_from_device_units(x, NPC, dd)
 }
 
 /// yDevtoNPC -- convert y from device coordinates to NPC.
-pub unsafe fn yDevtoNPC(y: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { y_from_device_units(y, NPC, dd) }
+pub fn yDevtoNPC(y: c_double, dd: pGEDevDesc) -> c_double {
+    y_from_device_units(y, NPC, dd)
 }
 
 /// xNPCtoUsr -- convert x from NPC to user coordinates.
-pub unsafe fn xNPCtoUsr(x: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let gp = gpar_for_device(dd);
-        x_npc_to_usr(x, gp)
-    }
+pub fn xNPCtoUsr(x: c_double, dd: pGEDevDesc) -> c_double {
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    x_npc_to_usr(x, gp)
 }
 
 /// yNPCtoUsr -- convert y from NPC to user coordinates.
-pub unsafe fn yNPCtoUsr(y: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let gp = gpar_for_device(dd);
-        y_npc_to_usr(y, gp)
-    }
+pub fn yNPCtoUsr(y: c_double, dd: pGEDevDesc) -> c_double {
+    let gp = gpar_for_device(dd);
+    let gp = gp.as_ref();
+    y_npc_to_usr(y, gp)
 }
 
 /// xDevtoUsr -- convert x from device coordinates to user coordinates.
-pub unsafe fn xDevtoUsr(x: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { x_from_device_units(x, USER, dd) }
+pub fn xDevtoUsr(x: c_double, dd: pGEDevDesc) -> c_double {
+    x_from_device_units(x, USER, dd)
 }
 
 /// yDevtoUsr -- convert y from device coordinates to user coordinates.
-pub unsafe fn yDevtoUsr(y: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { y_from_device_units(y, USER, dd) }
+pub fn yDevtoUsr(y: c_double, dd: pGEDevDesc) -> c_double {
+    y_from_device_units(y, USER, dd)
 }
 
 /* ========================================================================
@@ -532,15 +502,9 @@ pub unsafe fn yDevtoUsr(y: c_double, dd: pGEDevDesc) -> c_double {
  * ======================================================================== */
 
 /// GConvert -- convert a location (x, y) from one coordinate system to another.
-pub unsafe fn GConvert(x: *mut c_double, y: *mut c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) {
-    unsafe {
-        if !x.is_null() {
-            *x = GConvertX(*x, from, to, dd);
-        }
-        if !y.is_null() {
-            *y = GConvertY(*y, from, to, dd);
-        }
-    }
+pub fn GConvert(x: &mut c_double, y: &mut c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) {
+    *x = GConvertX(*x, from, to, dd);
+    *y = GConvertY(*y, from, to, dd);
 }
 
 /* ========================================================================
@@ -548,13 +512,13 @@ pub unsafe fn GConvert(x: *mut c_double, y: *mut c_double, from: GUnit, to: GUni
  * ======================================================================== */
 
 /// GConvertX -- convert an x location from one coordinate system to another.
-pub unsafe fn GConvertX(x: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe { GConvertXUnits(x, from, to, dd) }
+pub fn GConvertX(x: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
+    GConvertXUnits(x, from, to, dd)
 }
 
 /// GConvertY -- convert a y location from one coordinate system to another.
-pub unsafe fn GConvertY(y: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
-    unsafe { GConvertYUnits(y, from, to, dd) }
+pub fn GConvertY(y: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
+    GConvertYUnits(y, from, to, dd)
 }
 
 /* ========================================================================
@@ -571,8 +535,8 @@ pub fn GMapWin2Fig(_dd: pGEDevDesc) {
 /// GNewPlot -- begin a new plot (advance to new frame if needed).
 /// Start a new plot on the current device. There is no separate plot
 /// object; the current GE device is the plot target.
-pub unsafe fn GNewPlot(_recording: Rboolean) -> pGEDevDesc {
-    unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
+pub fn GNewPlot(_recording: Rboolean) -> pGEDevDesc {
+    crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc
 }
 
 /// GRecording -- check whether graphics operations should be recorded.
@@ -722,32 +686,29 @@ pub fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
  * Graphical primitives
  * ======================================================================== */
 
-unsafe fn convert_xy_points_to_device(
-    n: c_int,
-    x: *mut c_double,
-    y: *mut c_double,
+fn convert_xy_points_to_device(
+    x: &[c_double],
+    y: &[c_double],
     coords: c_int,
     dd: pGEDevDesc,
 ) -> Option<(Vec<c_double>, Vec<c_double>)> {
-    unsafe {
-        if n <= 0 || x.is_null() || y.is_null() || dd.is_null() {
-            return None;
-        }
-        let mut xs = Vec::with_capacity(n as usize);
-        let mut ys = Vec::with_capacity(n as usize);
-        for i in 0..n as isize {
-            let mut xi = *x.offset(i);
-            let mut yi = *y.offset(i);
-            GConvert(&mut xi, &mut yi, coords, DEVICE, dd);
-            xs.push(xi);
-            ys.push(yi);
-        }
-        Some((xs, ys))
+    if x.is_empty() || y.is_empty() || dd.is_null() {
+        return None;
     }
+    let (xs, ys) = x
+        .iter()
+        .zip(y)
+        .map(|(&xi, &yi)| {
+            let (mut xi, mut yi) = (xi, yi);
+            GConvert(&mut xi, &mut yi, coords, DEVICE, dd);
+            (xi, yi)
+        })
+        .unzip();
+    Some((xs, ys))
 }
 
 /// GLine -- draw a line from (x1,y1) to (x2,y2).
-pub unsafe fn GLine(
+pub fn GLine(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -755,18 +716,16 @@ pub unsafe fn GLine(
     coords: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        let mut x1 = x1;
-        let mut y1 = y1;
-        let mut x2 = x2;
-        let mut y2 = y2;
-        GConvert(&mut x1, &mut y1, coords, DEVICE, dd);
-        GConvert(&mut x2, &mut y2, coords, DEVICE, dd);
-        engine::GELine(x1, y1, x2, y2, std::ptr::null(), dd);
+    if dd.is_null() {
+        return;
     }
+    let mut x1 = x1;
+    let mut y1 = y1;
+    let mut x2 = x2;
+    let mut y2 = y2;
+    GConvert(&mut x1, &mut y1, coords, DEVICE, dd);
+    GConvert(&mut x2, &mut y2, coords, DEVICE, dd);
+    engine::GELine(x1, y1, x2, y2, None, dd);
 }
 
 /// GLocator -- read the current pen position interactively.
@@ -793,12 +752,11 @@ pub fn GMetricInfo(
 }
 
 /// GMode -- set graphics mode (0=off, 1=on, 2=input on).
-pub unsafe fn GMode(mode: c_int, dd: pGEDevDesc) {
+pub fn GMode(mode: c_int, dd: pGEDevDesc) {
     if dd.is_null() {
         return;
     }
-    // SAFETY: forwarded raw pointers satisfy `GEMode`'s contract per this function's own `# Safety` requirements.
-    unsafe { engine::GEMode(mode, dd) };
+    engine::GEMode(mode, dd);
 }
 
 /// GClipPolygon -- clip a polygon to the current clip region.
@@ -819,41 +777,30 @@ pub fn GClipPolygon(
 
 /// GPolygon -- draw a filled polygon with border.
 /// Filled with color bg and outlined with color fg.
-pub unsafe fn GPolygon(
-    n: c_int,
-    x: *mut c_double,
-    y: *mut c_double,
+pub fn GPolygon(
+    x: &[c_double],
+    y: &[c_double],
     coords: c_int,
     _bg: c_int,
     _fg: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
-            return;
-        };
-        engine::GEPolygon(n, xs.as_ptr(), ys.as_ptr(), std::ptr::null(), dd);
-    }
+    let Some((xs, ys)) = convert_xy_points_to_device(x, y, coords, dd) else {
+        return;
+    };
+    engine::GEPolygon(&xs, &ys, None, dd);
 }
 
 /// GPolyline -- draw a series of connected line segments.
-pub unsafe fn GPolyline(
-    n: c_int,
-    x: *mut c_double,
-    y: *mut c_double,
-    coords: c_int,
-    dd: pGEDevDesc,
-) {
-    unsafe {
-        let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
-            return;
-        };
-        engine::GEPolyline(n, xs.as_ptr(), ys.as_ptr(), std::ptr::null(), dd);
-    }
+pub fn GPolyline(x: &[c_double], y: &[c_double], coords: c_int, dd: pGEDevDesc) {
+    let Some((xs, ys)) = convert_xy_points_to_device(x, y, coords, dd) else {
+        return;
+    };
+    engine::GEPolyline(&xs, &ys, None, dd);
 }
 
 /// GCircle -- draw a circle. Filled with color bg and outlined with color fg.
-pub unsafe fn GCircle(
+pub fn GCircle(
     x: c_double,
     y: c_double,
     coords: c_int,
@@ -862,25 +809,23 @@ pub unsafe fn GCircle(
     _fg: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        let mut cx = x;
-        let mut cy = y;
-        GConvert(&mut cx, &mut cy, coords, DEVICE, dd);
-        let device_radius = if coords == DEVICE {
-            radius
-        } else {
-            let edge_x = x_to_device_units(x + radius, coords, dd);
-            edge_x - cx
-        };
-        engine::GECircle(cx, cy, device_radius, std::ptr::null(), dd);
+    if dd.is_null() {
+        return;
     }
+    let mut cx = x;
+    let mut cy = y;
+    GConvert(&mut cx, &mut cy, coords, DEVICE, dd);
+    let device_radius = if coords == DEVICE {
+        radius
+    } else {
+        let edge_x = x_to_device_units(x + radius, coords, dd);
+        edge_x - cx
+    };
+    engine::GECircle(cx, cy, device_radius, None, dd);
 }
 
 /// GRect -- draw a rectangle. Filled with color bg and outlined with color fg.
-pub unsafe fn GRect(
+pub fn GRect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -890,18 +835,16 @@ pub unsafe fn GRect(
     _fg: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        let mut left = x0;
-        let mut bottom = y0;
-        let mut right = x1;
-        let mut top = y1;
-        GConvert(&mut left, &mut bottom, coords, DEVICE, dd);
-        GConvert(&mut right, &mut top, coords, DEVICE, dd);
-        engine::GERect(left, bottom, right, top, std::ptr::null(), dd);
+    if dd.is_null() {
+        return;
     }
+    let mut left = x0;
+    let mut bottom = y0;
+    let mut right = x1;
+    let mut top = y1;
+    GConvert(&mut left, &mut bottom, coords, DEVICE, dd);
+    GConvert(&mut right, &mut top, coords, DEVICE, dd);
+    engine::GERect(left, bottom, right, top, None, dd);
 }
 
 /// GPath -- draw a path (possibly with holes).
@@ -942,65 +885,47 @@ pub fn GRaster(
 
 /// GStrWidth -- compute the width of a string.
 /// Stub: returns 0.0.
-pub unsafe fn GStrWidth(
-    str: *const c_char,
-    enc: cetype_t,
-    units: GUnit,
-    dd: pGEDevDesc,
-) -> c_double {
-    // SAFETY: forwarded raw pointers satisfy `GEStrWidth`'s contract per this function's own `# Safety` requirements.
-    let width = unsafe { engine::GEStrWidth(str, enc, std::ptr::null(), dd) };
+pub fn GStrWidth(str: Option<&CStr>, enc: cetype_t, units: GUnit, dd: pGEDevDesc) -> c_double {
+    let width = engine::GEStrWidth(str, enc, None, dd);
     match units {
         DEVICE => width,
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
-        NDC => unsafe { engine::fromDeviceWidth(width, 1, dd) },
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
-        INCHES => unsafe { engine::fromDeviceWidth(width, 2, dd) },
+        NDC => engine::fromDeviceWidth(width, 1, dd),
+        INCHES => engine::fromDeviceWidth(width, 2, dd),
         _ => width,
     }
 }
 
 /// GStrHeight -- compute the height of a string.
 /// Stub: returns 0.0.
-pub unsafe fn GStrHeight(
-    str: *const c_char,
-    enc: cetype_t,
-    units: GUnit,
-    dd: pGEDevDesc,
-) -> c_double {
-    // SAFETY: forwarded raw pointers satisfy `GEStrHeight`'s contract per this function's own `# Safety` requirements.
-    let height = unsafe { engine::GEStrHeight(str, enc, std::ptr::null(), dd) };
+pub fn GStrHeight(str: Option<&CStr>, enc: cetype_t, units: GUnit, dd: pGEDevDesc) -> c_double {
+    let height = engine::GEStrHeight(str, enc, None, dd);
     match units {
         DEVICE => height,
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
-        NDC => unsafe { engine::fromDeviceHeight(height, 1, dd) },
-        // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
-        INCHES => unsafe { engine::fromDeviceHeight(height, 2, dd) },
+        NDC => engine::fromDeviceHeight(height, 1, dd),
+        INCHES => engine::fromDeviceHeight(height, 2, dd),
         _ => height,
     }
 }
 
 /// GText -- draw text at a location.
-pub unsafe fn GText(
+pub fn GText(
     x: c_double,
     y: c_double,
     coords: c_int,
-    str: *const c_char,
+    str: Option<&CStr>,
     enc: cetype_t,
     xc: c_double,
     yc: c_double,
     rot: c_double,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        let mut px = x;
-        let mut py = y;
-        GConvert(&mut px, &mut py, coords, DEVICE, dd);
-        engine::GEText(px, py, str, enc, xc, yc, rot, std::ptr::null(), dd);
+    if dd.is_null() {
+        return;
     }
+    let mut px = x;
+    let mut py = y;
+    GConvert(&mut px, &mut py, coords, DEVICE, dd);
+    engine::GEText(px, py, str, enc, xc, yc, rot, None, dd);
 }
 
 /// GArrow -- draw an arrow from (xfrom,yfrom) to (xto,yto).
@@ -1037,16 +962,14 @@ pub fn GBox(_which: c_int, _dd: pGEDevDesc) {
  * ======================================================================== */
 
 /// GSymbol -- draw one of the R special symbols.
-pub unsafe fn GSymbol(x: c_double, y: c_double, coords: c_int, pch: c_int, dd: pGEDevDesc) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        let mut px = x;
-        let mut py = y;
-        GConvert(&mut px, &mut py, coords, DEVICE, dd);
-        engine::GESymbol(px, py, pch, 1.0, std::ptr::null(), dd);
+pub fn GSymbol(x: c_double, y: c_double, coords: c_int, pch: c_int, dd: pGEDevDesc) {
+    if dd.is_null() {
+        return;
     }
+    let mut px = x;
+    let mut py = y;
+    GConvert(&mut px, &mut py, coords, DEVICE, dd);
+    engine::GESymbol(px, py, pch, 1.0, None, dd);
 }
 
 /* ========================================================================
@@ -1125,19 +1048,17 @@ mod tests {
 
     #[test]
     fn test_identity_coordinate_conversion_preserves_values() {
-        unsafe {
-            assert_eq!(GConvertX(2.5, USER, USER, ptr::null_mut()), 2.5);
-            assert_eq!(GConvertY(-1.25, NFC, NFC, ptr::null_mut()), -1.25);
-            let mut x = 3.0;
-            let mut y = 4.0;
-            GConvert(&mut x, &mut y, INCHES, INCHES, ptr::null_mut());
-            assert_eq!((x, y), (3.0, 4.0));
-        }
+        assert_eq!(GConvertX(2.5, USER, USER, ptr::null_mut()), 2.5);
+        assert_eq!(GConvertY(-1.25, NFC, NFC, ptr::null_mut()), -1.25);
+        let mut x = 3.0;
+        let mut y = 4.0;
+        GConvert(&mut x, &mut y, INCHES, INCHES, ptr::null_mut());
+        assert_eq!((x, y), (3.0, 4.0));
     }
 
     #[test]
     fn test_unsupported_coordinate_conversion_errors() {
-        let err = std::panic::catch_unwind(|| unsafe {
+        let err = std::panic::catch_unwind(|| {
             GConvertX(2.5, USER, DEVICE, ptr::null_mut());
         });
         assert!(err.is_err());
@@ -1154,37 +1075,32 @@ mod tests {
 
     #[test]
     fn string_metrics_delegate_to_engine_and_tolerate_no_device() {
-        unsafe {
-            assert_eq!(GStrWidth(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
-            assert_eq!(GStrHeight(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
-        }
+        assert_eq!(GStrWidth(Some(c"abc"), 0, DEVICE, ptr::null_mut()), 0.0);
+        assert_eq!(GStrHeight(Some(c"abc"), 0, DEVICE, ptr::null_mut()), 0.0);
     }
 
     #[test]
     fn device_to_ndc_delegates_to_engine_bridge() {
-        unsafe {
-            assert_eq!(xDevtoNDC(12.0, ptr::null_mut()), 12.0);
-            assert_eq!(yDevtoNDC(7.5, ptr::null_mut()), 7.5);
-        }
+        assert_eq!(xDevtoNDC(12.0, ptr::null_mut()), 12.0);
+        assert_eq!(yDevtoNDC(7.5, ptr::null_mut()), 7.5);
     }
 
     #[test]
     fn user_and_nfc_conversions_use_gpar_state() {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
-        unsafe {
-            // Address the null device the registry starts on directly:
-            // GEcurrentDevice() evaluates options("device") and opens a real
-            // device when only the null device exists (GNU devices.c).
-            let dd = crate::library::grdevices::device_registry::GEgetDevice(
-                crate::library::grdevices::device_registry::curDevice(),
-            );
-            assert_eq!(GConvertX(0.5, USER, USER, dd.cast()), 0.5);
-            assert_eq!(GConvertX(0.0, NFC, NFC, dd.cast()), 0.0);
-            let device_x = GConvertX(0.5, USER, DEVICE, dd.cast());
-            assert!(device_x > 0.0);
-            assert!((GConvertX(device_x, DEVICE, USER, dd.cast()) - 0.5).abs() < 1e-9);
-        }
+
+        // Address the null device the registry starts on directly:
+        // GEcurrentDevice() evaluates options("device") and opens a real
+        // device when only the null device exists (GNU devices.c).
+        let dd = crate::library::grdevices::device_registry::GEgetDevice(
+            crate::library::grdevices::device_registry::curDevice(),
+        );
+        assert_eq!(GConvertX(0.5, USER, USER, dd.cast()), 0.5);
+        assert_eq!(GConvertX(0.0, NFC, NFC, dd.cast()), 0.0);
+        let device_x = GConvertX(0.5, USER, DEVICE, dd.cast());
+        assert!(device_x > 0.0);
+        assert!((GConvertX(device_x, DEVICE, USER, dd.cast()) - 0.5).abs() < 1e-9);
     }
 
     #[test]
@@ -1199,7 +1115,7 @@ mod tests {
             let dd = crate::library::grdevices::device_registry::GEgetDevice(
                 crate::library::grdevices::device_registry::curDevice(),
             );
-            crate::mainutils::engine::GENewPage(ptr::null(), dd.cast());
+            crate::mainutils::engine::GENewPage(None, dd.cast());
             GLine(0.0, 0.0, 10.0, 0.0, DEVICE, dd.cast());
             let result = crate::mainutils::engine::GECap(dd.cast());
             assert_eq!(
@@ -1218,12 +1134,11 @@ mod tests {
     fn inches_to_device_conversion_uses_headless_backend() {
         let _session = crate::sexp::session::RSession::new();
         crate::library::grdevices::device_registry::reset_registry_for_tests();
-        unsafe {
-            let dd = crate::library::grdevices::device_registry::GEgetDevice(
-                crate::library::grdevices::device_registry::curDevice(),
-            );
-            assert_eq!(GConvertXUnits(1.0, INCHES, DEVICE, dd.cast()), 72.0);
-            assert_eq!(GConvertYUnits(1.0, INCHES, DEVICE, dd.cast()), 432.0);
-        }
+
+        let dd = crate::library::grdevices::device_registry::GEgetDevice(
+            crate::library::grdevices::device_registry::curDevice(),
+        );
+        assert_eq!(GConvertXUnits(1.0, INCHES, DEVICE, dd.cast()), 72.0);
+        assert_eq!(GConvertYUnits(1.0, INCHES, DEVICE, dd.cast()), 432.0);
     }
 }

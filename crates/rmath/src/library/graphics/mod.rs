@@ -14,7 +14,7 @@ pub(crate) mod text_metrics;
 pub(crate) mod xspline;
 use crate::sexp::ffi::SEXP;
 
-unsafe extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     par::C_par(call, op, crate::sexp::accessors::CDR(args), rho)
 }
 
@@ -75,41 +75,43 @@ fn draw_portable_title(args: SEXP) -> SEXP {
 /// path decodes them, retaining the original argument graph over allocations.
 #[cfg(feature = "renderplot-device")]
 fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> SEXP {
-    let result = (|| {
-        use crate::sexp::object::{SessionNodeFactory, SexpResult};
-        crate::sexp::owner::OwnerToken::with_current(|owner| {
-            let _pin = owner.pin()?;
-            let factory = SessionNodeFactory::new(owner);
-            let input = owner.sexp(args)?.into_owned()?;
-            let mut cursor = input.try_cdr()?.into_owned()?;
-            let mut labels = Vec::new();
-            for name in formals {
-                if cursor.is_nil() {
-                    break;
+    unsafe {
+        let result = (|| {
+            use crate::sexp::object::{SessionNodeFactory, SexpResult};
+            crate::sexp::owner::OwnerToken::with_current(|owner| {
+                let _pin = owner.pin()?;
+                let factory = SessionNodeFactory::new(owner);
+                let input = owner.sexp(args)?.into_owned()?;
+                let mut cursor = input.try_cdr()?.into_owned()?;
+                let mut labels = Vec::new();
+                for name in formals {
+                    if cursor.is_nil() {
+                        break;
+                    }
+                    labels.push((name, cursor.try_car()?.into_owned()?));
+                    cursor = cursor.try_cdr()?.into_owned()?;
                 }
-                labels.push((name, cursor.try_car()?.into_owned()?));
-                cursor = cursor.try_cdr()?.into_owned()?;
-            }
-            let mut built = cursor;
-            for (name, value) in labels.into_iter().rev() {
+                let mut built = cursor;
+                for (name, value) in labels.into_iter().rev() {
+                    owner.require_active()?;
+                    let name = std::ffi::CString::new(*name).expect("static graphics formal");
+                    let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+                    owner.require_active()?;
+                    let tag = owner.sexp(symbol)?.into_owned()?;
+                    built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
+                }
                 owner.require_active()?;
-                let name = std::ffi::CString::new(*name).expect("static graphics formal");
-                let symbol = crate::sexp::symbol::install_cstr(&name);
+                let drawn = if name == "rasterImage" {
+                    crate::mainutils::portable_plot::native_raster_image(built.as_raw())
+                } else {
+                    crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
+                };
                 owner.require_active()?;
-                let tag = owner.sexp(symbol)?.into_owned()?;
-                built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
-            }
-            owner.require_active()?;
-            let drawn = if name == "rasterImage" {
-                crate::mainutils::portable_plot::native_raster_image(built.as_raw())
-            } else {
-                crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
-            };
-            owner.require_active()?;
-            SexpResult::Ok(drawn)
-        })?
-    })();
-    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                SexpResult::Ok(drawn)
+            })?
+        })();
+        result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    }
 }
 
 /// GNU text.default passes one xy.coords list before labels and text options.
@@ -155,60 +157,62 @@ fn draw_portable_text(args: SEXP) -> SEXP {
 /// The portable point/line path reads a named `x` list and a `type` string.
 #[cfg(feature = "renderplot-device")]
 fn draw_portable_plot_xy(args: SEXP) -> SEXP {
-    use crate::sexp::accessors::{CAR, CDR, SETTAG};
-    use crate::sexp::constructors::Rf_cons;
-    use crate::sexp::globals::R_NilValue;
-    use crate::sexp::symbol::Rf_install;
-    let nil = R_NilValue();
-    let mut cell = CDR(args);
-    let xy = if cell.is_null() || cell == nil {
-        nil
-    } else {
-        CAR(cell)
-    };
-    cell = if cell.is_null() || cell == nil {
-        nil
-    } else {
-        CDR(cell)
-    };
-    let typ = if cell.is_null() || cell == nil {
-        nil
-    } else {
-        CAR(cell)
-    };
-    cell = if cell.is_null() || cell == nil {
-        nil
-    } else {
-        CDR(cell)
-    };
-    let tags = ["pch", "lty", "col", "bg", "cex", "lwd"];
-    let mut extras = Vec::new();
-    let mut index = 0;
-    while !cell.is_null() && cell != nil && index < tags.len() {
-        extras.push((tags[index], CAR(cell)));
-        cell = CDR(cell);
-        index += 1;
-    }
-    let mut built = nil;
-    let mut guard = None;
-    for (tag, value) in extras.into_iter().rev() {
-        built = Rf_cons(value, built);
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, SETTAG};
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::globals::R_NilValue;
+        use crate::sexp::symbol::Rf_install;
+        let nil = R_NilValue();
+        let mut cell = CDR(args);
+        let xy = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CAR(cell)
+        };
+        cell = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CDR(cell)
+        };
+        let typ = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CAR(cell)
+        };
+        cell = if cell.is_null() || cell == nil {
+            nil
+        } else {
+            CDR(cell)
+        };
+        let tags = ["pch", "lty", "col", "bg", "cex", "lwd"];
+        let mut extras = Vec::new();
+        let mut index = 0;
+        while !cell.is_null() && cell != nil && index < tags.len() {
+            extras.push((tags[index], CAR(cell)));
+            cell = CDR(cell);
+            index += 1;
+        }
+        let mut built = nil;
+        let mut guard = None;
+        for (tag, value) in extras.into_iter().rev() {
+            built = Rf_cons(value, built);
+            guard = Some(crate::sexp::protect::protect(built));
+            let ctag = std::ffi::CString::new(tag).unwrap_or_default();
+            SETTAG(built, Rf_install(ctag.as_ptr()));
+        }
+        built = Rf_cons(typ, built);
         guard = Some(crate::sexp::protect::protect(built));
-        let ctag = std::ffi::CString::new(tag).unwrap_or_default();
-        SETTAG(built, crate::sexp::symbol::install_cstr(&ctag));
+        SETTAG(built, Rf_install(c"type".as_ptr()));
+        built = Rf_cons(xy, built);
+        guard = Some(crate::sexp::protect::protect(built));
+        SETTAG(built, Rf_install(c"x".as_ptr()));
+        let drawn = crate::mainutils::portable_plot::draw_builtin("points", built);
+        drop(guard);
+        drawn
     }
-    built = Rf_cons(typ, built);
-    guard = Some(crate::sexp::protect::protect(built));
-    SETTAG(built, crate::sexp::symbol::install_str("type"));
-    built = Rf_cons(xy, built);
-    guard = Some(crate::sexp::protect::protect(built));
-    SETTAG(built, crate::sexp::symbol::install_str("x"));
-    let drawn = crate::mainutils::portable_plot::draw_builtin("points", built);
-    drop(guard);
-    drawn
 }
 
-unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         if renderplot_backend_active() {
@@ -224,7 +228,7 @@ unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SE
         plot::C_plot_new(call, op, args, rho)
     }
 }
-unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
     crate::mainutils::essentials::do_plot_window(
         crate::sexp::globals::R_NilValue(),
         crate::sexp::globals::R_NilValue(),
@@ -234,52 +238,50 @@ unsafe extern "C-unwind" fn c_plot_window(args: SEXP) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
-    unsafe {
-        if renderplot_backend_active() {
-            let name = external_routine_name(args);
-            let bare = name.strip_prefix("C_").unwrap_or(name.as_str());
-            return match bare {
-                "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
-                "title" => draw_portable_title(args),
-                "text" => draw_portable_text(args),
-                "mtext" => draw_portable_positional(
-                    "mtext",
-                    args,
-                    &[
-                        "text", "side", "line", "outer", "at", "adj", "padj", "cex", "col", "font",
-                    ],
-                ),
-                "polygon" => {
-                    draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
-                }
-                "abline" => draw_portable_positional(
-                    "abline",
-                    args,
-                    &["a", "b", "h", "v", "untf", "col", "lty", "lwd"],
-                ),
-                "box" | "segments" | "arrows" | "rect" => forward_portable(bare, args),
-                _ => c_unsupported_graphics(args),
-            };
-        }
-        crate::mainutils::essentials::base_error(format!(
-            "native graphics operation '{}' requires an active renderplot device",
-            external_routine_name(args),
-        ))
+extern "C-unwind" fn c_plot_xy(args: SEXP) -> SEXP {
+    if renderplot_backend_active() {
+        let name = external_routine_name(args);
+        let bare = name.strip_prefix("C_").unwrap_or(name.as_str());
+        return match bare {
+            "plotXY" | "plot_xy" => draw_portable_plot_xy(args),
+            "title" => draw_portable_title(args),
+            "text" => draw_portable_text(args),
+            "mtext" => draw_portable_positional(
+                "mtext",
+                args,
+                &[
+                    "text", "side", "line", "outer", "at", "adj", "padj", "cex", "col", "font",
+                ],
+            ),
+            "polygon" => {
+                draw_portable_positional("polygon", args, &["x", "y", "col", "border", "lty"])
+            }
+            "abline" => draw_portable_positional(
+                "abline",
+                args,
+                &["a", "b", "h", "v", "untf", "col", "lty", "lwd"],
+            ),
+            "box" | "segments" | "arrows" | "rect" => forward_portable(bare, args),
+            _ => c_unsupported_graphics(args),
+        };
     }
+    crate::mainutils::essentials::base_error(format!(
+        "native graphics operation '{}' requires an active renderplot device",
+        external_routine_name(args),
+    ))
 }
 
 /// GNU's C_plotXY/C_title/C_text/C_mtext/C_box/C_segments/C_rect/C_polygon/
 /// C_abline/C_arrows all start with `GCheckState`. Without a backend the
 /// contract is the plot frame itself.
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_plot_xy(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `clip` passes four user coordinates after the routine name.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
     if renderplot_backend_active() {
         return crate::mainutils::portable_plot::native_clip(crate::sexp::accessors::CDR(args));
     }
@@ -292,17 +294,17 @@ unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
 /// GNU C_clip converts and stores a clip rectangle; it does not require an
 /// established plot frame, so the device-less form only discards the box.
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_clip(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_clip(_args: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
 
 /// GNU `grconvertX` passes the values plus one-based unit indices.
-unsafe extern "C-unwind" fn c_convert_x(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_convert_x(args: SEXP) -> SEXP {
     convert_locations(args, false)
 }
 
 /// GNU `grconvertY` passes the values plus one-based unit indices.
-unsafe extern "C-unwind" fn c_convert_y(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_convert_y(args: SEXP) -> SEXP {
     convert_locations(args, true)
 }
 
@@ -329,7 +331,7 @@ fn convert_locations(args: SEXP, _vertical: bool) -> SEXP {
         ))
     }
 }
-unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
     crate::mainutils::essentials::do_axis(
         crate::sexp::globals::R_NilValue(),
         crate::sexp::globals::R_NilValue(),
@@ -338,32 +340,32 @@ unsafe extern "C-unwind" fn c_axis(args: SEXP) -> SEXP {
         crate::sexp::globals::R_GlobalEnv(),
     )
 }
-unsafe extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
+extern "C-unwind" fn c_bin_count(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     stem::C_BinCount(x, breaks, right, lowest)
 }
-unsafe extern "C-unwind" fn c_str_width(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_str_width(args: SEXP) -> SEXP {
     text_metrics::measure(args, false)
 }
-unsafe extern "C-unwind" fn c_str_height(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_str_height(args: SEXP) -> SEXP {
     text_metrics::measure(args, true)
 }
-unsafe extern "C-unwind" fn c_stem_leaf(x: SEXP, scale: SEXP, width: SEXP, atom: SEXP) -> SEXP {
+extern "C-unwind" fn c_stem_leaf(x: SEXP, scale: SEXP, width: SEXP, atom: SEXP) -> SEXP {
     stem::C_StemLeaf(x, scale, width, atom)
 }
 
-unsafe extern "C-unwind" fn c_contour_def() -> SEXP {
+extern "C-unwind" fn c_contour_def() -> SEXP {
     plot3d::C_contourDef()
 }
-unsafe extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_contour(args: SEXP) -> SEXP {
     plot3d::C_contour(args)
 }
-unsafe extern "C-unwind" fn c_image(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_image(args: SEXP) -> SEXP {
     plot3d::C_image(args)
 }
-unsafe extern "C-unwind" fn c_layout(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_layout(args: SEXP) -> SEXP {
     par::C_layout(args)
 }
-unsafe extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
     crate::mainutils::essentials::base_error(format!(
         "native graphics operation '{}' is not implemented",
         external_routine_name(args),
@@ -371,7 +373,7 @@ unsafe extern "C-unwind" fn c_unsupported_graphics(args: SEXP) -> SEXP {
 }
 
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -397,26 +399,26 @@ unsafe extern "C-unwind" fn c_raster(args: SEXP) -> SEXP {
 
 /// GNU C_raster requires a plot frame (`GCheckState`) before blitting.
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_raster(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_raster(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `persp` — validation and the viewing transformation live in the
 /// plot3d port; the drawing half runs only with a live renderplot backend,
 /// so the device-less profile matches GNU's null device (matrix, no draw).
-unsafe extern "C-unwind" fn c_persp(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_persp(args: SEXP) -> SEXP {
     plot3d::C_persp(args)
 }
 
 /// GNU `filledcontour` — plot.new is required (GCheckState); the colored
 /// bands are drawn through the portable engine when a backend is live.
-unsafe extern "C-unwind" fn c_filledcontour(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_filledcontour(args: SEXP) -> SEXP {
     plot3d::C_filledcontour(args)
 }
 
 /// GNU `path` (polypath) — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -433,13 +435,13 @@ unsafe extern "C-unwind" fn c_path(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_path(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_path(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `symbols` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -456,13 +458,13 @@ unsafe extern "C-unwind" fn c_symbols(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_symbols(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_symbols(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `xspline` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -479,13 +481,13 @@ unsafe extern "C-unwind" fn c_xspline(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_xspline(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_xspline(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `erase` — no plot frame required; the transparent default makes the
 /// device-less form a silent no-op.
-unsafe extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     {
         if renderplot_backend_active() {
@@ -497,7 +499,7 @@ unsafe extern "C-unwind" fn c_erase(args: SEXP) -> SEXP {
 
 /// GNU `dend` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -514,13 +516,13 @@ unsafe extern "C-unwind" fn c_dend(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_dend(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_dend(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `dendwindow` — requires a plot frame.
 #[cfg(feature = "renderplot-device")]
-unsafe extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
+extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
     {
         if renderplot_backend_active() {
             return draw_portable_positional(
@@ -537,14 +539,14 @@ unsafe extern "C-unwind" fn c_dendwindow(args: SEXP) -> SEXP {
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-unsafe extern "C-unwind" fn c_dendwindow(_args: SEXP) -> SEXP {
+extern "C-unwind" fn c_dendwindow(_args: SEXP) -> SEXP {
     null_device_draw()
 }
 
 /// GNU `locator` — `.External2(C_locator, n, type)`. The scene device has
 /// no locator callback, so GLocator fails on the first click: the wrapper
 /// observes zero points and `locator()` returns NULL.
-unsafe extern "C-unwind" fn c_locator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+extern "C-unwind" fn c_locator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         {
@@ -571,7 +573,7 @@ fn null_device_locator(args: SEXP) -> SEXP {
 
 /// GNU `identify` — `.External2(C_identify, ...)`. Zero clicks identifies
 /// nothing: the all-zero result reduces to integer(0) in the wrapper.
-unsafe extern "C-unwind" fn c_identify(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+extern "C-unwind" fn c_identify(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         #[cfg(feature = "renderplot-device")]
         {
@@ -639,9 +641,12 @@ pub(crate) fn locator_result(args: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 2, nobs);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("x"));
-        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("y"));
-        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("n"));
+        // SAFETY: each literal is a valid NUL-terminated string.
+        unsafe {
+            SET_STRING_ELT(names, 0, Rf_mkChar(b"x\0".as_ptr().cast()));
+            SET_STRING_ELT(names, 1, Rf_mkChar(b"y\0".as_ptr().cast()));
+            SET_STRING_ELT(names, 2, Rf_mkChar(b"n\0".as_ptr().cast()));
+        }
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
@@ -724,9 +729,12 @@ pub(crate) fn identify_result(args: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 2, order);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("ind"));
-        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("pos"));
-        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("order"));
+        // SAFETY: each literal is a valid NUL-terminated string.
+        unsafe {
+            SET_STRING_ELT(names, 0, Rf_mkChar(b"ind\0".as_ptr().cast()));
+            SET_STRING_ELT(names, 1, Rf_mkChar(b"pos\0".as_ptr().cast()));
+            SET_STRING_ELT(names, 2, Rf_mkChar(b"order\0".as_ptr().cast()));
+        }
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
@@ -877,50 +885,51 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 }
 
 pub fn install_call_symbols(env: SEXP) {
-    for name in [
-        "C_par",
-        "C_plot_new",
-        "C_plot_window",
-        "C_plotXY",
-        "C_title",
-        "C_text",
-        "C_mtext",
-        "C_axis",
-        "C_box",
-        "C_segments",
-        "C_rect",
-        "C_polygon",
-        "C_abline",
-        "C_strWidth",
-        "C_strHeight",
-        "C_BinCount",
-        "C_contourDef",
-        "C_contour",
-        "C_image",
-        "C_layout",
-        "C_filledcontour",
-        "C_persp",
-        "C_arrows",
-        "C_clip",
-        "C_convertX",
-        "C_convertY",
-        "C_dend",
-        "C_dendwindow",
-        "C_erase",
-        "C_path",
-        "C_raster",
-        "C_symbols",
-        "C_xspline",
-        "C_locator",
-        "C_identify",
-        "C_StemLeaf",
-    ] {
-        let cname = std::ffi::CString::new(name).unwrap_or_default();
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::install_cstr(&cname),
-            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
-            env,
-        );
+    {
+        for name in [
+            "C_par",
+            "C_plot_new",
+            "C_plot_window",
+            "C_plotXY",
+            "C_title",
+            "C_text",
+            "C_mtext",
+            "C_axis",
+            "C_box",
+            "C_segments",
+            "C_rect",
+            "C_polygon",
+            "C_abline",
+            "C_strWidth",
+            "C_strHeight",
+            "C_BinCount",
+            "C_contourDef",
+            "C_contour",
+            "C_image",
+            "C_layout",
+            "C_filledcontour",
+            "C_persp",
+            "C_arrows",
+            "C_clip",
+            "C_convertX",
+            "C_convertY",
+            "C_dend",
+            "C_dendwindow",
+            "C_erase",
+            "C_path",
+            "C_raster",
+            "C_symbols",
+            "C_xspline",
+            "C_locator",
+            "C_identify",
+            "C_StemLeaf",
+        ] {
+            crate::sexp::envir::defineVar(
+                crate::sexp::symbol::install_str(name),
+                crate::sexp::constructors::mk_string_str(name),
+                env,
+            );
+        }
     }
 }
 
@@ -1214,7 +1223,6 @@ mod clip_and_convert_tests {
             ),
             &mut scene,
             |value, _, _| unsafe {
-                // SAFETY: the session roots its result for this synchronous callback.
                 let value = value.unwrap();
                 (0..value.clone().len())
                     .map(|index| value.real_elt(index).unwrap())

@@ -44,7 +44,7 @@ pub(crate) extern "C" fn savePalette_impl(save: c_int) {
 /// Wrapper for inRGBpar3 with void pointer signature (for Rg_set_col_ptrs).
 ///
 /// SAFETY: the engine calls this callback with a live SEXP in `x`.
-pub(crate) unsafe extern "C" fn inRGBpar3_dispatch(
+pub(crate) extern "C" fn inRGBpar3_dispatch(
     x: *mut std::os::raw::c_void,
     i: c_int,
     bg: c_uint,
@@ -74,10 +74,7 @@ pub fn do_palette(val: SEXP) -> SEXP {
         let mut i = 0usize;
         while i < ps {
             let color = with_color_state(|state| state.palette[i]);
-            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-            SET_STRING_ELT(ans, i as R_xlen_t, unsafe {
-                mk_char_ptr(incol2name(color))
-            });
+            SET_STRING_ELT(ans, i as R_xlen_t, mk_col2name_char(color));
             i += 1;
         }
 

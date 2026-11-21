@@ -42,12 +42,8 @@ struct GridPathGuard {
 }
 
 impl GridPathGuard {
-    // SAFETY: caller must hold a live device pointer; `GEMode` is an engine
-    // mode-switch bridge whose raw device contract is discharged by callers
-    // passing the `getDevice` result.
-    unsafe fn enter(dd: pGEDevDesc) -> Self {
-        // SAFETY: forwarded raw pointers satisfy `GEMode`'s contract per this function's own `# Safety` requirements.
-        unsafe { ge::GEMode(1, dd) };
+    fn enter(dd: pGEDevDesc) -> Self {
+        ge::GEMode(1, dd);
         setGridStateElement(dd, GSS_RESOLVINGPATH, scalar_logical(1));
         Self { dd }
     }
@@ -56,23 +52,13 @@ impl GridPathGuard {
 impl Drop for GridPathGuard {
     fn drop(&mut self) {
         setGridStateElement(self.dd, GSS_RESOLVINGPATH, scalar_logical(0));
-        // SAFETY: `dd` was a live device when the guard was entered; engine
-        // mode teardown mirrors `enter`.
-        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-        unsafe { ge::GEMode(0, self.dd) };
+        ge::GEMode(0, self.dd);
     }
 }
 
 /// getListElement — get a named element from a list
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
-    // SAFETY: forwarded raw pointers satisfy `getListElement`'s contract per this function's own `# Safety` requirements.
-    unsafe { super::util::getListElement(list, str) }
+fn getListElement(list: SEXP, name: &str) -> SEXP {
+    super::util::getListElement(list, name)
 }
 
 // ---------------------------------------------------------------------------
@@ -80,20 +66,16 @@ unsafe fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn L_stroke(path: SEXP) -> SEXP {
-    let mut _gc: [u8; 256] = [0; 256];
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let _gc = R_GE_gcontext::zeroed();
+    let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
     let currentgp = gridStateElement(dd, GSS_GPAR);
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
+    gcontextFromgpar(currentgp, 0, Some(&_gc), dd);
 
-    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
-    // the opaque engine context buffer just filled by `gcontextFromgpar`.
-    let _scope = unsafe { GridPathGuard::enter(dd) };
-    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
-    unsafe { ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd) };
+    let _scope = GridPathGuard::enter(dd);
+    ge::GEStroke(path, Some(&_gc), dd);
 
     R_NilValue()
 }
@@ -103,9 +85,8 @@ pub fn L_stroke(path: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
-    let mut _gc: [u8; 256] = [0; 256];
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let _gc = R_GE_gcontext::zeroed();
+    let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
@@ -113,37 +94,19 @@ pub fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let _currentgp_guard = protect(currentgp);
     let resolved_fill = resolveGPar(currentgp, 0);
     let _resolved_fill_guard = protect(resolved_fill);
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
+    gcontextFromgpar(currentgp, 0, Some(&_gc), dd);
 
-    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
-    // the opaque engine context buffer just filled by `gcontextFromgpar`.
-    let _scope = unsafe { GridPathGuard::enter(dd) };
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe {
-        ge::GEFill(
-            path,
-            integer_elt(rule, 0),
-            _gc.as_ptr() as *const c_void,
-            dd,
-        )
-    };
+    let _scope = GridPathGuard::enter(dd);
+
+    ge::GEFill(path, integer_elt(rule, 0), Some(&_gc), dd);
 
     if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let pattern_ref = unsafe {
-            getListElement(
-                resolved_fill,
-                b"index\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        };
-        // SAFETY: `dd` is the live device; `pattern_ref` is the pattern index
-        // element read from the resolved fill above.
-        unsafe {
-            rmath_grid_release_pattern(
-                dd as crate::mainutils::graphics_ffi::pGEDevDesc,
-                pattern_ref,
-            );
-        }
+        let pattern_ref = getListElement(resolved_fill, "index");
+
+        rmath_grid_release_pattern(
+            dd as crate::mainutils::graphics_ffi::pGEDevDesc,
+            pattern_ref,
+        );
     }
 
     R_NilValue()
@@ -154,9 +117,8 @@ pub fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
-    let mut _gc: [u8; 256] = [0; 256];
-    // SAFETY: device registry bridge; a null result means no open device.
-    let dd = unsafe { getDevice() };
+    let _gc = R_GE_gcontext::zeroed();
+    let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
@@ -164,37 +126,19 @@ pub fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let _currentgp_guard = protect(currentgp);
     let resolved_fill = resolveGPar(currentgp, 0);
     let _resolved_fill_guard = protect(resolved_fill);
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
+    gcontextFromgpar(currentgp, 0, Some(&_gc), dd);
 
-    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
-    // the opaque engine context buffer just filled by `gcontextFromgpar`.
-    let _scope = unsafe { GridPathGuard::enter(dd) };
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe {
-        ge::GEFillStroke(
-            path,
-            integer_elt(rule, 0),
-            _gc.as_ptr() as *const c_void,
-            dd,
-        )
-    };
+    let _scope = GridPathGuard::enter(dd);
+
+    ge::GEFillStroke(path, integer_elt(rule, 0), Some(&_gc), dd);
 
     if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let pattern_ref = unsafe {
-            getListElement(
-                resolved_fill,
-                b"index\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        };
-        // SAFETY: `dd` is the live device; `pattern_ref` is the pattern index
-        // element read from the resolved fill above.
-        unsafe {
-            rmath_grid_release_pattern(
-                dd as crate::mainutils::graphics_ffi::pGEDevDesc,
-                pattern_ref,
-            );
-        }
+        let pattern_ref = getListElement(resolved_fill, "index");
+
+        rmath_grid_release_pattern(
+            dd as crate::mainutils::graphics_ffi::pGEDevDesc,
+            pattern_ref,
+        );
     }
 
     R_NilValue()

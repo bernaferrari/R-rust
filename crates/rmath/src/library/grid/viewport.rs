@@ -118,7 +118,6 @@ fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     set_integer_elt(dims, 0, nrow);
     set_integer_elt(dims, 1, ncol);
     let result = alloc_vector(sexptype, nrow * ncol);
-    // SAFETY: `result` and `dims` are live objects allocated above.
     crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims);
     result
 }
@@ -340,16 +339,10 @@ pub fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     // Narrow limitation: the opaque GEcontext layout still blocks direct field
     // writes here, but we can at least resolve/validate the viewport gpar
     // path through the shared gpar accessor.
-    // SAFETY: raw context/device pointers keep their caller contracts.
     gcontextFromgpar(gpar, 0, gc, dd);
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
+pub fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
     let parent_context = if parent.is_null() || Rf_isNull(parent) != 0 {
         LViewportContext {
             xscalemin: 0.0,
@@ -395,14 +388,12 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
         parent_height_cm = 1.0;
     }
 
-    let gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_ptr() as pGEcontext;
+    let gc_buf = R_GE_gcontext::zeroed();
+    let gc = Some(&gc_buf);
     gcontextFromViewport(vp, gc, dd);
     let dd = dd as pGEDevDesc;
 
-    // SAFETY: forwarded raw pointers satisfy `transformWidthtoINCHES`'s contract per this function's own `# Safety` requirements.
-    let width_in = unsafe {
-        transformWidthtoINCHES(
+    let width_in = transformWidthtoINCHES(
             viewportWidth(vp),
             0,
             unit_parent_context,
@@ -410,11 +401,8 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
             parent_width_cm,
             parent_height_cm,
             dd,
-        )
-    };
-    // SAFETY: forwarded raw pointers satisfy `transformHeighttoINCHES`'s contract per this function's own `# Safety` requirements.
-    let height_in = unsafe {
-        transformHeighttoINCHES(
+    );
+    let height_in = transformHeighttoINCHES(
             viewportHeight(vp),
             0,
             unit_parent_context,
@@ -422,11 +410,8 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
             parent_width_cm,
             parent_height_cm,
             dd,
-        )
-    };
-    // SAFETY: forwarded raw pointers satisfy `transformXtoINCHES`'s contract per this function's own `# Safety` requirements.
-    let x_in = unsafe {
-        transformXtoINCHES(
+    );
+    let x_in = transformXtoINCHES(
             viewportX(vp),
             0,
             unit_parent_context,
@@ -434,11 +419,8 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
             parent_width_cm,
             parent_height_cm,
             dd,
-        )
-    };
-    // SAFETY: forwarded raw pointers satisfy `transformYtoINCHES`'s contract per this function's own `# Safety` requirements.
-    let y_in = unsafe {
-        transformYtoINCHES(
+    );
+    let y_in = transformYtoINCHES(
             viewportY(vp),
             0,
             unit_parent_context,
@@ -446,8 +428,7 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
             parent_width_cm,
             parent_height_cm,
             dd,
-        )
-    };
+    );
 
     let left_in = justifyX(x_in, width_in, viewportHJust(vp));
     let bottom_in = justifyY(y_in, height_in, viewportVJust(vp));
@@ -477,17 +458,14 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
     set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, clip);
 
     if Rf_isNull(viewportLayout(vp)) == 0 {
-        // SAFETY: forwarded raw pointers satisfy `calcViewportLayout`'s contract per this function's own `# Safety` requirements.
-        unsafe {
             calcViewportLayout(
                 vp,
                 parent_width_cm,
                 parent_height_cm,
                 parent_context,
-                gc_buf.as_ptr() as pGEcontext,
+            Some(&gc_buf),
                 dd,
-            )
-        };
+        );
     }
 }
 
@@ -495,12 +473,7 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
 // initVP — initialize the top-level viewport for the current device
 // ---------------------------------------------------------------------------
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn initVP(dd: *const u8) {
+pub fn initVP(dd: *const u8) {
     let dd = dd as pGEDevDesc;
 
     let vpfnname = install("grid.top.level.vp");
@@ -511,8 +484,7 @@ pub unsafe fn initVP(dd: *const u8) {
     let vp = Rf_eval(vpfn, R_GlobalEnv());
     let _vp_guard = protect(vp);
 
-    // SAFETY: `dd` is the live device pointer passed by the caller.
-    let (dev_width_cm, dev_height_cm) = unsafe { getDeviceSize(dd) };
+    let (dev_width_cm, dev_height_cm) = getDeviceSize(dd);
 
     let xscale = alloc_vector(SEXPTYPE::REALSXP, 2);
     let _xscale_guard = protect(xscale);
@@ -529,7 +501,6 @@ pub unsafe fn initVP(dd: *const u8) {
     let currentgp = gridStateElement(dd, GSS_GPAR);
     set_vector_elt(vp, PVP_GPAR as R_xlen_t, currentgp);
 
-    // SAFETY: forwarded raw pointers satisfy `doSetViewport`'s contract per this function's own `# Safety` requirements.
-    let vp = unsafe { doSetViewport(vp, 1, 1, dd) };
+    let vp = doSetViewport(vp, 1, 1, dd);
     setGridStateElement(dd, GSS_VP, vp);
 }

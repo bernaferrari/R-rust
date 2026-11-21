@@ -105,12 +105,7 @@ fn findRelHeights(layout: SEXP, relativeHeights: &mut [c_int], dd: pGEDevDesc) {
 // allocateKnownWidths / allocateKnownHeights
 // ---------------------------------------------------------------------------
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn allocateKnownWidths(
+fn allocateKnownWidths(
     layout: SEXP,
     relativeWidths: &[c_int],
     parentWidthCM: f64,
@@ -125,32 +120,24 @@ unsafe fn allocateKnownWidths(
     let widths = layoutWidths(layout);
     for i in 0..ncol {
         if relativeWidths[i as usize] == 0 {
-            // SAFETY: forwarded raw pointers satisfy `transformWidth`'s contract per this function's own `# Safety` requirements.
-            let width_cm = unsafe {
-                transformWidth(
-                    widths,
-                    i,
-                    parentContext,
-                    parentgc,
-                    parentWidthCM,
-                    parentHeightCM,
-                    0,
-                    0,
-                    dd,
-                )
-            } * 2.54;
+            let width_cm = transformWidth(
+                widths,
+                i,
+                parentContext,
+                parentgc,
+                parentWidthCM,
+                parentHeightCM,
+                0,
+                0,
+                dd,
+            ) * 2.54;
             npcWidths[i as usize] = width_cm;
             *widthLeftCM -= width_cm;
         }
     }
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn allocateKnownHeights(
+fn allocateKnownHeights(
     layout: SEXP,
     relativeHeights: &[c_int],
     parentWidthCM: f64,
@@ -165,20 +152,17 @@ unsafe fn allocateKnownHeights(
     let heights = layoutHeights(layout);
     for i in 0..nrow {
         if relativeHeights[i as usize] == 0 {
-            // SAFETY: forwarded raw pointers satisfy `transformHeight`'s contract per this function's own `# Safety` requirements.
-            let height_cm = unsafe {
-                transformHeight(
-                    heights,
-                    i,
-                    parentContext,
-                    parentgc,
-                    parentWidthCM,
-                    parentHeightCM,
-                    0,
-                    0,
-                    dd,
-                )
-            } * 2.54;
+            let height_cm = transformHeight(
+                heights,
+                i,
+                parentContext,
+                parentgc,
+                parentWidthCM,
+                parentHeightCM,
+                0,
+                0,
+                dd,
+            ) * 2.54;
             npcHeights[i as usize] = height_cm;
             *heightLeftCM -= height_cm;
         }
@@ -484,12 +468,7 @@ fn allocationRemaining(initial: f64, remaining: f64) -> bool {
 // calcViewportLayout
 // ---------------------------------------------------------------------------
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn calcViewportLayout(
+pub fn calcViewportLayout(
     viewport: SEXP,
     parentWidthCM: f64,
     parentHeightCM: f64,
@@ -510,34 +489,29 @@ pub unsafe fn calcViewportLayout(
     findRelWidths(layout, &mut relativeWidths, dd);
     findRelHeights(layout, &mut relativeHeights, dd);
 
-    // SAFETY: forwarded raw pointers satisfy `allocateKnownWidths`'s contract per this function's own `# Safety` requirements.
-    unsafe {
-        allocateKnownWidths(
-            layout,
-            &relativeWidths,
-            parentWidthCM,
-            parentHeightCM,
-            parentContext,
-            parentgc,
-            dd,
-            &mut npcWidths,
-            &mut reducedWidthCM,
-        )
-    };
-    // SAFETY: forwarded raw pointers satisfy `allocateKnownHeights`'s contract per this function's own `# Safety` requirements.
-    unsafe {
-        allocateKnownHeights(
-            layout,
-            &relativeHeights,
-            parentWidthCM,
-            parentHeightCM,
-            parentContext,
-            parentgc,
-            dd,
-            &mut npcHeights,
-            &mut reducedHeightCM,
-        )
-    };
+    allocateKnownWidths(
+        layout,
+        &relativeWidths,
+        parentWidthCM,
+        parentHeightCM,
+        parentContext,
+        parentgc,
+        dd,
+        &mut npcWidths,
+        &mut reducedWidthCM,
+    );
+
+    allocateKnownHeights(
+        layout,
+        &relativeHeights,
+        parentWidthCM,
+        parentHeightCM,
+        parentContext,
+        parentgc,
+        dd,
+        &mut npcHeights,
+        &mut reducedHeightCM,
+    );
 
     if allocationRemaining(parentWidthCM, reducedWidthCM)
         || allocationRemaining(parentHeightCM, reducedHeightCM)
@@ -772,29 +746,26 @@ mod tests {
         }
     }
 
-    unsafe fn mk_viewport(layout: SEXP) -> SEXP {
-        unsafe {
-            let vp = Rf_allocVector(SEXPTYPE::VECSXP, PVP_MASK as c_int + 1);
-            let _vp_guard = protect(vp);
-            SET_VECTOR_ELT(vp, VP_LAYOUT as R_xlen_t, layout);
-            SET_VECTOR_ELT(vp, PVP_WIDTHCM as R_xlen_t, Rf_ScalarReal(10.0));
-            SET_VECTOR_ELT(vp, PVP_HEIGHTCM as R_xlen_t, Rf_ScalarReal(6.0));
-            SET_VECTOR_ELT(vp, VP_VALIDLPOSROW as R_xlen_t, R_NilValue());
-            SET_VECTOR_ELT(vp, VP_VALIDLPOSCOL as R_xlen_t, R_NilValue());
-            vp
-        }
+    fn mk_viewport(layout: SEXP) -> SEXP {
+        let vp = Rf_allocVector(SEXPTYPE::VECSXP, PVP_MASK as c_int + 1);
+        let _vp_guard = protect(vp);
+        SET_VECTOR_ELT(vp, VP_LAYOUT as R_xlen_t, layout);
+        SET_VECTOR_ELT(vp, PVP_WIDTHCM as R_xlen_t, Rf_ScalarReal(10.0));
+        SET_VECTOR_ELT(vp, PVP_HEIGHTCM as R_xlen_t, Rf_ScalarReal(6.0));
+        SET_VECTOR_ELT(vp, VP_VALIDLPOSROW as R_xlen_t, R_NilValue());
+        SET_VECTOR_ELT(vp, VP_VALIDLPOSCOL as R_xlen_t, R_NilValue());
+        vp
     }
 
     #[test]
     fn relative_unit_tracks_null_units() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let null_unit = unit(1.0, L_NULL);
-            let cm_unit = unit(1.0, L_CM);
 
-            assert!(relativeUnit(null_unit, 0, std::ptr::null_mut()));
-            assert!(!relativeUnit(cm_unit, 0, std::ptr::null_mut()));
-        }
+        let null_unit = unit(1.0, L_NULL);
+        let cm_unit = unit(1.0, L_CM);
+
+        assert!(relativeUnit(null_unit, 0, std::ptr::null_mut()));
+        assert!(!relativeUnit(cm_unit, 0, std::ptr::null_mut()));
     }
 
     #[test]
@@ -811,7 +782,7 @@ mod tests {
                 10.0,
                 6.0,
                 LViewportContext::default(),
-                std::ptr::null_mut(),
+                None,
                 std::ptr::null_mut(),
             );
 
@@ -840,7 +811,7 @@ mod tests {
                 10.0,
                 6.0,
                 LViewportContext::default(),
-                std::ptr::null_mut(),
+                None,
                 std::ptr::null_mut(),
             );
 

@@ -151,15 +151,10 @@ pub(crate) fn polygonEdge(x: &[f64], y: &[f64], theta: c_double) -> (c_double, c
  * Drawing primitives: arrows
  * ============================== */
 
-/// Draw one arrowhead. `x`/`y` are raw engine coordinate buffers lent for
-/// the `GEPolyline`/`GEPolygon` bridge calls below.
-///
-/// # Safety
-/// `x` and `y` must point to at least 3 readable `f64` elements; `gc` and
-/// `dd` keep their engine/device contracts.
-pub(crate) unsafe fn drawArrow(
-    x: *const f64,
-    y: *const f64,
+/// Draw one arrowhead through the three vertices in `x`/`y`.
+pub(crate) fn drawArrow(
+    x: &[f64; 3],
+    y: &[f64; 3],
     atype: SEXP,
     i: c_int,
     gc: pGEcontext,
@@ -167,21 +162,15 @@ pub(crate) unsafe fn drawArrow(
 ) {
     let nt = LENGTH(atype);
     match crate::library::grid::integer_elt(atype, (i % nt) as R_xlen_t) {
-        // SAFETY: `x`/`y`/`gc`/`dd` are the raw engine buffers described
-        // above; the callee contract is unchanged.
-        1 => unsafe { GEPolyline(3, x, y, gc, dd) },
-        2 => unsafe { GEPolygon(3, x, y, gc, dd) },
+        1 => GEPolyline(x, y, gc, dd),
+        2 => GEPolygon(x, y, gc, dd),
         _ => {} // intentionally unhandled: unknown arrowhead type
     }
 }
 
 /// Compute arrowhead vertices. `vertx`/`verty` are caller-owned vertex
 /// buffers written through safe indexing.
-///
-/// # Safety
-/// `gc` and `dd` keep their engine/device contracts for the `toDevice*`
-/// coordinate bridges below.
-pub(crate) unsafe fn calcArrow(
+pub(crate) fn calcArrow(
     x1: f64,
     y1: f64,
     x2: f64,
@@ -197,44 +186,28 @@ pub(crate) unsafe fn calcArrow(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    // SAFETY: forwarded raw pointers satisfy `transformWidthtoINCHES`'s contract per this function's own `# Safety` requirements.
-    let l1 = unsafe { transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }.abs();
-    // SAFETY: forwarded raw pointers satisfy `transformHeighttoINCHES`'s contract per this function's own `# Safety` requirements.
-    let l2 =
-        unsafe { transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }.abs();
+    let l1 = transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
+    let l2 = transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
     let l = fmin2(l1, l2);
     let na = LENGTH(angle);
     let a = DEG2RAD * crate::library::grid::real_elt(angle, (i % na) as R_xlen_t);
     let xc = x2 - x1;
     let yc = y2 - y1;
     let rot = (yc).atan2(xc);
-    // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
-    // bridges over the device state.
 
-    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
-    vertx[0] = unsafe { toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd) };
-    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
-    verty[0] = unsafe { toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd) };
-    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
-    vertx[1] = unsafe { toDeviceX(x1, GE_INCHES, dd) };
-    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
-    verty[1] = unsafe { toDeviceY(y1, GE_INCHES, dd) };
-    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
-    vertx[2] = unsafe { toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd) };
-    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
-    verty[2] = unsafe { toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd) };
+    vertx[0] = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
+    verty[0] = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
+    vertx[1] = toDeviceX(x1, GE_INCHES, dd);
+    verty[1] = toDeviceY(y1, GE_INCHES, dd);
+    vertx[2] = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
+    verty[2] = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
 }
 
-/// Draw arrowheads at the start/end of a polyline. `x`/`y` are raw engine
-/// coordinate buffers with `n` readable elements each.
-///
-/// # Safety
-/// `x` and `y` must point to at least `n` readable `f64` elements; `gc` and
-/// `dd` keep their engine/device contracts.
-pub(crate) unsafe fn arrows(
-    x: *const f64,
-    y: *const f64,
-    n: c_int,
+/// Draw arrowheads at the start/end of the polyline through `x`/`y`
+/// (device coordinates).
+pub(crate) fn arrows(
+    x: &[f64],
+    y: &[f64],
     arrow: SEXP,
     i: c_int,
     start: bool,
@@ -252,6 +225,7 @@ pub(crate) unsafe fn arrows(
     let mut first = true;
     let mut last = true;
 
+    let n = x.len().min(y.len());
     if n < 2 {
         return;
     }
@@ -267,63 +241,56 @@ pub(crate) unsafe fn arrows(
     }
 
     if first && start {
-        // SAFETY: `x`/`y`/`gc`/`dd` are the raw engine buffers described
-        // above; `vertx`/`verty` are fully initialized local buffers.
-        unsafe {
-            calcArrow(
-                fromDeviceX(*x, GE_INCHES, dd),
-                fromDeviceY(*y, GE_INCHES, dd),
-                fromDeviceX(*x.add(1), GE_INCHES, dd),
-                fromDeviceY(*y.add(1), GE_INCHES, dd),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWANGLE as R_xlen_t),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWLENGTH as R_xlen_t),
-                i,
-                vpc,
-                vpWidthCM,
-                vpHeightCM,
-                &mut vertx,
-                &mut verty,
-                gc,
-                dd,
-            );
-            drawArrow(
-                vertx.as_ptr(),
-                verty.as_ptr(),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWTYPE as R_xlen_t),
-                i,
-                gc,
-                dd,
-            );
-        }
+        calcArrow(
+            fromDeviceX(x[0], GE_INCHES, dd),
+            fromDeviceY(y[0], GE_INCHES, dd),
+            fromDeviceX(x[1], GE_INCHES, dd),
+            fromDeviceY(y[1], GE_INCHES, dd),
+            crate::library::grid::vector_elt(arrow, GRID_ARROWANGLE as R_xlen_t),
+            crate::library::grid::vector_elt(arrow, GRID_ARROWLENGTH as R_xlen_t),
+            i,
+            vpc,
+            vpWidthCM,
+            vpHeightCM,
+            &mut vertx,
+            &mut verty,
+            gc,
+            dd,
+        );
+        drawArrow(
+            &vertx,
+            &verty,
+            crate::library::grid::vector_elt(arrow, GRID_ARROWTYPE as R_xlen_t),
+            i,
+            gc,
+            dd,
+        );
     }
     if last && end {
-        // SAFETY: see the `first && start` branch; `x`/`y` hold `n` elements.
-        unsafe {
-            calcArrow(
-                fromDeviceX(*x.add((n - 1) as usize), GE_INCHES, dd),
-                fromDeviceY(*y.add((n - 1) as usize), GE_INCHES, dd),
-                fromDeviceX(*x.add((n - 2) as usize), GE_INCHES, dd),
-                fromDeviceY(*y.add((n - 2) as usize), GE_INCHES, dd),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWANGLE as R_xlen_t),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWLENGTH as R_xlen_t),
-                i,
-                vpc,
-                vpWidthCM,
-                vpHeightCM,
-                &mut vertx,
-                &mut verty,
-                gc,
-                dd,
-            );
-            drawArrow(
-                vertx.as_ptr(),
-                verty.as_ptr(),
-                crate::library::grid::vector_elt(arrow, GRID_ARROWTYPE as R_xlen_t),
-                i,
-                gc,
-                dd,
-            );
-        }
+        calcArrow(
+            fromDeviceX(x[n - 1], GE_INCHES, dd),
+            fromDeviceY(y[n - 1], GE_INCHES, dd),
+            fromDeviceX(x[n - 2], GE_INCHES, dd),
+            fromDeviceY(y[n - 2], GE_INCHES, dd),
+            crate::library::grid::vector_elt(arrow, GRID_ARROWANGLE as R_xlen_t),
+            crate::library::grid::vector_elt(arrow, GRID_ARROWLENGTH as R_xlen_t),
+            i,
+            vpc,
+            vpWidthCM,
+            vpHeightCM,
+            &mut vertx,
+            &mut verty,
+            gc,
+            dd,
+        );
+        drawArrow(
+            &vertx,
+            &verty,
+            crate::library::grid::vector_elt(arrow, GRID_ARROWTYPE as R_xlen_t),
+            i,
+            gc,
+            dd,
+        );
     }
 }
 

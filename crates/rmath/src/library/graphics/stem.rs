@@ -303,12 +303,25 @@ pub fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
         let counts = Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int);
         let _counts_guard = protect(counts);
         // SAFETY: `x`, `breaks`, and `counts` are live protected vectors of
-        // the exact lengths sliced here.
-        let (x_data, breaks_data, counts_data) = unsafe {
+        // the exact lengths sliced here. Empty vectors may have a null data
+        // pointer, so they are lent as empty slices without touching it.
+        let (x_data, breaks_data, counts_data): (&[f64], &[f64], &mut [c_int]) = unsafe {
             (
-                std::slice::from_raw_parts(REAL(x), n as usize),
-                std::slice::from_raw_parts(REAL(breaks), nB as usize),
-                std::slice::from_raw_parts_mut(INTEGER(counts), (nB - 1) as usize),
+                if n > 0 {
+                    std::slice::from_raw_parts(REAL(x), n as usize)
+                } else {
+                    &[]
+                },
+                if nB > 0 {
+                    std::slice::from_raw_parts(REAL(breaks), nB as usize)
+                } else {
+                    &[]
+                },
+                if nB > 1 {
+                    std::slice::from_raw_parts_mut(INTEGER(counts), (nB - 1) as usize)
+                } else {
+                    &mut []
+                },
             )
         };
         C_bincount(x_data, breaks_data, counts_data, sr, sl);

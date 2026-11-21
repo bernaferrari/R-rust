@@ -35,7 +35,7 @@ use crate::main::duplicate::duplicate;
 use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::mainutils::bind::isList;
 use crate::mainutils::colors::RGBpar3;
-use crate::mainutils::engine::GErecordGraphicOperation;
+use crate::mainutils::engine::{GErecordGraphicOperation, charsxp_cstring};
 use crate::mainutils::format::{formatComplex, formatReal};
 use crate::mainutils::objects::inherits2 as inherits;
 use crate::mainutils::printutils::{EncodeComplex, EncodeInteger, EncodeLogical, EncodeReal0};
@@ -116,8 +116,9 @@ const R_PosInf: c_double = f64::INFINITY;
 const R_NegInf: c_double = f64::NEG_INFINITY;
 const DBL_MAX_EXP: c_int = 1024;
 
-unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
+/// The current device as an opaque registry key.
+fn GEcurrentDevice() -> pGEDevDesc {
+    crate::library::grdevices::device_registry::GEcurrentDevice().cast()
 }
 
 #[inline]
@@ -781,13 +782,7 @@ fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
  * ComputeAtValueFromAdj / ComputeAtValue -- compute "at" from adj
  * ======================================================================== */
 
-unsafe fn ComputeAtValueFromAdj(
-    adj: c_double,
-    side: c_int,
-    outer: Rboolean,
-    dd: pGEDevDesc,
-) -> c_double {
-    unsafe {
+fn ComputeAtValueFromAdj(adj: c_double, side: c_int, outer: Rboolean, dd: pGEDevDesc) -> c_double {
         let at: c_double;
         if side % 2 == 0 {
             at = if outer != 0 { adj } else { yNPCtoUsr(adj, dd) };
@@ -795,10 +790,9 @@ unsafe fn ComputeAtValueFromAdj(
             at = if outer != 0 { adj } else { xNPCtoUsr(adj, dd) };
         }
         at
-    }
 }
 
-unsafe fn ComputeAtValue(
+fn ComputeAtValue(
     at: c_double,
     adj: c_double,
     side: c_int,
@@ -806,7 +800,6 @@ unsafe fn ComputeAtValue(
     outer: Rboolean,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
         if R_FINITE(at) == 0 {
             match las {
                 0 => {
@@ -853,7 +846,6 @@ unsafe fn ComputeAtValue(
             }
         }
         at
-    }
 }
 
 /* ========================================================================
@@ -968,39 +960,30 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
  * drawPolygon -- helper for C_polygon
  * ======================================================================== */
 
-unsafe fn drawPolygon(
-    n: c_int,
-    x: *const c_double,
-    y: *const c_double,
+fn drawPolygon(
+    x: &[c_double],
+    y: &[c_double],
     lty: c_int,
     fill: c_int,
     border: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        let gp = gpptr(dd) as *mut GPar;
-        if lty == NA_INTEGER {
-            (*gp).lty = (*(dpptr(dd) as *mut GPar)).lty;
+    let display_lty = super::par::dpar_get(dd).map(|dp| dp.lty);
+    super::par::with_gpar_mut(dd, |gp| {
+        gp.lty = if lty == NA_INTEGER {
+            display_lty.unwrap_or(gp.lty)
         } else {
-            (*gp).lty = lty;
-        }
-        GPolygon(
-            n,
-            x as *mut c_double,
-            y as *mut c_double,
-            USER,
-            fill,
-            border,
-            dd,
-        );
-    }
+            lty
+        };
+    });
+    GPolygon(x, y, USER, fill, border, dd);
 }
 
 /* ========================================================================
  * drawPointsLines -- helper for C_locator
  * ======================================================================== */
 
-unsafe fn drawPointsLines(
+fn drawPointsLines(
     xp: c_double,
     yp: c_double,
     xold: c_double,
@@ -1009,48 +992,46 @@ unsafe fn drawPointsLines(
     first: c_int,
     dd: pGEDevDesc,
 ) {
-    unsafe {
-        let gp = gpptr(dd) as *mut GPar;
         if type_ == b'p' || type_ == b'o' {
-            GSymbol(xp, yp, DEVICE, (*gp).pch, dd);
+        if let Some(gp) = super::par::gpar_get(dd) {
+            GSymbol(xp, yp, DEVICE, gp.pch, dd);
+        }
         }
         if (type_ == b'l' || type_ == b'o') && first == 0 {
             GLine(xold, yold, xp, yp, DEVICE, dd);
         }
-    }
 }
 
 /* ========================================================================
  * drawLabel -- helper for C_identify
  * ======================================================================== */
 
-unsafe fn drawLabel(
+fn drawLabel(
     xi: c_double,
     yi: c_double,
     pos: c_int,
     offset: c_double,
-    l: *const c_char,
+    l: Option<&CStr>,
     enc: cetype_t,
     dd: pGEDevDesc,
 ) {
-    unsafe {
         let mut xi = xi;
         let mut yi = yi;
         match pos {
             4 => {
-                xi = xi + offset;
+            xi += offset;
                 GText(xi, yi, INCHES, l, enc, 0.0, dd_dev_yCharOffset(dd), 0.0, dd);
             }
             2 => {
-                xi = xi - offset;
+            xi -= offset;
                 GText(xi, yi, INCHES, l, enc, 1.0, dd_dev_yCharOffset(dd), 0.0, dd);
             }
             3 => {
-                yi = yi + offset;
+            yi += offset;
                 GText(xi, yi, INCHES, l, enc, 0.5, 0.0, 0.0, dd);
             }
             1 => {
-                yi = yi - offset;
+            yi -= offset;
                 GText(
                     xi,
                     yi,
@@ -1063,11 +1044,10 @@ unsafe fn drawLabel(
                     dd,
                 );
             }
-            0 | _ => {
+        _ => {
                 GText(xi, yi, INCHES, l, enc, 0.0, 0.0, 0.0, dd);
             }
         }
-    }
 }
 
 /* Stub for dd->dev->yCharOffset */
@@ -1304,7 +1284,7 @@ pub fn C_path(args: SEXP) -> SEXP {
         for i in 0..nx as usize {
             *xx.add(i) = REAL(sx).add(i).read();
             *yy.add(i) = REAL(sy).add(i).read();
-            GConvert(xx.add(i), yy.add(i), USER, DEVICE, dd);
+            GConvert(&mut *xx.add(i), &mut *yy.add(i), USER, DEVICE, dd);
             if R_FINITE(*xx.add(i)) == 0 || R_FINITE(*yy.add(i)) == 0 {
                 Rf_error_cstr(c"invalid 'x' or 'y' (in 'GPath')");
             }
@@ -1401,7 +1381,10 @@ unsafe fn drawdend(
                     xl,
                     yl - state.offset,
                     USER,
-                    CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
+                    Some(&charsxp_cstring(STRING_ELT(
+                        dnd_llabels,
+                        (-k - 1) as R_xlen_t,
+                    ))),
                     getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                     1.0,
                     0.3,
@@ -1427,7 +1410,10 @@ unsafe fn drawdend(
                     xr,
                     yr - state.offset,
                     USER,
-                    CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
+                    Some(&charsxp_cstring(STRING_ELT(
+                        dnd_llabels,
+                        (-k - 1) as R_xlen_t,
+                    ))),
                     getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                     1.0,
                     0.3,
@@ -1445,13 +1431,7 @@ unsafe fn drawdend(
         yy[2] = *y;
         xx[3] = xr;
         yy[3] = yr;
-        GPolyline(
-            4,
-            xx.as_ptr() as *mut c_double,
-            yy.as_ptr() as *mut c_double,
-            USER,
-            dd,
-        );
+        GPolyline(&xx, &yy, USER, dd);
         *x = 0.5 * (xl + xr);
     }
 }
@@ -1530,12 +1510,7 @@ pub fn C_dend(args: SEXP) -> SEXP {
         ProcessInlinePars(args, dd);
         let gp = gpptr(dd) as *mut GPar;
         (*gp).cex = (*gp).cexbase * (*gp).cex;
-        let offset = GConvertYUnits(
-            GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd),
-            INCHES,
-            USER,
-            dd,
-        );
+        let offset = GConvertYUnits(GStrWidth(Some(c"m"), CE_ANY, INCHES, dd), INCHES, USER, dd);
         with_dendrogram_state(|state| {
             state.offset = offset;
         });
@@ -1614,7 +1589,7 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
         ProcessInlinePars(args, dd);
         let gp = gpptr(dd) as *mut GPar;
         (*gp).cex = (*gp).cexbase * (*gp).cex;
-        let offset = GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd);
+        let offset = GStrWidth(Some(c"m"), CE_ANY, INCHES, dd);
         with_dendrogram_state(|state| {
             state.offset = offset;
         });
@@ -1645,7 +1620,7 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
             *ll.add(i) = if str == NA_STRING {
                 0.0
             } else {
-                GStrWidth(CHAR(str), getCharCE(str), INCHES, dd) + offset
+                GStrWidth(Some(&charsxp_cstring(str)), getCharCE(str), INCHES, dd) + offset
             };
         }
 
@@ -1795,12 +1770,11 @@ mod tests {
     #[test]
     fn trunk_r90451_empty_colour_is_treated_as_na() {
         let _session = RSession::new();
-        unsafe {
+
             let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, 0);
             assert_eq!(isNAcol(empty, 0, 0), 1);
             assert_eq!(isNAcol(crate::sexp::globals::R_NilValue(), 0, 0), 1);
         }
-    }
 
     #[test]
     fn dendrogram_state_is_session_local_on_same_thread() {

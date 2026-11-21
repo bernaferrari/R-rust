@@ -79,6 +79,8 @@ pub(crate) struct GEDeviceDesc {
     pub holdflush_level: c_int,
     pub ask: bool,
     plot_frame_started: bool,
+    /// engine.c `GEDevDesc.dirty`: some graphics system has drawn here.
+    dirty: bool,
     #[cfg(feature = "renderplot-device")]
     pdf: Option<PdfDevice>,
     #[cfg(feature = "renderplot-device")]
@@ -131,6 +133,7 @@ impl GEDeviceDesc {
             holdflush_level: 0,
             ask: false,
             plot_frame_started: false,
+            dirty: false,
             #[cfg(feature = "renderplot-device")]
             pdf: None,
             #[cfg(feature = "renderplot-device")]
@@ -484,6 +487,28 @@ pub(crate) fn with_device_mut<R>(
     with_registry(|registry| registry.find_device_mut(gdd).map(f))
 }
 
+/// Read-only access to a registered device descriptor; `None` for null or
+/// foreign pointers. Like [`with_device_mut`], `f` must not re-enter the
+/// registry, evaluate R or invoke device callbacks.
+pub(crate) fn with_device<R>(gdd: pGEDevDesc, f: impl FnOnce(&GEDeviceDesc) -> R) -> Option<R> {
+    with_device_mut(gdd, |device| f(device))
+}
+
+/// engine.c `dd->dirty` for a registered device.
+pub(crate) fn device_dirty(gdd: pGEDevDesc) -> Option<bool> {
+    with_device(gdd, |device| device.dirty)
+}
+
+/// Set engine.c `dd->dirty`; unregistered keys are ignored.
+pub(crate) fn set_device_dirty(gdd: pGEDevDesc, dirty: bool) {
+    with_device_mut(gdd, |device| device.dirty = dirty);
+}
+
+/// engine.c `dd->recordGraphics` for a registered device.
+pub(crate) fn device_record_graphics(gdd: pGEDevDesc) -> Option<c_int> {
+    with_device(gdd, |device| device.recordGraphics)
+}
+
 /// Read or update a plot frame on a registered device without opening a
 /// default device or retaining a registry borrow across callbacks. A null
 /// pointer denotes the current (possibly virtual null) device.
@@ -511,7 +536,7 @@ pub(crate) fn page_question(ask: Option<bool>) -> bool {
         let _pin = owner
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let device = unsafe { GEcurrentDevice() };
+        let device = GEcurrentDevice();
         owner
             .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -1141,15 +1166,12 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
     res
 }
 
+/// Draw a `w`x`h` row-major raster. A buffer shorter than `w * h` pixels is
+/// treated like GNU's null raster: nothing is drawn.
 #[allow(clippy::too_many_arguments)]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn draw_raster(
+pub(crate) fn draw_raster(
     gdd: pGEDevDesc,
-    raster: *mut c_uint,
+    raster: &[c_uint],
     w: c_int,
     h: c_int,
     x: c_double,
@@ -1172,7 +1194,12 @@ pub(crate) unsafe fn draw_raster(
         return true;
     }
     with_device_mut(gdd, |device| {
-        if raster.is_null() || w <= 0 || h <= 0 || width == 0.0 || height == 0.0 {
+        if w <= 0
+            || h <= 0
+            || width == 0.0
+            || height == 0.0
+            || raster.len() < (w as usize).saturating_mul(h as usize)
+        {
             return true;
         }
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
@@ -1201,7 +1228,7 @@ pub(crate) unsafe fn draw_raster(
                     ((dx - left) as i64 * w as i64 / (right - left + 1) as i64) as c_int
                 }
                 .clamp(0, w - 1);
-                let source = unsafe { *raster.add((target_y * w + target_x) as usize) };
+                let source = raster[(target_y * w + target_x) as usize];
                 set_pixel(device, dx, dy, native_color_from_u32(source));
             }
         }
@@ -1318,10 +1345,11 @@ fn update_device_names(name: &std::ffi::CStr, device_label: c_int, current_label
 }
 
 /// Exported engine entry point: returns the current device, opening the
-/// configured default device when none exists. `unsafe` because callers lend
-/// the raw descriptor to engine code that dereferences it directly.
+/// configured default device when none exists. The result is an opaque
+/// registry key; engine code validates it through [`with_device_mut`] before
+/// touching any descriptor field, so handing it out is safe.
 #[unsafe(export_name = "rmath_GEcurrentDevice")]
-pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
+pub extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
     if NoDevices() != 0 {
         if renderplot_scene_is_device() {
             // The scene is already the device. options("device") is pdf(),
@@ -1471,10 +1499,9 @@ pub extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
 
 pub extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
-/// `dev.capture` backend for registry devices. The raw descriptor is an
-/// engine boundary; the body validates it against the registry before any
-/// field access.
-pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
+/// `dev.capture` backend for registry devices. The descriptor is a registry
+/// key validated before any field access.
+pub extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
     let Some((width, height)) = with_device_mut(_gdd, |device| {
         if device.is_pdf() || device.pixel_width <= 0 || device.pixel_height <= 0 {
             None
@@ -1574,7 +1601,7 @@ mod tests {
             });
             let first = GEgetDevice(1);
             let second = GEgetDevice(2);
-            unsafe {
+
                 selectDevice(1);
                 crate::library::graphics::graphics::GSetState(1, first.cast());
                 assert!(crate::library::graphics::graphics::plot_new_called());
@@ -1582,10 +1609,10 @@ mod tests {
                 assert!(!crate::library::graphics::graphics::plot_new_called());
                 // GCheckState must inspect its explicit device, not the current one.
                 crate::library::graphics::graphics::GCheckState(first.cast());
-            }
+
             right.with_protected(|| {
                 assert!(!crate::library::graphics::graphics::plot_new_called());
-                let foreign = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let foreign = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::library::graphics::graphics::GSetState(0, first.cast());
                 }));
                 assert!(foreign.unwrap_err().is::<crate::sexp::context::RError>());
@@ -1594,7 +1621,7 @@ mod tests {
                 assert!(crate::library::graphics::graphics::plot_new_called());
             });
             assert!(!crate::library::graphics::graphics::plot_new_called());
-            unsafe {
+
                 crate::library::graphics::graphics::GSetState(1, second.cast());
                 selectDevice(1);
                 assert!(crate::library::graphics::graphics::plot_new_called());
@@ -1602,7 +1629,7 @@ mod tests {
                 assert!(crate::library::graphics::graphics::plot_new_called());
                 killDevice(2);
                 assert!(!crate::library::graphics::graphics::plot_new_called());
-            }
+
             with_registry(|registry| {
                 registry.open_new_device();
             });

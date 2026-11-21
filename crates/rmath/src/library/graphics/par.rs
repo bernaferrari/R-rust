@@ -386,354 +386,346 @@ pub(crate) fn par_error(message: impl Into<String>) -> ! {
 ///       -1 = unknown, -2 = obsolete, -3 = graphical args
 #[derive(Clone, Copy)]
 struct ParTab {
-    name: *const c_char,
+    name: &'static str,
     code: c_int,
 }
-
-// Safety: PAR_TABLE only contains pointers to static string literals,
-// which live for the entire program duration.
-unsafe impl Sync for ParTab {}
 
 /// The complete ParTable array from par.c.
 /// This is pure data used by ParCode() to look up parameter codes.
 static PAR_TABLE: &[ParTab] = &[
     ParTab {
-        name: b"adj\0".as_ptr() as *const c_char,
+        name: "adj",
         code: 0,
     },
     ParTab {
-        name: b"ann\0".as_ptr() as *const c_char,
+        name: "ann",
         code: 0,
     },
     ParTab {
-        name: b"ask\0".as_ptr() as *const c_char,
+        name: "ask",
         code: 1,
     },
     ParTab {
-        name: b"bg\0".as_ptr() as *const c_char,
+        name: "bg",
         code: 0,
     },
     ParTab {
-        name: b"bty\0".as_ptr() as *const c_char,
+        name: "bty",
         code: 0,
     },
     ParTab {
-        name: b"cex\0".as_ptr() as *const c_char,
+        name: "cex",
         code: 0,
     },
     ParTab {
-        name: b"cex.axis\0".as_ptr() as *const c_char,
+        name: "cex.axis",
         code: 0,
     },
     ParTab {
-        name: b"cex.lab\0".as_ptr() as *const c_char,
+        name: "cex.lab",
         code: 0,
     },
     ParTab {
-        name: b"cex.main\0".as_ptr() as *const c_char,
+        name: "cex.main",
         code: 0,
     },
     ParTab {
-        name: b"cex.sub\0".as_ptr() as *const c_char,
+        name: "cex.sub",
         code: 0,
     },
     ParTab {
-        name: b"cin\0".as_ptr() as *const c_char,
+        name: "cin",
         code: 2,
     },
     ParTab {
-        name: b"col\0".as_ptr() as *const c_char,
+        name: "col",
         code: 0,
     },
     ParTab {
-        name: b"col.axis\0".as_ptr() as *const c_char,
+        name: "col.axis",
         code: 0,
     },
     ParTab {
-        name: b"col.lab\0".as_ptr() as *const c_char,
+        name: "col.lab",
         code: 0,
     },
     ParTab {
-        name: b"col.main\0".as_ptr() as *const c_char,
+        name: "col.main",
         code: 0,
     },
     ParTab {
-        name: b"col.sub\0".as_ptr() as *const c_char,
+        name: "col.sub",
         code: 0,
     },
     ParTab {
-        name: b"cra\0".as_ptr() as *const c_char,
+        name: "cra",
         code: 2,
     },
     ParTab {
-        name: b"crt\0".as_ptr() as *const c_char,
+        name: "crt",
         code: 0,
     },
     ParTab {
-        name: b"csi\0".as_ptr() as *const c_char,
+        name: "csi",
         code: 2,
     },
     ParTab {
-        name: b"csy\0".as_ptr() as *const c_char,
+        name: "csy",
         code: 0,
     },
     ParTab {
-        name: b"cxy\0".as_ptr() as *const c_char,
+        name: "cxy",
         code: 2,
     },
     ParTab {
-        name: b"din\0".as_ptr() as *const c_char,
+        name: "din",
         code: 2,
     },
     ParTab {
-        name: b"err\0".as_ptr() as *const c_char,
+        name: "err",
         code: 0,
     },
     ParTab {
-        name: b"family\0".as_ptr() as *const c_char,
+        name: "family",
         code: 0,
     },
     ParTab {
-        name: b"fg\0".as_ptr() as *const c_char,
+        name: "fg",
         code: 0,
     },
     ParTab {
-        name: b"fig\0".as_ptr() as *const c_char,
+        name: "fig",
         code: 1,
     },
     ParTab {
-        name: b"fin\0".as_ptr() as *const c_char,
+        name: "fin",
         code: 1,
     },
     ParTab {
-        name: b"font\0".as_ptr() as *const c_char,
+        name: "font",
         code: 0,
     },
     ParTab {
-        name: b"font.axis\0".as_ptr() as *const c_char,
+        name: "font.axis",
         code: 0,
     },
     ParTab {
-        name: b"font.lab\0".as_ptr() as *const c_char,
+        name: "font.lab",
         code: 0,
     },
     ParTab {
-        name: b"font.main\0".as_ptr() as *const c_char,
+        name: "font.main",
         code: 0,
     },
     ParTab {
-        name: b"font.sub\0".as_ptr() as *const c_char,
+        name: "font.sub",
         code: 0,
     },
     ParTab {
-        name: b"lab\0".as_ptr() as *const c_char,
+        name: "lab",
         code: 0,
     },
     ParTab {
-        name: b"las\0".as_ptr() as *const c_char,
+        name: "las",
         code: 0,
     },
     ParTab {
-        name: b"lend\0".as_ptr() as *const c_char,
+        name: "lend",
         code: 0,
     },
     ParTab {
-        name: b"lheight\0".as_ptr() as *const c_char,
+        name: "lheight",
         code: 1,
     },
     ParTab {
-        name: b"ljoin\0".as_ptr() as *const c_char,
+        name: "ljoin",
         code: 0,
     },
     ParTab {
-        name: b"lmitre\0".as_ptr() as *const c_char,
+        name: "lmitre",
         code: 0,
     },
     ParTab {
-        name: b"lty\0".as_ptr() as *const c_char,
+        name: "lty",
         code: 0,
     },
     ParTab {
-        name: b"lwd\0".as_ptr() as *const c_char,
+        name: "lwd",
         code: 0,
     },
     ParTab {
-        name: b"mai\0".as_ptr() as *const c_char,
+        name: "mai",
         code: 1,
     },
     ParTab {
-        name: b"mar\0".as_ptr() as *const c_char,
+        name: "mar",
         code: 1,
     },
     ParTab {
-        name: b"mex\0".as_ptr() as *const c_char,
+        name: "mex",
         code: 1,
     },
     ParTab {
-        name: b"mfcol\0".as_ptr() as *const c_char,
+        name: "mfcol",
         code: 1,
     },
     ParTab {
-        name: b"mfg\0".as_ptr() as *const c_char,
+        name: "mfg",
         code: 1,
     },
     ParTab {
-        name: b"mfrow\0".as_ptr() as *const c_char,
+        name: "mfrow",
         code: 1,
     },
     ParTab {
-        name: b"mgp\0".as_ptr() as *const c_char,
+        name: "mgp",
         code: 0,
     },
     ParTab {
-        name: b"mkh\0".as_ptr() as *const c_char,
+        name: "mkh",
         code: 0,
     },
     ParTab {
-        name: b"new\0".as_ptr() as *const c_char,
+        name: "new",
         code: 1,
     },
     ParTab {
-        name: b"oma\0".as_ptr() as *const c_char,
+        name: "oma",
         code: 1,
     },
     ParTab {
-        name: b"omd\0".as_ptr() as *const c_char,
+        name: "omd",
         code: 1,
     },
     ParTab {
-        name: b"omi\0".as_ptr() as *const c_char,
+        name: "omi",
         code: 1,
     },
     ParTab {
-        name: b"page\0".as_ptr() as *const c_char,
+        name: "page",
         code: 2,
     },
     ParTab {
-        name: b"pch\0".as_ptr() as *const c_char,
+        name: "pch",
         code: 0,
     },
     ParTab {
-        name: b"pin\0".as_ptr() as *const c_char,
+        name: "pin",
         code: 1,
     },
     ParTab {
-        name: b"plt\0".as_ptr() as *const c_char,
+        name: "plt",
         code: 1,
     },
     ParTab {
-        name: b"ps\0".as_ptr() as *const c_char,
+        name: "ps",
         code: 1,
     },
     ParTab {
-        name: b"pty\0".as_ptr() as *const c_char,
+        name: "pty",
         code: 1,
     },
     ParTab {
-        name: b"smo\0".as_ptr() as *const c_char,
+        name: "smo",
         code: 0,
     },
     ParTab {
-        name: b"srt\0".as_ptr() as *const c_char,
+        name: "srt",
         code: 0,
     },
     ParTab {
-        name: b"tck\0".as_ptr() as *const c_char,
+        name: "tck",
         code: 0,
     },
     ParTab {
-        name: b"tcl\0".as_ptr() as *const c_char,
+        name: "tcl",
         code: 0,
     },
     ParTab {
-        name: b"usr\0".as_ptr() as *const c_char,
+        name: "usr",
         code: 1,
     },
     ParTab {
-        name: b"xaxp\0".as_ptr() as *const c_char,
+        name: "xaxp",
         code: 0,
     },
     ParTab {
-        name: b"xaxs\0".as_ptr() as *const c_char,
+        name: "xaxs",
         code: 0,
     },
     ParTab {
-        name: b"xaxt\0".as_ptr() as *const c_char,
+        name: "xaxt",
         code: 0,
     },
     ParTab {
-        name: b"xlog\0".as_ptr() as *const c_char,
+        name: "xlog",
         code: 1,
     },
     ParTab {
-        name: b"xpd\0".as_ptr() as *const c_char,
+        name: "xpd",
         code: 0,
     },
     ParTab {
-        name: b"yaxp\0".as_ptr() as *const c_char,
+        name: "yaxp",
         code: 0,
     },
     ParTab {
-        name: b"yaxs\0".as_ptr() as *const c_char,
+        name: "yaxs",
         code: 0,
     },
     ParTab {
-        name: b"yaxt\0".as_ptr() as *const c_char,
+        name: "yaxt",
         code: 0,
     },
     ParTab {
-        name: b"ylbias\0".as_ptr() as *const c_char,
+        name: "ylbias",
         code: 1,
     },
     ParTab {
-        name: b"ylog\0".as_ptr() as *const c_char,
+        name: "ylog",
         code: 1,
     },
     /* Obsolete pars */
     ParTab {
-        name: b"gamma\0".as_ptr() as *const c_char,
+        name: "gamma",
         code: -2,
     },
     ParTab {
-        name: b"type\0".as_ptr() as *const c_char,
+        name: "type",
         code: -2,
     },
     ParTab {
-        name: b"tmag\0".as_ptr() as *const c_char,
+        name: "tmag",
         code: -2,
     },
     /* Non-pars that might get passed to Specify2 */
     ParTab {
-        name: b"asp\0".as_ptr() as *const c_char,
+        name: "asp",
         code: -3,
     },
     ParTab {
-        name: b"main\0".as_ptr() as *const c_char,
+        name: "main",
         code: -3,
     },
     ParTab {
-        name: b"sub\0".as_ptr() as *const c_char,
+        name: "sub",
         code: -3,
     },
     ParTab {
-        name: b"xlab\0".as_ptr() as *const c_char,
+        name: "xlab",
         code: -3,
     },
     ParTab {
-        name: b"ylab\0".as_ptr() as *const c_char,
+        name: "ylab",
         code: -3,
     },
     ParTab {
-        name: b"xlim\0".as_ptr() as *const c_char,
+        name: "xlim",
         code: -3,
     },
     ParTab {
-        name: b"ylim\0".as_ptr() as *const c_char,
+        name: "ylim",
         code: -3,
-    },
-    ParTab {
-        name: std::ptr::null(),
-        code: -1,
     },
 ];
 
@@ -745,53 +737,16 @@ type pGEDevDesc = *mut c_void;
 /// Returns -1 if not found.
 ///
 /// This is the Rust equivalent of `static int ParCode(const char *what)`.
-pub unsafe fn ParCode(what: *const c_char) -> c_int {
-    unsafe {
-        if what.is_null() {
-            return -1;
-        }
-        let what_str = std::ffi::CStr::from_ptr(what);
-        let what_bytes = what_str.to_bytes();
-        for entry in PAR_TABLE.iter() {
-            if entry.name.is_null() {
-                break;
-            }
-            let name_str = std::ffi::CStr::from_ptr(entry.name);
-            if name_str.to_bytes() == what_bytes {
-                return entry.code;
-            }
-        }
-        -1
-    }
-}
-
-/* ---- Stub helper functions ---- */
-
-/// Helper: compare two C strings for equality.
-unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes()
-    }
-}
-
-unsafe fn par_name_from_c(what: *const c_char) -> String {
-    unsafe {
-        if what.is_null() {
-            par_error("invalid graphical parameter");
-        }
-        std::ffi::CStr::from_ptr(what)
-            .to_string_lossy()
-            .into_owned()
-    }
+pub fn ParCode(what: &str) -> c_int {
+    PAR_TABLE
+        .iter()
+        .find(|entry| entry.name == what)
+        .map_or(-1, |entry| entry.code)
 }
 
 /// Specify -- set a graphical parameter via par().
-unsafe fn Specify(what: *const c_char, value: SEXP, _dd: pGEDevDesc) {
-    unsafe {
-        let name = par_name_from_c(what);
+fn Specify(name: &str, value: SEXP, _dd: pGEDevDesc) {
+    {
         if !is_known_par(&name) {
             par_error(format!(
                 "invalid value specified for graphical parameter \"{name}\""
@@ -812,19 +767,15 @@ unsafe fn Specify(what: *const c_char, value: SEXP, _dd: pGEDevDesc) {
 }
 
 /// Specify2 -- set a graphical parameter from a high-level graphics function.
-unsafe fn Specify2(what: *const c_char, value: SEXP, dd: pGEDevDesc) {
-    unsafe {
-        let name = par_name_from_c(what);
-        if is_known_par(&name) && !is_readonly_par(&name) {
-            Specify(what, value, dd);
-        }
+fn Specify2(name: &str, value: SEXP, dd: pGEDevDesc) {
+    if is_known_par(name) && !is_readonly_par(name) {
+        Specify(name, value, dd);
     }
 }
 
 /// Query -- return the current value of a graphical parameter.
-unsafe fn Query(what: *const c_char, _dd: pGEDevDesc) -> SEXP {
-    unsafe {
-        let name = par_name_from_c(what);
+fn Query(name: &str, _dd: pGEDevDesc) -> SEXP {
+    {
         if !is_known_par(&name) {
             par_error(format!(
                 "invalid value specified for graphical parameter \"{name}\""
@@ -1058,6 +1009,12 @@ fn apply_parameter(
             false
         }
     }
+}
+
+/// The text a `CString::new(text).unwrap_or_default()` round trip keeps:
+/// strings with an embedded NUL become empty.
+fn nul_free_or_empty(text: &str) -> &str {
+    if text.contains('\0') { "" } else { text }
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
@@ -1410,8 +1367,7 @@ fn par_value_to_sexp(value: &ParValue) -> SEXP {
                 result
             }
             ParValue::String(value) => {
-                let cstr = std::ffi::CString::new(value.as_str()).unwrap_or_default();
-                crate::sexp::constructors::mk_string_bytes(cstr.to_bytes())
+                crate::sexp::constructors::mk_string_str(nul_free_or_empty(value))
             }
         }
     }
@@ -1438,8 +1394,11 @@ fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
                 R_NilValue()
             };
             SET_VECTOR_ELT(result, i as R_xlen_t, value);
-            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
+            SET_STRING_ELT(
+                name_vec,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_str(nul_free_or_empty(name)),
+            );
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1464,8 +1423,11 @@ fn null_named_list(names: &[String]) -> SEXP {
         let _name_guard = protect(name_vec);
         for (i, name) in names.iter().enumerate() {
             SET_VECTOR_ELT(result, i as R_xlen_t, R_NilValue());
-            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
+            SET_STRING_ELT(
+                name_vec,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_str(nul_free_or_empty(name)),
+            );
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1493,8 +1455,11 @@ fn named_par_list(names: &[String]) -> SEXP {
         for (i, name) in names.iter().enumerate() {
             let value = &values[i];
             SET_VECTOR_ELT(result, i as R_xlen_t, par_value_to_sexp(&value));
-            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
+            SET_STRING_ELT(
+                name_vec,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_str(nul_free_or_empty(name)),
+            );
         }
 
         crate::sexp::attrib_core::setAttrib(
@@ -1816,7 +1781,6 @@ pub fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Original C signature:
 ///   SEXP C_layout(SEXP args)
-///
 pub fn C_layout(_args: SEXP) -> SEXP {
     {
         const MAX_LAYOUT_ROWS: c_int = 200;
@@ -1892,7 +1856,7 @@ pub fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
 
 /// baseCallback -- event handler for the base graphics system, registered
 /// with the Graphics Engine via GEregisterSystem.
-pub extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
+pub fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -1905,9 +1869,9 @@ pub fn registerBase() {
             return;
         }
         let mut index = -1;
-        unsafe {
-            crate::mainutils::engine::GEregisterSystem(Some(baseCallback), &mut index);
-        }
+
+        crate::mainutils::engine::GEregisterSystem(Some(baseCallback), &mut index);
+
         if index >= 0 {
             state.base_register_index = Some(index);
         }
@@ -1932,19 +1896,35 @@ pub fn RunregisterBase() -> SEXP {
 /* ---- gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */
 
 /// gpptr -- get the current GPar pointer (graphics parameters).
-pub unsafe fn gpptr(dd: pGEDevDesc) -> *mut c_void {
+pub fn gpptr(dd: pGEDevDesc) -> *mut c_void {
     with_device_gpar_entry(dd, |entry| &mut entry.gp as *mut GPar as *mut c_void)
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Copy of the device's current GPar (`*gpptr(dd)`); `None` for a null key.
+pub(crate) fn gpar_get(dd: pGEDevDesc) -> Option<GPar> {
+    with_device_gpar_entry(dd, |entry| entry.gp)
+}
+
+/// Copy of the device's display GPar (`*dpptr(dd)`); `None` for a null key.
+pub(crate) fn dpar_get(dd: pGEDevDesc) -> Option<GPar> {
+    with_device_gpar_entry(dd, |entry| entry.dp)
+}
+
+/// Update the device's current GPar in place. `f` runs inside the parameter
+/// state borrow and must not draw, evaluate R or query parameters.
+pub(crate) fn with_gpar_mut<T>(dd: pGEDevDesc, f: impl FnOnce(&mut GPar) -> T) -> Option<T> {
+    with_device_gpar_entry(dd, |entry| f(&mut entry.gp))
+}
+
 /// dpptr -- get the display GPar pointer (display parameters).
-pub unsafe fn dpptr(dd: pGEDevDesc) -> *mut c_void {
+pub fn dpptr(dd: pGEDevDesc) -> *mut c_void {
     with_device_gpar_entry(dd, |entry| &mut entry.dp as *mut GPar as *mut c_void)
         .unwrap_or(std::ptr::null_mut())
 }
 
 /// dpSavedptr -- get the saved display GPar pointer.
-pub unsafe fn dpSavedptr(dd: pGEDevDesc) -> *mut c_void {
+pub fn dpSavedptr(dd: pGEDevDesc) -> *mut c_void {
     with_device_gpar_entry(dd, |entry| &mut entry.dp_saved as *mut GPar as *mut c_void)
         .unwrap_or(std::ptr::null_mut())
 }
@@ -1959,15 +1939,9 @@ pub fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
 
 /// currentFigureLocation -- get the current figure's row and column.
 /// Stub: sets both to 0.
-pub unsafe fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDevDesc) {
-    unsafe {
-        if !row.is_null() {
-            *row = 0;
-        }
-        if !col.is_null() {
-            *col = 0;
-        }
-    }
+pub fn currentFigureLocation(row: &mut c_int, col: &mut c_int, _dd: pGEDevDesc) {
+    *row = 0;
+    *col = 0;
 }
 
 /* ---- Stub: restoredpSaved ---- */
@@ -1995,26 +1969,22 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn switch_device_from_callback(
-        _event: c_int,
-        _device: *mut c_void,
-        _data: SEXP,
-    ) -> SEXP {
+    fn switch_device_from_callback(_event: c_int, _device: *mut c_void, _data: SEXP) -> SEXP {
         let nested = crate::sexp::session::RSession::construct_detached(
             crate::sexp::session::RSession::new_for_gc_tests,
         );
         nested.with_active(|| {
             set_plot_parameter("xlog", ParValue::Logical(vec![1]));
         });
-        unsafe { crate::library::grdevices::device_registry::selectDevice(2) };
+        crate::library::grdevices::device_registry::selectDevice(2);
         set_plot_parameter("ylog", ParValue::Logical(vec![1]));
-        unsafe { R_NilValue() }
+        R_NilValue()
     }
 
     #[test]
     fn graphics_callback_keeps_parameters_in_original_session_and_device() {
         let outer = crate::sexp::session::RSession::new_for_gc_tests();
-        outer.with_active(|| unsafe {
+        outer.with_active(|| {
             use crate::library::grdevices::device_registry::{curDevice, selectDevice};
             use crate::mainutils::engine::{GEhandleEvent, GEregisterSystem, GEunregisterSystem};
             selectDevice(0);
@@ -2076,7 +2046,7 @@ mod tests {
             let args = Rf_cons(mar, R_NilValue());
             let _args_guard = protect(args);
             let mar_name = CString::new("mar").unwrap();
-            SETTAG(args, crate::sexp::symbol::install_cstr(&mar_name));
+            SETTAG(args, Rf_install(mar_name.as_ptr()));
 
             let old = C_par(
                 std::ptr::null_mut(),
@@ -2086,7 +2056,7 @@ mod tests {
             );
             assert_eq!(LENGTH(old), 1);
 
-            let query_text = crate::sexp::constructors::mk_string_bytes(mar_name.to_bytes());
+            let query_text = Rf_mkString(mar_name.as_ptr());
             let _query_text_guard = protect(query_text);
             let query = Rf_cons(query_text, R_NilValue());
             let _query_guard = protect(query);

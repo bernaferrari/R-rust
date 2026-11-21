@@ -2499,9 +2499,7 @@ pub(crate) fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             // open the default pdf in the working directory.
             let backend_open = crate::library::grdevices::device_registry::has_active_target();
             if !backend_open {
-                // SAFETY: GEcurrentDevice opens/queries the session's device
-                // registry during an evaluated graphics call.
-                let _dev = unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() };
+                let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
             }
             let (c, clear) = coordinates(args, &[0., 1.], &[0., 1.], true);
             install(c);

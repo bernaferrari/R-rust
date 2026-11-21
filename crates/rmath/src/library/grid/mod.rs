@@ -88,6 +88,26 @@ pub(crate) fn char_ptr(x: SEXP) -> *const c_char {
         .unwrap_or_else(|e| r_error(e.to_string()))
 }
 
+/// Checked `CHAR()` copy: the CHARSXP payload bytes without the terminator.
+#[inline]
+pub(crate) fn char_bytes(x: SEXP) -> Vec<u8> {
+    checked(x)
+        .header()
+        .char_bytes()
+        .unwrap_or_else(|| r_error("invalid CHARSXP"))
+}
+
+/// Checked `CHAR()` as an owned C string (bytes up to the first NUL), for
+/// engine calls that take the text as `&CStr`.
+#[inline]
+pub(crate) fn char_cstring(x: SEXP) -> std::ffi::CString {
+    let mut bytes = char_bytes(x);
+    if let Some(nul) = bytes.iter().position(|b| *b == 0) {
+        bytes.truncate(nul);
+    }
+    std::ffi::CString::new(bytes).expect("NUL-truncated CHARSXP bytes")
+}
+
 /// Checked `STRING_ELT` text copy; `None` for `NA_character_`.
 #[inline]
 pub(crate) fn string_value_elt(x: SEXP, index: R_xlen_t) -> Option<String> {
@@ -192,7 +212,7 @@ pub(crate) fn scalar_logical(value: c_int) -> SEXP {
 /// Allocate a one-element STRSXP from Rust text.
 #[inline]
 pub(crate) fn mk_string(text: &str) -> SEXP {
-    if text.as_bytes().contains(&0) {
+    if text.contains('\0') {
         r_error("embedded NUL byte in grid string");
     }
     crate::sexp::constructors::mk_string_str(text)
@@ -201,7 +221,7 @@ pub(crate) fn mk_string(text: &str) -> SEXP {
 /// Allocate a CHARSXP from Rust text.
 #[inline]
 pub(crate) fn mk_char(text: &str) -> SEXP {
-    if text.as_bytes().contains(&0) {
+    if text.contains('\0') {
         r_error("embedded NUL byte in grid string");
     }
     crate::sexp::constructors::mk_char_str(text)
@@ -210,7 +230,7 @@ pub(crate) fn mk_char(text: &str) -> SEXP {
 /// Intern a symbol from Rust text.
 #[inline]
 pub(crate) fn install(text: &str) -> SEXP {
-    if text.as_bytes().contains(&0) {
+    if text.contains('\0') {
         r_error("embedded NUL byte in grid symbol");
     }
     crate::sexp::symbol::install_str(text)
@@ -264,7 +284,7 @@ pub(crate) fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::Rf_duplicate(x)
 }
 
-unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
+extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
     grid::L_pretty2(scale, n)
 }
 
@@ -279,10 +299,9 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 }
 
 pub fn install_call_symbols(env: SEXP) {
-    let cname = std::ffi::CString::new("C_pretty2").unwrap_or_default();
     crate::sexp::envir::defineVar(
-        crate::sexp::symbol::install_cstr(&cname),
-        crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+        crate::sexp::symbol::install_str("C_pretty2"),
+        crate::sexp::constructors::mk_string_str("C_pretty2"),
         env,
     );
 }
