@@ -388,13 +388,9 @@ pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int,
         return Err("invalid 'mode' argument".to_string());
     }
     let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
-    let s = unsafe {
-        let ptr = CHAR(mode_chars.as_raw());
-        if ptr.is_null() {
-            return Err("invalid 'mode' argument".to_string());
-        }
-        CStr::from_ptr(ptr).to_str().unwrap_or("").to_string()
-    };
+    let s = mode_chars
+        .try_as_string()
+        .map_err(|_| "invalid 'mode' argument".to_string())?;
 
     let is_vec = if s == "any" {
         x.clone().is_vector()
@@ -421,14 +417,24 @@ pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int,
     }
 
     // Check that only a "names" attribute is present
-    let x_raw = x.as_raw();
-    unsafe {
-        let mut a = ATTRIB(x_raw);
-        while !isNull(a) {
-            if !isNull(TAG(a)) && TAG(a) != R_NamesSymbol() {
+    if let Ok(mut a) = x.clone().try_attrib() {
+        while !a.is_nil() {
+            let tag_names = a
+                .try_tag()
+                .and_then(|tag| {
+                    if tag.is_nil() {
+                        return Ok(String::new());
+                    }
+                    tag.try_printname()
+                        .and_then(|name| name.try_as_string())
+                })
+                .unwrap_or_default();
+            if !tag_names.is_empty() && tag_names != "names" {
                 return Ok(0);
             }
-            a = CDR(a);
+            a = a
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
     }
     Ok(1)
@@ -462,15 +468,34 @@ pub fn is_function_safe(x: Sexp) -> c_int {
     (Rf_isFunction(x.as_raw()) != 0) as c_int
 }
 
-pub fn is_matrix_safe(x: Sexp) -> c_int {
-    unsafe {
-        let dim = getAttrib(x.as_raw(), R_DimSymbol());
-        (!isNull(dim) && LENGTH(dim) == 2) as c_int
+/// Checked `getAttrib(x, R_DimSymbol())`: attribute tags are interned
+/// symbols, so matching the tag's print name is equivalent.
+fn checked_dim_attr<'a>(x: &Sexp<'a>) -> Option<Sexp<'a>> {
+    let mut attr = x.clone().try_attrib().ok()?;
+    while !attr.is_nil() {
+        if let Ok(tag) = attr.try_tag() {
+            if !tag.is_nil()
+                && tag
+                    .try_printname()
+                    .and_then(|name| name.try_as_string())
+                    .map(|name| name == "dim")
+                    .unwrap_or(false)
+            {
+                return attr.try_car().ok();
+            }
+        }
+        attr = attr.try_cdr().ok()?;
     }
+    None
+}
+
+pub fn is_matrix_safe(x: Sexp) -> c_int {
+    let dim = checked_dim_attr(&x);
+    (matches!(&dim, Some(d) if !d.is_nil() && d.len() == 2)) as c_int
 }
 
 pub fn is_array_safe(x: Sexp) -> c_int {
-    unsafe { (!isNull(getAttrib(x.as_raw(), R_DimSymbol()))) as c_int }
+    (checked_dim_attr(&x).map(|d| !d.is_nil()).unwrap_or(false)) as c_int
 }
 
 pub fn is_atomic_safe(x: Sexp) -> c_int {

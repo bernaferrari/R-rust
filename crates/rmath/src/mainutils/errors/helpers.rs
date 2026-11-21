@@ -7,6 +7,17 @@
 
 use super::*;
 
+/// Wrap a live, rooted argument pointer for checked reads. Callers are raw
+/// error-path entry points inside the active session, so the token's
+/// retain/exclusion contract matches the raw accessors this replaces.
+fn owned(pointer: SEXP) -> crate::sexp::object::Sexp<'static> {
+    // SAFETY: argument pointers name live, rooted R objects in the active
+    // session — the ambient contract of the raw accessors below.
+    unsafe { crate::sexp::owner::OwnerToken::current() }
+        .and_then(|owner| owner.sexp(pointer))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
 // ---------------------------------------------------------------------------
 // GetOption1 helper (simplified)
 // ---------------------------------------------------------------------------
@@ -56,16 +67,22 @@ pub(super) fn isReal(s: SEXP) -> c_int {
 
 /// Convert SEXP to logical (simplified).
 pub(super) fn asLogical(s: SEXP) -> c_int {
-    unsafe {
-        if isLogical(s) != 0 && LENGTH(s) >= 1 {
-            *LOGICAL(s)
-        } else if isInteger(s) != 0 && LENGTH(s) >= 1 {
-            *INTEGER(s)
-        } else if isReal(s) != 0 && LENGTH(s) >= 1 {
-            if *REAL(s) == 0.0_f64 { 0 } else { 1 }
+    let fail = |error: crate::sexp::object::SexpError| -> ! {
+        crate::sexp::context::r_error(error.to_string())
+    };
+    let value = owned(s);
+    if isLogical(s) != 0 && LENGTH(s) >= 1 {
+        value.try_logical_elt(0).unwrap_or_else(|e| fail(e))
+    } else if isInteger(s) != 0 && LENGTH(s) >= 1 {
+        value.try_integer_elt(0).unwrap_or_else(|e| fail(e))
+    } else if isReal(s) != 0 && LENGTH(s) >= 1 {
+        if value.try_real_elt(0).unwrap_or_else(|e| fail(e)) == 0.0_f64 {
+            0
         } else {
-            crate::sexp::ffi::NA_INTEGER
+            1
         }
+    } else {
+        crate::sexp::ffi::NA_INTEGER
     }
 }
 
@@ -76,12 +93,14 @@ pub(super) fn isNull(s: SEXP) -> c_int {
 
 /// Check if a string SEXP is valid (non-NA).
 pub(super) fn isValidString(s: SEXP) -> c_int {
-    unsafe {
+    {
         if isString(s) == 0 || LENGTH(s) < 1 {
             return 0;
         }
-        let elt = STRING_ELT(s, 0);
-        if elt.is_null() {
+        let elt = owned(s)
+            .try_string_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if elt.is_nil() {
             return 0;
         }
         1 // Simplified — full version checks for NA_STRING
