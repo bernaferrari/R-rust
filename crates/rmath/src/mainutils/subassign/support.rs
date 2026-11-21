@@ -608,9 +608,7 @@ pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
 
 /// setAttrib: set an attribute on an object.
 pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, what, value);
-    }
+    crate::eval::attrib_core::setAttrib(x, what, value);
 }
 
 /// shallow_duplicate: create a shallow copy.

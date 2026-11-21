@@ -26,13 +26,11 @@ const STRSXP_VAL: c_int = 16;
 // Local wrappers for cross-module functions
 // ---------------------------------------------------------------------------
 
-unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, what, val);
-    }
+fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
+    crate::eval::attrib_core::setAttrib(x, what, val);
 }
 
-unsafe fn R_NamesSymbol() -> SEXP {
+fn R_NamesSymbol() -> SEXP {
     crate::eval::attrib_core::R_NamesSymbol()
 }
 

@@ -4,7 +4,7 @@ use super::*;
 use crate::mainutils::{browser_files, serialize};
 use crate::sexp::{object::PairlistBuilder, owner::OwnerToken};
 
-pub(super) unsafe fn save(
+pub(super) fn save(
     owner: OwnerToken<'_>,
     names: &[String],
     file: SEXP,

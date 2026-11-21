@@ -26,16 +26,12 @@ pub(crate) use crate::sexp::symbol::Rf_install;
 
 /// Set attribute through the evaluator setter (GNU names/class/tsp rules).
 pub(crate) fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    // SAFETY: callers pass live, rooted nodes of the current dispatch; the
-    // evaluator setter only rewrites `x`'s attribute chain.
-    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) }
+    crate::eval::attrib_core::setAttrib(x, which, value)
 }
 
 /// GNU `R_data_class(x, FALSE)`: the explicit or implicit class vector.
 pub(crate) fn R_data_class(x: SEXP) -> SEXP {
-    // SAFETY: `x` is a live, rooted object of the current dispatch; the
-    // evaluator helper only reads its attributes and allocates the result.
-    unsafe { crate::eval::attrib_core::R_data_class(x) }
+    crate::eval::attrib_core::R_data_class(x)
 }
 
 // ---------------------------------------------------------------------------

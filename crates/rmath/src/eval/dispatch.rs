@@ -722,12 +722,10 @@ unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
 
 /// Get the data class of an object, equivalent to R's R_data_class2.
 fn R_data_class(obj: SEXP) -> SEXP {
-    unsafe {
-        if obj.is_null() || obj == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::eval::attrib_core::R_data_class(obj)
+    if obj.is_null() || obj == R_NilValue() {
+        return R_NilValue();
     }
+    crate::eval::attrib_core::R_data_class(obj)
 }
 
 // ---------------------------------------------------------------------------

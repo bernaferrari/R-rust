@@ -50,8 +50,7 @@ fn attribute(x: SEXP, symbol: SEXP) -> SEXP {
 
 /// Audited boundary: named-attribute write on a live object.
 fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
-    // SAFETY: setAttrib mutates one named slot of a live object.
-    unsafe { setAttrib(x, symbol, value) }
+    setAttrib(x, symbol, value)
 }
 
 /// Audited boundary: the names symbol is a process-global singleton.

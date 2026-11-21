@@ -227,7 +227,7 @@ unsafe fn compare(
 }
 
 /// GNU `all.equal.language`: compare deparsed source.
-unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
+fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
     let ttxt = deparse_joined(target);
     let ctxt = deparse_joined(current);
     if ttxt == ctxt {
@@ -236,7 +236,7 @@ unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
         Err("target, current do not match when deparsed".into())
     }
 }
-unsafe fn compare_condition(target: SEXP, current: SEXP) -> Result<(), String> {
+fn compare_condition(target: SEXP, current: SEXP) -> Result<(), String> {
     let tm = condition_message(target);
     let cm = condition_message(current);
     if tm == cm {
@@ -276,24 +276,22 @@ fn condition_message(value: SEXP) -> String {
     }
 }
 
-unsafe fn compare_formula(target: SEXP, current: SEXP) -> Result<(), String> {
-    unsafe {
-        if !crate::mainutils::essentials::sexp_has_class(target, "formula")
-            || !crate::mainutils::essentials::sexp_has_class(current, "formula")
-        {
-            return Err("target is formula, current is not (or vice versa)".into());
-        }
-        let lt = formula_length(target);
-        let lc = formula_length(current);
-        if lt != lc {
-            return Err(format!(
-                "target, current differ in having response: {}, {}",
-                lt == 3,
-                lc == 3
-            ));
-        }
-        compare_language(target, current)
+fn compare_formula(target: SEXP, current: SEXP) -> Result<(), String> {
+    if !crate::mainutils::essentials::sexp_has_class(target, "formula")
+        || !crate::mainutils::essentials::sexp_has_class(current, "formula")
+    {
+        return Err("target is formula, current is not (or vice versa)".into());
     }
+    let lt = formula_length(target);
+    let lc = formula_length(current);
+    if lt != lc {
+        return Err(format!(
+            "target, current differ in having response: {}, {}",
+            lt == 3,
+            lc == 3
+        ));
+    }
+    compare_language(target, current)
 }
 
 fn formula_length(x: SEXP) -> i32 {

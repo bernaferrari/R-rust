@@ -308,12 +308,12 @@ pub fn StringFromLogical(x: c_int) -> SEXP {
 ///
 /// Returns NA_STRING for NA_INTEGER, otherwise the decimal representation.
 pub fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
-        if x == NA_INTEGER {
-            return R_NaString();
-        }
-        // Format integer as string
-        let s = format!("{}", x);
-        let cstr = std::ffi::CString::new(s).unwrap_or_default();
+    if x == NA_INTEGER {
+        return R_NaString();
+    }
+    // Format integer as string
+    let s = format!("{}", x);
+    let cstr = std::ffi::CString::new(s).unwrap_or_default();
     crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 
@@ -369,17 +369,17 @@ pub fn string_from_real_for_complex(x: c_double) -> String {
 ///
 /// Returns NA_STRING if either part is R's NA. Otherwise formats as "r+i" or "r-i".
 pub fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
-        if R_IsNA(x.r) || R_IsNA(x.i) {
-            return R_NaString();
-        }
-        let real = string_from_real_for_complex(x.r);
-        let imaginary = string_from_real_for_complex(x.i.abs());
-        let s = if x.i.is_sign_negative() {
-            format!("{real}-{imaginary}i")
-        } else {
-            format!("{real}+{imaginary}i")
-        };
-        let cstr = std::ffi::CString::new(s).unwrap_or_default();
+    if R_IsNA(x.r) || R_IsNA(x.i) {
+        return R_NaString();
+    }
+    let real = string_from_real_for_complex(x.r);
+    let imaginary = string_from_real_for_complex(x.i.abs());
+    let s = if x.i.is_sign_negative() {
+        format!("{real}-{imaginary}i")
+    } else {
+        format!("{real}+{imaginary}i")
+    };
+    let cstr = std::ffi::CString::new(s).unwrap_or_default();
     crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 
@@ -387,8 +387,8 @@ pub fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
 ///
 /// Formats as two-digit hexadecimal, e.g. 255 -> "ff".
 pub fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
-        let s = format!("{:02x}", x);
-        let cstr = std::ffi::CString::new(s).unwrap_or_default();
+    let s = format!("{:02x}", x);
+    let cstr = std::ffi::CString::new(s).unwrap_or_default();
     crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 

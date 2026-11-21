@@ -4,7 +4,7 @@ use super::*;
 
 /// R's plot generic delegates through the ordinary S3 machinery.
 pub fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "plot",
             "function(x, y, ...) UseMethod('plot')",
@@ -17,7 +17,7 @@ pub fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `preplot(object, ...)` — `UseMethod("preplot")`.
 pub fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "preplot",
             "function(object, ...) UseMethod('preplot')",
@@ -30,7 +30,7 @@ pub fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `profile(fitted, ...)` — `UseMethod("profile")`.
 pub fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "profile",
             "function(fitted, ...) UseMethod('profile')",
@@ -43,7 +43,7 @@ pub fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `tsdiag(object, gof.lag, ...)` — `UseMethod("tsdiag")`.
 pub fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "tsdiag",
             "function(object, gof.lag, ...) UseMethod('tsdiag')",
@@ -56,7 +56,7 @@ pub fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `free1way(y, ...)` — `UseMethod("free1way")`.
 pub fn do_free1way(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "free1way",
             "function(y, ...) UseMethod('free1way')",
@@ -115,7 +115,7 @@ pub fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// GNU `monthplot(x, ...)` — `UseMethod("monthplot")`.
 pub fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "monthplot",
             "function(x, ...) UseMethod('monthplot')",
@@ -268,7 +268,7 @@ pub fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
 pub fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "biplot",
             "function(x, ...) UseMethod('biplot')",
@@ -281,7 +281,7 @@ pub fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `screeplot(x, ...)` — `UseMethod("screeplot")`.
 pub fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "screeplot",
             "function(x, ...) UseMethod('screeplot')",
@@ -914,7 +914,7 @@ pub(super) fn no_device_require_plot_frame() {
 macro_rules! graphics_generics {
     ($($handler:ident => $name:literal),* $(,)?) => {$(
         pub fn $handler(_call:SEXP,_op:SEXP,args:SEXP,rho:SEXP)->SEXP {
-            unsafe {
+            {
                 crate::mainutils::base_wrappers::apply($name,concat!("function(x,...) UseMethod('",$name,"')"),args,rho,false)
             }
         }

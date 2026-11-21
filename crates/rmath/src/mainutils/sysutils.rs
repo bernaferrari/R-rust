@@ -323,7 +323,7 @@ pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 }
 
 /// tempdir() — return the temporary directory path.
-pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(_op, args);
     let _check = CAR(args);
     let temp_dir = std::env::temp_dir();
@@ -410,84 +410,80 @@ pub fn R_system(command: &str) -> c_int {
 /// Sys.info() — return system information as a named list.
 /// Note: canonical version lives in unix/sys_unix.rs; this is a
 /// module-private version.
-pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        // Return a list with basic system info
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _ans_guard = protect(ans);
+pub(crate) fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // Return a list with basic system info
+    let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _ans_guard = protect(ans);
 
-        // sysname
-        let sysname = crate::sexp::constructors::mk_string_str("Darwin");
-        SET_VECTOR_ELT(ans, 0, sysname);
+    // sysname
+    let sysname = crate::sexp::constructors::mk_string_str("Darwin");
+    SET_VECTOR_ELT(ans, 0, sysname);
 
-        // release
-        let release = crate::sexp::constructors::mk_string_str("");
-        SET_VECTOR_ELT(ans, 1, release);
+    // release
+    let release = crate::sexp::constructors::mk_string_str("");
+    SET_VECTOR_ELT(ans, 1, release);
 
-        // version
-        let version = crate::sexp::constructors::mk_string_str("");
-        SET_VECTOR_ELT(ans, 2, version);
+    // version
+    let version = crate::sexp::constructors::mk_string_str("");
+    SET_VECTOR_ELT(ans, 2, version);
 
-        // nodename
-        let hn = get_hostname();
-        let nodename = crate::sexp::constructors::mk_string_bytes(
-            std::ffi::CString::new(hn.as_str())
-                .unwrap_or_default()
-                .to_bytes(),
-        );
-        SET_VECTOR_ELT(ans, 3, nodename);
+    // nodename
+    let hn = get_hostname();
+    let nodename = crate::sexp::constructors::mk_string_bytes(
+        std::ffi::CString::new(hn.as_str())
+            .unwrap_or_default()
+            .to_bytes(),
+    );
+    SET_VECTOR_ELT(ans, 3, nodename);
 
-        // machine
-        let machine = crate::sexp::constructors::mk_string_str("x86_64");
-        SET_VECTOR_ELT(ans, 4, machine);
+    // machine
+    let machine = crate::sexp::constructors::mk_string_str("x86_64");
+    SET_VECTOR_ELT(ans, 4, machine);
 
-        // Set names
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
-        let _names_guard = protect(names);
-        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("sysname"));
-        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("release"));
-        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("version"));
-        SET_STRING_ELT(names, 3, crate::sexp::constructors::mk_char_str("nodename"));
-        SET_STRING_ELT(names, 4, crate::sexp::constructors::mk_char_str("machine"));
+    // Set names
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+    let _names_guard = protect(names);
+    SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("sysname"));
+    SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("release"));
+    SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("version"));
+    SET_STRING_ELT(names, 3, crate::sexp::constructors::mk_char_str("nodename"));
+    SET_STRING_ELT(names, 4, crate::sexp::constructors::mk_char_str("machine"));
 
-        let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-        crate::eval::attrib_core::setAttrib(ans, names_sym, names);
+    let names_sym = crate::eval::attrib_core::R_NamesSymbol();
+    crate::eval::attrib_core::setAttrib(ans, names_sym, names);
 
-        ans
-    }
+    ans
 }
 
 /// Sys.sysenv() — return the system environment variables.
-pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        // Return all environment variables as a named character vector
-        let vars: Vec<(String, String)> = std::env::vars().collect();
-        let n = vars.len();
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-        let _ans_guard = protect(ans);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-        let _names_guard = protect(names);
+pub fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // Return all environment variables as a named character vector
+    let vars: Vec<(String, String)> = std::env::vars().collect();
+    let n = vars.len();
+    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+    let _ans_guard = protect(ans);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+    let _names_guard = protect(names);
 
-        for (i, (key, val)) in vars.iter().enumerate() {
-            let k = std::ffi::CString::new(key.as_str()).unwrap_or_default();
-            let v = std::ffi::CString::new(val.as_str()).unwrap_or_default();
-            SET_STRING_ELT(
-                ans,
-                i as R_xlen_t,
-                crate::sexp::constructors::mk_char_bytes(v.to_bytes()),
-            );
-            SET_STRING_ELT(
-                names,
-                i as R_xlen_t,
-                crate::sexp::constructors::mk_char_bytes(k.to_bytes()),
-            );
-        }
-
-        let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-        crate::eval::attrib_core::setAttrib(ans, names_sym, names);
-
-        ans
+    for (i, (key, val)) in vars.iter().enumerate() {
+        let k = std::ffi::CString::new(key.as_str()).unwrap_or_default();
+        let v = std::ffi::CString::new(val.as_str()).unwrap_or_default();
+        SET_STRING_ELT(
+            ans,
+            i as R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(v.to_bytes()),
+        );
+        SET_STRING_ELT(
+            names,
+            i as R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(k.to_bytes()),
+        );
     }
+
+    let names_sym = crate::eval::attrib_core::R_NamesSymbol();
+    crate::eval::attrib_core::setAttrib(ans, names_sym, names);
+
+    ans
 }
 
 /// Get the hostname of the current machine.

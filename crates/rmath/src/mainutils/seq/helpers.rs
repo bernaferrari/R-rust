@@ -305,7 +305,7 @@ pub fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
 }
 
 pub fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
-    unsafe { crate::eval::attrib_core::setAttrib(x, what, val) }
+    crate::eval::attrib_core::setAttrib(x, what, val)
 }
 
 pub fn getAttrib(x: SEXP, what: SEXP) -> SEXP {

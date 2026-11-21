@@ -57,9 +57,7 @@ fn R_LevelsSymbol() -> SEXP {
 
 /// Set attribute through the evaluator setter (GNU names/class/tsp rules).
 fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    // SAFETY: callers pass live, rooted nodes of the current coercion; the
-    // evaluator setter only rewrites `x`'s attribute chain.
-    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) }
+    crate::eval::attrib_core::setAttrib(x, which, value)
 }
 
 // ---------------------------------------------------------------------------

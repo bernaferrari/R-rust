@@ -4,7 +4,7 @@ use super::*;
 
 /// R's `simplify2array(x)` — simplify list to array.
 pub fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "simplify2array",
             include_str!("../../base_wrappers/simplify2array.R"),

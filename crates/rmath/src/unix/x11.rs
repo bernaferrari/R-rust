@@ -63,9 +63,7 @@ pub fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int {
 
 /// Get bitmap library version information.
 pub fn do_bmVersion() -> SEXP {
-    // SAFETY: SEXP allocation, protection and attribute writes keep the
-    // raw constructors confined to this block.
-    unsafe {
+    {
         let ans = Rf_allocVector(STRSXP_VAL, 3);
         let _ans = protect(ans);
         let nms = Rf_allocVector(STRSXP_VAL, 3);

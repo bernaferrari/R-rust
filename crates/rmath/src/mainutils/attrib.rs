@@ -39,20 +39,18 @@ fn error(msg: &str) -> ! {
 // ---------------------------------------------------------------------------
 
 /// Set the dim attribute (internal).
-pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        // `aperm` identity returns the original SEXP. GNU dimgets then
-        // shallow-duplicates whenever the object is referenced. The port's
-        // NAMED is still 0 on some local arrays, so always copy here.
-        let x = crate::mainutils::duplicate::shallow_duplicate(CAR(args));
-        let val = CADR(args);
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), val);
-        x
+pub fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    // `aperm` identity returns the original SEXP. GNU dimgets then
+    // shallow-duplicates whenever the object is referenced. The port's
+    // NAMED is still 0 on some local arrays, so always copy here.
+    let x = crate::mainutils::duplicate::shallow_duplicate(CAR(args));
+    let val = CADR(args);
+    crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -60,17 +58,15 @@ pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the dimnames attribute (internal).
-pub unsafe fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let x = CAR(args);
-        let val = CADR(args);
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol(), val);
-        x
+pub fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let x = CAR(args);
+    let val = CADR(args);
+    crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol(), val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -78,17 +74,15 @@ pub unsafe fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// Set the levels attribute (internal).
-pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let x = CAR(args);
-        let val = CADR(args);
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_LevelsSymbol(), val);
-        x
+pub fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let x = CAR(args);
+    let val = CADR(args);
+    crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_LevelsSymbol(), val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +90,7 @@ pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Get or set the tsp (time series parameters) attribute.
-pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     if Rf_length(args) == 1 {
@@ -112,17 +106,15 @@ pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the tsp attribute (internal).
-pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let x = CAR(args);
-        let val = CADR(args);
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_TspSymbol(), val);
-        x
+pub fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let x = CAR(args);
+    let val = CADR(args);
+    crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_TspSymbol(), val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +122,7 @@ pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get or set the comment attribute.
-pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     let comment_sym = crate::sexp::symbol::install_str("comment");
@@ -148,18 +140,16 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the comment attribute (internal).
-pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let x = CAR(args);
-        let val = CADR(args);
-        let comment_sym = crate::sexp::symbol::install_str("comment");
-        crate::eval::attrib_core::setAttrib(x, comment_sym, val);
-        x
+pub fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let x = CAR(args);
+    let val = CADR(args);
+    let comment_sym = crate::sexp::symbol::install_str("comment");
+    crate::eval::attrib_core::setAttrib(x, comment_sym, val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +157,7 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// Get or set a single attribute.
-pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     let nargs = Rf_length(args);
@@ -190,32 +180,30 @@ pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set a single attribute (internal).
-pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 3 {
-            error("wrong number of arguments");
-        }
-        let mut x = CAR(args);
-        let which = CADR(args);
-        let val = CADDR(args);
-        let which = if crate::sexp::accessors::TYPEOF(which) == crate::sexp::ffi::SEXPTYPE::STRSXP
-            && crate::sexp::accessors::XLENGTH(which) > 0
-            && crate::sexp::accessors::STRING_ELT(which, 0) != crate::sexp::globals::R_NaString()
-        {
-            let text = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
-                crate::sexp::accessors::STRING_ELT(which, 0),
-            ))
-            .into_owned();
-            crate::sexp::symbol::install_cstr(&std::ffi::CString::new(text).unwrap_or_default())
-        } else {
-            which
-        };
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        crate::eval::attrib_core::setAttrib(x, which, val);
-        x
+pub fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 3 {
+        error("wrong number of arguments");
     }
+    let mut x = CAR(args);
+    let which = CADR(args);
+    let val = CADDR(args);
+    let which = if crate::sexp::accessors::TYPEOF(which) == crate::sexp::ffi::SEXPTYPE::STRSXP
+        && crate::sexp::accessors::XLENGTH(which) > 0
+        && crate::sexp::accessors::STRING_ELT(which, 0) != crate::sexp::globals::R_NaString()
+    {
+        let text = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
+            crate::sexp::accessors::STRING_ELT(which, 0),
+        ))
+        .into_owned();
+        crate::sexp::symbol::install_cstr(&std::ffi::CString::new(text).unwrap_or_default())
+    } else {
+        which
+    };
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    crate::eval::attrib_core::setAttrib(x, which, val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -249,34 +237,32 @@ pub fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 /// Set the names attribute (internal).
-pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let mut x = CAR(args);
-        let val = CADR(args);
-        let val = if val.is_null() || val == R_NilValue() || TYPEOF(val) == SEXPTYPE::STRSXP {
-            val
-        } else {
-            crate::mainutils::coerce::coerceVector(val, SEXPTYPE::STRSXP.as_c_int())
-        };
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        let _v = protect(val);
-        let plain = crate::sexp::attrib_core::plain_names_replacement(x, val);
-        let val = plain.as_ref().map_or(val, |value| value.as_raw());
-        if val == R_NilValue()
-            && !x.is_null()
-            && x != R_NilValue()
-            && crate::sexp::attrib_core::try_clear_one_dimensional_names(x)
-        {
-            return x;
-        }
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), val);
-        x
+pub fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let mut x = CAR(args);
+    let val = CADR(args);
+    let val = if val.is_null() || val == R_NilValue() || TYPEOF(val) == SEXPTYPE::STRSXP {
+        val
+    } else {
+        crate::mainutils::coerce::coerceVector(val, SEXPTYPE::STRSXP.as_c_int())
+    };
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    let _v = protect(val);
+    let plain = crate::sexp::attrib_core::plain_names_replacement(x, val);
+    let val = plain.as_ref().map_or(val, |value| value.as_raw());
+    if val == R_NilValue()
+        && !x.is_null()
+        && x != R_NilValue()
+        && crate::sexp::attrib_core::try_clear_one_dimensional_names(x)
+    {
+        return x;
+    }
+    crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), val);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -340,53 +326,51 @@ pub unsafe fn do_shortRowNames(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// Get all attributes as a named list.
-pub unsafe fn R_getAttributes(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return R_NilValue();
-        }
-        let attrib = ATTRIB(x);
-        if attrib.is_null() || attrib == R_NilValue() {
-            return R_NilValue();
-        }
-
-        // Count attributes
-        let mut nattrs: c_int = 0;
-        let mut current = attrib;
-        while !current.is_null() && current != R_NilValue() {
-            nattrs += 1;
-            current = CDR(current);
-        }
-
-        if nattrs == 0 {
-            return R_NilValue();
-        }
-
-        // Build result list
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, nattrs);
-        let names = Rf_allocVector(SEXPTYPE::STRSXP, nattrs);
-        if ans.is_null() || names.is_null() {
-            return R_NilValue();
-        }
-
-        let mut i: c_int = 0;
-        current = attrib;
-        while !current.is_null() && current != R_NilValue() && (i as usize) < nattrs as usize {
-            let tag = TAG(current);
-            SET_VECTOR_ELT(ans, i as i64, CAR(current));
-            if !tag.is_null() {
-                let pname = PRINTNAME(tag);
-                if !pname.is_null() {
-                    SET_STRING_ELT(names, i as i64, pname);
-                }
-            }
-            i += 1;
-            current = CDR(current);
-        }
-
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
-        ans
+pub fn R_getAttributes(x: SEXP) -> SEXP {
+    if x.is_null() {
+        return R_NilValue();
     }
+    let attrib = ATTRIB(x);
+    if attrib.is_null() || attrib == R_NilValue() {
+        return R_NilValue();
+    }
+
+    // Count attributes
+    let mut nattrs: c_int = 0;
+    let mut current = attrib;
+    while !current.is_null() && current != R_NilValue() {
+        nattrs += 1;
+        current = CDR(current);
+    }
+
+    if nattrs == 0 {
+        return R_NilValue();
+    }
+
+    // Build result list
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, nattrs);
+    let names = Rf_allocVector(SEXPTYPE::STRSXP, nattrs);
+    if ans.is_null() || names.is_null() {
+        return R_NilValue();
+    }
+
+    let mut i: c_int = 0;
+    current = attrib;
+    while !current.is_null() && current != R_NilValue() && (i as usize) < nattrs as usize {
+        let tag = TAG(current);
+        SET_VECTOR_ELT(ans, i as i64, CAR(current));
+        if !tag.is_null() {
+            let pname = PRINTNAME(tag);
+            if !pname.is_null() {
+                SET_STRING_ELT(names, i as i64, pname);
+            }
+        }
+        i += 1;
+        current = CDR(current);
+    }
+
+    crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -394,14 +378,12 @@ pub unsafe fn R_getAttributes(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Internal helper to set dim attribute with validation.
-pub unsafe fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
-    unsafe {
-        if val.is_null() || val == R_NilValue() {
-            return vec;
-        }
-        crate::eval::attrib_core::setAttrib(vec, crate::eval::attrib_core::R_DimSymbol(), val);
-        vec
+pub fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
+    if val.is_null() || val == R_NilValue() {
+        return vec;
     }
+    crate::eval::attrib_core::setAttrib(vec, crate::eval::attrib_core::R_DimSymbol(), val);
+    vec
 }
 
 // ---------------------------------------------------------------------------

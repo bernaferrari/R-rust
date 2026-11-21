@@ -130,7 +130,7 @@ pub(crate) fn pairlist_to_names(value: SEXP) -> SEXP {
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
-pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+pub fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     if x.is_null() || which.is_null() {
         return;
     }
@@ -318,35 +318,33 @@ pub fn isObject(x: SEXP) -> c_int {
 ///
 /// This is the equivalent of R's `R_classgets()`.
 pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
-    unsafe {
-        if klass.is_null() || klass == R_NilValue() {
+    if klass.is_null() || klass == R_NilValue() {
+        return x;
+    }
+    let class_sym = R_ClassSymbol();
+
+    let dim = getAttrib(x, R_DimSymbol());
+    let two_d = !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) == 2;
+    if two_d && TYPEOF(klass) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(klass);
+        let is_matrix = |i: i64| {
+            let ch = STRING_ELT(klass, i);
+            !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"matrix"
+        };
+        let is_array = |i: i64| {
+            let ch = STRING_ELT(klass, i);
+            !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"array"
+        };
+        if (n == 1 && is_matrix(0)) || (n == 2 && is_matrix(0) && is_array(1)) {
+            setAttrib(x, class_sym, R_NilValue());
             return x;
         }
-        let class_sym = R_ClassSymbol();
-
-        let dim = getAttrib(x, R_DimSymbol());
-        let two_d = !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) == 2;
-        if two_d && TYPEOF(klass) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(klass);
-            let is_matrix = |i: i64| {
-                let ch = STRING_ELT(klass, i);
-                !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"matrix"
-            };
-            let is_array = |i: i64| {
-                let ch = STRING_ELT(klass, i);
-                !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"array"
-            };
-            if (n == 1 && is_matrix(0)) || (n == 2 && is_matrix(0) && is_array(1)) {
-                setAttrib(x, class_sym, R_NilValue());
-                return x;
-            }
-        }
-        setAttrib(x, class_sym, klass);
-        x
     }
+    setAttrib(x, class_sym, klass);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +373,7 @@ pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
 /// Get the class of an object (returns the first class element).
 ///
 /// This is the equivalent of R's `R_data_class()`.
-pub unsafe fn R_data_class(x: SEXP) -> SEXP {
+pub fn R_data_class(x: SEXP) -> SEXP {
     let class_val = getAttrib(x, R_ClassSymbol());
     if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP {
         let dim = getAttrib(x, R_DimSymbol());
@@ -482,9 +480,7 @@ pub fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
 
 /// FFI-compatible version of setAttrib.
 pub fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
-        setAttrib(x, which, value);
-    }
+    setAttrib(x, which, value);
 }
 
 // ---------------------------------------------------------------------------

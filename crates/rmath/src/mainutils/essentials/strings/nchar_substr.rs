@@ -195,7 +195,7 @@ pub fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
-    unsafe { crate::mainutils::character::case_entry(args, !to_lower) }
+    crate::mainutils::character::case_entry(args, !to_lower)
 }
 
 pub(crate) fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {

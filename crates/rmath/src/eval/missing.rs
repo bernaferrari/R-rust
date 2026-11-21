@@ -375,12 +375,10 @@ pub unsafe fn DispatchAnyOrEval(
 /// Ported from R's `classForGroupDispatch()` in eval.c. Returns the
 /// class attribute if it exists, otherwise the implicit class.
 fn classForGroupDispatch(obj: SEXP) -> SEXP {
-    unsafe {
-        if obj.is_null() || obj == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::eval::attrib_core::R_data_class(obj)
+    if obj.is_null() || obj == R_NilValue() {
+        return R_NilValue();
     }
+    crate::eval::attrib_core::R_data_class(obj)
 }
 
 // ---------------------------------------------------------------------------

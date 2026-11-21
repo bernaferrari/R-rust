@@ -711,7 +711,7 @@ pub fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `Filter(f, x)` — keep elements where f returns TRUE.
 pub fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "Filter",
             include_str!("../../base_wrappers/filter.R"),
@@ -724,7 +724,7 @@ pub fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `replicate(n, expr, simplify = "array")`.
 pub fn do_replicate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::mainutils::base_wrappers::apply(
             "replicate",
             include_str!("../../base_wrappers/replicate.R"),

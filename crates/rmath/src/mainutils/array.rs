@@ -1031,7 +1031,7 @@ pub fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 /// Allocate a 3-dimensional array.
 ///
 /// Ported from R's `alloc3DArray` in array.c (line 255).
-pub unsafe fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) -> SEXP {
+pub fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) -> SEXP {
     if nrow < 0 || ncol < 0 || nface < 0 {
         array_error("negative extents are not allowed");
     }
@@ -1234,7 +1234,7 @@ pub fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `aperm(a, perm, resize = TRUE)` -- array transposition by permutation.
 ///
 /// Ported from R's `do_aperm` in array.c (line 1704).
-pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let x = first_arg(args, "aperm()");
     let source_dim = getAttrib(x, R_DimSymbol());
     let dims = array_dimensions(x, "aperm()");

@@ -394,19 +394,17 @@ pub(crate) fn path_at(paths: SEXP, index: usize) -> Option<String> {
 }
 
 pub(crate) fn octmode_scalar(mode: u32) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
-        use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::accessors::SET_STRING_ELT;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
+    use crate::sexp::ffi::SEXPTYPE;
 
-        let ans = Rf_ScalarInteger((mode & 0o777) as c_int);
-        let _ans_guard = protect(ans);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
-        let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("octmode"));
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
-        ans
-    }
+    let ans = Rf_ScalarInteger((mode & 0o777) as c_int);
+    let _ans_guard = protect(ans);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
+    let _class_guard = protect(class);
+    SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("octmode"));
+    crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
+    ans
 }
 
 pub(crate) fn parse_octal_mode_arg(value: SEXP) -> Option<u32> {

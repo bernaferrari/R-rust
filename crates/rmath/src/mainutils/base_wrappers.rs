@@ -7,7 +7,7 @@ use crate::sexp::{
     owner::{OwnerToken, RuntimeAccess, with_runtime},
 };
 
-pub(crate) unsafe fn apply(
+pub(crate) fn apply(
     name: &'static str,
     source: &str,
     args: SEXP,

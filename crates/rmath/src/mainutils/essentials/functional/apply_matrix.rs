@@ -621,7 +621,7 @@ pub fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `.kronecker(X, Y, FUN="*")` — `aperm(outer(X,Y,FUN))` then `dim <- dX*dY`.
 pub fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = as_array_for_kronecker(CAR(args));
         let _x = protect(x);
         let y = as_array_for_kronecker(CAR(CDR(args)));

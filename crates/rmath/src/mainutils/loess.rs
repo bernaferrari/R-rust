@@ -82,8 +82,7 @@ fn define_var(symbol: SEXP, value: SEXP, env: SEXP) {
 
 /// Audited boundary: evaluate a base wrapper function on live arguments.
 fn apply_base(name: &'static str, source: &str, args: SEXP, env: SEXP, full: bool) -> SEXP {
-    // SAFETY: apply builds and evaluates the wrapper under the active runtime.
-    unsafe { crate::mainutils::base_wrappers::apply(name, source, args, env, full) }
+    crate::mainutils::base_wrappers::apply(name, source, args, env, full)
 }
 
 /// Audited boundary: read a live symbol's print name as Rust text.

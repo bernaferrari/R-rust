@@ -191,10 +191,7 @@ pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
 
 /// Helper for setAttrib -- delegates to eval::attrib_core.
 pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
-    // SAFETY: delegates to the raw attrib boundary with the same arguments.
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, what, value);
-    }
+    crate::eval::attrib_core::setAttrib(x, what, value);
 }
 
 /// Check if two arrays have conformable dimensions.

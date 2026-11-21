@@ -38,16 +38,14 @@ pub(crate) struct RasterImageRequest {
 /// Cached R-level wrapper for the standard `rasterImage` signature. The
 /// internal helper is registered separately so this wrapper can own ordinary
 /// argument matching and defaults without recursively dispatching itself.
-pub(crate) unsafe fn do_raster_image(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "rasterImage",
-            "function(image, xleft, ybottom, xright, ytop, angle=0, interpolate=TRUE, ...) .rport_rasterImage(image=image, xleft=xleft, ybottom=ybottom, xright=xright, ytop=ytop, angle=angle, interpolate=interpolate, ...)",
-            args,
-            rho,
-            false,
-        )
-    }
+pub(crate) fn do_raster_image(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "rasterImage",
+        "function(image, xleft, ybottom, xright, ytop, angle=0, interpolate=TRUE, ...) .rport_rasterImage(image=image, xleft=xleft, ybottom=ybottom, xright=xright, ytop=ytop, angle=angle, interpolate=interpolate, ...)",
+        args,
+        rho,
+        false,
+    )
 }
 
 /// Parse an evaluated `.Internal(rasterImage(...))` argument list.

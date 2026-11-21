@@ -87,9 +87,7 @@ impl PortCall {
         let _par = protect(par);
         crate::library::stats::checked::set_reals(par, x);
         if !is_null(self.names) {
-            // SAFETY: `par` is a fresh protected REALSXP and `self.names` the
-            // retained names of the live start vector.
-            unsafe { setAttrib(par, R_NamesSymbol(), self.names) };
+            setAttrib(par, R_NamesSymbol(), self.names);
         }
         crate::library::stats::checked::define_var(sym, par, self.rho);
     }

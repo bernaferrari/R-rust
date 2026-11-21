@@ -326,27 +326,23 @@ pub unsafe fn dot_pretty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// The public `pretty` generic.
-pub unsafe fn do_pretty(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "pretty",
-            "function(x, ...) UseMethod(\"pretty\")",
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_pretty(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "pretty",
+        "function(x, ...) UseMethod(\"pretty\")",
+        args,
+        rho,
+        false,
+    )
 }
 
 /// Ordinary R argument matching and dependent defaults precede the rooted builtin.
-pub unsafe fn do_pretty_default(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "pretty.default",
-            "function(x,n=5L,min.n=n%/%3L,shrink.sml=.75,high.u.bias=1.5,u5.bias=.5+1.5*high.u.bias,eps.correct=0L,f.min=2^-20,bounds=TRUE,...) .rport_pretty(x=x,n=n,min.n=min.n,shrink.sml=shrink.sml,high.u.bias=high.u.bias,u5.bias=u5.bias,eps.correct=eps.correct,f.min=f.min,bounds=bounds)",
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_pretty_default(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "pretty.default",
+        "function(x,n=5L,min.n=n%/%3L,shrink.sml=.75,high.u.bias=1.5,u5.bias=.5+1.5*high.u.bias,eps.correct=0L,f.min=2^-20,bounds=TRUE,...) .rport_pretty(x=x,n=n,min.n=min.n,shrink.sml=shrink.sml,high.u.bias=high.u.bias,u5.bias=u5.bias,eps.correct=eps.correct,f.min=f.min,bounds=bounds)",
+        args,
+        rho,
+        false,
+    )
 }

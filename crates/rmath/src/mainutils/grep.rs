@@ -165,9 +165,7 @@ fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 
 #[inline(always)]
 fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    // SAFETY: `x`, `which` and `value` are live, rooted nodes of the current
-    // builtin call; the evaluator setter keeps GNU attribute normalization.
-    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) };
+    crate::eval::attrib_core::setAttrib(x, which, value);
 }
 
 /// Text of a CHARSXP as GNU `CHAR(x)` exposes it, lossily decoded.

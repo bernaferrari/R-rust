@@ -573,55 +573,53 @@ pub fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `extSoftVersion()` — external software version information.
 pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::accessors::SET_STRING_ELT;
+    use crate::sexp::constructors::Rf_allocVector3;
+    use crate::sexp::ffi::SEXPTYPE;
 
-        let blas = "";
-        let fields = [
-            ("zlib", "1.2.12"),
-            ("bzlib", "1.0.8, 13-Jul-2019"),
-            ("xz", "5.8.4"),
-            ("libdeflate", ""),
-            ("zstd", "1.5.7"),
-            ("PCRE", "10.49 2026-09-28"),
-            ("ICU", "78.1"),
-            ("TRE", "TRE 0.8.0 R_fixes (BSD)"),
-            (
-                "iconv",
-                "Apple or GNU libiconv 1.11 /usr/lib/libiconv.2.dylib",
+    let blas = "";
+    let fields = [
+        ("zlib", "1.2.12"),
+        ("bzlib", "1.0.8, 13-Jul-2019"),
+        ("xz", "5.8.4"),
+        ("libdeflate", ""),
+        ("zstd", "1.5.7"),
+        ("PCRE", "10.49 2026-09-28"),
+        ("ICU", "78.1"),
+        ("TRE", "TRE 0.8.0 R_fixes (BSD)"),
+        (
+            "iconv",
+            "Apple or GNU libiconv 1.11 /usr/lib/libiconv.2.dylib",
+        ),
+        ("readline", "4.2 (EditLine wrapper)"),
+        ("BLAS", &blas),
+    ];
+
+    let n = fields.len();
+    let ans = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+    let _ans_guard = protect(ans);
+    let cn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+    let _cn_guard = protect(cn);
+
+    for (i, (name, val)) in fields.iter().enumerate() {
+        SET_STRING_ELT(
+            ans,
+            i as crate::sexp::ffi::R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(
+                CString::new(*val).unwrap_or_default().to_bytes(),
             ),
-            ("readline", "4.2 (EditLine wrapper)"),
-            ("BLAS", &blas),
-        ];
-
-        let n = fields.len();
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        let _ans_guard = protect(ans);
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        let _cn_guard = protect(cn);
-
-        for (i, (name, val)) in fields.iter().enumerate() {
-            SET_STRING_ELT(
-                ans,
-                i as crate::sexp::ffi::R_xlen_t,
-                crate::sexp::constructors::mk_char_bytes(
-                    CString::new(*val).unwrap_or_default().to_bytes(),
-                ),
-            );
-            SET_STRING_ELT(
-                cn,
-                i as crate::sexp::ffi::R_xlen_t,
-                crate::sexp::constructors::mk_char_bytes(
-                    CString::new(*name).unwrap_or_default().to_bytes(),
-                ),
-            );
-        }
-
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        ans
+        );
+        SET_STRING_ELT(
+            cn,
+            i as crate::sexp::ffi::R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(
+                CString::new(*name).unwrap_or_default().to_bytes(),
+            ),
+        );
     }
+
+    crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
+    ans
 }
 
 /// R's `Sys.junction()` — create NTFS junction (Windows only).

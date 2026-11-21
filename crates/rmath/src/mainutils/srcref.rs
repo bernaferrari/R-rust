@@ -81,7 +81,7 @@ pub(crate) fn srcref_lloc(src: &str, start: usize, end: usize) -> [i32; 8] {
 /// Build the srcfile environment. `copy` produces class `srcfilecopy`
 /// with a `lines` binding so `as.character.srcref` can recover text
 /// (GNU `srcfilecopy()`, used by `source(textConnection, keep.source)`).
-unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
+fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
     let env = crate::sexp::memory_ext::NewEnvironment(
         std::ptr::null_mut(),
         crate::sexp::globals::R_EmptyEnv(),

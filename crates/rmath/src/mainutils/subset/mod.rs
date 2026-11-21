@@ -338,9 +338,7 @@ use crate::sexp::attrib_core::getAttrib;
 
 /// Set attribute -- delegates to the eval/attrib_core implementation.
 fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    // SAFETY: callers pass live, rooted nodes of the current subset call; the
-    // evaluator setter keeps GNU attribute normalization (names, class, tsp).
-    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) }
+    crate::eval::attrib_core::setAttrib(x, which, value)
 }
 
 /// Raw CHAR bytes of a CHARSXP (GNU `CHAR(x)`).

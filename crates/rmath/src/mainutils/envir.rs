@@ -406,7 +406,7 @@ unsafe fn string_elt(x: SEXP, i: R_xlen_t) -> String {
 /// Port of R's `do_search` from envir.c.
 /// Returns a STRSXP with the names of all environments on the search path,
 /// from .GlobalEnv to package:base.
-pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     use crate::eval::attrib_core::getAttrib;
     use crate::sexp::constructors::Rf_allocVector;
 

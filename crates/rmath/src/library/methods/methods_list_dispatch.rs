@@ -192,9 +192,7 @@ fn named_slot(object: SEXP, name: &str) -> SEXP {
 }
 
 fn first_data_class_name(object: SEXP) -> Option<String> {
-    // SAFETY: `object` is a live SEXP under the runtime lock; the raw class
-    // access is the interpreter's data-class contract.
-    let class = unsafe { crate::eval::attrib_core::R_data_class(object) };
+    let class = crate::eval::attrib_core::R_data_class(object);
     if class.is_null()
         || class == R_NilValue()
         || TYPEOF(class) != SEXPTYPE::STRSXP

@@ -1282,7 +1282,7 @@ pub(crate) fn mk_char_len(bytes: &[u8], len: c_int) -> SEXP {
 pub(crate) fn data_class(x: SEXP) -> SEXP {
     // SAFETY: `x` is a live SEXP; R_data_class only reads its attributes and
     // allocates the class vector it returns.
-    unsafe { crate::eval::attrib_core::R_data_class(x) }
+    crate::eval::attrib_core::R_data_class(x)
 }
 
 /// `check1arg(args, call, name)` with the formal name as a borrowed C string.

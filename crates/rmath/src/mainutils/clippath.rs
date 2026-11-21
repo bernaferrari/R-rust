@@ -14,7 +14,7 @@ use crate::sexp::globals::R_NilValue;
 // Local wrappers for cross-module functions
 // ---------------------------------------------------------------------------
 
-unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     crate::eval::attrib_core::getAttrib(x, what)
 }
 

@@ -1049,24 +1049,22 @@ fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
 /// Implementation of the ~ operator.
 /// Creates a formula object with class "formula" and .Environment attribute.
 pub fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if !call.is_null() && OBJECT(call) != 0 {
-            duplicate(call)
-        } else {
-            let klass = crate::sexp::constructors::mk_string_str("formula");
-            let _klass_guard = protect(klass);
+    if !call.is_null() && OBJECT(call) != 0 {
+        duplicate(call)
+    } else {
+        let klass = crate::sexp::constructors::mk_string_str("formula");
+        let _klass_guard = protect(klass);
 
-            let result = duplicate(call);
-            let _result_guard = protect(result);
+        let result = duplicate(call);
+        let _result_guard = protect(result);
 
-            let class_sym = crate::sexp::symbol::install_str("class");
-            setAttrib(result, class_sym, klass);
+        let class_sym = crate::sexp::symbol::install_str("class");
+        setAttrib(result, class_sym, klass);
 
-            let dot_env_sym = crate::sexp::symbol::install_str(".Environment");
-            setAttrib(result, dot_env_sym, rho);
+        let dot_env_sym = crate::sexp::symbol::install_str(".Environment");
+        setAttrib(result, dot_env_sym, rho);
 
-            result
-        }
+        result
     }
 }
 

@@ -323,27 +323,23 @@ unsafe fn decode_grid_state(
     }
 }
 
-pub(crate) unsafe fn do_record(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "recordPlot",
-            "function(load=NULL,attach=NULL) {if(!is.null(load)||!is.null(attach)) stop('recordPlot package reload metadata is not supported'); .rport_recordPlot()}",
-            args,
-            rho,
-            false,
-        )
-    }
+pub(crate) fn do_record(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "recordPlot",
+        "function(load=NULL,attach=NULL) {if(!is.null(load)||!is.null(attach)) stop('recordPlot package reload metadata is not supported'); .rport_recordPlot()}",
+        args,
+        rho,
+        false,
+    )
 }
-pub(crate) unsafe fn do_replay(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "replayPlot",
-            "function(x,reloadPkgs=FALSE) {if(reloadPkgs) stop('replayPlot package reload is not supported'); .rport_replayPlot(x)}",
-            args,
-            rho,
-            false,
-        )
-    }
+pub(crate) fn do_replay(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "replayPlot",
+        "function(x,reloadPkgs=FALSE) {if(reloadPkgs) stop('replayPlot package reload is not supported'); .rport_replayPlot(x)}",
+        args,
+        rho,
+        false,
+    )
 }
 pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
     unsafe {

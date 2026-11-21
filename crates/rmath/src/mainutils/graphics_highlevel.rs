@@ -18,79 +18,67 @@ use crate::sexp::ffi::SEXP;
 mod barplot_tests;
 
 /// The public `hist` generic.
-pub unsafe fn do_hist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "hist",
-            include_str!("graphics_highlevel/hist_generic.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_hist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "hist",
+        include_str!("graphics_highlevel/hist_generic.R"),
+        args,
+        rho,
+        false,
+    )
 }
 
 /// The numeric `hist.default` method.
-pub unsafe fn do_hist_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "hist.default",
-            include_str!("graphics_highlevel/hist_default.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_hist_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "hist.default",
+        include_str!("graphics_highlevel/hist_default.R"),
+        args,
+        rho,
+        false,
+    )
 }
 
 /// The public `barplot` generic.
-pub unsafe fn do_barplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "barplot",
-            include_str!("graphics_highlevel/barplot_generic.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_barplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "barplot",
+        include_str!("graphics_highlevel/barplot_generic.R"),
+        args,
+        rho,
+        false,
+    )
 }
 
 /// The vector/matrix `barplot.default` method.
-pub unsafe fn do_barplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "barplot.default",
-            include_str!("graphics_highlevel/barplot_default.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_barplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "barplot.default",
+        include_str!("graphics_highlevel/barplot_default.R"),
+        args,
+        rho,
+        false,
+    )
 }
 
 /// The public `boxplot` generic.
-pub unsafe fn do_boxplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "boxplot",
-            include_str!("graphics_highlevel/boxplot_generic.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_boxplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "boxplot",
+        include_str!("graphics_highlevel/boxplot_generic.R"),
+        args,
+        rho,
+        false,
+    )
 }
 
 /// The vector/list `boxplot.default` method.
-pub unsafe fn do_boxplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "boxplot.default",
-            include_str!("graphics_highlevel/boxplot_default.R"),
-            args,
-            rho,
-            false,
-        )
-    }
+pub fn do_boxplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    crate::mainutils::base_wrappers::apply(
+        "boxplot.default",
+        include_str!("graphics_highlevel/boxplot_default.R"),
+        args,
+        rho,
+        false,
+    )
 }

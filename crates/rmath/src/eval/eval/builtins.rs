@@ -104,7 +104,7 @@ pub(crate) fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::protect::protect;
 
-    unsafe {
+    {
         let x = Rf_eval(CAR(args), rho);
         let _x_guard = protect(x);
 

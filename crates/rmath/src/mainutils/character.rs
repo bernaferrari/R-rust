@@ -628,7 +628,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Safe version of toupper using `Sexp<'a>`.
-pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
+pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, true).map_err(|e| e.to_string())
 }
 
@@ -636,8 +636,8 @@ pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 ///
 /// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
 /// Uses the shared original-runtime simple casing implementation.
-pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { case_entry(args, true) }
+pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    case_entry(args, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +645,7 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Safe version of tolower using `Sexp<'a>`.
-pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
+pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, false).map_err(|e| e.to_string())
 }
 
@@ -653,8 +653,8 @@ pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 ///
 /// This is the Rust port of R's `do_tolower` from character.c.
 /// Uses the shared original-runtime simple casing implementation.
-pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { case_entry(args, false) }
+pub fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    case_entry(args, false)
 }
 
 /// Shared safe implementation for toupper and tolower.
@@ -682,7 +682,7 @@ fn case_transform_safe(
 }
 
 /// Shared native boundary; errors and callback panics remain recoverable R errors.
-pub(crate) unsafe fn case_entry(args: SEXP, upper: bool) -> SEXP {
+pub(crate) fn case_entry(args: SEXP, upper: bool) -> SEXP {
     use crate::sexp::owner::OwnerToken;
     OwnerToken::with_current(|owner| {
         let _pin = owner
@@ -764,7 +764,7 @@ pub fn nchar_safe(
 ///
 /// This is the Rust port of R's `do_nchar` from character.c.
 /// Supports type = "bytes", "chars", "width".
-pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match OwnerToken::with_current(|owner| {
             let _pin = match owner.pin() {

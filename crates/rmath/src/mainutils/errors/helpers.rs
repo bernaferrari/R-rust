@@ -143,10 +143,8 @@ pub(super) fn ScalarLogical(x: c_int) -> SEXP {
 
 /// Get/set class attribute (simplified).
 pub(super) fn classgets(x: SEXP, klass: SEXP) -> SEXP {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, R_ClassSymbol(), klass); // Uses imported R_ClassSymbol
-        x
-    }
+    crate::eval::attrib_core::setAttrib(x, R_ClassSymbol(), klass); // Uses imported R_ClassSymbol
+    x
 }
 
 /// Wrapper for getAttrib using the real implementation.
@@ -158,9 +156,7 @@ pub(super) fn getAttrib_wrap(x: SEXP, which: SEXP) -> SEXP {
 /// Wrapper for setAttrib using the real implementation.
 #[inline]
 pub(super) fn setAttrib_wrap(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, which, value);
-    }
+    crate::eval::attrib_core::setAttrib(x, which, value);
 }
 
 /// Get the number of arguments (length of pairlist).
