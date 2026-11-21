@@ -3,123 +3,117 @@
 use super::*;
 
 /// GNU `ar(..., aic=FALSE, order.max=1)` Yule-Walker.
-pub unsafe fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let a = do_acf(_call, _op, args, rho);
-        let _a = protect(a);
-        let acfv = VECTOR_ELT(a, 0);
-        let phi = if XLENGTH(acfv) >= 2 {
-            *REAL(acfv).add(1)
-        } else {
-            0.0
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["ar".to_string(), "order".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"ar".as_ptr()),
-        );
-        result
-    }
+pub fn do_ar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let a = do_acf(_call, _op, args, rho);
+    let _a = protect(a);
+    let acfv = VECTOR_ELT(a, 0);
+    let phi = if XLENGTH(acfv) >= 2 {
+        REAL_ELT(acfv, 1)
+    } else {
+        0.0
+    };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["ar".to_string(), "order".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("ar"),
+    );
+    result
 }
 
 /// GNU `ar.burg(..., aic=FALSE, order.max=1)` — Burg AR(1).
-pub unsafe fn do_ar_burg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = XLENGTH(x) as usize;
-        if n < 2 {
-            return R_NilValue();
-        }
-        let mut y = vec![0.0; n];
-        let mut mean = 0.0;
-        for i in 0..n {
-            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                *INTEGER(x).add(i) as f64
-            };
-            mean += y[i];
-        }
-        mean /= n as f64;
-        for yi in &mut y {
-            *yi -= mean;
-        }
-        let mut num = 0.0;
-        let mut den = 0.0;
-        for t in 0..n - 1 {
-            num += 2.0 * y[t + 1] * y[t];
-            den += y[t + 1] * y[t + 1] + y[t] * y[t];
-        }
-        let phi = if den > 0.0 { num / den } else { 0.0 };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["ar".to_string(), "order".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"ar".as_ptr()),
-        );
-        result
+pub fn do_ar_burg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let n = XLENGTH(x) as usize;
+    if n < 2 {
+        return R_NilValue();
     }
+    let mut y = vec![0.0; n];
+    let mut mean = 0.0;
+    for i in 0..n {
+        y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else {
+            INTEGER_ELT(x, i as i32) as f64
+        };
+        mean += y[i];
+    }
+    mean /= n as f64;
+    for yi in &mut y {
+        *yi -= mean;
+    }
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for t in 0..n - 1 {
+        num += 2.0 * y[t + 1] * y[t];
+        den += y[t + 1] * y[t + 1] + y[t] * y[t];
+    }
+    let phi = if den > 0.0 { num / den } else { 0.0 };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["ar".to_string(), "order".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("ar"),
+    );
+    result
 }
 
 /// GNU `ar.ols(..., aic=FALSE, order.max=1)` — OLS AR(1).
-pub unsafe fn do_ar_ols(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = XLENGTH(x) as usize;
-        if n < 2 {
-            return R_NilValue();
-        }
-        let mut y = vec![0.0; n];
-        let mut mean = 0.0;
-        for i in 0..n {
-            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                *INTEGER(x).add(i) as f64
-            };
-            mean += y[i];
-        }
-        mean /= n as f64;
-        for yi in &mut y {
-            *yi -= mean;
-        }
-        let mut num = 0.0;
-        let mut den = 0.0;
-        for t in 0..n - 1 {
-            num += y[t + 1] * y[t];
-            den += y[t] * y[t];
-        }
-        let phi = if den > 0.0 { num / den } else { 0.0 };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["ar".to_string(), "order".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"ar".as_ptr()),
-        );
-        result
+pub fn do_ar_ols(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let n = XLENGTH(x) as usize;
+    if n < 2 {
+        return R_NilValue();
     }
+    let mut y = vec![0.0; n];
+    let mut mean = 0.0;
+    for i in 0..n {
+        y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else {
+            INTEGER_ELT(x, i as i32) as f64
+        };
+        mean += y[i];
+    }
+    mean /= n as f64;
+    for yi in &mut y {
+        *yi -= mean;
+    }
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for t in 0..n - 1 {
+        num += y[t + 1] * y[t];
+        den += y[t] * y[t];
+    }
+    let phi = if den > 0.0 { num / den } else { 0.0 };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(phi));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(1));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["ar".to_string(), "order".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("ar"),
+    );
+    result
 }
 
 /// Exact AR(1) Gaussian ML: SSE(φ,μ)=Σ_{t≥2}(x_t−μ−φ(x_{t−1}−μ))²+(1−φ²)(x_1−μ)².
@@ -191,102 +185,98 @@ fn exact_ar1_ml(y: &[f64]) -> (f64, f64, f64) {
 }
 
 /// GNU `ar.mle` — univariate exact AR(1) Gaussian ML.
-pub unsafe fn do_ar_mle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let dim = getAttrib(x, R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) > 0 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "MLE only implemented for univariate series",
-            );
-        }
-        if x.is_null() || x == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' must be numeric",
-            );
-        }
-        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' must be numeric",
-            );
-        }
-        let n = XLENGTH(x) as usize;
-        let mut y = vec![0.0; n];
-        for i in 0..n {
-            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                let iv = *INTEGER(x).add(i);
-                if iv == NA_INTEGER {
-                    crate::mainutils::errors::errorcall_str(
-                        crate::mainutils::errors::R_getCurrentCall(),
-                        "missing values in object",
-                    );
-                }
-                iv as f64
-            };
-            if v.is_nan() {
+pub fn do_ar_mle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let dim = getAttrib(x, R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) > 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "MLE only implemented for univariate series",
+        );
+    }
+    if x.is_null() || x == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be numeric",
+        );
+    }
+    if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be numeric",
+        );
+    }
+    let n = XLENGTH(x) as usize;
+    let mut y = vec![0.0; n];
+    for i in 0..n {
+        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else {
+            let iv = INTEGER_ELT(x, i as i32);
+            if iv == NA_INTEGER {
                 crate::mainutils::errors::errorcall_str(
                     crate::mainutils::errors::R_getCurrentCall(),
                     "missing values in object",
                 );
             }
-            y[i] = v;
+            iv as f64
+        };
+        if v.is_nan() {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "missing values in object",
+            );
         }
-        let mut order_max: Option<i32> = None;
-        let mut a = CDR(args);
-        while !a.is_null() && a != R_NilValue() {
-            let tag = TAG(a);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned();
-                if name == "order.max" {
-                    order_max = Some(asInteger(CAR(a)));
-                }
-            }
-            a = CDR(a);
-        }
-        if let Some(om) = order_max {
-            if om < 0 {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "'order.max' must be >= 0",
-                );
-            }
-            if om as usize >= n {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "'order.max' must be < 'n.used'",
-                );
-            }
-        }
-        let (phi, mu, _sigma2) = exact_ar1_ml(&y);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarInteger(1));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(phi));
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(mu));
-        SET_VECTOR_ELT(result, 3, Rf_mkString(c"MLE".as_ptr()));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "order".to_string(),
-                "ar".to_string(),
-                "x.mean".to_string(),
-                "method".to_string(),
-            ],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"ar".as_ptr()),
-        );
-        result
+        y[i] = v;
     }
+    let mut order_max: Option<i32> = None;
+    let mut a = CDR(args);
+    while !a.is_null() && a != R_NilValue() {
+        let tag = TAG(a);
+        if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let name = crate::library::stats::checked::char_string(PRINTNAME(tag));
+            if name == "order.max" {
+                order_max = Some(asInteger(CAR(a)));
+            }
+        }
+        a = CDR(a);
+    }
+    if let Some(om) = order_max {
+        if om < 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'order.max' must be >= 0",
+            );
+        }
+        if om as usize >= n {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "'order.max' must be < 'n.used'",
+            );
+        }
+    }
+    let (phi, mu, _sigma2) = exact_ar1_ml(&y);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarInteger(1));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(phi));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(mu));
+    SET_VECTOR_ELT(result, 3, crate::library::stats::checked::mk_string("MLE"));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "order".to_string(),
+            "ar".to_string(),
+            "x.mean".to_string(),
+            "method".to_string(),
+        ],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("ar"),
+    );
+    result
 }
 
 fn css_ar1(y: &[f64]) -> (f64, f64, f64) {
@@ -1231,405 +1221,385 @@ fn css_arma11_sar1_sma1_no_mean(y: &[f64], period: usize) -> (f64, f64, f64, f64
 }
 
 /// GNU `arima` — AR(0..2)/MA(1), CSS or ML, optional difference.
-pub unsafe fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = XLENGTH(x) as usize;
-        if n < 1 {
-            return R_NilValue();
-        }
-        let mut y = vec![0.0; n];
-        for i in 0..n {
-            y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                *INTEGER(x).add(i) as f64
-            };
-        }
-        let mut css = false;
-        let mut p = 1i32;
-        let mut d = 0i32;
-        let mut q = 0i32;
-        let mut sar_p = 0i32;
-        let mut sar_d = 0i32;
-        let mut sar_q = 0i32;
-        let mut period = 0i32;
-        let mut include_mean = true;
-        let mut a = CDR(args);
-        while !a.is_null() && a != R_NilValue() {
-            let tag = TAG(a);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
-                let v = CAR(a);
-                if name == "method" {
-                    if !v.is_null() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                        let m = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0))).to_string_lossy();
-                        css = m == "CSS";
-                    }
-                } else if name == "order" && !v.is_null() && XLENGTH(v) >= 3 {
-                    let elt = |i: i64| {
-                        if TYPEOF(v) == SEXPTYPE::INTSXP {
-                            *INTEGER(v).add(i as usize) as i32
-                        } else {
-                            *REAL(v).add(i as usize) as i32
-                        }
-                    };
-                    p = elt(0);
-                    d = elt(1);
-                    q = elt(2);
-                } else if name == "seasonal" && !v.is_null() && TYPEOF(v) == SEXPTYPE::VECSXP {
-                    let ord = named_list_elt(v, "order");
-                    let per = named_list_elt(v, "period");
-                    let ival = |x: SEXP, i: usize| -> i32 {
-                        if x.is_null() || x == R_NilValue() || XLENGTH(x) <= i as i64 {
-                            0
-                        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                            *INTEGER(x).add(i)
-                        } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-                            *REAL(x).add(i) as i32
-                        } else {
-                            0
-                        }
-                    };
-                    sar_p = ival(ord, 0);
-                    sar_d = ival(ord, 1);
-                    sar_q = ival(ord, 2);
-                    period = ival(per, 0);
-                } else if name == "include.mean" {
-                    include_mean = asBool(v);
-                }
-            }
-            a = CDR(a);
-        }
-        if d > 0 {
-            y = difference_series(&y, d);
-        }
-        if sar_d > 0 && period >= 2 {
-            y = seasonal_difference(&y, period as usize, sar_d);
-        }
-        let differenced = d > 0 || sar_d > 0;
-        let no_mean = differenced || !include_mean;
-        let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) = if p <= 0
-            && q <= 0
-            && !no_mean
-            && !css
-            && sar_p == 1
-            && sar_q == 1
-            && period >= 2
-        {
-            exact_arima_ml(&y, 0, 0, 1, 1, period as usize, true)
-        } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
-            let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
-            (
-                vec![sar, sma, mu],
-                vec![
-                    "sar1".to_string(),
-                    "sma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            exact_arima_ml(&y, 0, 0, 1, 0, period as usize, true)
-        } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (sar, mu, s2) = css_sar1(&y, period as usize);
-            (
-                vec![sar, mu],
-                vec!["sar1".to_string(), "intercept".to_string()],
-                s2,
-            )
-        } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 0, 0, 0, 1, period as usize, true)
-        } else if p <= 0 && q <= 0 && !differenced && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            let (sma, mu, s2) = css_sma1(&y, period as usize);
-            (
-                vec![sma, mu],
-                vec!["sma1".to_string(), "intercept".to_string()],
-                s2,
-            )
-        } else if p == 1 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            exact_arima_ml(&y, 1, 0, 1, 0, period as usize, true)
-        } else if p == 1 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
-            let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
-            (
-                vec![ar, sar, mu],
-                vec![
-                    "ar1".to_string(),
-                    "sar1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p <= 0 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 0, 1, 0, 1, period as usize, true)
-        } else if p <= 0 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
-            let (ma, sma, mu, s2) = css_ma1_sma1(&y, period as usize);
-            (
-                vec![ma, sma, mu],
-                vec![
-                    "ma1".to_string(),
-                    "sma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 1 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 1, 0, 0, 1, period as usize, true)
-        } else if p == 1 && q <= 0 && !differenced && sar_q == 1 && period >= 2 {
-            let (ar, sma, mu, s2) = css_ar1_sma1(&y, period as usize);
-            (
-                vec![ar, sma, mu],
-                vec![
-                    "ar1".to_string(),
-                    "sma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p <= 0 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            exact_arima_ml(&y, 0, 1, 1, 0, period as usize, true)
-        } else if p <= 0 && q == 1 && !differenced && sar_p == 1 && period >= 2 {
-            let (ma, sar, mu, s2) = css_ma1_sar1(&y, period as usize);
-            (
-                vec![ma, sar, mu],
-                vec![
-                    "ma1".to_string(),
-                    "sar1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p <= 0 && q <= 0 {
-            if differenced {
-                let s2 = if y.is_empty() {
-                    f64::NAN
-                } else {
-                    y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64
-                };
-                (vec![], vec![], s2)
-            } else {
-                let (mu, s2) = css_ar0(&y);
-                (vec![mu], vec!["intercept".to_string()], s2)
-            }
-        } else if p <= 0 && q == 1 && !no_mean && !css {
-            exact_arima_ml(&y, 0, 1, 0, 0, 0, true)
-        } else if p <= 0 && q == 1 && d <= 0 && !no_mean {
-            let (th, mu, s2) = css_ma1(&y);
-            (
-                vec![th, mu],
-                vec!["ma1".to_string(), "intercept".to_string()],
-                s2,
-            )
-        } else if p <= 0 && q == 2 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 0, 2, 0, 0, 0, true)
-        } else if p <= 0 && q == 2 && !differenced && !no_mean {
-            let (t1, t2, mu, s2) = css_ma2(&y);
-            (
-                vec![t1, t2, mu],
-                vec![
-                    "ma1".to_string(),
-                    "ma2".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 1 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 1, 1, 1, 1, period as usize, true)
-        } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
-            let (ar, ma, sar, sma, mu, s2) = css_arma11_sar1_sma1(&y, period as usize);
-            (
-                vec![ar, ma, sar, sma, mu],
-                vec![
-                    "ar1".to_string(),
-                    "ma1".to_string(),
-                    "sar1".to_string(),
-                    "sma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 1 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            exact_arima_ml(&y, 1, 1, 1, 0, period as usize, true)
-        } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (ar, ma, sar, mu, s2) = css_arma11_sar1(&y, period as usize);
-            (
-                vec![ar, ma, sar, mu],
-                vec![
-                    "ar1".to_string(),
-                    "ma1".to_string(),
-                    "sar1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 1 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 1, 1, 0, 1, period as usize, true)
-        } else if p == 1 && q == 1 && !differenced && sar_q == 1 && sar_p <= 0 && period >= 2 {
-            let (ar, ma, sma, mu, s2) = css_arma11_sma1(&y, period as usize);
-            (
-                vec![ar, ma, sma, mu],
-                vec![
-                    "ar1".to_string(),
-                    "ma1".to_string(),
-                    "sma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 1 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 1, 1, 0, 0, 0, true)
-        } else if p == 1 && q == 1 && d <= 0 && !no_mean {
-            let (phi, th, mu, s2) = css_arma11(&y);
-            (
-                vec![phi, th, mu],
-                vec![
-                    "ar1".to_string(),
-                    "ma1".to_string(),
-                    "intercept".to_string(),
-                ],
-                s2,
-            )
-        } else if p == 2 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 2, 0, 0, 0, 0, true)
-        } else if p == 3 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 3, 0, 0, 0, 0, true)
-        } else if !css
-            && !no_mean
-            && p >= 1
-            && p <= 3
-            && q >= 1
-            && q <= 2
-            && sar_p <= 0
-            && sar_q <= 0
-        {
-            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, true)
-        } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
-            let (phi, mu, s2) = css_ar_mean(&y, p as usize);
-            let mut names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
-            names.push("intercept".to_string());
-            let mut values = phi;
-            values.push(mu);
-            (values, names, s2)
-        } else if no_mean && p == 1 && q == 1 && sar_p == 1 && sar_q == 1 && period >= 2 {
-            let (ar, ma, sar, sma, s2) = css_arma11_sar1_sma1_no_mean(&y, period as usize);
-            (
-                vec![ar, ma, sar, sma],
-                vec![
-                    "ar1".to_string(),
-                    "ma1".to_string(),
-                    "sar1".to_string(),
-                    "sma1".to_string(),
-                ],
-                s2,
-            )
-        } else if no_mean && p == 1 && q == 1 && sar_p == 1 && sar_q <= 0 && period >= 2 {
-            let (ar, ma, sar, s2) = css_arma11_sar1_no_mean(&y, period as usize);
-            (
-                vec![ar, ma, sar],
-                vec!["ar1".to_string(), "ma1".to_string(), "sar1".to_string()],
-                s2,
-            )
-        } else if no_mean && p == 1 && q == 1 && sar_q == 1 && sar_p <= 0 && period >= 2 {
-            let (ar, ma, sma, s2) = css_arma11_sma1_no_mean(&y, period as usize);
-            (
-                vec![ar, ma, sma],
-                vec!["ar1".to_string(), "ma1".to_string(), "sma1".to_string()],
-                s2,
-            )
-        } else if !css
-            && no_mean
-            && p >= 1
-            && p <= 3
-            && q >= 1
-            && q <= 2
-            && sar_p <= 0
-            && sar_q <= 0
-        {
-            exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, false)
-        } else if no_mean && p == 1 && q == 1 {
-            let (ar, ma, s2) = css_arma11_no_mean(&y);
-            (vec![ar, ma], vec!["ar1".to_string(), "ma1".to_string()], s2)
-        } else if !css && no_mean && p <= 0 && q == 1 && sar_p <= 0 && sar_q == 1 && period >= 2 {
-            exact_arima_ml(&y, 0, 1, 0, 1, period as usize, false)
-        } else if no_mean && p <= 0 && q == 1 && sar_q == 1 && period >= 2 {
-            let (ma, sma, s2) = css_ma1_sma1_no_mean(&y, period as usize);
-            (
-                vec![ma, sma],
-                vec!["ma1".to_string(), "sma1".to_string()],
-                s2,
-            )
-        } else if !css && no_mean && p <= 0 && q == 1 && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 0, 1, 0, 0, 0, false)
-        } else if no_mean && p <= 0 && q == 1 {
-            let (th, s2) = css_ma1_no_mean(&y);
-            (vec![th], vec!["ma1".to_string()], s2)
-        } else if no_mean && p <= 0 && q == 2 {
-            let (t1, t2, s2) = css_ma2_no_mean(&y);
-            (vec![t1, t2], vec!["ma1".to_string(), "ma2".to_string()], s2)
-        } else if no_mean && p == 1 && q <= 0 && sar_p == 1 && period >= 2 {
-            let (ar, sar, s2) = css_ar1_sar1_no_mean(&y, period as usize);
-            (
-                vec![ar, sar],
-                vec!["ar1".to_string(), "sar1".to_string()],
-                s2,
-            )
-        } else if !css && no_mean && p == 1 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, 1, 0, 0, 0, 0, false)
-        } else if !css && no_mean && p >= 2 && p <= 3 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
-            exact_arima_ml(&y, p as usize, 0, 0, 0, 0, false)
-        } else if no_mean && q <= 0 && p > 0 {
-            let (phi, s2) = css_ar_no_mean(&y, p as usize);
-            let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
-            (phi, names, s2)
-        } else {
-            let (phi, mu, s2) = if css { css_ar1(&y) } else { exact_ar1_ml(&y) };
-            (
-                vec![phi, mu],
-                vec!["ar1".to_string(), "intercept".to_string()],
-                s2,
-            )
-        };
-        let coef = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
-        let _c = protect(coef);
-        for (i, v) in values.iter().enumerate() {
-            *REAL(coef).add(i) = *v;
-        }
-        crate::mainutils::essentials::set_string_names(coef, &names);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, coef);
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(sigma2));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["coef".to_string(), "sigma2".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"Arima".as_ptr()),
-        );
-        result
+pub fn do_arima(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let n = XLENGTH(x) as usize;
+    if n < 1 {
+        return R_NilValue();
     }
+    let mut y = vec![0.0; n];
+    for i in 0..n {
+        y[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else {
+            INTEGER_ELT(x, i as i32) as f64
+        };
+    }
+    let mut css = false;
+    let mut p = 1i32;
+    let mut d = 0i32;
+    let mut q = 0i32;
+    let mut sar_p = 0i32;
+    let mut sar_d = 0i32;
+    let mut sar_q = 0i32;
+    let mut period = 0i32;
+    let mut include_mean = true;
+    let mut a = CDR(args);
+    while !a.is_null() && a != R_NilValue() {
+        let tag = TAG(a);
+        if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let name = crate::library::stats::checked::char_string(PRINTNAME(tag));
+            let v = CAR(a);
+            if name == "method" {
+                if !v.is_null() && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                    let m = crate::library::stats::checked::char_string(STRING_ELT(v, 0));
+                    css = m == "CSS";
+                }
+            } else if name == "order" && !v.is_null() && XLENGTH(v) >= 3 {
+                let elt = |i: i64| {
+                    if TYPEOF(v) == SEXPTYPE::INTSXP {
+                        INTEGER_ELT(v, i as i32) as i32
+                    } else {
+                        REAL_ELT(v, i as i32) as i32
+                    }
+                };
+                p = elt(0);
+                d = elt(1);
+                q = elt(2);
+            } else if name == "seasonal" && !v.is_null() && TYPEOF(v) == SEXPTYPE::VECSXP {
+                let ord = named_list_elt(v, "order");
+                let per = named_list_elt(v, "period");
+                let ival = |x: SEXP, i: usize| -> i32 {
+                    if x.is_null() || x == R_NilValue() || XLENGTH(x) <= i as i64 {
+                        0
+                    } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                        INTEGER_ELT(x, i as i32)
+                    } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+                        REAL_ELT(x, i as i32) as i32
+                    } else {
+                        0
+                    }
+                };
+                sar_p = ival(ord, 0);
+                sar_d = ival(ord, 1);
+                sar_q = ival(ord, 2);
+                period = ival(per, 0);
+            } else if name == "include.mean" {
+                include_mean = asBool(v);
+            }
+        }
+        a = CDR(a);
+    }
+    if d > 0 {
+        y = difference_series(&y, d);
+    }
+    if sar_d > 0 && period >= 2 {
+        y = seasonal_difference(&y, period as usize, sar_d);
+    }
+    let differenced = d > 0 || sar_d > 0;
+    let no_mean = differenced || !include_mean;
+    let (values, names, sigma2): (Vec<f64>, Vec<String>, f64) = if p <= 0
+        && q <= 0
+        && !no_mean
+        && !css
+        && sar_p == 1
+        && sar_q == 1
+        && period >= 2
+    {
+        exact_arima_ml(&y, 0, 0, 1, 1, period as usize, true)
+    } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
+        let (sar, sma, mu, s2) = css_sar1_sma1(&y, period as usize);
+        (
+            vec![sar, sma, mu],
+            vec![
+                "sar1".to_string(),
+                "sma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        exact_arima_ml(&y, 0, 0, 1, 0, period as usize, true)
+    } else if p <= 0 && q <= 0 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        let (sar, mu, s2) = css_sar1(&y, period as usize);
+        (
+            vec![sar, mu],
+            vec!["sar1".to_string(), "intercept".to_string()],
+            s2,
+        )
+    } else if p <= 0 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 0, 0, 0, 1, period as usize, true)
+    } else if p <= 0 && q <= 0 && !differenced && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        let (sma, mu, s2) = css_sma1(&y, period as usize);
+        (
+            vec![sma, mu],
+            vec!["sma1".to_string(), "intercept".to_string()],
+            s2,
+        )
+    } else if p == 1 && q <= 0 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        exact_arima_ml(&y, 1, 0, 1, 0, period as usize, true)
+    } else if p == 1 && q <= 0 && !differenced && sar_p == 1 && period >= 2 {
+        let (ar, sar, mu, s2) = css_ar1_sar1(&y, period as usize);
+        (
+            vec![ar, sar, mu],
+            vec![
+                "ar1".to_string(),
+                "sar1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p <= 0 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 0, 1, 0, 1, period as usize, true)
+    } else if p <= 0 && q == 1 && !differenced && sar_q == 1 && period >= 2 {
+        let (ma, sma, mu, s2) = css_ma1_sma1(&y, period as usize);
+        (
+            vec![ma, sma, mu],
+            vec![
+                "ma1".to_string(),
+                "sma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 1 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 1, 0, 0, 1, period as usize, true)
+    } else if p == 1 && q <= 0 && !differenced && sar_q == 1 && period >= 2 {
+        let (ar, sma, mu, s2) = css_ar1_sma1(&y, period as usize);
+        (
+            vec![ar, sma, mu],
+            vec![
+                "ar1".to_string(),
+                "sma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p <= 0 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        exact_arima_ml(&y, 0, 1, 1, 0, period as usize, true)
+    } else if p <= 0 && q == 1 && !differenced && sar_p == 1 && period >= 2 {
+        let (ma, sar, mu, s2) = css_ma1_sar1(&y, period as usize);
+        (
+            vec![ma, sar, mu],
+            vec![
+                "ma1".to_string(),
+                "sar1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p <= 0 && q <= 0 {
+        if differenced {
+            let s2 = if y.is_empty() {
+                f64::NAN
+            } else {
+                y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64
+            };
+            (vec![], vec![], s2)
+        } else {
+            let (mu, s2) = css_ar0(&y);
+            (vec![mu], vec!["intercept".to_string()], s2)
+        }
+    } else if p <= 0 && q == 1 && !no_mean && !css {
+        exact_arima_ml(&y, 0, 1, 0, 0, 0, true)
+    } else if p <= 0 && q == 1 && d <= 0 && !no_mean {
+        let (th, mu, s2) = css_ma1(&y);
+        (
+            vec![th, mu],
+            vec!["ma1".to_string(), "intercept".to_string()],
+            s2,
+        )
+    } else if p <= 0 && q == 2 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 0, 2, 0, 0, 0, true)
+    } else if p <= 0 && q == 2 && !differenced && !no_mean {
+        let (t1, t2, mu, s2) = css_ma2(&y);
+        (
+            vec![t1, t2, mu],
+            vec![
+                "ma1".to_string(),
+                "ma2".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 1 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 1, 1, 1, 1, period as usize, true)
+    } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q == 1 && period >= 2 {
+        let (ar, ma, sar, sma, mu, s2) = css_arma11_sar1_sma1(&y, period as usize);
+        (
+            vec![ar, ma, sar, sma, mu],
+            vec![
+                "ar1".to_string(),
+                "ma1".to_string(),
+                "sar1".to_string(),
+                "sma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 1 && q == 1 && !no_mean && !css && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        exact_arima_ml(&y, 1, 1, 1, 0, period as usize, true)
+    } else if p == 1 && q == 1 && !differenced && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        let (ar, ma, sar, mu, s2) = css_arma11_sar1(&y, period as usize);
+        (
+            vec![ar, ma, sar, mu],
+            vec![
+                "ar1".to_string(),
+                "ma1".to_string(),
+                "sar1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 1 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 1, 1, 0, 1, period as usize, true)
+    } else if p == 1 && q == 1 && !differenced && sar_q == 1 && sar_p <= 0 && period >= 2 {
+        let (ar, ma, sma, mu, s2) = css_arma11_sma1(&y, period as usize);
+        (
+            vec![ar, ma, sma, mu],
+            vec![
+                "ar1".to_string(),
+                "ma1".to_string(),
+                "sma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 1 && q == 1 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 1, 1, 0, 0, 0, true)
+    } else if p == 1 && q == 1 && d <= 0 && !no_mean {
+        let (phi, th, mu, s2) = css_arma11(&y);
+        (
+            vec![phi, th, mu],
+            vec![
+                "ar1".to_string(),
+                "ma1".to_string(),
+                "intercept".to_string(),
+            ],
+            s2,
+        )
+    } else if p == 2 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 2, 0, 0, 0, 0, true)
+    } else if p == 3 && q <= 0 && !no_mean && !css && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 3, 0, 0, 0, 0, true)
+    } else if !css && !no_mean && p >= 1 && p <= 3 && q >= 1 && q <= 2 && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, true)
+    } else if p >= 2 && p <= 5 && q <= 0 && !no_mean && sar_p <= 0 && sar_q <= 0 {
+        let (phi, mu, s2) = css_ar_mean(&y, p as usize);
+        let mut names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
+        names.push("intercept".to_string());
+        let mut values = phi;
+        values.push(mu);
+        (values, names, s2)
+    } else if no_mean && p == 1 && q == 1 && sar_p == 1 && sar_q == 1 && period >= 2 {
+        let (ar, ma, sar, sma, s2) = css_arma11_sar1_sma1_no_mean(&y, period as usize);
+        (
+            vec![ar, ma, sar, sma],
+            vec![
+                "ar1".to_string(),
+                "ma1".to_string(),
+                "sar1".to_string(),
+                "sma1".to_string(),
+            ],
+            s2,
+        )
+    } else if no_mean && p == 1 && q == 1 && sar_p == 1 && sar_q <= 0 && period >= 2 {
+        let (ar, ma, sar, s2) = css_arma11_sar1_no_mean(&y, period as usize);
+        (
+            vec![ar, ma, sar],
+            vec!["ar1".to_string(), "ma1".to_string(), "sar1".to_string()],
+            s2,
+        )
+    } else if no_mean && p == 1 && q == 1 && sar_q == 1 && sar_p <= 0 && period >= 2 {
+        let (ar, ma, sma, s2) = css_arma11_sma1_no_mean(&y, period as usize);
+        (
+            vec![ar, ma, sma],
+            vec!["ar1".to_string(), "ma1".to_string(), "sma1".to_string()],
+            s2,
+        )
+    } else if !css && no_mean && p >= 1 && p <= 3 && q >= 1 && q <= 2 && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, p as usize, q as usize, 0, 0, 0, false)
+    } else if no_mean && p == 1 && q == 1 {
+        let (ar, ma, s2) = css_arma11_no_mean(&y);
+        (vec![ar, ma], vec!["ar1".to_string(), "ma1".to_string()], s2)
+    } else if !css && no_mean && p <= 0 && q == 1 && sar_p <= 0 && sar_q == 1 && period >= 2 {
+        exact_arima_ml(&y, 0, 1, 0, 1, period as usize, false)
+    } else if no_mean && p <= 0 && q == 1 && sar_q == 1 && period >= 2 {
+        let (ma, sma, s2) = css_ma1_sma1_no_mean(&y, period as usize);
+        (
+            vec![ma, sma],
+            vec!["ma1".to_string(), "sma1".to_string()],
+            s2,
+        )
+    } else if !css && no_mean && p <= 0 && q == 1 && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 0, 1, 0, 0, 0, false)
+    } else if no_mean && p <= 0 && q == 1 {
+        let (th, s2) = css_ma1_no_mean(&y);
+        (vec![th], vec!["ma1".to_string()], s2)
+    } else if no_mean && p <= 0 && q == 2 {
+        let (t1, t2, s2) = css_ma2_no_mean(&y);
+        (vec![t1, t2], vec!["ma1".to_string(), "ma2".to_string()], s2)
+    } else if no_mean && p == 1 && q <= 0 && sar_p == 1 && period >= 2 {
+        let (ar, sar, s2) = css_ar1_sar1_no_mean(&y, period as usize);
+        (
+            vec![ar, sar],
+            vec!["ar1".to_string(), "sar1".to_string()],
+            s2,
+        )
+    } else if !css && no_mean && p == 1 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, 1, 0, 0, 0, 0, false)
+    } else if !css && no_mean && p >= 2 && p <= 3 && q <= 0 && sar_p <= 0 && sar_q <= 0 {
+        exact_arima_ml(&y, p as usize, 0, 0, 0, 0, false)
+    } else if no_mean && q <= 0 && p > 0 {
+        let (phi, s2) = css_ar_no_mean(&y, p as usize);
+        let names: Vec<String> = (1..=p).map(|i| format!("ar{i}")).collect();
+        (phi, names, s2)
+    } else {
+        let (phi, mu, s2) = if css { css_ar1(&y) } else { exact_ar1_ml(&y) };
+        (
+            vec![phi, mu],
+            vec!["ar1".to_string(), "intercept".to_string()],
+            s2,
+        )
+    };
+    let coef = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
+    let _c = protect(coef);
+    for (i, v) in values.iter().enumerate() {
+        SET_REAL_ELT(coef, i as i32, *v);
+    }
+    crate::mainutils::essentials::set_string_names(coef, &names);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, coef);
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(sigma2));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["coef".to_string(), "sigma2".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("Arima"),
+    );
+    result
 }
 
 /// GNU `arima0` — same CSS AR(1) as `arima`, class `arima0`.
-pub unsafe fn do_arima0(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let result = do_arima(call, op, args, rho);
-        if result.is_null() || result == R_NilValue() {
-            return result;
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"arima0".as_ptr()),
-        );
-        result
+pub fn do_arima0(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let result = do_arima(call, op, args, rho);
+    if result.is_null() || result == R_NilValue() {
+        return result;
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("arima0"),
+    );
+    result
 }
 
 /// GNU `arima0.diag(...)` — `.Defunct()`.
-pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
         crate::mainutils::errors::R_getCurrentCall(),
         "'arima0.diag' is defunct.\nSee help(\"Defunct\")",
@@ -1637,7 +1607,7 @@ pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `plclust(...)` — `.Defunct("plot")`.
-pub unsafe fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
         crate::mainutils::errors::R_getCurrentCall(),
         "'plclust' is defunct.\nUse 'plot' instead.\nSee help(\"Defunct\")",
@@ -1645,178 +1615,175 @@ pub unsafe fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `arima.sim(list(ar=phi), n, n.start=)` — AR(1) via rnorm + recursive filter.
-pub unsafe fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let model = CAR(args);
-        let mut phi = 0.0;
-        if TYPEOF(model) == SEXPTYPE::VECSXP {
-            let ar = named_list_elt(model, "ar");
-            if !ar.is_null() && ar != R_NilValue() {
-                phi = if TYPEOF(ar) == SEXPTYPE::REALSXP {
-                    *REAL(ar)
-                } else if TYPEOF(ar) == SEXPTYPE::INTSXP {
-                    *INTEGER(ar) as f64
-                } else {
-                    0.0
-                };
-            }
-        }
-        let mut n = 0i32;
-        let mut n_start = 1i32;
-        let mut innov = std::ptr::null_mut();
-        let mut start_innov = std::ptr::null_mut();
-        let mut cell = CDR(args);
-        let mut pos = 1usize;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+pub fn do_arima_sim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let model = CAR(args);
+    let mut phi = 0.0;
+    if TYPEOF(model) == SEXPTYPE::VECSXP {
+        let ar = named_list_elt(model, "ar");
+        if !ar.is_null() && ar != R_NilValue() {
+            phi = if TYPEOF(ar) == SEXPTYPE::REALSXP {
+                REAL_ELT(ar, 0)
+            } else if TYPEOF(ar) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(ar, 0) as f64
             } else {
-                String::new()
+                0.0
             };
-            let val = CAR(cell);
-            if name == "n.start" {
-                n_start = if TYPEOF(val) == SEXPTYPE::INTSXP {
-                    *INTEGER(val)
-                } else {
-                    *REAL(val) as i32
-                };
-            } else if name == "innov" {
-                innov = val;
-            } else if name == "start.innov" {
-                start_innov = val;
-            } else if name == "n" || (name.is_empty() && pos == 1) {
-                n = if TYPEOF(val) == SEXPTYPE::INTSXP {
-                    *INTEGER(val)
-                } else {
-                    *REAL(val) as i32
-                };
-            }
-            pos += 1;
-            cell = CDR(cell);
         }
-        if n <= 0 {
-            return R_NilValue();
+    }
+    let mut n = 0i32;
+    let mut n_start = 1i32;
+    let mut innov = std::ptr::null_mut();
+    let mut start_innov = std::ptr::null_mut();
+    let mut cell = CDR(args);
+    let mut pos = 1usize;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            crate::library::stats::checked::char_string(PRINTNAME(tag))
+        } else {
+            String::new()
+        };
+        let val = CAR(cell);
+        if name == "n.start" {
+            n_start = if TYPEOF(val) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(val, 0)
+            } else {
+                REAL_ELT(val, 0) as i32
+            };
+        } else if name == "innov" {
+            innov = val;
+        } else if name == "start.innov" {
+            start_innov = val;
+        } else if name == "n" || (name.is_empty() && pos == 1) {
+            n = if TYPEOF(val) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(val, 0)
+            } else {
+                REAL_ELT(val, 0) as i32
+            };
         }
-        if n_start < 0 {
-            n_start = 0;
-        }
-        let ntot = (n + n_start) as usize;
-        let mut e = vec![0.0; ntot];
-        let have_explicit = !innov.is_null() && innov != R_NilValue();
-        if have_explicit {
-            let ns = n_start as usize;
-            if !start_innov.is_null() && start_innov != R_NilValue() {
-                for i in 0..ns {
-                    e[i] = if TYPEOF(start_innov) == SEXPTYPE::REALSXP {
-                        *REAL(start_innov)
-                            .add(i.min((XLENGTH(start_innov) as usize).saturating_sub(1)))
-                    } else if TYPEOF(start_innov) == SEXPTYPE::INTSXP {
-                        *INTEGER(start_innov)
-                            .add(i.min((XLENGTH(start_innov) as usize).saturating_sub(1)))
-                            as f64
-                    } else {
-                        0.0
-                    };
-                }
-            }
-            let ni = XLENGTH(innov) as usize;
-            for i in 0..(n as usize) {
-                let src = i.min(ni.saturating_sub(1));
-                e[ns + i] = if TYPEOF(innov) == SEXPTYPE::REALSXP {
-                    *REAL(innov).add(src)
-                } else if TYPEOF(innov) == SEXPTYPE::INTSXP {
-                    *INTEGER(innov).add(src) as f64
+        pos += 1;
+        cell = CDR(cell);
+    }
+    if n <= 0 {
+        return R_NilValue();
+    }
+    if n_start < 0 {
+        n_start = 0;
+    }
+    let ntot = (n + n_start) as usize;
+    let mut e = vec![0.0; ntot];
+    let have_explicit = !innov.is_null() && innov != R_NilValue();
+    if have_explicit {
+        let ns = n_start as usize;
+        if !start_innov.is_null() && start_innov != R_NilValue() {
+            for i in 0..ns {
+                e[i] = if TYPEOF(start_innov) == SEXPTYPE::REALSXP {
+                    REAL_ELT(
+                        start_innov,
+                        i.min((XLENGTH(start_innov) as usize).saturating_sub(1)) as i32,
+                    )
+                } else if TYPEOF(start_innov) == SEXPTYPE::INTSXP {
+                    INTEGER_ELT(
+                        start_innov,
+                        i.min((XLENGTH(start_innov) as usize).saturating_sub(1)) as i32,
+                    ) as f64
                 } else {
                     0.0
                 };
             }
-        } else {
-            let narg = Rf_ScalarInteger(ntot as i32);
-            let _na = protect(narg);
-            let rargs = Rf_cons(narg, R_NilValue());
-            let _ra = protect(rargs);
-            let ev = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
-            let _ev = protect(ev);
-            let m = XLENGTH(ev) as usize;
-            for i in 0..ntot.min(m) {
-                e[i] = *REAL(ev).add(i);
-            }
         }
-        let m = e.len();
-        let mut y = vec![0.0; m];
-        if m > 0 {
-            y[0] = e[0];
-            for i in 1..m {
-                y[i] = e[i] + phi * y[i - 1];
-            }
+        let ni = XLENGTH(innov) as usize;
+        for i in 0..(n as usize) {
+            let src = i.min(ni.saturating_sub(1));
+            e[ns + i] = if TYPEOF(innov) == SEXPTYPE::REALSXP {
+                REAL_ELT(innov, src as i32)
+            } else if TYPEOF(innov) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(innov, src as i32) as f64
+            } else {
+                0.0
+            };
         }
-        let out_n = n as usize;
-        let drop = n_start as usize;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, out_n as i64);
-        let _r = protect(result);
-        for i in 0..out_n {
-            let src = drop + i;
-            *REAL(result).add(i) = if src < m { y[src] } else { 0.0 };
+    } else {
+        let narg = Rf_ScalarInteger(ntot as i32);
+        let _na = protect(narg);
+        let rargs = Rf_cons(narg, R_NilValue());
+        let _ra = protect(rargs);
+        let ev = crate::library::stats::random::do_rnorm_r(call, op, rargs, rho);
+        let _ev = protect(ev);
+        let m = XLENGTH(ev) as usize;
+        for i in 0..ntot.min(m) {
+            e[i] = REAL_ELT(ev, i as i32);
         }
-        result
     }
+    let m = e.len();
+    let mut y = vec![0.0; m];
+    if m > 0 {
+        y[0] = e[0];
+        for i in 1..m {
+            y[i] = e[i] + phi * y[i - 1];
+        }
+    }
+    let out_n = n as usize;
+    let drop = n_start as usize;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, out_n as i64);
+    let _r = protect(result);
+    for i in 0..out_n {
+        let src = drop + i;
+        SET_REAL_ELT(result, i as i32, if src < m { y[src] } else { 0.0 });
+    }
+    result
 }
 
 /// GNU `makeARIMA(phi, theta, Delta)` — AR(1), no MA/difference.
-pub unsafe fn do_makeARIMA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let phi = elt_real_or(CAR(args), 0.0);
-        let z = Rf_ScalarReal(1.0);
-        let _z = protect(z);
-        let a = Rf_ScalarReal(0.0);
-        let _a = protect(a);
-        let p0 = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
-        let _p0 = protect(p0);
-        *REAL(p0) = 0.0;
-        let t = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
-        let _t = protect(t);
-        *REAL(t) = phi;
-        let v = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
-        let _v = protect(v);
-        *REAL(v) = 1.0;
-        let h = Rf_ScalarReal(0.0);
-        let _h = protect(h);
-        let pn = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
-        let _pn = protect(pn);
-        let den = 1.0 - phi * phi;
-        *REAL(pn) = if den > 1e-15 { 1.0 / den } else { 1.0 };
-        let phi_s = Rf_ScalarReal(phi);
-        let _ps = protect(phi_s);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 10);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, phi_s);
-        SET_VECTOR_ELT(result, 1, R_NilValue());
-        SET_VECTOR_ELT(result, 2, R_NilValue());
-        SET_VECTOR_ELT(result, 3, z);
-        SET_VECTOR_ELT(result, 4, a);
-        SET_VECTOR_ELT(result, 5, p0);
-        SET_VECTOR_ELT(result, 6, t);
-        SET_VECTOR_ELT(result, 7, v);
-        SET_VECTOR_ELT(result, 8, h);
-        SET_VECTOR_ELT(result, 9, pn);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "phi".to_string(),
-                "theta".to_string(),
-                "Delta".to_string(),
-                "Z".to_string(),
-                "a".to_string(),
-                "P".to_string(),
-                "T".to_string(),
-                "V".to_string(),
-                "h".to_string(),
-                "Pn".to_string(),
-            ],
-        );
-        result
-    }
+pub fn do_makeARIMA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let phi = elt_real_or(CAR(args), 0.0);
+    let z = Rf_ScalarReal(1.0);
+    let _z = protect(z);
+    let a = Rf_ScalarReal(0.0);
+    let _a = protect(a);
+    let p0 = crate::library::stats::checked::alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+    let _p0 = protect(p0);
+    SET_REAL_ELT(p0, 0, 0.0);
+    let t = crate::library::stats::checked::alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+    let _t = protect(t);
+    SET_REAL_ELT(t, 0, phi);
+    let v = crate::library::stats::checked::alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+    let _v = protect(v);
+    SET_REAL_ELT(v, 0, 1.0);
+    let h = Rf_ScalarReal(0.0);
+    let _h = protect(h);
+    let pn = crate::library::stats::checked::alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
+    let _pn = protect(pn);
+    let den = 1.0 - phi * phi;
+    SET_REAL_ELT(pn, 0, if den > 1e-15 { 1.0 / den } else { 1.0 });
+    let phi_s = Rf_ScalarReal(phi);
+    let _ps = protect(phi_s);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 10);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, phi_s);
+    SET_VECTOR_ELT(result, 1, R_NilValue());
+    SET_VECTOR_ELT(result, 2, R_NilValue());
+    SET_VECTOR_ELT(result, 3, z);
+    SET_VECTOR_ELT(result, 4, a);
+    SET_VECTOR_ELT(result, 5, p0);
+    SET_VECTOR_ELT(result, 6, t);
+    SET_VECTOR_ELT(result, 7, v);
+    SET_VECTOR_ELT(result, 8, h);
+    SET_VECTOR_ELT(result, 9, pn);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "phi".to_string(),
+            "theta".to_string(),
+            "Delta".to_string(),
+            "Z".to_string(),
+            "a".to_string(),
+            "P".to_string(),
+            "T".to_string(),
+            "V".to_string(),
+            "h".to_string(),
+            "Pn".to_string(),
+        ],
+    );
+    result
 }

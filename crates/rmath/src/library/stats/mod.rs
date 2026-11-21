@@ -6,6 +6,7 @@ pub(crate) mod arima_native;
 mod bandwidths;
 pub(crate) mod bspline;
 pub(crate) mod burg;
+pub(crate) mod checked;
 mod chisqsim;
 pub(crate) mod complete_cases;
 mod correlation;

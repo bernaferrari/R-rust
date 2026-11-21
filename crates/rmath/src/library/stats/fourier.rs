@@ -34,12 +34,12 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory::with_arena;
 use crate::sexp::protect::protect;
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
 
-unsafe fn duplicate(x: SEXP) -> SEXP {
-    crate::main::duplicate::duplicate(x)
+fn duplicate(x: SEXP) -> SEXP {
+    crate::mainutils::seq::Rf_duplicate(x)
 }
 
 /// Pure-Rust mixed-radix discrete Fourier transform.
@@ -169,7 +169,7 @@ mod transform_tests {
             let input = Rf_allocVector(SEXPTYPE::REALSXP.0, 4);
             let _input_guard = protect(input);
             for (index, value) in [1.0, 2.0, 3.0, 4.0].into_iter().enumerate() {
-                *REAL(input).add(index) = value;
+                SET_REAL_ELT(input, index as i32, value);
             }
             let inverse = Rf_ScalarLogical(0);
             let _inverse_guard = protect(inverse);
@@ -262,12 +262,10 @@ mod transform_tests {
                 i: 0.0,
             })
             .collect();
-        unsafe {
-            transform_line(values.as_mut_ptr(), 2, 1, false);
-            transform_line(values.as_mut_ptr().add(2), 2, 1, false);
-            transform_line(values.as_mut_ptr(), 2, 2, false);
-            transform_line(values.as_mut_ptr().add(1), 2, 2, false);
-        }
+        transform_line(&mut values, 0, 2, 1, false);
+        transform_line(&mut values, 2, 2, 1, false);
+        transform_line(&mut values, 0, 2, 2, false);
+        transform_line(&mut values, 1, 2, 2, false);
         for (actual, expected) in values.into_iter().zip([10.0, -2.0, -4.0, 0.0]) {
             close(
                 Complex64::new(actual.r, actual.i),
@@ -286,28 +284,47 @@ fn fft_workspace_bytes(len: usize) -> Option<usize> {
         .checked_mul(4)
 }
 
-unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse: bool) -> bool {
-    unsafe {
-        let Some(workspace_bytes) = fft_workspace_bytes(len) else {
-            return false;
+/// Transform the `len` cells `buf[start + k * stride]` in place.
+fn transform_line(
+    buf: &mut [Rcomplex],
+    start: usize,
+    len: usize,
+    stride: usize,
+    inverse: bool,
+) -> bool {
+    let Some(workspace_bytes) = fft_workspace_bytes(len) else {
+        return false;
+    };
+    // SAFETY: the closure only charges the arena's transient ledger; it does
+    // not reenter R or reach the arena through another alias.
+    let reservation = unsafe { with_arena(|arena| arena.try_reserve_transient(workspace_bytes)) };
+    let Some(_reservation) = reservation else {
+        return false;
+    };
+    let input: Vec<_> = (0..len)
+        .map(|index| {
+            let value = buf[start + index * stride];
+            Complex64::new(value.r, value.i)
+        })
+        .collect();
+    for (index, value) in transform(&input, inverse).into_iter().enumerate() {
+        buf[start + index * stride] = Rcomplex {
+            r: value.re,
+            i: value.im,
         };
-        let Some(_reservation) = with_arena(|arena| arena.try_reserve_transient(workspace_bytes))
-        else {
-            return false;
-        };
-        let input: Vec<_> = (0..len)
-            .map(|index| {
-                let value = *base.add(index * stride);
-                Complex64::new(value.r, value.i)
-            })
-            .collect();
-        for (index, value) in transform(&input, inverse).into_iter().enumerate() {
-            *base.add(index * stride) = Rcomplex {
-                r: value.re,
-                i: value.im,
-            };
-        }
-        true
+    }
+    true
+}
+
+/// Copy a CPLXSXP payload through checked element reads.
+fn complex_vec(z: SEXP) -> Vec<Rcomplex> {
+    (0..LENGTH(z)).map(|i| COMPLEX_ELT(z, i)).collect()
+}
+
+/// Store `values` into a CPLXSXP through checked element writes.
+fn store_complex(z: SEXP, values: &[Rcomplex]) {
+    for (i, &v) in values.iter().enumerate() {
+        SET_COMPLEX_ELT(z, i as c_int, v);
     }
 }
 
@@ -316,40 +333,40 @@ fn MAYBE_REFERENCED(x: SEXP) -> c_int {
     crate::sexp::accessors::NAMED(x)
 }
 
-unsafe fn as_integer(x: SEXP) -> c_int {
+fn as_integer(x: SEXP) -> c_int {
     if x.is_null() {
         return NA_INTEGER;
     }
-    unsafe {
+    {
         let t = TYPEOF(x);
         if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
+            return INTEGER_ELT(x, 0);
         }
         if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
+            let v = REAL_ELT(x, 0);
             if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
                 return NA_INTEGER;
             }
             return v as c_int;
         }
         if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
+            return INTEGER_ELT(x, 0);
         }
         NA_INTEGER
     }
 }
 
-unsafe fn as_logical(x: SEXP) -> c_int {
+fn as_logical(x: SEXP) -> c_int {
     if x.is_null() {
         return NA_INTEGER;
     }
-    unsafe {
+    {
         let t = TYPEOF(x);
         if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
+            return INTEGER_ELT(x, 0);
         }
         if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
+            return INTEGER_ELT(x, 0);
         }
         NA_INTEGER
     }
@@ -357,12 +374,12 @@ unsafe fn as_logical(x: SEXP) -> c_int {
 
 /* Fourier Transform for Univariate Spatial and Time Series */
 
-pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
+pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let mut z = z;
 
-    unsafe {
+    {
         match TYPEOF(z) as c_int {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
                 z = coerceVector(z, SEXPTYPE::CPLXSXP.as_c_int());
@@ -382,9 +399,10 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
 
         if LENGTH(z) > 1 {
             let d = getAttrib(z, R_DimSymbol());
+            let mut buf = complex_vec(z);
             if d.is_null() || d == R_NilValue() {
                 /* temporal transform */
-                if !transform_line(COMPLEX(z), LENGTH(z) as usize, 1, inverse) {
+                if !transform_line(&mut buf, 0, LENGTH(z) as usize, 1, inverse) {
                     Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
                         as *const core::ffi::c_char);
                 }
@@ -394,13 +412,14 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                 let total = LENGTH(z) as usize;
                 let mut stride = 1usize;
                 for i in 0..(ndims as usize) {
-                    let len = *INTEGER(d).add(i) as usize;
+                    let len = INTEGER_ELT(d, i as i32) as usize;
                     if len > 1 {
                         let block_len = stride * len;
                         for block in 0..(total / block_len) {
                             for lane in 0..stride {
                                 if !transform_line(
-                                    COMPLEX(z).add(block * block_len + lane),
+                                    &mut buf,
+                                    block * block_len + lane,
                                     len,
                                     stride,
                                     inverse,
@@ -416,6 +435,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                     stride *= len;
                 }
             }
+            store_complex(z, &buf);
         }
     }
     z
@@ -427,37 +447,35 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
 /// native routine.  The port currently exposes package functions directly as
 /// evaluator builtins, so keep the default here while reusing the translated,
 /// allocation-safe FFT backend above.
-pub unsafe fn do_fft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let z = CAR(args);
-        if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
-            crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
-        }
-        let inverse = CADR(args);
-        if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
-            let default_inverse = Rf_ScalarLogical(0);
-            let _default_guard = protect(default_inverse);
-            fft(z, default_inverse)
-        } else {
-            fft(z, inverse)
-        }
+pub fn do_fft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let z = CAR(args);
+    if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
+        crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
+    }
+    let inverse = CADR(args);
+    if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
+        let default_inverse = Rf_ScalarLogical(0);
+        let _default_guard = protect(default_inverse);
+        fft(z, default_inverse)
+    } else {
+        fft(z, inverse)
     }
 }
 
 /* Fourier Transform for Vector-Valued ("multivariate") Series */
 
-pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
+pub fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let mut z = z;
-    unsafe {
+    {
         let d = getAttrib(z, R_DimSymbol());
         if d.is_null() || d == R_NilValue() || LENGTH(d) != 2 {
             Rf_error(b"vector-valued (multivariate) series required\0".as_ptr()
                 as *const core::ffi::c_char);
         }
-        let n = *INTEGER(d);
-        let p = *INTEGER(d).add(1);
+        let n = INTEGER_ELT(d, 0);
+        let p = INTEGER_ELT(d, 1);
 
         match TYPEOF(z) as c_int {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
@@ -477,33 +495,32 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
         let inverse = as_logical(inverse) != NA_INTEGER && as_logical(inverse) != 0;
 
         if n > 1 {
+            let mut buf = complex_vec(z);
             for i in 0..(p as usize) {
-                let base = COMPLEX(z).add(i * n as usize);
-                if !transform_line(base, n as usize, 1, inverse) {
+                if !transform_line(&mut buf, i * n as usize, n as usize, 1, inverse) {
                     Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
                         as *const core::ffi::c_char);
                 }
             }
+            store_complex(z, &buf);
         }
     }
     z
 }
 
 /// Evaluator adapter for `mvfft(x, inverse = FALSE)`.
-pub unsafe fn do_mvfft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let z = CAR(args);
-        if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
-            crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
-        }
-        let inverse = CADR(args);
-        if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
-            let default_inverse = Rf_ScalarLogical(0);
-            let _default_guard = protect(default_inverse);
-            mvfft(z, default_inverse)
-        } else {
-            mvfft(z, inverse)
-        }
+pub fn do_mvfft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let z = CAR(args);
+    if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
+        crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
+    }
+    let inverse = CADR(args);
+    if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
+        let default_inverse = Rf_ScalarLogical(0);
+        let _default_guard = protect(default_inverse);
+        mvfft(z, default_inverse)
+    } else {
+        mvfft(z, inverse)
     }
 }
 
@@ -579,10 +596,10 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
     n
 }
 
-pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
+pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    unsafe {
+    {
         if TYPEOF(n) == SEXPTYPE::NILSXP {
             return Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
@@ -601,7 +618,8 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         if nf < 0 {
             Rf_error(b"too many factors\0".as_ptr() as *const core::ffi::c_char);
         }
-        let factors = std::slice::from_raw_parts(INTEGER(f) as *const c_int, nf as usize);
+        let factors_vec = crate::library::stats::checked::int_vec(f);
+        let factors = factors_vec.as_slice();
         for &factor in factors {
             if factor == NA_INTEGER || factor <= 1 {
                 Rf_error(b"invalid factors\0".as_ptr() as *const core::ffi::c_char);
@@ -618,10 +636,9 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         let nn = XLENGTH(n);
         let mut _n_guard = protect(n);
         if !use_int && nn > 0 {
-            let d_n = REAL(n);
-            let n_values = std::slice::from_raw_parts(d_n as *const c_double, nn as usize);
+            let n_values = crate::library::stats::checked::real_vec(n);
             let mut n_max: c_double = -1.0;
-            for &value in n_values {
+            for &value in &n_values {
                 if !ISNAN(value) && value > n_max {
                     n_max = value;
                 }
@@ -647,27 +664,28 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         }
 
         if use_int {
-            let n_ = INTEGER(n);
-            let n_values = std::slice::from_raw_parts(n_ as *const c_int, nn as usize);
-            let r = INTEGER(ans);
-            for (i, &value) in n_values.iter().enumerate() {
-                if value == NA_INTEGER {
-                    *r.add(i) = NA_INTEGER;
-                } else if value <= 1 {
-                    *r.add(i) = 1;
-                } else {
-                    *r.add(i) = nextn0(value, factors);
-                }
-            }
+            let n_values = crate::library::stats::checked::int_vec(n);
+            let r: Vec<c_int> = n_values
+                .iter()
+                .map(|&value| {
+                    if value == NA_INTEGER {
+                        NA_INTEGER
+                    } else if value <= 1 {
+                        1
+                    } else {
+                        nextn0(value, factors)
+                    }
+                })
+                .collect();
+            crate::library::stats::checked::set_integers(ans, &r);
         } else {
-            let n_ = REAL(n);
-            let n_values = std::slice::from_raw_parts(n_ as *const c_double, nn as usize);
-            let r = REAL(ans);
+            let n_values = crate::library::stats::checked::real_vec(n);
+            let mut r = vec![0.0; n_values.len()];
             for (i, &value) in n_values.iter().enumerate() {
                 if ISNAN(value) {
-                    *r.add(i) = NA_REAL;
+                    r[i] = NA_REAL;
                 } else if value <= 1.0 {
-                    *r.add(i) = 1.0;
+                    r[i] = 1.0;
                 } else {
                     let max_dbl_int: u64 = 9007199254740992; // 2^53
                     let n_n = nextn0_64(value as u64, factors);
@@ -677,9 +695,10 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                                 .as_ptr() as *const core::ffi::c_char,
                         );
                     }
-                    *r.add(i) = n_n as c_double;
+                    r[i] = n_n as c_double;
                 }
             }
+            crate::library::stats::checked::set_reals(ans, &r);
         }
 
         ans
@@ -687,260 +706,249 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 }
 
 /// GNU `nextn(n)` factors 2,3,5.
-pub unsafe fn do_nextn(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let n = CAR(args);
-        let f = if CDR(args).is_null() || CDR(args) == crate::sexp::globals::R_NilValue() {
-            let fac = Rf_allocVector(SEXPTYPE::INTSXP.as_c_int(), 3);
-            let _f = protect(fac);
-            *INTEGER(fac) = 2;
-            *INTEGER(fac).add(1) = 3;
-            *INTEGER(fac).add(2) = 5;
-            fac
-        } else {
-            CAR(CDR(args))
-        };
-        nextn(n, f)
-    }
+pub fn do_nextn(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let n = CAR(args);
+    let f = if CDR(args).is_null() || CDR(args) == crate::sexp::globals::R_NilValue() {
+        let fac = Rf_allocVector(SEXPTYPE::INTSXP.as_c_int(), 3);
+        let _f = protect(fac);
+        SET_INTEGER_ELT(fac, 0, 2);
+        SET_INTEGER_ELT(fac, 1, 3);
+        SET_INTEGER_ELT(fac, 2, 5);
+        fac
+    } else {
+        CAR(CDR(args))
+    };
+    nextn(n, f)
 }
 
 /// GNU circular `convolve(x, y)` via fft.
-pub unsafe fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _x = protect(x);
-        let mut y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
-        let _y = protect(y);
-        let mut is_open = false;
-        let mut is_filter = false;
-        let mut p = CDR(CDR(args));
-        while !p.is_null() && p != R_NilValue() {
-            let s = CAR(p);
-            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
-                let t = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0)));
-                match t.to_bytes() {
-                    b"open" => is_open = true,
-                    b"filter" => is_filter = true,
-                    _ => {}
-                }
+pub fn do_convolve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+    let _x = protect(x);
+    let mut y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+    let _y = protect(y);
+    let mut is_open = false;
+    let mut is_filter = false;
+    let mut p = CDR(CDR(args));
+    while !p.is_null() && p != R_NilValue() {
+        let s = CAR(p);
+        if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
+            let t = crate::library::stats::checked::char_bytes(STRING_ELT(s, 0));
+            match t.as_slice() {
+                b"open" => is_open = true,
+                b"filter" => is_filter = true,
+                _ => {}
             }
-            p = CDR(p);
         }
-        let n1_keep = XLENGTH(y) - 1;
-        if is_open || is_filter {
-            let nx = XLENGTH(x);
-            let ny = XLENGTH(y);
-            let n1 = ny - 1;
-            let x2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (nx + n1) as c_int);
-            let _x2 = protect(x2);
-            for i in 0..n1 as usize {
-                *REAL(x2).add(i) = 0.0;
-            }
-            for i in 0..nx as usize {
-                *REAL(x2).add(n1 as usize + i) = *REAL(x).add(i);
-            }
-            let y2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (ny + nx - 1) as c_int);
-            let _y2 = protect(y2);
-            for i in 0..ny as usize {
-                *REAL(y2).add(i) = *REAL(y).add(i);
-            }
-            for i in ny as usize..(ny + nx - 1) as usize {
-                *REAL(y2).add(i) = 0.0;
-            }
-            x = x2;
-            y = y2;
+        p = CDR(p);
+    }
+    let n1_keep = XLENGTH(y) - 1;
+    if is_open || is_filter {
+        let nx = XLENGTH(x);
+        let ny = XLENGTH(y);
+        let n1 = ny - 1;
+        let x2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (nx + n1) as c_int);
+        let _x2 = protect(x2);
+        for i in 0..n1 as usize {
+            SET_REAL_ELT(x2, i as i32, 0.0);
         }
-        let n = XLENGTH(x);
-        if n != XLENGTH(y) {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "length mismatch in convolution",
-            );
+        for i in 0..nx as usize {
+            SET_REAL_ELT(x2, (n1 as usize + i) as i32, REAL_ELT(x, i as i32));
         }
-        let inv_false = Rf_ScalarLogical(0);
-        let _f = protect(inv_false);
-        let inv_true = Rf_ScalarLogical(1);
-        let _t = protect(inv_true);
-        let fx = fft(x, inv_false);
-        let _fx = protect(fx);
-        let fy = fft(y, inv_false);
-        let _fy = protect(fy);
-        let prod = Rf_allocVector(SEXPTYPE::CPLXSXP.as_c_int(), n as c_int);
-        let _p = protect(prod);
-        let px = COMPLEX(fx);
-        let py = COMPLEX(fy);
-        let pz = COMPLEX(prod);
-        for i in 0..n as usize {
-            let a = *px.add(i);
-            let b = *py.add(i);
-            // a * conj(b)
-            *pz.add(i) = Rcomplex {
+        let y2 = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), (ny + nx - 1) as c_int);
+        let _y2 = protect(y2);
+        for i in 0..ny as usize {
+            SET_REAL_ELT(y2, i as i32, REAL_ELT(y, i as i32));
+        }
+        for i in ny as usize..(ny + nx - 1) as usize {
+            SET_REAL_ELT(y2, i as i32, 0.0);
+        }
+        x = x2;
+        y = y2;
+    }
+    let n = XLENGTH(x);
+    if n != XLENGTH(y) {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "length mismatch in convolution",
+        );
+    }
+    let inv_false = Rf_ScalarLogical(0);
+    let _f = protect(inv_false);
+    let inv_true = Rf_ScalarLogical(1);
+    let _t = protect(inv_true);
+    let fx = fft(x, inv_false);
+    let _fx = protect(fx);
+    let fy = fft(y, inv_false);
+    let _fy = protect(fy);
+    let prod = Rf_allocVector(SEXPTYPE::CPLXSXP.as_c_int(), n as c_int);
+    let _p = protect(prod);
+    for i in 0..n as c_int {
+        let a = COMPLEX_ELT(fx, i);
+        let b = COMPLEX_ELT(fy, i);
+        // a * conj(b)
+        SET_COMPLEX_ELT(
+            prod,
+            i,
+            Rcomplex {
                 r: a.r * b.r + a.i * b.i,
                 i: a.i * b.r - a.r * b.i,
-            };
+            },
+        );
+    }
+    let inv = fft(prod, inv_true);
+    let _i = protect(inv);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), n as c_int);
+    let _a = protect(ans);
+    let nf = n as f64;
+    for i in 0..n as usize {
+        SET_REAL_ELT(ans, i as i32, COMPLEX_ELT(inv, i as c_int).r / nf);
+    }
+    if is_filter {
+        let n1 = n1_keep as usize;
+        let out_n = n as usize - 2 * n1;
+        let trimmed = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), out_n as c_int);
+        let _tr = protect(trimmed);
+        for i in 0..out_n {
+            SET_REAL_ELT(trimmed, i as i32, REAL_ELT(ans, (n1 + i) as i32));
         }
-        let inv = fft(prod, inv_true);
-        let _i = protect(inv);
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), n as c_int);
-        let _a = protect(ans);
-        let nf = n as f64;
-        for i in 0..n as usize {
-            *REAL(ans).add(i) = COMPLEX(inv).add(i).read().r / nf;
-        }
-        if is_filter {
-            let n1 = n1_keep as usize;
-            let out_n = n as usize - 2 * n1;
-            let trimmed = Rf_allocVector(SEXPTYPE::REALSXP.as_c_int(), out_n as c_int);
-            let _tr = protect(trimmed);
-            for i in 0..out_n {
-                *REAL(trimmed).add(i) = *REAL(ans).add(n1 + i);
-            }
-            trimmed
-        } else {
-            ans
-        }
+        trimmed
+    } else {
+        ans
     }
 }
 
 /// GNU `spec.pgram` default: detrend, taper 0.1, pad to `nextn`, scale by `u2`.
-pub unsafe fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{
-            CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH,
-        };
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
-        use crate::sexp::protect::protect;
-        let x = CAR(args);
-        let n0 = XLENGTH(x) as usize;
-        if n0 == 0 {
-            return R_NilValue();
-        }
-        let mut v = vec![0.0; n0];
-        for i in 0..n0 {
-            v[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add(i) as f64
-            } else {
-                0.0
-            };
-        }
-        let mut taper = 0.1;
-        let mut detrend = true;
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            let val = CAR(cell);
-            if name == "taper" {
-                taper = if TYPEOF(val) == SEXPTYPE::REALSXP {
-                    *REAL(val)
-                } else if TYPEOF(val) == SEXPTYPE::INTSXP {
-                    *INTEGER(val) as f64
-                } else {
-                    taper
-                };
-            } else if name == "detrend" {
-                detrend = as_logical(val) != 0;
-            }
-            cell = CDR(cell);
-        }
-        if taper < 0.0 {
-            taper = 0.0;
-        }
-        if taper > 0.5 {
-            taper = 0.5;
-        }
-        if detrend {
-            let mean = v.iter().sum::<f64>() / n0 as f64;
-            let nf = n0 as f64;
-            let t0 = (nf + 1.0) / 2.0;
-            let sumt2 = nf * (nf * nf - 1.0) / 12.0;
-            let mut sumxt = 0.0;
-            for i in 0..n0 {
-                let t = (i as f64 + 1.0) - t0;
-                sumxt += v[i] * t;
-            }
-            for i in 0..n0 {
-                let t = (i as f64 + 1.0) - t0;
-                v[i] = v[i] - mean - if sumt2 > 0.0 { sumxt * t / sumt2 } else { 0.0 };
-            }
-        }
-        let m = ((n0 as f64) * taper).floor() as usize;
-        for k in 0..m {
-            let odd = (2 * k + 1) as f64;
-            let w = 0.5 * (1.0 - (std::f64::consts::PI * odd / (2.0 * m as f64)).cos());
-            v[k] *= w;
-            v[n0 - 1 - k] *= w;
-        }
-        let n_pad = nextn0(n0 as c_int, &[2, 3, 5]) as usize;
-        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n_pad as i64);
-        let _xd = protect(xd);
-        for i in 0..n0 {
-            *REAL(xd).add(i) = v[i];
-        }
-        for i in n0..n_pad {
-            *REAL(xd).add(i) = 0.0;
-        }
-        let inv = Rf_ScalarLogical(0);
-        let _inv = protect(inv);
-        let z = fft(xd, inv);
-        let _z = protect(z);
-        let nspec = n_pad / 2;
-        let u2 = 1.0 - (5.0 / 8.0) * taper * 2.0;
-        let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
-        let _s = protect(spec);
-        let freq = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
-        let _f = protect(freq);
-        let n0f = n0 as f64;
-        for k in 1..=nspec {
-            let c = *COMPLEX(z).add(k);
-            let p = (c.r * c.r + c.i * c.i) / n0f / u2;
-            *REAL(spec).add(k - 1) = p;
-            *REAL(freq).add(k - 1) = k as f64 / n_pad as f64;
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, spec);
-        SET_VECTOR_ELT(result, 1, freq);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["spec".to_string(), "freq".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"spec".as_ptr()),
-        );
-        result
+pub fn do_spec_pgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, COMPLEX, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
+    use crate::sexp::protect::protect;
+    let x = CAR(args);
+    let n0 = XLENGTH(x) as usize;
+    if n0 == 0 {
+        return R_NilValue();
     }
+    let mut v = vec![0.0; n0];
+    for i in 0..n0 {
+        v[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            INTEGER_ELT(x, i as i32) as f64
+        } else {
+            0.0
+        };
+    }
+    let mut taper = 0.1;
+    let mut detrend = true;
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            crate::library::stats::checked::char_string(PRINTNAME(tag))
+        } else {
+            String::new()
+        };
+        let val = CAR(cell);
+        if name == "taper" {
+            taper = if TYPEOF(val) == SEXPTYPE::REALSXP {
+                REAL_ELT(val, 0)
+            } else if TYPEOF(val) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(val, 0) as f64
+            } else {
+                taper
+            };
+        } else if name == "detrend" {
+            detrend = as_logical(val) != 0;
+        }
+        cell = CDR(cell);
+    }
+    if taper < 0.0 {
+        taper = 0.0;
+    }
+    if taper > 0.5 {
+        taper = 0.5;
+    }
+    if detrend {
+        let mean = v.iter().sum::<f64>() / n0 as f64;
+        let nf = n0 as f64;
+        let t0 = (nf + 1.0) / 2.0;
+        let sumt2 = nf * (nf * nf - 1.0) / 12.0;
+        let mut sumxt = 0.0;
+        for i in 0..n0 {
+            let t = (i as f64 + 1.0) - t0;
+            sumxt += v[i] * t;
+        }
+        for i in 0..n0 {
+            let t = (i as f64 + 1.0) - t0;
+            v[i] = v[i] - mean - if sumt2 > 0.0 { sumxt * t / sumt2 } else { 0.0 };
+        }
+    }
+    let m = ((n0 as f64) * taper).floor() as usize;
+    for k in 0..m {
+        let odd = (2 * k + 1) as f64;
+        let w = 0.5 * (1.0 - (std::f64::consts::PI * odd / (2.0 * m as f64)).cos());
+        v[k] *= w;
+        v[n0 - 1 - k] *= w;
+    }
+    let n_pad = nextn0(n0 as c_int, &[2, 3, 5]) as usize;
+    let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n_pad as i64);
+    let _xd = protect(xd);
+    for i in 0..n0 {
+        SET_REAL_ELT(xd, i as i32, v[i]);
+    }
+    for i in n0..n_pad {
+        SET_REAL_ELT(xd, i as i32, 0.0);
+    }
+    let inv = Rf_ScalarLogical(0);
+    let _inv = protect(inv);
+    let z = fft(xd, inv);
+    let _z = protect(z);
+    let nspec = n_pad / 2;
+    let u2 = 1.0 - (5.0 / 8.0) * taper * 2.0;
+    let spec = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
+    let _s = protect(spec);
+    let freq = Rf_allocVector3(SEXPTYPE::REALSXP, nspec as i64);
+    let _f = protect(freq);
+    let n0f = n0 as f64;
+    for k in 1..=nspec {
+        let c = COMPLEX_ELT(z, k as c_int);
+        let p = (c.r * c.r + c.i * c.i) / n0f / u2;
+        SET_REAL_ELT(spec, (k - 1) as i32, p);
+        SET_REAL_ELT(freq, (k - 1) as i32, k as f64 / n_pad as f64);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, spec);
+    SET_VECTOR_ELT(result, 1, freq);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["spec".to_string(), "freq".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("spec"),
+    );
+    result
 }
 
 /// GNU `spectrum(x, method=)`.
-pub unsafe fn do_spectrum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut method_ar = false;
-        let mut p = CDR(args);
-        while !p.is_null() && p != R_NilValue() {
-            let s = CAR(p);
-            if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
-                let t = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0)));
-                if t.to_bytes() == b"ar" {
-                    method_ar = true;
-                }
+pub fn do_spectrum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let mut method_ar = false;
+    let mut p = CDR(args);
+    while !p.is_null() && p != R_NilValue() {
+        let s = CAR(p);
+        if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) >= 1 {
+            let t = crate::library::stats::checked::char_bytes(STRING_ELT(s, 0));
+            if t.as_slice() == b"ar" {
+                method_ar = true;
             }
-            p = CDR(p);
         }
-        if method_ar {
-            crate::library::stats::filter::do_spec_ar(call, op, args, rho)
-        } else {
-            do_spec_pgram(call, op, args, rho)
-        }
+        p = CDR(p);
+    }
+    if method_ar {
+        crate::library::stats::filter::do_spec_ar(call, op, args, rho)
+    } else {
+        do_spec_pgram(call, op, args, rho)
     }
 }

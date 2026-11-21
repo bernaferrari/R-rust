@@ -78,7 +78,7 @@ pub fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
 pub fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
         let mut sigma = list_named_elt(obj, "sigma");

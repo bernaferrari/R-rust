@@ -32,104 +32,92 @@ use crate::sexp::protect::*;
 
 // Shared helpers used across the child modules.
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     crate::main::coerce::asInteger(x)
 }
 
-unsafe fn asLogical(x: SEXP) -> c_int {
+fn asLogical(x: SEXP) -> c_int {
     crate::main::coerce::asLogical(x)
 }
 
-unsafe fn asBool(x: SEXP) -> bool {
-    unsafe {
-        let v = asLogical(x);
-        v != 0 && v != NA_INTEGER
-    }
+fn asBool(x: SEXP) -> bool {
+    let v = asLogical(x);
+    v != 0 && v != NA_INTEGER
 }
 
-unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
+fn as_integer(x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
             return NA_INTEGER;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
+        return v as c_int;
     }
+    if t == SEXPTYPE::LGLSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    NA_INTEGER
 }
 
-unsafe fn as_logical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
+fn as_logical(x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
     }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    if t == SEXPTYPE::INTSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    NA_INTEGER
 }
 
 fn my_isok(x: c_double) -> bool {
     !ISNAN(x)
 }
 
-unsafe fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() || d == R_NilValue() {
-            return LENGTH(x);
-        }
-        *INTEGER(d)
+fn nrows(x: SEXP) -> c_int {
+    let d = getAttrib(x, R_DimSymbol());
+    if d.is_null() || d == R_NilValue() {
+        return LENGTH(x);
     }
+    INTEGER_ELT(d, 0)
 }
 
-unsafe fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() || d == R_NilValue() {
-            return 1;
-        }
-        if LENGTH(d) >= 2 {
-            return *INTEGER(d).add(1);
-        }
-        1
+fn ncols(x: SEXP) -> c_int {
+    let d = getAttrib(x, R_DimSymbol());
+    if d.is_null() || d == R_NilValue() {
+        return 1;
     }
+    if LENGTH(d) >= 2 {
+        return INTEGER_ELT(d, 1);
+    }
+    1
 }
 
 fn elt_real_or(x: SEXP, default: f64) -> f64 {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return default;
-        }
-        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
-            return *REAL(x);
-        }
-        if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
-            return *INTEGER(x) as f64;
-        }
-        default
+    if x.is_null() || x == R_NilValue() {
+        return default;
     }
+    if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
+        return REAL_ELT(x, 0);
+    }
+    if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
+        return INTEGER_ELT(x, 0) as f64;
+    }
+    default
 }
 
 /// GNU `KalmanLike` for state dim `p`. Matrices are column-major.
@@ -341,232 +329,222 @@ fn kalman_s2_nd(
 }
 
 fn symbol_chars(expr: SEXP) -> Option<String> {
-    unsafe {
-        if expr.is_null()
-            || expr == R_NilValue()
-            || expr == crate::sexp::globals::R_MissingArg()
-            || TYPEOF(expr) != SEXPTYPE::SYMSXP
-        {
-            return None;
-        }
-        let print_name = PRINTNAME(expr);
-        if print_name.is_null() || print_name == R_NilValue() {
-            return None;
-        }
-        let raw = CHAR(print_name);
-        if raw.is_null() {
-            return None;
-        }
-        Some(std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned())
+    if expr.is_null()
+        || expr == R_NilValue()
+        || expr == crate::sexp::globals::R_MissingArg()
+        || TYPEOF(expr) != SEXPTYPE::SYMSXP
+    {
+        return None;
     }
+    let print_name = PRINTNAME(expr);
+    if print_name.is_null() || print_name == R_NilValue() {
+        return None;
+    }
+    let raw = print_name;
+    if raw.is_null() {
+        return None;
+    }
+    Some(crate::library::stats::checked::char_string(raw))
 }
 
 fn collect_i_calls(expr: SEXP, out: &mut Vec<SEXP>) {
-    {
-        if expr.is_null() || expr == R_NilValue() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
-            return;
-        }
-        if symbol_chars(CAR(expr)).as_deref() == Some("I") {
-            out.push(expr);
-            return;
-        }
-        let mut cell = CDR(expr);
-        while !cell.is_null() && cell != R_NilValue() {
-            collect_i_calls(CAR(cell), out);
-            cell = CDR(cell);
-        }
+    if expr.is_null() || expr == R_NilValue() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
+        return;
+    }
+    if symbol_chars(CAR(expr)).as_deref() == Some("I") {
+        out.push(expr);
+        return;
+    }
+    let mut cell = CDR(expr);
+    while !cell.is_null() && cell != R_NilValue() {
+        collect_i_calls(CAR(cell), out);
+        cell = CDR(cell);
     }
 }
 
 fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
-    {
-        if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
+    if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
+        return;
+    }
+    if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+        let Some(name) = symbol_chars(expr) else {
             return;
+        };
+        if !matches!(
+            name.as_str(),
+            "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
+        ) && !out.iter().any(|s| s == &name)
+        {
+            out.push(name);
         }
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let Some(name) = symbol_chars(expr) else {
-                return;
-            };
-            if !matches!(
-                name.as_str(),
-                "~" | "+" | "-" | "*" | ":" | "/" | "^" | "I" | "("
-            ) && !out.iter().any(|s| s == &name)
-            {
-                out.push(name);
-            }
-            return;
-        }
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP {
-            let mut cell = CDR(expr);
-            while !cell.is_null() && cell != R_NilValue() {
-                collect_formula_symbols(CAR(cell), out);
-                cell = CDR(cell);
-            }
+        return;
+    }
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP {
+        let mut cell = CDR(expr);
+        while !cell.is_null() && cell != R_NilValue() {
+            collect_formula_symbols(CAR(cell), out);
+            cell = CDR(cell);
         }
     }
 }
 
 fn deparse_call(expr: SEXP) -> String {
-    unsafe {
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let name = symbol_chars(expr).unwrap_or_default();
-            if name.is_empty() {
-                return String::new();
-            }
-            if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) {
-                return name;
-            }
-            return format!("`{name}`");
+    if TYPEOF(expr) == SEXPTYPE::SYMSXP {
+        let name = symbol_chars(expr).unwrap_or_default();
+        if name.is_empty() {
+            return String::new();
         }
-        if TYPEOF(expr) == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(expr);
-            return if v == NA_INTEGER {
-                "NA".to_string()
-            } else if v == 0 {
-                "FALSE".to_string()
-            } else {
-                "TRUE".to_string()
-            };
+        if crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(name.as_bytes()) {
+            return name;
         }
-        if TYPEOF(expr) == SEXPTYPE::INTSXP {
-            let v = *INTEGER(expr);
-            return if v == NA_INTEGER {
+        return format!("`{name}`");
+    }
+    if TYPEOF(expr) == SEXPTYPE::LGLSXP {
+        let v = INTEGER_ELT(expr, 0);
+        return if v == NA_INTEGER {
+            "NA".to_string()
+        } else if v == 0 {
+            "FALSE".to_string()
+        } else {
+            "TRUE".to_string()
+        };
+    }
+    if TYPEOF(expr) == SEXPTYPE::INTSXP {
+        let v = INTEGER_ELT(expr, 0);
+        return if v == NA_INTEGER {
+            "NA".to_string()
+        } else {
+            v.to_string()
+        };
+    }
+    if TYPEOF(expr) == SEXPTYPE::REALSXP {
+        return (REAL_ELT(expr, 0)).to_string();
+    }
+    if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+        return String::new();
+    }
+    let op = symbol_chars(CAR(expr)).unwrap_or_default();
+    let mut args = Vec::new();
+    let mut cell = CDR(expr);
+    while !cell.is_null() && cell != R_NilValue() {
+        let mut piece = deparse_call(CAR(cell));
+        let tag = TAG(cell);
+        if let Some(name) = symbol_chars(tag) {
+            piece = format!("{name} = {piece}");
+        }
+        args.push(piece);
+        cell = CDR(cell);
+    }
+    if (op == "[" || op == "[[") && !args.is_empty() {
+        let idx = args[1..]
+            .iter()
+            .map(|a| a.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let close = if op == "[[" { "]]" } else { "]" };
+        return format!("{}{}{}{}", args[0], op, idx, close);
+    }
+    if op == "(" && args.len() == 1 {
+        return format!("({})", args[0]);
+    }
+    if op == ":" && args.len() == 2 {
+        return format!("{}:{}", args[0], args[1]);
+    }
+    if op == "^" && args.len() == 2 {
+        return format!("{}^{}", args[0], args[1]);
+    }
+    if matches!(op.as_str(), "+" | "-" | "*" | "/") && args.len() == 2 {
+        return format!("{} {} {}", args[0], op, args[1]);
+    }
+    if op == "-" && args.len() == 1 {
+        return format!("-{}", args[0]);
+    }
+    format!("{op}({})", args.join(", "))
+}
+
+fn named_list_elt(x: SEXP, name: &str) -> SEXP {
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return R_NilValue();
+    }
+    for i in 0..XLENGTH(x) {
+        let s = crate::library::stats::checked::char_bytes(STRING_ELT(names, i));
+        if String::from_utf8_lossy(&s) == name {
+            return VECTOR_ELT(x, i);
+        }
+    }
+    R_NilValue()
+}
+
+fn mark_formula(x: SEXP) -> SEXP {
+    if x.is_null() || x == R_NilValue() {
+        return x;
+    }
+    let class = crate::library::stats::checked::mk_string("formula");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    x
+}
+
+fn inherits_formula(x: SEXP) -> bool {
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return false;
+    }
+    for i in 0..XLENGTH(class) {
+        let raw = STRING_ELT(class, i);
+        if !raw.is_null() && crate::library::stats::checked::char_bytes(raw) == b"formula" {
+            return true;
+        }
+    }
+    false
+}
+
+fn character_row_names(rn: SEXP, n: i64) -> SEXP {
+    if rn.is_null() || rn == R_NilValue() {
+        return R_NilValue();
+    }
+    if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == n {
+        return rn;
+    }
+    if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && INTEGER_ELT(rn, 0) == NA_INTEGER {
+        let count = (INTEGER_ELT(rn, 1)).unsigned_abs() as i64;
+        if count != n {
+            return R_NilValue();
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        for i in 0..n {
+            let label = std::ffi::CString::new((i + 1).to_string()).unwrap_or_default();
+            SET_STRING_ELT(
+                out,
+                i,
+                crate::library::stats::checked::mk_char(label.to_str().unwrap_or_default()),
+            );
+        }
+        return out;
+    }
+    if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == n {
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        for i in 0..n {
+            let v = INTEGER_ELT(rn, i as i32);
+            let label = if v == NA_INTEGER {
                 "NA".to_string()
             } else {
                 v.to_string()
             };
+            let c = std::ffi::CString::new(label).unwrap_or_default();
+            SET_STRING_ELT(
+                out,
+                i,
+                crate::library::stats::checked::mk_char(c.to_str().unwrap_or_default()),
+            );
         }
-        if TYPEOF(expr) == SEXPTYPE::REALSXP {
-            return (*REAL(expr)).to_string();
-        }
-        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
-            return String::new();
-        }
-        let op = symbol_chars(CAR(expr)).unwrap_or_default();
-        let mut args = Vec::new();
-        let mut cell = CDR(expr);
-        while !cell.is_null() && cell != R_NilValue() {
-            let mut piece = deparse_call(CAR(cell));
-            let tag = TAG(cell);
-            if let Some(name) = symbol_chars(tag) {
-                piece = format!("{name} = {piece}");
-            }
-            args.push(piece);
-            cell = CDR(cell);
-        }
-        if (op == "[" || op == "[[") && !args.is_empty() {
-            let idx = args[1..]
-                .iter()
-                .map(|a| a.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let close = if op == "[[" { "]]" } else { "]" };
-            return format!("{}{}{}{}", args[0], op, idx, close);
-        }
-        if op == "(" && args.len() == 1 {
-            return format!("({})", args[0]);
-        }
-        if op == ":" && args.len() == 2 {
-            return format!("{}:{}", args[0], args[1]);
-        }
-        if op == "^" && args.len() == 2 {
-            return format!("{}^{}", args[0], args[1]);
-        }
-        if matches!(op.as_str(), "+" | "-" | "*" | "/") && args.len() == 2 {
-            return format!("{} {} {}", args[0], op, args[1]);
-        }
-        if op == "-" && args.len() == 1 {
-            return format!("-{}", args[0]);
-        }
-        format!("{op}({})", args.join(", "))
+        return out;
     }
-}
-
-unsafe fn named_list_elt(x: SEXP, name: &str) -> SEXP {
-    unsafe {
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return R_NilValue();
-        }
-        for i in 0..XLENGTH(x) {
-            let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)));
-            if s.to_string_lossy() == name {
-                return VECTOR_ELT(x, i);
-            }
-        }
-        R_NilValue()
-    }
-}
-
-fn mark_formula(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return x;
-        }
-        let class = Rf_mkString(c"formula".as_ptr());
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        x
-    }
-}
-
-fn inherits_formula(x: SEXP) -> bool {
-    unsafe {
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        for i in 0..XLENGTH(class) {
-            let raw = CHAR(STRING_ELT(class, i));
-            if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_bytes() == b"formula" {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-unsafe fn character_row_names(rn: SEXP, n: i64) -> SEXP {
-    unsafe {
-        if rn.is_null() || rn == R_NilValue() {
-            return R_NilValue();
-        }
-        if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == n {
-            return rn;
-        }
-        if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER {
-            let count = (*INTEGER(rn).add(1)).unsigned_abs() as i64;
-            if count != n {
-                return R_NilValue();
-            }
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            for i in 0..n {
-                let label = std::ffi::CString::new((i + 1).to_string()).unwrap_or_default();
-                SET_STRING_ELT(out, i, Rf_mkChar(label.as_ptr()));
-            }
-            return out;
-        }
-        if TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == n {
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            for i in 0..n {
-                let v = *INTEGER(rn).add(i as usize);
-                let label = if v == NA_INTEGER {
-                    "NA".to_string()
-                } else {
-                    v.to_string()
-                };
-                let c = std::ffi::CString::new(label).unwrap_or_default();
-                SET_STRING_ELT(out, i, Rf_mkChar(c.as_ptr()));
-            }
-            return out;
-        }
-        R_NilValue()
-    }
+    R_NilValue()
 }
 
 fn split_top_level_colon(lab: &str) -> Vec<&str> {
@@ -605,36 +583,28 @@ fn is_formula_interaction(lab: &str) -> bool {
 }
 
 fn matrix_colnames(x: SEXP) -> Vec<String> {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return Vec::new();
-        }
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let mut out = Vec::new();
-            for i in 0..XLENGTH(x) {
-                out.push(
-                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(x, i)))
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-            }
-            return out;
-        }
-        let labs = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"term.labels".as_ptr()),
-        );
-        if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
-            return matrix_colnames(labs);
-        }
-        let dn =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2
-        {
-            return matrix_colnames(VECTOR_ELT(dn, 1));
-        }
-        Vec::new()
+    if x.is_null() || x == R_NilValue() {
+        return Vec::new();
     }
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
+        let mut out = Vec::new();
+        for i in 0..XLENGTH(x) {
+            out.push(crate::library::stats::checked::char_string(STRING_ELT(
+                x, i,
+            )));
+        }
+        return out;
+    }
+    let labs =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::symbol::install_str("term.labels"));
+    if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
+        return matrix_colnames(labs);
+    }
+    let dn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+        return matrix_colnames(VECTOR_ELT(dn, 1));
+    }
+    Vec::new()
 }
 
 mod accessors;
