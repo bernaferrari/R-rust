@@ -244,7 +244,8 @@ pub fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         warned = true;
                         crate::mainutils::errors::warningcall_cstr(
                             call,
-                            c"invalid factor level, NA generated");
+                            c"invalid factor level, NA generated",
+                        );
                     }
                     SET_INTEGER_ELT(codes, i as c_int, code);
                 }

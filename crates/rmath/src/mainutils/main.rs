@@ -48,7 +48,6 @@ pub(crate) use task_callback_registration::install as install_task_callback_symb
 // Global symbols (initialized lazily)
 // ---------------------------------------------------------------------------
 
-
 #[inline]
 fn with_eval_state<F, R>(f: F) -> R
 where
@@ -600,7 +599,8 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
 
                     crate::mainutils::errors::Rf_warningcall1(
                         R_NilValue(),
-                        c"top-level task callback did not return a logical value");
+                        c"top-level task callback did not return a logical value",
+                    );
                 }
                 let keep = crate::mainutils::coerce::asLogical(result.as_raw()) != FALSE;
                 access.require_active()?;

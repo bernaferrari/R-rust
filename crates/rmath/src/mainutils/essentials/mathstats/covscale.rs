@@ -674,81 +674,76 @@ fn set_rle_attrs(x: SEXP) {
     let class = mk_string_cstr(c"rle");
     if !class.is_null() {
         let _class_guard = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
 }
 
 fn rle_values_equal(x: SEXP, lhs: R_xlen_t, rhs: R_xlen_t) -> bool {
-    
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
-                let a = integer_elt_checked(x, (lhs as usize) as R_xlen_t);
-                let b = integer_elt_checked(x, (rhs as usize) as R_xlen_t);
-                a != NA_INTEGER && b != NA_INTEGER && a == b
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                let a = real_elt_checked(x, (lhs as usize) as R_xlen_t);
-                let b = real_elt_checked(x, (rhs as usize) as R_xlen_t);
-                !ISNAN(a) && !ISNAN(b) && a == b
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                let a = STRING_ELT(x, lhs);
-                let b = STRING_ELT(x, rhs);
-                a != crate::sexp::globals::R_NaString()
-                    && b != crate::sexp::globals::R_NaString()
-                    && elt_to_string(x, lhs) == elt_to_string(x, rhs)
-            }
-            t if t == SEXPTYPE::RAWSXP => raw_elt_checked(x, (lhs as usize) as R_xlen_t) == raw_elt_checked(x, (rhs as usize) as R_xlen_t),
-            _ => false,
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+            let a = integer_elt_checked(x, (lhs as usize) as R_xlen_t);
+            let b = integer_elt_checked(x, (rhs as usize) as R_xlen_t);
+            a != NA_INTEGER && b != NA_INTEGER && a == b
         }
-    
+        t if t == SEXPTYPE::REALSXP => {
+            let a = real_elt_checked(x, (lhs as usize) as R_xlen_t);
+            let b = real_elt_checked(x, (rhs as usize) as R_xlen_t);
+            !ISNAN(a) && !ISNAN(b) && a == b
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            let a = STRING_ELT(x, lhs);
+            let b = STRING_ELT(x, rhs);
+            a != crate::sexp::globals::R_NaString()
+                && b != crate::sexp::globals::R_NaString()
+                && elt_to_string(x, lhs) == elt_to_string(x, rhs)
+        }
+        t if t == SEXPTYPE::RAWSXP => {
+            raw_elt_checked(x, (lhs as usize) as R_xlen_t)
+                == raw_elt_checked(x, (rhs as usize) as R_xlen_t)
+        }
+        _ => false,
+    }
 }
 
 /// R's `inverse.rle(x)` — inverse of run-length encoding.
 pub fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
 
-        let lengths_sexp = VECTOR_ELT(x, 0);
-        let values_sexp = VECTOR_ELT(x, 1);
-        if lengths_sexp.is_null() || values_sexp.is_null() {
-            return R_NilValue();
-        }
+    let lengths_sexp = VECTOR_ELT(x, 0);
+    let values_sexp = VECTOR_ELT(x, 1);
+    if lengths_sexp.is_null() || values_sexp.is_null() {
+        return R_NilValue();
+    }
 
-        let n_runs = XLENGTH(lengths_sexp);
-        if n_runs == 0 {
-            return Rf_allocVector3(TYPEOF(values_sexp), 0);
-        }
+    let n_runs = XLENGTH(lengths_sexp);
+    if n_runs == 0 {
+        return Rf_allocVector3(TYPEOF(values_sexp), 0);
+    }
 
-        // Compute total length
-        let mut total: R_xlen_t = 0;
-        for i in 0..n_runs {
-            total += (integer_elt_checked(lengths_sexp, (i as usize) as R_xlen_t)) as R_xlen_t;
-        }
+    // Compute total length
+    let mut total: R_xlen_t = 0;
+    for i in 0..n_runs {
+        total += (integer_elt_checked(lengths_sexp, (i as usize) as R_xlen_t)) as R_xlen_t;
+    }
 
-        let result = Rf_allocVector3(TYPEOF(values_sexp), total);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
+    let result = Rf_allocVector3(TYPEOF(values_sexp), total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
 
-        let mut offset: R_xlen_t = 0;
-        for i in 0..n_runs {
-            let len = integer_elt_checked(lengths_sexp, (i as usize) as R_xlen_t);
-            for j in 0..len {
-                copy_vector_elt(result, offset + j as R_xlen_t, values_sexp, i);
-            }
-            offset += len as R_xlen_t;
+    let mut offset: R_xlen_t = 0;
+    for i in 0..n_runs {
+        let len = integer_elt_checked(lengths_sexp, (i as usize) as R_xlen_t);
+        for j in 0..len {
+            copy_vector_elt(result, offset + j as R_xlen_t, values_sexp, i);
         }
-        result
-    
+        offset += len as R_xlen_t;
+    }
+    result
 }
 
 /// GNU `rowsum(x, group)` — sum rows by group.
@@ -765,8 +760,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(class) == SEXPTYPE::STRSXP
             && (0..XLENGTH(class)).any(|i| {
                 let s = STRING_ELT(class, i);
-                !s.is_null()
-                    && charsxp_cstring(s).to_str().ok() == Some("data.frame")
+                !s.is_null() && charsxp_cstring(s).to_str().ok() == Some("data.frame")
             });
         if !is_df {
             crate::mainutils::errors::errorcall_str(
@@ -814,11 +808,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
         if !rownames.is_null() && rownames != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                ans,
-                install_str("row.names"),
-                rownames,
-            );
+            crate::sexp::attrib_core::setAttrib(ans, install_str("row.names"), rownames);
         }
         let cls = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let c = std::ffi::CString::new("data.frame").unwrap_or_default();
@@ -838,7 +828,10 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         && TYPEOF(dim) == SEXPTYPE::INTSXP
         && XLENGTH(dim) >= 2
     {
-        (integer_elt_checked(dim, 0) as i64, integer_elt_checked(dim, (1) as R_xlen_t) as i64)
+        (
+            integer_elt_checked(dim, 0) as i64,
+            integer_elt_checked(dim, (1) as R_xlen_t) as i64,
+        )
     } else {
         (XLENGTH(x), 1)
     };
@@ -895,20 +888,24 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 integer_elt_checked(x, (src as usize) as R_xlen_t) as f64
             };
             if out_ty == SEXPTYPE::REALSXP {
-                set_real_checked(result, (dst as usize) as R_xlen_t, real_elt_checked(result, (dst as usize) as R_xlen_t) + val);
+                set_real_checked(
+                    result,
+                    (dst as usize) as R_xlen_t,
+                    real_elt_checked(result, (dst as usize) as R_xlen_t) + val,
+                );
             } else {
-                set_integer_checked(result, (dst as usize) as R_xlen_t, integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32);
+                set_integer_checked(
+                    result,
+                    (dst as usize) as R_xlen_t,
+                    integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32,
+                );
             }
         }
     }
     let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
     set_integer_checked(out_dim, 0, ng as c_int);
     set_integer_checked(out_dim, (1) as R_xlen_t, nc as c_int);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_DimSymbol(),
-        out_dim,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), out_dim);
     let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
     let rn = Rf_allocVector3(SEXPTYPE::STRSXP, ng);
     for (i, lab) in sorted_labels.iter().enumerate() {
@@ -916,8 +913,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         SET_STRING_ELT(rn, i as i64, mk_char_cstr(&cstr));
     }
     SET_VECTOR_ELT(dn, 0, rn);
-    let xdn =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let xdn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
     let cn = if !xdn.is_null()
         && xdn != R_NilValue()
         && TYPEOF(xdn) == SEXPTYPE::VECSXP
@@ -928,491 +924,480 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         R_NilValue()
     };
     SET_VECTOR_ELT(dn, 1, cn);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_DimNamesSymbol(),
-        dn,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
     result
 }
 
 fn format_rowsum_group(group: SEXP, i: i64) -> String {
-    
-        // GNU rowsum.default converts a factor `group` to character
-        // first (`group <- as.character(group)`); the integer codes
-        // must be mapped through `levels()` for the row labels.
-        if crate::mainutils::subset::has_class_factor(group) {
-            let levels = crate::sexp::attrib_core::getAttrib(
-                group,
-                crate::sexp::attrib_core::R_LevelsSymbol(),
-            );
-            if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
-                let code = integer_elt_checked(group, (i as usize) as R_xlen_t);
-                if code == crate::sexp::ffi::NA_INTEGER {
-                    return "NA".into();
+    // GNU rowsum.default converts a factor `group` to character
+    // first (`group <- as.character(group)`); the integer codes
+    // must be mapped through `levels()` for the row labels.
+    if crate::mainutils::subset::has_class_factor(group) {
+        let levels =
+            crate::sexp::attrib_core::getAttrib(group, crate::sexp::attrib_core::R_LevelsSymbol());
+        if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
+            let code = integer_elt_checked(group, (i as usize) as R_xlen_t);
+            if code == crate::sexp::ffi::NA_INTEGER {
+                return "NA".into();
+            }
+            if code >= 1 && (code as i64) <= XLENGTH(levels) {
+                let s = STRING_ELT(levels, (code - 1) as i64);
+                if !s.is_null() {
+                    return charsxp_text(s).unwrap_or_default();
                 }
-                if code >= 1 && (code as i64) <= XLENGTH(levels) {
-                    let s = STRING_ELT(levels, (code - 1) as i64);
-                    if !s.is_null() {
-                        return charsxp_text(s).unwrap_or_default();
-                    }
-                }
-                return String::new();
+            }
+            return String::new();
+        }
+    }
+    match TYPEOF(group) {
+        t if t == SEXPTYPE::STRSXP => {
+            let s = STRING_ELT(group, i);
+            if s.is_null() {
+                "NA".into()
+            } else {
+                charsxp_text(s).unwrap_or_default()
             }
         }
-        match TYPEOF(group) {
-            t if t == SEXPTYPE::STRSXP => {
-                let s = STRING_ELT(group, i);
-                if s.is_null() {
-                    "NA".into()
-                } else {
-                    charsxp_text(s).unwrap_or_default()
-                }
-            }
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                format!("{}", integer_elt_checked(group, (i as usize) as R_xlen_t))
-            }
-            t if t == SEXPTYPE::REALSXP => format!("{}", real_elt_checked(group, (i as usize) as R_xlen_t)),
-            _ => i.to_string(),
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            format!("{}", integer_elt_checked(group, (i as usize) as R_xlen_t))
         }
-    
+        t if t == SEXPTYPE::REALSXP => {
+            format!("{}", real_elt_checked(group, (i as usize) as R_xlen_t))
+        }
+        _ => i.to_string(),
+    }
 }
 
 /// GNU `jitter(x, factor=1, amount=NULL)`.
 pub fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
-            return x;
-        }
-        let xt = TYPEOF(x);
-        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' must be numeric",
-            );
-        }
-        let n = XLENGTH(x);
-        let mut finite: Vec<f64> = Vec::new();
-        for i in 0..n {
-            let v = if xt == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else {
-                integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
-            };
-            if v.is_finite() {
-                finite.push(v);
-            }
-        }
-        let (lo, hi) = finite
-            .iter()
-            .copied()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
-                (a.min(v), b.max(v))
-            });
-        let mut z = hi - lo;
-        if z == 0.0 {
-            z = lo.abs();
-        }
-        if z == 0.0 {
-            z = 1.0;
-        }
-        let mut factor = 1.0;
-        let mut amount_arg = R_NilValue();
-        let mut cell = CDR(args);
-        let mut pos = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let slot = if name == "factor" {
-                0
-            } else if name == "amount" {
-                1
-            } else {
-                let s = pos;
-                pos += 1;
-                s
-            };
-            if slot == 0 {
-                factor = if TYPEOF(CAR(cell)) == SEXPTYPE::REALSXP {
-                    real_elt_checked(CAR(cell), 0)
-                } else if TYPEOF(CAR(cell)) == SEXPTYPE::INTSXP {
-                    integer_elt_checked(CAR(cell), 0) as f64
-                } else {
-                    1.0
-                };
-            } else if slot == 1 {
-                amount_arg = CAR(cell);
-            }
-            cell = CDR(cell);
-        }
-        let amount = if amount_arg.is_null() || amount_arg == R_NilValue() {
-            let digits = 3 - (z.log10().floor() as i32);
-            let p = 10f64.powi(digits);
-            let mut rounded: Vec<f64> = finite.iter().map(|v| (v * p).round() / p).collect();
-            rounded.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            rounded.dedup();
-            let d = if rounded.len() >= 2 {
-                rounded
-                    .windows(2)
-                    .map(|w| w[1] - w[0])
-                    .fold(f64::INFINITY, f64::min)
-            } else if rounded.first().copied().unwrap_or(0.0) != 0.0 {
-                rounded[0] / 10.0
-            } else {
-                z / 10.0
-            };
-            factor / 5.0 * d.abs()
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+        return x;
+    }
+    let xt = TYPEOF(x);
+    if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be numeric",
+        );
+    }
+    let n = XLENGTH(x);
+    let mut finite: Vec<f64> = Vec::new();
+    for i in 0..n {
+        let v = if xt == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
         } else {
-            let a = if TYPEOF(amount_arg) == SEXPTYPE::REALSXP {
-                real_elt_checked(amount_arg, 0)
-            } else if TYPEOF(amount_arg) == SEXPTYPE::INTSXP {
-                integer_elt_checked(amount_arg, 0) as f64
-            } else {
-                0.0
-            };
-            if a == 0.0 { factor * (z / 50.0) } else { a }
+            integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
         };
-        let n_s = Rf_ScalarInteger(n as c_int);
-        let _n = protect(n_s);
-        let a_s = Rf_ScalarReal(-1.0);
-        let _a = protect(a_s);
-        let b_s = Rf_ScalarReal(1.0);
-        let _b = protect(b_s);
-        let u = crate::library::stats::random::do_runif(n_s, a_s, b_s);
-        let _u = protect(u);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let xv = if xt == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else {
-                integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
-            };
-            let uv = if TYPEOF(u) == SEXPTYPE::REALSXP {
-                real_elt_checked(u, (i as usize) as R_xlen_t)
-            } else {
-                0.0
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, xv + amount * uv);
+        if v.is_finite() {
+            finite.push(v);
         }
-        result
-    
+    }
+    let (lo, hi) = finite
+        .iter()
+        .copied()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
+            (a.min(v), b.max(v))
+        });
+    let mut z = hi - lo;
+    if z == 0.0 {
+        z = lo.abs();
+    }
+    if z == 0.0 {
+        z = 1.0;
+    }
+    let mut factor = 1.0;
+    let mut amount_arg = R_NilValue();
+    let mut cell = CDR(args);
+    let mut pos = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let slot = if name == "factor" {
+            0
+        } else if name == "amount" {
+            1
+        } else {
+            let s = pos;
+            pos += 1;
+            s
+        };
+        if slot == 0 {
+            factor = if TYPEOF(CAR(cell)) == SEXPTYPE::REALSXP {
+                real_elt_checked(CAR(cell), 0)
+            } else if TYPEOF(CAR(cell)) == SEXPTYPE::INTSXP {
+                integer_elt_checked(CAR(cell), 0) as f64
+            } else {
+                1.0
+            };
+        } else if slot == 1 {
+            amount_arg = CAR(cell);
+        }
+        cell = CDR(cell);
+    }
+    let amount = if amount_arg.is_null() || amount_arg == R_NilValue() {
+        let digits = 3 - (z.log10().floor() as i32);
+        let p = 10f64.powi(digits);
+        let mut rounded: Vec<f64> = finite.iter().map(|v| (v * p).round() / p).collect();
+        rounded.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        rounded.dedup();
+        let d = if rounded.len() >= 2 {
+            rounded
+                .windows(2)
+                .map(|w| w[1] - w[0])
+                .fold(f64::INFINITY, f64::min)
+        } else if rounded.first().copied().unwrap_or(0.0) != 0.0 {
+            rounded[0] / 10.0
+        } else {
+            z / 10.0
+        };
+        factor / 5.0 * d.abs()
+    } else {
+        let a = if TYPEOF(amount_arg) == SEXPTYPE::REALSXP {
+            real_elt_checked(amount_arg, 0)
+        } else if TYPEOF(amount_arg) == SEXPTYPE::INTSXP {
+            integer_elt_checked(amount_arg, 0) as f64
+        } else {
+            0.0
+        };
+        if a == 0.0 { factor * (z / 50.0) } else { a }
+    };
+    let n_s = Rf_ScalarInteger(n as c_int);
+    let _n = protect(n_s);
+    let a_s = Rf_ScalarReal(-1.0);
+    let _a = protect(a_s);
+    let b_s = Rf_ScalarReal(1.0);
+    let _b = protect(b_s);
+    let u = crate::library::stats::random::do_runif(n_s, a_s, b_s);
+    let _u = protect(u);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let xv = if xt == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else {
+            integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
+        };
+        let uv = if TYPEOF(u) == SEXPTYPE::REALSXP {
+            real_elt_checked(u, (i as usize) as R_xlen_t)
+        } else {
+            0.0
+        };
+        set_real_checked(result, (i as usize) as R_xlen_t, xv + amount * uv);
+    }
+    result
 }
 
 /// GNU `margin.table(x, margin)`.
 pub fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        let margin_arg = CAR(CDR(args));
-        let xt = TYPEOF(x);
-        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' is not an array",
-            );
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (nr, nc) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as i64, integer_elt_checked(dim, (1) as R_xlen_t) as i64)
-        } else {
-            (XLENGTH(x), 1)
-        };
-        let has_margin =
-            !margin_arg.is_null() && margin_arg != R_NilValue() && XLENGTH(margin_arg) > 0;
-        if !has_margin {
-            let mut acc = 0.0;
-            let n = XLENGTH(x);
-            for i in 0..n {
-                acc += if xt == SEXPTYPE::REALSXP {
-                    real_elt_checked(x, (i as usize) as R_xlen_t)
-                } else {
-                    integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
-                };
-            }
-            return if xt == SEXPTYPE::REALSXP {
-                Rf_ScalarReal(acc)
-            } else {
-                Rf_ScalarInteger(acc as c_int)
-            };
-        }
-        let margin = if TYPEOF(margin_arg) == SEXPTYPE::INTSXP {
-            integer_elt_checked(margin_arg, 0)
-        } else if TYPEOF(margin_arg) == SEXPTYPE::REALSXP {
-            real_elt_checked(margin_arg, 0) as c_int
-        } else {
-            1
-        };
-        let out_n = if margin == 1 { nr } else { nc };
-        let result = Rf_allocVector3(
-            if xt == SEXPTYPE::REALSXP {
-                SEXPTYPE::REALSXP
-            } else {
-                SEXPTYPE::INTSXP
-            },
-            out_n,
+    let x = CAR(args);
+    let margin_arg = CAR(CDR(args));
+    let xt = TYPEOF(x);
+    if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' is not an array",
         );
-        let _r = protect(result);
-        if xt == SEXPTYPE::REALSXP {
-            for i in 0..out_n as usize {
-                set_real_checked(result, (i) as R_xlen_t, 0.0);
-            }
-        } else {
-            for i in 0..out_n as usize {
-                set_integer_checked(result, (i) as R_xlen_t, 0);
-            }
-        }
-        for col in 0..nc {
-            for row in 0..nr {
-                let src = row + col * nr;
-                let val = if xt == SEXPTYPE::REALSXP {
-                    real_elt_checked(x, (src as usize) as R_xlen_t)
-                } else {
-                    integer_elt_checked(x, (src as usize) as R_xlen_t) as f64
-                };
-                let dst = if margin == 1 { row } else { col };
-                if xt == SEXPTYPE::REALSXP {
-                    set_real_checked(result, (dst as usize) as R_xlen_t, real_elt_checked(result, (dst as usize) as R_xlen_t) + val);
-                } else {
-                    set_integer_checked(result, (dst as usize) as R_xlen_t, integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32);
-                }
-            }
-        }
-        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-        set_integer_checked(out_dim, 0, out_n as c_int);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            out_dim,
-        );
-        result
-    
-}
-
-/// GNU `mad(x)` — median absolute deviation times 1.4826.
-pub fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-        let xt = TYPEOF(x);
-        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' must be numeric",
-            );
-        }
-        let mut constant = 1.4826;
-        let mut cell = CDR(args);
-        let mut pos = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "constant" || (name.is_empty() && pos == 1) {
-                let v = CAR(cell);
-                if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    constant = real_elt_checked(v, 0);
-                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    constant = integer_elt_checked(v, 0) as f64;
-                }
-            }
-            if name.is_empty() {
-                pos += 1;
-            }
-            cell = CDR(cell);
-        }
-        let med_args = Rf_cons(x, R_NilValue());
-        let _ma = protect(med_args);
-        let center = crate::mainutils::essentials::do_median(call, op, med_args, rho);
-        let _c = protect(center);
-        let cval = if TYPEOF(center) == SEXPTYPE::REALSXP {
-            real_elt_checked(center, 0)
-        } else if TYPEOF(center) == SEXPTYPE::INTSXP {
-            integer_elt_checked(center, 0) as f64
-        } else {
-            NA_REAL
-        };
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (nr, nc) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (
+            integer_elt_checked(dim, 0) as i64,
+            integer_elt_checked(dim, (1) as R_xlen_t) as i64,
+        )
+    } else {
+        (XLENGTH(x), 1)
+    };
+    let has_margin = !margin_arg.is_null() && margin_arg != R_NilValue() && XLENGTH(margin_arg) > 0;
+    if !has_margin {
+        let mut acc = 0.0;
         let n = XLENGTH(x);
-        let absv = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _a = protect(absv);
         for i in 0..n {
-            let xv = if xt == SEXPTYPE::REALSXP {
+            acc += if xt == SEXPTYPE::REALSXP {
                 real_elt_checked(x, (i as usize) as R_xlen_t)
             } else {
                 integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
             };
-            set_real_checked(absv, (i as usize) as R_xlen_t, (xv - cval).abs());
         }
-        let abs_args = Rf_cons(absv, R_NilValue());
-        let _aa = protect(abs_args);
-        let med = crate::mainutils::essentials::do_median(call, op, abs_args, rho);
-        let mval = if TYPEOF(med) == SEXPTYPE::REALSXP {
-            real_elt_checked(med, 0)
+        return if xt == SEXPTYPE::REALSXP {
+            Rf_ScalarReal(acc)
         } else {
-            0.0
+            Rf_ScalarInteger(acc as c_int)
         };
-        Rf_ScalarReal(constant * mval)
-    
+    }
+    let margin = if TYPEOF(margin_arg) == SEXPTYPE::INTSXP {
+        integer_elt_checked(margin_arg, 0)
+    } else if TYPEOF(margin_arg) == SEXPTYPE::REALSXP {
+        real_elt_checked(margin_arg, 0) as c_int
+    } else {
+        1
+    };
+    let out_n = if margin == 1 { nr } else { nc };
+    let result = Rf_allocVector3(
+        if xt == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE::INTSXP
+        },
+        out_n,
+    );
+    let _r = protect(result);
+    if xt == SEXPTYPE::REALSXP {
+        for i in 0..out_n as usize {
+            set_real_checked(result, (i) as R_xlen_t, 0.0);
+        }
+    } else {
+        for i in 0..out_n as usize {
+            set_integer_checked(result, (i) as R_xlen_t, 0);
+        }
+    }
+    for col in 0..nc {
+        for row in 0..nr {
+            let src = row + col * nr;
+            let val = if xt == SEXPTYPE::REALSXP {
+                real_elt_checked(x, (src as usize) as R_xlen_t)
+            } else {
+                integer_elt_checked(x, (src as usize) as R_xlen_t) as f64
+            };
+            let dst = if margin == 1 { row } else { col };
+            if xt == SEXPTYPE::REALSXP {
+                set_real_checked(
+                    result,
+                    (dst as usize) as R_xlen_t,
+                    real_elt_checked(result, (dst as usize) as R_xlen_t) + val,
+                );
+            } else {
+                set_integer_checked(
+                    result,
+                    (dst as usize) as R_xlen_t,
+                    integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32,
+                );
+            }
+        }
+    }
+    let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+    set_integer_checked(out_dim, 0, out_n as c_int);
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), out_dim);
+    result
+}
+
+/// GNU `mad(x)` — median absolute deviation times 1.4826.
+pub fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+    let xt = TYPEOF(x);
+    if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be numeric",
+        );
+    }
+    let mut constant = 1.4826;
+    let mut cell = CDR(args);
+    let mut pos = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if name == "constant" || (name.is_empty() && pos == 1) {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::REALSXP {
+                constant = real_elt_checked(v, 0);
+            } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                constant = integer_elt_checked(v, 0) as f64;
+            }
+        }
+        if name.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
+    }
+    let med_args = Rf_cons(x, R_NilValue());
+    let _ma = protect(med_args);
+    let center = crate::mainutils::essentials::do_median(call, op, med_args, rho);
+    let _c = protect(center);
+    let cval = if TYPEOF(center) == SEXPTYPE::REALSXP {
+        real_elt_checked(center, 0)
+    } else if TYPEOF(center) == SEXPTYPE::INTSXP {
+        integer_elt_checked(center, 0) as f64
+    } else {
+        NA_REAL
+    };
+    let n = XLENGTH(x);
+    let absv = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _a = protect(absv);
+    for i in 0..n {
+        let xv = if xt == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else {
+            integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
+        };
+        set_real_checked(absv, (i as usize) as R_xlen_t, (xv - cval).abs());
+    }
+    let abs_args = Rf_cons(absv, R_NilValue());
+    let _aa = protect(abs_args);
+    let med = crate::mainutils::essentials::do_median(call, op, abs_args, rho);
+    let mval = if TYPEOF(med) == SEXPTYPE::REALSXP {
+        real_elt_checked(med, 0)
+    } else {
+        0.0
+    };
+    Rf_ScalarReal(constant * mval)
 }
 
 /// GNU `fivenum(x)` — Tukey five-number summary.
 pub fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
-            for i in 0..5 {
-                set_real_checked(result, (i) as R_xlen_t, NA_REAL);
-            }
-            return result;
-        }
-        let xt = TYPEOF(x);
-        let n0 = XLENGTH(x);
-        let mut vals: Vec<f64> = Vec::new();
-        for i in 0..n0 {
-            let v = if xt == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
-                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            } else {
-                NA_REAL
-            };
-            if v.is_finite() {
-                vals.push(v);
-            }
-        }
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let n = vals.len();
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
-        if n == 0 {
-            for i in 0..5 {
-                set_real_checked(result, (i) as R_xlen_t, NA_REAL);
-            }
-            return result;
+        for i in 0..5 {
+            set_real_checked(result, (i) as R_xlen_t, NA_REAL);
         }
-        let n4 = (((n + 3) / 2) as f64) / 2.0;
-        let d = [
-            1.0,
-            n4,
-            (n as f64 + 1.0) / 2.0,
-            n as f64 + 1.0 - n4,
-            n as f64,
-        ];
-        for (i, di) in d.iter().enumerate() {
-            let lo = di.floor() as usize;
-            let hi = di.ceil() as usize;
-            let a = vals[lo.saturating_sub(1).min(n - 1)];
-            let b = vals[hi.saturating_sub(1).min(n - 1)];
-            set_real_checked(result, (i) as R_xlen_t, 0.5 * (a + b));
+        return result;
+    }
+    let xt = TYPEOF(x);
+    let n0 = XLENGTH(x);
+    let mut vals: Vec<f64> = Vec::new();
+    for i in 0..n0 {
+        let v = if xt == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
+            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+        } else {
+            NA_REAL
+        };
+        if v.is_finite() {
+            vals.push(v);
         }
-        result
-    
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = vals.len();
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
+    if n == 0 {
+        for i in 0..5 {
+            set_real_checked(result, (i) as R_xlen_t, NA_REAL);
+        }
+        return result;
+    }
+    let n4 = (((n + 3) / 2) as f64) / 2.0;
+    let d = [
+        1.0,
+        n4,
+        (n as f64 + 1.0) / 2.0,
+        n as f64 + 1.0 - n4,
+        n as f64,
+    ];
+    for (i, di) in d.iter().enumerate() {
+        let lo = di.floor() as usize;
+        let hi = di.ceil() as usize;
+        let a = vals[lo.saturating_sub(1).min(n - 1)];
+        let b = vals[hi.saturating_sub(1).min(n - 1)];
+        set_real_checked(result, (i) as R_xlen_t, 0.5 * (a + b));
+    }
+    result
 }
 
 /// GNU `boxplot.stats(x, coef=1.5)`.
 pub fn do_boxplot_stats(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        let mut coef = 1.5;
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let c = CAR(rest);
-            if !c.is_null() && c != R_NilValue() {
-                coef = elt_real_safe(c, 0);
-            }
+    let x = CAR(args);
+    let mut coef = 1.5;
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let c = CAR(rest);
+        if !c.is_null() && c != R_NilValue() {
+            coef = elt_real_safe(c, 0);
         }
-        let stats = do_fivenum(_call, _op, Rf_cons(x, R_NilValue()), _rho);
-        let _s = protect(stats);
-        let q1 = real_elt_checked(stats, (1) as R_xlen_t);
-        let med = real_elt_checked(stats, (2) as R_xlen_t);
-        let q3 = real_elt_checked(stats, (3) as R_xlen_t);
-        let iqr = q3 - q1;
-        let n0 = if x.is_null() || x == R_NilValue() {
-            0
+    }
+    let stats = do_fivenum(_call, _op, Rf_cons(x, R_NilValue()), _rho);
+    let _s = protect(stats);
+    let q1 = real_elt_checked(stats, (1) as R_xlen_t);
+    let med = real_elt_checked(stats, (2) as R_xlen_t);
+    let q3 = real_elt_checked(stats, (3) as R_xlen_t);
+    let iqr = q3 - q1;
+    let n0 = if x.is_null() || x == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x)
+    };
+    let xt = if x.is_null() || x == R_NilValue() {
+        SEXPTYPE::REALSXP
+    } else {
+        SEXPTYPE(TYPEOF(x))
+    };
+    let mut n = 0i32;
+    let mut outs: Vec<f64> = Vec::new();
+    let mut insides: Vec<f64> = Vec::new();
+    for i in 0..n0 {
+        let v = if xt == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
+            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
         } else {
-            XLENGTH(x)
+            NA_REAL
         };
-        let xt = if x.is_null() || x == R_NilValue() {
-            SEXPTYPE::REALSXP
-        } else {
-            SEXPTYPE(TYPEOF(x))
-        };
-        let mut n = 0i32;
-        let mut outs: Vec<f64> = Vec::new();
-        let mut insides: Vec<f64> = Vec::new();
-        for i in 0..n0 {
-            let v = if xt == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if xt == SEXPTYPE::INTSXP || xt == SEXPTYPE::LGLSXP {
-                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            } else {
-                NA_REAL
-            };
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
-                continue;
-            }
-            n += 1;
-            let is_out =
-                coef > 0.0 && iqr.is_finite() && (v < q1 - coef * iqr || v > q3 + coef * iqr);
-            if is_out {
-                outs.push(v);
-            } else if v.is_finite() {
-                insides.push(v);
-            }
+        if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
+            continue;
         }
-        if !insides.is_empty() && coef > 0.0 {
-            let lo = insides.iter().copied().fold(f64::INFINITY, f64::min);
-            let hi = insides.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            set_real_checked(stats, 0, lo);
-            set_real_checked(stats, (4) as R_xlen_t, hi);
+        n += 1;
+        let is_out = coef > 0.0 && iqr.is_finite() && (v < q1 - coef * iqr || v > q3 + coef * iqr);
+        if is_out {
+            outs.push(v);
+        } else if v.is_finite() {
+            insides.push(v);
         }
-        let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-        let _c = protect(conf);
-        if n > 0 && iqr.is_finite() {
-            let half = 1.58 * iqr / (n as f64).sqrt();
-            set_real_checked(conf, 0, med - half);
-            set_real_checked(conf, (1) as R_xlen_t, med + half);
-        } else {
-            set_real_checked(conf, 0, NA_REAL);
-            set_real_checked(conf, (1) as R_xlen_t, NA_REAL);
-        }
-        let out = Rf_allocVector3(SEXPTYPE::REALSXP, outs.len() as i64);
-        let _o = protect(out);
-        for (i, v) in outs.iter().enumerate() {
-            set_real_checked(out, (i) as R_xlen_t, *v);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, stats);
-        SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(n));
-        SET_VECTOR_ELT(result, 2, conf);
-        SET_VECTOR_ELT(result, 3, out);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "stats".to_string(),
-                "n".to_string(),
-                "conf".to_string(),
-                "out".to_string(),
-            ],
-        );
-        result
-    
+    }
+    if !insides.is_empty() && coef > 0.0 {
+        let lo = insides.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = insides.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        set_real_checked(stats, 0, lo);
+        set_real_checked(stats, (4) as R_xlen_t, hi);
+    }
+    let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+    let _c = protect(conf);
+    if n > 0 && iqr.is_finite() {
+        let half = 1.58 * iqr / (n as f64).sqrt();
+        set_real_checked(conf, 0, med - half);
+        set_real_checked(conf, (1) as R_xlen_t, med + half);
+    } else {
+        set_real_checked(conf, 0, NA_REAL);
+        set_real_checked(conf, (1) as R_xlen_t, NA_REAL);
+    }
+    let out = Rf_allocVector3(SEXPTYPE::REALSXP, outs.len() as i64);
+    let _o = protect(out);
+    for (i, v) in outs.iter().enumerate() {
+        set_real_checked(out, (i) as R_xlen_t, *v);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, stats);
+    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(n));
+    SET_VECTOR_ELT(result, 2, conf);
+    SET_VECTOR_ELT(result, 3, out);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "stats".to_string(),
+            "n".to_string(),
+            "conf".to_string(),
+            "out".to_string(),
+        ],
+    );
+    result
 }
 
 pub(super) fn p_adjust_values(p: &[f64], method: &str) -> Vec<f64> {
@@ -1454,30 +1439,28 @@ pub(super) fn p_adjust_values(p: &[f64], method: &str) -> Vec<f64> {
 
 /// GNU `p.adjust(p, method)`.
 pub fn do_p_adjust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+    }
+    let mut method = "holm".to_string();
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let m = CAR(rest);
+        if TYPEOF(m) == SEXPTYPE::STRSXP && XLENGTH(m) > 0 {
+            method = elt_to_string(m, 0);
         }
-        let mut method = "holm".to_string();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let m = CAR(rest);
-            if TYPEOF(m) == SEXPTYPE::STRSXP && XLENGTH(m) > 0 {
-                method = elt_to_string(m, 0);
-            }
-        }
-        let n = XLENGTH(x);
-        let mut p = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            p.push(elt_real_safe(x, i));
-        }
-        let adj = p_adjust_values(&p, &method);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for (i, v) in adj.iter().enumerate() {
-            set_real_checked(result, (i) as R_xlen_t, *v);
-        }
-        result
-    
+    }
+    let n = XLENGTH(x);
+    let mut p = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        p.push(elt_real_safe(x, i));
+    }
+    let adj = p_adjust_values(&p, &method);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for (i, v) in adj.iter().enumerate() {
+        set_real_checked(result, (i) as R_xlen_t, *v);
+    }
+    result
 }

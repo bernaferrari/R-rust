@@ -308,11 +308,7 @@ pub fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let x = CAR(args);
-        let dollar = crate::sexp::constructors::Rf_lang3(
-            install_str("$"),
-            x,
-            install_str("sdev"),
-        );
+        let dollar = crate::sexp::constructors::Rf_lang3(install_str("$"), x, install_str("sdev"));
         let _d = protect(dollar);
         let _ = crate::eval::eval::Rf_eval(dollar, rho);
         R_NilValue()
@@ -590,9 +586,7 @@ pub(super) fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
     let mut hi = hi0;
     let mut ndiv = 5i32;
     let high = [0.8f64, 1.7, 1.125];
-    let unit = {
-        crate::appl::pretty::r_pretty(&mut lo, &mut hi, &mut ndiv, 1, 0.25, &high, 2, 0)
-    };
+    let unit = { crate::appl::pretty::r_pretty(&mut lo, &mut hi, &mut ndiv, 1, 0.25, &high, 2, 0) };
     if lo * unit < lo0 - 1e-10 * unit {
         lo += 1.0;
     }
@@ -782,81 +776,79 @@ pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return crate::mainutils::portable_plot::draw_builtin("axis", args);
     }
     #[cfg(not(feature = "renderplot-device"))]
-    
-        // GNU C_axis opens with GCheckState: a plot frame must exist.
-        no_device_require_plot_frame();
-        let mut side = 1.0;
-        let mut cell = args;
-        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-            let value = CAR(cell);
-            if !value.is_null() && XLENGTH(value) == 1 {
-                let v = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
-                    integer_elt_checked(value, 0) as f64
-                } else if TYPEOF(value) == SEXPTYPE::REALSXP {
-                    real_elt_checked(value, 0)
-                } else {
-                    f64::NAN
-                };
-                if (1.0..=4.0).contains(&v) {
-                    side = v;
-                    break;
-                }
-            }
-            cell = CDR(cell);
-        }
-        let name = if side == 1.0 || side == 3.0 {
-            "xaxp"
-        } else {
-            "yaxp"
-        };
-        let axp = crate::library::graphics::par::parameter(name);
-        let crate::library::graphics::par::ParValue::Real(a) = axp else {
-            return crate::sexp::globals::R_NilValue();
-        };
-        if a.len() < 3 || !a[0].is_finite() || !a[1].is_finite() {
-            return crate::sexp::globals::R_NilValue();
-        }
-        let steps = a[2].round().max(1.0).min(100.0) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
-        if result.is_null() {
-            return crate::sexp::globals::R_NilValue();
-        }
-        let log_name = if side == 1.0 || side == 3.0 {
-            "xlog"
-        } else {
-            "ylog"
-        };
-        let logged = matches!(
-            crate::library::graphics::par::parameter(log_name),
-            crate::library::graphics::par::ParValue::Logical(v) if v.first().copied() == Some(1)
-        );
-        if logged {
-            let usr = crate::library::graphics::par::parameter("usr");
-            let crate::library::graphics::par::ParValue::Real(u) = usr else {
-                return crate::sexp::globals::R_NilValue();
-            };
-            let (lo0, hi0) = if side == 1.0 || side == 3.0 {
-                (u[0], u[1])
+    // GNU C_axis opens with GCheckState: a plot frame must exist.
+    no_device_require_plot_frame();
+    let mut side = 1.0;
+    let mut cell = args;
+    while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+        let value = CAR(cell);
+        if !value.is_null() && XLENGTH(value) == 1 {
+            let v = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
+                integer_elt_checked(value, 0) as f64
+            } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+                real_elt_checked(value, 0)
             } else {
-                (u[2], u[3])
+                f64::NAN
             };
-            let lo = (lo0.ceil() as i32).clamp(-307, 308);
-            let hi = (hi0.floor() as i32).clamp(lo, 308);
-            if hi >= lo {
-                let n = (hi - lo + 1) as R_xlen_t;
-                let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-                for i in 0..n {
-                    set_real_checked(result, (i as usize) as R_xlen_t, 10f64.powi(lo + i as i32));
-                }
-                return result;
+            if (1.0..=4.0).contains(&v) {
+                side = v;
+                break;
             }
         }
-        for i in 0..=steps {
-            let t = i as f64 / steps as f64;
-            set_real_checked(result, (i) as R_xlen_t, a[0] * (1.0 - t) + a[1] * t);
+        cell = CDR(cell);
+    }
+    let name = if side == 1.0 || side == 3.0 {
+        "xaxp"
+    } else {
+        "yaxp"
+    };
+    let axp = crate::library::graphics::par::parameter(name);
+    let crate::library::graphics::par::ParValue::Real(a) = axp else {
+        return crate::sexp::globals::R_NilValue();
+    };
+    if a.len() < 3 || !a[0].is_finite() || !a[1].is_finite() {
+        return crate::sexp::globals::R_NilValue();
+    }
+    let steps = a[2].round().max(1.0).min(100.0) as usize;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, (steps + 1) as R_xlen_t);
+    if result.is_null() {
+        return crate::sexp::globals::R_NilValue();
+    }
+    let log_name = if side == 1.0 || side == 3.0 {
+        "xlog"
+    } else {
+        "ylog"
+    };
+    let logged = matches!(
+        crate::library::graphics::par::parameter(log_name),
+        crate::library::graphics::par::ParValue::Logical(v) if v.first().copied() == Some(1)
+    );
+    if logged {
+        let usr = crate::library::graphics::par::parameter("usr");
+        let crate::library::graphics::par::ParValue::Real(u) = usr else {
+            return crate::sexp::globals::R_NilValue();
+        };
+        let (lo0, hi0) = if side == 1.0 || side == 3.0 {
+            (u[0], u[1])
+        } else {
+            (u[2], u[3])
+        };
+        let lo = (lo0.ceil() as i32).clamp(-307, 308);
+        let hi = (hi0.floor() as i32).clamp(lo, 308);
+        if hi >= lo {
+            let n = (hi - lo + 1) as R_xlen_t;
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            for i in 0..n {
+                set_real_checked(result, (i as usize) as R_xlen_t, 10f64.powi(lo + i as i32));
+            }
+            return result;
         }
-        result
-    
+    }
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        set_real_checked(result, (i) as R_xlen_t, a[0] * (1.0 - t) + a[1] * t);
+    }
+    result
 }
 
 pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

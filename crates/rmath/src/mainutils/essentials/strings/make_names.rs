@@ -120,10 +120,7 @@ pub fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     let second = CDR(args);
     if !second.is_null() && second != R_NilValue() {
         let cstring = std::ffi::CString::new("allow_").unwrap_or_default();
-        crate::sexp::accessors::SETTAG(
-            second,
-            install_cstr(&cstring),
-        );
+        crate::sexp::accessors::SETTAG(second, install_cstr(&cstring));
     }
     do_make_names(call, op, args, rho)
 }

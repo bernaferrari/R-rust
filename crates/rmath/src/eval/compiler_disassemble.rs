@@ -168,7 +168,11 @@ fn expand(code: SEXP, depth: usize) -> SEXP {
         let mut pc = 1;
         while pc < words.len() {
             let opcode = words[pc] as usize;
-            SET_VECTOR_ELT(decoded, pc as _, crate::sexp::symbol::install_str(GNU_NAMES[opcode]));
+            SET_VECTOR_ELT(
+                decoded,
+                pc as _,
+                crate::sexp::symbol::install_str(GNU_NAMES[opcode]),
+            );
             let width = bytecode::GNU_BC_OPERAND_WIDTHS[opcode] as usize;
             for offset in 1..=width {
                 SET_VECTOR_ELT(

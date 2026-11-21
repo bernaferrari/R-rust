@@ -138,16 +138,8 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             info_names,
         );
         let row_names = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        crate::sexp::attrib_core::setAttrib(
-            info,
-            install_str("row.names"),
-            row_names,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            install_str("info"),
-            info,
-        );
+        crate::sexp::attrib_core::setAttrib(info, install_str("row.names"), row_names);
+        crate::sexp::attrib_core::setAttrib(ans, install_str("info"), info);
         return ans;
     }
     if generic_arg.is_null() || generic_arg == R_NilValue() {
@@ -205,8 +197,7 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _ = from_mut.try_set_string_elt(i, charsxp);
             }
             let _ = visible_mut.try_set_logical_elt(i, 1);
-            let cname =
-                std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
+            let cname = std::ffi::CString::new(methods[i as usize].as_str()).unwrap_or_default();
             if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cname)) {
                 let _ = rows_mut.try_set_string_elt(i, charsxp);
             }
@@ -227,26 +218,14 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
     }
-    crate::sexp::attrib_core::setAttrib(
-        info,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        inames,
-    );
+    crate::sexp::attrib_core::setAttrib(info, crate::sexp::attrib_core::R_NamesSymbol(), inames);
     crate::sexp::attrib_core::setAttrib(
         info,
         crate::sexp::attrib_core::R_ClassSymbol(),
         mk_string_cstr(c"data.frame"),
     );
-    crate::sexp::attrib_core::setAttrib(
-        info,
-        install_str("row.names"),
-        rows,
-    );
-    crate::sexp::attrib_core::setAttrib(
-        ans,
-        install_str("info"),
-        info,
-    );
+    crate::sexp::attrib_core::setAttrib(info, install_str("row.names"), rows);
+    crate::sexp::attrib_core::setAttrib(ans, install_str("info"), info);
     ans
 }
 
@@ -890,11 +869,7 @@ fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
         R_NilValue()
     };
     if !row_names.is_null() && row_names != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("row.names"),
-            row_names,
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), row_names);
     } else {
         set_compact_row_names(result, nrow);
     }
@@ -993,15 +968,9 @@ pub fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return x;
         }
     }
-    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-        && TYPEOF(x) == SEXPTYPE::VECSXP
-    {
-        let ct = crate::mainutils::essentials::do_as_POSIXct(
-            _call,
-            _op,
-            Rf_cons(x, R_NilValue()),
-            _rho,
-        );
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") && TYPEOF(x) == SEXPTYPE::VECSXP {
+        let ct =
+            crate::mainutils::essentials::do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho);
         let _ct = protect(ct);
         x = ct;
     }
@@ -1033,8 +1002,7 @@ pub fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         );
     }
 
-    if TYPEOF(x) == SEXPTYPE::VECSXP
-        && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+    if TYPEOF(x) == SEXPTYPE::VECSXP && !crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
     {
         return list_as_data_frame(x);
     }
@@ -1371,7 +1339,9 @@ fn set_na_action_attribute(source: SEXP, result: SEXP, dropped: &[R_xlen_t], act
         let _class_guard = protect(class);
         if let (Ok(mut class_mut), Ok(charsxp)) = (
             owner.sexp(class).and_then(SexpMut::try_from_checked),
-            owner.sexp(mk_char_cstr(&CString::new(action_class).unwrap_or_default())),
+            owner.sexp(mk_char_cstr(
+                &CString::new(action_class).unwrap_or_default(),
+            )),
         ) {
             let _ = class_mut.try_set_string_elt(0, charsxp);
         }
@@ -1657,11 +1627,7 @@ fn build_data_frame(columns: Vec<SEXP>, names: Vec<String>, row_names: SEXP) -> 
         mk_string_cstr(c"data.frame"),
     );
     if !row_names.is_null() && row_names != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("row.names"),
-            row_names,
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), row_names);
     }
     result
 }

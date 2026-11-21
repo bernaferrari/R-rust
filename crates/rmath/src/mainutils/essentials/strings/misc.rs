@@ -124,10 +124,8 @@ pub fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
     let _x = protect(x);
     if crate::mainutils::objects::inherits2(x, c"noquote") == FALSE {
-        let old =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        let old_n = if !old.is_null() && old != R_NilValue() && TYPEOF(old) == SEXPTYPE::STRSXP
-        {
+        let old = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        let old_n = if !old.is_null() && old != R_NilValue() && TYPEOF(old) == SEXPTYPE::STRSXP {
             XLENGTH(old)
         } else {
             0
@@ -138,11 +136,7 @@ pub fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..old_n {
                 SET_STRING_ELT(class_vec, i, STRING_ELT(old, i));
             }
-            SET_STRING_ELT(
-                class_vec,
-                old_n,
-                mk_char_cstr(c"noquote"),
-            );
+            SET_STRING_ELT(class_vec, old_n, mk_char_cstr(c"noquote"));
             crate::sexp::attrib_core::setAttrib(
                 x,
                 crate::sexp::attrib_core::R_ClassSymbol(),

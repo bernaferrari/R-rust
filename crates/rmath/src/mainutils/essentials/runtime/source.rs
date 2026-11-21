@@ -121,7 +121,8 @@ pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     if crate::mainutils::connections::inherits_class(file_arg, "connection") {
         if parsed.chdir {
             crate::mainutils::errors::Rf_warning1(
-                c"'chdir = TRUE' makes no sense for a connection");
+                c"'chdir = TRUE' makes no sense for a connection",
+            );
         }
         let idx = crate::mainutils::coerce::asInteger(file_arg);
         let mut bytes = Vec::new();
@@ -1177,8 +1178,7 @@ fn abbreviate_example_topic(topic: &str) -> String {
 }
 
 fn utils_example_closure() -> Option<SEXP> {
-    let namespace =
-        crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
+    let namespace = crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
     let symbol = install_str("example");
     let mut value = find_var_in_frame(namespace, symbol);
     if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {

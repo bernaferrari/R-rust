@@ -8,10 +8,7 @@ fn current_framedepth() -> i32 {
 /// Keep its call on the context stack while forcing the protected expression,
 /// so an inferred error call has a real caller even at top level.
 pub(crate) fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
-    let inner = crate::sexp::constructors::Rf_lang2(
-        install_str("return"),
-        install_str("expr"),
-    );
+    let inner = crate::sexp::constructors::Rf_lang2(install_str("return"), install_str("expr"));
     let _inner_guard = protect(inner);
     let call = crate::sexp::constructors::Rf_lang5(
         install_str("doTryCatch"),

@@ -120,7 +120,8 @@ fn construct_file(
         if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
                 crate::mainutils::errors::Rf_warning_cstr(
-                    c"file(\"\") only supports open = \"w+\" and \"w+b\": using the former");
+                    c"file(\"\") only supports open = \"w+\" and \"w+b\": using the former",
+                );
                 access.require_active()?;
             }
             if !browser_mode && !cfg!(target_arch = "wasm32") {

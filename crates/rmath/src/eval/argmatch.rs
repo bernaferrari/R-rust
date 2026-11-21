@@ -425,62 +425,56 @@ mod tests {
         ];
 
         fn symbol(name: &str) -> crate::sexp::ffi::SEXP {
-            
-                if name == "..." {
-                    return R_DotsSymbol();
-                }
-                crate::sexp::symbol::install_str(name)
-            
+            if name == "..." {
+                return R_DotsSymbol();
+            }
+            crate::sexp::symbol::install_str(name)
         }
 
         fn chain(
             cells: &[(crate::sexp::ffi::SEXP, crate::sexp::ffi::SEXP)],
         ) -> crate::sexp::ffi::SEXP {
-            
-                let mut head = R_NilValue();
-                for (car, tag) in cells.iter().rev() {
-                    let cell = Rf_cons(*car, head);
-                    if !tag.is_null() {
-                        SETTAG(cell, *tag);
-                    }
-                    head = cell;
+            let mut head = R_NilValue();
+            for (car, tag) in cells.iter().rev() {
+                let cell = Rf_cons(*car, head);
+                if !tag.is_null() {
+                    SETTAG(cell, *tag);
                 }
-                head
-            
+                head = cell;
+            }
+            head
         }
 
         fn observe(
             formals: crate::sexp::ffi::SEXP,
             actuals: crate::sexp::ffi::SEXP,
         ) -> Vec<Binding> {
-            
-                let mut out = Vec::new();
-                let mut formal = formals;
-                let mut actual = actuals;
-                let nil = R_NilValue();
-                let missing = R_MissingArg();
-                let dots_symbol = R_DotsSymbol();
-                while !formal.is_null() && formal != nil {
-                    if TAG(formal) == dots_symbol {
-                        let mut indexes = Vec::new();
-                        let mut dotted = CAR(actual);
-                        if TYPEOF(dotted) == DOTSXP {
-                            while !dotted.is_null() && dotted != nil {
-                                indexes.push(INTEGER_ELT(CAR(dotted), 0) as u8);
-                                dotted = CDR(dotted);
-                            }
+            let mut out = Vec::new();
+            let mut formal = formals;
+            let mut actual = actuals;
+            let nil = R_NilValue();
+            let missing = R_MissingArg();
+            let dots_symbol = R_DotsSymbol();
+            while !formal.is_null() && formal != nil {
+                if TAG(formal) == dots_symbol {
+                    let mut indexes = Vec::new();
+                    let mut dotted = CAR(actual);
+                    if TYPEOF(dotted) == DOTSXP {
+                        while !dotted.is_null() && dotted != nil {
+                            indexes.push(INTEGER_ELT(CAR(dotted), 0) as u8);
+                            dotted = CDR(dotted);
                         }
-                        out.push(Binding::Dots(indexes));
-                    } else if MISSING(actual) != 0 || CAR(actual) == missing {
-                        out.push(Binding::Missing);
-                    } else {
-                        out.push(Binding::Actual(INTEGER_ELT(CAR(actual), 0) as u8));
                     }
-                    formal = CDR(formal);
-                    actual = CDR(actual);
+                    out.push(Binding::Dots(indexes));
+                } else if MISSING(actual) != 0 || CAR(actual) == missing {
+                    out.push(Binding::Missing);
+                } else {
+                    out.push(Binding::Actual(INTEGER_ELT(CAR(actual), 0) as u8));
                 }
-                out
-            
+                formal = CDR(formal);
+                actual = CDR(actual);
+            }
+            out
         }
 
         for (names, tags) in rows {
@@ -515,12 +509,11 @@ mod tests {
                     .collect();
                 (chain(&formal_cells), chain(&supplied_cells))
             };
-            let factory =  crate::eval::dispatch::active_argument_factory() ;
+            let factory = crate::eval::dispatch::active_argument_factory();
             let formals_owner = crate::eval::dispatch::argument_value(&factory, formals);
             let supplied_owner = crate::eval::dispatch::argument_value(&factory, supplied);
-            let closure = 
-                match_closure_args(&factory, formals_owner.clone(), supplied_owner.clone())
-            ;
+            let closure =
+                match_closure_args(&factory, formals_owner.clone(), supplied_owner.clone());
             let builtin = catch_unwind(AssertUnwindSafe(|| unsafe {
                 matchArgs_NR_local(formals, supplied, R_NilValue())
             }));

@@ -7,8 +7,8 @@
 )]
 
 use super::*;
-use std::ffi::CStr;
 use crate::sexp::{instance::RuntimeValue, object::Sexp};
+use std::ffi::CStr;
 
 /// Restore the original physical runtime even when a method throws or revokes
 /// its execution authority. Cleanup never executes R or follows ambient TLS.
@@ -118,9 +118,7 @@ pub fn do_set_prim_method(op: SEXP, code_string: &CStr, fundef: SEXP, mlist: SEX
             if code == prim_methods_t::NO_METHODS {
                 state.prim_generics[offset] = RuntimeValue::empty();
                 state.prim_mlist[offset] = RuntimeValue::empty();
-            } else if code != prim_methods_t::SUPPRESSED
-                && state.prim_generics[offset].is_null()
-            {
+            } else if code != prim_methods_t::SUPPRESSED && state.prim_generics[offset].is_null() {
                 if let Some(fundef) = fundef {
                     state.prim_generics[offset] = RuntimeValue::from_owned(fundef);
                 }
@@ -375,20 +373,12 @@ fn possible_dispatch_in(
         if current == prim_methods_t::NEEDS_RESET {
             let mut reset =
                 require_objects(PrimitiveStatusGuard::new(access, offset as usize, current));
-            do_set_prim_method(
-                op,
-                c"suppressed",
-                R_NilValue(),
-                R_NilValue());
+            do_set_prim_method(op, c"suppressed", R_NilValue(), R_NilValue());
             let mlist_owner = require_objects(get_primitive_methods(access, op, rho));
             let mlist = mlist_owner.as_raw();
             require_objects(access.require_active());
             let _mlist_guard = protect(mlist);
-            do_set_prim_method(
-                op,
-                c"set",
-                R_NilValue(),
-                mlist);
+            do_set_prim_method(op, c"set", R_NilValue(), mlist);
             current = with_objects_state(|state| state.prim_methods[offset as usize]);
             reset.armed = false;
         }
@@ -419,10 +409,7 @@ fn possible_dispatch_in(
                     return ptr::null_mut();
                 }
                 if isFunction(value) != FALSE {
-                    if inherits2(
-                        value,
-                        c"internalDispatchMethod") != FALSE
-                    {
+                    if inherits2(value, c"internalDispatchMethod") != FALSE {
                         return ptr::null_mut();
                     }
 

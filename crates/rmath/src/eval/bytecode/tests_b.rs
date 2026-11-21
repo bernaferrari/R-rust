@@ -1490,8 +1490,8 @@ fn gnu_cfg_gc_retry_reclaims_and_revalidates_instruction_pool_and_switch_snapsho
         });
         let ledger = cfg_force_collection_headroom(&session);
         let before = ledger.allocated_bytes();
-        let result = session.with_active(|| 
-{            validate_gnu_adapter_with_constants(instruction_value.as_raw(), pool.as_raw())
+        let result = session.with_active(|| {
+            validate_gnu_adapter_with_constants(instruction_value.as_raw(), pool.as_raw())
         });
         assert!(
             observed.get(),
@@ -1537,9 +1537,9 @@ fn gnu_cfg_gc_retry_rejects_owner_revocation_and_keeps_cleanup_storage_pinned() 
             .close();
     }));
     let before = ledger.allocated_bytes();
-    let result = crate::sexp::owner::with_runtime(&original, |_| 
+    let result = crate::sexp::owner::with_runtime(&original, |_| {
         validate_gnu_adapter_with_constants(instruction_value.as_raw(), pool.as_raw())
-    );
+    });
     assert!(observed.get());
     assert!(result.is_err() || result.as_ref().unwrap().is_err());
     assert!(ledger.allocated_bytes() < before);

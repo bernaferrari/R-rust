@@ -61,7 +61,7 @@ pub(crate) fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> Sexp<
 /// GNU asReal accepts character and other atomic inputs. COLON reuses
 /// do_colon, whose local asReal only reads INT/REAL/LGL, so non-numeric
 /// arguments are coerced to real first.
-pub(crate)  fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
+pub(crate) fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
     let ty = TYPEOF(value);
     if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP || ty == SEXPTYPE::LGLSXP {
         value
@@ -75,7 +75,7 @@ pub(crate)  fn gnu_colon_numeric_arg(value: SEXP) -> SEXP {
 /// BEFORE the argument values were popped, so a value recorded at depth
 /// `d` is the cell created on pop `top - 1 - d` (0-based, top-first).
 /// Consumed entries are removed; unmatched entries (stale) are dropped.
-pub(crate)  fn apply_pending_arg_tags(
+pub(crate) fn apply_pending_arg_tags(
     pending: &mut Vec<(usize, Sexp<'static>)>,
     top: usize,
     cells: &[SEXP],

@@ -596,15 +596,11 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
         if status >= 400 {
             if !url.is_null() && *url == 'h' as c_char {
                 let strerr = http_errstr(status);
-                Rf_warning1(
-                    c"cannot open URL '%s': HTTP status was '%ld %s'"
-                );
+                Rf_warning1(c"cannot open URL '%s': HTTP status was '%ld %s'");
                 let _ = strerr;
             } else {
                 let strerr = ftp_errstr(status);
-                Rf_warning1(
-                    c"cannot open URL '%s': FTP status was '%ld %s'"
-                );
+                Rf_warning1(c"cannot open URL '%s': FTP status was '%ld %s'");
                 let _ = strerr;
             }
         } else {
@@ -1238,8 +1234,7 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
                 Rf_error_cstr(c"libcurl error code %d");
             } else if ret == 77 {
                 curl_easy_cleanup(hnd);
-                Rf_error_cstr(
-                    c"libcurl error code 77: unable to access SSL/TLS CA certificates");
+                Rf_error_cstr(c"libcurl error code 77: unable to access SSL/TLS CA certificates");
             } else {
                 curl_easy_cleanup(hnd);
                 Rf_error_cstr(c"libcurl error code");

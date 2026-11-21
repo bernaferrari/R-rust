@@ -6,7 +6,7 @@ use std::ptr;
 use crate::mainutils::coerce::asInteger;
 use crate::mainutils::duplicate::{duplicate, shallow_duplicate};
 use crate::mainutils::relop::{PRIMVAL, checkArity};
-use crate::sexp::accessors::{CAR, CDR, SETCAR, SET_INTEGER_ELT};
+use crate::sexp::accessors::{CAR, CDR, SET_INTEGER_ELT, SETCAR};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::constructors::{Rf_allocVector, Rf_length};
 use crate::sexp::context::{R_GlobalContext_in, RCNTXT, ctxt_flags};

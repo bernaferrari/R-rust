@@ -143,10 +143,7 @@ pub fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
         if index >= 2 {
             let label = if index == 2 { "justify" } else { "na.encode" };
             let cstring = std::ffi::CString::new(label).unwrap_or_default();
-            crate::sexp::accessors::SETTAG(
-                cell,
-                install_cstr(&cstring),
-            );
+            crate::sexp::accessors::SETTAG(cell, install_cstr(&cstring));
         }
         cell = crate::sexp::accessors::CDR(cell);
         index += 1;

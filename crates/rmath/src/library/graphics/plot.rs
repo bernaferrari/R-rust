@@ -314,9 +314,7 @@ fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
                 if LOGICAL(pch).add(i).read() == NA_LOGICAL {
                     INTEGER(ans).add(i).write(NA_INTEGER);
                 } else {
-                    Rf_error_cstr(
-                        c"only NA allowed in logical plotting symbol"
-                    );
+                    Rf_error_cstr(c"only NA allowed in logical plotting symbol");
                 }
             }
         } else {
@@ -961,8 +959,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         }
 
         if *n > 0 && kmin == 0 {
-            Rf_error_cstr(
-                c"cannot mix zero-length and non-zero-length coordinates");
+            Rf_error_cstr(c"cannot mix zero-length and non-zero-length coordinates");
         }
     }
 }

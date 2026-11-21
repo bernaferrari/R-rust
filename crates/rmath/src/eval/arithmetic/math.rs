@@ -109,7 +109,7 @@ pub fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
 }
 
 /// SHALLOW_DUPLICATE_ATTRIB: copy every attribute of `src` onto `dst`.
-pub(crate)  fn copy_all_attrib(dst: SEXP, src: SEXP) {
+pub(crate) fn copy_all_attrib(dst: SEXP, src: SEXP) {
     if src.is_null() || src == R_NilValue() {
         return;
     }

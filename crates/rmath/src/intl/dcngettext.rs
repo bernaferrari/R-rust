@@ -56,7 +56,8 @@ mod tests {
         let msgid1 = b"file\0" as *const u8 as *const c_char;
         let msgid2 = b"files\0" as *const u8 as *const c_char;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 1, types::LC_MESSAGES) };
+        let result =
+            unsafe { libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 1, types::LC_MESSAGES) };
         assert_eq!(result, msgid1 as *mut c_char);
     }
 
@@ -67,7 +68,8 @@ mod tests {
         let msgid1 = b"file\0" as *const u8 as *const c_char;
         let msgid2 = b"files\0" as *const u8 as *const c_char;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 5, types::LC_MESSAGES) };
+        let result =
+            unsafe { libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 5, types::LC_MESSAGES) };
         assert_eq!(result, msgid1 as *mut c_char);
     }
 }

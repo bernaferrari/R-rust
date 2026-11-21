@@ -1,6 +1,6 @@
 use super::*;
-use crate::sexp::symbol::Rf_install;
 use crate::sexp::session::RSession;
+use crate::sexp::symbol::Rf_install;
 
 #[test]
 fn methods_implicit_base_namespace_does_not_publish_stats_toeplitz() {

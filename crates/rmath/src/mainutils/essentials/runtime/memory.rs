@@ -416,11 +416,7 @@ pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                install_str("class"),
-                class_vec,
-            );
+            crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
         }
         return result;
     }

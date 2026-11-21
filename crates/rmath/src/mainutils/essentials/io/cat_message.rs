@@ -349,9 +349,7 @@ pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let name = if pname.is_null() {
                     String::new()
                 } else {
-                    charsxp_cstring(pname)
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_cstring(pname).to_string_lossy().into_owned()
                 };
                 if name == "classes" {
                     let value = crate::eval::eval::Rf_eval(CAR(cell), rho);
@@ -363,11 +361,7 @@ pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                         for i in 0..XLENGTH(value) {
                             let elt = crate::sexp::accessors::STRING_ELT(value, i);
                             if !elt.is_null() {
-                                names.push(
-                                    charsxp_cstring(elt)
-                                        .to_string_lossy()
-                                        .into_owned(),
-                                );
+                                names.push(charsxp_cstring(elt).to_string_lossy().into_owned());
                             }
                         }
                         classes = Some(names);
@@ -412,9 +406,7 @@ pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let name = if pname.is_null() {
                     String::new()
                 } else {
-                    charsxp_cstring(pname)
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_cstring(pname).to_string_lossy().into_owned()
                 };
                 if name == "classes" {
                     let value = crate::eval::eval::Rf_eval(CAR(cell), rho);
@@ -426,11 +418,7 @@ pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                         for i in 0..XLENGTH(value) {
                             let elt = crate::sexp::accessors::STRING_ELT(value, i);
                             if !elt.is_null() {
-                                names.push(
-                                    charsxp_cstring(elt)
-                                        .to_string_lossy()
-                                        .into_owned(),
-                                );
+                                names.push(charsxp_cstring(elt).to_string_lossy().into_owned());
                             }
                         }
                         classes = Some(names);

@@ -37,11 +37,15 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             NA_REAL
         };
-        set_real_checked(result, (i as usize) as R_xlen_t, if posix {
-            (v - origin_val) / 86_400.0
-        } else {
-            v - origin_val
-        });
+        set_real_checked(
+            result,
+            (i as usize) as R_xlen_t,
+            if posix {
+                (v - origin_val) / 86_400.0
+            } else {
+                v - origin_val
+            },
+        );
     }
     let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
     let _o = protect(origin);
@@ -49,68 +53,56 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if posix {
         set_posixct_class(origin, "GMT");
         set_single_class(result, "difftime");
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("units"),
-            mk_string_cstr(c"days"),
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("units"), mk_string_cstr(c"days"));
     } else {
         set_single_class(origin, "Date");
     }
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        install_str("origin"),
-        origin,
-    );
+    crate::sexp::attrib_core::setAttrib(result, install_str("origin"), origin);
     result
 }
 
 fn difftime_seconds(x: SEXP) -> f64 {
-    
-        if x.is_null() || x == R_NilValue() {
+    if x.is_null() || x == R_NilValue() {
+        return f64::NAN;
+    }
+    let v = if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
+        real_elt_checked(x, 0)
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
+        let iv = integer_elt_checked(x, 0);
+        if iv == NA_INTEGER {
             return f64::NAN;
         }
-        let v = if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
-            real_elt_checked(x, 0)
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
-            let iv = integer_elt_checked(x, 0);
-            if iv == NA_INTEGER {
-                return f64::NAN;
-            }
-            iv as f64
-        } else {
-            return f64::NAN;
-        };
-        if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
-            v * 86_400.0
-        } else {
-            v
-        }
-    
+        iv as f64
+    } else {
+        return f64::NAN;
+    };
+    if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
+        v * 86_400.0
+    } else {
+        v
+    }
 }
 
 fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
-    
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+        return f64::NAN;
+    }
+    let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+        real_elt_checked(x, (i as usize) as R_xlen_t)
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+        let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        if iv == NA_INTEGER {
             return f64::NAN;
         }
-        let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-            real_elt_checked(x, (i as usize) as R_xlen_t)
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            if iv == NA_INTEGER {
-                return f64::NAN;
-            }
-            iv as f64
-        } else {
-            return f64::NAN;
-        };
-        if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
-            v * 86_400.0
-        } else {
-            v
-        }
-    
+        iv as f64
+    } else {
+        return f64::NAN;
+    };
+    if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
+        v * 86_400.0
+    } else {
+        v
+    }
 }
 
 /// GNU `difftime(time1, time2, units="auto")`.
@@ -192,19 +184,17 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     };
     if div != 1.0 {
         for i in 0..n {
-            set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(result, (i as usize) as R_xlen_t) / div);
+            set_real_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                real_elt_checked(result, (i as usize) as R_xlen_t) / div,
+            );
         }
     }
 
     set_single_class(result, "difftime");
-    let u = mk_string_cstr(&std::ffi::CString::new(units.as_str())
-            .unwrap_or_default()
-            );
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        install_str("units"),
-        u,
-    );
+    let u = mk_string_cstr(&std::ffi::CString::new(units.as_str()).unwrap_or_default());
+    crate::sexp::attrib_core::setAttrib(result, install_str("units"), u);
     result
 }
 
@@ -271,15 +261,15 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 _ => 1.0,
             };
             for i in 0..n as usize {
-                set_real_checked(result, (i) as R_xlen_t, real_elt_checked(result, (i) as R_xlen_t) / div);
+                set_real_checked(
+                    result,
+                    (i) as R_xlen_t,
+                    real_elt_checked(result, (i) as R_xlen_t) / div,
+                );
             }
         }
         let u = mk_string_cstr(&std::ffi::CString::new(units).unwrap_or_default());
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("units"),
-            u,
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("units"), u);
         let class = mk_string_cstr(c"difftime");
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -326,8 +316,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         set_real_checked(result, (i as usize) as R_xlen_t, v);
     }
-    let names =
-        crate::sexp::attrib_core::getAttrib(tim, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(tim, crate::sexp::attrib_core::R_NamesSymbol());
     if !names.is_null() && names != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -337,18 +326,11 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     set_single_class(result, "difftime");
     let u = mk_string_cstr(&CString::new(units.as_str()).unwrap_or_default());
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        install_str("units"),
-        u,
-    );
+    crate::sexp::attrib_core::setAttrib(result, install_str("units"), u);
     result
 }
 
 /// GNU `units(x)` is attr(x, "units").
 pub fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    crate::sexp::attrib_core::getAttrib(
-        CAR(args),
-        install_str("units"),
-    )
+    crate::sexp::attrib_core::getAttrib(CAR(args), install_str("units"))
 }

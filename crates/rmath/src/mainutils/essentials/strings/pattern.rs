@@ -254,11 +254,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         y = x;
     }
     let ny = XLENGTH(y);
-    let mat = alloc_matrix(
-        SEXPTYPE::INTSXP.as_c_int(),
-        nx as c_int,
-        ny as c_int,
-    );
+    let mat = alloc_matrix(SEXPTYPE::INTSXP.as_c_int(), nx as c_int, ny as c_int);
     let _m = protect(mat);
     let mut paths: Vec<(String, i32, i32, i32)> = Vec::new();
     for j in 0..ny {
@@ -295,11 +291,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _c = protect(cnt);
         for (k, (trafo, del, ins, sub)) in paths.iter().enumerate() {
             let cstr = std::ffi::CString::new(trafo.as_str()).unwrap_or_default();
-            SET_STRING_ELT(
-                trafos,
-                k as i64,
-                mk_char_cstr(&cstr),
-            );
+            SET_STRING_ELT(trafos, k as i64, mk_char_cstr(&cstr));
             set_integer_checked(cnt, (k) as R_xlen_t, *del);
             set_integer_checked(cnt, (k + (nx * ny) as usize) as R_xlen_t, *ins);
             set_integer_checked(cnt, (k + (2 * nx * ny) as usize) as R_xlen_t, *sub);
@@ -313,11 +305,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         for (i, name) in ["del", "ins", "sub"].iter().enumerate() {
             let cstr = std::ffi::CString::new(*name).unwrap();
-            SET_STRING_ELT(
-                layer,
-                i as i64,
-                mk_char_cstr(&cstr),
-            );
+            SET_STRING_ELT(layer, i as i64, mk_char_cstr(&cstr));
         }
         SET_VECTOR_ELT(dnames, 2, layer);
         crate::sexp::attrib_core::setAttrib(
@@ -328,21 +316,9 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         set_integer_checked(tdim, (0) as R_xlen_t, nx as i32);
         set_integer_checked(tdim, (1) as R_xlen_t, ny as i32);
-        crate::sexp::attrib_core::setAttrib(
-            trafos,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            tdim,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            mat,
-            install_str("trafos"),
-            trafos,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            mat,
-            install_str("counts"),
-            cnt,
-        );
+        crate::sexp::attrib_core::setAttrib(trafos, crate::sexp::attrib_core::R_DimSymbol(), tdim);
+        crate::sexp::attrib_core::setAttrib(mat, install_str("trafos"), trafos);
+        crate::sexp::attrib_core::setAttrib(mat, install_str("counts"), cnt);
     }
     mat
 }

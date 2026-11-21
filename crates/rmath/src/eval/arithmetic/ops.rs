@@ -216,7 +216,7 @@ pub(crate) fn rewritten_level_labels(f: SEXP) -> Vec<String> {
 /// Coerce a relop operand to character following the stock ladder; only
 /// logical/integer/real/complex/raw make it (the rest error like stock's
 /// final else).
-pub(crate)  fn relop_operand_to_character(x: SEXP) -> SEXP {
+pub(crate) fn relop_operand_to_character(x: SEXP) -> SEXP {
     if TYPEOF(x) == SEXPTYPE::STRSXP {
         return x;
     }
@@ -231,12 +231,7 @@ pub(crate)  fn relop_operand_to_character(x: SEXP) -> SEXP {
 /// applies when both sides are converted), any other operator warns and
 /// returns logical NAs. Returns None when neither operand is an unordered
 /// factor.
-pub(crate) fn unordered_factor_compare(
-    op: &str,
-    call: SEXP,
-    sa: SEXP,
-    sb: SEXP,
-) -> Option<SEXP> {
+pub(crate) fn unordered_factor_compare(op: &str, call: SEXP, sa: SEXP, sb: SEXP) -> Option<SEXP> {
     {
         let a_factor = is_plain_factor(sa);
         let b_factor = is_plain_factor(sb);
@@ -266,7 +261,8 @@ pub(crate) fn unordered_factor_compare(
                 None
             }
         };
-        let levels_of = |f: SEXP| -> SEXP { getAttrib(f, crate::sexp::symbol::install_str("levels")) };
+        let levels_of =
+            |f: SEXP| -> SEXP { getAttrib(f, crate::sexp::symbol::install_str("levels")) };
         let levels_have_no_na = |l: SEXP| -> bool {
             (0..LENGTH(l) as R_xlen_t).all(|i| {
                 let s = STRING_ELT(l, i as i64);
@@ -415,12 +411,7 @@ pub(crate) fn try_group_dispatch(
 }
 
 /// Shared Ops dispatch used by GNU AND/OR/NOT bytecode.
-pub(crate) fn try_ops_group_dispatch(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> Option<SEXP> {
+pub(crate) fn try_ops_group_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
     try_group_dispatch(b"Ops\0", call, op, args, rho)
 }
 

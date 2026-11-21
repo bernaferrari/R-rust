@@ -490,7 +490,8 @@ pub(crate) fn grep_match_indices(
                 let msg = format!("input string {} is invalid UTF-8\0", i + 1);
                 crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
+                    std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default(),
+                );
             }
         }
         let matched = grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);

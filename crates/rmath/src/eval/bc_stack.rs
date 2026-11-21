@@ -212,9 +212,9 @@ mod tests {
             let value = Rf_ScalarInteger(17);
             with_bc_stack(|stack| stack.push(value));
         });
-        right.with_active(||  with_bc_stack(|stack| assert!(stack.is_empty())) );
-        left.with_active(|| 
-{            with_bc_stack(|stack| {
+        right.with_active(|| with_bc_stack(|stack| assert!(stack.is_empty())));
+        left.with_active(|| {
+            with_bc_stack(|stack| {
                 assert_eq!(stack.depth(), 1);
                 let value = stack.pop_owned();
                 assert_eq!({ INTEGER_ELT(value.as_raw(), 0) }, 17);

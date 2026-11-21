@@ -89,53 +89,59 @@ pub(super) fn simplify_scalar_list(list: SEXP) -> SEXP {
 }
 
 pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
-    
-        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+    if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+        return list;
+    }
+    if elem_type != SEXPTYPE::REALSXP
+        && elem_type != SEXPTYPE::INTSXP
+        && elem_type != SEXPTYPE::LGLSXP
+        && elem_type != SEXPTYPE::STRSXP
+    {
+        return list;
+    }
+    let n = XLENGTH(list);
+    let result = Rf_allocVector3(elem_type, n);
+    if result.is_null() {
+        return list;
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        let elem = VECTOR_ELT(list, i as i64);
+        if elem.is_null() || TYPEOF(elem) != elem_type || XLENGTH(elem) != 1 {
             return list;
         }
-        if elem_type != SEXPTYPE::REALSXP
-            && elem_type != SEXPTYPE::INTSXP
-            && elem_type != SEXPTYPE::LGLSXP
-            && elem_type != SEXPTYPE::STRSXP
-        {
-            return list;
-        }
-        let n = XLENGTH(list);
-        let result = Rf_allocVector3(elem_type, n);
-        if result.is_null() {
-            return list;
-        }
-        let _result_guard = protect(result);
-        for i in 0..n {
-            let elem = VECTOR_ELT(list, i as i64);
-            if elem.is_null() || TYPEOF(elem) != elem_type || XLENGTH(elem) != 1 {
-                return list;
-            }
-            if elem_type == SEXPTYPE::REALSXP {
-                set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(elem, 0));
-            } else if elem_type == SEXPTYPE::INTSXP {
-                set_integer_checked(result, (i as usize) as R_xlen_t, integer_elt_checked(elem, 0));
-            } else if elem_type == SEXPTYPE::LGLSXP {
-                set_logical_checked(result, (i as usize) as R_xlen_t, logical_elt_checked(elem, 0));
-            } else if elem_type == SEXPTYPE::STRSXP {
-                SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
-            }
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null()
-            && names != R_NilValue()
-            && TYPEOF(names) == SEXPTYPE::STRSXP
-            && XLENGTH(names) == n
-        {
-            crate::sexp::attrib_core::setAttrib(
+        if elem_type == SEXPTYPE::REALSXP {
+            set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(elem, 0));
+        } else if elem_type == SEXPTYPE::INTSXP {
+            set_integer_checked(
                 result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
+                (i as usize) as R_xlen_t,
+                integer_elt_checked(elem, 0),
             );
+        } else if elem_type == SEXPTYPE::LGLSXP {
+            set_logical_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                logical_elt_checked(elem, 0),
+            );
+        } else if elem_type == SEXPTYPE::STRSXP {
+            SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
         }
-        result
-    
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null()
+        && names != R_NilValue()
+        && TYPEOF(names) == SEXPTYPE::STRSXP
+        && XLENGTH(names) == n
+    {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+    }
+    result
 }
 
 pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {

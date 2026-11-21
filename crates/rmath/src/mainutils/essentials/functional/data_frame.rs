@@ -42,8 +42,7 @@ pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
 }
 
 pub(crate) fn melt_table(value: SEXP) -> SEXP {
-    let dim =
-        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+    let dim = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
     let nd = XLENGTH(dim) as usize;
     let mut sizes = Vec::with_capacity(nd);
     let mut total: i64 = 1;
@@ -54,10 +53,8 @@ pub(crate) fn melt_table(value: SEXP) -> SEXP {
     }
     let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (nd as i64) + 1);
     let _frame_guard = protect(frame);
-    let dimnames = crate::sexp::attrib_core::getAttrib(
-        value,
-        crate::sexp::attrib_core::R_DimNamesSymbol(),
-    );
+    let dimnames =
+        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimNamesSymbol());
     let dimnames_names = if !dimnames.is_null() && dimnames != R_NilValue() {
         crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol())
     } else {
@@ -127,180 +124,175 @@ pub(crate) fn melt_table(value: SEXP) -> SEXP {
 
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
 pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        // `...` are the columns; the remaining formals (row.names,
-        // check.rows, check.names, fix.empty.names, stringsAsFactors) are
-        // options, never columns. Drop option cells before list-building so
-        // `data.frame(a=1, stringsAsFactors=FALSE)` keeps 1 column.
-        let mut filtered = R_NilValue();
-        let mut tail: SEXP = std::ptr::null_mut();
-        let mut filter_guards: Vec<_> = Vec::new();
-        let mut ap = args;
-        while !ap.is_null() && ap != R_NilValue() {
-            let is_option = matches!(
-                tag_name(ap).as_deref(),
-                Some("row.names")
-                    | Some("check.rows")
-                    | Some("check.names")
-                    | Some("fix.empty.names")
-                    | Some("stringsAsFactors")
-            );
-            if !is_option {
-                let cell = Rf_cons(CAR(ap), R_NilValue());
-                filter_guards.push(protect(cell));
-                let tg = TAG(ap);
-                if !tg.is_null() && tg != R_NilValue() {
-                    SETTAG(cell, tg);
-                }
-                if filtered == R_NilValue() {
-                    filtered = cell;
-                } else {
-                    SETCDR(tail, cell);
-                }
-                tail = cell;
+    // `...` are the columns; the remaining formals (row.names,
+    // check.rows, check.names, fix.empty.names, stringsAsFactors) are
+    // options, never columns. Drop option cells before list-building so
+    // `data.frame(a=1, stringsAsFactors=FALSE)` keeps 1 column.
+    let mut filtered = R_NilValue();
+    let mut tail: SEXP = std::ptr::null_mut();
+    let mut filter_guards: Vec<_> = Vec::new();
+    let mut ap = args;
+    while !ap.is_null() && ap != R_NilValue() {
+        let is_option = matches!(
+            tag_name(ap).as_deref(),
+            Some("row.names")
+                | Some("check.rows")
+                | Some("check.names")
+                | Some("fix.empty.names")
+                | Some("stringsAsFactors")
+        );
+        if !is_option {
+            let cell = Rf_cons(CAR(ap), R_NilValue());
+            filter_guards.push(protect(cell));
+            let tg = TAG(ap);
+            if !tg.is_null() && tg != R_NilValue() {
+                SETTAG(cell, tg);
             }
-            ap = CDR(ap);
-        }
-        let _filtered_guard = protect(filtered);
-        let initial = do_list(_call, _op, filtered, _rho);
-        if initial.is_null() || initial == R_NilValue() {
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-            if !result.is_null() {
-                let _result_guard = protect(result);
-                set_string_names(result, &[]);
-                set_compact_row_names(result, 0);
-                set_data_frame_class(result);
-            }
-            return result;
-        }
-        let _initial_guard = protect(initial);
-        let arg_names =
-            crate::sexp::attrib_core::getAttrib(initial, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut columns: Vec<SEXP> = Vec::new();
-        let mut names: Vec<String> = Vec::new();
-        let mut nrow: Option<R_xlen_t> = None;
-
-        for i in 0..XLENGTH(initial) {
-            let mut value = VECTOR_ELT(initial, i);
-            if sexp_has_class(value, "table") {
-                value = melt_table(value);
-                filter_guards.push(protect(value));
-            }
-            let arg_name = string_at_or_empty(arg_names, i);
-            if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
-                let inner_names = crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                for j in 0..XLENGTH(value) {
-                    let column = VECTOR_ELT(value, j);
-                    let len = XLENGTH(column);
-                    match nrow {
-                        Some(existing) if len != existing => base_error(format!(
-                            "arguments imply differing number of rows: {existing}, {len}"
-                        )),
-                        None => nrow = Some(len),
-                        _ => {}
-                    }
-                    columns.push(column);
-                    let child_name = string_at_or_empty(inner_names, j);
-                    names.push(if arg_name.is_empty() {
-                        child_name
-                    } else if child_name.is_empty() {
-                        arg_name.clone()
-                    } else {
-                        format!("{arg_name}.{child_name}")
-                    });
-                }
-            } else if TYPEOF(crate::sexp::attrib_core::getAttrib(
-                value,
-                crate::sexp::attrib_core::R_DimSymbol(),
-            )) == SEXPTYPE::INTSXP
-                && XLENGTH(crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                )) == 2
-            {
-                let dim = crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                );
-                let nr = integer_elt_checked(dim, 0) as R_xlen_t;
-                let nc = integer_elt_checked(dim, (1) as R_xlen_t) as R_xlen_t;
-                match nrow {
-                    Some(existing) if nr != existing && nr != 0 && existing != 0 => base_error(
-                        format!("arguments imply differing number of rows: {existing}, {nr}"),
-                    ),
-                    None => nrow = Some(nr),
-                    _ => {}
-                }
-                if nr != 0 || nc == 0 {
-                    nrow = Some(nrow.unwrap_or(nr));
-                }
-                // GNU `as.data.frame.AsIs` (and `as.data.frame.model.matrix`):
-                // a 2-D AsIs object stays one list column. Bare matrices split.
-                if sexp_has_class(value, "AsIs") || sexp_has_class(value, "model.matrix") {
-                    columns.push(value);
-                    names.push(arg_name);
-                } else {
-                    for j in 0..nc {
-                        columns.push(super::s3::matrix_column(value, nr, j));
-                        names.push(if arg_name.is_empty() {
-                            format!("V{}", j + 1)
-                        } else if nc == 1 {
-                            arg_name.clone()
-                        } else {
-                            format!("{arg_name}.{}", j + 1)
-                        });
-                    }
-                }
+            if filtered == R_NilValue() {
+                filtered = cell;
             } else {
-                let value = if sexp_has_class(value, "POSIXlt") && TYPEOF(value) == SEXPTYPE::VECSXP
-                {
-                    let ct = crate::mainutils::essentials::do_as_POSIXct(
-                        _call,
-                        _op,
-                        Rf_cons(value, R_NilValue()),
-                        _rho,
-                    );
-                    filter_guards.push(protect(ct));
-                    ct
-                } else {
-                    value
-                };
-                let len = XLENGTH(value);
+                SETCDR(tail, cell);
+            }
+            tail = cell;
+        }
+        ap = CDR(ap);
+    }
+    let _filtered_guard = protect(filtered);
+    let initial = do_list(_call, _op, filtered, _rho);
+    if initial.is_null() || initial == R_NilValue() {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        if !result.is_null() {
+            let _result_guard = protect(result);
+            set_string_names(result, &[]);
+            set_compact_row_names(result, 0);
+            set_data_frame_class(result);
+        }
+        return result;
+    }
+    let _initial_guard = protect(initial);
+    let arg_names =
+        crate::sexp::attrib_core::getAttrib(initial, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut columns: Vec<SEXP> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut nrow: Option<R_xlen_t> = None;
+
+    for i in 0..XLENGTH(initial) {
+        let mut value = VECTOR_ELT(initial, i);
+        if sexp_has_class(value, "table") {
+            value = melt_table(value);
+            filter_guards.push(protect(value));
+        }
+        let arg_name = string_at_or_empty(arg_names, i);
+        if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
+            let inner_names = crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            for j in 0..XLENGTH(value) {
+                let column = VECTOR_ELT(value, j);
+                let len = XLENGTH(column);
                 match nrow {
-                    Some(existing) if len != existing && len != 1 => base_error(format!(
+                    Some(existing) if len != existing => base_error(format!(
                         "arguments imply differing number of rows: {existing}, {len}"
                     )),
                     None => nrow = Some(len),
                     _ => {}
                 }
+                columns.push(column);
+                let child_name = string_at_or_empty(inner_names, j);
+                names.push(if arg_name.is_empty() {
+                    child_name
+                } else if child_name.is_empty() {
+                    arg_name.clone()
+                } else {
+                    format!("{arg_name}.{child_name}")
+                });
+            }
+        } else if TYPEOF(crate::sexp::attrib_core::getAttrib(
+            value,
+            crate::sexp::attrib_core::R_DimSymbol(),
+        )) == SEXPTYPE::INTSXP
+            && XLENGTH(crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            )) == 2
+        {
+            let dim =
+                crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+            let nr = integer_elt_checked(dim, 0) as R_xlen_t;
+            let nc = integer_elt_checked(dim, (1) as R_xlen_t) as R_xlen_t;
+            match nrow {
+                Some(existing) if nr != existing && nr != 0 && existing != 0 => base_error(
+                    format!("arguments imply differing number of rows: {existing}, {nr}"),
+                ),
+                None => nrow = Some(nr),
+                _ => {}
+            }
+            if nr != 0 || nc == 0 {
+                nrow = Some(nrow.unwrap_or(nr));
+            }
+            // GNU `as.data.frame.AsIs` (and `as.data.frame.model.matrix`):
+            // a 2-D AsIs object stays one list column. Bare matrices split.
+            if sexp_has_class(value, "AsIs") || sexp_has_class(value, "model.matrix") {
                 columns.push(value);
                 names.push(arg_name);
+            } else {
+                for j in 0..nc {
+                    columns.push(super::s3::matrix_column(value, nr, j));
+                    names.push(if arg_name.is_empty() {
+                        format!("V{}", j + 1)
+                    } else if nc == 1 {
+                        arg_name.clone()
+                    } else {
+                        format!("{arg_name}.{}", j + 1)
+                    });
+                }
             }
+        } else {
+            let value = if sexp_has_class(value, "POSIXlt") && TYPEOF(value) == SEXPTYPE::VECSXP {
+                let ct = crate::mainutils::essentials::do_as_POSIXct(
+                    _call,
+                    _op,
+                    Rf_cons(value, R_NilValue()),
+                    _rho,
+                );
+                filter_guards.push(protect(ct));
+                ct
+            } else {
+                value
+            };
+            let len = XLENGTH(value);
+            match nrow {
+                Some(existing) if len != existing && len != 1 => base_error(format!(
+                    "arguments imply differing number of rows: {existing}, {len}"
+                )),
+                None => nrow = Some(len),
+                _ => {}
+            }
+            columns.push(value);
+            names.push(arg_name);
         }
+    }
 
-        repair_data_frame_names(&mut names);
-        let row_count = nrow.unwrap_or(0);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
-        if result.is_null() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        for (i, column) in columns.iter().enumerate() {
-            SET_VECTOR_ELT(
-                result,
-                i as R_xlen_t,
-                recycle_column_if_needed(*column, row_count),
-            );
-        }
-        set_string_names(result, &names);
-        set_compact_row_names(result, row_count);
-        set_data_frame_class(result);
+    repair_data_frame_names(&mut names);
+    let row_count = nrow.unwrap_or(0);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+    if result.is_null() {
+        return result;
+    }
+    let _result_guard = protect(result);
+    for (i, column) in columns.iter().enumerate() {
+        SET_VECTOR_ELT(
+            result,
+            i as R_xlen_t,
+            recycle_column_if_needed(*column, row_count),
+        );
+    }
+    set_string_names(result, &names);
+    set_compact_row_names(result, row_count);
+    set_data_frame_class(result);
 
-        result
-    
+    result
 }
 
 // ---------------------------------------------------------------------------

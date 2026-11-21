@@ -291,12 +291,8 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             if t == SEXPTYPE::INTSXP {
                 let x_raw = x.as_raw();
                 {
-                    let is_factor = crate::mainutils::objects::inherits2(
-                        x_raw,
-                        c"factor") != 0;
-                    let is_ordered = crate::mainutils::objects::inherits2(
-                        x_raw,
-                        c"ordered") != 0;
+                    let is_factor = crate::mainutils::objects::inherits2(x_raw, c"factor") != 0;
+                    let is_ordered = crate::mainutils::objects::inherits2(x_raw, c"ordered") != 0;
                     if is_factor || is_ordered { 0 } else { 1 }
                 }
             } else {

@@ -215,8 +215,7 @@ pub fn deparse1WithCutoff(
                 if (opts & WARNINCOMPLETE) != 0 && local_data.sourceable == 0 {
                     access
                         .with_native(|_| {
-                            crate::mainutils::errors::Rf_warning1(
-                                c"deparse may be incomplete");
+                            crate::mainutils::errors::Rf_warning1(c"deparse may be incomplete");
                             Ok(())
                         })
                         .unwrap_or_else(|_| allocation_error());
@@ -226,7 +225,8 @@ pub fn deparse1WithCutoff(
             })
             .unwrap_or_else(|_| allocation_error());
             result.as_raw()
-        }).unwrap_or_else(|_| allocation_error())
+        })
+        .unwrap_or_else(|_| allocation_error())
     }
 }
 
@@ -478,9 +478,8 @@ pub fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
             });
         let _restore = RestoreBrowseLines::enter(pin, 0);
         deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0)
-    }).unwrap_or_else(|_| {
-        buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation)
     })
+    .unwrap_or_else(|_| buffer::buffer_error(owned_line_buffer::LineBufferError::Allocation))
 }
 
 /// Deparse a symbolic object (call, expression, symbol) with the R-level
@@ -527,7 +526,8 @@ pub fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
                 let n = access
                     .with_native(|_| Ok(crate::mainutils::coerce::asInteger(value.as_raw())))
                     .unwrap_or_else(|_| allocation_error());
-                let _restore = RestoreBrowseLines::enter(pin, if n == NA_INTEGER { 100 } else { n });
+                let _restore =
+                    RestoreBrowseLines::enter(pin, if n == NA_INTEGER { 100 } else { n });
                 let raw = access
                     .with_native(|_| {
                         Ok(deparse1WithCutoff(
@@ -544,7 +544,8 @@ pub fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
             })
             .unwrap_or_else(|_| allocation_error());
             result.as_raw()
-        }).unwrap_or_else(|_| allocation_error())
+        })
+        .unwrap_or_else(|_| allocation_error())
     }
 }
 

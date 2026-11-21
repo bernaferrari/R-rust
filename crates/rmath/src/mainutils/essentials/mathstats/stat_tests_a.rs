@@ -58,11 +58,7 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _cf = protect(conf);
     set_real_checked(conf, 0, lo);
     set_real_checked(conf, (1) as R_xlen_t, hi);
-    crate::sexp::attrib_core::setAttrib(
-        conf,
-        install_str("conf.level"),
-        Rf_ScalarReal(0.95),
-    );
+    crate::sexp::attrib_core::setAttrib(conf, install_str("conf.level"), Rf_ScalarReal(0.95));
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 10);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, statistic);
@@ -92,11 +88,7 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -159,11 +151,7 @@ pub fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _cf = protect(conf);
     set_real_checked(conf, 0, lo);
     set_real_checked(conf, (1) as R_xlen_t, hi);
-    crate::sexp::attrib_core::setAttrib(
-        conf,
-        install_str("conf.level"),
-        Rf_ScalarReal(0.95),
-    );
+    crate::sexp::attrib_core::setAttrib(conf, install_str("conf.level"), Rf_ScalarReal(0.95));
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, statistic);
@@ -191,11 +179,7 @@ pub fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -257,11 +241,7 @@ pub fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -345,11 +325,7 @@ pub fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -413,11 +389,7 @@ pub fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -443,14 +415,12 @@ pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let p_u = if pc_u >= 1.0 {
         1.0
     } else {
-        (pc_u + z22n + z * (pc_u * (1.0 - pc_u) / n + z22n / (2.0 * n)).sqrt())
-            / (1.0 + 2.0 * z22n)
+        (pc_u + z22n + z * (pc_u * (1.0 - pc_u) / n + z22n / (2.0 * n)).sqrt()) / (1.0 + 2.0 * z22n)
     };
     let p_l = if pc_l <= 0.0 {
         0.0
     } else {
-        (pc_l + z22n - z * (pc_l * (1.0 - pc_l) / n + z22n / (2.0 * n)).sqrt())
-            / (1.0 + 2.0 * z22n)
+        (pc_l + z22n - z * (pc_l * (1.0 - pc_l) / n + z22n / (2.0 * n)).sqrt()) / (1.0 + 2.0 * z22n)
     };
     let method = if yates > 0.0 {
         "1-sample proportions test with continuity correction"
@@ -473,11 +443,7 @@ pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _cf = protect(conf);
     set_real_checked(conf, 0, p_l.max(0.0));
     set_real_checked(conf, (1) as R_xlen_t, p_u.min(1.0));
-    crate::sexp::attrib_core::setAttrib(
-        conf,
-        install_str("conf.level"),
-        Rf_ScalarReal(0.95),
-    );
+    crate::sexp::attrib_core::setAttrib(conf, install_str("conf.level"), Rf_ScalarReal(0.95));
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, statistic);
@@ -506,11 +472,7 @@ pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -574,11 +536,7 @@ pub fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _cf = protect(conf);
     set_real_checked(conf, 0, lo);
     set_real_checked(conf, (1) as R_xlen_t, hi);
-    crate::sexp::attrib_core::setAttrib(
-        conf,
-        install_str("conf.level"),
-        Rf_ScalarReal(0.95),
-    );
+    crate::sexp::attrib_core::setAttrib(conf, install_str("conf.level"), Rf_ScalarReal(0.95));
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, statistic);
@@ -610,11 +568,7 @@ pub fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -670,11 +624,7 @@ pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _cf = protect(conf);
     set_real_checked(conf, 0, lo);
     set_real_checked(conf, (1) as R_xlen_t, hi);
-    crate::sexp::attrib_core::setAttrib(
-        conf,
-        install_str("conf.level"),
-        Rf_ScalarReal(0.95),
-    );
+    crate::sexp::attrib_core::setAttrib(conf, install_str("conf.level"), Rf_ScalarReal(0.95));
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 9);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, statistic);
@@ -706,11 +656,7 @@ pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -719,8 +665,7 @@ pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     let x = CAR(args);
     let g = CAR(CDR(args));
     let n0 = XLENGTH(x);
-    let mut groups: std::collections::BTreeMap<i32, Vec<f64>> =
-        std::collections::BTreeMap::new();
+    let mut groups: std::collections::BTreeMap<i32, Vec<f64>> = std::collections::BTreeMap::new();
     for i in 0..n0 {
         let v = elt_real_safe(x, i);
         if !v.is_finite() {
@@ -754,8 +699,8 @@ pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             .zip(vs.iter())
             .map(|(n, v)| n * v.ln())
             .sum::<f64>();
-    let den = 1.0
-        + (ns.iter().map(|n| 1.0 / n).sum::<f64>() - 1.0 / n_total) / (3.0 * (k as f64 - 1.0));
+    let den =
+        1.0 + (ns.iter().map(|n| 1.0 / n).sum::<f64>() - 1.0 / n_total) / (3.0 * (k as f64 - 1.0));
     let stat = num / den;
     let df = (k as f64) - 1.0;
     let pval = crate::dist::chisq::pchisq_inner(stat, df, false, false);
@@ -788,11 +733,7 @@ pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -841,8 +782,7 @@ pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let ranks = rank_average(&vals);
     let n = vals.len() as f64;
-    let mut by_g: std::collections::BTreeMap<i32, (f64, f64)> =
-        std::collections::BTreeMap::new();
+    let mut by_g: std::collections::BTreeMap<i32, (f64, f64)> = std::collections::BTreeMap::new();
     for (r, g) in ranks.iter().zip(groups.iter()) {
         let e = by_g.entry(*g).or_insert((0.0, 0.0));
         e.0 += *r;
@@ -873,11 +813,7 @@ pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     SET_VECTOR_ELT(result, 0, statistic);
     SET_VECTOR_ELT(result, 1, parameter);
     SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-    SET_VECTOR_ELT(
-        result,
-        3,
-        mk_string_cstr(c"Kruskal-Wallis rank sum test"),
-    );
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(c"Kruskal-Wallis rank sum test"));
     SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x and g"));
     crate::mainutils::essentials::set_string_names(
         result,
@@ -891,11 +827,7 @@ pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -954,13 +886,7 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let mut a: Vec<f64> = ranks
         .iter()
         .map(|r| {
-            crate::dist::normal::qnorm5_inner(
-                (1.0 + r / (n + 1.0)) / 2.0,
-                0.0,
-                1.0,
-                true,
-                false,
-            )
+            crate::dist::normal::qnorm5_inner((1.0 + r / (n + 1.0)) / 2.0, 0.0, 1.0, true, false)
         })
         .collect();
     let mean_a = a.iter().sum::<f64>() / n;
@@ -968,8 +894,7 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         *v -= mean_a;
     }
     let vsum = a.iter().map(|v| v * v).sum::<f64>() / (n - 1.0);
-    let mut a_by_g: std::collections::BTreeMap<i32, Vec<f64>> =
-        std::collections::BTreeMap::new();
+    let mut a_by_g: std::collections::BTreeMap<i32, Vec<f64>> = std::collections::BTreeMap::new();
     for (ai, g) in a.iter().zip(groups.iter()) {
         a_by_g.entry(*g).or_default().push(*ai);
     }
@@ -1013,11 +938,7 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -1119,11 +1040,7 @@ pub fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     SET_VECTOR_ELT(result, 0, statistic);
     SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
     SET_VECTOR_ELT(result, 2, mk_string_cstr(c"two.sided"));
-    SET_VECTOR_ELT(
-        result,
-        3,
-        mk_string_cstr(c"Mood two-sample test of scale"),
-    );
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(c"Mood two-sample test of scale"));
     SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x and y"));
     crate::mainutils::essentials::set_string_names(
         result,
@@ -1137,11 +1054,7 @@ pub fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -1226,10 +1139,6 @@ pub fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }

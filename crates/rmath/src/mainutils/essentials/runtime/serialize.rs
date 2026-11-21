@@ -155,9 +155,9 @@ pub fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let tag = TAG(cell);
             let value = CAR(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
-                .to_string_lossy()
-                .into_owned();
+                let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag))
+                    .to_string_lossy()
+                    .into_owned();
                 match name.as_str() {
                     "object" => object_arg = value,
                     "file" => file_arg = value,

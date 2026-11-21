@@ -132,12 +132,14 @@ pub fn coerceToInteger(v: SEXP) -> SEXP {
                 source
                     .try_real_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                Some(&mut warn)),
+                Some(&mut warn),
+            ),
             SEXPTYPE::CPLXSXP => IntegerFromComplex(
                 source
                     .try_complex_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                Some(&mut warn)),
+                Some(&mut warn),
+            ),
             SEXPTYPE::STRSXP => {
                 let text = source
                     .try_string_elt(i)
@@ -215,7 +217,8 @@ pub fn coerceToReal(v: SEXP) -> SEXP {
                 source
                     .try_complex_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                Some(&mut warn)),
+                Some(&mut warn),
+            ),
             SEXPTYPE::STRSXP => {
                 let text = source
                     .try_string_elt(i)
@@ -393,7 +396,8 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
                     source
                         .try_real_elt(i)
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    Some(&mut warn));
+                    Some(&mut warn),
+                );
                 if val == NA_INTEGER || val < 0 || val > 255 {
                     warn |= WARN_RAW;
                     0
@@ -406,7 +410,8 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
                     source
                         .try_complex_elt(i)
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    Some(&mut warn));
+                    Some(&mut warn),
+                );
                 if val == NA_INTEGER || val < 0 || val > 255 {
                     warn |= WARN_RAW;
                     0

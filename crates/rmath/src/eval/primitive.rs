@@ -345,7 +345,7 @@ mod tests {
         let pointer = arena.alloc_node(SEXPTYPE::BUILTINSXP);
         let offset = fun_tab_index_by_name("length").unwrap();
         // SAFETY: the arena keeps this exact initialized primitive live.
-         SET_PRIMOFFSET(pointer, offset) ;
+        SET_PRIMOFFSET(pointer, offset);
         let address_only = std::ptr::without_provenance_mut(pointer.addr());
         assert_eq!(PRIMNAME(address_only), "length");
         assert_eq!(

@@ -1095,16 +1095,16 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
             for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
                 if registered {
                     if let Some(callback) = callback {
-                        owner
-                            .require_active()
-                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        owner.require_active().unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                         let callback_result = callback(event, dev, data);
-                        owner
-                            .require_active()
-                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                        if device
-                            .is_some_and(|ticket| !device_registry::device_registration_is_live(ticket))
-                        {
+                        owner.require_active().unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                        if device.is_some_and(|ticket| {
+                            !device_registry::device_registration_is_live(ticket)
+                        }) {
                             crate::sexp::context::r_error(
                                 "graphics device was closed during event callback",
                             );
@@ -1126,7 +1126,8 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
             result
                 .as_ref()
                 .map_or_else(nil_value, |value| value.as_raw())
-        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 
@@ -2658,7 +2659,10 @@ mod tests {
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             assert_eq!(unsafe { toDeviceWidth(val, GE_CM, ptr::null_mut()) }, 1.0);
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-            assert_eq!(unsafe { fromDeviceHeight(val, GE_NDC, ptr::null_mut()) }, 1.0);
+            assert_eq!(
+                unsafe { fromDeviceHeight(val, GE_NDC, ptr::null_mut()) },
+                1.0
+            );
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             assert_eq!(unsafe { toDeviceHeight(val, GE_NDC, ptr::null_mut()) }, 1.0);
         }
@@ -3201,15 +3205,17 @@ mod tests {
             let mut d = 1.0;
             let mut w = 1.0;
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-            unsafe { GEStrMetric(
-                ptr::null(),
-                0,
-                ptr::null(),
-                &mut a,
-                &mut d,
-                &mut w,
-                ptr::null_mut(),
-            ) };
+            unsafe {
+                GEStrMetric(
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    &mut a,
+                    &mut d,
+                    &mut w,
+                    ptr::null_mut(),
+                )
+            };
             assert_eq!(a, 0.0);
             assert_eq!(d, 0.0);
             assert_eq!(w, 0.0);

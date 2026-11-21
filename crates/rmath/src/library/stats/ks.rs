@@ -207,7 +207,8 @@ pub fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         ans
-    }).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
+    })
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -234,9 +235,7 @@ pub fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
         match n.checked_add(isr[i]) {
             Some(total) => n = total,
             None => {
-                crate::main::errors::Rf_error_cstr(
-                    c"Sample size too large"
-                );
+                crate::main::errors::Rf_error_cstr(c"Sample size too large");
                 unreachable!("Rf_error raises an R error");
             }
         }

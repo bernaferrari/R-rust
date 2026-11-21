@@ -98,7 +98,7 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// `names(x) <- pairlist("a","b","c")` stores `c("a","b","c")`.
-pub(crate)  fn pairlist_to_names(value: SEXP) -> SEXP {
+pub(crate) fn pairlist_to_names(value: SEXP) -> SEXP {
     let mut n = 0i32;
     let mut cell = value;
     while !cell.is_null() && cell != R_NilValue() {
@@ -364,7 +364,10 @@ pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
             let pn = PRINTNAME(symb);
             if !pn.is_null() {
                 let name = crate::sexp::accessors::charsxp_as_utf8(pn);
-                if matches!(name.as_slice(), b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{") {
+                if matches!(
+                    name.as_slice(),
+                    b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{"
+                ) {
                     return pn;
                 }
             }

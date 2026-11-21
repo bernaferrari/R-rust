@@ -964,15 +964,13 @@ pub fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     let info_symbol = install_str(".__NAMESPACE__.");
     let namespace = if ns_arg == base
         || (TYPEOF(ns_arg) == SEXPTYPE::ENVSXP
-            && TYPEOF(find_var_in_frame(ns_arg, info_symbol))
-                == SEXPTYPE::ENVSXP)
+            && TYPEOF(find_var_in_frame(ns_arg, info_symbol)) == SEXPTYPE::ENVSXP)
     {
         ns_arg
     } else {
         let package = namespace_lookup_name(ns_arg, "bad namespace name");
         let package = symbol_name(package).unwrap_or_default();
-        load_package_namespace_by_name(&package)
-            .unwrap_or_else(|message| package_error(message))
+        load_package_namespace_by_name(&package).unwrap_or_else(|message| package_error(message))
     };
     let _namespace = protect(namespace);
     let name = namespace_lookup_name(CAR(CDR(args)), "bad variable name");
@@ -1016,10 +1014,7 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
                 return crate::eval::eval::Rf_eval(alias, namespace);
             }
         }
-        let info = find_var_in_frame(
-            namespace,
-            install_str(".__NAMESPACE__."),
-        );
+        let info = find_var_in_frame(namespace, install_str(".__NAMESPACE__."));
         let _info = protect(info);
         let lazy = find_var_in_frame(info, install_str("lazydata"));
         if TYPEOF(lazy) == SEXPTYPE::ENVSXP {
@@ -1290,11 +1285,7 @@ pub fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         current = CDR(current);
     }
 
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
     result
 }
 
@@ -1405,7 +1396,8 @@ pub fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 Some(c"deprecatedWarning"),
                 None,
                 0,
-                Some(&c_msg));
+                Some(&c_msg),
+            );
             let _condition_guard = protect(condition);
             let muffled =
                 crate::mainutils::essentials::signal_calling_warning_condition(condition, rho);
@@ -1442,8 +1434,11 @@ mod tests {
             .expect("namespace root should be owned");
         session.with_active(|| {
             let owner = session.owner_token().expect("active owner");
-            let value =
-                super::namespace_value(namespace.as_raw(), crate::sexp::symbol::install_str("plot"), true);
+            let value = super::namespace_value(
+                namespace.as_raw(),
+                crate::sexp::symbol::install_str("plot"),
+                true,
+            );
             let value = owner
                 .node_factory()
                 .wrap(value)

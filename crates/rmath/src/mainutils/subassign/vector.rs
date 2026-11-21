@@ -335,7 +335,8 @@ pub(crate) unsafe fn SubassignTypeFix(
                     *y = coerceVector(*y, VECSXP);
                 } else {
                     crate::mainutils::errors::Rf_error_cstr(
-                        c"incompatible types (from list to expression)");
+                        c"incompatible types (from list to expression)",
+                    );
                 }
             }
 
@@ -592,7 +593,8 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
             }
             if has_na {
                 crate::mainutils::errors::Rf_error_cstr(
-                    c"NAs are not allowed in subscripted assignments");
+                    c"NAs are not allowed in subscripted assignments",
+                );
             }
         }
 
@@ -628,16 +630,15 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
         // NULL-to-list deletion is handled above; an empty VECSXP is not
         // NULL and must not VECTOR_ELT(y, 0) on a zero-length pool.
         if n > 0 && ny == 0 {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"replacement has length zero"
-            );
+            crate::mainutils::errors::Rf_error_cstr(c"replacement has length zero");
         }
 
         // Warn about non-multiple recycling
         if ny != 0 && n % ny != 0 {
             crate::mainutils::errors::warningcall_cstr(
                 call,
-                c"number of items to replace is not a multiple of replacement length");
+                c"number of items to replace is not a multiple of replacement length",
+            );
         }
 
         // Duplicate y if x == y

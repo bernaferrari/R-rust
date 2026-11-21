@@ -8,8 +8,7 @@ pub fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
     let summary_op = SummaryOp::from_name(get_op_name(op, call));
     #[cfg(feature = "renderplot-device")]
-    if let Some(result) =
-        crate::mainutils::portable_grid::unit_summary(get_op_name(op, call), args)
+    if let Some(result) = crate::mainutils::portable_grid::unit_summary(get_op_name(op, call), args)
     {
         return result;
     }
@@ -143,9 +142,7 @@ pub(crate) fn parse_summary_finite(args: SEXP) -> bool {
     while !current.is_null() && current != R_NilValue() {
         if tag_name_is(TAG(current), "finite") {
             if seen {
-                summary_error(
-                    "formal argument \"finite\" matched by multiple actual arguments",
-                );
+                summary_error("formal argument \"finite\" matched by multiple actual arguments");
             }
             seen = true;
             finite = summary_logical_arg(CAR(current));
@@ -484,7 +481,8 @@ pub(crate) fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP
                     SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
                     return out;
                 } else {
-                    String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(s)).into_owned()
+                    String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(s))
+                        .into_owned()
                 };
                 best = Some(match best {
                     None => text,
@@ -628,12 +626,7 @@ pub(crate) fn eval_minmax(
     }
 }
 
-pub(crate) fn eval_range(
-    args: SEXP,
-    shape: SummaryShape,
-    na_rm: bool,
-    finite: bool,
-) -> SEXP {
+pub(crate) fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool, finite: bool) -> SEXP {
     unsafe {
         let min = eval_minmax(args, shape, na_rm, finite, SummaryOp::Min);
         let max = eval_minmax(args, shape, na_rm, finite, SummaryOp::Max);

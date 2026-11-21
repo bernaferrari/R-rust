@@ -115,17 +115,14 @@ pub(crate) fn symbol_name_for_error(expr: Sexp<'_>) -> String {
 }
 
 #[inline(never)]
-pub(crate) fn eval_safe_inner<'a>(
-    expr: Sexp<'a>,
-    env: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     match classify_expr(&expr) {
         EvalKind::SelfEvaluating => Ok(expr),
-        EvalKind::Symbol => { eval_symbol_safe(expr, env) },
+        EvalKind::Symbol => eval_symbol_safe(expr, env),
         EvalKind::Language => {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_lang_safe(expr, env)
-        },
+        }
         EvalKind::Closure => Ok(expr),
         // Environments are first-class values (upstream Rf_eval returns
         // ENVSXP unchanged): `local({...})` blocks capture them via
@@ -134,18 +131,15 @@ pub(crate) fn eval_safe_inner<'a>(
         EvalKind::Promise => {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_promise_safe(expr, env)
-        },
+        }
         EvalKind::Dots => eval_dots_safe(expr, env),
-        EvalKind::Bytecode => { eval_bytecode_safe(expr, env) },
+        EvalKind::Bytecode => eval_bytecode_safe(expr, env),
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
 }
 
 #[inline(never)]
-pub(crate) fn eval_symbol_safe<'a>(
-    expr: Sexp<'a>,
-    env: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_symbol_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     if let Some(value) = ({
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         find_var_result(expr.clone(), env.clone())
@@ -154,20 +148,15 @@ pub(crate) fn eval_symbol_safe<'a>(
     }
     match primitive_for_symbol(expr.clone()) {
         Some(primitive) => Ok(primitive),
-        None => {
-            crate::mainutils::errors::R_ObjectNotFoundError(
-                expr.as_raw(),
-                super::super::context::get_lexical_call(env.as_raw()),
-                None,
-            )
-        },
+        None => crate::mainutils::errors::R_ObjectNotFoundError(
+            expr.as_raw(),
+            super::super::context::get_lexical_call(env.as_raw()),
+            None,
+        ),
     }
 }
 
-pub(crate) fn eval_bytecode_safe<'a>(
-    expr: Sexp<'a>,
-    env: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     if super::super::jit::get_R_disable_bytecode() != 0 {
         return Err("bytecode evaluation is disabled for this R session".to_string());
     }

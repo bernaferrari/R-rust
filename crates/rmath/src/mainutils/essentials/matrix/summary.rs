@@ -110,22 +110,11 @@ fn copy_datetime_class(from: SEXP, to: SEXP) {
     let class =
         crate::sexp::attrib_core::getAttrib(from, crate::sexp::attrib_core::R_ClassSymbol());
     if !class.is_null() && class != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            to,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(to, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
-    let tzone = crate::sexp::attrib_core::getAttrib(
-        from,
-        install_str("tzone"),
-    );
+    let tzone = crate::sexp::attrib_core::getAttrib(from, install_str("tzone"));
     if !tzone.is_null() && tzone != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            to,
-            install_str("tzone"),
-            tzone,
-        );
+        crate::sexp::attrib_core::setAttrib(to, install_str("tzone"), tzone);
     }
 }
 
@@ -141,14 +130,9 @@ fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
     for j in 0..ncomp {
         SET_VECTOR_ELT(ans, j, resize_vector(VECTOR_ELT(x, j), new_len));
     }
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     if !names.is_null() && names != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
     }
     copy_datetime_class(x, ans);
     crate::sexp::attrib_core::setAttrib(
@@ -161,79 +145,88 @@ fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
 }
 
 pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
-    
-        if XLENGTH(x) == new_len {
-            return x;
-        }
-        let kind = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE(kind), new_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let copy_len = XLENGTH(x).min(new_len);
+    if XLENGTH(x) == new_len {
+        return x;
+    }
+    let kind = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE(kind), new_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let copy_len = XLENGTH(x).min(new_len);
 
-        if kind == SEXPTYPE::LGLSXP.as_c_int() {
-            for i in 0..copy_len {
-                set_logical_checked(result, (i as usize) as R_xlen_t, LOGICAL_ELT(x, i as c_int));
-            }
-            for i in copy_len..new_len {
-                set_logical_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
-            }
-        } else if kind == SEXPTYPE::INTSXP.as_c_int() {
-            for i in 0..copy_len {
-                set_integer_checked(result, (i as usize) as R_xlen_t, INTEGER_ELT(x, i as c_int));
-            }
-            for i in copy_len..new_len {
-                set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
-            }
-        } else if kind == SEXPTYPE::REALSXP.as_c_int() {
-            for i in 0..copy_len {
-                set_real_checked(result, (i as usize) as R_xlen_t, REAL_ELT(x, i as c_int));
-            }
-            for i in copy_len..new_len {
-                set_real_checked(result, (i as usize) as R_xlen_t, NA_REAL);
-            }
-        } else if kind == SEXPTYPE::CPLXSXP.as_c_int() {
-            for i in 0..copy_len {
-                set_complex_checked(result, (i as usize) as R_xlen_t, complex_elt_checked(x, (i as usize) as R_xlen_t));
-            }
-            for i in copy_len..new_len {
-                set_complex_checked(result, (i as usize) as R_xlen_t, Rcomplex {
+    if kind == SEXPTYPE::LGLSXP.as_c_int() {
+        for i in 0..copy_len {
+            set_logical_checked(result, (i as usize) as R_xlen_t, LOGICAL_ELT(x, i as c_int));
+        }
+        for i in copy_len..new_len {
+            set_logical_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
+        }
+    } else if kind == SEXPTYPE::INTSXP.as_c_int() {
+        for i in 0..copy_len {
+            set_integer_checked(result, (i as usize) as R_xlen_t, INTEGER_ELT(x, i as c_int));
+        }
+        for i in copy_len..new_len {
+            set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
+        }
+    } else if kind == SEXPTYPE::REALSXP.as_c_int() {
+        for i in 0..copy_len {
+            set_real_checked(result, (i as usize) as R_xlen_t, REAL_ELT(x, i as c_int));
+        }
+        for i in copy_len..new_len {
+            set_real_checked(result, (i as usize) as R_xlen_t, NA_REAL);
+        }
+    } else if kind == SEXPTYPE::CPLXSXP.as_c_int() {
+        for i in 0..copy_len {
+            set_complex_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                complex_elt_checked(x, (i as usize) as R_xlen_t),
+            );
+        }
+        for i in copy_len..new_len {
+            set_complex_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                Rcomplex {
                     r: NA_REAL,
                     i: NA_REAL,
-                });
-            }
-        } else if kind == SEXPTYPE::STRSXP.as_c_int() {
-            for i in 0..copy_len {
-                SET_STRING_ELT(result, i, STRING_ELT(x, i));
-            }
-            for i in copy_len..new_len {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-            }
-        } else if kind == SEXPTYPE::RAWSXP.as_c_int() {
-            for i in 0..copy_len {
-                set_raw_checked(result, (i as usize) as R_xlen_t, raw_elt_checked(x, (i as usize) as R_xlen_t));
-            }
-        } else if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() {
-            for i in 0..copy_len {
-                SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
-            }
-            for i in copy_len..new_len {
-                SET_VECTOR_ELT(result, i, R_NilValue());
-            }
-        } else {
-            std::panic::panic_any(RError {
-                message: "unsupported type for length assignment".to_string(),
-            });
+                },
+            );
         }
-        result
-    
+    } else if kind == SEXPTYPE::STRSXP.as_c_int() {
+        for i in 0..copy_len {
+            SET_STRING_ELT(result, i, STRING_ELT(x, i));
+        }
+        for i in copy_len..new_len {
+            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+        }
+    } else if kind == SEXPTYPE::RAWSXP.as_c_int() {
+        for i in 0..copy_len {
+            set_raw_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                raw_elt_checked(x, (i as usize) as R_xlen_t),
+            );
+        }
+    } else if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() {
+        for i in 0..copy_len {
+            SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
+        }
+        for i in copy_len..new_len {
+            SET_VECTOR_ELT(result, i, R_NilValue());
+        }
+    } else {
+        std::panic::panic_any(RError {
+            message: "unsupported type for length assignment".to_string(),
+        });
+    }
+    result
 }
 
 pub fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
         return;
     }
@@ -250,11 +243,7 @@ pub fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
     for i in copy_len..new_len {
         SET_STRING_ELT(resized, i, mk_char_cstr(c""));
     }
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        resized,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), resized);
 }
 
 pub fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
@@ -303,100 +292,97 @@ pub fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
-    
-        let mut x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
+    let mut x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    if crate::mainutils::objects::inherits2(x, c"data.frame") != 0 {
+        x = super::construct::data_frame_as_matrix(x);
+    }
+    let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {
+        let arg = arg_by_name_or_position(args, &[], 1);
+        !arg.is_null()
+            && arg != R_NilValue()
+            && arg != crate::sexp::globals::R_MissingArg()
+            && real_or_default(arg, 0.0) != 0.0
+    });
+    let dims_arg = {
+        let named = arg_by_name_or_position(args, &["dims"], 2);
+        if !named.is_null() && named != R_NilValue() {
+            named
+        } else {
+            R_NilValue()
         }
-        if crate::mainutils::objects::inherits2(x, c"data.frame") != 0 {
-            x = super::construct::data_frame_as_matrix(x);
-        }
-        let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {
-            let arg = arg_by_name_or_position(args, &[], 1);
-            !arg.is_null()
-                && arg != R_NilValue()
-                && arg != crate::sexp::globals::R_MissingArg()
-                && real_or_default(arg, 0.0) != 0.0
-        });
-        let dims_arg = {
-            let named = arg_by_name_or_position(args, &["dims"], 2);
-            if !named.is_null() && named != R_NilValue() {
-                named
+    };
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let dim_len = if !dim_attr.is_null()
+        && dim_attr != R_NilValue()
+        && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
+    {
+        XLENGTH(dim_attr)
+    } else {
+        0
+    };
+
+    let dims = margin_summary_dims(dims_arg, dim_len, rows);
+    let mut leading = 1 as R_xlen_t;
+    let mut trailing = 1 as R_xlen_t;
+    let mut result_axes = Vec::new();
+
+    if dim_len == 0 {
+        leading = XLENGTH(x);
+    } else {
+        for axis in 0..dim_len {
+            let extent = integer_elt_checked(dim_attr, (axis as usize) as R_xlen_t) as R_xlen_t;
+            if axis < dims {
+                leading = leading.saturating_mul(extent);
             } else {
-                R_NilValue()
+                trailing = trailing.saturating_mul(extent);
             }
+        }
+        let axis_range: Box<dyn Iterator<Item = R_xlen_t>> = if rows {
+            Box::new(0..dims)
+        } else {
+            Box::new(dims..dim_len)
         };
+        result_axes.extend(axis_range);
+    }
+    let result_len = if rows { leading } else { trailing };
 
-        let dim_attr =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let dim_len = if !dim_attr.is_null()
-            && dim_attr != R_NilValue()
-            && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-        {
-            XLENGTH(dim_attr)
-        } else {
-            0
-        };
+    if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+        return complex_margin_summary(
+            x,
+            rows,
+            mean,
+            na_rm,
+            leading,
+            trailing,
+            result_len,
+            &result_axes,
+            dim_attr,
+        );
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
 
-        let dims = margin_summary_dims(dims_arg, dim_len, rows);
-        let mut leading = 1 as R_xlen_t;
-        let mut trailing = 1 as R_xlen_t;
-        let mut result_axes = Vec::new();
-
-        if dim_len == 0 {
-            leading = XLENGTH(x);
-        } else {
-            for axis in 0..dim_len {
-                let extent = integer_elt_checked(dim_attr, (axis as usize) as R_xlen_t) as R_xlen_t;
-                if axis < dims {
-                    leading = leading.saturating_mul(extent);
-                } else {
-                    trailing = trailing.saturating_mul(extent);
-                }
-            }
-            let axis_range: Box<dyn Iterator<Item = R_xlen_t>> = if rows {
-                Box::new(0..dims)
-            } else {
-                Box::new(dims..dim_len)
-            };
-            result_axes.extend(axis_range);
+    if rows {
+        for row in 0..leading {
+            let value = summarize_margin_cells(x, row, leading, trailing, na_rm, mean);
+            set_real_checked(result, (row as usize) as R_xlen_t, value);
         }
-        let result_len = if rows { leading } else { trailing };
-
-        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
-            return complex_margin_summary(
-                x,
-                rows,
-                mean,
-                na_rm,
-                leading,
-                trailing,
-                result_len,
-                &result_axes,
-                dim_attr,
-            );
+    } else {
+        for col in 0..trailing {
+            let value = summarize_contiguous_cells(x, col * leading, leading, na_rm, mean);
+            set_real_checked(result, (col as usize) as R_xlen_t, value);
         }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
+    }
 
-        if rows {
-            for row in 0..leading {
-                let value = summarize_margin_cells(x, row, leading, trailing, na_rm, mean);
-                set_real_checked(result, (row as usize) as R_xlen_t, value);
-            }
-        } else {
-            for col in 0..trailing {
-                let value = summarize_contiguous_cells(x, col * leading, leading, na_rm, mean);
-                set_real_checked(result, (col as usize) as R_xlen_t, value);
-            }
-        }
-
-        set_margin_summary_attrs(result, dim_attr, &result_axes, x);
-        result
-    
+    set_margin_summary_attrs(result, dim_attr, &result_axes, x);
+    result
 }
 
 fn complex_margin_summary(
@@ -410,79 +396,77 @@ fn complex_margin_summary(
     result_axes: &[R_xlen_t],
     dim_attr: SEXP,
 ) -> SEXP {
-    
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _g = protect(result);
-        let part_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-        let one = |index: R_xlen_t| -> Rcomplex {
-            let mut sr = 0.0;
-            let mut si = 0.0;
-            let mut nr = 0.0;
-            let mut ni = 0.0;
-            let mut re_na = false;
-            let mut im_na = false;
-            let count = if rows { trailing } else { leading };
-            for k in 0..count {
-                let cell = if rows {
-                    index + k * leading
-                } else {
-                    index * leading + k
-                };
-                let z = complex_elt_checked(x, (cell as usize) as R_xlen_t);
-                let bad = part_na(z.r) || part_na(z.i);
-                if na_rm && bad {
-                    continue;
-                }
-                if part_na(z.r) {
-                    re_na = true;
-                } else {
-                    sr += z.r;
-                    nr += 1.0;
-                }
-                if part_na(z.i) {
-                    im_na = true;
-                } else {
-                    si += z.i;
-                    ni += 1.0;
-                }
-            }
-            let finish = |na: bool, sum: f64, n: f64| -> f64 {
-                if na {
-                    if mean {
-                        f64::NAN
-                    } else {
-                        crate::sexp::ffi::NA_REAL
-                    }
-                } else if mean {
-                    if n == 0.0 {
-                        crate::sexp::ffi::NA_REAL
-                    } else {
-                        sum / n
-                    }
-                } else {
-                    sum
-                }
+    let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _g = protect(result);
+    let part_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+    let one = |index: R_xlen_t| -> Rcomplex {
+        let mut sr = 0.0;
+        let mut si = 0.0;
+        let mut nr = 0.0;
+        let mut ni = 0.0;
+        let mut re_na = false;
+        let mut im_na = false;
+        let count = if rows { trailing } else { leading };
+        for k in 0..count {
+            let cell = if rows {
+                index + k * leading
+            } else {
+                index * leading + k
             };
-            Rcomplex {
-                r: finish(re_na, sr, nr),
-                i: finish(im_na, si, ni),
+            let z = complex_elt_checked(x, (cell as usize) as R_xlen_t);
+            let bad = part_na(z.r) || part_na(z.i);
+            if na_rm && bad {
+                continue;
+            }
+            if part_na(z.r) {
+                re_na = true;
+            } else {
+                sr += z.r;
+                nr += 1.0;
+            }
+            if part_na(z.i) {
+                im_na = true;
+            } else {
+                si += z.i;
+                ni += 1.0;
+            }
+        }
+        let finish = |na: bool, sum: f64, n: f64| -> f64 {
+            if na {
+                if mean {
+                    f64::NAN
+                } else {
+                    crate::sexp::ffi::NA_REAL
+                }
+            } else if mean {
+                if n == 0.0 {
+                    crate::sexp::ffi::NA_REAL
+                } else {
+                    sum / n
+                }
+            } else {
+                sum
             }
         };
-        if rows {
-            for row in 0..leading {
-                set_complex_checked(result, (row as usize) as R_xlen_t, one(row));
-            }
-        } else {
-            for col in 0..trailing {
-                set_complex_checked(result, (col as usize) as R_xlen_t, one(col));
-            }
+        Rcomplex {
+            r: finish(re_na, sr, nr),
+            i: finish(im_na, si, ni),
         }
-        set_margin_summary_attrs(result, dim_attr, result_axes, x);
-        result
-    
+    };
+    if rows {
+        for row in 0..leading {
+            set_complex_checked(result, (row as usize) as R_xlen_t, one(row));
+        }
+    } else {
+        for col in 0..trailing {
+            set_complex_checked(result, (col as usize) as R_xlen_t, one(col));
+        }
+    }
+    set_margin_summary_attrs(result, dim_attr, result_axes, x);
+    result
 }
 
 pub fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
@@ -572,64 +556,58 @@ pub fn summarize_margin_cells(
 }
 
 pub fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
-    
-        let x_type = TYPEOF(x);
-        let value = if x_type == SEXPTYPE::REALSXP {
-            real_elt_checked(x, (index as usize) as R_xlen_t)
-        } else if x_type == SEXPTYPE::INTSXP || x_type == SEXPTYPE::LGLSXP {
-            let value = integer_elt_checked(x, (index as usize) as R_xlen_t);
-            if value == NA_INTEGER {
-                return None;
-            }
-            value as f64
-        } else {
+    let x_type = TYPEOF(x);
+    let value = if x_type == SEXPTYPE::REALSXP {
+        real_elt_checked(x, (index as usize) as R_xlen_t)
+    } else if x_type == SEXPTYPE::INTSXP || x_type == SEXPTYPE::LGLSXP {
+        let value = integer_elt_checked(x, (index as usize) as R_xlen_t);
+        if value == NA_INTEGER {
             return None;
-        };
-        if value.is_nan() || value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-            None
-        } else {
-            Some(value)
         }
-    
+        value as f64
+    } else {
+        return None;
+    };
+    if value.is_nan() || value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], source: SEXP) {
-    
-        if dim.is_null() || dim == R_NilValue() || axes.is_empty() {
-            return;
-        }
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            source,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
+    if dim.is_null() || dim == R_NilValue() || axes.is_empty() {
+        return;
+    }
+    let dimnames =
+        crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_DimNamesSymbol());
+    if axes.len() == 1 {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            retained_dimname(dimnames, axes[0]),
         );
-        if axes.len() == 1 {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                retained_dimname(dimnames, axes[0]),
-            );
-            return;
-        }
+        return;
+    }
 
-        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, axes.len() as R_xlen_t);
-        if out_dim.is_null() {
-            return;
-        }
-        let _dim_guard = protect(out_dim);
-        for (out_i, axis) in axes.iter().enumerate() {
-            set_integer_checked(out_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimSymbol(),
+    let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, axes.len() as R_xlen_t);
+    if out_dim.is_null() {
+        return;
+    }
+    let _dim_guard = protect(out_dim);
+    for (out_i, axis) in axes.iter().enumerate() {
+        set_integer_checked(
             out_dim,
+            (out_i) as R_xlen_t,
+            integer_elt_checked(dim, (*axis as usize) as R_xlen_t),
         );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            retained_dimnames(dimnames, axes),
-        );
-    
+    }
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), out_dim);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        retained_dimnames(dimnames, axes),
+    );
 }
 
 /// R's `col(x)` — column indices for a matrix.
@@ -703,7 +681,10 @@ fn rowcol_indices(dims: SEXP, is_row: bool) -> SEXP {
         for j in 0..ncol {
             for i in 0..nrow {
                 let idx = (j * nrow + i) as usize;
-                sexp_ok(dst.try_set_integer_elt(idx as R_xlen_t, (if is_row { i + 1 } else { j + 1 }) as c_int));
+                sexp_ok(dst.try_set_integer_elt(
+                    idx as R_xlen_t,
+                    (if is_row { i + 1 } else { j + 1 }) as c_int,
+                ));
             }
         }
         set_two_dim_attr(result, nrow, ncol);

@@ -96,8 +96,7 @@ pub fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for i in (0..XLENGTH(arg_list)).rev() {
             let value = VECTOR_ELT(arg_list, i);
             let value = if quoted {
-                let wrapped =
-                    crate::sexp::constructors::Rf_lang2(install_str("quote"), value);
+                let wrapped = crate::sexp::constructors::Rf_lang2(install_str("quote"), value);
                 guards.push(protect(wrapped));
                 wrapped
             } else {

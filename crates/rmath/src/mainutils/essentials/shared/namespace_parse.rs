@@ -290,15 +290,12 @@ pub(crate) fn register_namespace_s3_methods(
                 } else {
                     crate::sexp::globals::R_BaseEnv()
                 };
-                if !defenv.is_null()
-                    && TYPEOF(defenv) == SEXPTYPE::ENVSXP
-                    && defenv != package_env
+                if !defenv.is_null() && TYPEOF(defenv) == SEXPTYPE::ENVSXP && defenv != package_env
                 {
                     define_s3_method(defenv, local_generic, &method.class, method_value)?;
                 }
             }
-            let base_fdef =
-                find_fun(generic_sym, crate::sexp::globals::R_BaseEnv());
+            let base_fdef = find_fun(generic_sym, crate::sexp::globals::R_BaseEnv());
             if TYPEOF(base_fdef) == SEXPTYPE::BUILTINSXP
                 || TYPEOF(base_fdef) == SEXPTYPE::SPECIALSXP
             {
@@ -523,10 +520,7 @@ pub(super) fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
 }
 
 pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
-    let mut info = find_var_in_frame(
-        package_env,
-        install_str(".__NAMESPACE__."),
-    );
+    let mut info = find_var_in_frame(package_env, install_str(".__NAMESPACE__."));
     if TYPEOF(info) == SEXPTYPE::PROMSXP {
         info = force_promise(info);
     }
@@ -536,8 +530,7 @@ pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
     {
         return None;
     }
-    let mut exports =
-        find_var_in_frame(info, install_str("exports"));
+    let mut exports = find_var_in_frame(info, install_str("exports"));
     if TYPEOF(exports) == SEXPTYPE::PROMSXP {
         exports = force_promise(exports);
     }
@@ -704,9 +697,7 @@ pub(super) fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEX
         return;
     }
     for name in frame_binding_names(namespace, true) {
-        if !(name.starts_with(".__C__")
-            || name.starts_with(".__M__")
-            || name.starts_with(".__T__"))
+        if !(name.starts_with(".__C__") || name.starts_with(".__M__") || name.starts_with(".__T__"))
         {
             continue;
         }

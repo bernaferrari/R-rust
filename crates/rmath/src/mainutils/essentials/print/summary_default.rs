@@ -45,48 +45,46 @@ pub(crate) fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
 }
 
 pub(crate) fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
-    
-        let mut counts = vec![0_i32; levels.len()];
-        let mut na_count = 0_i32;
+    let mut counts = vec![0_i32; levels.len()];
+    let mut na_count = 0_i32;
 
-        for i in 0..XLENGTH(x) {
-            let code = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
-                na_count += 1;
-            } else {
-                counts[(code - 1) as usize] += 1;
-            }
+    for i in 0..XLENGTH(x) {
+        let code = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+            na_count += 1;
+        } else {
+            counts[(code - 1) as usize] += 1;
         }
+    }
 
-        let mut maxsum = maxsum.max(1);
-        if na_count > 0 {
-            maxsum -= 1;
-        }
-        let mut pairs: Vec<(String, i32)> = levels.into_iter().zip(counts).collect();
-        if pairs.len() as i32 > maxsum && maxsum >= 1 {
-            pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-            let keep = (maxsum as usize).saturating_sub(1);
-            let other: i32 = pairs.iter().skip(keep).map(|p| p.1).sum();
-            pairs.truncate(keep);
-            pairs.push(("(Other)".to_string(), other));
-        }
-        if na_count > 0 {
-            pairs.push(("NAs".to_string(), na_count));
-        }
+    let mut maxsum = maxsum.max(1);
+    if na_count > 0 {
+        maxsum -= 1;
+    }
+    let mut pairs: Vec<(String, i32)> = levels.into_iter().zip(counts).collect();
+    if pairs.len() as i32 > maxsum && maxsum >= 1 {
+        pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let keep = (maxsum as usize).saturating_sub(1);
+        let other: i32 = pairs.iter().skip(keep).map(|p| p.1).sum();
+        pairs.truncate(keep);
+        pairs.push(("(Other)".to_string(), other));
+    }
+    if na_count > 0 {
+        pairs.push(("NAs".to_string(), na_count));
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
-        if result.is_null() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        let mut names = Vec::with_capacity(pairs.len());
-        for (i, (name, count)) in pairs.iter().enumerate() {
-            set_integer_checked(result, (i) as R_xlen_t, *count);
-            names.push(name.clone());
-        }
-        set_string_names(result, &names);
-        result
-    
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
+    if result.is_null() {
+        return result;
+    }
+    let _result_guard = protect(result);
+    let mut names = Vec::with_capacity(pairs.len());
+    for (i, (name, count)) in pairs.iter().enumerate() {
+        set_integer_checked(result, (i) as R_xlen_t, *count);
+        names.push(name.clone());
+    }
+    set_string_names(result, &names);
+    result
 }
 
 pub fn format_summary_warnings(x: SEXP) -> String {
@@ -98,8 +96,7 @@ pub fn format_summary_warnings(x: SEXP) -> String {
     if n == 0 {
         return "No warnings\n".to_string();
     }
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     let counts = crate::sexp::attrib_core::getAttrib(x, install_str("counts"));
     let count_of = |i: R_xlen_t| -> i64 {
         if !counts.is_null()
@@ -179,8 +176,7 @@ fn summary_warnings(x: SEXP) -> SEXP {
     } else {
         XLENGTH(x)
     };
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     let mut keys: Vec<String> = Vec::new();
     let mut idxs: Vec<R_xlen_t> = Vec::new();
     let mut counts: Vec<i32> = Vec::new();
@@ -232,19 +228,11 @@ fn summary_warnings(x: SEXP) -> SEXP {
         }
         set_integer_checked(out_counts, (j) as R_xlen_t, counts[j]);
     }
-    crate::sexp::attrib_core::setAttrib(
-        out,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        out_names,
-    );
+    crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
     crate::sexp::attrib_core::setAttrib(out, install_str("counts"), out_counts);
     let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
     let _class = protect(class);
-    SET_STRING_ELT(
-        class,
-        0,
-        mk_char_cstr(c"summary.warnings"),
-    );
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"summary.warnings"));
     crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_ClassSymbol(), class);
     out
 }
@@ -255,8 +243,7 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
-    let class =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
     if !class.is_null()
         && class != R_NilValue()
         && TYPEOF(class) == SEXPTYPE::STRSXP
@@ -459,8 +446,16 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         set_integer_checked(result, 0, n as i32);
         set_integer_checked(result, (1) as R_xlen_t, unique.len() as i32);
         set_integer_checked(result, (2) as R_xlen_t, blank_count);
-        set_integer_checked(result, (3) as R_xlen_t, min_chars.map(|v| v as i32).unwrap_or(NA_INTEGER));
-        set_integer_checked(result, (4) as R_xlen_t, max_chars.map(|v| v as i32).unwrap_or(NA_INTEGER));
+        set_integer_checked(
+            result,
+            (3) as R_xlen_t,
+            min_chars.map(|v| v as i32).unwrap_or(NA_INTEGER),
+        );
+        set_integer_checked(
+            result,
+            (4) as R_xlen_t,
+            max_chars.map(|v| v as i32).unwrap_or(NA_INTEGER),
+        );
         if na_count > 0 {
             set_integer_checked(result, (5) as R_xlen_t, na_count);
         }

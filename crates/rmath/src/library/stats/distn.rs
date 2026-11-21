@@ -40,8 +40,7 @@ fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
     // runtime even though the checked operand also carries the factor test.
     let numeric = t == SEXPTYPE::REALSXP
         || t == SEXPTYPE::LGLSXP
-        || (t == SEXPTYPE::INTSXP
-            && crate::mainutils::objects::inherits2(x, c"factor") == 0);
+        || (t == SEXPTYPE::INTSXP && crate::mainutils::objects::inherits2(x, c"factor") == 0);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));

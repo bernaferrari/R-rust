@@ -199,8 +199,9 @@ pub fn devoff(args: SEXP) -> SEXP {
             }
         });
     }
-    device_registry::close_device(dev_num)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(format!("cannot finish PDF: {error}")));
+    device_registry::close_device(dev_num).unwrap_or_else(|error| {
+        crate::sexp::context::r_error(format!("cannot finish PDF: {error}"))
+    });
     R_NilValue()
 }
 
@@ -210,10 +211,9 @@ pub fn devsize(args: SEXP) -> SEXP {
     let scale = devsize_unit_scale(CAR(args));
     let gdd = GEcurrentDevice();
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-    let (width, height) = device_registry::with_device_mut(gdd, |device| {
-        (device.width.abs(), device.height.abs())
-    })
-    .unwrap_or((7.0, 7.0));
+    let (width, height) =
+        device_registry::with_device_mut(gdd, |device| (device.width.abs(), device.height.abs()))
+            .unwrap_or((7.0, 7.0));
     SET_REAL_ELT(ans, 0, width * scale);
     SET_REAL_ELT(ans, 1, height * scale);
     ans
@@ -250,8 +250,7 @@ pub fn devholdflush(args: SEXP) -> SEXP {
     if level == NA_INTEGER {
         level = 0;
     } else {
-        level = device_registry::with_device_mut(gdd, |device| device.holdflush_level)
-            .unwrap_or(0);
+        level = device_registry::with_device_mut(gdd, |device| device.holdflush_level).unwrap_or(0);
     }
     Rf_ScalarInteger(level)
 }
@@ -440,9 +439,7 @@ pub fn devcapture(args: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{
-        INTEGER_ELT, LENGTH, REAL_ELT, TYPEOF, VECTOR_ELT,
-    };
+    use crate::sexp::accessors::{INTEGER_ELT, LENGTH, REAL_ELT, TYPEOF, VECTOR_ELT};
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_cons};
     use crate::sexp::session::RSession;
 

@@ -13,9 +13,7 @@ pub fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
     // Stock conditionMessage.condition is `c$message`: the element of
     // the condition list whose name is "message" (not an attribute).
-    if let Some(msg) =
-        crate::mainutils::essentials::tables::list_element_by_name(cond, "message")
-    {
+    if let Some(msg) = crate::mainutils::essentials::tables::list_element_by_name(cond, "message") {
         if !msg.is_null() && msg != R_NilValue() && TYPEOF(msg) == SEXPTYPE::STRSXP {
             return msg;
         }

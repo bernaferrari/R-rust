@@ -404,8 +404,7 @@ pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let size_arg = CADR(args);
     let size = if size_arg.is_null() || size_arg == R_NilValue() {
-        let dim =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let ncol = if !dim.is_null()
             && dim != R_NilValue()
             && TYPEOF(dim) == SEXPTYPE::INTSXP
@@ -428,9 +427,9 @@ pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     while !cell.is_null() && cell != R_NilValue() {
         let tag = TAG(cell);
         let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-            charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
-            .to_string_lossy()
-            .into_owned()
+            charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag))
+                .to_string_lossy()
+                .into_owned()
         } else {
             String::new()
         };
@@ -575,10 +574,7 @@ pub fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let ut = Rf_ScalarLogical(FALSE);
         let _u = protect(ut);
         let tail = Rf_cons(ut, R_NilValue());
-        crate::sexp::accessors::SETTAG(
-            tail,
-            install_str("upper.tri"),
-        );
+        crate::sexp::accessors::SETTAG(tail, install_str("upper.tri"));
         let packed = Rf_cons(l, Rf_cons(x, tail));
         let _p = protect(packed);
         crate::mainutils::array::do_backsolve(call, op, packed, rho)
@@ -609,13 +605,21 @@ fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
     if is_cmplx {
         for j in 0..c {
             for i in 0..r {
-                set_complex_checked(thin, (j * r + i) as R_xlen_t, complex_elt_checked(src, (j * r + i) as R_xlen_t));
+                set_complex_checked(
+                    thin,
+                    (j * r + i) as R_xlen_t,
+                    complex_elt_checked(src, (j * r + i) as R_xlen_t),
+                );
             }
         }
     } else {
         for j in 0..c {
             for i in 0..r {
-                set_real_checked(thin, (j * r + i) as R_xlen_t, real_elt_checked(src, (j * r + i) as R_xlen_t));
+                set_real_checked(
+                    thin,
+                    (j * r + i) as R_xlen_t,
+                    real_elt_checked(src, (j * r + i) as R_xlen_t),
+                );
             }
         }
     }

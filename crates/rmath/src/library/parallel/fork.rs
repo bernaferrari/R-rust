@@ -265,9 +265,7 @@ fn close_non_child_fd(fd: c_int) {
     // not to belong to a tracked child before close.
     unsafe {
         if fd_used_by_children(fd) != 0 {
-            crate::main::errors::Rf_error_cstr(
-                c"cannot close internal file descriptor"
-            );
+            crate::main::errors::Rf_error_cstr(c"cannot close internal file descriptor");
         }
         close(fd);
     }
@@ -383,9 +381,7 @@ unsafe fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
 
         if kill((*ci).pid, sig) == -1 {
             let err_str = libc::strerror(*errno_ptr());
-            crate::main::errors::Rf_warning_cstr(
-                c"unable to terminate child process: %s"
-            );
+            crate::main::errors::Rf_warning_cstr(c"unable to terminate child process: %s");
             let _ = err_str; // suppress unused warning
         }
 
@@ -421,9 +417,7 @@ unsafe fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
 
         if (*ci).waitedfor == 0 {
             if kill((*ci).pid, sig) == -1 {
-                crate::main::errors::Rf_warning_cstr(
-                    c"unable to terminate child: %s"
-                );
+                crate::main::errors::Rf_warning_cstr(c"unable to terminate child: %s");
             }
         }
         restore_sigchld(&ss);
@@ -498,9 +492,7 @@ unsafe fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
     unsafe {
         FD_ZERO(dst);
         if nfds as usize > FD_SETSIZE {
-            crate::main::errors::Rf_error_cstr(
-                c"file descriptor is too large for select()"
-            );
+            crate::main::errors::Rf_error_cstr(c"file descriptor is too large for select()");
         }
         for i in 0..nfds {
             if FD_ISSET(i as c_int, src) {
@@ -653,9 +645,7 @@ pub fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
             }
         }
         if sig == -1 {
-            crate::main::errors::Rf_error_cstr(
-                c"invalid 'mc.cleanup' argument"
-            );
+            crate::main::errors::Rf_error_cstr(c"invalid 'mc.cleanup' argument");
         }
 
         let detach = asLogical(sDetach);
@@ -665,9 +655,7 @@ pub fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
 
         let shutdown = asLogical(sShutdown);
         if shutdown == NA_INTEGER {
-            crate::main::errors::Rf_error_cstr(
-                c"invalid 'shutdown' argument"
-            );
+            crate::main::errors::Rf_error_cstr(c"invalid 'shutdown' argument");
         }
 
         compact_children();
@@ -736,9 +724,7 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
         #[cfg(target_os = "android")]
         {
             let _ = sEstranged;
-            crate::main::errors::Rf_error_cstr(
-                c"forking is not available on Android"
-            );
+            crate::main::errors::Rf_error_cstr(c"forking is not available on Android");
             return R_NilValue();
         }
 
@@ -754,16 +740,12 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
 
             if !estranged {
                 if pipe(pipefd.as_mut_ptr()) != 0 {
-                    crate::main::errors::Rf_error_cstr(
-                        c"unable to create a pipe"
-                    );
+                    crate::main::errors::Rf_error_cstr(c"unable to create a pipe");
                 }
                 if pipe(sipfd.as_mut_ptr()) != 0 {
                     close(pipefd[0]);
                     close(pipefd[1]);
-                    crate::main::errors::Rf_error_cstr(
-                        c"unable to create a pipe"
-                    );
+                    crate::main::errors::Rf_error_cstr(c"unable to create a pipe");
                 }
             }
 
@@ -783,9 +765,7 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
                     close(sipfd[0]);
                     close(sipfd[1]);
                 }
-                crate::main::errors::Rf_error_cstr(
-                    c"unable to fork, possible reason: %s"
-                );
+                crate::main::errors::Rf_error_cstr(c"unable to fork, possible reason: %s");
             }
 
             SET_INTEGER_ELT(res, 0, pid as c_int);
@@ -909,9 +889,7 @@ pub fn mc_close_stderr(toNULL: SEXP) -> SEXP {
 pub fn mc_close_fds(sFDS: SEXP) -> SEXP {
     {
         if TYPEOF(sFDS) != SEXPTYPE::INTSXP {
-            crate::main::errors::Rf_error_cstr(
-                c"descriptors must be integers"
-            );
+            crate::main::errors::Rf_error_cstr(c"descriptors must be integers");
         }
         let fds = LENGTH(sFDS);
         for i in 0..fds {
@@ -930,16 +908,16 @@ pub fn mc_send_master(what: SEXP) -> SEXP {
     unsafe {
         if with_fork_state(|state| state.is_master) != 0 {
             crate::main::errors::Rf_error_cstr(
-                c"only children can send data to the master process");
+                c"only children can send data to the master process",
+            );
         }
         if with_fork_state(|state| state.master_fd) == -1 {
-            crate::main::errors::Rf_error_cstr(
-                c"there is no pipe to the master process"
-            );
+            crate::main::errors::Rf_error_cstr(c"there is no pipe to the master process");
         }
         if TYPEOF(what) != SEXPTYPE::RAWSXP {
             crate::main::errors::Rf_error_cstr(
-                c"content to send must be RAW, use serialize() if needed");
+                c"content to send must be RAW, use serialize() if needed",
+            );
         }
 
         let len = XLENGTH(what);
@@ -954,9 +932,7 @@ pub fn mc_send_master(what: SEXP) -> SEXP {
         {
             close(fd);
             with_fork_state(|state| state.master_fd = -1);
-            crate::main::errors::Rf_error_cstr(
-                c"write error, closing pipe to the master"
-            );
+            crate::main::errors::Rf_error_cstr(c"write error, closing pipe to the master");
         }
 
         let mut i: R_xlen_t = 0;
@@ -973,8 +949,7 @@ pub fn mc_send_master(what: SEXP) -> SEXP {
             if n < 1 {
                 close(with_fork_state(|state| state.master_fd));
                 with_fork_state(|state| state.master_fd = -1);
-                crate::main::errors::Rf_error_cstr(
-                    c"write error, closing pipe to the master");
+                crate::main::errors::Rf_error_cstr(c"write error, closing pipe to the master");
             }
             i += n as R_xlen_t;
         }
@@ -995,7 +970,8 @@ pub fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
         let pid = asInteger(sPid);
         if with_fork_state(|state| state.is_master) == 0 {
             crate::main::errors::Rf_error_cstr(
-                c"only the master process can send data to a child process");
+                c"only the master process can send data to a child process",
+            );
         }
         if TYPEOF(what) != SEXPTYPE::RAWSXP {
             crate::main::errors::Rf_error_cstr(c"what must be a raw vector");
@@ -1071,7 +1047,8 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
                         if which[k as usize] == (*ci).pid {
                             if (*ci).pfd as usize >= FD_SETSIZE {
                                 crate::main::errors::Rf_error_cstr(
-                                    c"file descriptor is too large for select()");
+                                    c"file descriptor is too large for select()",
+                                );
                             }
                             FD_SET((*ci).pfd, &mut fs);
                             if (*ci).pfd > maxfd {
@@ -1085,7 +1062,8 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
                 } else {
                     if (*ci).pfd as usize >= FD_SETSIZE {
                         crate::main::errors::Rf_error_cstr(
-                            c"file descriptor is too large for select()");
+                            c"file descriptor is too large for select()",
+                        );
                     }
                     FD_SET((*ci).pfd, &mut fs);
                     if (*ci).pfd > maxfd {
@@ -1114,7 +1092,8 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
                 }
                 if found == 0 {
                     crate::main::errors::Rf_warning_cstr(
-                        c"cannot wait for child %d as it does not exist");
+                        c"cannot wait for child %d as it does not exist",
+                    );
                 }
                 k += 1;
             }
@@ -1328,7 +1307,8 @@ pub fn mc_read_children(sTimeout: SEXP) -> SEXP {
                 if (*ci).pfd >= 0 {
                     if (*ci).pfd as usize >= FD_SETSIZE {
                         crate::main::errors::Rf_error_cstr(
-                            c"file descriptor is too large for select()");
+                            c"file descriptor is too large for select()",
+                        );
                     }
                     FD_SET((*ci).pfd, &mut fs);
                 }
@@ -1486,8 +1466,7 @@ pub fn mc_exit(sRes: SEXP) -> SEXP {
         let res = asInteger(sRes);
 
         if with_fork_state(|state| state.is_master) != 0 {
-            crate::main::errors::Rf_error_cstr(
-                c"'mcexit' can only be used in a child process");
+            crate::main::errors::Rf_error_cstr(c"'mcexit' can only be used in a child process");
         }
 
         if with_fork_state(|state| state.master_fd) != -1 {
@@ -1503,8 +1482,7 @@ pub fn mc_exit(sRes: SEXP) -> SEXP {
             with_fork_state(|state| state.ignore_sigpipe = 0);
             with_fork_state(|state| state.master_fd = -1);
             if n < 0 && *errno_ptr() != EPIPE {
-                crate::main::errors::Rf_error_cstr(
-                    c"write error, closing pipe to the master");
+                crate::main::errors::Rf_error_cstr(c"write error, closing pipe to the master");
             }
         }
 
@@ -1598,9 +1576,7 @@ pub fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
 #[cfg(not(unix))]
 pub fn mc_fork(_sEstranged: SEXP) -> SEXP {
     {
-        crate::main::errors::Rf_error_cstr(
-            c"forking is not available on this platform"
-        );
+        crate::main::errors::Rf_error_cstr(c"forking is not available on this platform");
         R_NilValue()
     }
 }
@@ -1623,8 +1599,7 @@ pub fn mc_close_fds(_sFDS: SEXP) -> SEXP {
 #[cfg(not(unix))]
 pub fn mc_send_master(_what: SEXP) -> SEXP {
     {
-        crate::main::errors::Rf_error_cstr(
-            c"only children can send data to the master process");
+        crate::main::errors::Rf_error_cstr(c"only children can send data to the master process");
         R_NilValue()
     }
 }
@@ -1633,7 +1608,8 @@ pub fn mc_send_master(_what: SEXP) -> SEXP {
 pub fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
     {
         crate::main::errors::Rf_error_cstr(
-            c"only the master process can send data to a child process");
+            c"only the master process can send data to a child process",
+        );
         R_NilValue()
     }
 }
@@ -1689,9 +1665,7 @@ pub fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
 #[cfg(not(unix))]
 pub fn mc_exit(_sRes: SEXP) -> SEXP {
     {
-        crate::main::errors::Rf_error_cstr(
-            c"'mcexit' can only be used in a child process"
-        );
+        crate::main::errors::Rf_error_cstr(c"'mcexit' can only be used in a child process");
         R_NilValue()
     }
 }

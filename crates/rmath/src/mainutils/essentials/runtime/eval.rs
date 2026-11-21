@@ -177,11 +177,7 @@ mod eval_expression_tests {
                 .unwrap()
                 .into_owned()
                 .unwrap();
-            define_var(
-                install_str("e"),
-                argument.as_raw(),
-                environment.as_raw(),
-            );
+            define_var(install_str("e"), argument.as_raw(), environment.as_raw());
             let value = owner
                 .sexp(crate::eval::bc_eval::bcEval(
                     body.as_raw(),
@@ -1093,15 +1089,13 @@ fn d_symbol_name(sym: SEXP) -> String {
 }
 
 fn d_numeric(x: SEXP) -> Option<f64> {
-    
-        if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
-            Some(real_elt_checked(x, 0))
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
-            Some(integer_elt_checked(x, 0) as f64)
-        } else {
-            None
-        }
-    
+    if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
+        Some(real_elt_checked(x, 0))
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
+        Some(integer_elt_checked(x, 0) as f64)
+    } else {
+        None
+    }
 }
 
 fn d_diff(expr: SEXP, var: &str) -> SEXP {
@@ -1130,20 +1124,11 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
                 }
                 let n_s = Rf_ScalarReal(n);
                 if (n - 2.0).abs() < 1e-15 {
-                    return crate::sexp::constructors::Rf_lang3(
-                        install_str("*"),
-                        n_s,
-                        base,
-                    );
+                    return crate::sexp::constructors::Rf_lang3(install_str("*"), n_s, base);
                 }
                 let nm1 = Rf_ScalarReal(n - 1.0);
-                let pow =
-                    crate::sexp::constructors::Rf_lang3(install_str("^"), base, nm1);
-                return crate::sexp::constructors::Rf_lang3(
-                    install_str("*"),
-                    n_s,
-                    pow,
-                );
+                let pow = crate::sexp::constructors::Rf_lang3(install_str("^"), base, nm1);
+                return crate::sexp::constructors::Rf_lang3(install_str("*"), n_s, pow);
             }
         }
     }
@@ -1203,11 +1188,7 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
     if name == "log" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                arg,
-            );
+            return crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), arg);
         }
     }
     if name == "cos" {
@@ -1220,53 +1201,27 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
     if name == "sqrt" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
-            let pow = crate::sexp::constructors::Rf_lang3(
-                install_str("^"),
-                arg,
-                Rf_ScalarReal(-0.5),
-            );
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("*"),
-                Rf_ScalarReal(0.5),
-                pow,
-            );
+            let pow =
+                crate::sexp::constructors::Rf_lang3(install_str("^"), arg, Rf_ScalarReal(-0.5));
+            return crate::sexp::constructors::Rf_lang3(install_str("*"), Rf_ScalarReal(0.5), pow);
         }
     }
     if name == "tan" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
             let c = crate::sexp::constructors::Rf_lang2(install_str("cos"), arg);
-            let c2 = crate::sexp::constructors::Rf_lang3(
-                install_str("^"),
-                c,
-                Rf_ScalarReal(2.0),
-            );
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                c2,
-            );
+            let c2 = crate::sexp::constructors::Rf_lang3(install_str("^"), c, Rf_ScalarReal(2.0));
+            return crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), c2);
         }
     }
     if name == "asin" || name == "acos" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
-            let x2 = crate::sexp::constructors::Rf_lang3(
-                install_str("^"),
-                arg,
-                Rf_ScalarReal(2.0),
-            );
-            let inner = crate::sexp::constructors::Rf_lang3(
-                install_str("-"),
-                Rf_ScalarReal(1.0),
-                x2,
-            );
+            let x2 = crate::sexp::constructors::Rf_lang3(install_str("^"), arg, Rf_ScalarReal(2.0));
+            let inner =
+                crate::sexp::constructors::Rf_lang3(install_str("-"), Rf_ScalarReal(1.0), x2);
             let s = crate::sexp::constructors::Rf_lang2(install_str("sqrt"), inner);
-            let rec = crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                s,
-            );
+            let rec = crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), s);
             return if name == "acos" {
                 crate::sexp::constructors::Rf_lang2(install_str("-"), rec)
             } else {
@@ -1289,37 +1244,17 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
     if name == "atan" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
-            let x2 = crate::sexp::constructors::Rf_lang3(
-                install_str("^"),
-                arg,
-                Rf_ScalarReal(2.0),
-            );
-            let den = crate::sexp::constructors::Rf_lang3(
-                install_str("+"),
-                Rf_ScalarReal(1.0),
-                x2,
-            );
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                den,
-            );
+            let x2 = crate::sexp::constructors::Rf_lang3(install_str("^"), arg, Rf_ScalarReal(2.0));
+            let den = crate::sexp::constructors::Rf_lang3(install_str("+"), Rf_ScalarReal(1.0), x2);
+            return crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), den);
         }
     }
     if name == "tanh" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
             let c = crate::sexp::constructors::Rf_lang2(install_str("cosh"), arg);
-            let c2 = crate::sexp::constructors::Rf_lang3(
-                install_str("^"),
-                c,
-                Rf_ScalarReal(2.0),
-            );
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                c2,
-            );
+            let c2 = crate::sexp::constructors::Rf_lang3(install_str("^"), c, Rf_ScalarReal(2.0));
+            return crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), c2);
         }
     }
     if name == "gamma" {
@@ -1361,16 +1296,9 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
     if name == "log1p" {
         let arg = CAR(CDR(expr));
         if d_symbol_name(arg) == var {
-            let den = crate::sexp::constructors::Rf_lang3(
-                install_str("+"),
-                Rf_ScalarReal(1.0),
-                arg,
-            );
-            return crate::sexp::constructors::Rf_lang3(
-                install_str("/"),
-                Rf_ScalarReal(1.0),
-                den,
-            );
+            let den =
+                crate::sexp::constructors::Rf_lang3(install_str("+"), Rf_ScalarReal(1.0), arg);
+            return crate::sexp::constructors::Rf_lang3(install_str("/"), Rf_ScalarReal(1.0), den);
         }
     }
     if TYPEOF(expr) == SEXPTYPE::LANGSXP && !name.is_empty() {

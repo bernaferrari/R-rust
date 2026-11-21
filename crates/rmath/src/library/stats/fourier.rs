@@ -424,7 +424,8 @@ pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                                     inverse,
                                 ) {
                                     Rf_error_cstr(
-                                        c"FFT workspace exceeds session allocation limit");
+                                        c"FFT workspace exceeds session allocation limit",
+                                    );
                                 }
                             }
                         }
@@ -562,7 +563,8 @@ fn nextn0(mut n: c_int, f: &[c_int]) -> c_int {
     }
     if n >= c_int::MAX {
         crate::main::errors::Rf_warning_cstr(
-            c"nextn() found no solution < INT_MAX (the maximal integer)");
+            c"nextn() found no solution < INT_MAX (the maximal integer)",
+        );
 
         return NA_INTEGER;
     }
@@ -580,9 +582,7 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
         n += 1;
     }
     if n >= u64::MAX {
-        crate::main::errors::Rf_warning_cstr(
-            c"nextn<64>() found no solution < UINT64_MAX"
-        );
+        crate::main::errors::Rf_warning_cstr(c"nextn<64>() found no solution < UINT64_MAX");
 
         return 0;
     }
@@ -621,8 +621,7 @@ pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 
         let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP;
         if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
-            Rf_error_cstr(
-                c"'n' must have typeof(.) \"integer\" or \"double\"");
+            Rf_error_cstr(c"'n' must have typeof(.) \"integer\" or \"double\"");
         }
         let nn = XLENGTH(n);
         let mut _n_guard = protect(n);
@@ -682,7 +681,8 @@ pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                     let n_n = nextn0_64(value as u64, factors);
                     if n_n > max_dbl_int {
                         crate::main::errors::Rf_warning_cstr(
-                            c"nextn() may not be exactly representable in R (as \"double\")");
+                            c"nextn() may not be exactly representable in R (as \"double\")",
+                        );
                     }
                     r[i] = n_n as c_double;
                 }

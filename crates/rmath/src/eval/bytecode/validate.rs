@@ -286,10 +286,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
 /// original pool entries before lazy table readers can run callbacks.
 /// # Safety
 /// The inputs are live projections of the active interpreter on entry.
-pub fn validate_gnu_adapter_with_constants(
-    code: SEXP,
-    constants: SEXP,
-) -> Result<bool, String> {
+pub fn validate_gnu_adapter_with_constants(code: SEXP, constants: SEXP) -> Result<bool, String> {
     crate::sexp::owner::OwnerToken::with_current(|owner| {
         let pin = owner.pin().map_err(|error| error.to_string())?;
         let code = owner
@@ -335,7 +332,8 @@ pub fn validate_gnu_adapter_with_constants(
             pin.require_live().map_err(|error| error.to_string())?;
         }
         Ok(supported)
-    }).map_err(|error| error.to_string())?
+    })
+    .map_err(|error| error.to_string())?
 }
 
 /// Resolve STARTFOR's end operand to the STEPFOR it owns.

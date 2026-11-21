@@ -63,14 +63,9 @@ fn lookup(
     name: &std::ffi::CStr,
 ) -> SexpResult<Sexp<'static>> {
     access.with_native(|owner| {
-        let symbol = owner
-            .sexp(install_cstr(&name))?
-            .into_owned()?;
+        let symbol = owner.sexp(install_cstr(&name))?.into_owned()?;
         owner
-            .sexp(find_var_in_frame(
-                env.as_raw(),
-                symbol.as_raw(),
-            ))?
+            .sexp(find_var_in_frame(env.as_raw(), symbol.as_raw()))?
             .into_owned()
     })
 }
@@ -113,9 +108,7 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
         }
         if env.try_enclos()?.as_raw() == base.as_raw() {
             let name = access.with_native(|owner| {
-                let symbol = owner
-                    .sexp(install_str("name"))?
-                    .into_owned()?;
+                let symbol = owner.sexp(install_str("name"))?.into_owned()?;
                 owner
                     .sexp(crate::sexp::attrib_core::getAttrib(
                         env.as_raw(),

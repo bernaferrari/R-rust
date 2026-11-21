@@ -58,8 +58,7 @@ pub fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
-    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x)
-    {
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x) {
         return String::new();
     }
     let value = STRING_ELT(x, index);
@@ -79,11 +78,7 @@ pub(crate) fn set_string_names(x: SEXP, names: &[String]) {
         let cstr = CString::new(name.as_str()).unwrap_or_default();
         SET_STRING_ELT(names_vec, i as R_xlen_t, mk_char_cstr(&cstr));
     }
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names_vec,
-    );
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_NamesSymbol(), names_vec);
 }
 
 /// GNU `expand.grid(...)` — Cartesian product as a data.frame.
@@ -248,29 +243,29 @@ pub(super) fn expand_grid_column(x: SEXP, nx: i64, rep_fac: i64, orep: i64, tota
 }
 
 pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {
-    
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP => format!("{}", integer_elt_checked(x, (i as usize) as R_xlen_t)),
-            t if t == SEXPTYPE::REALSXP => {
-                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
-                if v.fract() == 0.0 {
-                    format!("{}", v as i64)
-                } else {
-                    format!("{v}")
-                }
-            }
-            t if t == SEXPTYPE::STRSXP => elt_to_string(x, i),
-            t if t == SEXPTYPE::LGLSXP => {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == 0 {
-                    "FALSE".into()
-                } else {
-                    "TRUE".into()
-                }
-            }
-            _ => elt_to_string(x, i),
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::INTSXP => {
+            format!("{}", integer_elt_checked(x, (i as usize) as R_xlen_t))
         }
-    
+        t if t == SEXPTYPE::REALSXP => {
+            let v = real_elt_checked(x, (i as usize) as R_xlen_t);
+            if v.fract() == 0.0 {
+                format!("{}", v as i64)
+            } else {
+                format!("{v}")
+            }
+        }
+        t if t == SEXPTYPE::STRSXP => elt_to_string(x, i),
+        t if t == SEXPTYPE::LGLSXP => {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == 0 {
+                "FALSE".into()
+            } else {
+                "TRUE".into()
+            }
+        }
+        _ => elt_to_string(x, i),
+    }
 }
 
 /// GNU `stack.default` — list/data.frame columns to values+ind.
@@ -280,20 +275,16 @@ pub fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let mut names: Vec<String> = Vec::new();
     if TYPEOF(x) == SEXPTYPE::VECSXP {
         let n = XLENGTH(x);
-        let nm =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let nm = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         for i in 0..n {
             let col = VECTOR_ELT(x, i);
-            let dim = crate::sexp::attrib_core::getAttrib(
-                col,
-                crate::sexp::attrib_core::R_DimSymbol(),
-            );
+            let dim =
+                crate::sexp::attrib_core::getAttrib(col, crate::sexp::attrib_core::R_DimSymbol());
             if !dim.is_null() && dim != R_NilValue() {
                 continue;
             }
             cols.push(col);
-            let name = if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP
-            {
+            let name = if !nm.is_null() && nm != R_NilValue() && TYPEOF(nm) == SEXPTYPE::STRSXP {
                 elt_to_string(nm, i)
             } else {
                 String::new()
@@ -344,11 +335,7 @@ pub fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let cstr = CString::new(label).unwrap_or_default();
         SET_STRING_ELT(levels, i as i64, mk_char_cstr(&cstr));
     }
-    crate::sexp::attrib_core::setAttrib(
-        ind,
-        crate::sexp::attrib_core::R_LevelsSymbol(),
-        levels,
-    );
+    crate::sexp::attrib_core::setAttrib(ind, crate::sexp::attrib_core::R_LevelsSymbol(), levels);
     crate::sexp::attrib_core::setAttrib(
         ind,
         crate::sexp::attrib_core::R_ClassSymbol(),

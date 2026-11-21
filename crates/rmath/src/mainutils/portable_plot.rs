@@ -689,7 +689,8 @@ fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, boo
                 .unwrap_or_default();
                 crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    &fmt);
+                    &fmt,
+                );
                 let fix = |v: f64| {
                     if v.is_finite() {
                         v
@@ -1285,12 +1286,13 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
             let geometry = ConversionGeometry::capture(coordinates, has_frame, &snapshot);
             let check_state = || -> crate::sexp::object::SexpResult<()> {
                 owner.require_active()?;
-                let (now_installed, now_recording) = with_required_current_instance(|inst| unsafe {
-                    (
-                        (*inst).portable_graphics.current,
-                        (*inst).graphics_recording.clone(),
-                    )
-                });
+                let (now_installed, now_recording) =
+                    with_required_current_instance(|inst| unsafe {
+                        (
+                            (*inst).portable_graphics.current,
+                            (*inst).graphics_recording.clone(),
+                        )
+                    });
                 let now_backend = crate::library::grdevices::device_registry::active_target();
                 let same_recording = match (&recording, &now_recording) {
                     (None, None) => true,
@@ -1324,7 +1326,8 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
             let raw = crate::mainutils::duplicate::Rf_duplicate(x.as_raw());
             check_state()?;
             let result = owner.sexp(raw)?;
-            if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length {
+            if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length
+            {
                 return Err(SexpError::EvaluationFailed {
                     message: "graphics input changed during conversion".into(),
                 });
@@ -1354,7 +1357,8 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
             Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
             Err(payload) => std::panic::resume_unwind(payload),
         }
-    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
@@ -2729,7 +2733,8 @@ pub(crate) fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
                 let count = x.len().max(y.len());
-                let parameters = crate::library::graphics::text_metrics::drawing_parameters(args, count);
+                let parameters =
+                    crate::library::graphics::text_metrics::drawing_parameters(args, count);
                 let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for (i, mut text_params) in parameters.into_iter().enumerate() {

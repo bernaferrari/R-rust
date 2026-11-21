@@ -232,9 +232,7 @@ pub fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                             }
                             return expr;
                         } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
-                            Rf_error_cstr(
-                                c"'...' used in an incorrect context"
-                            );
+                            Rf_error_cstr(c"'...' used in an incorrect context");
                         }
                         if rho != R_GlobalEnv() {
                             let value = if TYPEOF(t) == SEXPTYPE::BCODESXP {
@@ -305,8 +303,7 @@ pub fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                     h = substitute_list(h, R_NilValue());
                     // h is now a substituted pairlist — don't unprotect the protected one yet
                 } else {
-                    crate::mainutils::errors::Rf_error_cstr(
-                        c"'...' used in an incorrect context");
+                    crate::mainutils::errors::Rf_error_cstr(c"'...' used in an incorrect context");
                     unreachable!()
                 }
 
@@ -387,9 +384,7 @@ pub fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"invalid environment specified"
-            );
+            crate::mainutils::errors::Rf_error_cstr(c"invalid environment specified");
         }
 
         let _env_guard = protect(env);
@@ -636,13 +631,9 @@ pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if target_type == -1 as c_int {
             let s = std::ffi::CStr::from_ptr(type_str);
             if s.to_bytes() == b"real" {
-                Rf_error_cstr(
-                    c"use of 'real' is defunct: use 'double' instead"
-                );
+                Rf_error_cstr(c"use of 'real' is defunct: use 'double' instead");
             } else if s.to_bytes() == b"single" {
-                Rf_error_cstr(
-                    c"use of 'single' is defunct: use mode<- instead"
-                );
+                Rf_error_cstr(c"use of 'single' is defunct: use mode<- instead");
             } else {
                 Rf_error_cstr(c"invalid value");
             }

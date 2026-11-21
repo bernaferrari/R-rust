@@ -407,9 +407,7 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let terms = CAR(args);
     let data = CADR(args);
     if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
-        crate::main::errors::Rf_error_cstr(
-            c"invalid model frame"
-        );
+        crate::main::errors::Rf_error_cstr(c"invalid model frame");
     }
     let first = VECTOR_ELT(data, 0);
     let dim0 = crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_DimSymbol());
@@ -693,7 +691,8 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if colx.is_null() || colx == R_NilValue() {
             crate::main::errors::Rf_error_cstr(
-                c"C_modelmatrix cannot find a numeric column for a term");
+                c"C_modelmatrix cannot find a numeric column for a term",
+            );
         }
         if !term_cols[j as usize].is_empty() {
             for column in &term_cols[j as usize] {

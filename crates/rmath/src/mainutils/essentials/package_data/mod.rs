@@ -70,11 +70,7 @@ fn publish(
         // checked values; no loan spans the active binding callback.
         unsafe {
             crate::sexp::session::with_instance_active(owner.as_ptr(), || {
-                define_var(
-                    symbol.as_raw(),
-                    value.as_raw(),
-                    environment.as_raw(),
-                );
+                define_var(symbol.as_raw(), value.as_raw(), environment.as_raw());
                 Ok(())
             })
         }

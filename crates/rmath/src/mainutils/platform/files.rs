@@ -200,7 +200,8 @@ pub fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         use crate::sexp::ffi::{FALSE, SEXPTYPE};
 
         crate::mainutils::errors::Rf_warning_cstr(
-            c"symbolic links are not supported on this platform");
+            c"symbolic links are not supported on this platform",
+        );
         let n = LENGTH(CAR(args));
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);

@@ -63,8 +63,8 @@ pub fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         "n_sign_posn",
     ];
     let values = [
-        ".", "", "", "", "", ".", "", "", "", "", "127", "127", "127", "127", "127", "127",
-        "127", "127",
+        ".", "", "", "", "", ".", "", "", "", "", "127", "127", "127", "127", "127", "127", "127",
+        "127",
     ];
     let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
     if result.is_null() {
@@ -128,17 +128,17 @@ pub fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 fn locale_category_from_arg(category: SEXP) -> c_int {
-    
-        if category.is_null() || category == R_NilValue() {
-            return LC_ALL;
-        }
+    if category.is_null() || category == R_NilValue() {
+        return LC_ALL;
+    }
 
-        match TYPEOF(category) {
-            t if t == SEXPTYPE::STRSXP => {
-                let name = elt_to_string(category, 0);
-                locale_category_from_name(&name)
-            }
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => match integer_elt_checked(category, 0) {
+    match TYPEOF(category) {
+        t if t == SEXPTYPE::STRSXP => {
+            let name = elt_to_string(category, 0);
+            locale_category_from_name(&name)
+        }
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            match integer_elt_checked(category, 0) {
                 1 => LC_ALL,
                 2 => LC_COLLATE,
                 3 => LC_CTYPE,
@@ -147,10 +147,10 @@ fn locale_category_from_arg(category: SEXP) -> c_int {
                 6 => LC_TIME,
                 7 => LC_MESSAGES,
                 _ => base_error("invalid 'category' argument"),
-            },
-            _ => base_error("invalid 'category' argument"),
+            }
         }
-    
+        _ => base_error("invalid 'category' argument"),
+    }
 }
 
 fn locale_category_from_name(name: &str) -> c_int {

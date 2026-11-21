@@ -54,8 +54,7 @@ pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
         }
 
         // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
-        let names =
-            crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
+        let names = crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -83,8 +82,7 @@ pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         }
 
         // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
-        let names =
-            crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
+        let names = crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return obj;
         }
@@ -112,9 +110,8 @@ pub fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
                 0
             } else {
                 // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
-                let names = crate::attrib_core::getAttrib(obj, unsafe {
-                    Rf_install(c"names".as_ptr())
-                });
+                let names =
+                    crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
                 if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
                     0
                 } else {

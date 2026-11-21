@@ -160,18 +160,14 @@ pub fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if env == crate::sexp::globals::R_EmptyEnv() {
         return mk_string_cstr(c"R_EmptyEnv");
     }
-    if env == crate::sexp::globals::R_BaseEnv() || env == crate::sexp::envir::R_BaseNamespace()
-    {
+    if env == crate::sexp::globals::R_BaseEnv() || env == crate::sexp::envir::R_BaseNamespace() {
         return mk_string_cstr(c"base");
     }
     let name = crate::sexp::attrib_core::getAttrib(env, install_str("name"));
     let _name = protect(name);
     if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
         let value = STRING_ELT(name, 0);
-        if charsxp_cstring(value)
-            .to_bytes()
-            .starts_with(b"package:")
-        {
+        if charsxp_cstring(value).to_bytes().starts_with(b"package:") {
             return crate::sexp::constructors::Rf_ScalarString(value);
         }
     }
@@ -195,8 +191,7 @@ pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
         return None;
     }
     let _environment = protect(env);
-    let info =
-        find_var_in_frame(env, install_str(".__NAMESPACE__."));
+    let info = find_var_in_frame(env, install_str(".__NAMESPACE__."));
     if TYPEOF(info) != SEXPTYPE::ENVSXP {
         return None;
     }

@@ -1070,7 +1070,8 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // this from OneIndex processing, before any typed assignment arm).
             if offset == NA_INTEGER as R_xlen_t {
                 crate::mainutils::errors::Rf_error_cstr(
-                    c"NAs are not allowed in subscripted assignments");
+                    c"NAs are not allowed in subscripted assignments",
+                );
             }
             let which = SubassignTypeFix(&mut x, &mut y, stretch, 2, call, rho);
             dynamic_guards.push(protect(x));

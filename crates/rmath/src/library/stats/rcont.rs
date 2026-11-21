@@ -209,8 +209,7 @@ fn rcont2_kernel(
         matrix[(nr_1 + m * nrow) as usize] = jwork[m as usize];
     }
 
-    matrix[(nr_1 + nc_1 * nrow) as usize] =
-        ib - matrix[(nr_1 + (nc_1 - 1) * nrow) as usize];
+    matrix[(nr_1 + nc_1 * nrow) as usize] = ib - matrix[(nr_1 + (nc_1 - 1) * nrow) as usize];
 }
 
 /// Sample a single entry for the rcont2 algorithm using rejection sampling.
@@ -234,16 +233,13 @@ fn rcont2_sample(
 
         /* Compute conditional expected value of MATRIX(L, M) */
         nlm = (ia as f64 * (id as f64 / ie as f64) + 0.5) as c_int;
-        let mut x = (fact[ia as usize]
-            + fact[ib as usize]
-            + fact[ic as usize]
-            + fact[id as usize]
+        let mut x = (fact[ia as usize] + fact[ib as usize] + fact[ic as usize] + fact[id as usize]
             - fact[ie as usize]
             - fact[nlm as usize]
             - fact[(id - nlm) as usize]
             - fact[(ia - nlm) as usize]
             - fact[(ii + nlm) as usize])
-        .exp();
+            .exp();
         if x >= U {
             return nlm;
         }

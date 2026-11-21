@@ -40,31 +40,27 @@ pub fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn string_arg_is_na(arg: SEXP) -> bool {
-    
-        if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
-            return false;
-        }
-        if TYPEOF(arg) == SEXPTYPE::STRSXP {
-            return STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString();
-        }
-        if TYPEOF(arg) == SEXPTYPE::LGLSXP {
-            return logical_elt_checked(arg, 0) == crate::sexp::ffi::NA_LOGICAL;
-        }
-        false
-    
+    if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+        return false;
+    }
+    if TYPEOF(arg) == SEXPTYPE::STRSXP {
+        return STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString();
+    }
+    if TYPEOF(arg) == SEXPTYPE::LGLSXP {
+        return logical_elt_checked(arg, 0) == crate::sexp::ffi::NA_LOGICAL;
+    }
+    false
 }
 
 fn na_integer_vector(n: R_xlen_t) -> SEXP {
-    
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        for i in 0..n {
-            set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
-        }
-        result
-    
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    for i in 0..n {
+        set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
+    }
+    result
 }
 
 /// R's `grep(pattern, x, ..., value = FALSE)` for fixed and ERE matching.
@@ -505,8 +501,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let pat = charsxp_cstring(STRING_ELT(pattern_arg, 0))
             .to_bytes()
             .to_vec();
-        let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0
-        {
+        let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0 {
             charsxp_cstring(STRING_ELT(replacement_arg, 0))
                 .to_bytes()
                 .to_vec()
@@ -523,10 +518,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let replacement_bytes = parsed_replacement.as_deref().unwrap_or(&rep);
         for i in 0..n {
             let src_ch = STRING_ELT(x_arg, i);
-            if src_ch.is_null()
-                || src_ch == crate::sexp::globals::R_NaString()
-                || pat.is_empty()
-            {
+            if src_ch.is_null() || src_ch == crate::sexp::globals::R_NaString() || pat.is_empty() {
                 SET_STRING_ELT(result, i, src_ch);
                 continue;
             }
@@ -568,11 +560,7 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
             } else {
                 let cstr = std::ffi::CString::new(out).unwrap_or_default();
-                SET_STRING_ELT(
-                    result,
-                    i,
-                    mk_char_cstr(&cstr),
-                );
+                SET_STRING_ELT(result, i, mk_char_cstr(&cstr));
             }
         }
         crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
@@ -607,14 +595,12 @@ fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         if replacement_missing {
             // Match existence includes empty matches. Deleting text cannot
             // distinguish those and must not send Perl/fixed syntax to TRE.
-            let value = if grep_value_matches(&s, &pattern, ignore_case && !fixed, perl, fixed)
-            {
+            let value = if grep_value_matches(&s, &pattern, ignore_case && !fixed, perl, fixed) {
                 crate::sexp::globals::R_NaString()
             } else if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
                 STRING_ELT(x_arg, i)
             } else {
-                let original =
-                    CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
+                let original = CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
                 mk_char_cstr(&original)
             };
             SET_STRING_ELT(result, i, value);

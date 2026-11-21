@@ -521,9 +521,13 @@ mod tests {
         let s = [0.0, 0.0, 0.0];
 
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let first = unsafe { compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut()) };
+        let first = unsafe {
+            compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut())
+        };
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let second = unsafe { compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut()) };
+        let second = unsafe {
+            compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut())
+        };
 
         assert_eq!(first, second);
         assert!(first.len() >= 3);

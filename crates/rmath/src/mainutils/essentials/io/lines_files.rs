@@ -355,9 +355,7 @@ pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 && !tag.is_null()
                 && tag != R_NilValue()
                 && matches!(
-                    charsxp_cstring(PRINTNAME(tag))
-                        .to_string_lossy()
-                        .as_ref(),
+                    charsxp_cstring(PRINTNAME(tag)).to_string_lossy().as_ref(),
                     "exprObject" | "local"
                 )
             {

@@ -832,15 +832,11 @@ pub fn termsform(args: SEXP) -> SEXP {
     let args = CDR(args);
     let form = CAR(args);
     if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
-        crate::main::errors::Rf_error_cstr(
-            c"argument is not a valid model"
-        );
+        crate::main::errors::Rf_error_cstr(c"argument is not a valid model");
     }
     let tilde = crate::sexp::symbol::install_str("~");
     if CAR(form) != tilde {
-        crate::main::errors::Rf_error_cstr(
-            c"argument is not a valid model"
-        );
+        crate::main::errors::Rf_error_cstr(c"argument is not a valid model");
     }
     let dup = crate::mainutils::seq::Rf_duplicate(form);
     let _d = protect(dup);

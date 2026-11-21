@@ -31,10 +31,7 @@ fn try_methods_bind(
         }
 
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let mut fun = find_var_in_frame(
-            ns,
-            install_cstr(generic),
-        );
+        let mut fun = find_var_in_frame(ns, install_cstr(generic));
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return None;
         }
@@ -55,10 +52,7 @@ fn try_methods_bind(
         let _dl = protect(dl);
         let wrapped = Rf_cons(dl, args);
         let _wrapped = protect(wrapped);
-        SETTAG(
-            wrapped,
-            install_str("deparse.level"),
-        );
+        SETTAG(wrapped, install_str("deparse.level"));
         Some(crate::eval::closure::applyClosure(
             call,
             fun,
@@ -580,7 +574,8 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .unwrap_or_default();
                 crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    &msg);
+                    &msg,
+                );
             }
             for j in 0..ncols {
                 for i in 0..arg_nrow {
@@ -695,7 +690,8 @@ fn rbind_data_frame(args: SEXP) -> SEXP {
                     .unwrap_or_default();
                 crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    &msg);
+                    &msg,
+                );
             }
             let value_names = crate::sexp::attrib_core::getAttrib(
                 value,

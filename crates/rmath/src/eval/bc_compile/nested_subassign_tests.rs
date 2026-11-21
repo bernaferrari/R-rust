@@ -60,13 +60,11 @@ fn run_assignment(session: &mut RSession, source: &str, assignment: &str, supera
         .with_arena(|arena| crate::eval::parser::parse(assignment, arena, factory.domain()))
         .unwrap()
         .unwrap();
-    let body = 
-        own_operand(
-            compile_expr(expression.as_raw(), environment.as_raw())
-                .expect("bounded replacement must compile"),
-        )
-    ;
-    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
+    let body = own_operand(
+        compile_expr(expression.as_raw(), environment.as_raw())
+            .expect("bounded replacement must compile"),
+    );
+    let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw()));
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, factory.nil())
@@ -161,9 +159,8 @@ fn compiled_body(session: &RSession, syntax: &str) -> (Sexp<'static>, Sexp<'stat
         .with_arena(|arena| crate::eval::parser::parse(syntax, arena, factory.domain()))
         .unwrap()
         .unwrap();
-    let body =
-         own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap()) ;
-    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
+    let body = own_operand(compile_expr(expression.as_raw(), environment.as_raw()).unwrap());
+    let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw()));
     SexpMut::try_from_checked(pool)
         .unwrap()
         .try_set_vector_elt(0, factory.nil())
@@ -173,12 +170,10 @@ fn compiled_body(session: &RSession, syntax: &str) -> (Sexp<'static>, Sexp<'stat
 }
 
 fn execute(body: &Sexp<'static>, environment: &Sexp<'static>) -> Sexp<'static> {
-    
-        own_operand(super::super::bc_eval::bcEval(
-            body.as_raw(),
-            environment.as_raw(),
-        ))
-    
+    own_operand(super::super::bc_eval::bcEval(
+        body.as_raw(),
+        environment.as_raw(),
+    ))
 }
 
 fn error_message(payload: Box<dyn std::any::Any + Send>) -> String {
@@ -203,7 +198,7 @@ fn owned_nested_subassignment_detached_pool_survives_getter_collection() {
     );
     let (body, environment) = compiled_body(&session, "x$a[unbound_index]<-rhsValue");
     session.gc();
-    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
+    let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw()));
     let called = Rc::new(Cell::new(false));
     let observed = called.clone();
     crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
@@ -235,7 +230,7 @@ fn owned_nested_subassignment_rejects_malformed_path_before_callbacks() {
         "x<-list(a=1L);rhsValue<-7L;events<-0L;`$`<-function(x,name){events<<-1L;x}",
     );
     let (body, environment) = compiled_body(&session, "x$a[1L]<-rhsValue");
-    let words =  own_operand(crate::sexp::accessors::VECTOR_ELT(body.as_raw(), 0)) ;
+    let words = own_operand(crate::sexp::accessors::VECTOR_ELT(body.as_raw(), 0));
     let length = words.len() as usize;
     // The terminal path instruction has six operands followed by RETURN.
     let opcode = length - 8;
@@ -243,7 +238,7 @@ fn owned_nested_subassignment_rejects_malformed_path_before_callbacks() {
         words.integer_elt(opcode as i64),
         Some(opcodes::OP_REPLACEMENT_PATH)
     );
-    let pool =  own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw())) ;
+    let pool = own_operand(super::super::bc_eval::BCODE_CONSTS(body.as_raw()));
     let scalar = (0..pool.len())
         .find(|&index| pool.try_vector_elt(index).unwrap().typeof_() == SEXPTYPE::INTSXP)
         .unwrap();
@@ -392,8 +387,8 @@ fn gnu_nested_subassignment_fixtures_execute_without_source_fallback() {
                 global.as_raw(),
             ))
         };
-        let body =  own_operand(crate::sexp::accessors::BODY(function.as_raw())) ;
-        assert!( super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) );
+        let body = own_operand(crate::sexp::accessors::BODY(function.as_raw()));
+        assert!(super::super::bc_eval::BCODE_IS_GNU(body.as_raw()));
         let environment = if *superassign {
             unsafe {
                 own_operand(crate::sexp::envir::R_findVar(

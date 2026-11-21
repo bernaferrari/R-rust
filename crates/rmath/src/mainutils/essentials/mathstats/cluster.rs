@@ -73,10 +73,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let iopt = (i_meth as i32) + 1;
 
-        let size_attr = crate::sexp::attrib_core::getAttrib(
-            d,
-            install_str("Size"),
-        );
+        let size_attr = crate::sexp::attrib_core::getAttrib(d, install_str("Size"));
         let n = if !size_attr.is_null()
             && size_attr != R_NilValue()
             && TYPEOF(size_attr) == SEXPTYPE::INTSXP
@@ -160,18 +157,10 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for s in 0..nu {
             set_integer_checked(order, (s) as R_xlen_t, iorder[s]);
         }
-        let labels = crate::sexp::attrib_core::getAttrib(
-            d,
-            install_str("Labels"),
-        );
-        let method_s = mk_string_cstr(&std::ffi::CString::new(METHODS[i_meth])
-                .unwrap_or_default()
-                );
+        let labels = crate::sexp::attrib_core::getAttrib(d, install_str("Labels"));
+        let method_s = mk_string_cstr(&std::ffi::CString::new(METHODS[i_meth]).unwrap_or_default());
         let _ms = protect(method_s);
-        let dist_method = crate::sexp::attrib_core::getAttrib(
-            d,
-            install_str("method"),
-        );
+        let dist_method = crate::sexp::attrib_core::getAttrib(d, install_str("method"));
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, merge);
@@ -234,96 +223,94 @@ pub(super) fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val:
 
 /// GNU `mauchly.test(SSD)` — default T=I, Sigma=I sphericity.
 pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let obj = CAR(args);
-        let ssd = list_named_elt(obj, "SSD");
-        let dfr = list_named_elt(obj, "df");
-        if ssd == R_NilValue() || dfr == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(ssd, crate::sexp::attrib_core::R_DimSymbol());
-        let p = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
-            integer_elt_checked(dim, (1) as R_xlen_t) as usize
-        } else {
-            let n = XLENGTH(ssd) as usize;
-            (n as f64).sqrt().round() as usize
-        };
-        if p == 0 {
-            return R_NilValue();
-        }
-        let mut u = vec![0.0; p * p];
-        for j in 0..p {
-            for i in 0..p {
-                u[i + j * p] = elt_real_safe(ssd, (i + j * p) as i64);
-            }
-        }
-        let mut tr = 0.0;
+    let obj = CAR(args);
+    let ssd = list_named_elt(obj, "SSD");
+    let dfr = list_named_elt(obj, "df");
+    if ssd == R_NilValue() || dfr == R_NilValue() {
+        return R_NilValue();
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(ssd, crate::sexp::attrib_core::R_DimSymbol());
+    let p = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+        integer_elt_checked(dim, (1) as R_xlen_t) as usize
+    } else {
+        let n = XLENGTH(ssd) as usize;
+        (n as f64).sqrt().round() as usize
+    };
+    if p == 0 {
+        return R_NilValue();
+    }
+    let mut u = vec![0.0; p * p];
+    for j in 0..p {
         for i in 0..p {
-            tr += u[i + i * p];
+            u[i + j * p] = elt_real_safe(ssd, (i + j * p) as i64);
         }
-        let mut a = u.clone();
-        let mut det = 1.0;
-        for k in 0..p {
-            let mut piv = a[k + k * p];
-            if piv.abs() < 1e-15 {
-                let mut sw = None;
-                for i in (k + 1)..p {
-                    if a[i + k * p].abs() > 1e-15 {
-                        sw = Some(i);
-                        break;
-                    }
-                }
-                if let Some(i) = sw {
-                    for j in 0..p {
-                        a.swap(k + j * p, i + j * p);
-                    }
-                    det = -det;
-                    piv = a[k + k * p];
-                } else {
-                    det = 0.0;
+    }
+    let mut tr = 0.0;
+    for i in 0..p {
+        tr += u[i + i * p];
+    }
+    let mut a = u.clone();
+    let mut det = 1.0;
+    for k in 0..p {
+        let mut piv = a[k + k * p];
+        if piv.abs() < 1e-15 {
+            let mut sw = None;
+            for i in (k + 1)..p {
+                if a[i + k * p].abs() > 1e-15 {
+                    sw = Some(i);
                     break;
                 }
             }
-            det *= piv;
-            for i in (k + 1)..p {
-                let f = a[i + k * p] / piv;
-                for j in k..p {
-                    a[i + j * p] -= f * a[k + j * p];
+            if let Some(i) = sw {
+                for j in 0..p {
+                    a.swap(k + j * p, i + j * p);
                 }
+                det = -det;
+                piv = a[k + k * p];
+            } else {
+                det = 0.0;
+                break;
             }
         }
-        let pf = p as f64;
-        let n = elt_real_safe(dfr, 0);
-        let logw = if det > 0.0 && tr > 0.0 {
-            det.ln() - pf * (tr / pf).ln()
-        } else {
-            f64::NEG_INFINITY
-        };
-        let w = logw.exp();
-        let rho = 1.0 - (2.0 * pf * pf + pf + 2.0) / (6.0 * pf * n);
-        let w2 = (pf + 2.0)
-            * (pf - 1.0)
-            * (pf - 2.0)
-            * (2.0 * pf * pf * pf + 6.0 * pf * pf + 3.0 * pf + 2.0)
-            / (288.0 * (n * pf * rho).powi(2));
-        let z = -n * rho * logw;
-        let fdf = pf * (pf + 1.0) / 2.0 - 1.0;
-        let pr1 = crate::dist::chisq::pchisq_inner(z, fdf, false, false);
-        let pr2 = crate::dist::chisq::pchisq_inner(z, fdf + 4.0, false, false);
-        let pval = pr1 + w2 * (pr2 - pr1);
-        let stat = Rf_ScalarReal(w);
-        let _s = protect(stat);
-        crate::mainutils::essentials::set_string_names(stat, &["W".to_string()]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, stat);
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["statistic".to_string(), "p.value".to_string()],
-        );
-        result
-    
+        det *= piv;
+        for i in (k + 1)..p {
+            let f = a[i + k * p] / piv;
+            for j in k..p {
+                a[i + j * p] -= f * a[k + j * p];
+            }
+        }
+    }
+    let pf = p as f64;
+    let n = elt_real_safe(dfr, 0);
+    let logw = if det > 0.0 && tr > 0.0 {
+        det.ln() - pf * (tr / pf).ln()
+    } else {
+        f64::NEG_INFINITY
+    };
+    let w = logw.exp();
+    let rho = 1.0 - (2.0 * pf * pf + pf + 2.0) / (6.0 * pf * n);
+    let w2 = (pf + 2.0)
+        * (pf - 1.0)
+        * (pf - 2.0)
+        * (2.0 * pf * pf * pf + 6.0 * pf * pf + 3.0 * pf + 2.0)
+        / (288.0 * (n * pf * rho).powi(2));
+    let z = -n * rho * logw;
+    let fdf = pf * (pf + 1.0) / 2.0 - 1.0;
+    let pr1 = crate::dist::chisq::pchisq_inner(z, fdf, false, false);
+    let pr2 = crate::dist::chisq::pchisq_inner(z, fdf + 4.0, false, false);
+    let pval = pr1 + w2 * (pr2 - pr1);
+    let stat = Rf_ScalarReal(w);
+    let _s = protect(stat);
+    crate::mainutils::essentials::set_string_names(stat, &["W".to_string()]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, stat);
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(pval));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["statistic".to_string(), "p.value".to_string()],
+    );
+    result
 }
 
 /// GNU `as.hclust(x)` — identity for `hclust` objects.
@@ -332,20 +319,17 @@ pub fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn class_contains(x: SEXP, name: &str) -> bool {
-    
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return false;
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return false;
+    }
+    for i in 0..XLENGTH(class) {
+        let s = charsxp_text(STRING_ELT(class, i)).unwrap_or_default();
+        if s == name {
+            return true;
         }
-        for i in 0..XLENGTH(class) {
-            let s = charsxp_text(STRING_ELT(class, i)).unwrap_or_default();
-            if s == name {
-                return true;
-            }
-        }
-        false
-    
+    }
+    false
 }
 
 /// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
@@ -360,8 +344,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if merge == R_NilValue() || height == R_NilValue() {
         crate::mainutils::errors::errorcall_str(call, "invalid dendrogram");
     }
-    let dim =
-        crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
+    let dim = crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
     let n_merge = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
         integer_elt_checked(dim, 0) as usize
     } else {
@@ -380,10 +363,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _z = protect(z);
 
     let member_of = |node: SEXP| -> i32 {
-        let m = crate::sexp::attrib_core::getAttrib(
-            node,
-            install_str("members"),
-        );
+        let m = crate::sexp::attrib_core::getAttrib(node, install_str("members"));
         if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
             1
         } else {
@@ -391,10 +371,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
     };
     let mid_of = |node: SEXP| -> f64 {
-        let m = crate::sexp::attrib_core::getAttrib(
-            node,
-            install_str("midpoint"),
-        );
+        let m = crate::sexp::attrib_core::getAttrib(node, install_str("midpoint"));
         if m.is_null() || m == R_NilValue() || XLENGTH(m) < 1 {
             0.0
         } else {
@@ -411,21 +388,9 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _g1 = protect(members_v);
         let _g2 = protect(height_v);
         let _g3 = protect(isleaf_v);
-        crate::sexp::attrib_core::setAttrib(
-            leaf,
-            install_str("members"),
-            members_v,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            leaf,
-            install_str("height"),
-            height_v,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            leaf,
-            install_str("leaf"),
-            isleaf_v,
-        );
+        crate::sexp::attrib_core::setAttrib(leaf, install_str("members"), members_v);
+        crate::sexp::attrib_core::setAttrib(leaf, install_str("height"), height_v);
+        crate::sexp::attrib_core::setAttrib(leaf, install_str("leaf"), isleaf_v);
 
         if !labels.is_null()
             && labels != R_NilValue()
@@ -436,11 +401,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let s = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             SET_STRING_ELT(s, 0, STRING_ELT(labels, (id as i64) - 1));
             let _s = protect(s);
-            crate::sexp::attrib_core::setAttrib(
-                leaf,
-                install_str("label"),
-                s,
-            );
+            crate::sexp::attrib_core::setAttrib(leaf, install_str("label"), s);
         }
         leaf
     };
@@ -451,21 +412,9 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _g1 = protect(m_v);
         let _g2 = protect(mp_v);
         let _g3 = protect(hh_v);
-        crate::sexp::attrib_core::setAttrib(
-            node,
-            install_str("members"),
-            m_v,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            node,
-            install_str("midpoint"),
-            mp_v,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            node,
-            install_str("height"),
-            hh_v,
-        );
+        crate::sexp::attrib_core::setAttrib(node, install_str("members"), m_v);
+        crate::sexp::attrib_core::setAttrib(node, install_str("midpoint"), mp_v);
+        crate::sexp::attrib_core::setAttrib(node, install_str("height"), hh_v);
     };
 
     for k in 0..n_merge {
@@ -512,19 +461,12 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let result = VECTOR_ELT(z, (n_merge as i64) - 1);
     let class = mk_string_cstr(c"dendrogram");
     let _c = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
 fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
-    let attr = crate::sexp::attrib_core::getAttrib(
-        node,
-        install_cstr(&name),
-    );
+    let attr = crate::sexp::attrib_core::getAttrib(node, install_cstr(&name));
     !attr.is_null()
         && attr != R_NilValue()
         && TYPEOF(attr) == SEXPTYPE::LGLSXP
@@ -533,10 +475,7 @@ fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
 }
 
 fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 {
-    let attr = crate::sexp::attrib_core::getAttrib(
-        node,
-        install_cstr(&name),
-    );
+    let attr = crate::sexp::attrib_core::getAttrib(node, install_cstr(&name));
     if attr.is_null() || attr == R_NilValue() || XLENGTH(attr) < 1 {
         default
     } else {
@@ -546,21 +485,13 @@ fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 
 fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
     let scalar = Rf_ScalarReal(value);
     let _scalar = protect(scalar);
-    crate::sexp::attrib_core::setAttrib(
-        node,
-        install_cstr(&name),
-        scalar,
-    );
+    crate::sexp::attrib_core::setAttrib(node, install_cstr(&name), scalar);
 }
 
 fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
     let scalar = Rf_ScalarInteger(value);
     let _scalar = protect(scalar);
-    crate::sexp::attrib_core::setAttrib(
-        node,
-        install_cstr(&name),
-        scalar,
-    );
+    crate::sexp::attrib_core::setAttrib(node, install_cstr(&name), scalar);
 }
 
 fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
@@ -581,16 +512,9 @@ fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
 }
 
 fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
-    let value = crate::sexp::attrib_core::getAttrib(
-        src,
-        install_cstr(&name),
-    );
+    let value = crate::sexp::attrib_core::getAttrib(src, install_cstr(&name));
     if !value.is_null() && value != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            dst,
-            install_cstr(&name),
-            value,
-        );
+        crate::sexp::attrib_core::setAttrib(dst, install_cstr(&name), value);
     }
 }
 
@@ -702,53 +626,46 @@ pub fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// GNU `order.dendrogram(x)` — leaf order as a vector.
 pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if !class_contains(x, "dendrogram") {
-            crate::mainutils::errors::errorcall_str(
-                call,
-                "'order.dendrogram' requires a dendrogram",
-            );
-        }
-        let mut ids = Vec::new();
-        fn walk(node: SEXP, ids: &mut Vec<f64>, integer: &mut bool) {
-            
-                if TYPEOF(node) == SEXPTYPE::VECSXP {
-                    let n = XLENGTH(node);
-                    for i in 0..n {
-                        walk(VECTOR_ELT(node, i), ids, integer);
-                    }
-                } else if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
-                    let v = integer_elt_checked(node, 0);
-                    ids.push(if v == crate::sexp::ffi::NA_INTEGER {
-                        *integer = false;
-                        crate::sexp::ffi::NA_REAL
-                    } else {
-                        v as f64
-                    });
-                } else if XLENGTH(node) >= 1 {
-                    *integer = false;
-                    ids.push(elt_real_safe(node, 0));
-                }
-            
-        }
-        let mut integer = TYPEOF(x) != SEXPTYPE::REALSXP;
-        walk(x, &mut ids, &mut integer);
-        let result = if integer {
-            let out = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as i64);
-            for (i, v) in ids.iter().enumerate() {
-                set_integer_checked(out, (i) as R_xlen_t, *v as i32);
+    let x = CAR(args);
+    if !class_contains(x, "dendrogram") {
+        crate::mainutils::errors::errorcall_str(call, "'order.dendrogram' requires a dendrogram");
+    }
+    let mut ids = Vec::new();
+    fn walk(node: SEXP, ids: &mut Vec<f64>, integer: &mut bool) {
+        if TYPEOF(node) == SEXPTYPE::VECSXP {
+            let n = XLENGTH(node);
+            for i in 0..n {
+                walk(VECTOR_ELT(node, i), ids, integer);
             }
-            out
-        } else {
-            let out = Rf_allocVector3(SEXPTYPE::REALSXP, ids.len() as i64);
-            for (i, v) in ids.iter().enumerate() {
-                set_real_checked(out, (i) as R_xlen_t, *v);
-            }
-            out
-        };
-        result
-    
+        } else if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
+            let v = integer_elt_checked(node, 0);
+            ids.push(if v == crate::sexp::ffi::NA_INTEGER {
+                *integer = false;
+                crate::sexp::ffi::NA_REAL
+            } else {
+                v as f64
+            });
+        } else if XLENGTH(node) >= 1 {
+            *integer = false;
+            ids.push(elt_real_safe(node, 0));
+        }
+    }
+    let mut integer = TYPEOF(x) != SEXPTYPE::REALSXP;
+    walk(x, &mut ids, &mut integer);
+    let result = if integer {
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as i64);
+        for (i, v) in ids.iter().enumerate() {
+            set_integer_checked(out, (i) as R_xlen_t, *v as i32);
+        }
+        out
+    } else {
+        let out = Rf_allocVector3(SEXPTYPE::REALSXP, ids.len() as i64);
+        for (i, v) in ids.iter().enumerate() {
+            set_real_checked(out, (i) as R_xlen_t, *v);
+        }
+        out
+    };
+    result
 }
 
 /// GNU `heatmap(x)` — row/column leaf order from `hclust(dist())`.

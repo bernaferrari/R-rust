@@ -26,10 +26,7 @@ pub fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         // paste(x, collapse = ", "): dispatch as.character for classed objects.
         let chars = if crate::sexp::attrib_core::isObject(x) != 0 {
-            let coerce = crate::sexp::constructors::Rf_lang2(
-                install_str("as.character"),
-                x,
-            );
+            let coerce = crate::sexp::constructors::Rf_lang2(install_str("as.character"), x);
             let _coerce_guard = protect(coerce);
             crate::eval::eval::Rf_eval(coerce, rho)
         } else {
@@ -138,9 +135,7 @@ pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             Ok(p) => SET_STRING_ELT(
                 result,
                 i,
-                mk_char_cstr(&CString::new(p.to_string_lossy().as_ref())
-                        .unwrap_or_default()
-                        ),
+                mk_char_cstr(&CString::new(p.to_string_lossy().as_ref()).unwrap_or_default()),
             ),
             Err(err) => {
                 if must_work == TRUE {
@@ -169,9 +164,9 @@ pub fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let value = CAR(cell);
         let tagged = !tag.is_null() && tag != R_NilValue();
         if tagged {
-            let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
-            .to_string_lossy()
-            .into_owned();
+            let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag))
+                .to_string_lossy()
+                .into_owned();
             let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;
             match name.as_str() {
                 "pattern" if nonempty => pattern = Some(value),
@@ -229,9 +224,7 @@ pub fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     if !crate::mainutils::browser_files::enabled() {
         let _ = std::fs::create_dir_all(&temp_dir);
     }
-    mk_string_cstr(&CString::new(temp_dir.to_string_lossy().as_ref())
-            .unwrap_or_default()
-            )
+    mk_string_cstr(&CString::new(temp_dir.to_string_lossy().as_ref()).unwrap_or_default())
 }
 
 fn session_temp_dir() -> PathBuf {
@@ -314,7 +307,12 @@ pub fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let after = do_proc_time(_call, _op, R_NilValue(), rho);
         let _after_guard = protect(after);
         for i in 0..XLENGTH(after) {
-            set_real_checked(after, (i as usize) as R_xlen_t, real_elt_checked(after, (i as usize) as R_xlen_t) - real_elt_checked(before, (i as usize) as R_xlen_t));
+            set_real_checked(
+                after,
+                (i as usize) as R_xlen_t,
+                real_elt_checked(after, (i as usize) as R_xlen_t)
+                    - real_elt_checked(before, (i as usize) as R_xlen_t),
+            );
         }
         after
     }
@@ -459,11 +457,7 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             dmn,
         );
 
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("capture.start"),
-            capture_start,
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("capture.start"), capture_start);
         crate::sexp::attrib_core::setAttrib(result, install_str("capture.length"), capture_len);
         crate::sexp::attrib_core::setAttrib(result, install_str("capture.names"), names_sexp);
 
@@ -605,22 +599,20 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Column-major integer matrix with dim c(nrow, ncol) — the shape grep.c's
 /// do_regexpr uses for capture.start / capture.length.
 fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
-    
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol as R_xlen_t);
-        if ans.is_null() {
-            return ans;
-        }
-        let _ans_guard = protect(ans);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if dim.is_null() {
-            return R_NilValue();
-        }
-        let _dim_guard = protect(dim);
-        set_integer_checked(dim, 0, nrow as c_int);
-        set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
-        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        ans
-    
+    let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol as R_xlen_t);
+    if ans.is_null() {
+        return ans;
+    }
+    let _ans_guard = protect(ans);
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if dim.is_null() {
+        return R_NilValue();
+    }
+    let _dim_guard = protect(dim);
+    set_integer_checked(dim, 0, nrow as c_int);
+    set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
+    crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    ans
 }
 
 /// Mark every capture entry of a non-matching text element as -1
@@ -632,16 +624,14 @@ fn fill_capture_no_match(
     n: R_xlen_t,
     capture_count: usize,
 ) {
-    
-        if capture_start == R_NilValue() {
-            return;
-        }
-        for g in 0..capture_count {
-            let ind = i + g * n as usize;
-            set_integer_checked(capture_start, (ind) as R_xlen_t, -1);
-            set_integer_checked(capture_len, (ind) as R_xlen_t, -1);
-        }
-    
+    if capture_start == R_NilValue() {
+        return;
+    }
+    for g in 0..capture_count {
+        let ind = i + g * n as usize;
+        set_integer_checked(capture_start, (ind) as R_xlen_t, -1);
+        set_integer_checked(capture_len, (ind) as R_xlen_t, -1);
+    }
 }
 
 /// R gregexpr(pattern, text) for repeated non-overlapping matches. With
@@ -712,12 +702,9 @@ pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 lengths.push(0);
             }
         } else if perl {
-            if let Some(all) = crate::mainutils::grep::mode_captures_all(
-                &pat,
-                &txt,
-                ignore_case,
-                requested_bytes,
-            ) {
+            if let Some(all) =
+                crate::mainutils::grep::mode_captures_all(&pat, &txt, ignore_case, requested_bytes)
+            {
                 for caps in all.iter() {
                     if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
                         starts.push(whole.start + 1);
@@ -809,20 +796,14 @@ pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             (elt, match_lengths)
         };
 
-        crate::sexp::attrib_core::setAttrib(
-            elt,
-            install_str("match.length"),
-            match_lengths,
-        );
+        crate::sexp::attrib_core::setAttrib(elt, install_str("match.length"), match_lengths);
         if !missing {
             regex_index_attrs(elt, requested_bytes, byte_mode);
         }
         if capture_count > 0 && !missing {
             if starts.is_empty() {
                 // grep.c's no-match branch: one row of -1s per group.
-                set_gregexpr_capture_attrs(elt, 1, capture_count, &capture_names, |_, _| {
-                    (-1, -1)
-                });
+                set_gregexpr_capture_attrs(elt, 1, capture_count, &capture_names, |_, _| (-1, -1));
             } else {
                 let spans = capture_rows
                     .as_ref()
@@ -1175,28 +1156,12 @@ pub fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
 fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
     crate::sexp::attrib_core::setAttrib(x, install_str("match.length"), match_lengths);
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        install_str("index.type"),
-        mk_string_cstr(c"chars"),
-    );
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        install_str("useBytes"),
-        Rf_ScalarLogical(TRUE),
-    );
+    crate::sexp::attrib_core::setAttrib(x, install_str("index.type"), mk_string_cstr(c"chars"));
+    crate::sexp::attrib_core::setAttrib(x, install_str("useBytes"), Rf_ScalarLogical(TRUE));
 }
 
 fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
     crate::sexp::attrib_core::setAttrib(x, install_str("match.length"), match_lengths);
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        install_str("useBytes"),
-        Rf_ScalarLogical(TRUE),
-    );
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        install_str("index.type"),
-        mk_string_cstr(c"chars"),
-    );
+    crate::sexp::attrib_core::setAttrib(x, install_str("useBytes"), Rf_ScalarLogical(TRUE));
+    crate::sexp::attrib_core::setAttrib(x, install_str("index.type"), mk_string_cstr(c"chars"));
 }

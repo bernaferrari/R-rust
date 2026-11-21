@@ -179,9 +179,7 @@ pub fn compcases(args: SEXP) -> SEXP {
                             if len < 0 {
                                 len = dim_nrow(owner, dim);
                             } else if len != dim_nrow(owner, dim) {
-                                Rf_error_cstr(
-                                    c"not all arguments have the same length"
-                                );
+                                Rf_error_cstr(c"not all arguments have the same length");
 
                                 return nil;
                             }
@@ -189,9 +187,7 @@ pub fn compcases(args: SEXP) -> SEXP {
                             if len < 0 {
                                 len = LENGTH(u);
                             } else if len != LENGTH(u) {
-                                Rf_error_cstr(
-                                    c"not all arguments have the same length"
-                                );
+                                Rf_error_cstr(c"not all arguments have the same length");
 
                                 return nil;
                             }
@@ -207,7 +203,8 @@ pub fn compcases(args: SEXP) -> SEXP {
                     if !u.is_null() && u != nil {
                         if len < 0 {
                             len = LENGTH(u);
-                        } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER) {
+                        } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER)
+                        {
                             Rf_error_cstr(c"not all arguments have the same length");
 
                             return nil;

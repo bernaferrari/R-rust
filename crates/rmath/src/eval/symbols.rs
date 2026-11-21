@@ -6,9 +6,7 @@
 //! recognition and special form dispatch.
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::symbol::{
-    R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol,
-};
+use crate::sexp::symbol::{R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol};
 
 /// Install and cache commonly used operator symbols.
 ///

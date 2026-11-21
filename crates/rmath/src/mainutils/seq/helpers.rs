@@ -101,7 +101,10 @@ pub unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
                 String::from_utf8_lossy(supplied),
                 String::from_utf8_lossy(formal),
             );
-            errorcall_cstr(call, std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
+            errorcall_cstr(
+                call,
+                std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default(),
+            );
             return;
         }
         if !supplied.is_empty()

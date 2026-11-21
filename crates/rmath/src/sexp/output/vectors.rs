@@ -78,10 +78,8 @@ pub(crate) fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
 }
 
 pub(crate) fn has_names_attribute(x: Sexp<'_>) -> bool {
-    let names = crate::sexp::attrib_core::getAttrib(
-        x.as_raw(),
-        crate::sexp::attrib_core::R_NamesSymbol(),
-    );
+    let names =
+        crate::sexp::attrib_core::getAttrib(x.as_raw(), crate::sexp::attrib_core::R_NamesSymbol());
     unsafe { Sexp::from_raw(names) }.is_some_and(|names| names.typeof_() == SEXPTYPE::STRSXP)
 }
 
@@ -815,10 +813,8 @@ pub(crate) fn format_vector_stock_n(x: Sexp, quote: bool, max_override: Option<i
 /// GNU PrintValueRec passes names(dimnames)[1] as the named-vector title.
 /// An empty title still emits its line; a missing title label prints "NA".
 pub(crate) fn one_dim_array_title(x: Sexp<'_>) -> Option<String> {
-    let dim = crate::sexp::attrib_core::getAttrib(
-        x.as_raw(),
-        crate::sexp::attrib_core::R_DimSymbol(),
-    );
+    let dim =
+        crate::sexp::attrib_core::getAttrib(x.as_raw(), crate::sexp::attrib_core::R_DimSymbol());
     if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
         return None;
     }
@@ -829,10 +825,8 @@ pub(crate) fn one_dim_array_title(x: Sexp<'_>) -> Option<String> {
     if dimnames.is_null() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
         return None;
     }
-    let names = crate::sexp::attrib_core::getAttrib(
-        dimnames,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-    );
+    let names =
+        crate::sexp::attrib_core::getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol());
     let names = unsafe { Sexp::from_raw(names) }?;
     if names.typeof_() != SEXPTYPE::STRSXP || names.len() == 0 {
         return None;

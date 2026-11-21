@@ -431,10 +431,8 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let sep_arg = arg_by_name_or_position(args, &["sep"], 2);
     let quote_arg = arg_by_name_or_position(args, &["quote"], 3);
     let col_classes_arg = arg_by_name_or_position(args, &["colClasses"], named_only);
-    let na_strings_arg =
-        arg_by_name_or_position(args, &["na.strings", "NA.strings"], named_only);
-    let strings_as_factors_arg =
-        arg_by_name_or_position(args, &["stringsAsFactors"], named_only);
+    let na_strings_arg = arg_by_name_or_position(args, &["na.strings", "NA.strings"], named_only);
+    let strings_as_factors_arg = arg_by_name_or_position(args, &["stringsAsFactors"], named_only);
     let comment_arg = arg_by_name_or_position(args, &["comment.char"], named_only);
     let strip_white_arg = arg_by_name_or_position(args, &["strip.white"], named_only);
     let blank_skip_arg = arg_by_name_or_position(args, &["blank.lines.skip"], named_only);
@@ -464,8 +462,7 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     } else {
         elt_to_string(comment_arg, 0)
     };
-    let na_strings: Vec<String> = if na_strings_arg.is_null() || na_strings_arg == R_NilValue()
-    {
+    let na_strings: Vec<String> = if na_strings_arg.is_null() || na_strings_arg == R_NilValue() {
         vec!["NA".to_string()]
     } else if TYPEOF(na_strings_arg) == SEXPTYPE::STRSXP {
         (0..XLENGTH(na_strings_arg))
@@ -521,15 +518,10 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             bytes.push(c as u8);
         }
-        crate::mainutils::browser_files::admit_text(
-            String::from_utf8_lossy(&bytes).into_owned(),
-        )
-        .unwrap_or_else(|error| scan_error(error.to_string()))
+        crate::mainutils::browser_files::admit_text(String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_else(|error| scan_error(error.to_string()))
     } else {
-        if file_arg.is_null()
-            || file_arg == R_NilValue()
-            || TYPEOF(file_arg) != SEXPTYPE::STRSXP
-        {
+        if file_arg.is_null() || file_arg == R_NilValue() || TYPEOF(file_arg) != SEXPTYPE::STRSXP {
             scan_error("invalid 'file' argument");
         }
         let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
@@ -678,13 +670,12 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let col = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow);
                 let _guard = protect(col);
                 for (i, field) in fields.iter().enumerate() {
-                    let value = if table_field_is_na(field, &na_strings)
-                        || table_field_is_blank(field)
-                    {
-                        NA_INTEGER
-                    } else {
-                        parse_table_logical(&field.text).unwrap_or(NA_INTEGER)
-                    };
+                    let value =
+                        if table_field_is_na(field, &na_strings) || table_field_is_blank(field) {
+                            NA_INTEGER
+                        } else {
+                            parse_table_logical(&field.text).unwrap_or(NA_INTEGER)
+                        };
                     set_logical_checked(col, (i) as R_xlen_t, value);
                 }
                 col
@@ -693,13 +684,12 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let col = Rf_allocVector3(SEXPTYPE::INTSXP, nrow);
                 let _guard = protect(col);
                 for (i, field) in fields.iter().enumerate() {
-                    let value = if table_field_is_na(field, &na_strings)
-                        || table_field_is_blank(field)
-                    {
-                        NA_INTEGER
-                    } else {
-                        field.text.trim().parse::<i32>().unwrap_or(NA_INTEGER)
-                    };
+                    let value =
+                        if table_field_is_na(field, &na_strings) || table_field_is_blank(field) {
+                            NA_INTEGER
+                        } else {
+                            field.text.trim().parse::<i32>().unwrap_or(NA_INTEGER)
+                        };
                     set_integer_checked(col, (i) as R_xlen_t, value);
                 }
                 col
@@ -708,13 +698,12 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow);
                 let _guard = protect(col);
                 for (i, field) in fields.iter().enumerate() {
-                    let value = if table_field_is_na(field, &na_strings)
-                        || table_field_is_blank(field)
-                    {
-                        NA_REAL
-                    } else {
-                        parse_table_double(&field.text).unwrap_or(NA_REAL)
-                    };
+                    let value =
+                        if table_field_is_na(field, &na_strings) || table_field_is_blank(field) {
+                            NA_REAL
+                        } else {
+                            parse_table_double(&field.text).unwrap_or(NA_REAL)
+                        };
                     set_real_checked(col, (i) as R_xlen_t, value);
                 }
                 col
@@ -809,19 +798,11 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _labels_guard = protect(labels);
         for (i, name) in names.iter().enumerate() {
             let cstr = CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(
-                labels,
-                i as R_xlen_t,
-                mk_char_cstr(&cstr),
-            );
+            SET_STRING_ELT(labels, i as R_xlen_t, mk_char_cstr(&cstr));
         }
         crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), labels);
     } else if explicit_row_names {
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("row.names"),
-            row_names_arg,
-        );
+        crate::sexp::attrib_core::setAttrib(result, install_str("row.names"), row_names_arg);
     } else if let Some(k) = row_names_column
         && k >= 1
         && k <= ncols

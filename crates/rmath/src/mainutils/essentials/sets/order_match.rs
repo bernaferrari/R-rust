@@ -542,17 +542,10 @@ pub(crate) fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
     } else if sexp_has_class(source, "POSIXct") || sexp_has_class(source, "POSIXt") {
         set_datetime_class_from(result, source, DatetimeVectorClass::Posixct);
     } else if sexp_has_class(source, "difftime") {
-        let units = crate::sexp::attrib_core::getAttrib(
-            source,
-            install_str("units"),
-        );
+        let units = crate::sexp::attrib_core::getAttrib(source, install_str("units"));
         set_single_class(result, "difftime");
         if !units.is_null() && units != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                install_str("units"),
-                units,
-            );
+            crate::sexp::attrib_core::setAttrib(result, install_str("units"), units);
         }
     }
 }
@@ -921,8 +914,7 @@ fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> 
                 } else {
                     values_mut.try_set_integer_elt(j as R_xlen_t, v)
                 };
-                written
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                written.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
             Kind::Real => {
                 let v = x_owned
@@ -990,11 +982,7 @@ fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> 
         let _ = names_mut.try_set_string_elt(0, x_charsxp);
         let _ = names_mut.try_set_string_elt(1, ix_charsxp);
     }
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
     result
 }
 

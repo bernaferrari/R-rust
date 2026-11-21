@@ -102,7 +102,9 @@ pub(crate) fn eval_call_with_loop_routing(
     rho: SEXP,
     loop_stack: &[LoopContext],
 ) -> Result<SEXP, LoopJump> {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::eval::eval::Rf_eval(call, rho)));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::eval::eval::Rf_eval(call, rho)
+    }));
     match result {
         Ok(value) => Ok(value),
         Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
@@ -177,9 +179,7 @@ pub(crate) fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
         t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(sequence, index as i32)),
         t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(sequence, index as i64)),
         t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(sequence, index as i32)),
-        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-            VECTOR_ELT(sequence, index as i64)
-        }
+        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => VECTOR_ELT(sequence, index as i64),
         t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
             let mut node = sequence;
             for _ in 0..index {
@@ -195,14 +195,12 @@ pub(crate) fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
 // Helper: evaluate a condition value to bool
 // ---------------------------------------------------------------------------
 
-pub(crate)  fn gnu_is_number(value: SEXP) -> bool {
+pub(crate) fn gnu_is_number(value: SEXP) -> bool {
     if value.is_null() {
         return false;
     }
     match TYPEOF(value) {
-        t if t == SEXPTYPE::INTSXP => {
-            crate::mainutils::objects::inherits2(value, c"factor") == 0
-        }
+        t if t == SEXPTYPE::INTSXP => crate::mainutils::objects::inherits2(value, c"factor") == 0,
         t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP => true,
         _ => false,
     }
@@ -223,7 +221,7 @@ pub(crate) fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str)
 }
 
 /// Evaluate a value as a boolean condition for branching.
-pub(crate)  fn eval_bc_condition(val: SEXP) -> bool {
+pub(crate) fn eval_bc_condition(val: SEXP) -> bool {
     let length = if val.is_null() { 0 } else { LENGTH(val) };
     if length == 0 {
         bc_error("argument is of length zero");
@@ -347,7 +345,7 @@ pub(crate) fn eval_gnu_dollargets(
 
 /// GNU INCREMENT_LINKS for NAMED-tracking values: raise NAMED toward the
 /// maximum so in-place modification of the protected value duplicates.
-pub(crate)  fn increment_named_link(value: SEXP) {
+pub(crate) fn increment_named_link(value: SEXP) {
     if value.is_null() || value == R_NilValue() {
         return;
     }
@@ -358,7 +356,7 @@ pub(crate)  fn increment_named_link(value: SEXP) {
 }
 
 /// GNU DECREMENT_LINKS: release one link taken by INCREMENT_LINKS.
-pub(crate)  fn decrement_named_link(value: SEXP) {
+pub(crate) fn decrement_named_link(value: SEXP) {
     if value.is_null() || value == R_NilValue() {
         return;
     }
@@ -384,12 +382,7 @@ pub(crate) fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
-pub(crate) fn eval_gnu_getvar(
-    symbol: SEXP,
-    rho: SEXP,
-    keep_missing: bool,
-    dots: bool,
-) -> SEXP {
+pub(crate) fn eval_gnu_getvar(symbol: SEXP, rho: SEXP, keep_missing: bool, dots: bool) -> SEXP {
     unsafe {
         let value = if dots
             && crate::sexp::envir::dd_val(crate::sexp::object::Sexp::from_raw_unchecked(symbol))

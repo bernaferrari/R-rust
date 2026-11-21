@@ -502,10 +502,9 @@ fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
     // SINGLESXP check
     if ty == 302 {
         // SINGLESXP in R
-        return crate::mainutils::coerce::asLogical(getAttrib(
-            s,
-            unsafe { Rf_install(b"Csingle\0".as_ptr() as *const c_char) },
-        )) == TRUE as c_int;
+        return crate::mainutils::coerce::asLogical(getAttrib(s, unsafe {
+            Rf_install(b"Csingle\0".as_ptr() as *const c_char)
+        })) == TRUE as c_int;
     }
     false
 }
@@ -1110,7 +1109,9 @@ fn invoke_native_handler(
                 .symbol_address
                 .as_ref()
                 .map(|address| {
-                    access.with_native(|owner| crate::mainutils::native_symbols::symbol(owner, address))
+                    access.with_native(|owner| {
+                        crate::mainutils::native_symbols::symbol(owner, address)
+                    })
                 })
                 .transpose()?;
             let routine = if let Some(handle) = &handle {
@@ -1151,7 +1152,9 @@ fn invoke_native_handler(
                             if let Some(handle) = &handle {
                                 handle.routine()?;
                             }
-                            unsafe { routine.invoke_external1(list.as_raw(), operands.payload.len()) }
+                            unsafe {
+                                routine.invoke_external1(list.as_raw(), operands.payload.len())
+                            }
                         } else {
                             let operator = match operator_identity {
                                 Some((name, kind)) => access.with_native(|owner| {
@@ -1185,11 +1188,12 @@ fn invoke_native_handler(
                 let allocator = access.allocator(&domain)?;
                 let list = operands.argument_list(&allocator, true, &domain.nil())?;
                 let mut function: DL_FUNC = None;
-                let mut symbol = R_RegisteredNativeSymbol::new(if interface == NativeInterface::Call {
-                    R_CALL_SYM
-                } else {
-                    R_EXTERNAL_SYM
-                });
+                let mut symbol =
+                    R_RegisteredNativeSymbol::new(if interface == NativeInterface::Call {
+                        R_CALL_SYM
+                    } else {
+                        R_EXTERNAL_SYM
+                    });
                 let mut buffer = [0; MAX_SYMBOL_BYTES];
                 unsafe {
                     resolveNativeRoutine(
@@ -2191,7 +2195,8 @@ mod typed_native_handler_tests {
                 .close();
         }));
         unsafe {
-            let instance = crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap();
+            let instance =
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap();
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
         }
@@ -2642,9 +2647,8 @@ utils	ishashtab_Ext	1";
                 payload.insert(payload.len() / 2, (package, tag.clone()));
                 let arguments = make_arguments(&factory, name, &payload);
                 let op = operator(&session, interface);
-                let result = {
-                    do_External(nil.as_raw(), op.as_raw(), arguments.as_raw(), nil.as_raw())
-                };
+                let result =
+                    { do_External(nil.as_raw(), op.as_raw(), arguments.as_raw(), nil.as_raw()) };
                 factory.wrap(result).unwrap().into_owned().unwrap()
             };
             assert_eq!(

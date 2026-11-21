@@ -114,7 +114,8 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                 && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
             {
                 Rf_warning_cstr(
-                    c"Turning clipping on or off within a (clipping) path is no honoured");
+                    c"Turning clipping on or off within a (clipping) path is no honoured",
+                );
             }
         } else if isClipPath(viewportClipSXP(vp)) {
             let parentClip = viewportClipRect(viewportParent(vp));
@@ -343,8 +344,7 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     && LENGTH(resolving_path) > 0
                     && logical_elt(resolving_path, 0) != 0
                 {
-                    Rf_warning_cstr(
-                        c"Clipping paths within a (clipping) path are not honoured");
+                    Rf_warning_cstr(c"Clipping paths within a (clipping) path are not honoured");
                     set_vector_elt(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
                 } else {
                     let resolvedclip = resolveClipPath(clip, dd);
@@ -453,7 +453,11 @@ pub(crate) fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> 
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(result, 1 as R_xlen_t, findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)));
+            set_vector_elt(
+                result,
+                1 as R_xlen_t,
+                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)),
+            );
         } else {
             if logical_elt(strict, 0) != 0 {
                 set_vector_elt(result, 0 as R_xlen_t, zeroDepth);
@@ -567,7 +571,11 @@ pub(crate) fn findvppath(
             set_vector_elt(result, 1 as R_xlen_t, R_NilValue());
         } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
             set_vector_elt(result, 0 as R_xlen_t, curDepth);
-            set_vector_elt(result, 1 as R_xlen_t, findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)));
+            set_vector_elt(
+                result,
+                1 as R_xlen_t,
+                findVar(installTrChar(string_elt(name, 0)), viewportChildren(vp)),
+            );
         } else {
             let found = findvppathInChildren(
                 path,
@@ -692,14 +700,16 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
             Rf_error_cstr(
-                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+            );
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
                 Rf_error_cstr(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+                );
             }
         }
 
@@ -777,14 +787,16 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
             Rf_error_cstr(
-                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+            );
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
                 Rf_error_cstr(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)",
+                );
             }
         }
 

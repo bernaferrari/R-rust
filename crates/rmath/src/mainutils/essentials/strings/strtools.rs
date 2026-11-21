@@ -184,8 +184,7 @@ pub fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     let pattern_arg = CAR(CDR(args));
 
-    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue()
-    {
+    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue() {
         return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
 
@@ -248,10 +247,7 @@ pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
 pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
-        let fun = find_var_in_frame(
-            crate::sexp::globals::R_BaseEnv(),
-            install_str("strwrap"),
-        );
+        let fun = find_var_in_frame(crate::sexp::globals::R_BaseEnv(), install_str("strwrap"));
         let _fun_guard = crate::sexp::protect::protect(fun);
         // Rebuild the call with the already-evaluated arguments and their
         // original tags so the closure's default expressions (width, prefix,
@@ -389,9 +385,7 @@ pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     if path.exists() {
-        mk_string_cstr(&CString::new(path.to_string_lossy().into_owned())
-                .unwrap_or_default()
-                )
+        mk_string_cstr(&CString::new(path.to_string_lossy().into_owned()).unwrap_or_default())
     } else {
         if must_work {
             package_error(format!(

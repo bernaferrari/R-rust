@@ -502,11 +502,8 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
 }
 
 fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
-    let mode = crate::mainutils::connections::args::mk_string(if mode.contains('\0') {
-        ""
-    } else {
-        mode
-    });
+    let mode =
+        crate::mainutils::connections::args::mk_string(if mode.contains('\0') { "" } else { mode });
     let _mode_root = protect(mode);
     let inner = Rf_cons(mode, R_NilValue());
     let _inner_root = protect(inner);

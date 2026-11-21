@@ -36,16 +36,14 @@ fn parse_source<'session>(
 }
 
 fn make_test_env() -> SEXP {
-    
-        let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
-        if env.is_null() {
-            return R_NilValue();
-        }
-        crate::sexp::accessors::SET_FRAME(env, R_NilValue());
-        crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
-        crate::sexp::accessors::SET_HASHTAB(env, R_NilValue());
-        env
-    
+    let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
+    if env.is_null() {
+        return R_NilValue();
+    }
+    crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+    crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+    crate::sexp::accessors::SET_HASHTAB(env, R_NilValue());
+    env
 }
 
 #[test]
@@ -236,8 +234,8 @@ fn test_altrep_builder_data_roundtrip() {
     let class = session
         .register_altrep_class("roundtrip", Roundtrip)
         .unwrap();
-    let first = session.sexp( Rf_ScalarInteger(100) ).unwrap();
-    let second = session.sexp( Rf_ScalarReal(3.14) ).unwrap();
+    let first = session.sexp(Rf_ScalarInteger(100)).unwrap();
+    let second = session.sexp(Rf_ScalarReal(3.14)).unwrap();
     let value = AltrepBuilder::new(class)
         .data1(first)
         .data2(second)
@@ -258,64 +256,60 @@ fn test_altrep_builder_data_roundtrip() {
 #[test]
 fn test_output_capture_print_integer() {
     let _session = crate::sexp::session::RSession::new();
-    
-        start_capture();
-        let val = Rf_ScalarInteger(42);
-        crate::sexp::output::Rf_PrintValue(val);
-        let output = stop_capture();
-        assert!(
-            output.stdout.contains("42"),
-            "expected 42 in output, got: {}",
-            output.stdout
-        );
-    
+
+    start_capture();
+    let val = Rf_ScalarInteger(42);
+    crate::sexp::output::Rf_PrintValue(val);
+    let output = stop_capture();
+    assert!(
+        output.stdout.contains("42"),
+        "expected 42 in output, got: {}",
+        output.stdout
+    );
 }
 
 #[test]
 fn test_output_capture_print_real() {
     let _session = crate::sexp::session::RSession::new();
-    
-        start_capture();
-        let val = Rf_ScalarReal(3.14);
-        crate::sexp::output::Rf_PrintValue(val);
-        let output = stop_capture();
-        assert!(
-            output.stdout.contains("3.14"),
-            "expected 3.14 in output, got: {}",
-            output.stdout
-        );
-    
+
+    start_capture();
+    let val = Rf_ScalarReal(3.14);
+    crate::sexp::output::Rf_PrintValue(val);
+    let output = stop_capture();
+    assert!(
+        output.stdout.contains("3.14"),
+        "expected 3.14 in output, got: {}",
+        output.stdout
+    );
 }
 
 #[test]
 fn test_output_capture_print_null() {
     let _session = crate::sexp::session::RSession::new();
-    
-        start_capture();
-        crate::sexp::output::Rf_PrintValue(R_NilValue());
-        let output = stop_capture();
-        assert!(
-            output.stdout.contains("NULL"),
-            "expected NULL in output, got: {}",
-            output.stdout
-        );
-    
+
+    start_capture();
+    crate::sexp::output::Rf_PrintValue(R_NilValue());
+    let output = stop_capture();
+    assert!(
+        output.stdout.contains("NULL"),
+        "expected NULL in output, got: {}",
+        output.stdout
+    );
 }
 
 #[test]
 fn test_output_capture_print_logical() {
     let _session = crate::sexp::session::RSession::new();
-    
-        start_capture();
-        let val = Rf_ScalarLogical(1);
-        crate::sexp::output::Rf_PrintValue(val);
-        let output = stop_capture();
-        assert!(
-            output.stdout.contains("TRUE"),
-            "expected TRUE in output, got: {}",
-            output.stdout
-        );
-    
+
+    start_capture();
+    let val = Rf_ScalarLogical(1);
+    crate::sexp::output::Rf_PrintValue(val);
+    let output = stop_capture();
+    assert!(
+        output.stdout.contains("TRUE"),
+        "expected TRUE in output, got: {}",
+        output.stdout
+    );
 }
 
 #[test]
@@ -376,12 +370,12 @@ fn test_cons_and_car_cdr() {
 #[test]
 fn test_gc_after_allocations() {
     let mut session = crate::sexp::session::RSession::new_without_default_packages();
-    
-        for _ in 0..100 {
-            let v = Rf_allocVector(SEXPTYPE::INTSXP, 10);
-            assert!(!v.is_null());
-        }
-    
+
+    for _ in 0..100 {
+        let v = Rf_allocVector(SEXPTYPE::INTSXP, 10);
+        assert!(!v.is_null());
+    }
+
     session.gc();
     let (result, _, _) = session.eval_code_with_output_capture("1L + 2L");
     assert_eq!(
@@ -726,17 +720,16 @@ fn test_arena_independent_sessions() {
 #[test]
 fn test_protect_stack_integrity() {
     let _session = crate::sexp::session::RSession::new();
-    
-        use crate::sexp::protect::protect;
 
-        let v1 = Rf_ScalarInteger(1);
-        let v2 = Rf_ScalarReal(2.0);
-        let v3 = Rf_allocVector(SEXPTYPE::INTSXP, 10);
+    use crate::sexp::protect::protect;
 
-        let _guard = protect(v1);
-        let _v2_guard = protect(v2);
-        let _v3_guard = protect(v3);
-    
+    let v1 = Rf_ScalarInteger(1);
+    let v2 = Rf_ScalarReal(2.0);
+    let v3 = Rf_allocVector(SEXPTYPE::INTSXP, 10);
+
+    let _guard = protect(v1);
+    let _v2_guard = protect(v2);
+    let _v3_guard = protect(v3);
 }
 
 #[test]
@@ -767,9 +760,7 @@ fn test_eval_arithmetic_direct() {
     use crate::eval::eval::eval_safe;
     use crate::sexp::init;
 
-    
-        init::initialize_r();
-    
+    init::initialize_r();
 
     let expr = must(parse_source(&_session, "1 + 2"));
 
@@ -786,9 +777,7 @@ fn test_eval_arithmetic_direct() {
     let v = val.real_elt(0).unwrap_or(0.0);
     assert!((v - 3.0).abs() < 1e-10, "expected 3.0, got {}", v);
 
-    
-        init::shutdown_r();
-    
+    init::shutdown_r();
 }
 
 #[test]
@@ -798,9 +787,7 @@ fn test_eval_abs_debug() {
     use crate::sexp::accessors::{CAR, CDR, TYPEOF};
     use crate::sexp::init;
 
-    
-        init::initialize_r();
-    
+    init::initialize_r();
 
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
@@ -850,9 +837,7 @@ fn test_eval_abs_debug() {
         ))
     );
 
-    
-        init::shutdown_r();
-    
+    init::shutdown_r();
 }
 
 #[test]
@@ -861,9 +846,7 @@ fn test_eval_math_builtins() {
     use crate::eval::eval::eval_safe;
     use crate::sexp::init;
 
-    
-        init::initialize_r();
-    
+    init::initialize_r();
 
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
@@ -908,9 +891,7 @@ fn test_eval_math_builtins() {
         );
     }
 
-    
-        init::shutdown_r();
-    
+    init::shutdown_r();
 }
 
 #[test]
@@ -919,9 +900,7 @@ fn test_eval_length_builtin() {
     use crate::eval::eval::eval_safe;
     use crate::sexp::init;
 
-    
-        init::initialize_r();
-    
+    init::initialize_r();
 
     let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
@@ -930,12 +909,10 @@ fn test_eval_length_builtin() {
     let e = expr.clone();
     let result = must(
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
-        eval_safe(e, env)
+        eval_safe(e, env),
     );
     let v = result.integer_elt(0).unwrap_or(0);
     assert_eq!(v, 1, "length(42) should be 1, got {}", v);
 
-    
-        init::shutdown_r();
-    
+    init::shutdown_r();
 }

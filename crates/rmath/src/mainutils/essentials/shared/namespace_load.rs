@@ -456,10 +456,7 @@ pub(crate) fn run_methods_onload_cache_metadata(where_env: SEXP) {
             export_s4_metadata_to_package_env(ns, attach_env);
         }
         {
-            let primitive = find_var_in_frame(
-                crate::sexp::globals::R_BaseEnv(),
-                install_str("$"),
-            );
+            let primitive = find_var_in_frame(crate::sexp::globals::R_BaseEnv(), install_str("$"));
             // Admit primitive dispatch for both installed and captured namespaces;
             // restore the original
             // generic when the first S4 lookup resets the method table.
@@ -711,65 +708,56 @@ pub(crate) fn cache_loaded_namespace_metadata(namespace: SEXP) {
 }
 
 fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
-    unsafe {
-        if where_env.is_null() || search_where.is_null() {
-            return;
-        }
-        let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let where_root = owner
-            .sexp(where_env)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let search_root = owner
-            .sexp(search_where)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let authority = crate::sexp::owner::StoredOwner::from_value(&where_root)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let Some(methods_ns) = cached_namespace_by_name("methods") else {
-            return;
-        };
-        let methods_root = owner
-            .sexp(methods_ns)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let mut fun = find_var_in_frame(
-            methods_root.as_raw(),
-            install_str("cacheMetaData"),
-        );
-        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
-            return;
-        }
-        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = force_promise(fun);
-        }
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return;
-        }
-        let _source_body = methods_metadata_source_body(fun);
-        let _fun = crate::sexp::protect::protect(fun);
-        let attach = Rf_ScalarLogical(TRUE);
-        let _attach = protect(attach);
-        let call = crate::sexp::constructors::Rf_lang4(
-            fun,
-            where_root.as_raw(),
-            attach,
-            search_root.as_raw(),
-        );
-        let _call = protect(call);
-        authority
-            .require_active()
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv())
-        }));
-        authority
-            .require_active()
-            .unwrap_or_else(|error| package_error(error.to_string()));
+    if where_env.is_null() || search_where.is_null() {
+        return;
     }
+    let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let where_root = owner
+        .sexp(where_env)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let search_root = owner
+        .sexp(search_where)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let authority = crate::sexp::owner::StoredOwner::from_value(&where_root)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let Some(methods_ns) = cached_namespace_by_name("methods") else {
+        return;
+    };
+    let methods_root = owner
+        .sexp(methods_ns)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let mut fun = find_var_in_frame(methods_root.as_raw(), install_str("cacheMetaData"));
+    if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+        return;
+    }
+    if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+        fun = force_promise(fun);
+    }
+    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        return;
+    }
+    let _source_body = methods_metadata_source_body(fun);
+    let _fun = crate::sexp::protect::protect(fun);
+    let attach = Rf_ScalarLogical(TRUE);
+    let _attach = protect(attach);
+    let call =
+        crate::sexp::constructors::Rf_lang4(fun, where_root.as_raw(), attach, search_root.as_raw());
+    let _call = protect(call);
+    authority
+        .require_active()
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv())
+    }));
+    authority
+        .require_active()
+        .unwrap_or_else(|error| package_error(error.to_string()));
 }
 
 /// Register the installed implicit prototypes without importing their packages.
@@ -777,54 +765,52 @@ fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
 /// while the actual stats namespace is unloaded. Its closure is supplied later
 /// by the ordinary stats namespace loader, retaining that namespace's identity.
 pub(super) fn register_implicit_generics_table(ns: SEXP) {
-    unsafe {
-        let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
-        let runtime = owner
-            .weak_owner()
-            .unwrap_or_else(|| package_error("implicit generics require a managed runtime"));
-        let namespace = owner
-            .sexp(ns)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        crate::sexp::owner::with_runtime(&runtime, |access| {
-            let domain = access.domain();
-            let parsed = access.with_arena(|arena| {
-                crate::eval::parser::parse_expressions(
-                    "registerImplicitGenerics(where = asNamespace(\"methods\"))",
-                    arena,
-                    domain,
-                )
-            })?;
-            access.with_native(|_| {
-                crate::eval::parser::flush_literal_warnings();
-                Ok(())
-            })?;
-            let Ok(expressions) = parsed else {
-                return Ok(());
-            };
-            // Keep the original namespace and actual parsed expression owners
-            // through every allocating/collecting callback. Original cleanup
-            // remains valid if callbacks revoke the session.
-            let evaluation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                for expression in &expressions {
-                    access.with_native(|token| {
-                        let result =
-                            crate::eval::eval::Rf_eval(expression.as_raw(), namespace.as_raw());
-                        token.sexp(result)?.into_owned()?;
-                        Ok(())
-                    })?;
-                }
-                Ok::<(), crate::sexp::object::SexpError>(())
-            }));
-            access.require_active()?;
-            if let Ok(result) = evaluation {
-                result?;
+    let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
+    let runtime = owner
+        .weak_owner()
+        .unwrap_or_else(|| package_error("implicit generics require a managed runtime"));
+    let namespace = owner
+        .sexp(ns)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    crate::sexp::owner::with_runtime(&runtime, |access| {
+        let domain = access.domain();
+        let parsed = access.with_arena(|arena| {
+            crate::eval::parser::parse_expressions(
+                "registerImplicitGenerics(where = asNamespace(\"methods\"))",
+                arena,
+                domain,
+            )
+        })?;
+        access.with_native(|_| {
+            crate::eval::parser::flush_literal_warnings();
+            Ok(())
+        })?;
+        let Ok(expressions) = parsed else {
+            return Ok(());
+        };
+        // Keep the original namespace and actual parsed expression owners
+        // through every allocating/collecting callback. Original cleanup
+        // remains valid if callbacks revoke the session.
+        let evaluation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for expression in &expressions {
+                access.with_native(|token| {
+                    let result =
+                        crate::eval::eval::Rf_eval(expression.as_raw(), namespace.as_raw());
+                    token.sexp(result)?.into_owned()?;
+                    Ok(())
+                })?;
             }
             Ok::<(), crate::sexp::object::SexpError>(())
-        })
-        .and_then(|result| result)
-        .unwrap_or_else(|error| package_error(error.to_string()));
-    }
+        }));
+        access.require_active()?;
+        if let Ok(result) = evaluation {
+            result?;
+        }
+        Ok::<(), crate::sexp::object::SexpError>(())
+    })
+    .and_then(|result| result)
+    .unwrap_or_else(|error| package_error(error.to_string()));
 }
 
 /// Retain the exact compiled body while evaluating its stored R expression.
@@ -1045,8 +1031,7 @@ pub(super) fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
 /// After methods `.onLoad`, the captured `.objectParent` stub must enclose
 /// the methods namespace so ref methods see unexported helpers (`classLabel`).
 pub(super) fn retarget_envref_object_parent(ns: SEXP) {
-    let class_def =
-        find_var_in_frame(ns, install_str(".__C__envRefClass"));
+    let class_def = find_var_in_frame(ns, install_str(".__C__envRefClass"));
     if class_def.is_null()
         || class_def == crate::sexp::globals::R_UnboundValue()
         || class_def == R_NilValue()

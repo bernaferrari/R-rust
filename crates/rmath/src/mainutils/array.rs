@@ -18,9 +18,9 @@ use std::os::raw::c_int;
 
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRINTNAME,
-    SET_ATTRIB, SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG,
-    TYPEOF, UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
+    ATTRIB, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRINTNAME, SET_ATTRIB, SET_OBJECT,
+    SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF,
+    UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
 
 use crate::sexp::accessors::{INTEGER_ELT, LOGICAL_ELT, REAL_ELT};
@@ -533,10 +533,9 @@ fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
                 let mut found = None;
                 for axis in 0..XLENGTH(dn_names) {
                     // SAFETY: same CHARSXP borrow contract as `want`.
-                    let have = unsafe {
-                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(dn_names, axis)))
-                    }
-                    .to_string_lossy();
+                    let have =
+                        unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(dn_names, axis))) }
+                            .to_string_lossy();
                     if have == want {
                         found = Some(axis as usize);
                         break;
@@ -1329,9 +1328,7 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 {
                     let mut dim_mut = mutable_vector(dim);
                     for (index, value) in permuted_dims.iter().enumerate() {
-                        checked(
-                            dim_mut.try_set_integer_elt(index as R_xlen_t, *value as c_int),
-                        );
+                        checked(dim_mut.try_set_integer_elt(index as R_xlen_t, *value as c_int));
                     }
                 }
                 set_dim_names_from_axes(dim, source_dim, &perm);
@@ -1492,12 +1489,10 @@ pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         for rhs in 0..rhs_count {
             for row in 0..k {
-                checked(
-                    out.try_set_real_elt(
-                        (row + rhs * k) as R_xlen_t,
-                        numeric_at(b, row + rhs * b_rows),
-                    ),
-                );
+                checked(out.try_set_real_elt(
+                    (row + rhs * k) as R_xlen_t,
+                    numeric_at(b, row + rhs * b_rows),
+                ));
             }
 
             if upper_tri && !transpose {

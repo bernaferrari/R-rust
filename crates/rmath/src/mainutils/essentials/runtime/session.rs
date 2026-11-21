@@ -301,31 +301,29 @@ fn deparse_lines(expr: SEXP) -> Vec<String> {
 
 /// R's `dget(file)` — read, parse, and evaluate a dumped expression.
 pub fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let file_arg = arg_by_name_or_position(args, &["file"], 0);
-        if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
-            std::panic::panic_any(RError {
-                message: "invalid 'file' argument".to_string(),
-            });
-        }
-
-        let path = elt_to_string(file_arg, 0);
-        let code = std::fs::read_to_string(&path).unwrap_or_else(|err| {
-            std::panic::panic_any(RError {
-                message: format!("cannot read dump file '{}': {err}", path),
-            })
+    let file_arg = arg_by_name_or_position(args, &["file"], 0);
+    if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
+        std::panic::panic_any(RError {
+            message: "invalid 'file' argument".to_string(),
         });
-        let parser_factory = active_owner().node_factory();
-        let expr = sexp_ok(active_owner().with_arena(|arena| {
-            crate::eval::parser::parse(&code, arena, parser_factory.clone())
-                .map_err(|err| err.to_string())
-        }))
-        .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
-        if expr.clone().as_raw() == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::eval::eval::Rf_eval(expr.clone().as_raw(), rho)
-        }
+    }
+
+    let path = elt_to_string(file_arg, 0);
+    let code = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        std::panic::panic_any(RError {
+            message: format!("cannot read dump file '{}': {err}", path),
+        })
+    });
+    let parser_factory = active_owner().node_factory();
+    let expr = sexp_ok(active_owner().with_arena(|arena| {
+        crate::eval::parser::parse(&code, arena, parser_factory.clone())
+            .map_err(|err| err.to_string())
+    }))
+    .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
+    if expr.clone().as_raw() == R_NilValue() {
+        R_NilValue()
+    } else {
+        crate::eval::eval::Rf_eval(expr.clone().as_raw(), rho)
     }
 }
 
@@ -346,7 +344,10 @@ pub fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     && symbol_name(tag).as_deref() == Some("splice");
                 if named || (tag.is_null() || tag == R_NilValue()) {
                     let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
-                    if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 && logical_elt_checked(v, 0) != 0 {
+                    if TYPEOF(v) == SEXPTYPE::LGLSXP
+                        && XLENGTH(v) > 0
+                        && logical_elt_checked(v, 0) != 0
+                    {
                         on = true;
                     }
                     if named {

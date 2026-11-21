@@ -968,10 +968,7 @@ pub(crate) fn bc_eval_private(
                         let args = Rf_cons(obj, Rf_cons(idx, nil));
                         let call = Rf_cons(dbracket_sym, args);
                         if !call.is_null() {
-                            crate::sexp::accessors::SET_TYPEOF(
-                                call,
-                                SEXPTYPE::LANGSXP.as_c_int(),
-                            );
+                            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                         }
                         let result = with_stack_rooted(&stack, call, || {
                             crate::eval::eval::Rf_eval(call, rho)

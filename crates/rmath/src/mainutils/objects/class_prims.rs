@@ -62,9 +62,7 @@ pub fn inherits2(x: SEXP, what: &std::ffi::CStr) -> c_int {
         let nclass = length(klass);
         for i in 0..nclass {
             let cs = char_cstring(STRING_ELT(klass, i as R_xlen_t));
-            if !cs.is_none()
-                && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes()
-            {
+            if !cs.is_none() && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes() {
                 return TRUE;
             }
         }

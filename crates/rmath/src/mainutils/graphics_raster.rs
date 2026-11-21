@@ -178,8 +178,7 @@ unsafe fn decode_raster_image_input(value: SEXP, native_payload: bool) -> Raster
         if XLENGTH(value) as usize != length {
             base_error("raster image dimensions do not match its data");
         }
-        let native =
-            TYPEOF(value) == SEXPTYPE::INTSXP && inherits2(value, c"nativeRaster") != 0;
+        let native = TYPEOF(value) == SEXPTYPE::INTSXP && inherits2(value, c"nativeRaster") != 0;
         // as.raster transposes an ordinary matrix before restoring its
         // dimensions. Both raster classes therefore carry row-major pixels.
         let row_major = native_payload || native || inherits2(value, c"raster") != 0;

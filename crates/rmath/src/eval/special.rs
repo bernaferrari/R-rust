@@ -62,13 +62,7 @@ pub fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// Dispatch special forms by name.
-fn dispatch_special_by_name(
-    name: &str,
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+fn dispatch_special_by_name(name: &str, call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // SAFETY: this translated entry retains its explicitly active owner.
         let factory = crate::sexp::object::SessionNodeFactory::new(
@@ -247,7 +241,7 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
     }
 }
 
- fn list_append(s: SEXP, t: SEXP) -> SEXP {
+fn list_append(s: SEXP, t: SEXP) -> SEXP {
     if is_null(s) {
         return t;
     }

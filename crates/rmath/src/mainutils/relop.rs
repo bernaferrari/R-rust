@@ -64,7 +64,6 @@ const BITWISE_SHIFT_R: c_int = 6;
 // Local helpers delegating to canonical implementations
 // ---------------------------------------------------------------------------
 
-
 /// GNU `Seql`: pointer equality, else UTF-8 translation (memory.c).
 pub fn Seql(x: SEXP, y: SEXP) -> c_int {
     if x == y {
@@ -1466,22 +1465,12 @@ fn bitwise_shift_rhs<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
 
 /// Bitwise left shift of integer vectors with recycling.
 fn bitwise_shift_l<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
-    bitwise_shift(
-        a,
-        b,
-        |aa, bb| ((aa as c_uint) << bb) as c_int,
-        c"bitShiftL",
-    )
+    bitwise_shift(a, b, |aa, bb| ((aa as c_uint) << bb) as c_int, c"bitShiftL")
 }
 
 /// Bitwise right shift of integer vectors with recycling.
 fn bitwise_shift_r<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
-    bitwise_shift(
-        a,
-        b,
-        |aa, bb| ((aa as c_uint) >> bb) as c_int,
-        c"bitShiftR",
-    )
+    bitwise_shift(a, b, |aa, bb| ((aa as c_uint) >> bb) as c_int, c"bitShiftR")
 }
 
 /// Shared shift kernel: NA or out-of-range counts yield NA_INTEGER.

@@ -329,12 +329,10 @@ pub fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
     let t = TYPEOF(object);
     if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::PROMSXP {
-        Rf_error_cstr(
-            c"'tracemem' is not useful for promise and environment objects");
+        Rf_error_cstr(c"'tracemem' is not useful for promise and environment objects");
     }
     if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP {
-        Rf_error_cstr(
-            c"'tracemem' is not useful for weak reference or external pointer objects");
+        Rf_error_cstr(c"'tracemem' is not useful for weak reference or external pointer objects");
     }
     set_memory_traced(object, true);
     mk_string(&format!("<{:p}>", object))

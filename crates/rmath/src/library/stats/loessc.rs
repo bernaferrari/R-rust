@@ -134,7 +134,8 @@ unsafe fn fit_loess_model(
                 // not the .C(...) expression.
                 crate::mainutils::errors::warningcall_cstr(
                     crate::mainutils::errors::findCall(),
-                    std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default());
+                    std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default(),
+                );
             }
             Ok(model)
         }
@@ -282,7 +283,8 @@ fn fail_loess(message: &str) -> ! {
     bytes.push(0);
 
     crate::main::errors::Rf_error_cstr(
-        std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default());
+        std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default(),
+    );
     unreachable!();
 }
 
@@ -1268,7 +1270,9 @@ pub unsafe fn loesswarn(i: *mut c_int) {
                 "Assert failed"
             }
         };
-        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", msg).as_bytes()));
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(
+            format!("{}\0", msg).as_bytes(),
+        ));
     }
 }
 
@@ -1289,7 +1293,9 @@ pub unsafe fn ehg183a(
             mess.push_str(&format!(" {}", *i.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", mess).as_bytes()));
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(
+            format!("{}\0", mess).as_bytes(),
+        ));
     }
 }
 
@@ -1310,7 +1316,9 @@ pub unsafe fn ehg184a(
             mess.push_str(&format!(" {:.5}", *x.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", mess).as_bytes()));
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(
+            format!("{}\0", mess).as_bytes(),
+        ));
     }
 }
 

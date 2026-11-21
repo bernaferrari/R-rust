@@ -78,9 +78,7 @@ pub fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
     unsafe {
         let r = (n2 - n1).abs();
         if r >= R_XLEN_T_MAX_DBL {
-            errorcall_cstr(
-                call,
-                c"result would be too long a vector");
+            errorcall_cstr(call, c"result would be too long a vector");
         }
 
         // If both n1 and n2 are exact integers, use compact intrange.
@@ -168,13 +166,9 @@ pub fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 errorcall_cstr(call, c"argument of length 0");
             }
             if std::env::var("_R_CHECK_LENGTH_COLON_").ok().as_deref() == Some("true") {
-                errorcall_cstr(
-                    call,
-                    c"numerical expression has length > 1");
+                errorcall_cstr(call, c"numerical expression has length > 1");
             }
-            warningcall_cstr(
-                call,
-                c"numerical expression has length > 1");
+            warningcall_cstr(call, c"numerical expression has length > 1");
         }
 
         let r_n1 = asReal(s1);
@@ -269,20 +263,14 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if len_arg != R_MissingArg() && len_arg != R_NilValue() {
             let mut rout = asReal(len_arg);
             if !R_FINITE(rout) {
-                errorcall_cstr(
-                    call,
-                    c"'length.out' must be a finite number");
+                errorcall_cstr(call, c"'length.out' must be a finite number");
             }
             if ISNAN(rout) || rout <= -0.5 {
-                errorcall_cstr(
-                    call,
-                    c"'length.out' must be a non-negative number");
+                errorcall_cstr(call, c"'length.out' must be a non-negative number");
             }
             rout = rout.ceil();
             if rout >= R_XLEN_T_MAX_DBL {
-                errorcall_cstr(
-                    call,
-                    c"result would be too long a vector");
+                errorcall_cstr(call, c"result would be too long a vector");
             }
             lout = rout as R_xlen_t;
         }
@@ -304,15 +292,11 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 1.0
             } else {
                 if LENGTH(from) != 1 {
-                    errorcall_cstr(
-                        call,
-                        c"'from' must be of length 1");
+                    errorcall_cstr(call, c"'from' must be of length 1");
                 }
                 let v = asReal(from);
                 if !R_FINITE(v) {
-                    errorcall_cstr(
-                        call,
-                        c"'from' must be a finite number");
+                    errorcall_cstr(call, c"'from' must be a finite number");
                 }
                 v
             };
@@ -321,15 +305,11 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 1.0
             } else {
                 if LENGTH(to) != 1 {
-                    errorcall_cstr(
-                        call,
-                        c"'to' must be of length 1");
+                    errorcall_cstr(call, c"'to' must be of length 1");
                 }
                 let v = asReal(to);
                 if !R_FINITE(v) {
-                    errorcall_cstr(
-                        call,
-                        c"'to' must be a finite number");
+                    errorcall_cstr(call, c"'to' must be a finite number");
                 }
                 v
             };
@@ -339,9 +319,7 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 // 'by' specified
                 if LENGTH(by) != 1 {
-                    errorcall_cstr(
-                        call,
-                        c"'by' must be of length 1");
+                    errorcall_cstr(call, c"'by' must be of length 1");
                 }
                 let del = rto - rfrom;
                 if del == 0.0 && rto == 0.0 {
@@ -362,23 +340,17 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if del == 0.0 && rby == 0.0 {
                         return if miss_from { ScalarReal(rfrom) } else { from };
                     } else {
-                        errorcall_cstr(
-                            call,
-                            c"invalid '(to - from)/by'");
+                        errorcall_cstr(call, c"invalid '(to - from)/by'");
                     }
                 }
                 if finite_del && del.abs() / fmax2(rto.abs(), rfrom.abs()) < 100.0 * DBL_EPSILON_C {
                     return if miss_from { ScalarReal(rfrom) } else { from };
                 }
                 if n > 100.0 * INT_MAX_C {
-                    errorcall_cstr(
-                        call,
-                        c"'by' argument is much too small");
+                    errorcall_cstr(call, c"'by' argument is much too small");
                 }
                 if n < -FEPS {
-                    errorcall_cstr(
-                        call,
-                        c"wrong sign in 'by' argument");
+                    errorcall_cstr(call, c"wrong sign in 'by' argument");
                 }
 
                 // GNU seq.c: integer result only when every *present*
@@ -438,14 +410,10 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rfrom = rto - (lout as c_double) + 1.0;
             }
             if !R_FINITE(rfrom) {
-                errorcall_cstr(
-                    call,
-                    c"'from' must be a finite number");
+                errorcall_cstr(call, c"'from' must be a finite number");
             }
             if !R_FINITE(rto) {
-                errorcall_cstr(
-                    call,
-                    c"'to' must be a finite number");
+                errorcall_cstr(call, c"'to' must be a finite number");
             }
             let mut finite_del = false;
             if lout > 2 {
@@ -504,14 +472,10 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rfrom = 1.0;
             }
             if !R_FINITE(rfrom) {
-                errorcall_cstr(
-                    call,
-                    c"'from' must be a finite number");
+                errorcall_cstr(call, c"'from' must be a finite number");
             }
             if !R_FINITE(rby) {
-                errorcall_cstr(
-                    call,
-                    c"'by' must be a finite number");
+                errorcall_cstr(call, c"'by' must be a finite number");
             }
             let rto = rfrom + (lout - 1) as c_double * rby;
             if rfrom <= INT_MAX_C
@@ -537,14 +501,10 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let rby = asReal(by);
             let rfrom = rto - (lout - 1) as c_double * rby;
             if !R_FINITE(rto) {
-                errorcall_cstr(
-                    call,
-                    c"'to' must be a finite number");
+                errorcall_cstr(call, c"'to' must be a finite number");
             }
             if !R_FINITE(rby) {
-                errorcall_cstr(
-                    call,
-                    c"'by' must be a finite number");
+                errorcall_cstr(call, c"'by' must be a finite number");
             }
             if rby == rby as c_int as c_double
                 && rto == rto as c_int as c_double
@@ -608,9 +568,7 @@ pub fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             {
                 let coerced = crate::mainutils::coerce::asInteger(ans);
                 if coerced == NA_INTEGER || coerced < 0 {
-                    errorcall_cstr(
-                        call,
-                        c"argument must be coercible to non-negative integer");
+                    errorcall_cstr(call, c"argument must be coercible to non-negative integer");
                 }
                 len = coerced as R_xlen_t;
                 dispatched = true;
@@ -645,21 +603,15 @@ pub fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         check1arg(args, call, b"length.out\0".as_ptr() as *const c_char);
 
         if LENGTH(CAR(args)) != 1 {
-            warningcall_cstr(
-                call,
-                c"first element used of 'length.out' argument");
+            warningcall_cstr(call, c"first element used of 'length.out' argument");
         }
 
         let dlen = asReal(CAR(args));
         if !R_FINITE(dlen) || dlen < 0.0 {
-            errorcall_cstr(
-                call,
-                c"argument must be coercible to non-negative integer");
+            errorcall_cstr(call, c"argument must be coercible to non-negative integer");
         }
         if dlen >= R_XLEN_T_MAX_DBL {
-            errorcall_cstr(
-                call,
-                c"result would be too long a vector");
+            errorcall_cstr(call, c"result would be too long a vector");
         }
         let len = dlen as R_xlen_t;
 

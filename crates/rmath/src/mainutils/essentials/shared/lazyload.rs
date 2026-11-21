@@ -360,9 +360,8 @@ pub(crate) fn lazy_lazy_load_package_db(
     }
 
     let compressed = list_element_by_name(map, "compressed").unwrap_or(Rf_ScalarInteger(0));
-    let datafile = mk_string_cstr(&CString::new(rdb_path.to_string_lossy().into_owned())
-            .unwrap_or_default()
-            );
+    let datafile =
+        mk_string_cstr(&CString::new(rdb_path.to_string_lossy().into_owned()).unwrap_or_default());
     if datafile.is_null() {
         return Err(format!(
             "could not create lazy-load data path for '{}'",
@@ -404,20 +403,18 @@ pub(crate) fn lazy_lazy_load_package_db(
         define_var(install_str("refs"), refs_env, hook);
     }
 
-    let names = crate::sexp::attrib_core::getAttrib(
-        variables,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-    );
+    let names =
+        crate::sexp::attrib_core::getAttrib(variables, crate::sexp::attrib_core::R_NamesSymbol());
 
     let mut lazy_names = Vec::new();
     let mut lazy_keys = Vec::new();
     for index in 0..XLENGTH(variables) {
-        let name =
-            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                string_at_or_empty(names, index)
-            } else {
-                String::new()
-            };
+        let name = if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP
+        {
+            string_at_or_empty(names, index)
+        } else {
+            String::new()
+        };
         if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
             continue;
         }
@@ -631,18 +628,14 @@ pub(crate) fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
         name: &std::ffi::CStr,
     ) -> SexpResult<Sexp<'static>> {
         access.domain().link(environment)?;
-        let symbol = access
-            .with_native(|owner| owner.sexp(install_cstr(&name))?.into_owned())?;
-        let value = access.with_native(|owner| owner
-            .sexp(find_var_in_frame(
-                environment.as_raw(),
-                symbol.as_raw(),
-            ))?
-            .into_owned())?;
+        let symbol = access.with_native(|owner| owner.sexp(install_cstr(&name))?.into_owned())?;
+        let value = access.with_native(|owner| {
+            owner
+                .sexp(find_var_in_frame(environment.as_raw(), symbol.as_raw()))?
+                .into_owned()
+        })?;
         if value.typeof_() == SEXPTYPE::PROMSXP {
-            access.with_native(|owner| owner
-                .sexp(force_promise(value.as_raw()))?
-                .into_owned())
+            access.with_native(|owner| owner.sexp(force_promise(value.as_raw()))?.into_owned())
         } else {
             Ok(value)
         }

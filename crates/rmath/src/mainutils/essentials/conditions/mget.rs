@@ -382,9 +382,7 @@ fn execute(
         let symbol = access.with_native(|token| {
             let name =
                 std::ffi::CString::new(name.as_str()).map_err(|_| failure("invalid mget name"))?;
-            token
-                .sexp(install_cstr(&name))?
-                .into_owned()
+            token.sexp(install_cstr(&name))?.into_owned()
         })?;
         let selected = lookup(&symbol, environment.clone(), mode, inherits, access)?;
         let value = match selected {

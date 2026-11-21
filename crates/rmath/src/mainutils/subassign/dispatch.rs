@@ -128,9 +128,7 @@ pub(crate) fn errorNotSubsettable(x: SEXP) {
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("object of type '{}' is not subsettable", s);
         let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-        crate::mainutils::errors::Rf_error1(
-            c"invalid subscript",
-            &cmsg);
+        crate::mainutils::errors::Rf_error1(c"invalid subscript", &cmsg);
         unreachable!()
     }
 }
@@ -156,9 +154,7 @@ pub(crate) fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("subscript out of bounds: type '{}' index {}", s, subscript);
         let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-        crate::mainutils::errors::Rf_error1(
-            c"subscript out of bounds",
-            &cmsg);
+        crate::mainutils::errors::Rf_error1(c"subscript out of bounds", &cmsg);
         unreachable!()
     }
 }

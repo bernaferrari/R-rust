@@ -336,8 +336,7 @@ pub unsafe fn runmed(
             Trunmed(xx_slice, ans_slice, nn, k as i64, end_rule);
         } else {
             if k > nn as c_int {
-                Rf_error_cstr(
-                    c"bandwidth/span of running medians is larger than n");
+                Rf_error_cstr(c"bandwidth/span of running medians is larger than n");
             }
             Srunmed(
                 std::slice::from_raw_parts(xx, nn as usize),

@@ -1409,11 +1409,13 @@ mod safety_tests {
 
         let session = crate::sexp::RSession::new_for_gc_tests();
         let owner = session.owner_token().unwrap();
-        let source = session.with_active(|| owner
-            .sexp(Rf_ScalarReal(1.0))
-            .unwrap()
-            .into_owned()
-            .unwrap());
+        let source = session.with_active(|| {
+            owner
+                .sexp(Rf_ScalarReal(1.0))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
         let target = session.with_active(|| owner.sexp(Rf_ScalarReal(2.0)).unwrap());
         let (first, second) = session.with_active(|| {
             let first = owner.sexp(install_str("dpq.first")).unwrap();
@@ -1451,8 +1453,7 @@ mod safety_tests {
         assert!(source.try_attrib().unwrap().is_nil());
         session.with_active(|| {
             for (tag, expected) in [(first, 7), (second, 9)] {
-                let value =
-                    crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw());
+                let value = crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw());
                 assert_eq!(owner.sexp(value).unwrap().try_integer_elt(0), Ok(expected));
             }
         });

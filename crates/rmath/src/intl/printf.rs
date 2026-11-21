@@ -320,7 +320,9 @@ mod tests {
     fn test_vasnprintf_null_format() {
         let mut length: usize = 0;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut()) };
+        let result = unsafe {
+            libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut())
+        };
         assert!(result.is_null());
     }
 }

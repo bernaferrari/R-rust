@@ -297,7 +297,8 @@ pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
         || crate::sexp::accessors::XLENGTH(sx) != n - 1
     {
         crate::main::errors::Rf_error_cstr(
-            c"Argument Sx must be numeric vector one shorter than m[]");
+            c"Argument Sx must be numeric vector one shorter than m[]",
+        );
     }
     let val = crate::mainutils::seq::Rf_duplicate(m);
     let _g = protect_sexp(val);

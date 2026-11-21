@@ -372,17 +372,15 @@ pub(crate) fn load_package_data_set(
 }
 
 pub(crate) fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), String> {
-    unsafe {
-        let code = read_package_text(file)
-            .map_err(|err| format!("could not read {}: {err}", file.display()))?;
-        let parser_factory = active_owner().node_factory();
-        let expr = sexp_ok(active_owner().with_arena(|arena| {
-            crate::eval::parser::parse(&code, arena, parser_factory.clone())
-                .map_err(|err| err.to_string())
-        }))?;
-        let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
-        Ok(())
-    }
+    let code = read_package_text(file)
+        .map_err(|err| format!("could not read {}: {err}", file.display()))?;
+    let parser_factory = active_owner().node_factory();
+    let expr = sexp_ok(active_owner().with_arena(|arena| {
+        crate::eval::parser::parse(&code, arena, parser_factory.clone())
+            .map_err(|err| err.to_string())
+    }))?;
+    let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
+    Ok(())
 }
 
 pub(super) fn define_package_name(package: &str, package_env: SEXP) {
@@ -403,11 +401,7 @@ pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
     if !package_path.is_empty() {
         let path_string = mk_string_cstr(&CString::new(package_path).unwrap_or_default());
         if !path_string.is_null() {
-            crate::sexp::attrib_core::setAttrib(
-                package_env,
-                install_str("path"),
-                path_string,
-            );
+            crate::sexp::attrib_core::setAttrib(package_env, install_str("path"), path_string);
         }
     }
 }

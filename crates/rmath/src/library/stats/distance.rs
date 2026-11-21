@@ -179,9 +179,7 @@ fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> 
         let b = x[idx2];
         if both_non_na(a, b) {
             if !both_finite(a, b) {
-                Rf_warning_cstr(
-                    c"treating non-finite values as NA"
-                );
+                Rf_warning_cstr(c"treating non-finite values as NA");
             } else {
                 if a != 0.0 || b != 0.0 {
                     count += 1;

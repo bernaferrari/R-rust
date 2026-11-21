@@ -18,8 +18,8 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, COMPLEX_ELT, ENCLOS, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, LOGICAL_ELT,
-    PRINTNAME, RAW_ELT, REAL, REAL_ELT, SET_INTEGER_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
+    CAR, CDR, COMPLEX_ELT, ENCLOS, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, LOGICAL_ELT, PRINTNAME,
+    RAW_ELT, REAL, REAL_ELT, SET_INTEGER_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -59,14 +59,15 @@ fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
             .unwrap_or_else(|error| bc_error(error.to_string()));
         pin.require_live()
             .unwrap_or_else(|error| bc_error(error.to_string()));
-    }).unwrap_or_else(|error| bc_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| bc_error(error.to_string()))
 }
 
 /// Language object of the CALL that follows this GETFUN in the GNU stream,
 /// falling back to the current function context. GNU `findFun` attributes
 /// `R_FunctionNotFoundError` with `R_CurrentExpression`; in bytecode that
 /// is the CALL constant.
- fn gnu_pending_call(words: &[c_int], mut pc: usize, constants: &[Sexp<'static>]) -> SEXP {
+fn gnu_pending_call(words: &[c_int], mut pc: usize, constants: &[Sexp<'static>]) -> SEXP {
     while pc < words.len() {
         let opcode = words[pc];
         if opcode == super::bytecode::GNU_OP_CALL || opcode == super::bytecode::GNU_OP_CALLBUILTIN {
@@ -91,7 +92,8 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
     crate::mainutils::errors::R_MissingArgError(
         arg_sym,
         crate::mainutils::errors::R_getCurrentCall(),
-        Some(c"getvarError"));
+        Some(c"getvarError"),
+    );
 
     unreachable!("R_MissingArgError signals");
 }

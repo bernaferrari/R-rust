@@ -52,9 +52,7 @@ fn as_integer(s: SEXP) -> c_int {
 pub fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
     let n = as_integer(sn);
     if n == NA_INTEGER || n <= 0 {
-        crate::main::errors::Rf_error_cstr(
-            c"invalid 'n' argument"
-        );
+        crate::main::errors::Rf_error_cstr(c"invalid 'n' argument");
     }
 
     // GNU: PROTECT(sx = coerceVector(sx, REALSXP)); same for sw — the

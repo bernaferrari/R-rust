@@ -425,7 +425,7 @@ impl Drop for NamedArguments<'_> {
 
 /// GNU `INCREMENT_LINKS`: a later argument can still see this value as shared.
 /// 3 is sticky so a value that was already `NAMEDMAX` is not unshared later.
- fn bump_named_link(val: SEXP) {
+fn bump_named_link(val: SEXP) {
     if val.is_null() {
         return;
     }
@@ -435,7 +435,7 @@ impl Drop for NamedArguments<'_> {
     }
 }
 
- fn drop_named_link(val: SEXP) {
+fn drop_named_link(val: SEXP) {
     if val.is_null() {
         return;
     }
@@ -672,7 +672,7 @@ unsafe fn R_mkString(s: *const c_char) -> SEXP {
 // Helper: stringSuffix — get suffix of character vector starting at pos
 // ---------------------------------------------------------------------------
 
- fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
+fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
     if klass.is_null() || pos < 0 {
         return R_NilValue();
     }
@@ -1232,10 +1232,14 @@ pub unsafe fn DispatchGroup(
                 {
                     lsxp = R_NilValue();
                 } else if crate::mainutils::identical::R_compute_identical(lsxp, rsxp, 23) == 0 {
-                    let left_name =
-                        String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(lmeth))).into_owned();
-                    let right_name =
-                        String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(rmeth))).into_owned();
+                    let left_name = String::from_utf8_lossy(
+                        &crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(lmeth)),
+                    )
+                    .into_owned();
+                    let right_name = String::from_utf8_lossy(
+                        &crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(rmeth)),
+                    )
+                    .into_owned();
                     let warning = std::ffi::CString::new(format!(
                         "Incompatible methods (\"{left_name}\", \"{right_name}\") for \"{}\"",
                         generic.to_string_lossy()
@@ -1523,18 +1527,18 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(1))
             .unwrap();
 
         let cycle = factory.pairlist_cell(&value, &nil, &nil).unwrap();
-         crate::sexp::accessors::SETCDR(cycle.as_raw(), cycle.as_raw()) ;
+        crate::sexp::accessors::SETCDR(cycle.as_raw(), cycle.as_raw());
         let cycle_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             summary_method_arguments(&factory, cycle)
         }));
         assert!(cycle_error.is_err());
 
         let improper = factory.pairlist_cell(&value, &nil, &nil).unwrap();
-         crate::sexp::accessors::SETCDR(improper.as_raw(), value.as_raw()) ;
+        crate::sexp::accessors::SETCDR(improper.as_raw(), value.as_raw());
         let improper_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             summary_method_arguments(&factory, improper)
         }));
@@ -1547,7 +1551,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(1))
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let notifications = force_allocations_with_reentrant_gc(&session);
@@ -1561,8 +1565,8 @@ mod owned_argument_tests {
         .unwrap_err()
         .downcast::<RError>()
         .unwrap();
-        let canonical_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 
-{            crate::sexp::constructors::Rf_cons(value.as_raw(), nil.as_raw())
+        let canonical_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::sexp::constructors::Rf_cons(value.as_raw(), nil.as_raw())
         }))
         .unwrap_err()
         .downcast::<RError>()
@@ -1591,7 +1595,7 @@ mod owned_argument_tests {
             .wrap(crate::sexp::symbol::install_str("sum"))
             .unwrap();
         let value = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(1))
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let blockers = (0..3)
@@ -1635,14 +1639,14 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(original.owner_token().unwrap());
         let result = original.with_active(|| {
             factory
-                .wrap( crate::sexp::constructors::Rf_ScalarInteger(17) )
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(17))
                 .unwrap()
         });
         let result_raw = result.as_raw();
         let foreign_factory = SessionNodeFactory::new(replacement.owner_token().unwrap());
         let foreign_result = replacement.with_active(|| {
             foreign_factory
-                .wrap( crate::sexp::constructors::Rf_ScalarInteger(19) )
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(19))
                 .unwrap()
         });
         let foreign_raw = foreign_result.as_raw();
@@ -1694,7 +1698,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let value = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(1))
             .unwrap();
         let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
         let blockers = vec![
@@ -1743,7 +1747,7 @@ mod owned_argument_tests {
             let factory = SessionNodeFactory::new(original.owner_token().unwrap());
             let nil = factory.nil();
             let value = factory
-                .wrap( crate::sexp::constructors::Rf_ScalarInteger(1) )
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(1))
                 .unwrap();
             let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
             (factory, arguments)
@@ -1783,7 +1787,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let environment = session.global_env().unwrap();
         for (name, number) in [(c"x", 11), (c"y", 22)] {
-            let value = factory.wrap( Rf_ScalarInteger(number) ).unwrap();
+            let value = factory.wrap(Rf_ScalarInteger(number)).unwrap();
             unsafe {
                 crate::sexp::envir::defineVar(
                     crate::sexp::symbol::install_str(name.to_str().unwrap()),
@@ -1909,7 +1913,7 @@ mod owned_argument_tests {
         let session = RSession::new_for_gc_tests();
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let environment = session.global_env().unwrap();
-        let invalid = factory.wrap( Rf_ScalarInteger(7) ).unwrap();
+        let invalid = factory.wrap(Rf_ScalarInteger(7)).unwrap();
         unsafe {
             crate::sexp::envir::defineVar(R_DotsSymbol(), invalid.as_raw(), environment.as_raw());
         }

@@ -70,11 +70,9 @@ pub(crate) fn populate_package_namespace(
             let exports = namespace_export_environment(package_env)
                 .ok_or_else(|| format!("browser package '{package}' has no exports table"))?;
             for name in &directives.exports {
-                let key = CString::new(name.as_str()).map_err(|_| {
-                    format!("browser package '{package}' has an invalid export")
-                })?;
-                let value =
-                    find_var_in_frame(exports, install_cstr(&key));
+                let key = CString::new(name.as_str())
+                    .map_err(|_| format!("browser package '{package}' has an invalid export"))?;
+                let value = find_var_in_frame(exports, install_cstr(&key));
                 if value == crate::sexp::globals::R_UnboundValue() {
                     return Err(format!(
                         "browser package '{package}' is missing export '{name}'"
@@ -82,12 +80,7 @@ pub(crate) fn populate_package_namespace(
                 }
             }
         }
-        register_namespace_s3_methods(
-            package,
-            package_env,
-            directives,
-            S3MethodMetadata::Record,
-        )?;
+        register_namespace_s3_methods(package, package_env, directives, S3MethodMetadata::Record)?;
     }
     Ok(namespace)
 }
@@ -294,8 +287,7 @@ pub(super) fn namespace_imports_env(package_env: SEXP) -> SEXP {
     if !parent.is_null()
         && parent != R_NilValue()
         && TYPEOF(parent) == SEXPTYPE::ENVSXP
-        && find_var_in_frame(parent, marker)
-            != crate::sexp::globals::R_UnboundValue()
+        && find_var_in_frame(parent, marker) != crate::sexp::globals::R_UnboundValue()
     {
         return parent;
     }

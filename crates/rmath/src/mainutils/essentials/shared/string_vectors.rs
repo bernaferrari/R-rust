@@ -135,10 +135,6 @@ pub(crate) fn named_string_list(items: impl IntoIterator<Item = (String, String)
         );
     }
 
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
     result
 }

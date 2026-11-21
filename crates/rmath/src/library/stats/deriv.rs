@@ -66,7 +66,8 @@ fn run_owned_derivative(
                 .as_raw(),
             Err(payload) => std::panic::resume_unwind(payload),
         }
-    }).unwrap_or_else(|error| fail(error.to_string()))
+    })
+    .unwrap_or_else(|error| fail(error.to_string()))
 }
 
 fn derivative_symbol(
@@ -86,7 +87,8 @@ pub fn do_d(args: SEXP) -> SEXP {
         owned::direct(access, arguments, derivative_symbol, |access| {
             access.with_native(|_| {
                 crate::mainutils::errors::Rf_warning_cstr(
-                    c"only the first element is used as variable name");
+                    c"only the first element is used as variable name",
+                );
                 Ok(())
             })
         })

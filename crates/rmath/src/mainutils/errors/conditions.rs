@@ -477,7 +477,8 @@ fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected
         if selected.is_none() && (TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0) {
             errorcall_cstr(
                 call.as_raw(),
-                c"condition object must be a VECSXP of length at least one");
+                c"condition object must be a VECSXP of length at least one",
+            );
         }
         let supplied_message = selected.is_some();
         let message = selected.unwrap_or_else(|| {
@@ -558,12 +559,7 @@ pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
             call
         };
         let _call_guard = protect(call);
-        let cond = R_makeErrorCondition(
-            call,
-            Some(c"objectNotFoundError"),
-            None,
-            2,
-            Some(&c_msg));
+        let cond = R_makeErrorCondition(call, Some(c"objectNotFoundError"), None, 2, Some(&c_msg));
         let _cond_guard = protect(cond);
         R_setConditionField(cond, 2, c"name", sym);
         let mode_name = mode.unwrap_or("any");
@@ -607,7 +603,8 @@ pub fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
         Some(c"objectNotFoundError"),
         Some(c"functionNotFoundError"),
         2,
-        Some(&c_msg));
+        Some(&c_msg),
+    );
     let _cond_guard = protect(cond);
     R_setConditionField(cond, 2, c"name", sym);
     let mode_sexp = mk_string("function");
@@ -733,7 +730,8 @@ pub fn R_InitConditions() {
         Some(c"stackOverflowError"),
         Some(c"protectStackOverflowError"),
         0,
-        Some(c"protect(): protection stack overflow"));
+        Some(c"protect(): protection stack overflow"),
+    );
     crate::sexp::protect::R_PreserveObject(protect_so);
 
     let expr_so = R_makeErrorCondition(
@@ -741,7 +739,8 @@ pub fn R_InitConditions() {
         Some(c"stackOverflowError"),
         Some(c"expressionStackOverflowError"),
         0,
-        Some(c"evaluation nested too deeply: infinite recursion / options(expressions=)?"));
+        Some(c"evaluation nested too deeply: infinite recursion / options(expressions=)?"),
+    );
     crate::sexp::protect::R_PreserveObject(expr_so);
 
     let node_so = R_makeErrorCondition(
@@ -749,7 +748,8 @@ pub fn R_InitConditions() {
         Some(c"stackOverflowError"),
         Some(c"nodeStackOverflowError"),
         0,
-        Some(c"node stack overflow"));
+        Some(c"node stack overflow"),
+    );
     crate::sexp::protect::R_PreserveObject(node_so);
 }
 
@@ -881,12 +881,7 @@ pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP)
     );
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-    let cond = R_makeWarningCondition(
-        call,
-        Some(c"partialMatchWarning"),
-        None,
-        2,
-        Some(&c_msg));
+    let cond = R_makeWarningCondition(call, Some(c"partialMatchWarning"), None, 2, Some(&c_msg));
     let _cond_guard = protect(cond);
     R_setConditionField(
         cond,
@@ -896,7 +891,8 @@ pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP)
             input
         } else {
             Rf_ScalarString(input)
-        });
+        },
+    );
     R_setConditionField(
         cond,
         3,
@@ -905,7 +901,8 @@ pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP)
             target
         } else {
             Rf_ScalarString(target)
-        });
+        },
+    );
     // ideally we would want the function/object in a field also
     cond
 }
@@ -931,7 +928,8 @@ pub fn R_makePartialArgumentMatchWarningCondition(
         Some(c"partialMatchWarning"),
         Some(c"partialArgumentMatchWarning"),
         2,
-        Some(&c_msg));
+        Some(&c_msg),
+    );
     let _cond_guard = protect(cond);
     R_setConditionField(cond, 2, c"argument", argument);
     R_setConditionField(cond, 3, c"formal", formal);
@@ -962,7 +960,8 @@ pub fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
             Some(c"simpleError"),
             Some(c"notSubsettableError"),
             0,
-            Some(&c_msg))
+            Some(&c_msg),
+        )
     }
 }
 
@@ -989,7 +988,8 @@ pub fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
             Some(c"simpleError"),
             Some(c"missingSubscriptError"),
             0,
-            Some(&c_msg))
+            Some(&c_msg),
+        )
     }
 }
 
@@ -1005,7 +1005,8 @@ pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
             Some(c"simpleError"),
             Some(c"missingSubscriptError"),
             0,
-            Some(&c_msg))
+            Some(&c_msg),
+        )
     }
 }
 /// Signal a missing subscript with the object when the caller has it.
@@ -1019,7 +1020,8 @@ pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
         Some(c"MissingSubscriptError"),
         None,
         c_int::from(object.is_some()),
-        Some(c"missing subscript"));
+        Some(c"missing subscript"),
+    );
     let _guard = protect(cond);
     if let Some(x) = object {
         R_setConditionField(cond, 2, c"object", x);
@@ -1046,7 +1048,8 @@ pub fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEX
         Some(c"simpleError"),
         Some(c"outOfBoundsError"),
         0,
-        Some(&c_msg))
+        Some(&c_msg),
+    )
 }
 
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
@@ -1061,7 +1064,8 @@ pub fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
             Some(c"stackOverflowError"),
             Some(c"cStackOverflowError"),
             0,
-            Some(&c_msg))
+            Some(&c_msg),
+        )
     }
 }
 

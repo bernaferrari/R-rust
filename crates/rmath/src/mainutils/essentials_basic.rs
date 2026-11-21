@@ -69,8 +69,7 @@ fn cplx_elt(x: SEXP, i: R_xlen_t) -> Rcomplex {
 /// Checked element write through the active owner.
 fn set_result<T>(x: SEXP, write: impl FnOnce(&mut SexpMut<'_>) -> SexpResult<T>) -> T {
     let mut dst = owned_mut(x);
-    write(&mut dst)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    write(&mut dst).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Lossy text of a CHARSXP reached through the active owner.
@@ -453,13 +452,13 @@ pub fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 };
                 if d > 0 {
                     let old = crate::mainutils::format::format_set_R_print(
-                            crate::mainutils::format::RPrint {
-                                digits: d,
-                                scipen: crate::mainutils::options::GetOptionScipen(),
-                                na_width: 2,
-                                na_width_noquote: 2,
-                            },
-                        );
+                        crate::mainutils::format::RPrint {
+                            digits: d,
+                            scipen: crate::mainutils::options::GetOptionScipen(),
+                            na_width: 2,
+                            na_width_noquote: 2,
+                        },
+                    );
                     Some(RestorePrint { old })
                 } else {
                     None
@@ -935,9 +934,7 @@ pub fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut dst = owned_mut(result);
             for (i, &idx) in indices.iter().enumerate() {
                 dst.try_set_integer_elt(i as R_xlen_t, idx)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
         // GNU summary.c do_which: names of TRUE elements follow the indices.
@@ -1287,9 +1284,7 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             for i in 0..total {
                 result_mut
                     .try_set_integer_elt(i, 0)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
             for row in 0..nrow {
                 let mut stride = 1i64;
@@ -1308,9 +1303,7 @@ fn table_data_frame(frame: SEXP) -> SEXP {
                     });
                     result_mut
                         .try_set_integer_elt(index, count + 1)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         }
@@ -1320,9 +1313,7 @@ fn table_data_frame(frame: SEXP) -> SEXP {
             for j in 0..nd {
                 dim_mut
                     .try_set_integer_elt(j as R_xlen_t, labels[j].len() as i32)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
@@ -1513,9 +1504,7 @@ pub fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut dst = owned_mut(result);
             for (i, &count) in counts.iter().enumerate() {
                 dst.try_set_integer_elt(i as R_xlen_t, count.min(c_int::MAX as i64) as c_int)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
 
@@ -1956,8 +1945,7 @@ pub fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return ans;
         }
         let x = CAR(args);
-        if crate::mainutils::objects::inherits2(x, c"factor") != 0
-            && TYPEOF(x) == SEXPTYPE::INTSXP
+        if crate::mainutils::objects::inherits2(x, c"factor") != 0 && TYPEOF(x) == SEXPTYPE::INTSXP
         {
             let n = XLENGTH(x);
             let levels =
@@ -1990,9 +1978,7 @@ pub fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     };
                     out_mut
                         .try_set_logical_elt(i, bit)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
             return out;
@@ -2155,8 +2141,7 @@ pub fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _chars_guard = protect(chars);
 
     if chars.is_null() || chars == R_NilValue() || XLENGTH(chars) == 0 {
-        crate::mainutils::errors::Rf_error_cstr(
-            c"invalid data of mode 'character' (too short)");
+        crate::mainutils::errors::Rf_error_cstr(c"invalid data of mode 'character' (too short)");
     }
     crate::mainutils::subset::installTrChar(STRING_ELT(chars, 0))
 }
@@ -2200,7 +2185,10 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let attrs = crate::sexp::accessors::ATTRIB(x);
             if !attrs.is_null() && attrs != R_NilValue() {
-                crate::sexp::accessors::SET_ATTRIB(result, crate::mainutils::duplicate::duplicate(attrs));
+                crate::sexp::accessors::SET_ATTRIB(
+                    result,
+                    crate::mainutils::duplicate::duplicate(attrs),
+                );
             }
             return result;
         }
@@ -2258,9 +2246,7 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else if t == SEXPTYPE::RAWSXP {
                     let v = owned(x)
                         .try_raw_elt(i)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     set_result(elem, |dst| dst.try_set_raw_elt(0, v));
                 } else if t == SEXPTYPE::CPLXSXP {
                     let v = cplx_elt(x, i);

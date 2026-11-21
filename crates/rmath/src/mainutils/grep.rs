@@ -80,7 +80,8 @@ pub(crate) fn regex_workspace() -> RegexWorkspace {
             let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
             let availability = crate::sexp::instance::instance_liveness(owner.as_ptr());
             RegexWorkspace::new(ledger, availability)
-        }).unwrap_or_else(|_| workspace::memory_error())
+        })
+        .unwrap_or_else(|_| workspace::memory_error())
     }
 }
 
@@ -368,12 +369,8 @@ impl TreRegex {
                 wide.push(u32::from(ch));
             }
         }
-        let preg = crate::tre::compile::tre_compile_owned_slice(
-            &wide,
-            cflags,
-            workspace.clone(),
-        )
-        .map_err(|rc| {
+        let preg = crate::tre::compile::tre_compile_owned_slice(&wide, cflags, workspace.clone())
+            .map_err(|rc| {
             // Option-based matching adapters may discard syntax failures, but
             // exhaustion must follow the same typed error path as buffers.
             if rc == crate::tre::ast::REG_ESPACE {

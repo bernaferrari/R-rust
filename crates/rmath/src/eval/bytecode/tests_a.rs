@@ -264,9 +264,7 @@ fn owned_private_bytecode_for_break_returns_original_false_after_collecting_call
         crate::sexp::owner::with_runtime(&owner, |access| {
             let domain = access.domain();
             let variable = access
-                .with_native(|_| {
-                    domain.wrap(crate::sexp::symbol::install_str("private_for_break"))
-                })
+                .with_native(|_| domain.wrap(crate::sexp::symbol::install_str("private_for_break")))
                 .unwrap();
             (variable, domain.logical(false))
         })

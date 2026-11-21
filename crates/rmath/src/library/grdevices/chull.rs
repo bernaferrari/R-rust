@@ -495,7 +495,14 @@ pub fn chull(x: SEXP) -> SEXP {
         let _ans_guard = protect(ans);
         for i in 0..nh {
             // Reverse order to match C output
-            SET_INTEGER_ELT(ans, i, ih_vec.get(nh as usize - 1 - i as usize).copied().unwrap_or(0));
+            SET_INTEGER_ELT(
+                ans,
+                i,
+                ih_vec
+                    .get(nh as usize - 1 - i as usize)
+                    .copied()
+                    .unwrap_or(0),
+            );
         }
 
         ans

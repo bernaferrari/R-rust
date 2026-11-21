@@ -13,8 +13,7 @@ pub fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
     let (nrow, ncol) =
-        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-        {
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 integer_elt_checked(dim_attr, 0) as R_xlen_t,
                 integer_elt_checked(dim_attr, (1) as R_xlen_t) as R_xlen_t,
@@ -27,8 +26,7 @@ pub fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // Get colnames
     let colnames = crate::sexp::attrib_core::getAttrib(x, install_str("dimnames"));
     let col_names_vec: Vec<String> =
-        if !colnames.is_null() && TYPEOF(colnames) == SEXPTYPE::VECSXP && LENGTH(colnames) >= 2
-        {
+        if !colnames.is_null() && TYPEOF(colnames) == SEXPTYPE::VECSXP && LENGTH(colnames) >= 2 {
             let cn = VECTOR_ELT(colnames, 1);
             if !cn.is_null() && TYPEOF(cn) == SEXPTYPE::STRSXP {
                 let m = XLENGTH(cn).min(ncol);

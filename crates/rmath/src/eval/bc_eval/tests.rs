@@ -186,11 +186,11 @@ fn bcode_with(
 
 fn empty_env(arena: &mut crate::sexp::memory::RArena) -> SEXP {
     let env = arena.alloc_node(SEXPTYPE::ENVSXP);
-    
-        crate::sexp::accessors::SET_FRAME(env, R_NilValue());
-        crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
-        crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
-    
+
+    crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+    crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+    crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
+
     env
 }
 
@@ -276,32 +276,31 @@ fn gnu_doloopbreak_skips_the_loop_body_constant() {
     // GNU DOLOOPBREAK findcontext(CTXT_BREAK) jumps to STARTLOOPCNTXT's
     // break operand and drops values the body pushed.
     let _session = crate::sexp::session::RSession::new_without_default_packages();
-    
-        let code = [
-            super::super::bytecode::GNU_BC_MAX_VERSION,
-            super::super::bytecode::GNU_OP_STARTLOOPCNTXT,
-            0, // while, not for
-            7, // break target: the result LDCONST
-            super::super::bytecode::GNU_OP_LDCONST,
-            0, // poison 7, must not be returned
-            super::super::bytecode::GNU_OP_DOLOOPBREAK,
-            super::super::bytecode::GNU_OP_LDCONST,
-            1, // 42
-            super::super::bytecode::GNU_OP_RETURN,
-        ];
-        let consts = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(7));
-        SET_VECTOR_ELT(consts, 1, Rf_ScalarInteger(42));
-        let result = bcEval(gnu_tagged_bcode(&code, consts), R_BaseEnv());
-        assert_eq!(INTEGER_ELT(result, 0), 42);
-    
+
+    let code = [
+        super::super::bytecode::GNU_BC_MAX_VERSION,
+        super::super::bytecode::GNU_OP_STARTLOOPCNTXT,
+        0, // while, not for
+        7, // break target: the result LDCONST
+        super::super::bytecode::GNU_OP_LDCONST,
+        0, // poison 7, must not be returned
+        super::super::bytecode::GNU_OP_DOLOOPBREAK,
+        super::super::bytecode::GNU_OP_LDCONST,
+        1, // 42
+        super::super::bytecode::GNU_OP_RETURN,
+    ];
+    let consts = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(7));
+    SET_VECTOR_ELT(consts, 1, Rf_ScalarInteger(42));
+    let result = bcEval(gnu_tagged_bcode(&code, consts), R_BaseEnv());
+    assert_eq!(INTEGER_ELT(result, 0), 42);
 }
 
 #[test]
 fn gnu_doloopnext_outside_a_loop_errors() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
-    let err = assert_r_error(|| 
-{        // False condition jumps to DOLOOPNEXT. The other edge reaches
+    let err = assert_r_error(|| {
+        // False condition jumps to DOLOOPNEXT. The other edge reaches
         // RETURN, so the stream is otherwise a complete GNU program.
         let code = [
             super::super::bytecode::GNU_BC_MAX_VERSION,
@@ -398,13 +397,12 @@ fn test_bc_eval_simple_code() {
     arena.set_reference_element(bcode, 2, stack_hint).unwrap();
 
     let env = arena.alloc_node(SEXPTYPE::ENVSXP);
-    
-        crate::sexp::accessors::SET_FRAME(env, R_NilValue());
-        crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
-        crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
-    
 
-    let result =  bcEval(bcode, env) ;
+    crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+    crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+    crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
+
+    let result = bcEval(bcode, env);
     assert!(!result.is_null());
 }
 
@@ -433,14 +431,13 @@ fn test_bc_eval_rejects_unknown_opcode() {
     arena.set_reference_element(bcode, 2, stack_hint).unwrap();
 
     let env = arena.alloc_node(SEXPTYPE::ENVSXP);
-    
-        crate::sexp::accessors::SET_FRAME(env, R_NilValue());
-        crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
-        crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
-    
 
-    let err = assert_r_error(|| 
-{        bcEval(bcode, env);
+    crate::sexp::accessors::SET_FRAME(env, R_NilValue());
+    crate::sexp::accessors::SET_ENCLOS(env, R_NilValue());
+    crate::sexp::accessors::SET_HASHTAB(env, ptr::null_mut());
+
+    let err = assert_r_error(|| {
+        bcEval(bcode, env);
     });
     assert!(err.message.contains("BCMISMATCH"));
     assert!(
@@ -457,9 +454,8 @@ fn test_bc_eval_setvar2_writes_enclosing_frame() {
 
     let parent = empty_env(&mut arena);
     let child = empty_env(&mut arena);
-    
-        crate::sexp::accessors::SET_ENCLOS(child, parent);
-    
+
+    crate::sexp::accessors::SET_ENCLOS(child, parent);
 
     let sym = crate::sexp::symbol::install_str("x");
     // Pre-bind in the parent so SETVAR2's setVar updates that frame
@@ -467,12 +463,12 @@ fn test_bc_eval_setvar2_writes_enclosing_frame() {
     unsafe {
         defineVar(sym, Rf_ScalarInteger(7), parent);
     }
-    let value =  Rf_ScalarInteger(42) ;
+    let value = Rf_ScalarInteger(42);
     let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-    
-        SET_VECTOR_ELT(consts, 0, sym);
-        SET_VECTOR_ELT(consts, 1, value);
-    
+
+    SET_VECTOR_ELT(consts, 0, sym);
+    SET_VECTOR_ELT(consts, 1, value);
+
     let bcode = bcode_with(
         &mut arena,
         &[
@@ -485,7 +481,7 @@ fn test_bc_eval_setvar2_writes_enclosing_frame() {
         consts,
     );
 
-    let result =  bcEval(bcode, child) ;
+    let result = bcEval(bcode, child);
     unsafe {
         assert_eq!(INTEGER_ELT(result, 0), 42);
         let found_parent = crate::sexp::envir::R_findVarInFrame(parent, sym);
@@ -504,8 +500,8 @@ fn test_bc_eval_rejects_truncated_operand() {
     let bcode = bcode_with(&mut arena, &[opcodes::OP_PUSHCONST], consts);
     let env = empty_env(&mut arena);
 
-    let err = assert_r_error(|| 
-{        bcEval(bcode, env);
+    let err = assert_r_error(|| {
+        bcEval(bcode, env);
     });
     assert!(
         err.message
@@ -525,8 +521,8 @@ fn test_bc_eval_rejects_invalid_constant_index() {
     );
     let env = empty_env(&mut arena);
 
-    let err = assert_r_error(|| 
-{        bcEval(bcode, env);
+    let err = assert_r_error(|| {
+        bcEval(bcode, env);
     });
     assert!(
         err.message
@@ -542,8 +538,8 @@ fn test_bc_eval_rejects_stack_underflow() {
     let bcode = bcode_with(&mut arena, &[opcodes::OP_RETURN], consts);
     let env = empty_env(&mut arena);
 
-    let err = assert_r_error(|| 
-{        bcEval(bcode, env);
+    let err = assert_r_error(|| {
+        bcEval(bcode, env);
     });
     assert!(err.message.contains("RETURN bytecode stack underflow"));
 }
@@ -556,8 +552,8 @@ fn test_bc_eval_rejects_invalid_jump_target() {
     let bcode = bcode_with(&mut arena, &[opcodes::OP_BRANCH, -1], consts);
     let env = empty_env(&mut arena);
 
-    let err = assert_r_error(|| 
-{        bcEval(bcode, env);
+    let err = assert_r_error(|| {
+        bcEval(bcode, env);
     });
     assert!(
         err.message
@@ -570,7 +566,7 @@ fn test_bc_eval_swload_loads_constant_table_entry() {
     let _session = crate::sexp::session::RSession::new_without_default_packages();
     let mut arena = fixture_arena();
     let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
-    let value =  Rf_ScalarInteger(42) ;
+    let value = Rf_ScalarInteger(42);
     arena.set_reference_element(consts, 0, value).unwrap();
     let bcode = bcode_with(
         &mut arena,
@@ -584,10 +580,9 @@ fn test_bc_eval_swload_loads_constant_table_entry() {
     );
     let env = empty_env(&mut arena);
 
-    let result =  bcEval(bcode, env) ;
-    
-        assert_eq!(INTEGER_ELT(result, 0), 42);
-    
+    let result = bcEval(bcode, env);
+
+    assert_eq!(INTEGER_ELT(result, 0), 42);
 }
 
 #[test]
@@ -599,10 +594,7 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
     let gc_closure = session.with_active(|| unsafe {
         let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
         crate::sexp::accessors::SET_FORMALS(clos, R_NilValue());
-        let body = Rf_cons(
-            crate::sexp::symbol::install_str("gc"),
-            R_NilValue(),
-        );
+        let body = Rf_cons(crate::sexp::symbol::install_str("gc"), R_NilValue());
         crate::sexp::accessors::SET_TYPEOF(body, SEXPTYPE::LANGSXP.as_c_int());
         crate::sexp::accessors::SET_BODY(clos, body);
         crate::sexp::accessors::SET_CLOENV(clos, crate::sexp::globals::R_BaseEnv());
@@ -633,7 +625,7 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
     );
     let env = empty_env(&mut arena);
 
-    let result =  bcEval(bcode, env) ;
+    let result = bcEval(bcode, env);
     // The residual operand value must survive the collection that ran
     // inside the callee: still active, still the TRUE logical.
     let still_active = session
@@ -643,10 +635,9 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
         still_active,
         "operand-stack value was swept by the GC run inside the callee"
     );
-    
-        assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
-    
+
+    assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
+    assert_eq!(LOGICAL_ELT(result, 0), TRUE);
 }
 #[test]
 fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
@@ -654,10 +645,7 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
     let (symbol, env) = session.with_active(|| unsafe {
         let env = crate::sexp::globals::R_GlobalEnv();
         let symbol = crate::sexp::symbol::install_str("lookup_gc_value");
-        let call = Rf_cons(
-            crate::sexp::symbol::install_str("gc"),
-            R_NilValue(),
-        );
+        let call = Rf_cons(crate::sexp::symbol::install_str("gc"), R_NilValue());
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         let promise = crate::sexp::memory_ext::mkPROMISE(call, env);
         defineVar(symbol, promise, env);
@@ -665,9 +653,9 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
     });
     let mut arena = fixture_arena();
     let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
-    
-        crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, symbol);
-    
+
+    crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, symbol);
+
     let bcode = bcode_with(
         &mut arena,
         &[
@@ -679,22 +667,21 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
         ],
         consts,
     );
-    let result = session.with_active(||  bcEval(bcode, env) );
+    let result = session.with_active(|| bcEval(bcode, env));
     assert!(
         session
             .with_arena(|a| a.active_nodes().any(|p| p == result))
             .unwrap()
     );
-    
-        assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
-    
+
+    assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
+    assert_eq!(LOGICAL_ELT(result, 0), TRUE);
 }
 #[test]
 fn owned_bytecode_gnu_deep_stack_executes_above_legacy_cutoff() {
     let session = crate::sexp::session::RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let pool = own_operand(Rf_allocVector(SEXPTYPE::VECSXP, 0));
+    session.with_active(|| {
+        let pool = own_operand(Rf_allocVector(SEXPTYPE::VECSXP, 0));
         let mut words = vec![
             super::super::bytecode::GNU_BC_MAX_VERSION,
             super::super::bytecode::GNU_OP_LDNULL,
@@ -711,8 +698,8 @@ fn owned_bytecode_gnu_deep_stack_executes_above_legacy_cutoff() {
 #[test]
 fn owned_bytecode_rejects_empty_wrong_and_negative_stack_hints() {
     let session = crate::sexp::session::RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        for hint in [
+    session.with_active(|| {
+        for hint in [
             Rf_allocVector(SEXPTYPE::INTSXP, 0),
             R_NilValue(),
             Rf_ScalarInteger(-1),

@@ -202,8 +202,7 @@ pub fn RealFromString(x: SEXP, warn: Option<&mut c_int>) -> c_double {
     if text.is_none() {
         return NA_REAL;
     }
-    let (value, flags) =
-        super::text_number::real(text.as_deref().unwrap_or_default().to_bytes());
+    let (value, flags) = super::text_number::real(text.as_deref().unwrap_or_default().to_bytes());
     if let Some(warn) = warn {
         *warn |= flags;
     }

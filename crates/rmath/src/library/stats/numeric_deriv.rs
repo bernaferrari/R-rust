@@ -19,14 +19,10 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
     centr: SEXP,
 ) -> SEXP {
     if TYPEOF(theta) != SEXPTYPE::STRSXP {
-        crate::main::errors::Rf_error_cstr(
-            c"'theta' should be of type character"
-        );
+        crate::main::errors::Rf_error_cstr(c"'theta' should be of type character");
     }
     if TYPEOF(rho) != SEXPTYPE::ENVSXP {
-        crate::main::errors::Rf_error_cstr(
-            c"'rho' should be an environment"
-        );
+        crate::main::errors::Rf_error_cstr(c"'rho' should be an environment");
     }
     let dir = if TYPEOF(dir) == SEXPTYPE::REALSXP {
         dir
@@ -35,8 +31,7 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
     };
     let _dir = protect(dir);
     if XLENGTH(dir) != XLENGTH(theta) {
-        crate::main::errors::Rf_error_cstr(
-            c"'dir' is not a numeric vector of the correct length");
+        crate::main::errors::Rf_error_cstr(c"'dir' is not a numeric vector of the correct length");
     }
     let central = crate::mainutils::coerce::asLogical(centr) != 0;
     let rho1 = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
@@ -50,9 +45,7 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
         let sym = crate::sexp::symbol::install_str(cname.to_str().unwrap_or_default());
         let found = R_findVar(sym, rho);
         if found == R_UnboundValue() || TYPEOF(found) != SEXPTYPE::REALSXP {
-            crate::main::errors::Rf_error_cstr(
-                c"variable is not numeric"
-            );
+            crate::main::errors::Rf_error_cstr(c"variable is not numeric");
         }
         let copy = crate::mainutils::seq::Rf_duplicate(found);
         let _c = protect(copy);
@@ -94,8 +87,7 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
                     SET_REAL_ELT(
                         gradient,
                         ((start + k) as usize) as i32,
-                        direction
-                            * (REAL_ELT(forward, k as i32) - REAL_ELT(backward, k as i32))
+                        direction * (REAL_ELT(forward, k as i32) - REAL_ELT(backward, k as i32))
                             / (2.0 * delta),
                     );
                 }
@@ -104,8 +96,7 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
                     SET_REAL_ELT(
                         gradient,
                         ((start + k) as usize) as i32,
-                        direction * (REAL_ELT(forward, k as i32) - REAL_ELT(ans, k as i32))
-                            / delta,
+                        direction * (REAL_ELT(forward, k as i32) - REAL_ELT(ans, k as i32)) / delta,
                     );
                 }
             }

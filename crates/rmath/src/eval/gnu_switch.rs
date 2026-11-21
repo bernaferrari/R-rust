@@ -171,7 +171,8 @@ impl OwnedSwitch {
 
         crate::mainutils::errors::warningcall_cstr(
             self.call.as_raw(),
-            c"'switch' with no alternatives");
+            c"'switch' with no alternatives",
+        );
 
         pin.require_live().map_err(|error| error.to_string())
     }
@@ -289,12 +290,10 @@ mod tests {
     }
 
     fn integers(values: &[i32]) -> Sexp<'static> {
-        let mut value = SexpMut::try_from_checked(
-            own_operand(Rf_allocVector(
-                SEXPTYPE::INTSXP,
-                i32::try_from(values.len()).unwrap(),
-            ))
-        )
+        let mut value = SexpMut::try_from_checked(own_operand(Rf_allocVector(
+            SEXPTYPE::INTSXP,
+            i32::try_from(values.len()).unwrap(),
+        )))
         .unwrap();
         for (index, element) in values.iter().copied().enumerate() {
             assert!(value.set_integer_elt(index as i64, element));

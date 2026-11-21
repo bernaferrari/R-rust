@@ -294,7 +294,8 @@ fn test_r_makeErrorCondition() {
             Some(c"simpleError"),
             None,
             0,
-            Some(c"test error message"));
+            Some(c"test error message"),
+        );
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         assert_eq!(LENGTH(cond), 2);
@@ -311,7 +312,8 @@ fn test_r_makeErrorCondition_with_subclass() {
             Some(c"error"),
             Some(c"simpleError"),
             0,
-            Some(c"test error"));
+            Some(c"test error"),
+        );
         assert!(!cond.is_null());
         assert_eq!(LENGTH(cond), 2);
         // Class attribute should exist (either via getAttrib or direct ATTRIB check)
@@ -476,7 +478,8 @@ fn test_r_make_warning_condition() {
             Some(c"simpleWarning"),
             None,
             0,
-            Some(c"test warning message"));
+            Some(c"test warning message"),
+        );
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         assert_eq!(LENGTH(cond), 2);
@@ -755,7 +758,8 @@ fn test_r_signal_warning_condition_valid() {
             Some(c"simpleWarning"),
             None,
             0,
-            Some(c"test warning"));
+            Some(c"test warning"),
+        );
         R_signalWarningCondition(cond);
         // Should not panic — warning is printed to stderr
     }

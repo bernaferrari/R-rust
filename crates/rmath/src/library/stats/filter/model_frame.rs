@@ -416,14 +416,11 @@ pub fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut na_action = CAR(args);
 
     if TYPEOF(variables) != SEXPTYPE::VECSXP || TYPEOF(varnames) != SEXPTYPE::STRSXP {
-        crate::main::errors::Rf_error_cstr(
-            c"invalid variables"
-        );
+        crate::main::errors::Rf_error_cstr(c"invalid variables");
     }
     let nvars = XLENGTH(variables);
     if nvars != XLENGTH(varnames) {
-        crate::main::errors::Rf_error_cstr(
-            c"number of variables != number of variable names");
+        crate::main::errors::Rf_error_cstr(c"number of variables != number of variable names");
     }
     let ndots = if dots.is_null() || dots == R_NilValue() || TYPEOF(dots) != SEXPTYPE::VECSXP {
         0

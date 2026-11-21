@@ -96,7 +96,6 @@ fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
-
 fn asLogical(x: SEXP) -> c_int {
     crate::mainutils::coerce::asLogical(x)
 }
@@ -521,7 +520,8 @@ pub fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
             Err(payload) => std::panic::resume_unwind(payload),
         }
-    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -550,9 +550,9 @@ fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
         };
         let (args, env) = (own(args), own(env));
-        let weak = owner
-            .weak_owner()
-            .unwrap_or_else(|| crate::sexp::context::r_error("file.path requires a managed runtime"));
+        let weak = owner.weak_owner().unwrap_or_else(|| {
+            crate::sexp::context::r_error("file.path requires a managed runtime")
+        });
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::sexp::owner::with_runtime(&weak, |access| {
                 if public {
@@ -573,12 +573,12 @@ fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
             Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(
                 crate::sexp::object::SexpError::EvaluationFailed { message },
             )))) => crate::sexp::context::r_error(message),
-            Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(error)))) | Ok(Err(error)) => {
-                crate::sexp::context::r_error(error.to_string())
-            }
+            Ok(Ok(Err(crate::sexp::diagnostic::EvaluationError::Access(error))))
+            | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
             Err(payload) => std::panic::resume_unwind(payload),
         }
-    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------

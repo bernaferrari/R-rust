@@ -628,11 +628,13 @@ mod tests {
     fn test_tsearch_null_rootp() {
         let val: i32 = 42;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { tsearch(
-            &val as *const i32 as *const c_void,
-            ptr::null_mut(),
-            Some(int_compar),
-        ) };
+        let result = unsafe {
+            tsearch(
+                &val as *const i32 as *const c_void,
+                ptr::null_mut(),
+                Some(int_compar),
+            )
+        };
         assert!(result.is_null());
     }
 
@@ -800,11 +802,13 @@ mod tests {
         let rootp = make_root();
         let val: i32 = 999;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { tdelete(
-            &val as *const i32 as *const c_void,
-            rootp as *mut c_void,
-            Some(int_compar),
-        ) };
+        let result = unsafe {
+            tdelete(
+                &val as *const i32 as *const c_void,
+                rootp as *mut c_void,
+                Some(int_compar),
+            )
+        };
         assert!(result.is_null());
         drop_root(rootp);
     }

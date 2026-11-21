@@ -1843,9 +1843,7 @@ fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> {
         } else {
             // SAFETY: `charsxp` is a live CHARSXP element; CHAR returns its
             // NUL-terminated contents valid for the borrow.
-            CharacterSortKey::Value(
-                unsafe { CStr::from_ptr(CHAR(charsxp)) }.to_bytes(),
-            )
+            CharacterSortKey::Value(unsafe { CStr::from_ptr(CHAR(charsxp)) }.to_bytes())
         }
     }
 }

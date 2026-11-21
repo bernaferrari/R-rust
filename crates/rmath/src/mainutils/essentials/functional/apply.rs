@@ -115,16 +115,10 @@ pub fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         && TYPEOF(x) == SEXPTYPE::STRSXP
         && XLENGTH(x) == XLENGTH(list)
     {
-        let names = crate::sexp::attrib_core::getAttrib(
-            list,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                list,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                x,
-            );
+            crate::sexp::attrib_core::setAttrib(list, crate::sexp::attrib_core::R_NamesSymbol(), x);
         }
     }
     if sapply_is_false(simplify) {
@@ -197,7 +191,8 @@ pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP
             } else if is_use_names {
                 let value = crate::eval::eval::Rf_eval(CAR(current), rho);
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) == 1 {
-                    use_names = logical_elt_checked(value, 0) != FALSE && logical_elt_checked(value, 0) != NA_LOGICAL;
+                    use_names = logical_elt_checked(value, 0) != FALSE
+                        && logical_elt_checked(value, 0) != NA_LOGICAL;
                 }
             } else {
                 let value = if is_x {
@@ -230,7 +225,7 @@ pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP
 }
 
 pub(super) fn sapply_is_false(x: SEXP) -> bool {
-     TYPEOF(x) == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 && logical_elt_checked(x, 0) == FALSE 
+    TYPEOF(x) == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 && logical_elt_checked(x, 0) == FALSE
 }
 
 pub(super) fn sapply_is_array(x: SEXP) -> bool {
@@ -252,73 +247,164 @@ pub(super) fn sapply_is_array(x: SEXP) -> bool {
 /// (or X itself when X is character) onto the result; the template's (or
 /// first result's) names/dimnames become the row names.
 pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    
-        let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
-        let _x_guard = protect(x);
-        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
+    let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+    let _x_guard = protect(x);
+    let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
 
-        let _fun_guard = protect(fun);
-        // Root the template FIRST: the output type, dimensions and
-        // row-name policy all read it, and it must survive every FUN
-        // evaluation below.
-        let value = eval_arg_by_name_or_position(args, &["FUN.VALUE"], 2, rho);
-        let _value_guard = protect(value);
+    let _fun_guard = protect(fun);
+    // Root the template FIRST: the output type, dimensions and
+    // row-name policy all read it, and it must survive every FUN
+    // evaluation below.
+    let value = eval_arg_by_name_or_position(args, &["FUN.VALUE"], 2, rho);
+    let _value_guard = protect(value);
 
-        if !is_vapply_vector(value) {
-            base_error("'FUN.VALUE' must be a vector");
+    if !is_vapply_vector(value) {
+        base_error("'FUN.VALUE' must be a vector");
+    }
+    let use_names = vapply_use_names(args, rho);
+
+    // R-level wrapper: if (!is.vector(X) || is.object(X)) X <- as.list(X)
+    let xx = normalize_vapply_x(x);
+    let _xx_guard = protect(xx);
+
+    let n: R_xlen_t = XLENGTH(xx);
+    let common_type = TYPEOF(value);
+    let supported = common_type == SEXPTYPE::CPLXSXP
+        || common_type == SEXPTYPE::REALSXP
+        || common_type == SEXPTYPE::INTSXP
+        || common_type == SEXPTYPE::LGLSXP
+        || common_type == SEXPTYPE::RAWSXP
+        || common_type == SEXPTYPE::STRSXP
+        || common_type == SEXPTYPE::VECSXP;
+    if !supported {
+        base_error(format!(
+            "type '{}' is not supported",
+            sexp_type_name(SEXPTYPE(common_type))
+        ));
+    }
+    let common_len = vapply_length(value);
+
+    let dim_v = crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+    let _dim_v_guard = protect(dim_v);
+    let array_value = TYPEOF(dim_v) == SEXPTYPE::INTSXP && XLENGTH(dim_v) >= 1;
+
+    // Allocate and protect the answer before any FUN call.
+    let ans = Rf_allocVector3(SEXPTYPE(common_type), n * common_len);
+    let _ans_guard = protect(ans);
+
+    // Result names: X's names attribute, or X itself when X is
+    // character (upstream: names <- names(XX); if (is.null(names)
+    // && is.character(XX)) names <- XX). Row names: the template's
+    // names — dimnames when the template is an array — with a
+    // fallback to the FIRST result's, taken inside the loop.
+    let mut names = R_NilValue();
+    let mut names_guard =
+        crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply names");
+    let mut row_names = R_NilValue();
+    let mut row_names_guard =
+        crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply row names");
+    if use_names {
+        names = crate::sexp::attrib_core::getAttrib(xx, crate::sexp::attrib_core::R_NamesSymbol());
+        if vapply_is_nil(names) && TYPEOF(xx) == SEXPTYPE::STRSXP {
+            names = xx;
         }
-        let use_names = vapply_use_names(args, rho);
+        names_guard.reprotect_raw(names);
+        row_names = crate::sexp::attrib_core::getAttrib(
+            value,
+            if array_value {
+                crate::sexp::attrib_core::R_DimNamesSymbol()
+            } else {
+                crate::sexp::attrib_core::R_NamesSymbol()
+            },
+        );
+        row_names_guard.reprotect_raw(row_names);
+    }
 
-        // R-level wrapper: if (!is.vector(X) || is.object(X)) X <- as.list(X)
-        let xx = normalize_vapply_x(x);
-        let _xx_guard = protect(xx);
+    // Collect vapply's `...`: every cell that is not X, FUN, FUN.VALUE
+    // or USE.NAMES (by name, or the first three unnamed positionals).
+    // Evaluated once, forwarded to every FUN call (tags preserved).
+    let mut extra_args = R_NilValue();
+    let mut extra_tail: SEXP = std::ptr::null_mut();
+    let mut extra_guards: Vec<_> = Vec::new();
+    let mut positional = 0usize;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let named = tag_name(current);
+        let is_vapply_formal = match named.as_deref() {
+            Some("X") | Some("FUN") | Some("FUN.VALUE") | Some("USE.NAMES") => true,
+            None if positional <= 2 => true,
+            _ => false,
+        };
+        if !is_vapply_formal {
+            let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
+            let _val = protect(val);
+            let cell = Rf_cons(val, R_NilValue());
+            extra_guards.push(protect(cell));
+            let tg = TAG(current);
+            if !tg.is_null() && tg != R_NilValue() {
+                SETTAG(cell, tg);
+            }
+            if extra_args == R_NilValue() {
+                extra_args = cell;
+            } else {
+                SETCDR(extra_tail, cell);
+            }
+            extra_tail = cell;
+        }
+        if named.is_none() {
+            positional += 1;
+        }
+        current = CDR(current);
+    }
 
-        let n: R_xlen_t = XLENGTH(xx);
-        let common_type = TYPEOF(value);
-        let supported = common_type == SEXPTYPE::CPLXSXP
-            || common_type == SEXPTYPE::REALSXP
-            || common_type == SEXPTYPE::INTSXP
-            || common_type == SEXPTYPE::LGLSXP
-            || common_type == SEXPTYPE::RAWSXP
-            || common_type == SEXPTYPE::STRSXP
-            || common_type == SEXPTYPE::VECSXP;
-        if !supported {
+    let mut offset: R_xlen_t = 0;
+    for i in 0..n {
+        let elem = extract_element(xx, i);
+        let mut elem_guard = crate::sexp::protect::protect_with_index_raw(elem, "vapply element");
+        let mut val = apply_fun_to_element(fun, elem, extra_args, rho);
+        elem_guard.reprotect_raw(val);
+
+        // Immediate validation, before the next FUN call: length
+        // first, then type — apply.c's order and wording.
+        let val_len = vapply_length(val);
+        if val_len != common_len {
             base_error(format!(
-                "type '{}' is not supported",
-                sexp_type_name(SEXPTYPE(common_type))
+                "values must be length {},\n but FUN(X[[{}]]) result is length {}",
+                common_len,
+                i + 1,
+                val_len
             ));
         }
-        let common_len = vapply_length(value);
-
-        let dim_v =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
-        let _dim_v_guard = protect(dim_v);
-        let array_value = TYPEOF(dim_v) == SEXPTYPE::INTSXP && XLENGTH(dim_v) >= 1;
-
-        // Allocate and protect the answer before any FUN call.
-        let ans = Rf_allocVector3(SEXPTYPE(common_type), n * common_len);
-        let _ans_guard = protect(ans);
-
-        // Result names: X's names attribute, or X itself when X is
-        // character (upstream: names <- names(XX); if (is.null(names)
-        // && is.character(XX)) names <- XX). Row names: the template's
-        // names — dimnames when the template is an array — with a
-        // fallback to the FIRST result's, taken inside the loop.
-        let mut names = R_NilValue();
-        let mut names_guard =
-            crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply names");
-        let mut row_names = R_NilValue();
-        let mut row_names_guard =
-            crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply row names");
-        if use_names {
-            names =
-                crate::sexp::attrib_core::getAttrib(xx, crate::sexp::attrib_core::R_NamesSymbol());
-            if vapply_is_nil(names) && TYPEOF(xx) == SEXPTYPE::STRSXP {
-                names = xx;
+        let val_type = TYPEOF(val);
+        if val_type != common_type {
+            let okay = match common_type {
+                t if t == SEXPTYPE::CPLXSXP => {
+                    val_type == SEXPTYPE::REALSXP
+                        || val_type == SEXPTYPE::INTSXP
+                        || val_type == SEXPTYPE::LGLSXP
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    val_type == SEXPTYPE::INTSXP || val_type == SEXPTYPE::LGLSXP
+                }
+                t if t == SEXPTYPE::INTSXP => val_type == SEXPTYPE::LGLSXP,
+                _ => false,
+            };
+            if !okay {
+                base_error(format!(
+                    "values must be type '{}',\n but FUN(X[[{}]]) result is type '{}'",
+                    sexp_type_name(SEXPTYPE(common_type)),
+                    i + 1,
+                    sexp_type_name(SEXPTYPE(val_type))
+                ));
             }
-            names_guard.reprotect_raw(names);
+            val = crate::mainutils::coerce::coerceVector(val, common_type);
+            elem_guard.reprotect_raw(val);
+        }
+
+        // Row names come from the first result only.
+        if i == 0 && use_names && vapply_is_nil(row_names) {
             row_names = crate::sexp::attrib_core::getAttrib(
-                value,
+                val,
                 if array_value {
                     crate::sexp::attrib_core::R_DimNamesSymbol()
                 } else {
@@ -328,199 +414,123 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             row_names_guard.reprotect_raw(row_names);
         }
 
-        // Collect vapply's `...`: every cell that is not X, FUN, FUN.VALUE
-        // or USE.NAMES (by name, or the first three unnamed positionals).
-        // Evaluated once, forwarded to every FUN call (tags preserved).
-        let mut extra_args = R_NilValue();
-        let mut extra_tail: SEXP = std::ptr::null_mut();
-        let mut extra_guards: Vec<_> = Vec::new();
-        let mut positional = 0usize;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let named = tag_name(current);
-            let is_vapply_formal = match named.as_deref() {
-                Some("X") | Some("FUN") | Some("FUN.VALUE") | Some("USE.NAMES") => true,
-                None if positional <= 2 => true,
-                _ => false,
-            };
-            if !is_vapply_formal {
-                let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
-                let _val = protect(val);
-                let cell = Rf_cons(val, R_NilValue());
-                extra_guards.push(protect(cell));
-                let tg = TAG(current);
-                if !tg.is_null() && tg != R_NilValue() {
-                    SETTAG(cell, tg);
+        // commonLen == 1 is the flat case: element i. Any other
+        // length fills one column per result (column-major, apply.c).
+        let dst = if common_len <= 1 { i } else { offset };
+        match common_type {
+            t if t == SEXPTYPE::CPLXSXP => {
+                for j in 0..common_len {
+                    set_complex_checked(
+                        ans,
+                        (dst + j) as R_xlen_t,
+                        complex_elt_checked(val, (j as usize) as R_xlen_t),
+                    );
                 }
-                if extra_args == R_NilValue() {
-                    extra_args = cell;
-                } else {
-                    SETCDR(extra_tail, cell);
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                for j in 0..common_len {
+                    set_real_checked(
+                        ans,
+                        ((dst + j) as usize) as R_xlen_t,
+                        real_elt_checked(val, (j as usize) as R_xlen_t),
+                    );
                 }
-                extra_tail = cell;
             }
-            if named.is_none() {
-                positional += 1;
+            t if t == SEXPTYPE::INTSXP => {
+                for j in 0..common_len {
+                    set_integer_checked(
+                        ans,
+                        ((dst + j) as usize) as R_xlen_t,
+                        integer_elt_checked(val, (j as usize) as R_xlen_t),
+                    );
+                }
             }
-            current = CDR(current);
+            t if t == SEXPTYPE::LGLSXP => {
+                for j in 0..common_len {
+                    set_logical_checked(
+                        ans,
+                        ((dst + j) as usize) as R_xlen_t,
+                        logical_elt_checked(val, (j as usize) as R_xlen_t),
+                    );
+                }
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                for j in 0..common_len {
+                    set_raw_checked(
+                        ans,
+                        (dst + j) as R_xlen_t,
+                        raw_elt_checked(val, (j as usize) as R_xlen_t),
+                    );
+                }
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                for j in 0..common_len {
+                    SET_STRING_ELT(ans, dst + j, STRING_ELT(val, j));
+                }
+            }
+            t if t == SEXPTYPE::VECSXP => {
+                for j in 0..common_len {
+                    SET_VECTOR_ELT(ans, (dst + j) as i64, VECTOR_ELT(val, j as i64));
+                }
+            }
+            _ => {}
         }
+        if common_len > 1 {
+            offset += common_len;
+        }
+    }
 
-        let mut offset: R_xlen_t = 0;
-        for i in 0..n {
-            let elem = extract_element(xx, i);
-            let mut elem_guard =
-                crate::sexp::protect::protect_with_index_raw(elem, "vapply element");
-            let mut val = apply_fun_to_element(fun, elem, extra_args, rho);
-            elem_guard.reprotect_raw(val);
-
-            // Immediate validation, before the next FUN call: length
-            // first, then type — apply.c's order and wording.
-            let val_len = vapply_length(val);
-            if val_len != common_len {
-                base_error(format!(
-                    "values must be length {},\n but FUN(X[[{}]]) result is length {}",
-                    common_len,
-                    i + 1,
-                    val_len
-                ));
+    if common_len != 1 {
+        let rnk_v: R_xlen_t = if array_value { XLENGTH(dim_v) } else { 1 };
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, rnk_v + 1);
+        let _dim_guard = protect(dim);
+        if array_value {
+            for j in 0..rnk_v {
+                set_integer_checked(
+                    dim,
+                    (j as usize) as R_xlen_t,
+                    integer_elt_checked(dim_v, (j as usize) as R_xlen_t),
+                );
             }
-            let val_type = TYPEOF(val);
-            if val_type != common_type {
-                let okay = match common_type {
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        val_type == SEXPTYPE::REALSXP
-                            || val_type == SEXPTYPE::INTSXP
-                            || val_type == SEXPTYPE::LGLSXP
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        val_type == SEXPTYPE::INTSXP || val_type == SEXPTYPE::LGLSXP
-                    }
-                    t if t == SEXPTYPE::INTSXP => val_type == SEXPTYPE::LGLSXP,
-                    _ => false,
-                };
-                if !okay {
+        } else {
+            set_integer_checked(dim, 0, common_len as c_int);
+        }
+        set_integer_checked(dim, (rnk_v as usize) as R_xlen_t, n as c_int);
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+        if use_names && (!vapply_is_nil(names) || !vapply_is_nil(row_names)) {
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, rnk_v + 1);
+            let _dimnames_guard = protect(dimnames);
+            if array_value && !vapply_is_nil(row_names) {
+                if TYPEOF(row_names) != SEXPTYPE::VECSXP || XLENGTH(row_names) != rnk_v {
                     base_error(format!(
-                        "values must be type '{}',\n but FUN(X[[{}]]) result is type '{}'",
-                        sexp_type_name(SEXPTYPE(common_type)),
-                        i + 1,
-                        sexp_type_name(SEXPTYPE(val_type))
+                        "dimnames(<value>) is neither NULL nor list of length {}",
+                        rnk_v
                     ));
                 }
-                val = crate::mainutils::coerce::coerceVector(val, common_type);
-                elem_guard.reprotect_raw(val);
-            }
-
-            // Row names come from the first result only.
-            if i == 0 && use_names && vapply_is_nil(row_names) {
-                row_names = crate::sexp::attrib_core::getAttrib(
-                    val,
-                    if array_value {
-                        crate::sexp::attrib_core::R_DimNamesSymbol()
-                    } else {
-                        crate::sexp::attrib_core::R_NamesSymbol()
-                    },
-                );
-                row_names_guard.reprotect_raw(row_names);
-            }
-
-            // commonLen == 1 is the flat case: element i. Any other
-            // length fills one column per result (column-major, apply.c).
-            let dst = if common_len <= 1 { i } else { offset };
-            match common_type {
-                t if t == SEXPTYPE::CPLXSXP => {
-                    for j in 0..common_len {
-                        set_complex_checked(ans, (dst + j) as R_xlen_t, complex_elt_checked(val, (j as usize) as R_xlen_t));
-                    }
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    for j in 0..common_len {
-                        set_real_checked(ans, ((dst + j) as usize) as R_xlen_t, real_elt_checked(val, (j as usize) as R_xlen_t));
-                    }
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    for j in 0..common_len {
-                        set_integer_checked(ans, ((dst + j) as usize) as R_xlen_t, integer_elt_checked(val, (j as usize) as R_xlen_t));
-                    }
-                }
-                t if t == SEXPTYPE::LGLSXP => {
-                    for j in 0..common_len {
-                        set_logical_checked(ans, ((dst + j) as usize) as R_xlen_t, logical_elt_checked(val, (j as usize) as R_xlen_t));
-                    }
-                }
-                t if t == SEXPTYPE::RAWSXP => {
-                    for j in 0..common_len {
-                        set_raw_checked(ans, (dst + j) as R_xlen_t, raw_elt_checked(val, (j as usize) as R_xlen_t));
-                    }
-                }
-                t if t == SEXPTYPE::STRSXP => {
-                    for j in 0..common_len {
-                        SET_STRING_ELT(ans, dst + j, STRING_ELT(val, j));
-                    }
-                }
-                t if t == SEXPTYPE::VECSXP => {
-                    for j in 0..common_len {
-                        SET_VECTOR_ELT(ans, (dst + j) as i64, VECTOR_ELT(val, j as i64));
-                    }
-                }
-                _ => {}
-            }
-            if common_len > 1 {
-                offset += common_len;
-            }
-        }
-
-        if common_len != 1 {
-            let rnk_v: R_xlen_t = if array_value { XLENGTH(dim_v) } else { 1 };
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, rnk_v + 1);
-            let _dim_guard = protect(dim);
-            if array_value {
                 for j in 0..rnk_v {
-                    set_integer_checked(dim, (j as usize) as R_xlen_t, integer_elt_checked(dim_v, (j as usize) as R_xlen_t));
+                    SET_VECTOR_ELT(dimnames, j as i64, VECTOR_ELT(row_names, j as i64));
                 }
             } else {
-                set_integer_checked(dim, 0, common_len as c_int);
-            }
-            set_integer_checked(dim, (rnk_v as usize) as R_xlen_t, n as c_int);
-            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
-
-            if use_names && (!vapply_is_nil(names) || !vapply_is_nil(row_names)) {
-                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, rnk_v + 1);
-                let _dimnames_guard = protect(dimnames);
-                if array_value && !vapply_is_nil(row_names) {
-                    if TYPEOF(row_names) != SEXPTYPE::VECSXP || XLENGTH(row_names) != rnk_v {
-                        base_error(format!(
-                            "dimnames(<value>) is neither NULL nor list of length {}",
-                            rnk_v
-                        ));
-                    }
-                    for j in 0..rnk_v {
-                        SET_VECTOR_ELT(dimnames, j as i64, VECTOR_ELT(row_names, j as i64));
-                    }
-                } else {
-                    // The engine zero-initializes fresh VECSXP payloads;
-                    // unset dimnames slots must read as NULL like
-                    // upstream's R_NilValue-filled allocation.
-                    SET_VECTOR_ELT(dimnames, 0, row_names);
-                    for j in 1..rnk_v {
-                        SET_VECTOR_ELT(dimnames, j as i64, R_NilValue());
-                    }
+                // The engine zero-initializes fresh VECSXP payloads;
+                // unset dimnames slots must read as NULL like
+                // upstream's R_NilValue-filled allocation.
+                SET_VECTOR_ELT(dimnames, 0, row_names);
+                for j in 1..rnk_v {
+                    SET_VECTOR_ELT(dimnames, j as i64, R_NilValue());
                 }
-                SET_VECTOR_ELT(dimnames, rnk_v as i64, names);
-                crate::sexp::attrib_core::setAttrib(
-                    ans,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    dimnames,
-                );
             }
-        } else if use_names && !vapply_is_nil(names) {
+            SET_VECTOR_ELT(dimnames, rnk_v as i64, names);
             crate::sexp::attrib_core::setAttrib(
                 ans,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
             );
         }
-        ans
-    
+    } else if use_names && !vapply_is_nil(names) {
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    }
+    ans
 }
 
 /// vapply's predicate for FUN.VALUE: C-level isVector (one of R's vector
@@ -672,10 +682,7 @@ pub fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let raw = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
         let matched = Rf_cons(raw, R_NilValue());
         let _m = protect(matched);
-        let call = Rf_cons(
-            install_str("match.fun"),
-            matched,
-        );
+        let call = Rf_cons(install_str("match.fun"), matched);
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
         let _c = protect(call);
         let fun = crate::eval::eval::Rf_eval(call, rho);

@@ -15,32 +15,30 @@ pub fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 fn nclass_numeric_copy(x: SEXP) -> Vec<f64> {
-    
-        let n = if x.is_null() || x == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x)
-        };
-        let mut v = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let val = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if iv == NA_INTEGER {
-                    f64::NAN
-                } else {
-                    iv as f64
-                }
-            } else {
+    let n = if x.is_null() || x == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x)
+    };
+    let mut v = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let val = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if iv == NA_INTEGER {
                 f64::NAN
-            };
-            if val.is_finite() {
-                v.push(val);
+            } else {
+                iv as f64
             }
+        } else {
+            f64::NAN
+        };
+        if val.is_finite() {
+            v.push(val);
         }
-        v
-    
+    }
+    v
 }
 
 fn nclass_sample_var(x: &[f64]) -> f64 {

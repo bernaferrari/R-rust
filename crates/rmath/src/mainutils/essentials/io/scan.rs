@@ -691,14 +691,12 @@ pub fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
-    
-        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
-            return default;
-        }
-        if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
-            integer_elt_checked(arg, 0)
-        } else {
-            default
-        }
-    
+    if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+        return default;
+    }
+    if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+        integer_elt_checked(arg, 0)
+    } else {
+        default
+    }
 }

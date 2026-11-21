@@ -893,10 +893,7 @@ pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
             crate::sexp::symbol::symbol_name_from_ptr(arg_sym).unwrap_or_else(|| "???".to_string());
         format!("argument \"{name}\" is missing, with no default")
     };
-    crate::mainutils::errors::errorcall_cpy(
-        call,
-        &std::ffi::CString::new(msg).unwrap_or_default(),
-    );
+    crate::mainutils::errors::errorcall_cpy(call, &std::ffi::CString::new(msg).unwrap_or_default());
 }
 
 // ---------------------------------------------------------------------------

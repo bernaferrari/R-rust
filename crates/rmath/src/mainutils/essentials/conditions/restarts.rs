@@ -489,16 +489,8 @@ pub(crate) fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
         "interactive".to_string(),
     ]);
     let names_owned = restart_owned(names);
-    crate::sexp::attrib_core::setAttrib(
-        restart,
-        install_str("names"),
-        names_owned.as_raw(),
-    );
-    crate::sexp::attrib_core::setAttrib(
-        restart,
-        install_str("class"),
-        mk_string_cstr(c"restart"),
-    );
+    crate::sexp::attrib_core::setAttrib(restart, install_str("names"), names_owned.as_raw());
+    crate::sexp::attrib_core::setAttrib(restart, install_str("class"), mk_string_cstr(c"restart"));
     restart
 }
 
@@ -519,11 +511,7 @@ fn abort_restart_entry() -> SEXP {
     restart_mut
         .try_set_vector_elt(1, restart_owned(R_NilValue()))
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    crate::sexp::attrib_core::setAttrib(
-        restart,
-        install_str("class"),
-        mk_string_cstr(c"restart"),
-    );
+    crate::sexp::attrib_core::setAttrib(restart, install_str("class"), mk_string_cstr(c"restart"));
     restart
 }
 

@@ -12,8 +12,8 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
 use crate::sexp::accessors::*;
+use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;

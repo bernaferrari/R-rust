@@ -70,7 +70,9 @@ fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -
 /// Only error-class conditions are wrapped; every other payload (warnings,
 /// messages, returns, restarts, interrupts) keeps unwinding untouched.
 fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::eval::eval::Rf_eval(arg_sym, ev)));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::eval::eval::Rf_eval(arg_sym, ev)
+    }));
     match result {
         Ok(value) => value,
         Err(payload) => {
@@ -167,8 +169,7 @@ fn named_element(object: SEXP, name: &str) -> SEXP {
                     let tag = TAG(cell);
                     if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                         let printname = PRINTNAME(tag);
-                        if !printname.is_null() && charsxp_as_utf8(printname) == name.as_bytes()
-                        {
+                        if !printname.is_null() && charsxp_as_utf8(printname) == name.as_bytes() {
                             return CAR(cell);
                         }
                     }
@@ -418,8 +419,7 @@ fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
     {
         let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
         for_each_env_binding(table, |symbol, method| {
-            let label =
-                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
+            let label = String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
             let signature: Vec<&str> = label.split('#').collect();
             if signature.len() == classes.len()
                 && signature
@@ -462,8 +462,7 @@ fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
     {
         let mut out = Vec::new();
         for_each_env_binding(table, |symbol, method| {
-            let label =
-                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
+            let label = String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
             let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
             if signature.len() != targets.len()
                 || method == R_NilValue()
@@ -1263,7 +1262,8 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
                 op,
                 c"suppress",
                 R_NilValue(),
-                R_NilValue());
+                R_NilValue(),
+            );
         } else {
             SETCAR(call, dot_next_method);
         }
@@ -1281,11 +1281,7 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::eval::eval::Rf_eval(call, ev)
             }));
-            crate::mainutils::objects::do_set_prim_method(
-                op,
-                c"set",
-                R_NilValue(),
-                R_NilValue());
+            crate::mainutils::objects::do_set_prim_method(op, c"set", R_NilValue(), R_NilValue());
             match result {
                 Ok(value) => value,
                 Err(payload) => std::panic::resume_unwind(payload),

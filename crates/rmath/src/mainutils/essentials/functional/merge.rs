@@ -4,77 +4,74 @@ use super::*;
 
 /// GNU `unstack` for a stacked values/ind data.frame.
 pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'form' must be a two-sided formula",
-            );
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut values = R_NilValue();
-        let mut ind = R_NilValue();
-        if TYPEOF(names) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(x) {
-                let name = elt_to_string(names, i);
-                if name == "values" {
-                    values = VECTOR_ELT(x, i);
-                } else if name == "ind" {
-                    ind = VECTOR_ELT(x, i);
-                }
+    let x = CAR(args);
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'form' must be a two-sided formula",
+        );
+    }
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut values = R_NilValue();
+    let mut ind = R_NilValue();
+    if TYPEOF(names) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(x) {
+            let name = elt_to_string(names, i);
+            if name == "values" {
+                values = VECTOR_ELT(x, i);
+            } else if name == "ind" {
+                ind = VECTOR_ELT(x, i);
             }
         }
-        if values == R_NilValue() || ind == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'form' must be a two-sided formula",
-            );
+    }
+    if values == R_NilValue() || ind == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'form' must be a two-sided formula",
+        );
+    }
+    let n = XLENGTH(values);
+    let levels =
+        crate::sexp::attrib_core::getAttrib(ind, crate::sexp::attrib_core::R_LevelsSymbol());
+    let nlev = if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP
+    {
+        XLENGTH(levels)
+    } else {
+        0
+    };
+    if nlev == 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'form' must be a two-sided formula",
+        );
+    }
+    let mut buckets: Vec<Vec<i64>> = vec![Vec::new(); nlev as usize];
+    for i in 0..n {
+        let code = if TYPEOF(ind) == SEXPTYPE::INTSXP {
+            integer_elt_checked(ind, (i as usize) as R_xlen_t)
+        } else {
+            0
+        };
+        if code >= 1 && (code as i64) <= nlev {
+            buckets[(code as usize) - 1].push(i);
         }
-        let n = XLENGTH(values);
-        let levels =
-            crate::sexp::attrib_core::getAttrib(ind, crate::sexp::attrib_core::R_LevelsSymbol());
-        let nlev =
-            if !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP {
-                XLENGTH(levels)
-            } else {
-                0
-            };
-        if nlev == 0 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'form' must be a two-sided formula",
-            );
+    }
+    let nrow = buckets.first().map(|b| b.len() as i64).unwrap_or(0);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, nlev);
+    let _result = protect(result);
+    let mut col_names: Vec<String> = Vec::new();
+    for (k, bucket) in buckets.iter().enumerate() {
+        let col = Rf_allocVector3(TYPEOF(values), bucket.len() as i64);
+        for (dst, &src) in bucket.iter().enumerate() {
+            copy_elt(values, src, col, dst as i64);
         }
-        let mut buckets: Vec<Vec<i64>> = vec![Vec::new(); nlev as usize];
-        for i in 0..n {
-            let code = if TYPEOF(ind) == SEXPTYPE::INTSXP {
-                integer_elt_checked(ind, (i as usize) as R_xlen_t)
-            } else {
-                0
-            };
-            if code >= 1 && (code as i64) <= nlev {
-                buckets[(code as usize) - 1].push(i);
-            }
-        }
-        let nrow = buckets.first().map(|b| b.len() as i64).unwrap_or(0);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, nlev);
-        let _result = protect(result);
-        let mut col_names: Vec<String> = Vec::new();
-        for (k, bucket) in buckets.iter().enumerate() {
-            let col = Rf_allocVector3(TYPEOF(values), bucket.len() as i64);
-            for (dst, &src) in bucket.iter().enumerate() {
-                copy_elt(values, src, col, dst as i64);
-            }
-            SET_VECTOR_ELT(result, k as i64, col);
-            col_names.push(elt_to_string(levels, k as i64));
-        }
-        set_string_names(result, &col_names);
-        set_compact_row_names(result, nrow);
-        set_data_frame_class(result);
-        result
-    
+        SET_VECTOR_ELT(result, k as i64, col);
+        col_names.push(elt_to_string(levels, k as i64));
+    }
+    set_string_names(result, &col_names);
+    set_compact_row_names(result, nrow);
+    set_data_frame_class(result);
+    result
 }
 
 pub(super) fn merge_named_true(args: SEXP, name: &str) -> bool {
@@ -100,41 +97,37 @@ pub(super) fn merge_named_true(args: SEXP, name: &str) -> bool {
 }
 
 pub(super) fn merge_named_value(args: SEXP, name: &str) -> SEXP {
-    unsafe {
-        let sym = install_str(name);
-        let mut cell = args;
-        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(cell);
-            if tag == sym {
-                let mut v = CAR(cell);
-                if TYPEOF(v) == SEXPTYPE::PROMSXP {
-                    v = crate::sexp::accessors::PRVALUE(v);
-                    if v == crate::sexp::globals::R_UnboundValue() {
-                        v = crate::eval::eval::Rf_eval(
-                            CAR(cell),
-                            crate::sexp::accessors::PRENV(CAR(cell)),
-                        );
-                    }
+    let sym = install_str(name);
+    let mut cell = args;
+    while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+        let tag = crate::sexp::accessors::TAG(cell);
+        if tag == sym {
+            let mut v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::PROMSXP {
+                v = crate::sexp::accessors::PRVALUE(v);
+                if v == crate::sexp::globals::R_UnboundValue() {
+                    v = crate::eval::eval::Rf_eval(
+                        CAR(cell),
+                        crate::sexp::accessors::PRENV(CAR(cell)),
+                    );
                 }
-                return v;
             }
-            cell = CDR(cell);
+            return v;
         }
-        crate::sexp::globals::R_NilValue()
+        cell = CDR(cell);
     }
+    crate::sexp::globals::R_NilValue()
 }
 
 pub(super) fn store_na(out: SEXP, i: i64) {
-    
-        let t = TYPEOF(out);
-        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            set_integer_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_INTEGER);
-        } else if t == SEXPTYPE::REALSXP {
-            set_real_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_REAL);
-        } else if t == SEXPTYPE::STRSXP {
-            SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
-        }
-    
+    let t = TYPEOF(out);
+    if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        set_integer_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_INTEGER);
+    } else if t == SEXPTYPE::REALSXP {
+        set_real_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_REAL);
+    } else if t == SEXPTYPE::STRSXP {
+        SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+    }
 }
 
 /// GNU `merge` inner join on intersecting column names.
@@ -220,17 +213,9 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         for (k, name) in ["xi", "yi", "x.alone", "y.alone"].iter().enumerate() {
             let c = std::ffi::CString::new(*name).unwrap_or_default();
-            crate::sexp::accessors::SET_STRING_ELT(
-                nms,
-                k as R_xlen_t,
-                mk_char_cstr(&c),
-            );
+            crate::sexp::accessors::SET_STRING_ELT(nms, k as R_xlen_t, mk_char_cstr(&c));
         }
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            nms,
-        );
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
         return ans;
     }
     let x = CAR(args);
@@ -241,10 +226,8 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             "'by' must specify one or more columns as numbers, names or logical",
         );
     }
-    let xnames =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-    let ynames =
-        crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_NamesSymbol());
+    let xnames = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let ynames = crate::sexp::attrib_core::getAttrib(y, crate::sexp::attrib_core::R_NamesSymbol());
     let mut by: Vec<String> = Vec::new();
     let mut x_by: Vec<usize> = Vec::new();
     let mut y_by: Vec<usize> = Vec::new();
@@ -446,32 +429,32 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
-    
-        if TYPEOF(a) != TYPEOF(b) {
-            return format_grid_elt(a, i) == format_grid_elt(b, j);
+    if TYPEOF(a) != TYPEOF(b) {
+        return format_grid_elt(a, i) == format_grid_elt(b, j);
+    }
+    match TYPEOF(a) {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            integer_elt_checked(a, (i as usize) as R_xlen_t)
+                == integer_elt_checked(b, (j as usize) as R_xlen_t)
         }
-        match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                integer_elt_checked(a, (i as usize) as R_xlen_t) == integer_elt_checked(b, (j as usize) as R_xlen_t)
-            }
-            t if t == SEXPTYPE::REALSXP => real_elt_checked(a, (i as usize) as R_xlen_t) == real_elt_checked(b, (j as usize) as R_xlen_t),
-            t if t == SEXPTYPE::STRSXP => elt_to_string(a, i) == elt_to_string(b, j),
-            _ => format_grid_elt(a, i) == format_grid_elt(b, j),
+        t if t == SEXPTYPE::REALSXP => {
+            real_elt_checked(a, (i as usize) as R_xlen_t)
+                == real_elt_checked(b, (j as usize) as R_xlen_t)
         }
-    
+        t if t == SEXPTYPE::STRSXP => elt_to_string(a, i) == elt_to_string(b, j),
+        _ => format_grid_elt(a, i) == format_grid_elt(b, j),
+    }
 }
 
 pub(crate) fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
-    
-        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if rn.is_null() {
-            return;
-        }
-        let _row_names_guard = protect(rn);
-        set_integer_checked(rn, 0, NA_INTEGER);
-        set_integer_checked(rn, (1) as R_xlen_t, -(nrow as i32));
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
-    
+    let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if rn.is_null() {
+        return;
+    }
+    let _row_names_guard = protect(rn);
+    set_integer_checked(rn, 0, NA_INTEGER);
+    set_integer_checked(rn, (1) as R_xlen_t, -(nrow as i32));
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
 }
 
 pub(crate) fn set_data_frame_class(x: SEXP) {

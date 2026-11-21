@@ -979,7 +979,8 @@ fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
                 state.line_profiling = (state.srcfiles.len() as c_int).saturating_add(1);
                 state.srcfiles.len() as c_int
             })
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 
@@ -1290,8 +1291,10 @@ fn doprof(_sig: c_int) {
             };
             let mut cptr = super::runtime::global_context();
             while !cptr.is_null() {
-                let cell = crate::sexp::context::retain_context_in(instance, cptr)
-                    .unwrap_or_else(|| crate::sexp::context::r_error("unavailable profiling context"));
+                let cell =
+                    crate::sexp::context::retain_context_in(instance, cptr).unwrap_or_else(|| {
+                        crate::sexp::context::r_error("unavailable profiling context")
+                    });
                 if !frames.push((
                     cell,
                     (*cptr).callflag,
@@ -1384,10 +1387,9 @@ fn doprof(_sig: c_int) {
                                 if !epoch.unchanged() {
                                     return;
                                 }
-                                let value = owner
-                                    .node_factory()
-                                    .wrap(value)
-                                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                                let value = owner.node_factory().wrap(value).unwrap_or_else(|e| {
+                                    crate::sexp::context::r_error(e.to_string())
+                                });
                                 pb_str(&mut pb, CHAR(value.as_raw()));
                                 pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
                             } else if TYPEOF(arg2) == SEXPTYPE::INTSXP {
@@ -1487,7 +1489,8 @@ fn doprof(_sig: c_int) {
                 pf_str(buf.as_ptr() as *const c_char);
                 pf_str(b"\n\0".as_ptr() as *const c_char);
             }
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 
@@ -1689,7 +1692,9 @@ fn R_InitProfiling(
                 let count = usize::try_from(numfiles)
                     .ok()
                     .filter(|count| *count > 0)
-                    .unwrap_or_else(|| crate::sexp::context::r_error("invalid source file capacity"));
+                    .unwrap_or_else(|| {
+                        crate::sexp::context::r_error("invalid source file capacity")
+                    });
                 if bufsize < 0 {
                     crate::sexp::context::r_error("invalid source filename buffer size");
                 }
@@ -1721,7 +1726,8 @@ fn R_InitProfiling(
                 state.profile_schedule = schedule;
                 state.profiling = 1;
             });
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 
@@ -1833,14 +1839,14 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 
             // Get event type argument
             let event_arg_sexp = CAR(args);
-            let event_count = if !event_arg_sexp.is_null() && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP
-            {
-                let count = LENGTH(event_arg_sexp);
-                require_owner();
-                count
-            } else {
-                0
-            };
+            let event_count =
+                if !event_arg_sexp.is_null() && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP {
+                    let count = LENGTH(event_arg_sexp);
+                    require_owner();
+                    count
+                } else {
+                    0
+                };
             let event = if event_count == 1 {
                 let event_value = STRING_ELT(event_arg_sexp, 0);
                 require_owner();
@@ -1883,7 +1889,8 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 
             require_owner();
             R_NilValue()
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 /// WASM M1 stub for `Rprof()`: no timer/file-descriptor profiler on wasm.
@@ -1929,7 +1936,8 @@ pub fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             crate::sexp::context::r_error("R profiling is not available on this platform")
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 
@@ -2009,7 +2017,8 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
             // a periodic CPU/elapsed Rprof session.
             with_profiling_state(|state| state.profile_schedule = None);
             R_NilValue()
-        }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        })
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     }
 }
 /// WASM M1 stub for `Rprofmem()`: no memory profiler on wasm.
@@ -2229,7 +2238,8 @@ pub fn R_WriteProfile(_out: c_int) {
     crate::sexp::owner::OwnerToken::with_current(|owner| {
         write_profile_sample(owner, true)
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    }).unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------

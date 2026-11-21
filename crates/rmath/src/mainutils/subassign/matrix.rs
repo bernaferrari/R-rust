@@ -65,7 +65,8 @@ pub(crate) fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
         }
         if anyIdxNA && ny > 1 {
             crate::mainutils::errors::Rf_error_cstr(
-                c"NAs are not allowed in subscripted assignments");
+                c"NAs are not allowed in subscripted assignments",
+            );
         }
 
         let n = (nrs as R_xlen_t) * (ncs as R_xlen_t);

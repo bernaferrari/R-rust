@@ -77,14 +77,14 @@ pub fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
-pub  fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::subset::do_subset_dflt(call, op, args, rho)
 }
 
 /// `do_subassign_dflt(call, op, args, rho)` - `[<-` default method.
 ///
 /// Defined in subassign.c.
-pub  fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::subassign::do_subassign_dflt(call, op, args, rho)
 }
 
@@ -92,7 +92,7 @@ pub  fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Defined in coerce.c.
 // no_mangle removed (duplicate)
-pub  fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::bind::do_c_dflt(call, op, args, rho)
 }
 
@@ -100,7 +100,7 @@ pub  fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
-pub  fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::subset::do_subset2_dflt(call, op, args, rho)
 }
 
@@ -108,7 +108,7 @@ pub  fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Defined in subassign.c.
 // no_mangle removed (duplicate)
-pub  fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::subassign::do_subassign2_dflt(call, op, args, rho)
 }
 
@@ -153,14 +153,7 @@ unsafe fn getPrimitive(name: *const c_char, kind: c_int) -> SEXP {
 /// interpreter for inline comparison operations. If either operand
 /// is an object, it tries group dispatch to "Ops"; otherwise it
 /// calls do_relop_dflt.
-pub fn cmp_relop(
-    call: SEXP,
-    _opval: c_int,
-    opsym: SEXP,
-    x: SEXP,
-    y: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub fn cmp_relop(call: SEXP, _opval: c_int, opsym: SEXP, x: SEXP, y: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
@@ -238,14 +231,7 @@ pub fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `cmp_arith2()` in eval.c. Used by the bytecode
 /// interpreter for inline binary operations (+, -, *, /, ^, etc.).
-pub fn cmp_arith2(
-    call: SEXP,
-    _opval: c_int,
-    opsym: SEXP,
-    x: SEXP,
-    y: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub fn cmp_arith2(call: SEXP, _opval: c_int, opsym: SEXP, x: SEXP, y: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
@@ -394,10 +380,10 @@ mod tests {
     #[test]
     fn as_logical_no_na_uses_typed_scalar_access() {
         let _session = RSession::new();
-        
-            assert_eq!(asLogicalNoNA(Rf_ScalarLogical(TRUE), R_NilValue()), TRUE);
-            assert_eq!(asLogicalNoNA(Rf_ScalarLogical(FALSE), R_NilValue()), FALSE);
-            assert_eq!(asLogicalNoNA(Rf_ScalarInteger(42), R_NilValue()), TRUE);
-            assert_eq!(asLogicalNoNA(Rf_ScalarInteger(0), R_NilValue()), FALSE);
+
+        assert_eq!(asLogicalNoNA(Rf_ScalarLogical(TRUE), R_NilValue()), TRUE);
+        assert_eq!(asLogicalNoNA(Rf_ScalarLogical(FALSE), R_NilValue()), FALSE);
+        assert_eq!(asLogicalNoNA(Rf_ScalarInteger(42), R_NilValue()), TRUE);
+        assert_eq!(asLogicalNoNA(Rf_ScalarInteger(0), R_NilValue()), FALSE);
     }
 }

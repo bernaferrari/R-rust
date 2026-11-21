@@ -211,10 +211,8 @@ pub(crate) fn format_posixlt_vector(x: Sexp<'_>) -> String {
 }
 
 pub(crate) fn difftime_units(x: Sexp<'_>) -> String {
-    let units = crate::sexp::attrib_core::getAttrib(
-        x.as_raw(),
-        crate::sexp::symbol::install_str("units"),
-    );
+    let units =
+        crate::sexp::attrib_core::getAttrib(x.as_raw(), crate::sexp::symbol::install_str("units"));
     if let Some(units) = unsafe { Sexp::from_raw(units) }
         && units.clone().typeof_() == SEXPTYPE::STRSXP
         && units.clone().len() > 0

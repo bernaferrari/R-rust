@@ -202,12 +202,7 @@ enum fstype_t {
 /// Patch a single supplied argument into a promise referencing the formal name.
 /// If the supplied value is R_MissingArg, looks up a local variable in cloenv.
 /// Ported from match.c:424-438.
-fn patch_argument(
-    supplied_slot: SEXP,
-    name: SEXP,
-    farg: Option<&mut fstype_t>,
-    cloenv: SEXP,
-) {
+fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: Option<&mut fstype_t>, cloenv: SEXP) {
     let value = CAR(supplied_slot);
     if value == R_MissingArg() {
         let local = crate::sexp::envir::R_findVarInFrame(cloenv, name);

@@ -1284,9 +1284,7 @@ pub(crate) fn with_required_env_hash_sizes<R>(
 /// Same strictly-local lend contract as [`with_binding_tables`]; `f` may
 /// allocate persistent nodes (which is strictly local to this field) but must
 /// not run interpreter callbacks.
-pub(crate) fn with_required_persistent_heap<R>(
-    f: impl FnOnce(&mut PersistentHeap) -> R,
-) -> R {
+pub(crate) fn with_required_persistent_heap<R>(f: impl FnOnce(&mut PersistentHeap) -> R) -> R {
     with_required_current_instance(|instance| {
         // SAFETY: P2 strictly-local field lend; persistent allocation touches
         // no other instance field and runs no ambient callback.

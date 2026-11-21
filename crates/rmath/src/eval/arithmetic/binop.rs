@@ -301,11 +301,7 @@ pub(crate) fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> 
     true
 }
 
-pub(crate) fn copy_dims_if_present(
-    result: SEXP,
-    source: SEXP,
-    result_len: R_xlen_t,
-) -> bool {
+pub(crate) fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t) -> bool {
     if source.is_null() || LENGTH(source) as R_xlen_t != result_len {
         return false;
     }
@@ -472,8 +468,7 @@ pub(crate) fn first_summary_data_arg(args: SEXP) -> SEXP {
 }
 
 pub(crate) fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
-    if source.is_null() || source == R_NilValue() || result.is_null() || result == R_NilValue()
-    {
+    if source.is_null() || source == R_NilValue() || result.is_null() || result == R_NilValue() {
         return;
     }
     if crate::mainutils::essentials::sexp_has_class(source, "Date") {
@@ -485,12 +480,7 @@ pub(crate) fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
     }
 }
 
-pub(crate)  fn coerce_summary_posixlt_args(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub(crate) fn coerce_summary_posixlt_args(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut out = R_NilValue();
     let mut tail: SEXP = std::ptr::null_mut();
     let mut guards: Vec<_> = Vec::new();
@@ -528,7 +518,10 @@ pub(crate)  fn coerce_summary_posixlt_args(
 
 pub(crate) fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
     unsafe {
-        let attr = getAttrib(source, crate::sexp::symbol::install_str(name.to_str().unwrap()));
+        let attr = getAttrib(
+            source,
+            crate::sexp::symbol::install_str(name.to_str().unwrap()),
+        );
         let attr = Sexp::from_raw(attr)?;
         if attr.clone().typeof_() != SEXPTYPE::STRSXP || attr.clone().len() == 0 {
             return None;

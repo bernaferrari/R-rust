@@ -138,8 +138,7 @@ fn format_plain_numeric_column(col: SEXP, nrow: R_xlen_t, digits: i32) -> Vec<St
         args,
         crate::sexp::globals::R_GlobalEnv(),
     );
-    if formatted.is_null() || formatted == R_NilValue() || TYPEOF(formatted) != SEXPTYPE::STRSXP
-    {
+    if formatted.is_null() || formatted == R_NilValue() || TYPEOF(formatted) != SEXPTYPE::STRSXP {
         return vec![String::new(); nrow.max(0) as usize];
     }
     guards.push(protect(formatted));
@@ -275,10 +274,8 @@ fn emit_print_data_frame_columns(
 }
 fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
     if ncol == 0 {
-        let row_names = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
-        );
+        let row_names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
         let n = if !row_names.is_null()
             && row_names != R_NilValue()
             && (TYPEOF(row_names) == SEXPTYPE::STRSXP || TYPEOF(row_names) == SEXPTYPE::INTSXP)
@@ -373,10 +370,8 @@ pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
     let ncol = XLENGTH(x);
     let nrow = {
-        let rn = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
-        );
+        let rn =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
         if !rn.is_null()
             && rn != R_NilValue()
             && TYPEOF(rn) == SEXPTYPE::INTSXP
@@ -409,8 +404,7 @@ pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     };
     let print_rows = (nrow as usize).min(n0);
     let digits = data_frame_print_digits(args);
-    let (headers, columns) =
-        print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t, digits);
+    let (headers, columns) = print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t, digits);
     let row_labels = data_frame_row_labels(x, nrow, print_rows as R_xlen_t);
     let shown_labels = &row_labels[..];
     // GNU formatString uses 0 for a blank row name; a minimum of 1 inserts a pad column.
@@ -539,11 +533,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     for (j, col) in columns.iter().enumerate() {
         for (i, cell) in col.iter().enumerate() {
             let cstr = CString::new(cell.as_str()).unwrap_or_default();
-            SET_STRING_ELT(
-                result,
-                (j * nrow + i) as R_xlen_t,
-                mk_char_cstr(&cstr),
-            );
+            SET_STRING_ELT(result, (j * nrow + i) as R_xlen_t, mk_char_cstr(&cstr));
         }
     }
     crate::mainutils::essentials::set_two_dim_attr(result, nrow as R_xlen_t, ncol);
@@ -552,11 +542,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrow as R_xlen_t);
     let _rn = protect(rn);
     for i in 0..nrow {
-        SET_STRING_ELT(
-            rn,
-            i as R_xlen_t,
-            mk_char_cstr(c""),
-        );
+        SET_STRING_ELT(rn, i as R_xlen_t, mk_char_cstr(c""));
     }
     let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
     for j in 0..ncol {
@@ -585,12 +571,12 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     column,
                     crate::sexp::attrib_core::R_DimNamesSymbol(),
                 );
-                let cnames =
-                    if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
-                        VECTOR_ELT(dn, 1)
-                    } else {
-                        R_NilValue()
-                    };
+                let cnames = if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2
+                {
+                    VECTOR_ELT(dn, 1)
+                } else {
+                    R_NilValue()
+                };
                 let mut bytes = Vec::new();
                 let outer_cstr = charsxp_cstring(ch);
                 let outer = outer_cstr.to_bytes();
@@ -598,9 +584,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     bytes.extend_from_slice(outer);
                     bytes.push(b'.');
                     if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                        bytes.extend_from_slice(
-                            charsxp_cstring(STRING_ELT(cnames, k)).to_bytes(),
-                        );
+                        bytes.extend_from_slice(charsxp_cstring(STRING_ELT(cnames, k)).to_bytes());
                     }
                 }
                 mk_char_cstr(&CString::new(bytes).unwrap_or_default())
@@ -612,18 +596,10 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
     SET_VECTOR_ELT(dn, 0, rn);
     SET_VECTOR_ELT(dn, 1, cn);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_DimNamesSymbol(),
-        dn,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
     let class = mk_string_cstr(c"table");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
     result
 }
@@ -757,15 +733,7 @@ fn mark_asis_if_character(x: SEXP) -> SEXP {
         return x;
     }
     let _c = protect(class_vec);
-    SET_STRING_ELT(
-        class_vec,
-        0,
-        mk_char_cstr(c"AsIs"),
-    );
-    crate::sexp::attrib_core::setAttrib(
-        x,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class_vec,
-    );
+    SET_STRING_ELT(class_vec, 0, mk_char_cstr(c"AsIs"));
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class_vec);
     x
 }

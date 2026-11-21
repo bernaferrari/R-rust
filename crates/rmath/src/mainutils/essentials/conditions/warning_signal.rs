@@ -42,9 +42,7 @@ pub(crate) fn condition_message_of(cond: SEXP) -> Option<String> {
 /// class the condition inherits from).
 pub(crate) fn condition_classes(cond: SEXP) -> Vec<String> {
     let class_attr = crate::sexp::attrib_core::getAttrib(cond, install_str("class"));
-    if class_attr.is_null()
-        || class_attr == R_NilValue()
-        || TYPEOF(class_attr) != SEXPTYPE::STRSXP
+    if class_attr.is_null() || class_attr == R_NilValue() || TYPEOF(class_attr) != SEXPTYPE::STRSXP
     {
         return vec!["error".to_string()];
     }

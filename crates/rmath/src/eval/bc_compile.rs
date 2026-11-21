@@ -108,10 +108,8 @@ impl BytecodeCompiler {
         }
 
         let prev_srcref = self.current_srcref;
-        let expr_srcref = crate::sexp::attrib_core::getAttrib(
-            expr,
-            crate::sexp::attrib_core::R_SrcRefSymbol(),
-        );
+        let expr_srcref =
+            crate::sexp::attrib_core::getAttrib(expr, crate::sexp::attrib_core::R_SrcRefSymbol());
         if !expr_srcref.is_null()
             && expr_srcref != R_NilValue()
             && TYPEOF(expr_srcref) == SEXPTYPE::INTSXP
@@ -289,12 +287,12 @@ impl BytecodeCompiler {
                     let idx = self.add_const(argument);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
                 } else if (!eager || local_fun) && !constant {
-                    let code =
-                        if TYPEOF(argument) == SEXPTYPE::SYMSXP && argument != R_DotsSymbol() {
-                            symbol_getvar_bcode(argument)
-                        } else {
-                            argument
-                        };
+                    let code = if TYPEOF(argument) == SEXPTYPE::SYMSXP && argument != R_DotsSymbol()
+                    {
+                        symbol_getvar_bcode(argument)
+                    } else {
+                        argument
+                    };
                     let idx = self.add_const(code);
                     self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
                 } else if !self.compile_expr(argument) {
@@ -519,82 +517,75 @@ impl BytecodeCompiler {
     /// Flat replacement assigns the modified object but returns the original
     /// RHS. Evaluate RHS first; retain other arguments as expressions/promises.
     fn compile_replacement(&mut self, lhs: SEXP, rhs: SEXP) -> bool {
-        
         let function = own_operand(CAR(lhs));
         let Some(name) = symbol_name_from_sexp(function.as_raw()) else {
             return false;
         };
-            let mut cells = Vec::new();
-            let mut current = CDR(lhs);
-            let mut seen = std::collections::HashSet::new();
-            while current != R_NilValue() && !current.is_null() {
-                seen.try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track replacement arguments"));
-                if !seen.insert(current.addr()) {
-                    compiler_error("cyclic replacement arguments");
-                }
-                cells
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot snapshot replacement arguments"));
-                let cell = own_operand(current);
-                let tag = TAG(current);
-                cells.push((
-                    own_operand(CAR(current)),
-                    own_operand(if tag.is_null() { R_NilValue() } else { tag }),
-                ));
-                current = CDR(cell.as_raw());
+        let mut cells = Vec::new();
+        let mut current = CDR(lhs);
+        let mut seen = std::collections::HashSet::new();
+        while current != R_NilValue() && !current.is_null() {
+            seen.try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot track replacement arguments"));
+            if !seen.insert(current.addr()) {
+                compiler_error("cyclic replacement arguments");
             }
-            let Some((object, _)) = cells.first() else {
-                return false;
-            };
-            if object.typeof_() != SEXPTYPE::SYMSXP
-                || cells.iter().any(|(arg, _)| arg.as_raw() == R_DotsSymbol())
-            {
-                return false;
+            cells
+                .try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot snapshot replacement arguments"));
+            let cell = own_operand(current);
+            let tag = TAG(current);
+            cells.push((
+                own_operand(CAR(current)),
+                own_operand(if tag.is_null() { R_NilValue() } else { tag }),
+            ));
+            current = CDR(cell.as_raw());
+        }
+        let Some((object, _)) = cells.first() else {
+            return false;
+        };
+        if object.typeof_() != SEXPTYPE::SYMSXP
+            || cells.iter().any(|(arg, _)| arg.as_raw() == R_DotsSymbol())
+        {
+            return false;
+        }
+        let setter = own_operand(crate::sexp::symbol::install_str(&format!("{name}<-")));
+        let rhs_expr_idx = self.add_const(rhs);
+        if !self.compile_expr(rhs) {
+            return false;
+        }
+        // The assignment returns this exact RHS after the setter runs.
+        self.emit(opcodes::OP_MARK_SHARED);
+        let object_idx = self.add_const(object.as_raw());
+        self.emit_operand(opcodes::OP_GETVAR, object_idx);
+        self.emit(opcodes::OP_MARK_SHARED);
+        // GNU replaces the first call argument with an unnamed *tmp*.
+        // Tags on the remaining arguments and the RHS remain significant.
+        for (argument, tag) in cells.iter().skip(1) {
+            let idx = self.add_const(argument.as_raw());
+            // Carry original syntax; the selected setter decides when to
+            // evaluate it, and its observable call retains the expression.
+            self.emit_operand(opcodes::OP_PUSHCONST, idx);
+            if tag.as_raw() != R_NilValue() {
+                let idx = self.add_const(tag.as_raw());
+                self.emit_operand(opcodes::OP_SETTAG, idx);
             }
-            let setter = own_operand(crate::sexp::symbol::install_str(&format!("{name}<-")));
-            let rhs_expr_idx = self.add_const(rhs);
-            if !self.compile_expr(rhs) {
-                return false;
-            }
-            // The assignment returns this exact RHS after the setter runs.
-            self.emit(opcodes::OP_MARK_SHARED);
-            let object_idx = self.add_const(object.as_raw());
-            self.emit_operand(opcodes::OP_GETVAR, object_idx);
-            self.emit(opcodes::OP_MARK_SHARED);
-            // GNU replaces the first call argument with an unnamed *tmp*.
-            // Tags on the remaining arguments and the RHS remain significant.
-            for (argument, tag) in cells.iter().skip(1) {
-                let idx = self.add_const(argument.as_raw());
-                // Carry original syntax; the selected setter decides when to
-                // evaluate it, and its observable call retains the expression.
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                if tag.as_raw() != R_NilValue() {
-                    let idx = self.add_const(tag.as_raw());
-                    self.emit_operand(opcodes::OP_SETTAG, idx);
-                }
-            }
-            let setter_idx = self.add_const(setter.as_raw());
-            self.emit_operand(opcodes::OP_REPLACEMENT, setter_idx);
-            self.emit(object_idx);
-            self.emit(
-                c_int::try_from(cells.len())
-                    .unwrap_or_else(|_| compiler_error("too many replacement arguments")),
-            );
-            self.emit(rhs_expr_idx);
-            true
-        
+        }
+        let setter_idx = self.add_const(setter.as_raw());
+        self.emit_operand(opcodes::OP_REPLACEMENT, setter_idx);
+        self.emit(object_idx);
+        self.emit(
+            c_int::try_from(cells.len())
+                .unwrap_or_else(|_| compiler_error("too many replacement arguments")),
+        );
+        self.emit(rhs_expr_idx);
+        true
     }
 
     /// Snapshot a finite syntax spine before compilation can run callbacks.
     /// Instruction operands describe checked owning levels, not mutable lists
     /// that execution would reread after the RHS changes their source graph.
-    fn compile_general_replacement(
-        &mut self,
-        lhs: SEXP,
-        rhs: SEXP,
-        superassign: bool,
-    ) -> bool {
+    fn compile_general_replacement(&mut self, lhs: SEXP, rhs: SEXP, superassign: bool) -> bool {
         let rhs = own_operand(rhs);
         let mut current = own_operand(lhs);
         let mut levels = Vec::new();
@@ -613,9 +604,8 @@ impl BytecodeCompiler {
             let mut seen = std::collections::HashSet::new();
             let mut arguments = Vec::new();
             while !cell.is_null() && cell != R_NilValue() {
-                seen.try_reserve(1).unwrap_or_else(|_| {
-                    compiler_error("cannot track replacement level arguments")
-                });
+                seen.try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track replacement level arguments"));
                 if !seen.insert(cell.addr()) {
                     compiler_error("cyclic replacement level arguments");
                 }
@@ -655,10 +645,10 @@ impl BytecodeCompiler {
                 .unwrap_or_else(|_| compiler_error("cannot encode replacement levels"));
             operands.push(self.add_const(getter.as_raw()));
             operands.push(self.add_const(setter.as_raw()));
-            operands
-                .push(c_int::try_from(arguments.len()).unwrap_or_else(|_| {
-                    compiler_error("too many replacement level arguments")
-                }));
+            operands.push(
+                c_int::try_from(arguments.len())
+                    .unwrap_or_else(|_| compiler_error("too many replacement level arguments")),
+            );
             for (argument, tag) in arguments {
                 operands
                     .try_reserve(2)
@@ -690,148 +680,144 @@ impl BytecodeCompiler {
     /// the runtime can resolve it in the original owner. Other callable heads
     /// stay on the source path.
     fn replacement_setter_head(getter: &Sexp<'static>) -> Option<Sexp<'static>> {
-        
         let name = if getter.typeof_() == SEXPTYPE::SYMSXP {
             symbol_name_from_sexp(getter.as_raw())?
         } else {
-                if getter.typeof_() != SEXPTYPE::LANGSXP {
-                    return None;
-                }
-                let operator = CAR(getter.as_raw());
-                let operator_name = symbol_name_from_sexp(operator)?;
-                if !matches!(operator_name.as_str(), "::" | ":::") {
-                    return None;
-                }
-                let package_cell = CDR(getter.as_raw());
-                if package_cell.is_null() || package_cell == R_NilValue() {
-                    return None;
-                }
-                let member_cell = CDR(package_cell);
-                if member_cell.is_null()
-                    || member_cell == R_NilValue()
-                    || CDR(member_cell) != R_NilValue()
-                {
-                    return None;
-                }
-                let package_tag = TAG(package_cell);
-                let member_tag = TAG(member_cell);
-                if (!package_tag.is_null() && package_tag != R_NilValue())
-                    || (!member_tag.is_null() && member_tag != R_NilValue())
-                {
-                    return None;
-                }
-                let package = CAR(package_cell);
-                let member = CAR(member_cell);
-                if TYPEOF(package) != SEXPTYPE::SYMSXP || TYPEOF(member) != SEXPTYPE::SYMSXP {
-                    return None;
-                }
-                symbol_name_from_sexp(member)?
-            };
-            let setter_symbol = crate::sexp::symbol::install_str(&format!("{name}<-"));
-            if getter.typeof_() == SEXPTYPE::SYMSXP {
-                return Some(own_operand(setter_symbol));
+            if getter.typeof_() != SEXPTYPE::LANGSXP {
+                return None;
             }
-            let setter = crate::sexp::constructors::Rf_lang3(
-                CAR(getter.as_raw()),
-                CAR(CDR(getter.as_raw())),
-                setter_symbol,
-            );
-            Some(own_operand(setter))
-        
+            let operator = CAR(getter.as_raw());
+            let operator_name = symbol_name_from_sexp(operator)?;
+            if !matches!(operator_name.as_str(), "::" | ":::") {
+                return None;
+            }
+            let package_cell = CDR(getter.as_raw());
+            if package_cell.is_null() || package_cell == R_NilValue() {
+                return None;
+            }
+            let member_cell = CDR(package_cell);
+            if member_cell.is_null()
+                || member_cell == R_NilValue()
+                || CDR(member_cell) != R_NilValue()
+            {
+                return None;
+            }
+            let package_tag = TAG(package_cell);
+            let member_tag = TAG(member_cell);
+            if (!package_tag.is_null() && package_tag != R_NilValue())
+                || (!member_tag.is_null() && member_tag != R_NilValue())
+            {
+                return None;
+            }
+            let package = CAR(package_cell);
+            let member = CAR(member_cell);
+            if TYPEOF(package) != SEXPTYPE::SYMSXP || TYPEOF(member) != SEXPTYPE::SYMSXP {
+                return None;
+            }
+            symbol_name_from_sexp(member)?
+        };
+        let setter_symbol = crate::sexp::symbol::install_str(&format!("{name}<-"));
+        if getter.typeof_() == SEXPTYPE::SYMSXP {
+            return Some(own_operand(setter_symbol));
+        }
+        let setter = crate::sexp::constructors::Rf_lang3(
+            CAR(getter.as_raw()),
+            CAR(CDR(getter.as_raw())),
+            setter_symbol,
+        );
+        Some(own_operand(setter))
     }
 
     /// Select a bounded replacement path after evaluating its RHS. The opcode
     /// owns the selected root and child; indices stay original lazy syntax.
     fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
-        
         let lhs = own_operand(CAR(CDR(expr)));
         let rhs = own_operand(CAR(CDR(CDR(expr))));
         if lhs.typeof_() != SEXPTYPE::LANGSXP {
             return false;
         }
-            let setter_name = match symbol_name_from_sexp(CAR(lhs.as_raw())).as_deref() {
-                Some("[") => c"[<-",
-                Some("[[") => c"[[<-",
-                _ => return false,
-            };
-            let mut arguments = Vec::new();
-            let mut current = CDR(lhs.as_raw());
-            let mut seen = std::collections::HashSet::new();
-            while !current.is_null() && current != R_NilValue() {
-                seen.try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track subassignment arguments"));
-                if !seen.insert(current.addr()) {
-                    compiler_error("cyclic subassignment arguments");
-                }
-                arguments
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot snapshot subassignment arguments"));
-                let cell = own_operand(current);
-                let tag = TAG(current);
-                arguments.push((
-                    own_operand(CAR(current)),
-                    own_operand(if tag.is_null() { R_NilValue() } else { tag }),
-                ));
-                current = CDR(cell.as_raw());
+        let setter_name = match symbol_name_from_sexp(CAR(lhs.as_raw())).as_deref() {
+            Some("[") => c"[<-",
+            Some("[[") => c"[[<-",
+            _ => return false,
+        };
+        let mut arguments = Vec::new();
+        let mut current = CDR(lhs.as_raw());
+        let mut seen = std::collections::HashSet::new();
+        while !current.is_null() && current != R_NilValue() {
+            seen.try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot track subassignment arguments"));
+            if !seen.insert(current.addr()) {
+                compiler_error("cyclic subassignment arguments");
             }
-            let Some((object, _)) = arguments.first() else {
-                return false;
-            };
-            if arguments
-                .iter()
-                .any(|(value, _)| value.as_raw() == R_DotsSymbol())
-            {
-                return false;
-            }
-            let (root, field) = if object.typeof_() == SEXPTYPE::SYMSXP {
-                (object.clone(), own_operand(R_NilValue()))
-            } else if object.typeof_() == SEXPTYPE::LANGSXP
-                && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
-            {
-                let first = own_operand(CDR(object.as_raw()));
-                let second = own_operand(CDR(first.as_raw()));
-                let root = own_operand(CAR(first.as_raw()));
-                let field = own_operand(CAR(second.as_raw()));
-                if root.typeof_() != SEXPTYPE::SYMSXP
-                    || field.typeof_() != SEXPTYPE::SYMSXP
-                    || CDR(second.as_raw()) != R_NilValue()
-                {
-                    return false;
-                }
-                (root, field)
-            } else {
-                return false;
-            };
-            let setter = own_operand(crate::sexp::symbol::install_str(
-                setter_name.to_str().unwrap(),
+            arguments
+                .try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot snapshot subassignment arguments"));
+            let cell = own_operand(current);
+            let tag = TAG(current);
+            arguments.push((
+                own_operand(CAR(current)),
+                own_operand(if tag.is_null() { R_NilValue() } else { tag }),
             ));
-            let rhs_expression = self.add_const(rhs.as_raw());
-            if !self.compile_expr(rhs.as_raw()) {
+            current = CDR(cell.as_raw());
+        }
+        let Some((object, _)) = arguments.first() else {
+            return false;
+        };
+        if arguments
+            .iter()
+            .any(|(value, _)| value.as_raw() == R_DotsSymbol())
+        {
+            return false;
+        }
+        let (root, field) = if object.typeof_() == SEXPTYPE::SYMSXP {
+            (object.clone(), own_operand(R_NilValue()))
+        } else if object.typeof_() == SEXPTYPE::LANGSXP
+            && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
+        {
+            let first = own_operand(CDR(object.as_raw()));
+            let second = own_operand(CDR(first.as_raw()));
+            let root = own_operand(CAR(first.as_raw()));
+            let field = own_operand(CAR(second.as_raw()));
+            if root.typeof_() != SEXPTYPE::SYMSXP
+                || field.typeof_() != SEXPTYPE::SYMSXP
+                || CDR(second.as_raw()) != R_NilValue()
+            {
                 return false;
             }
-            self.emit(opcodes::OP_MARK_SHARED);
-            for (argument, tag) in arguments.iter().skip(1) {
-                let index = self.add_const(argument.as_raw());
-                self.emit_operand(opcodes::OP_PUSHCONST, index);
-                if !tag.is_nil() {
-                    let index = self.add_const(tag.as_raw());
-                    self.emit_operand(opcodes::OP_SETTAG, index);
-                }
+            (root, field)
+        } else {
+            return false;
+        };
+        let setter = own_operand(crate::sexp::symbol::install_str(
+            setter_name.to_str().unwrap(),
+        ));
+        let rhs_expression = self.add_const(rhs.as_raw());
+        if !self.compile_expr(rhs.as_raw()) {
+            return false;
+        }
+        self.emit(opcodes::OP_MARK_SHARED);
+        for (argument, tag) in arguments.iter().skip(1) {
+            let index = self.add_const(argument.as_raw());
+            self.emit_operand(opcodes::OP_PUSHCONST, index);
+            if !tag.is_nil() {
+                let index = self.add_const(tag.as_raw());
+                self.emit_operand(opcodes::OP_SETTAG, index);
             }
-            let setter = self.add_const(setter.as_raw());
-            let root = self.add_const(root.as_raw());
-            let field = self.add_const(field.as_raw());
-            self.emit_operand(opcodes::OP_REPLACEMENT_PATH, setter);
-            self.emit(root);
-            self.emit(field);
-            self.emit(i32::from(superassign));
-            self.emit(
-                c_int::try_from(arguments.len() - 1)
-                    .unwrap_or_else(|_| compiler_error("too many subassignment arguments")),
-            );
-            self.emit(rhs_expression);
-            true
-        
+        }
+        let setter = self.add_const(setter.as_raw());
+        let root = self.add_const(root.as_raw());
+        let field = self.add_const(field.as_raw());
+        self.emit_operand(opcodes::OP_REPLACEMENT_PATH, setter);
+        self.emit(root);
+        self.emit(field);
+        self.emit(i32::from(superassign));
+        self.emit(
+            c_int::try_from(arguments.len() - 1)
+                .unwrap_or_else(|_| compiler_error("too many subassignment arguments")),
+        );
+        self.emit(rhs_expression);
+        true
     }
 
     /// `<<-`: compile the value, then store into the enclosing frame via
@@ -1381,49 +1367,48 @@ mod tests {
             .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
             .unwrap()
             .unwrap();
-        
-            let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
-                0,
-                R_NilValue(),
-            );
-            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
-            let observed = own_operand(crate::attrib_core::getAttrib(
-                result.as_raw(),
-                crate::sexp::symbol::install_str("observed"),
-            ));
-            let head = observed.try_car().unwrap().into_owned().unwrap();
-            let object_cell = observed.try_cdr().unwrap().into_owned().unwrap();
-            let object = object_cell.try_car().unwrap().into_owned().unwrap();
-            let extra_cell = object_cell.try_cdr().unwrap().into_owned().unwrap();
-            let extra = extra_cell.try_car().unwrap().into_owned().unwrap();
-            let rhs = extra_cell
-                .try_cdr()
-                .unwrap()
-                .try_car()
-                .unwrap()
-                .into_owned()
-                .unwrap();
-            assert_eq!(
-                symbol_name_from_sexp(head.as_raw()).as_deref(),
-                Some("stamp<-")
-            );
-            assert_eq!(
-                symbol_name_from_sexp(object.as_raw()).as_deref(),
-                Some("*tmp*")
-            );
-            assert_eq!(
-                symbol_name_from_sexp(extra.as_raw()).as_deref(),
-                Some("unbound_label")
-            );
-            assert_eq!(rhs.typeof_(), SEXPTYPE::PROMSXP);
-            owner.full_gc().unwrap();
-            assert_eq!(
-                symbol_name_from_sexp(object.as_raw()).as_deref(),
-                Some("*tmp*")
-            );
-        
+
+        let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+            0,
+            R_NilValue(),
+        );
+        let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+        let observed = own_operand(crate::attrib_core::getAttrib(
+            result.as_raw(),
+            crate::sexp::symbol::install_str("observed"),
+        ));
+        let head = observed.try_car().unwrap().into_owned().unwrap();
+        let object_cell = observed.try_cdr().unwrap().into_owned().unwrap();
+        let object = object_cell.try_car().unwrap().into_owned().unwrap();
+        let extra_cell = object_cell.try_cdr().unwrap().into_owned().unwrap();
+        let extra = extra_cell.try_car().unwrap().into_owned().unwrap();
+        let rhs = extra_cell
+            .try_cdr()
+            .unwrap()
+            .try_car()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        assert_eq!(
+            symbol_name_from_sexp(head.as_raw()).as_deref(),
+            Some("stamp<-")
+        );
+        assert_eq!(
+            symbol_name_from_sexp(object.as_raw()).as_deref(),
+            Some("*tmp*")
+        );
+        assert_eq!(
+            symbol_name_from_sexp(extra.as_raw()).as_deref(),
+            Some("unbound_label")
+        );
+        assert_eq!(rhs.typeof_(), SEXPTYPE::PROMSXP);
+        owner.full_gc().unwrap();
+        assert_eq!(
+            symbol_name_from_sexp(object.as_raw()).as_deref(),
+            Some("*tmp*")
+        );
     }
 
     #[test]
@@ -1556,30 +1541,29 @@ mod tests {
         let factory = owner.node_factory();
         let env = session.global_env().unwrap();
         let expression=owner.with_arena(|arena|crate::eval::parser::parse("{x<-c('foo');`stamp<-`<-function(x,label,value){attr(x,'expression')<-substitute(label);x};stamp(x,unbound_label)<-7L;x}",arena,factory.domain())).unwrap().unwrap();
-        
-            let code = own_operand(
-                compile_expr(expression.as_raw(), env.as_raw())
-                    .expect("lazy custom replacement must compile"),
-            );
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
-                0,
-                R_NilValue(),
-            );
-            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
-            let symbol = crate::sexp::symbol::install_str("expression");
-            let attribute = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
-            assert_eq!(attribute.typeof_(), SEXPTYPE::SYMSXP);
-            assert_eq!(
-                symbol_name_from_sexp(attribute.as_raw()).as_deref(),
-                Some("unbound_label")
-            );
-            owner.full_gc().unwrap();
-            assert_eq!(
-                symbol_name_from_sexp(attribute.as_raw()).as_deref(),
-                Some("unbound_label")
-            );
-        
+
+        let code = own_operand(
+            compile_expr(expression.as_raw(), env.as_raw())
+                .expect("lazy custom replacement must compile"),
+        );
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+            0,
+            R_NilValue(),
+        );
+        let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+        let symbol = crate::sexp::symbol::install_str("expression");
+        let attribute = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+        assert_eq!(attribute.typeof_(), SEXPTYPE::SYMSXP);
+        assert_eq!(
+            symbol_name_from_sexp(attribute.as_raw()).as_deref(),
+            Some("unbound_label")
+        );
+        owner.full_gc().unwrap();
+        assert_eq!(
+            symbol_name_from_sexp(attribute.as_raw()).as_deref(),
+            Some("unbound_label")
+        );
     }
 
     #[test]
@@ -1595,36 +1579,35 @@ mod tests {
             .with_arena(|arena| crate::eval::parser::parse(script, arena, factory.domain()))
             .unwrap()
             .unwrap();
-        
-            let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
-                0,
-                R_NilValue(),
-            );
-            let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
-            let symbol = crate::sexp::symbol::install_str("code");
-            let object_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
-            let symbol = crate::sexp::symbol::install_str("rhs");
-            let rhs_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
-            assert_eq!(
-                symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
-                Some("*tmp*")
-            );
-            assert_eq!(
-                symbol_name_from_sexp(CAR(rhs_expr.as_raw())).as_deref(),
-                Some("quote")
-            );
-            assert_eq!(
-                symbol_name_from_sexp(CAR(CDR(rhs_expr.as_raw()))).as_deref(),
-                Some("y")
-            );
-            owner.full_gc().unwrap();
-            assert_eq!(
-                symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
-                Some("*tmp*")
-            );
-        
+
+        let code = own_operand(compile_expr(expression.as_raw(), env.as_raw()).unwrap());
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            super::super::bc_eval::BCODE_CONSTS(code.as_raw()),
+            0,
+            R_NilValue(),
+        );
+        let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
+        let symbol = crate::sexp::symbol::install_str("code");
+        let object_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+        let symbol = crate::sexp::symbol::install_str("rhs");
+        let rhs_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
+        assert_eq!(
+            symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
+            Some("*tmp*")
+        );
+        assert_eq!(
+            symbol_name_from_sexp(CAR(rhs_expr.as_raw())).as_deref(),
+            Some("quote")
+        );
+        assert_eq!(
+            symbol_name_from_sexp(CAR(CDR(rhs_expr.as_raw()))).as_deref(),
+            Some("y")
+        );
+        owner.full_gc().unwrap();
+        assert_eq!(
+            symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
+            Some("*tmp*")
+        );
     }
 
     #[test]
@@ -1638,15 +1621,13 @@ mod tests {
     #[test]
     fn compile_constant_round_trips_through_bc_eval() {
         let session = RSession::new_without_default_packages();
-        let expr = session.with_active(||  Rf_ScalarInteger(42) );
+        let expr = session.with_active(|| Rf_ScalarInteger(42));
         let env = session.global_env().expect("global env");
 
-        
-            let bcode = compile_expr(expr, env.clone().as_raw()).expect("constant should compile");
-            let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(INTEGER_ELT(result, 0), 42);
-        
+        let bcode = compile_expr(expr, env.clone().as_raw()).expect("constant should compile");
+        let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
+        assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+        assert_eq!(INTEGER_ELT(result, 0), 42);
     }
 
     #[test]
@@ -1735,7 +1716,10 @@ mod tests {
 
             let block = Rf_cons(
                 crate::sexp::symbol::install_str("{"),
-                Rf_cons(assign, Rf_cons(crate::sexp::symbol::install_str("x"), R_NilValue())),
+                Rf_cons(
+                    assign,
+                    Rf_cons(crate::sexp::symbol::install_str("x"), R_NilValue()),
+                ),
             );
             crate::sexp::accessors::SET_TYPEOF(block, SEXPTYPE::LANGSXP.as_c_int());
 
@@ -1768,7 +1752,10 @@ mod tests {
             defineVar(sum, Rf_ScalarInteger(0), env);
             let add = Rf_cons(
                 crate::sexp::symbol::install_str("+"),
-                Rf_cons(sum, Rf_cons(crate::sexp::symbol::install_str("i"), R_NilValue())),
+                Rf_cons(
+                    sum,
+                    Rf_cons(crate::sexp::symbol::install_str("i"), R_NilValue()),
+                ),
             );
             crate::sexp::accessors::SET_TYPEOF(add, SEXPTYPE::LANGSXP.as_c_int());
             let assign = Rf_cons(

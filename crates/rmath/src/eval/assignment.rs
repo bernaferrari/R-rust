@@ -467,7 +467,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 restore_tmp
                     .run(|| {
                         let mut lhs_expr = expr;
-                        let mut chain = crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
+                        let mut chain =
+                            crate::eval::missing::evalseq(CADR(lhs_expr), rho, forcelocal);
                         let _chain_guard = protect(chain);
                         let mut current_rhs = rhs_owned.clone();
                         let mut current_expression = rhs_expression.clone();
@@ -485,7 +486,9 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                                 &current_expression,
                                 &environment,
                             )
-                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                             current_rhs = own(crate::eval::eval::Rf_eval(repl.as_raw(), rho));
                             owner.require_active().unwrap_or_else(|error| {
                                 crate::sexp::context::r_error(error.to_string())
@@ -551,7 +554,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let object_expression = flat
                     .as_ref()
                     .map_or_else(|| CADR(lhs), |syntax| syntax.object.as_raw());
-                let target_env = if forcelocal == 0 && TYPEOF(object_expression) == SEXPTYPE::SYMSXP {
+                let target_env = if forcelocal == 0 && TYPEOF(object_expression) == SEXPTYPE::SYMSXP
+                {
                     let enc = crate::sexp::accessors::ENCLOS(rho);
                     if enc.is_null() || enc == R_NilValue() {
                         rho
@@ -595,9 +599,9 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             primval,
                             environment.as_raw(),
                         );
-                        owner
-                            .require_active()
-                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        owner.require_active().unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                         super::runtime::set_visible(FALSE);
                         return rhs_owned.as_raw();
                     }
@@ -613,7 +617,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 let call_args = CDDR(lhs);
-                let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
+                let raw_subscript =
+                    matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
                 let factory = SessionNodeFactory::new(
                     crate::sexp::owner::OwnerToken::current()
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
@@ -659,7 +664,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 let result = if symbol_name(func_sym).as_deref() == Some("[")
-                    && let Some(result) = try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+                    && let Some(result) =
+                        try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
                 {
                     result
                 } else {
@@ -683,7 +689,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 super::runtime::set_visible(FALSE);
                 rhs
             }
-        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 
@@ -949,7 +956,7 @@ fn replace_tmp_call(
 }
 
 /// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.
- fn replacement_fun_head(fun: SEXP) -> SEXP {
+fn replacement_fun_head(fun: SEXP) -> SEXP {
     if TYPEOF(fun) == SEXPTYPE::SYMSXP {
         return get_assign_fcn_sym(fun);
     }

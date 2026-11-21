@@ -366,44 +366,40 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn date_units_arg(args: SEXP) -> String {
-    
-        let mut units = "days".to_string();
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if (named == "units" || named.is_empty())
-                && TYPEOF(value) == SEXPTYPE::STRSXP
-                && XLENGTH(value) > 0
-            {
-                let ch = STRING_ELT(value, 0);
-                if !ch.is_null() {
-                    units = charsxp_text(ch).unwrap_or_default();
-                }
-                break;
+    let mut units = "days".to_string();
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if (named == "units" || named.is_empty())
+            && TYPEOF(value) == SEXPTYPE::STRSXP
+            && XLENGTH(value) > 0
+        {
+            let ch = STRING_ELT(value, 0);
+            if !ch.is_null() {
+                units = charsxp_text(ch).unwrap_or_default();
             }
-            cell = CDR(cell);
+            break;
         }
-        units
-    
+        cell = CDR(cell);
+    }
+    units
 }
 
 pub(crate) fn date_days_elt(x: SEXP, i: i64) -> f64 {
-    
-        if TYPEOF(x) == SEXPTYPE::REALSXP {
-            real_elt_checked(x, (i as usize) as R_xlen_t)
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            if v == NA_INTEGER { NA_REAL } else { v as f64 }
-        } else {
-            NA_REAL
-        }
-    
+    if TYPEOF(x) == SEXPTYPE::REALSXP {
+        real_elt_checked(x, (i as usize) as R_xlen_t)
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+        let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        if v == NA_INTEGER { NA_REAL } else { v as f64 }
+    } else {
+        NA_REAL
+    }
 }
 
 fn date_from_ymd(year: i32, month: i32, day: i32) -> f64 {

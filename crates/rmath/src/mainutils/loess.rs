@@ -618,7 +618,8 @@ pub(crate) fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             bytes.push(0);
             crate::mainutils::errors::warningcall_cstr(
                 crate::mainutils::errors::findCall(),
-                std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default());
+                std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default(),
+            );
         }
         if statistics == "none" {
             model.trace = 0.;

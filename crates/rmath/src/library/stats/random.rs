@@ -81,9 +81,7 @@ call_trampoline!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call
 call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
 pub(super) fn reject_var_on_factor(x: SEXP) {
-    if !x.is_null()
-        && x != R_NilValue()
-        && crate::mainutils::objects::inherits2(x, c"factor") != 0
+    if !x.is_null() && x != R_NilValue() && crate::mainutils::objects::inherits2(x, c"factor") != 0
     {
         Rf_error_cstr(
             c"Calling var(x) on a factor x is defunct.\n  Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.");

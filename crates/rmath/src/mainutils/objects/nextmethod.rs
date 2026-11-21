@@ -446,8 +446,7 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     && std::ffi::CStr::from_ptr(b).to_bytes()
                         != std::ffi::CStr::from_ptr(bb).to_bytes()
                 {
-                    crate::mainutils::errors::Rf_warning_cstr(
-                        c"Incompatible methods ignored");
+                    crate::mainutils::errors::Rf_warning_cstr(c"Incompatible methods ignored");
                 }
             }
         } else {

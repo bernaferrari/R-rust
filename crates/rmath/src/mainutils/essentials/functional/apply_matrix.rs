@@ -52,10 +52,8 @@ pub(super) fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
             if any_name { names } else { R_NilValue() }
         }
         _ => {
-            let names = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             if !names.is_null()
                 && names != R_NilValue()
                 && TYPEOF(names) == SEXPTYPE::STRSXP
@@ -75,50 +73,70 @@ pub(super) fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
 
 /// Extract a row from a matrix (column-major storage) as a length-ncol vector.
 pub(super) fn extract_matrix_row(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t, row: R_xlen_t) -> SEXP {
-    
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(t, ncol);
-        if result.is_null() {
-            return R_NilValue();
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(t, ncol);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    for j in 0..ncol {
+        let src = (j * nrow + row) as usize;
+        if t == SEXPTYPE::REALSXP {
+            set_real_checked(
+                result,
+                (j as usize) as R_xlen_t,
+                real_elt_checked(x, (src) as R_xlen_t),
+            );
+        } else if t == SEXPTYPE::INTSXP {
+            set_integer_checked(
+                result,
+                (j as usize) as R_xlen_t,
+                integer_elt_checked(x, (src) as R_xlen_t),
+            );
+        } else if t == SEXPTYPE::LGLSXP {
+            set_logical_checked(
+                result,
+                (j as usize) as R_xlen_t,
+                logical_elt_checked(x, (src) as R_xlen_t),
+            );
         }
-        for j in 0..ncol {
-            let src = (j * nrow + row) as usize;
-            if t == SEXPTYPE::REALSXP {
-                set_real_checked(result, (j as usize) as R_xlen_t, real_elt_checked(x, (src) as R_xlen_t));
-            } else if t == SEXPTYPE::INTSXP {
-                set_integer_checked(result, (j as usize) as R_xlen_t, integer_elt_checked(x, (src) as R_xlen_t));
-            } else if t == SEXPTYPE::LGLSXP {
-                set_logical_checked(result, (j as usize) as R_xlen_t, logical_elt_checked(x, (src) as R_xlen_t));
-            }
-        }
-        result
-    
+    }
+    result
 }
 
 /// Extract a column from a matrix (column-major storage) as a length-nrow vector.
 pub(super) fn extract_matrix_col(x: SEXP, nrow: R_xlen_t, _ncol: R_xlen_t, col: R_xlen_t) -> SEXP {
-    
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(t, nrow);
-        if result.is_null() {
-            return R_NilValue();
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(t, nrow);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let offset = (col * nrow) as usize;
+    if t == SEXPTYPE::REALSXP {
+        for i in 0..nrow {
+            set_real_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                real_elt_checked(x, (offset + i as usize) as R_xlen_t),
+            );
         }
-        let offset = (col * nrow) as usize;
-        if t == SEXPTYPE::REALSXP {
-            for i in 0..nrow {
-                set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(x, (offset + i as usize) as R_xlen_t));
-            }
-        } else if t == SEXPTYPE::INTSXP {
-            for i in 0..nrow {
-                set_integer_checked(result, (i as usize) as R_xlen_t, integer_elt_checked(x, (offset + i as usize) as R_xlen_t));
-            }
-        } else if t == SEXPTYPE::LGLSXP {
-            for i in 0..nrow {
-                set_logical_checked(result, (i as usize) as R_xlen_t, logical_elt_checked(x, (offset + i as usize) as R_xlen_t));
-            }
+    } else if t == SEXPTYPE::INTSXP {
+        for i in 0..nrow {
+            set_integer_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                integer_elt_checked(x, (offset + i as usize) as R_xlen_t),
+            );
         }
-        result
-    
+    } else if t == SEXPTYPE::LGLSXP {
+        for i in 0..nrow {
+            set_logical_checked(
+                result,
+                (i as usize) as R_xlen_t,
+                logical_elt_checked(x, (offset + i as usize) as R_xlen_t),
+            );
+        }
+    }
+    result
 }
 
 /// R's `apply(X, MARGIN, FUN)` — apply FUN over margins of array/matrix.
@@ -275,11 +293,23 @@ pub fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let t = TYPEOF(x);
                 for (j, &src_i) in indices.iter().enumerate() {
                     if t == SEXPTYPE::REALSXP {
-                        set_real_checked(group_vec, (j) as R_xlen_t, real_elt_checked(x, (src_i as usize) as R_xlen_t));
+                        set_real_checked(
+                            group_vec,
+                            (j) as R_xlen_t,
+                            real_elt_checked(x, (src_i as usize) as R_xlen_t),
+                        );
                     } else if t == SEXPTYPE::INTSXP {
-                        set_integer_checked(group_vec, (j) as R_xlen_t, integer_elt_checked(x, (src_i as usize) as R_xlen_t));
+                        set_integer_checked(
+                            group_vec,
+                            (j) as R_xlen_t,
+                            integer_elt_checked(x, (src_i as usize) as R_xlen_t),
+                        );
                     } else if t == SEXPTYPE::LGLSXP {
-                        set_logical_checked(group_vec, (j) as R_xlen_t, logical_elt_checked(x, (src_i as usize) as R_xlen_t));
+                        set_logical_checked(
+                            group_vec,
+                            (j) as R_xlen_t,
+                            logical_elt_checked(x, (src_i as usize) as R_xlen_t),
+                        );
                     }
                 }
             }
@@ -303,57 +333,55 @@ pub(super) struct TapplyIndex {
 }
 
 pub(crate) fn tapply_numeric_array(x: SEXP, index: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
-    
-        let summary = aggregate_summary_fun(fun, call)?;
-        let x_type = TYPEOF(x);
-        if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
-            return None;
-        }
-        let n = XLENGTH(x);
-        let indexes = tapply_indexes(index, n)?;
-        if indexes.is_empty() || indexes.iter().any(|index| index.labels.is_empty()) {
-            return None;
-        }
+    let summary = aggregate_summary_fun(fun, call)?;
+    let x_type = TYPEOF(x);
+    if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
+        return None;
+    }
+    let n = XLENGTH(x);
+    let indexes = tapply_indexes(index, n)?;
+    if indexes.is_empty() || indexes.iter().any(|index| index.labels.is_empty()) {
+        return None;
+    }
 
-        let dims = indexes
-            .iter()
-            .map(|index| index.labels.len())
-            .collect::<Vec<_>>();
-        let total_len = dims.iter().product::<usize>() as R_xlen_t;
-        let mut states = vec![AggregateGroupState::new(); total_len as usize];
+    let dims = indexes
+        .iter()
+        .map(|index| index.labels.len())
+        .collect::<Vec<_>>();
+    let total_len = dims.iter().product::<usize>() as R_xlen_t;
+    let mut states = vec![AggregateGroupState::new(); total_len as usize];
 
-        for row in 0..n {
-            let mut offset = 0_usize;
-            let mut stride = 1_usize;
-            let mut keep = true;
-            for (index, dim) in indexes.iter().zip(dims.iter()) {
-                match index.row_codes[row as usize] {
-                    Some(code) => {
-                        offset += code * stride;
-                        stride *= *dim;
-                    }
-                    None => {
-                        keep = false;
-                        break;
-                    }
+    for row in 0..n {
+        let mut offset = 0_usize;
+        let mut stride = 1_usize;
+        let mut keep = true;
+        for (index, dim) in indexes.iter().zip(dims.iter()) {
+            match index.row_codes[row as usize] {
+                Some(code) => {
+                    offset += code * stride;
+                    stride *= *dim;
+                }
+                None => {
+                    keep = false;
+                    break;
                 }
             }
-            if keep {
-                states[offset].record(tapply_value_at(x, x_type, row), summary);
-            }
         }
+        if keep {
+            states[offset].record(tapply_value_at(x, x_type, row), summary);
+        }
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, total_len);
-        if result.is_null() {
-            return Some(result);
-        }
-        let _result_guard = protect(result);
-        for (i, state) in states.into_iter().enumerate() {
-            set_real_checked(result, (i) as R_xlen_t, state.summarize(summary));
-        }
-        set_tapply_dim_attrs(result, &indexes);
-        Some(result)
-    
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, total_len);
+    if result.is_null() {
+        return Some(result);
+    }
+    let _result_guard = protect(result);
+    for (i, state) in states.into_iter().enumerate() {
+        set_real_checked(result, (i) as R_xlen_t, state.summarize(summary));
+    }
+    set_tapply_dim_attrs(result, &indexes);
+    Some(result)
 }
 
 pub(super) fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
@@ -469,18 +497,16 @@ pub(super) fn tapply_one_index(
 }
 
 pub(super) fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {
-    
-        if x_type == SEXPTYPE::REALSXP {
-            real_elt_checked(x, (i as usize) as R_xlen_t)
+    if x_type == SEXPTYPE::REALSXP {
+        real_elt_checked(x, (i as usize) as R_xlen_t)
+    } else {
+        let value = integer_elt_checked(x, (i as usize) as R_xlen_t);
+        if value == NA_INTEGER {
+            NA_REAL
         } else {
-            let value = integer_elt_checked(x, (i as usize) as R_xlen_t);
-            if value == NA_INTEGER {
-                NA_REAL
-            } else {
-                value as f64
-            }
+            value as f64
         }
-    
+    }
 }
 
 pub(super) fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
@@ -515,8 +541,7 @@ pub(super) fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
     if !dimname_names.is_null() {
         let _dimname_names_guard = protect(dimname_names);
         for (i, index) in indexes.iter().enumerate() {
-            let label_c =
-                CString::new(index.dim_name.as_deref().unwrap_or("")).unwrap_or_default();
+            let label_c = CString::new(index.dim_name.as_deref().unwrap_or("")).unwrap_or_default();
             SET_STRING_ELT(dimname_names, i as R_xlen_t, mk_char_cstr(&label_c));
         }
         crate::sexp::attrib_core::setAttrib(
@@ -555,7 +580,10 @@ pub fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             for i in 0..nx {
                 let xi = elt_real_safe(x, i);
                 for j in 0..ny {
-                    sexp_ok(dst.try_set_real_elt(((j * nx + i) as usize) as R_xlen_t, xi * elt_real_safe(y, j)));
+                    sexp_ok(dst.try_set_real_elt(
+                        ((j * nx + i) as usize) as R_xlen_t,
+                        xi * elt_real_safe(y, j),
+                    ));
                 }
             }
             result
@@ -651,24 +679,22 @@ pub(super) fn as_array_for_kronecker(x: SEXP) -> SEXP {
 }
 
 pub(super) fn array_dims(x: SEXP) -> Vec<c_int> {
-    
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
-            return vec![XLENGTH(x) as c_int];
-        }
-        let n = XLENGTH(dim) as usize;
-        (0..n).map(|i| integer_elt_checked(dim, (i) as R_xlen_t)).collect()
-    
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+        return vec![XLENGTH(x) as c_int];
+    }
+    let n = XLENGTH(dim) as usize;
+    (0..n)
+        .map(|i| integer_elt_checked(dim, (i) as R_xlen_t))
+        .collect()
 }
 
 pub(super) fn set_int_dim(x: SEXP, dims: &[c_int]) {
-    
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as i64);
-        for (i, d) in dims.iter().enumerate() {
-            set_integer_checked(dim, (i) as R_xlen_t, *d);
-        }
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
-    
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as i64);
+    for (i, d) in dims.iter().enumerate() {
+        set_integer_checked(dim, (i) as R_xlen_t, *d);
+    }
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
 }
 
 pub(super) fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
@@ -753,27 +779,41 @@ pub(super) fn rep_each(x: SEXP, each: i64) -> SEXP {
 }
 
 pub(super) fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {
-    
-        match TYPEOF(src) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                set_integer_checked(dst, (di as usize) as R_xlen_t, integer_elt_checked(src, (si as usize) as R_xlen_t));
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                set_real_checked(dst, (di as usize) as R_xlen_t, real_elt_checked(src, (si as usize) as R_xlen_t));
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                set_complex_checked(dst, (di as usize) as R_xlen_t, complex_elt_checked(src, (si as usize) as R_xlen_t));
-            }
-            t if t == SEXPTYPE::RAWSXP => {
-                set_raw_checked(dst, (di as usize) as R_xlen_t, raw_elt_checked(src, (si as usize) as R_xlen_t));
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                SET_STRING_ELT(dst, di, STRING_ELT(src, si));
-            }
-            _ => {
-                let v = extract_element(src, si);
-                SET_VECTOR_ELT(dst, di, v);
-            }
+    match TYPEOF(src) {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            set_integer_checked(
+                dst,
+                (di as usize) as R_xlen_t,
+                integer_elt_checked(src, (si as usize) as R_xlen_t),
+            );
         }
-    
+        t if t == SEXPTYPE::REALSXP => {
+            set_real_checked(
+                dst,
+                (di as usize) as R_xlen_t,
+                real_elt_checked(src, (si as usize) as R_xlen_t),
+            );
+        }
+        t if t == SEXPTYPE::CPLXSXP => {
+            set_complex_checked(
+                dst,
+                (di as usize) as R_xlen_t,
+                complex_elt_checked(src, (si as usize) as R_xlen_t),
+            );
+        }
+        t if t == SEXPTYPE::RAWSXP => {
+            set_raw_checked(
+                dst,
+                (di as usize) as R_xlen_t,
+                raw_elt_checked(src, (si as usize) as R_xlen_t),
+            );
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            SET_STRING_ELT(dst, di, STRING_ELT(src, si));
+        }
+        _ => {
+            let v = extract_element(src, si);
+            SET_VECTOR_ELT(dst, di, v);
+        }
+    }
 }

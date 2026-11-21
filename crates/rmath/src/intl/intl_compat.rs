@@ -48,10 +48,12 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
 
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { bindtextdomain(
-            b"test\0" as *const u8 as *const c_char,
-            b"/usr/share/locale\0" as *const u8 as *const c_char,
-        ) };
+        let result = unsafe {
+            bindtextdomain(
+                b"test\0" as *const u8 as *const c_char,
+                b"/usr/share/locale\0" as *const u8 as *const c_char,
+            )
+        };
         assert!(!result.is_null());
     }
 
@@ -60,10 +62,12 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
 
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { bind_textdomain_codeset(
-            b"test\0" as *const u8 as *const c_char,
-            b"UTF-8\0" as *const u8 as *const c_char,
-        ) };
+        let result = unsafe {
+            bind_textdomain_codeset(
+                b"test\0" as *const u8 as *const c_char,
+                b"UTF-8\0" as *const u8 as *const c_char,
+            )
+        };
         assert!(!result.is_null());
     }
 }

@@ -65,15 +65,18 @@ pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 NA_REAL
             };
-            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                NA_REAL
-            } else if v == 0.0 {
-                f64::NEG_INFINITY
-            } else if v < 0.0 {
-                f64::NAN
-            } else {
-                v.ln() / log_base
-            }));
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else if v == 0.0 {
+                    f64::NEG_INFINITY
+                } else if v < 0.0 {
+                    f64::NAN
+                } else {
+                    v.ln() / log_base
+                },
+            ));
         }
         result
     }
@@ -102,10 +105,14 @@ fn math2_complex(
             if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
                 // do_Math2 fills the digits default upstream.
                 let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-                set_complex_checked(s, 0, Rcomplex {
-                    r: dflt_digits,
-                    i: 0.0,
-                });
+                set_complex_checked(
+                    s,
+                    0,
+                    Rcomplex {
+                        r: dflt_digits,
+                        i: 0.0,
+                    },
+                );
                 s
             } else {
                 crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
@@ -231,60 +238,59 @@ pub(super) fn copy_all_attribs(dst: SEXP, src: SEXP) {
 /// Exact names, then a unique partial name, then leftover positionals.
 /// `round(d = 2, x = pi)` binds `x` exactly and `d` to `digits`.
 fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
-    
-        let formals = ["x", "digits"];
-        let mut bound = [R_NilValue(), R_NilValue()];
-        let mut seen = [false, false];
-        let mut untagged = Vec::new();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if tag.is_null() || tag == R_NilValue() {
-                untagged.push(CAR(cell));
-            } else {
-                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
-                if let Some(i) = formals.iter().position(|f| *f == name) {
-                    bound[i] = CAR(cell);
-                    seen[i] = true;
-                }
-            }
-            cell = CDR(cell);
-        }
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() {
-                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
-                if !formals.iter().any(|f| *f == name) {
-                    let hits: Vec<usize> = formals
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, f)| !seen[*i] && f.starts_with(&name))
-                        .map(|(i, _)| i)
-                        .collect();
-                    if hits.len() == 1 {
-                        bound[hits[0]] = CAR(cell);
-                        seen[hits[0]] = true;
-                    } else {
-                        let msg = format!("unused argument ({name} = ...)\0");
-                        crate::mainutils::errors::Rf_error_cstr(std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
-                    }
-                }
-            }
-            cell = CDR(cell);
-        }
-        for value in untagged {
-            if let Some(i) = seen.iter().position(|s| !s) {
-                bound[i] = value;
+    let formals = ["x", "digits"];
+    let mut bound = [R_NilValue(), R_NilValue()];
+    let mut seen = [false, false];
+    let mut untagged = Vec::new();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            untagged.push(CAR(cell));
+        } else {
+            let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
+            if let Some(i) = formals.iter().position(|f| *f == name) {
+                bound[i] = CAR(cell);
                 seen[i] = true;
             }
         }
-        if !seen[0] {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"argument \"x\" is missing, with no default");
+        cell = CDR(cell);
+    }
+    cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag != R_NilValue() {
+            let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
+            if !formals.iter().any(|f| *f == name) {
+                let hits: Vec<usize> = formals
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, f)| !seen[*i] && f.starts_with(&name))
+                    .map(|(i, _)| i)
+                    .collect();
+                if hits.len() == 1 {
+                    bound[hits[0]] = CAR(cell);
+                    seen[hits[0]] = true;
+                } else {
+                    let msg = format!("unused argument ({name} = ...)\0");
+                    crate::mainutils::errors::Rf_error_cstr(
+                        std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default(),
+                    );
+                }
+            }
         }
-        (bound[0], bound[1])
-    
+        cell = CDR(cell);
+    }
+    for value in untagged {
+        if let Some(i) = seen.iter().position(|s| !s) {
+            bound[i] = value;
+            seen[i] = true;
+        }
+    }
+    if !seen[0] {
+        crate::mainutils::errors::Rf_error_cstr(c"argument \"x\" is missing, with no default");
+    }
+    (bound[0], bound[1])
 }
 
 /// R's `round(x, digits=0)` — round to specified decimal digits.
@@ -312,8 +318,7 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if x_arg.is_null() || x_arg == R_NilValue() || x_arg == R_MissingArg() {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"argument \"x\" is missing, with no default");
+            crate::mainutils::errors::Rf_error_cstr(c"argument \"x\" is missing, with no default");
         }
         // Stock routes complex x to complex_math2 (main/complex.c): round
         // each part with the same ties-even fround as the real path.
@@ -641,8 +646,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let digits_arg = force(m.get(1).copied().unwrap_or(missing));
 
         if x_arg.is_null() || x_arg == R_NilValue() || x_arg == missing {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"argument \"x\" is missing, with no default");
+            crate::mainutils::errors::Rf_error_cstr(c"argument \"x\" is missing, with no default");
         }
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
             return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);

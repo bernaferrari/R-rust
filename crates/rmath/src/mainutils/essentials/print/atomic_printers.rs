@@ -359,9 +359,7 @@ pub fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let op = CAR(x);
         if !op.is_null()
             && TYPEOF(op) == SEXPTYPE::SYMSXP
-            && charsxp_cstring(crate::sexp::accessors::PRINTNAME(op),)
-            .to_bytes()
-                == b"~"
+            && charsxp_cstring(crate::sexp::accessors::PRINTNAME(op)).to_bytes() == b"~"
         {
             // GNU print.formula: print.default(unclass(x)) — the
             // language object is deparsed at the default width cutoff

@@ -359,8 +359,7 @@ pub fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> S
     let search_start = ENCLOS(top);
 
     if !search_start.is_null() && search_start != R_EmptyEnv() {
-        let val3 =
-            force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(method, search_start));
+        let val3 = force_s3_method_value(findFunWithBaseEnvAfterGlobalEnv(method, search_start));
         if val3 != R_UnboundValue() {
             return val3;
         }
@@ -545,8 +544,7 @@ pub(crate) fn lookup_s3_method_for_classes(
 }
 
 fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
-    let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
-    {
+    let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP {
         R_GlobalEnv()
     } else {
         rho
@@ -585,7 +583,6 @@ pub fn usemethod(
     ans: &mut SEXP,
 ) -> c_int {
     unsafe {
-
         // Get the context which UseMethod was called from
         let cptr = R_GlobalContext();
         if cptr.is_null() {
@@ -673,7 +670,6 @@ pub fn findmethod(
     _defrho: SEXP,
 ) -> c_int {
     unsafe {
-
         let klass = R_data_class2(obj);
         let _klass_guard = protect(klass);
         let nclass = length(klass);
@@ -797,7 +793,6 @@ pub(crate) fn DispatchOrEval_objects(
     ans: &mut SEXP,
 ) -> c_int {
     unsafe {
-
         // Get the class of the first argument
         let obj = if !args.is_null() && args != R_NilValue() {
             CAR(args)

@@ -21,14 +21,12 @@ fn environment_dollar_forces_delayed_binding_once_and_matches_bracket() {
 fn test_scalar_index_null() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(scalarIndex(ptr::null_mut()), -1);
-    
 }
 
 #[test]
 fn test_scalar_index_nil() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(scalarIndex(R_NilValue()), -1);
-    
 }
 
 #[test]
@@ -36,7 +34,6 @@ fn test_extract_exact_arg_nil() {
     let _session = crate::sexp::session::RSession::new();
     let result = ExtractExactArg(R_NilValue());
     assert_eq!(result, 1);
-    
 }
 
 #[test]
@@ -61,7 +58,6 @@ fn test_extract_arg_empty_list() {
     let _session = crate::sexp::session::RSession::new();
     let result = ExtractArg(R_NilValue(), R_NilValue());
     assert_eq!(result, R_NilValue());
-    
 }
 
 #[test]
@@ -70,14 +66,12 @@ fn test_extract_drop_arg_nil() {
     let mut drop: c_int = 0;
     ExtractDropArg(R_NilValue(), &mut drop);
     assert_eq!(drop, 1); /* default when not found */
-    
 }
 
 #[test]
 fn test_as_logical_nil() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(asLogical(R_NilValue()), NA_LOGICAL);
-    
 }
 
 #[test]
@@ -85,7 +79,6 @@ fn test_nthcdr_null() {
     let _session = crate::sexp::session::RSession::new();
     let result = nthcdr(R_NilValue(), 5);
     assert_eq!(result, R_NilValue());
-    
 }
 
 #[test]
@@ -93,7 +86,6 @@ fn test_pstrmatch_null_target() {
     let _session = crate::sexp::session::RSession::new();
     let result = pstrmatch(R_NilValue(), R_NilValue(), 3);
     assert_eq!(result, pmatch::NO_MATCH);
-    
 }
 
 #[test]
@@ -106,7 +98,6 @@ fn test_type_checking_helpers() {
     assert!(!isVectorList(R_NilValue()));
     assert!(!isEnvironment(R_NilValue()));
     assert!(!isSymbol(R_NilValue()));
-    
 }
 
 #[test]
@@ -134,7 +125,6 @@ fn test_extract_subset_null() {
     let _session = crate::sexp::session::RSession::new();
     let result = ExtractSubset(R_NilValue(), R_NilValue(), R_NilValue());
     assert_eq!(result, R_NilValue());
-    
 }
 
 #[test]
@@ -164,7 +154,6 @@ fn test_find_a_sub_index() {
     let result = findASubIndex(2, &subs, &indx, &offset, R_NilValue());
     /* (1-1)*1 + (3-1)*3 = 0 + 6 = 6 */
     assert_eq!(result, 6);
-    
 }
 
 #[test]
@@ -177,7 +166,6 @@ fn test_find_a_sub_index_na() {
     let offset: Vec<R_xlen_t> = vec![1, 3];
     let result = findASubIndex(2, &subs, &indx, &offset, R_NilValue());
     assert_eq!(result, NA_INTEGER as R_xlen_t);
-    
 }
 
 #[test]

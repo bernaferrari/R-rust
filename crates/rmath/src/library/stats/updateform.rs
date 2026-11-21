@@ -54,9 +54,7 @@ fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
     let head = CAR(object);
     let n = lang_len(object);
     let bad = || {
-        crate::main::errors::Rf_error_cstr(
-            c"invalid formula in 'update'"
-        );
+        crate::main::errors::Rf_error_cstr(c"invalid formula in 'update'");
     };
     if head == sym("+") {
         if n == 2 {

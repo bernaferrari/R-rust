@@ -153,9 +153,14 @@ pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
                 let mut data = owner_sexp_mut(out);
                 for (i, value) in values.into_iter().enumerate() {
-                    sexp_ok(data.try_set_integer_elt(i as R_xlen_t, value
-                        .and_then(|value| ranks.get(&value).copied())
-                        .unwrap_or(NA_INTEGER)));
+                    sexp_ok(
+                        data.try_set_integer_elt(
+                            i as R_xlen_t,
+                            value
+                                .and_then(|value| ranks.get(&value).copied())
+                                .unwrap_or(NA_INTEGER),
+                        ),
+                    );
                 }
                 out
             }
@@ -301,17 +306,12 @@ pub(super) fn is_data_frame_object(x: SEXP) -> bool {
 
 pub(super) fn frame_row_count(df: SEXP) -> i64 {
     let owner = active_owner();
-    let rn_sym = owner_sexp(
-        owner,
-        mk_string_cstr(c"row.names"),
-    )
-    .try_string_elt(0)
-    .map(|elt| elt.as_raw())
-    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    let rn = crate::sexp::attrib_core::getAttrib(
-        df,
-        crate::mainutils::subset::installTrChar(rn_sym),
-    );
+    let rn_sym = owner_sexp(owner, mk_string_cstr(c"row.names"))
+        .try_string_elt(0)
+        .map(|elt| elt.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let rn =
+        crate::sexp::attrib_core::getAttrib(df, crate::mainutils::subset::installTrChar(rn_sym));
     let rn_owned = owner_sexp(owner, rn);
     // compact row.names: c(NA_integer_, -n)
     if !rn.is_null()
@@ -397,10 +397,8 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // The `$<-` primitive must use R_DispatchOrEvalSP for formal
                 // methods, then R_subassign3_dflt for classes without a
                 // method. The custom path below is for ordinary/S3 values.
-                let primitive = find_var_in_frame(
-                    crate::sexp::globals::R_BaseEnv(),
-                    install_str("$<-"),
-                );
+                let primitive =
+                    find_var_in_frame(crate::sexp::globals::R_BaseEnv(), install_str("$<-"));
                 let _primitive_guard = protect(primitive);
                 return crate::mainutils::subassign::do_subassign3(_call, primitive, args, rho);
             }

@@ -23,7 +23,10 @@ mod tests_a {
                 environment.as_raw(),
             );
             let closure = owner.sexp(closure).unwrap().into_owned().unwrap();
-            let identity_call = Rf_lang2(crate::sexp::symbol::install_str("identity"), closure.as_raw());
+            let identity_call = Rf_lang2(
+                crate::sexp::symbol::install_str("identity"),
+                closure.as_raw(),
+            );
             let identity_call = owner.sexp(identity_call).unwrap().into_owned().unwrap();
             let source = crate::sexp::constructors::Rf_cons(identity_call.as_raw(), nil);
             crate::sexp::accessors::SET_TYPEOF(source, SEXPTYPE::LANGSXP.as_c_int());
@@ -120,8 +123,11 @@ mod tests_a {
             let symbol = Sexp::from_raw(crate::sexp::symbol::install_str("x")).expect("symbol");
             assert_eq!(classify_expr(&symbol), EvalKind::Symbol);
 
-            let call = Sexp::from_raw(Rf_lang2(crate::sexp::symbol::install_str("quote"), Rf_ScalarInteger(1)))
-                .expect("language call");
+            let call = Sexp::from_raw(Rf_lang2(
+                crate::sexp::symbol::install_str("quote"),
+                Rf_ScalarInteger(1),
+            ))
+            .expect("language call");
             assert_eq!(classify_expr(&call), EvalKind::Language);
 
             let expr_vec = Sexp::from_raw(crate::sexp::constructors::Rf_allocVector(

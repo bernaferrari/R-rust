@@ -604,7 +604,8 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
                 register_r_finalizer(key, fin, _onexit != 0);
             }
             s
-        }).unwrap_or_else(|error_| error(&error_.to_string()))
+        })
+        .unwrap_or_else(|error_| error(&error_.to_string()))
     }
 }
 
@@ -1439,17 +1440,13 @@ pub fn R_duplicateAsResizable(x: SEXP) -> SEXP {
 /// This is the equivalent of R's `R_signal_protect_error()`.
 pub fn R_signal_protect_error() {
     {
-        crate::mainutils::errors::errorcall_cstr(
-            R_NilValue(),
-            c"protect stack overflow");
+        crate::mainutils::errors::errorcall_cstr(R_NilValue(), c"protect stack overflow");
     }
 }
 
 pub fn R_signal_unprotect_error() {
     {
-        crate::mainutils::errors::errorcall_cstr(
-            R_NilValue(),
-            c"unprotect stack underflow");
+        crate::mainutils::errors::errorcall_cstr(R_NilValue(), c"unprotect stack underflow");
     }
 }
 

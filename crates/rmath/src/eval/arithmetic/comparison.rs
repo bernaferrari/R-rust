@@ -165,12 +165,7 @@ pub(crate) fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEX
 /// Atomic non-scalar operands are laid out column-major across the frame;
 /// lists supply one operand per column; scalars are broadcast. Comparisons
 /// return a logical matrix rather than leaking the frame's underlying VECSXP.
-pub(crate) fn data_frame_compare(
-    op_name: &str,
-    call: SEXP,
-    lhs: SEXP,
-    rhs: SEXP,
-) -> Option<SEXP> {
+pub(crate) fn data_frame_compare(op_name: &str, call: SEXP, lhs: SEXP, rhs: SEXP) -> Option<SEXP> {
     let lhs_frame = has_class(lhs, "data.frame") && TYPEOF(lhs) == SEXPTYPE::VECSXP;
     let rhs_frame = has_class(rhs, "data.frame") && TYPEOF(rhs) == SEXPTYPE::VECSXP;
     if !lhs_frame && !rhs_frame {
@@ -305,7 +300,7 @@ pub(crate) fn data_frame_column_operand(
     (segment, Some(guard))
 }
 
-pub(crate)  fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) -> SEXP {
+pub(crate) fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) -> SEXP {
     let source_len = XLENGTH(value);
     let result = Rf_allocVector3(TYPEOF(value), len);
     if source_len == 0 {
@@ -335,7 +330,7 @@ pub(crate)  fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xle
     result
 }
 
-pub(crate)  fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
+pub(crate) fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
     // GNU Ops.data.frame keeps `rn <- NULL` unless
     // `.row_names_info(e) > 0`: compact `c(NA, -n)` automatic row
     // names stay NULL. `getAttrib` materializes them to `1:n`, so

@@ -120,7 +120,9 @@ pub fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     for (i, value) in matches.iter().enumerate() {
         let charsxp = owner
-            .sexp(mk_char_cstr(&CString::new(value.as_str()).unwrap_or_default()))
+            .sexp(mk_char_cstr(
+                &CString::new(value.as_str()).unwrap_or_default(),
+            ))
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         result_mut
             .try_set_string_elt(i as R_xlen_t, charsxp)
@@ -146,17 +148,15 @@ fn find_numeric_result(matches: &[String]) -> SEXP {
             .try_set_integer_elt(i as R_xlen_t, (i + 1) as c_int)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let charsxp = owner
-            .sexp(mk_char_cstr(&CString::new(value.as_str()).unwrap_or_default()))
+            .sexp(mk_char_cstr(
+                &CString::new(value.as_str()).unwrap_or_default(),
+            ))
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         names_mut
             .try_set_string_elt(i as R_xlen_t, charsxp)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
     result
 }
 
@@ -165,8 +165,8 @@ fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -
         return false;
     }
     let value = find_var_in_frame(env, symbol);
-    let is_base_builtin = env == crate::sexp::globals::R_BaseEnv()
-        && crate::eval::builtin::has_builtin_handler(name);
+    let is_base_builtin =
+        env == crate::sexp::globals::R_BaseEnv() && crate::eval::builtin::has_builtin_handler(name);
     if value == R_UnboundValue() {
         return !want_function && is_base_builtin;
     }
@@ -206,7 +206,11 @@ pub fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let value = selected.as_raw();
     if value == crate::sexp::globals::R_MissingArg() {
         let c_name = CString::new(name.as_str()).unwrap_or_default();
-        crate::mainutils::errors::R_MissingArgError_c(Some(&c_name), _call, Some(c"getMissingError"));
+        crate::mainutils::errors::R_MissingArgError_c(
+            Some(&c_name),
+            _call,
+            Some(c"getMissingError"),
+        );
     }
     ensure_get_value_named(value)
 }
@@ -243,7 +247,11 @@ pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let value = value.as_raw();
             if value == crate::sexp::globals::R_MissingArg() {
                 let c_name = CString::new(name).unwrap_or_default();
-                crate::mainutils::errors::R_MissingArgError_c(Some(&c_name), _call, Some(c"getMissingError"));
+                crate::mainutils::errors::R_MissingArgError_c(
+                    Some(&c_name),
+                    _call,
+                    Some(c"getMissingError"),
+                );
             }
             ensure_get_value_named(value)
         }

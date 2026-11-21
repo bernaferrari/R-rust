@@ -72,8 +72,7 @@ pub fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _p = protect(result);
     let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as R_xlen_t);
     let _names_guard = protect(result_names);
-    let x_names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let x_names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     let have_x_names = !x_names.is_null()
         && x_names != R_NilValue()
         && TYPEOF(x_names) == SEXPTYPE::STRSXP
@@ -129,42 +128,40 @@ pub fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `unsplit(value, f)` inverse of `split`.
 pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let value = CAR(args);
-        let f = CAR(CDR(args));
-        if value.is_null()
-            || value == R_NilValue()
-            || TYPEOF(value) != SEXPTYPE::VECSXP
-            || XLENGTH(value) == 0
-            || f.is_null()
-            || f == R_NilValue()
-        {
-            return R_NilValue();
+    let value = CAR(args);
+    let f = CAR(CDR(args));
+    if value.is_null()
+        || value == R_NilValue()
+        || TYPEOF(value) != SEXPTYPE::VECSXP
+        || XLENGTH(value) == 0
+        || f.is_null()
+        || f == R_NilValue()
+    {
+        return R_NilValue();
+    }
+    let first = VECTOR_ELT(value, 0);
+    let n = XLENGTH(f);
+    let result = Rf_allocVector3(TYPEOF(first), n);
+    let _r = protect(result);
+    let ng = XLENGTH(value) as usize;
+    let mut cursor = vec![0i64; ng];
+    for i in 0..n {
+        let g = if TYPEOF(f) == SEXPTYPE::INTSXP {
+            (integer_elt_checked(f, (i as usize) as R_xlen_t) as i64) - 1
+        } else {
+            elt_real_safe(f, i).round() as i64 - 1
+        };
+        if g < 0 || (g as usize) >= ng {
+            continue;
         }
-        let first = VECTOR_ELT(value, 0);
-        let n = XLENGTH(f);
-        let result = Rf_allocVector3(TYPEOF(first), n);
-        let _r = protect(result);
-        let ng = XLENGTH(value) as usize;
-        let mut cursor = vec![0i64; ng];
-        for i in 0..n {
-            let g = if TYPEOF(f) == SEXPTYPE::INTSXP {
-                (integer_elt_checked(f, (i as usize) as R_xlen_t) as i64) - 1
-            } else {
-                elt_real_safe(f, i).round() as i64 - 1
-            };
-            if g < 0 || (g as usize) >= ng {
-                continue;
-            }
-            let src = VECTOR_ELT(value, g);
-            let pos = cursor[g as usize];
-            if !src.is_null() && src != R_NilValue() && pos < XLENGTH(src) {
-                copy_matrix_element(result, i, src, pos);
-                cursor[g as usize] = pos + 1;
-            }
+        let src = VECTOR_ELT(value, g);
+        let pos = cursor[g as usize];
+        if !src.is_null() && src != R_NilValue() && pos < XLENGTH(src) {
+            copy_matrix_element(result, i, src, pos);
+            cursor[g as usize] = pos + 1;
         }
-        result
-    
+    }
+    result
 }
 
 pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
@@ -180,50 +177,48 @@ pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
 }
 
 pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
-    
-        if let Some(levels) = split_factor_levels(f) {
-            if TYPEOF(f) != SEXPTYPE::INTSXP {
-                return None;
-            }
-            let raw = integer_elt_checked(f, (index as usize) as R_xlen_t);
-            if raw == NA_INTEGER || raw < 1 || raw as usize > levels.len() {
-                return None;
-            }
-            return Some(levels[(raw - 1) as usize].clone());
+    if let Some(levels) = split_factor_levels(f) {
+        if TYPEOF(f) != SEXPTYPE::INTSXP {
+            return None;
         }
+        let raw = integer_elt_checked(f, (index as usize) as R_xlen_t);
+        if raw == NA_INTEGER || raw < 1 || raw as usize > levels.len() {
+            return None;
+        }
+        return Some(levels[(raw - 1) as usize].clone());
+    }
 
-        match TYPEOF(f) {
-            t if t == SEXPTYPE::INTSXP => {
-                let value = integer_elt_checked(f, (index as usize) as R_xlen_t);
-                (value != NA_INTEGER).then(|| value.to_string())
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                let value = logical_elt_checked(f, (index as usize) as R_xlen_t);
-                match value {
-                    TRUE => Some("TRUE".to_string()),
-                    FALSE => Some("FALSE".to_string()),
-                    _ => None,
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                let value = real_elt_checked(f, (index as usize) as R_xlen_t);
-                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
-                    None
-                } else {
-                    Some(format!("{value}"))
-                }
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                let value = STRING_ELT(f, index);
-                if value.is_null() || value == crate::sexp::globals::R_NaString() {
-                    None
-                } else {
-                    Some(elt_to_string(f, index))
-                }
-            }
-            _ => Some(elt_to_string(f, index)),
+    match TYPEOF(f) {
+        t if t == SEXPTYPE::INTSXP => {
+            let value = integer_elt_checked(f, (index as usize) as R_xlen_t);
+            (value != NA_INTEGER).then(|| value.to_string())
         }
-    
+        t if t == SEXPTYPE::LGLSXP => {
+            let value = logical_elt_checked(f, (index as usize) as R_xlen_t);
+            match value {
+                TRUE => Some("TRUE".to_string()),
+                FALSE => Some("FALSE".to_string()),
+                _ => None,
+            }
+        }
+        t if t == SEXPTYPE::REALSXP => {
+            let value = real_elt_checked(f, (index as usize) as R_xlen_t);
+            if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                None
+            } else {
+                Some(format!("{value}"))
+            }
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            let value = STRING_ELT(f, index);
+            if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                None
+            } else {
+                Some(elt_to_string(f, index))
+            }
+        }
+        _ => Some(elt_to_string(f, index)),
+    }
 }
 
 pub(super) fn split_label_cmp(t: c_int, left: &str, right: &str) -> std::cmp::Ordering {

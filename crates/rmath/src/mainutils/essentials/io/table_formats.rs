@@ -172,8 +172,7 @@ pub fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     // Write to file
-    if let Err(e) =
-        crate::mainutils::browser_files::write_text_or_host(&file_path, out.as_bytes())
+    if let Err(e) = crate::mainutils::browser_files::write_text_or_host(&file_path, out.as_bytes())
     {
         base_error(format!("cannot write file '{}': {}", file_path, e));
     }
@@ -289,9 +288,7 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // Upstream read.fwf computes its block widths via
             // rep_len(sep, length(first) - 1L); stock R attributes this
             // error to that call.
-            let sym = |name: &str| {
-                install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
-            };
+            let sym = |name: &str| install_cstr(&std::ffi::CString::new(name).unwrap_or_default());
             let one_l = crate::sexp::constructors::Rf_ScalarInteger(1);
             let length_first = crate::sexp::constructors::Rf_lang2(sym("length"), sym("first"));
             let minus = crate::sexp::constructors::Rf_lang3(sym("-"), length_first, one_l);

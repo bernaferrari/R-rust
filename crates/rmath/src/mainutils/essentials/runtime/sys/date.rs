@@ -20,11 +20,7 @@ pub(crate) fn set_posixct_class(x: SEXP, tz: &str) {
         let _guard = protect(class);
         SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
         SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
 
     let tz_cstr = CString::new(tz).unwrap_or_default();
@@ -206,62 +202,58 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `trunc.Date(x, units)`.
 pub fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let units = date_units_arg(args);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let days = date_days_elt(x, i);
-            let out = if !days.is_finite() {
-                days
-            } else if units.starts_with("month") {
-                date_first_of_month(days)
-            } else if units.starts_with("year") {
-                date_first_of_year(days)
-            } else {
-                days.floor()
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, out);
-        }
-        set_single_class(result, "Date");
-        result
-    
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let units = date_units_arg(args);
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let days = date_days_elt(x, i);
+        let out = if !days.is_finite() {
+            days
+        } else if units.starts_with("month") {
+            date_first_of_month(days)
+        } else if units.starts_with("year") {
+            date_first_of_year(days)
+        } else {
+            days.floor()
+        };
+        set_real_checked(result, (i as usize) as R_xlen_t, out);
+    }
+    set_single_class(result, "Date");
+    result
 }
 
 /// GNU `round.Date(x, units)`.
 pub fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let units = date_units_arg(args);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let days = date_days_elt(x, i);
-            let out = if !days.is_finite() {
-                days
-            } else if units.starts_with("month") {
-                let lo = date_first_of_month(days);
-                let hi = date_add_months(lo, 1);
-                if (hi - days) <= (days - lo) { hi } else { lo }
-            } else if units.starts_with("year") {
-                let lo = date_first_of_year(days);
-                let hi = date_first_of_year(lo + 370.0);
-                if (hi - days) <= (days - lo) { hi } else { lo }
-            } else {
-                days.round()
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, out);
-        }
-        set_single_class(result, "Date");
-        result
-    
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let units = date_units_arg(args);
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let days = date_days_elt(x, i);
+        let out = if !days.is_finite() {
+            days
+        } else if units.starts_with("month") {
+            let lo = date_first_of_month(days);
+            let hi = date_add_months(lo, 1);
+            if (hi - days) <= (days - lo) { hi } else { lo }
+        } else if units.starts_with("year") {
+            let lo = date_first_of_year(days);
+            let hi = date_first_of_year(lo + 370.0);
+            if (hi - days) <= (days - lo) { hi } else { lo }
+        } else {
+            days.round()
+        };
+        set_real_checked(result, (i as usize) as R_xlen_t, out);
+    }
+    set_single_class(result, "Date");
+    result
 }

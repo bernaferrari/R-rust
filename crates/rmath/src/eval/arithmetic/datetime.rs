@@ -81,7 +81,8 @@ pub(crate) fn coerce_character_comparison_operand(
             let parsed = if value.is_null() || value == R_NaString() {
                 NA_REAL
             } else {
-                let text = String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(value)).into_owned();
+                let text = String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(value))
+                    .into_owned();
                 parser(&text).unwrap_or_else(|| {
                     arithmetic_error("character string is not in a standard unambiguous format");
                 })
@@ -112,7 +113,7 @@ pub(crate) fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
     crate::mainutils::essentials::parse_iso_datetime_seconds(text)
 }
 
-pub(crate)  fn is_numeric_version(x: SEXP) -> bool {
+pub(crate) fn is_numeric_version(x: SEXP) -> bool {
     crate::mainutils::essentials::sexp_has_class(x, "numeric_version")
         || crate::mainutils::essentials::sexp_has_class(x, "package_version")
         || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
@@ -185,19 +186,15 @@ pub(crate) fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP>
         return None;
     }
 
-    let a = coerce_character_comparison_operand(
-        a,
-        crate::mainutils::essentials::parse_iso_date_days,
-    );
-    let b = coerce_character_comparison_operand(
-        b,
-        crate::mainutils::essentials::parse_iso_date_days,
-    );
+    let a =
+        coerce_character_comparison_operand(a, crate::mainutils::essentials::parse_iso_date_days);
+    let b =
+        coerce_character_comparison_operand(b, crate::mainutils::essentials::parse_iso_date_days);
     let _a_guard = protect(a);
     let _b_guard = protect(b);
     Some(binary_compare(op, a, b))
 }
-pub(crate)  fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
+pub(crate) fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
     if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
         let ct = crate::mainutils::essentials::do_as_POSIXct(
             call,
@@ -406,11 +403,7 @@ pub(crate) fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SE
     }
 }
 
-pub(crate) fn propagate_unary_vector_attributes(
-    result: SEXP,
-    source: SEXP,
-    result_len: R_xlen_t,
-) {
+pub(crate) fn propagate_unary_vector_attributes(result: SEXP, source: SEXP, result_len: R_xlen_t) {
     if copy_dims_if_present(result, source, result_len) {
         return;
     }

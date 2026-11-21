@@ -9,13 +9,12 @@ pub(crate) fn summary_default_digits() -> i32 {
 pub(crate) fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
     let digits = summary_default_digits();
     let old = crate::mainutils::format::format_get_R_print();
-    let previous =
-        crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
-            digits,
-            scipen: old.scipen,
-            na_width: old.na_width,
-            na_width_noquote: old.na_width_noquote,
-        });
+    let previous = crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
+        digits,
+        scipen: old.scipen,
+        na_width: old.na_width,
+        na_width_noquote: old.na_width_noquote,
+    });
     let rendered = f();
     crate::mainutils::format::format_set_R_print(previous);
     rendered

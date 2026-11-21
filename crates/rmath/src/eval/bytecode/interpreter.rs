@@ -601,7 +601,7 @@ pub(crate) fn eval_bytecode_segment(
                     return Err("private variable constant is not a symbol".into());
                 }
                 let val = execution
-                    .native(|_| { crate::eval::eval::find_var_result(sym, env.clone()) })??
+                    .native(|_| crate::eval::eval::find_var_result(sym, env.clone()))??
                     .ok_or_else(|| "variable not found".to_string())?;
                 execution.require_live()?;
                 push_operand(stack, val.into_owned().map_err(|e| e.to_string())?)?;
@@ -845,9 +845,7 @@ pub(crate) fn eval_bytecode_segment(
                     let arg_list = argument_list(execution, &args_vec)?;
                     let call = language_call(execution, &fun, &arg_list)?;
                     let result = execution
-                        .native(|_| {
-                            crate::eval::eval::eval_lang_safe(call.clone(), env.clone())
-                        })?
+                        .native(|_| crate::eval::eval::eval_lang_safe(call.clone(), env.clone()))?
                         .map_err(|e| format!("closure call failed: {e}"))?;
                     execution.require_live()?;
                     push_operand(stack, result.into_owned().map_err(|e| e.to_string())?)?;

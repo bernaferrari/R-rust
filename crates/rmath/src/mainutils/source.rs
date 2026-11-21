@@ -261,20 +261,13 @@ fn parse_failure(message: impl Into<String>) -> ! {
             Some(c"parseError"),
             None,
             2,
-            Some(&c_msg));
+            Some(&c_msg),
+        );
         let _guard = protect(cond);
         let lineno = crate::sexp::constructors::Rf_ScalarInteger(line);
         let colno = crate::sexp::constructors::Rf_ScalarInteger(col);
-        crate::mainutils::errors::R_setConditionField(
-            cond,
-            2,
-            c"lineno",
-            lineno);
-        crate::mainutils::errors::R_setConditionField(
-            cond,
-            3,
-            c"colno",
-            colno);
+        crate::mainutils::errors::R_setConditionField(cond, 2, c"lineno", lineno);
+        crate::mainutils::errors::R_setConditionField(cond, 3, c"colno", colno);
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);

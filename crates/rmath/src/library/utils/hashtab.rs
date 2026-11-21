@@ -60,9 +60,7 @@ fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
 fn HT_TypeFromString(x: SEXP) -> c_int {
     {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
-            Rf_error_cstr(
-                c"hash table type must be a scalar string"
-            );
+            Rf_error_cstr(c"hash table type must be a scalar string");
         }
         // SAFETY: STRING_ELT yields a canonical CHARSXP whose payload pointer
         // is valid and NUL-terminated for the node's lifetime.
@@ -145,9 +143,7 @@ fn keys_match(hash_type: c_int, stored: SEXP, key: SEXP) -> bool {
         HT_TYPE_ADDRESS => stored == key,
         // SAFETY: both operands are canonical live SEXP values under the
         // runtime lock; the raw comparison contract is satisfied.
-        HT_TYPE_IDENTICAL => unsafe {
-            R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0
-        },
+        HT_TYPE_IDENTICAL => unsafe { R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0 },
         _ => false,
     }
 }
@@ -333,8 +329,7 @@ pub fn typhash_Ext(args: SEXP) -> SEXP {
         let args = checkArgCountPop(args, 1);
         let h = R_asHashtable(CAR(args));
         // SAFETY: each literal is a valid NUL-terminated byte string.
-        let mk =
-            |s: &'static [u8]| unsafe { Rf_mkString(s.as_ptr() as *const core::ffi::c_char) };
+        let mk = |s: &'static [u8]| unsafe { Rf_mkString(s.as_ptr() as *const core::ffi::c_char) };
         match R_typhash(h) {
             HT_TYPE_IDENTICAL => mk(b"identical\0"),
             HT_TYPE_ADDRESS => mk(b"address\0"),

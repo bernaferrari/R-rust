@@ -94,78 +94,76 @@ fn nls_asymp_ols(xs: &[f64], ys: &[f64], lrc: f64) -> (f64, f64, f64) {
 
 /// GNU `NLSstAsymptotic(xy)` — `b0 + b1*(1-exp(-exp(lrc)*x))`.
 pub fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let xy = CAR(args);
-        let xs = nls_xy_x(xy);
-        let (ys, ok) = nls_xy_y(xy);
-        if !ok || xs.len() < 2 || ys.len() != xs.len() {
-            return R_NilValue();
+    let xy = CAR(args);
+    let xs = nls_xy_x(xy);
+    let (ys, ok) = nls_xy_y(xy);
+    if !ok || xs.len() < 2 || ys.len() != xs.len() {
+        return R_NilValue();
+    }
+    let rt = elt_real_safe(do_nls_rt_asymp(_call, _op, args, _rho), 0);
+    let mut slx = 0.0;
+    let mut sly = 0.0;
+    let mut nlm = 0.0;
+    for i in 0..xs.len() {
+        let ly = (ys[i] - rt).abs().ln();
+        if ly.is_finite() {
+            slx += xs[i];
+            sly += ly;
+            nlm += 1.0;
         }
-        let rt = elt_real_safe(do_nls_rt_asymp(_call, _op, args, _rho), 0);
-        let mut slx = 0.0;
-        let mut sly = 0.0;
-        let mut nlm = 0.0;
+    }
+    let mut lrc0 = -1.0;
+    if nlm >= 2.0 {
+        let mx = slx / nlm;
+        let my = sly / nlm;
+        let mut num = 0.0;
+        let mut den = 0.0;
         for i in 0..xs.len() {
             let ly = (ys[i] - rt).abs().ln();
             if ly.is_finite() {
-                slx += xs[i];
-                sly += ly;
-                nlm += 1.0;
+                let dx = xs[i] - mx;
+                num += dx * (ly - my);
+                den += dx * dx;
             }
         }
-        let mut lrc0 = -1.0;
-        if nlm >= 2.0 {
-            let mx = slx / nlm;
-            let my = sly / nlm;
-            let mut num = 0.0;
-            let mut den = 0.0;
-            for i in 0..xs.len() {
-                let ly = (ys[i] - rt).abs().ln();
-                if ly.is_finite() {
-                    let dx = xs[i] - mx;
-                    num += dx * (ly - my);
-                    den += dx * dx;
-                }
+        let slope = if den > 0.0 { num / den } else { 0.0 };
+        if slope < 0.0 {
+            lrc0 = (-slope).ln();
+        }
+    }
+    let mut best_lrc = lrc0;
+    let mut best = nls_asymp_ols(&xs, &ys, lrc0);
+    let mut lo = lrc0 - 3.0;
+    let mut hi = lrc0 + 3.0;
+    for _ in 0..40 {
+        let m1 = lo + (hi - lo) / 3.0;
+        let m2 = hi - (hi - lo) / 3.0;
+        let a1 = nls_asymp_ols(&xs, &ys, m1);
+        let a2 = nls_asymp_ols(&xs, &ys, m2);
+        if a1.2 < a2.2 {
+            hi = m2;
+            if a1.2 < best.2 {
+                best = a1;
+                best_lrc = m1;
             }
-            let slope = if den > 0.0 { num / den } else { 0.0 };
-            if slope < 0.0 {
-                lrc0 = (-slope).ln();
+        } else {
+            lo = m1;
+            if a2.2 < best.2 {
+                best = a2;
+                best_lrc = m2;
             }
         }
-        let mut best_lrc = lrc0;
-        let mut best = nls_asymp_ols(&xs, &ys, lrc0);
-        let mut lo = lrc0 - 3.0;
-        let mut hi = lrc0 + 3.0;
-        for _ in 0..40 {
-            let m1 = lo + (hi - lo) / 3.0;
-            let m2 = hi - (hi - lo) / 3.0;
-            let a1 = nls_asymp_ols(&xs, &ys, m1);
-            let a2 = nls_asymp_ols(&xs, &ys, m2);
-            if a1.2 < a2.2 {
-                hi = m2;
-                if a1.2 < best.2 {
-                    best = a1;
-                    best_lrc = m1;
-                }
-            } else {
-                lo = m1;
-                if a2.2 < best.2 {
-                    best = a2;
-                    best_lrc = m2;
-                }
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        let _r = protect(result);
-        set_real_checked(result, 0, best.0);
-        set_real_checked(result, (1) as R_xlen_t, best.1);
-        set_real_checked(result, (2) as R_xlen_t, best_lrc);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["b0".to_string(), "b1".to_string(), "lrc".to_string()],
-        );
-        result
-    
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+    let _r = protect(result);
+    set_real_checked(result, 0, best.0);
+    set_real_checked(result, (1) as R_xlen_t, best.1);
+    set_real_checked(result, (2) as R_xlen_t, best_lrc);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["b0".to_string(), "b1".to_string(), "lrc".to_string()],
+    );
+    result
 }
 
 /// GNU `NLSstClosestX(xy, yval)` — interpolate x at a target y.
@@ -251,11 +249,7 @@ fn family_object(family: &str, link: &str) -> SEXP {
     );
     let class = mk_string_cstr(c"family");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -341,27 +335,22 @@ pub fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// GNU `quasi()` family object.
 pub fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let mut link = "identity".to_string();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let v = CAR(cell);
-            if (name == "link" || name.is_empty())
-                && TYPEOF(v) == SEXPTYPE::STRSXP
-                && XLENGTH(v) > 0
-            {
-                link = elt_to_string(v, 0);
-            }
-            cell = CDR(cell);
+    let mut link = "identity".to_string();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let v = CAR(cell);
+        if (name == "link" || name.is_empty()) && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+            link = elt_to_string(v, 0);
         }
-        family_object("quasi", &link)
-    
+        cell = CDR(cell);
+    }
+    family_object("quasi", &link)
 }
 
 /// GNU `quasibinomial()` family object.
@@ -420,11 +409,7 @@ pub fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
     let class = mk_string_cstr(c"link-glm");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -453,11 +438,7 @@ pub fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
     let class = mk_string_cstr(c"link-glm");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -466,8 +447,7 @@ pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     let y = CAR(CDR(args));
     let n = XLENGTH(x).min(XLENGTH(y)) as usize;
-    let result =
-        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+    let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
     let _r = protect(result);
     for i in 0..n {
         set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
@@ -484,8 +464,7 @@ pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `naprint(x)` — omit/exclude count, else empty string.
 pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
-    let class =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
     let mut omit = false;
     if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
         for i in 0..XLENGTH(class) {
@@ -518,11 +497,7 @@ pub fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _cl = protect(class);
     SET_STRING_ELT(class, 0, mk_char_cstr(c"aov"));
     SET_STRING_ELT(class, 1, mk_char_cstr(c"lm"));
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -549,7 +524,10 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+            (
+                integer_elt_checked(dim, 0) as usize,
+                integer_elt_checked(dim, (1) as R_xlen_t) as usize,
+            )
         } else {
             (XLENGTH(y) as usize, 1)
         };
@@ -590,8 +568,7 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let coef = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, nc as i32);
         let _c = protect(coef);
-        let resid =
-            alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
+        let resid = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
         let _rs = protect(resid);
         for j in 0..nc {
             let m1 = sum1[j] / n1;
@@ -645,8 +622,7 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     if coef.is_null() || resid.is_null() || coef == R_NilValue() || resid == R_NilValue() {
         return R_NilValue();
     }
-    let rdim =
-        crate::sexp::attrib_core::getAttrib(resid, crate::sexp::attrib_core::R_DimSymbol());
+    let rdim = crate::sexp::attrib_core::getAttrib(resid, crate::sexp::attrib_core::R_DimSymbol());
     if rdim.is_null() || rdim == R_NilValue() || XLENGTH(rdim) < 2 {
         return R_NilValue();
     }
@@ -736,22 +712,14 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     let _dn = protect(dn);
     SET_VECTOR_ELT(dn, 0, rn);
     SET_VECTOR_ELT(dn, 1, cn);
-    crate::sexp::attrib_core::setAttrib(
-        stats,
-        crate::sexp::attrib_core::R_DimNamesSymbol(),
-        dn,
-    );
+    crate::sexp::attrib_core::setAttrib(stats, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
     let _r = protect(result);
     SET_VECTOR_ELT(result, 0, stats);
     crate::mainutils::essentials::set_string_names(result, &["stats".to_string()]);
     let class = mk_string_cstr(c"summary.manova");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -822,8 +790,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let mse = sse / df;
         let npairs = k * (k - 1) / 2;
-        let tab =
-            alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), npairs as i32, 4);
+        let tab = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), npairs as i32, 4);
         let _t = protect(tab);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, npairs as i64);
         let _rn = protect(rn);
@@ -922,20 +889,12 @@ pub fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
     SET_STRING_ELT(names, n, mk_char_cstr(c"family"));
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        names,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_NamesSymbol(), names);
     let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
     let _cl = protect(class);
     SET_STRING_ELT(class, 0, mk_char_cstr(c"glm"));
     SET_STRING_ELT(class, 1, mk_char_cstr(c"lm"));
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -964,14 +923,17 @@ pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         ysum += elt_real_safe(fitted, i as i64) + elt_real_safe(resid, i as i64);
     }
     let my = ysum / nf;
-    let result =
-        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 3);
+    let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 3);
     let _r = protect(result);
     for i in 0..n {
         let xi = (i + 1) as f64;
         set_real_checked(result, (i) as R_xlen_t, my);
         set_real_checked(result, (i + n) as R_xlen_t, b * (xi - mx));
-        set_real_checked(result, (i + 2 * n) as R_xlen_t, elt_real_safe(resid, i as i64));
+        set_real_checked(
+            result,
+            (i + 2 * n) as R_xlen_t,
+            elt_real_safe(resid, i as i64),
+        );
     }
     let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
     let _cn = protect(cn);
@@ -981,47 +943,41 @@ pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
     let _dn = protect(dn);
     SET_VECTOR_ELT(dn, 1, cn);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_DimNamesSymbol(),
-        dn,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
     result
 }
 
 /// GNU `qqplot(x, y, plot.it=FALSE)` — sorted pairs.
 pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
-            return R_NilValue();
-        }
-        let nx = XLENGTH(x) as usize;
-        let ny = XLENGTH(y) as usize;
-        if nx == 0 || ny == 0 {
-            return R_NilValue();
-        }
-        let mut xs: Vec<f64> = (0..nx).map(|i| elt_real_safe(x, i as i64)).collect();
-        let mut ys: Vec<f64> = (0..ny).map(|i| elt_real_safe(y, i as i64)).collect();
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let n = nx.min(ny);
-        let xo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _x = protect(xo);
-        let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _y = protect(yo);
-        for i in 0..n {
-            set_real_checked(xo, (i) as R_xlen_t, xs[i]);
-            set_real_checked(yo, (i) as R_xlen_t, ys[i]);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, xo);
-        SET_VECTOR_ELT(result, 1, yo);
-        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
-        result
-    
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+        return R_NilValue();
+    }
+    let nx = XLENGTH(x) as usize;
+    let ny = XLENGTH(y) as usize;
+    if nx == 0 || ny == 0 {
+        return R_NilValue();
+    }
+    let mut xs: Vec<f64> = (0..nx).map(|i| elt_real_safe(x, i as i64)).collect();
+    let mut ys: Vec<f64> = (0..ny).map(|i| elt_real_safe(y, i as i64)).collect();
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = nx.min(ny);
+    let xo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+    let _x = protect(xo);
+    let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
+    let _y = protect(yo);
+    for i in 0..n {
+        set_real_checked(xo, (i) as R_xlen_t, xs[i]);
+        set_real_checked(yo, (i) as R_xlen_t, ys[i]);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, xo);
+    SET_VECTOR_ELT(result, 1, yo);
+    crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
+    result
 }
 
 /// GNU `pairwise.table(compare.levels, level.names, p.adjust.method)`.
@@ -1042,11 +998,7 @@ pub fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let nr = n - 1;
         let nc = n - 1;
-        let result = alloc_matrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            nr as i32,
-            nc as i32,
-        );
+        let result = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), nr as i32, nc as i32);
         let _r = protect(result);
         for j in 0..nc {
             let j_level = (j + 1) as i32;

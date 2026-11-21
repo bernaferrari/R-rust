@@ -395,9 +395,7 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         });
         let nargs = LENGTH(args);
         if nargs < 1 || nargs > 2 {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"anyNA takes 1 or 2 arguments"
-            );
+            crate::mainutils::errors::Rf_error_cstr(c"anyNA takes 1 or 2 arguments");
         }
 
         // GNU's common one-argument path validates only the `x` name and
@@ -414,9 +412,7 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if CAR(args) == crate::sexp::globals::R_MissingArg() {
-                crate::mainutils::errors::Rf_error_cstr(
-                    c"argument 1 is empty"
-                );
+                crate::mainutils::errors::Rf_error_cstr(c"argument 1 is empty");
             }
             return Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
                 1

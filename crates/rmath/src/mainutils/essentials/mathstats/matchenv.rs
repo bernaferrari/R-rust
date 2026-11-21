@@ -309,9 +309,7 @@ pub fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Upstream char.expand ends with `eval(nomatch)` where nomatch
         // defaults to stop("no match"); stock R attributes the error to
         // that eval call.
-        let sym = |name: &str| {
-            install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
-        };
+        let sym = |name: &str| install_cstr(&std::ffi::CString::new(name).unwrap_or_default());
         let eval_call = crate::sexp::constructors::Rf_lang2(sym("eval"), sym("nomatch"));
         crate::mainutils::errors::errorcall_str(eval_call, "no match");
     }
@@ -479,18 +477,10 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let c = std::ffi::CString::new(level.as_str()).unwrap_or_default();
         SET_STRING_ELT(levels, i as i64, mk_char_cstr(&c));
     }
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        install_str("levels"),
-        levels,
-    );
+    crate::sexp::attrib_core::setAttrib(result, install_str("levels"), levels);
     let class = mk_string_cstr(c"factor");
     let _c = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -695,54 +685,50 @@ pub fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `sort.list(x, partial, na.last, decreasing, method)` — indices for sorting.
 pub fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let decreasing = sort_logical_arg(args, &["decreasing"], 3).unwrap_or(false);
+    let na_placement = order_na_placement(args, 2);
+    let mut indices = ordered_atomic_indices(x, decreasing, na_placement);
+    if na_placement == SortNaPlacement::Remove {
+        let compressed_positions = nonmissing_compressed_positions(x);
+        for index in &mut indices {
+            *index = compressed_positions[*index as usize];
         }
-        let decreasing = sort_logical_arg(args, &["decreasing"], 3).unwrap_or(false);
-        let na_placement = order_na_placement(args, 2);
-        let mut indices = ordered_atomic_indices(x, decreasing, na_placement);
-        if na_placement == SortNaPlacement::Remove {
-            let compressed_positions = nonmissing_compressed_positions(x);
-            for index in &mut indices {
-                *index = compressed_positions[*index as usize];
-            }
-        }
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, indices.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        for (i, idx) in indices.iter().enumerate() {
-            set_integer_checked(result, (i) as R_xlen_t, (*idx + 1) as c_int); // 1-indexed
-        }
-        result
-    
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, indices.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    for (i, idx) in indices.iter().enumerate() {
+        set_integer_checked(result, (i) as R_xlen_t, (*idx + 1) as c_int); // 1-indexed
+    }
+    result
 }
 
 fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
-    
-        let n = XLENGTH(x);
-        let mut positions = vec![0; n as usize];
-        let mut next = 0;
-        for i in 0..n {
-            let missing = match TYPEOF(x) {
-                t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(x, i)),
-                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                    integer_elt_checked(x, (i as usize) as R_xlen_t) == NA_INTEGER
-                }
-                t if t == SEXPTYPE::REALSXP => ISNAN(real_elt_checked(x, (i as usize) as R_xlen_t)),
-                _ => ISNAN(elt_real_safe(x, i)),
-            };
-            if !missing {
-                positions[i as usize] = next;
-                next += 1;
+    let n = XLENGTH(x);
+    let mut positions = vec![0; n as usize];
+    let mut next = 0;
+    for i in 0..n {
+        let missing = match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(x, i)),
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                integer_elt_checked(x, (i as usize) as R_xlen_t) == NA_INTEGER
             }
+            t if t == SEXPTYPE::REALSXP => ISNAN(real_elt_checked(x, (i as usize) as R_xlen_t)),
+            _ => ISNAN(elt_real_safe(x, i)),
+        };
+        if !missing {
+            positions[i as usize] = next;
+            next += 1;
         }
-        positions
-    
+    }
+    positions
 }
 
 /// R's `outer(X, Y, FUN)` — outer product (enhanced).

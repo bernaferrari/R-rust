@@ -428,11 +428,7 @@ pub fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
     let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-    if dim.is_null()
-        || dim == R_NilValue()
-        || TYPEOF(dim) != SEXPTYPE::INTSXP
-        || LENGTH(dim) != 1
-    {
+    if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) != 1 {
         return None;
     }
     let owner = active_owner();
@@ -1555,10 +1551,7 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// and print.by) bound from gnu_by.R.
 pub fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
-        let fun = find_var_in_frame(
-            crate::sexp::globals::R_BaseEnv(),
-            install_str("by"),
-        );
+        let fun = find_var_in_frame(crate::sexp::globals::R_BaseEnv(), install_str("by"));
         let _fun_guard = crate::sexp::protect::protect(fun);
         let mut cells: Vec<SEXP> = Vec::new();
         let mut _guards = Vec::new();
@@ -1887,8 +1880,7 @@ pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if inherits_class(x, "ordered") {
         set_ordered_factor_class(result);
     }
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     if !names.is_null() && names != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -2371,11 +2363,7 @@ fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]
     }
     let _class_guard = protect(class);
     put_string_elt_text(class, 0, c"factor");
-    crate::sexp::attrib_core::setAttrib(
-        column,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(column, crate::sexp::attrib_core::R_ClassSymbol(), class);
     SET_OBJECT(column, 1);
 }
 

@@ -109,16 +109,15 @@ pub(crate) fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDi
             .map(|s| escape_printed_text(&s, false))
             .collect()
     });
-    let col_names =
-        string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
-            .filter(|names| names.len() >= ncol)
-            .map(|names| {
-                names
-                    .into_iter()
-                    .take(ncol)
-                    .map(|s| escape_printed_text(&s, false))
-                    .collect()
-            });
+    let col_names = string_vector_labels(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
+        .filter(|names| names.len() >= ncol)
+        .map(|names| {
+            names
+                .into_iter()
+                .take(ncol)
+                .map(|s| escape_printed_text(&s, false))
+                .collect()
+        });
     MatrixDimnames {
         rows: row_names,
         cols: col_names,

@@ -3,46 +3,44 @@
 use super::*;
 
 fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
-    
-        if TYPEOF(x) == SEXPTYPE::INTSXP {
-            return Some(x);
-        }
-        if TYPEOF(x) == SEXPTYPE::REALSXP {
-            let n = XLENGTH(x);
-            let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            let _o = protect(out);
-            for i in 0..n {
-                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
-                if v.is_nan() {
-                    set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
-                } else if v == v.trunc() && v >= i32::MIN as f64 && v <= i32::MAX as f64 {
-                    set_integer_checked(out, (i as usize) as R_xlen_t, v as i32);
-                } else {
-                    return None;
-                }
+    if TYPEOF(x) == SEXPTYPE::INTSXP {
+        return Some(x);
+    }
+    if TYPEOF(x) == SEXPTYPE::REALSXP {
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let v = real_elt_checked(x, (i as usize) as R_xlen_t);
+            if v.is_nan() {
+                set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
+            } else if v == v.trunc() && v >= i32::MIN as f64 && v <= i32::MAX as f64 {
+                set_integer_checked(out, (i as usize) as R_xlen_t, v as i32);
+            } else {
+                return None;
             }
-            return Some(out);
         }
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(x);
-            let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            let _o = protect(out);
-            for i in 0..n {
-                let ch = STRING_ELT(x, i);
-                if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                    set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
-                    continue;
-                }
-                let s = charsxp_text(ch).unwrap_or_default();
-                match i32::from_str_radix(s.trim(), base as u32) {
-                    Ok(v) if v >= 0 => set_integer_checked(out, i as usize as R_xlen_t, v),
-                    _ => return None,
-                }
+        return Some(out);
+    }
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(x);
+        let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            let ch = STRING_ELT(x, i);
+            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+                set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
+                continue;
             }
-            return Some(out);
+            let s = charsxp_text(ch).unwrap_or_default();
+            match i32::from_str_radix(s.trim(), base as u32) {
+                Ok(v) if v >= 0 => set_integer_checked(out, i as usize as R_xlen_t, v),
+                _ => return None,
+            }
         }
-        None
-    
+        return Some(out);
+    }
+    None
 }
 
 fn set_mode_class(x: SEXP, class: &str) -> SEXP {
@@ -479,15 +477,13 @@ pub fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Read element 0 of a string argument with a fallback.
 fn string_elt_or(x: &SEXP, fallback: &str) -> String {
-    
-        if !x.is_null() && *x != R_NilValue() && TYPEOF(*x) == SEXPTYPE::STRSXP && XLENGTH(*x) > 0 {
-            let ch = STRING_ELT(*x, 0);
-            if !ch.is_null() {
-                return charsxp_text(ch).unwrap_or_default();
-            }
+    if !x.is_null() && *x != R_NilValue() && TYPEOF(*x) == SEXPTYPE::STRSXP && XLENGTH(*x) > 0 {
+        let ch = STRING_ELT(*x, 0);
+        if !ch.is_null() {
+            return charsxp_text(ch).unwrap_or_default();
         }
-        fallback.to_string()
-    
+    }
+    fallback.to_string()
 }
 
 /// `asInteger` for the internal numeric arguments.
@@ -560,36 +556,34 @@ fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
 }
 
 fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
-    
-        let mut x = R_NilValue();
-        let mut found = false;
-        let mut head = R_NilValue();
-        let mut tail = R_NilValue();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+    let mut x = R_NilValue();
+    let mut found = false;
+    let mut head = R_NilValue();
+    let mut tail = R_NilValue();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if !found && (name == "x" || name.is_empty()) {
+            x = CAR(cell);
+            found = true;
+        } else {
+            let next = Rf_cons(CAR(cell), R_NilValue());
+            SETTAG(next, tag);
+            if head == R_NilValue() {
+                head = next;
             } else {
-                String::new()
-            };
-            if !found && (name == "x" || name.is_empty()) {
-                x = CAR(cell);
-                found = true;
-            } else {
-                let next = Rf_cons(CAR(cell), R_NilValue());
-                SETTAG(next, tag);
-                if head == R_NilValue() {
-                    head = next;
-                } else {
-                    SETCDR(tail, next);
-                }
-                tail = next;
+                SETCDR(tail, next);
             }
-            cell = CDR(cell);
+            tail = next;
         }
-        (x, head)
-    
+        cell = CDR(cell);
+    }
+    (x, head)
 }
 
 /// GNU `prettyNum(x, big.mark, decimal.mark)`.
@@ -671,9 +665,7 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         return result;
     }
-    if !inside_format_default
-        && crate::mainutils::objects::inherits2(x, c"POSIXlt") != FALSE
-    {
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"POSIXlt") != FALSE {
         return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
     }
     if !inside_format_default
@@ -682,23 +674,16 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
     }
-    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"Date") != FALSE
-    {
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"Date") != FALSE {
         return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
     }
-    if !inside_format_default
-        && crate::mainutils::objects::inherits2(x, c"data.frame") != FALSE
-    {
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"data.frame") != FALSE {
         return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
     }
-    if !inside_format_default
-        && crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE
-    {
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE {
         return format_mode_ints(x, true);
     }
-    if !inside_format_default
-        && crate::mainutils::objects::inherits2(x, c"octmode") != FALSE
-    {
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"octmode") != FALSE {
         return format_mode_ints(x, false);
     }
     // format.default: environments render as their display form
@@ -851,15 +836,14 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             } else {
                 std::ptr::null_mut()
             };
-            let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
-                && name != R_NilValue()
-            {
-                Some(std::borrow::Cow::Owned(
-                    charsxp_cstring(name).to_string_lossy().into_owned(),
-                ))
-            } else {
-                None
-            };
+            let label: Option<std::borrow::Cow<'_, str>> =
+                if !name.is_null() && name != R_NilValue() {
+                    Some(std::borrow::Cow::Owned(
+                        charsxp_cstring(name).to_string_lossy().into_owned(),
+                    ))
+                } else {
+                    None
+                };
             let slot = label
                 .as_deref()
                 .and_then(|label| match label {
@@ -1385,9 +1369,7 @@ fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         } else {
             std::ptr::null_mut()
         };
-        let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
-            && name != R_NilValue()
-        {
+        let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null() && name != R_NilValue() {
             Some(std::borrow::Cow::Owned(
                 charsxp_cstring(name).to_string_lossy().into_owned(),
             ))
@@ -1558,22 +1540,20 @@ enum CalendarLabel {
 }
 
 fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
-    
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
-            return None;
-        }
-        let value = real_elt_checked(x, (i as usize) as R_xlen_t);
-        if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !value.is_finite() {
-            return None;
-        }
-        if sexp_has_class(x, "POSIXct") {
-            Some((value / 86_400.0).floor())
-        } else if sexp_has_class(x, "Date") {
-            Some(value.floor())
-        } else {
-            None
-        }
-    
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
+        return None;
+    }
+    let value = real_elt_checked(x, (i as usize) as R_xlen_t);
+    if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !value.is_finite() {
+        return None;
+    }
+    if sexp_has_class(x, "POSIXct") {
+        Some((value / 86_400.0).floor())
+    } else if sexp_has_class(x, "Date") {
+        Some(value.floor())
+    } else {
+        None
+    }
 }
 
 fn calendar_label(days: f64, kind: CalendarLabel) -> Option<String> {

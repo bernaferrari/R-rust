@@ -114,15 +114,11 @@ pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     let primitive_name = crate::eval::primitive::PRIMNAME(fn_arg);
-    let primitive_symbol =
-        install_cstr(&CString::new(primitive_name).unwrap_or_default());
+    let primitive_symbol = install_cstr(&CString::new(primitive_name).unwrap_or_default());
 
     for registry in [".ArgsEnv", ".GenericArgsEnv"] {
         let registry_symbol = install_cstr(&CString::new(registry).unwrap_or_default());
-        let registry_env = find_var_in_frame(
-            crate::sexp::globals::R_BaseEnv(),
-            registry_symbol,
-        );
+        let registry_env = find_var_in_frame(crate::sexp::globals::R_BaseEnv(), registry_symbol);
         if registry_env == crate::sexp::globals::R_UnboundValue() {
             continue;
         }
@@ -281,9 +277,7 @@ pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && TYPEOF(fn_arg) != SEXPTYPE::BUILTINSXP
                 && TYPEOF(fn_arg) != SEXPTYPE::SPECIALSXP)
         {
-            crate::mainutils::errors::Rf_warningcall1(
-                _call,
-                c"argument is not a function");
+            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function");
             return R_NilValue();
         }
         if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {

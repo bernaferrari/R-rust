@@ -1008,7 +1008,8 @@ fn apply_parameter(
 
                 crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    &message);
+                    &message,
+                );
             }
             state
                 .overrides
@@ -1270,15 +1271,11 @@ fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_int> 
         }
         let n = XLENGTH(value) as usize;
         match TYPEOF(value) {
-            t if t == SEXPTYPE::INTSXP => {
-                (0..n).map(|i| INTEGER_ELT(value, i as c_int)).collect()
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                (0..n).map(|i| REAL_ELT(value, i as c_int) as c_int).collect()
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                (0..n).map(|i| LOGICAL_ELT(value, i as c_int)).collect()
-            }
+            t if t == SEXPTYPE::INTSXP => (0..n).map(|i| INTEGER_ELT(value, i as c_int)).collect(),
+            t if t == SEXPTYPE::REALSXP => (0..n)
+                .map(|i| REAL_ELT(value, i as c_int) as c_int)
+                .collect(),
+            t if t == SEXPTYPE::LGLSXP => (0..n).map(|i| LOGICAL_ELT(value, i as c_int)).collect(),
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
     }
@@ -1292,12 +1289,10 @@ fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_doub
         }
         let n = XLENGTH(value) as usize;
         match TYPEOF(value) {
-            t if t == SEXPTYPE::REALSXP => {
-                (0..n).map(|i| REAL_ELT(value, i as c_int)).collect()
-            }
-            t if t == SEXPTYPE::INTSXP => {
-                (0..n).map(|i| INTEGER_ELT(value, i as c_int) as c_double).collect()
-            }
+            t if t == SEXPTYPE::REALSXP => (0..n).map(|i| REAL_ELT(value, i as c_int)).collect(),
+            t if t == SEXPTYPE::INTSXP => (0..n)
+                .map(|i| INTEGER_ELT(value, i as c_int) as c_double)
+                .collect(),
             _ => graphics_error(format!("invalid '{name}' in graphics layout")),
         }
     }
@@ -1350,9 +1345,9 @@ fn layout_matrix_order(value: SEXP, len: usize) -> Vec<c_int> {
             t if t == SEXPTYPE::INTSXP => {
                 (0..len).map(|i| INTEGER_ELT(value, i as c_int)).collect()
             }
-            t if t == SEXPTYPE::REALSXP => {
-                (0..len).map(|i| REAL_ELT(value, i as c_int) as c_int).collect()
-            }
+            t if t == SEXPTYPE::REALSXP => (0..len)
+                .map(|i| REAL_ELT(value, i as c_int) as c_int)
+                .collect(),
             _ => graphics_error("invalid layout matrix"),
         }
     }
@@ -1547,8 +1542,7 @@ fn sexp_to_par_value(value: SEXP) -> ParValue {
                 if elt == R_NaString() {
                     ParValue::String(String::new())
                 } else {
-                    let text =
-                        String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned();
+                    let text = String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned();
                     ParValue::String(text)
                 }
             }
@@ -1580,9 +1574,7 @@ fn tag_name(tag: SEXP) -> Option<String> {
         if tag.is_null() || tag == R_NilValue() {
             None
         } else {
-            Some(
-                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(tag))).into_owned(),
-            )
+            Some(String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(tag))).into_owned())
         }
     }
 }
@@ -1678,9 +1670,8 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                     let inner = VECTOR_ELT(value, i);
                                     if TYPEOF(inner) == SEXPTYPE::STRSXP && XLENGTH(inner) > 0 {
                                         let ch = STRING_ELT(inner, 0);
-                                        let qname =
-                                            String::from_utf8_lossy(&charsxp_as_utf8(ch))
-                                                .into_owned();
+                                        let qname = String::from_utf8_lossy(&charsxp_as_utf8(ch))
+                                            .into_owned();
                                         if is_known_par(&qname) {
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
@@ -1690,9 +1681,7 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                                 "\"{qname}\" is not a graphical parameter"
                                             ))
                                             .unwrap_or_default();
-                                            crate::mainutils::errors::warningcall_cstr(
-                                                call,
-                                                &msg);
+                                            crate::mainutils::errors::warningcall_cstr(call, &msg);
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
                                                 .push((qname, false));

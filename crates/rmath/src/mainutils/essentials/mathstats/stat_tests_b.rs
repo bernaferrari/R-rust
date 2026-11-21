@@ -57,11 +57,7 @@ pub fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -119,11 +115,7 @@ pub fn do_fisher_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -139,7 +131,10 @@ pub fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         && TYPEOF(dim) == SEXPTYPE::INTSXP
         && XLENGTH(dim) >= 2
     {
-        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+        (
+            integer_elt_checked(dim, 0) as usize,
+            integer_elt_checked(dim, (1) as R_xlen_t) as usize,
+        )
     } else {
         return R_NilValue();
     };
@@ -207,11 +202,7 @@ pub fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -227,7 +218,10 @@ pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         && TYPEOF(dim) == SEXPTYPE::INTSXP
         && XLENGTH(dim) >= 2
     {
-        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+        (
+            integer_elt_checked(dim, 0) as usize,
+            integer_elt_checked(dim, (1) as R_xlen_t) as usize,
+        )
     } else {
         return R_NilValue();
     };
@@ -305,11 +299,7 @@ pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -320,11 +310,7 @@ pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         return R_NilValue();
     }
     let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-    if dim.is_null()
-        || dim == R_NilValue()
-        || TYPEOF(dim) != SEXPTYPE::INTSXP
-        || XLENGTH(dim) < 3
-    {
+    if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) < 3 {
         return R_NilValue();
     }
     let i = integer_elt_checked(dim, 0) as usize;
@@ -403,11 +389,7 @@ pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -482,11 +464,7 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     let adj = p_adjust_values(&raw, &method);
     // lower-tri including diag of (k-1) x (k-1), column-major
     let mdim = k - 1;
-    let pmat = alloc_matrix(
-        SEXPTYPE::REALSXP.as_c_int(),
-        mdim as i32,
-        mdim as i32,
-    );
+    let pmat = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), mdim as i32, mdim as i32);
     let _pm = protect(pmat);
     for idx in 0..(mdim * mdim) {
         set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
@@ -520,11 +498,7 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     );
     let class = mk_string_cstr(c"pairwise.htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -586,11 +560,7 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
     let adj = p_adjust_values(&raw, &method);
     let mdim = k - 1;
-    let pmat = alloc_matrix(
-        SEXPTYPE::REALSXP.as_c_int(),
-        mdim as i32,
-        mdim as i32,
-    );
+    let pmat = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), mdim as i32, mdim as i32);
     let _pm = protect(pmat);
     for idx in 0..(mdim * mdim) {
         set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
@@ -628,11 +598,7 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     );
     let class = mk_string_cstr(c"pairwise.htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -732,11 +698,7 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
     let adj = p_adjust_values(&raw, &method);
     let mdim = k - 1;
-    let pmat = alloc_matrix(
-        SEXPTYPE::REALSXP.as_c_int(),
-        mdim as i32,
-        mdim as i32,
-    );
+    let pmat = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), mdim as i32, mdim as i32);
     let _pm = protect(pmat);
     for idx in 0..(mdim * mdim) {
         set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
@@ -774,11 +736,7 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     );
     let class = mk_string_cstr(c"pairwise.htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -891,8 +849,7 @@ pub fn do_pp_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let trm4 = (n_f * (n_f + 1.0) * (2.0 * n_f + 1.0) * sum_yt1 * sum_yt1) / 6.0;
     let dx = trm1 - trm2 + trm3 - trm4;
     let stat = ssqru.sqrt() / ssqrtl.sqrt() * tstat
-        - (n_f * n_f * n_f) / (4.0 * 3.0_f64.sqrt() * dx.sqrt() * ssqrtl.sqrt())
-            * (ssqrtl - ssqru);
+        - (n_f * n_f * n_f) / (4.0 * 3.0_f64.sqrt() * dx.sqrt() * ssqrtl.sqrt()) * (ssqrtl - ssqru);
     let table_t = [25.0, 50.0, 100.0, 250.0, 500.0, 1e5];
     let table = [
         [4.38, 4.15, 4.04, 3.99, 3.98, 3.96],
@@ -922,11 +879,7 @@ pub fn do_pp_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     SET_VECTOR_ELT(result, 0, statistic);
     SET_VECTOR_ELT(result, 1, parameter);
     SET_VECTOR_ELT(result, 2, Rf_ScalarReal(pval));
-    SET_VECTOR_ELT(
-        result,
-        3,
-        mk_string_cstr(c"Phillips-Perron Unit Root Test"),
-    );
+    SET_VECTOR_ELT(result, 3, mk_string_cstr(c"Phillips-Perron Unit Root Test"));
     SET_VECTOR_ELT(result, 4, mk_string_cstr(c"x"));
     crate::mainutils::essentials::set_string_names(
         result,
@@ -940,11 +893,7 @@ pub fn do_pp_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     );
     let class = mk_string_cstr(c"htest");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     result
 }
 
@@ -1073,7 +1022,10 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         && TYPEOF(dim) == SEXPTYPE::INTSXP
         && XLENGTH(dim) >= 2
     {
-        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+        (
+            integer_elt_checked(dim, 0) as usize,
+            integer_elt_checked(dim, (1) as R_xlen_t) as usize,
+        )
     } else {
         return R_NilValue();
     };
@@ -1085,19 +1037,14 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         raw[i] = elt_real_safe(x, i as i64);
     }
     let (z, tt) = varimax_2col(&raw, p);
-    let loadings =
-        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+    let loadings = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
     let _ld = protect(loadings);
     for i in 0..(p * 2) {
         set_real_checked(loadings, (i) as R_xlen_t, z[i]);
     }
     let class = mk_string_cstr(c"loadings");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        loadings,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(loadings, crate::sexp::attrib_core::R_ClassSymbol(), class);
     let rot = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
     let _rt = protect(rot);
     set_real_checked(rot, 0, tt[0][0]);
@@ -1135,7 +1082,10 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         && TYPEOF(dim) == SEXPTYPE::INTSXP
         && XLENGTH(dim) >= 2
     {
-        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+        (
+            integer_elt_checked(dim, 0) as usize,
+            integer_elt_checked(dim, (1) as R_xlen_t) as usize,
+        )
     } else {
         return R_NilValue();
     };
@@ -1196,19 +1146,14 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let r01 = vrot[0][0] * u01s + vrot[0][1] * u11s;
     let r10 = vrot[1][0] * u00s + vrot[1][1] * u10s;
     let r11 = vrot[1][0] * u01s + vrot[1][1] * u11s;
-    let loadings =
-        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+    let loadings = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
     let _ld = protect(loadings);
     for i in 0..(p * 2) {
         set_real_checked(loadings, (i) as R_xlen_t, z[i]);
     }
     let class = mk_string_cstr(c"loadings");
     let _cl = protect(class);
-    crate::sexp::attrib_core::setAttrib(
-        loadings,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(loadings, crate::sexp::attrib_core::R_ClassSymbol(), class);
     let rot = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
     let _rt = protect(rot);
     set_real_checked(rot, 0, r00);

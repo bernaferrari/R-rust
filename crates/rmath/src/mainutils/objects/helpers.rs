@@ -230,9 +230,7 @@ pub(crate) fn stringPositionTr(klass: SEXP, what: &std::ffi::CStr) -> c_int {
         let elt = STRING_ELT(klass, i as R_xlen_t);
         if !elt.is_null() {
             let cs = char_cstring(elt);
-            if !cs.is_none()
-                && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes()
-            {
+            if !cs.is_none() && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes() {
                 return i;
             }
         }

@@ -161,10 +161,7 @@ pub(crate) fn namespace_version(namespace: SEXP) -> Option<String> {
         return Some(crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned());
     }
     let _namespace = protect(namespace);
-    let metadata = find_var_in_frame(
-        namespace,
-        install_str(".__NAMESPACE__."),
-    );
+    let metadata = find_var_in_frame(namespace, install_str(".__NAMESPACE__."));
     if TYPEOF(metadata) != SEXPTYPE::ENVSXP {
         return None;
     }

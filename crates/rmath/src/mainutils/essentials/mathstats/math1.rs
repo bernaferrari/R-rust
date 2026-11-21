@@ -91,10 +91,8 @@ mod raw_to_char;
 /// real vectors. Non-numeric arguments (and factors, via Math.factor)
 /// error like stock Math1.
 fn math_factor_error(call: SEXP, name: &str) -> ! {
-    let method_call = crate::sexp::constructors::Rf_lang2(
-        install_str("Math.factor"),
-        CAR(CDR(call)),
-    );
+    let method_call =
+        crate::sexp::constructors::Rf_lang2(install_str("Math.factor"), CAR(CDR(call)));
     let _guard = protect(method_call);
     crate::mainutils::errors::errorcall_str(
         method_call,
@@ -182,11 +180,14 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let mut dst = owner_sexp_mut(result);
             for i in 0..n {
                 let value = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
-                sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, if value == NA_INTEGER || value == c_int::MIN {
-                    NA_INTEGER
-                } else {
-                    value.abs()
-                }));
+                sexp_ok(dst.try_set_integer_elt(
+                    (i as usize) as R_xlen_t,
+                    if value == NA_INTEGER || value == c_int::MIN {
+                        NA_INTEGER
+                    } else {
+                        value.abs()
+                    },
+                ));
             }
             copy_most_attrib(x_arg, result);
             math1_copy_dim_and_names(x_arg, result);
@@ -271,15 +272,18 @@ pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             };
-            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, if v.is_nan() {
-                v // preserve NaN/NA
-            } else if v == 0.0 {
-                0.0
-            } else if v > 0.0 {
-                1.0
-            } else {
-                -1.0
-            }));
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
+                if v.is_nan() {
+                    v // preserve NaN/NA
+                } else if v == 0.0 {
+                    0.0
+                } else if v > 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                },
+            ));
         }
         result
     }

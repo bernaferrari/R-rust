@@ -2343,8 +2343,10 @@ fn pdf_string(value: SEXP, default: &str) -> String {
         {
             crate::sexp::context::r_error("invalid PDF device argument");
         }
-        String::from_utf8(crate::sexp::accessors::charsxp_as_utf8(STRING_ELT(value, 0)))
-            .unwrap_or_else(|_| crate::sexp::context::r_error("invalid PDF argument encoding"))
+        String::from_utf8(crate::sexp::accessors::charsxp_as_utf8(STRING_ELT(
+            value, 0,
+        )))
+        .unwrap_or_else(|_| crate::sexp::context::r_error("invalid PDF argument encoding"))
     }
 }
 

@@ -38,7 +38,9 @@ use crate::main::duplicate::{Rf_duplicate, copyVector};
 use crate::mainutils::connections::{
     connection_fgetc, connection_pushback, connection_write_bytes,
 };
-use crate::mainutils::errors::{R_CheckUserInterrupt, Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr};
+use crate::mainutils::errors::{
+    R_CheckUserInterrupt, Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr,
+};
 use crate::mainutils::print::PrintDefaults;
 use crate::mainutils::printutils::EncodeElement0;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
@@ -250,8 +252,7 @@ fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
 fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(
-                c"duplicated() wrapper only supports character vectors");
+            Rf_error_cstr(c"duplicated() wrapper only supports character vectors");
         }
 
         let len = LENGTH(x);
@@ -288,8 +289,7 @@ fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
 fn sortVector(x: SEXP, decreasing: c_int) {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(
-                c"sortVector() wrapper only supports character vectors");
+            Rf_error_cstr(c"sortVector() wrapper only supports character vectors");
         }
 
         let len = LENGTH(x) as R_xlen_t;
@@ -317,8 +317,7 @@ fn sortVector(x: SEXP, decreasing: c_int) {
 fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(
-                c"matchE() wrapper only supports character vectors");
+            Rf_error_cstr(c"matchE() wrapper only supports character vectors");
         }
 
         let x_len = LENGTH(x);

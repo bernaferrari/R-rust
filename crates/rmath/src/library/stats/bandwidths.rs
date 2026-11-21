@@ -227,9 +227,7 @@ pub fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     }
     let mut rang = (xmax - xmin) * 1.01;
     if rang == 0.0 {
-        Rf_error_cstr(
-            c"data are constant in bandwidth calculation"
-        );
+        Rf_error_cstr(c"data are constant in bandwidth calculation");
     }
     let dd = rang / nb as c_double;
 

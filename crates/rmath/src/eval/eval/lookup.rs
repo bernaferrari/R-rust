@@ -87,7 +87,8 @@ pub(crate) fn missing_arg_error(name: &str) -> ! {
     crate::mainutils::errors::R_MissingArgError_c(
         Some(&c_name),
         crate::mainutils::errors::R_getCurrentCall(),
-        Some(c"evalError"));
+        Some(c"evalError"),
+    );
 
     unreachable!("R_MissingArgError_c signals");
 }
@@ -152,10 +153,7 @@ pub(crate) fn mark_named_on_read(x: SEXP) {
 }
 
 /// Safe promise evaluation.
-pub(crate) fn eval_promise_safe<'a>(
-    prom: Sexp<'a>,
-    rho: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
     let val = prom
         .clone()

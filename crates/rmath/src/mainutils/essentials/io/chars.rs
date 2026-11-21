@@ -13,10 +13,9 @@ pub fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     let path = elt_to_string(con_arg, 0);
-    let bytes =
-        crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
-            base_error(format!("cannot read file '{}': {}", path, e));
-        });
+    let bytes = crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
+        base_error(format!("cannot read file '{}': {}", path, e));
+    });
     let take = if nchars >= 0 {
         (nchars as usize).min(bytes.len())
     } else {
@@ -71,9 +70,7 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
                 break;
             }
             if byte == 0 {
-                crate::mainutils::errors::Rf_warning_cstr(
-                    c"truncating string with embedded nuls",
-                );
+                crate::mainutils::errors::Rf_warning_cstr(c"truncating string with embedded nuls");
                 break;
             }
             bytes.push(byte as u8);

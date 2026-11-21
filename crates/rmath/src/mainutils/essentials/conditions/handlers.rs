@@ -227,8 +227,7 @@ fn named_list_from_dots(mut args: SEXP) -> SEXP {
             .try_set_vector_elt(i, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let tag = TAG(args);
-        let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP
-        {
+        let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
             owner
                 .sexp(mk_char_cstr(c""))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
@@ -402,11 +401,12 @@ fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
         }
         if dropped {
             let class_name = elt_to_string(names, i);
-            let msg = mk_string_cstr(&std::ffi::CString::new(format!(
+            let msg = mk_string_cstr(
+                &std::ffi::CString::new(format!(
                     "pushing duplicate `{class_name}` handler on top of the stack"
                 ))
-                .unwrap_or_default()
-                );
+                .unwrap_or_default(),
+            );
             crate::mainutils::essentials::do_message(
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -449,11 +449,7 @@ fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
             k += 1;
         }
     }
-    crate::sexp::attrib_core::setAttrib(
-        out,
-        crate::sexp::attrib_core::R_NamesSymbol(),
-        out_names,
-    );
+    crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
     out
 }
 

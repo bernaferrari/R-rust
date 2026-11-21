@@ -48,9 +48,7 @@ pub fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
         #[cfg(target_os = "windows")]
         {
             let _ = (signal, spid);
-            crate::mainutils::errors::Rf_error_cstr(
-                c"ps_kill is not supported on Windows"
-            );
+            crate::mainutils::errors::Rf_error_cstr(c"ps_kill is not supported on Windows");
             return crate::sexp::globals::R_NilValue();
         }
         // wasm32: no signals in the sandbox; every target reports "not
@@ -66,9 +64,7 @@ pub fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
         #[cfg(target_os = "windows")]
         {
             let _ = (signal, spid);
-            crate::mainutils::errors::Rf_error_cstr(
-                c"ps_kill is not supported on Windows"
-            );
+            crate::mainutils::errors::Rf_error_cstr(c"ps_kill is not supported on Windows");
             return crate::sexp::globals::R_NilValue();
         }
 
@@ -117,8 +113,7 @@ pub fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
         #[cfg(target_os = "windows")]
         {
             let _ = val;
-            crate::mainutils::errors::Rf_error_cstr(
-                c"ps_priority is not supported on Windows");
+            crate::mainutils::errors::Rf_error_cstr(c"ps_priority is not supported on Windows");
             return crate::sexp::globals::R_NilValue();
         }
         // wasm32: no process priorities in the sandbox; every element

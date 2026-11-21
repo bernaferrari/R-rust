@@ -690,10 +690,7 @@ fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
     let mut current = args;
     while !current.is_null() && current != R_NilValue() {
         let arg = CAR(current);
-        if tag_name(current).as_deref() != Some("na.rm")
-            && !arg.is_null()
-            && arg != R_NilValue()
-        {
+        if tag_name(current).as_deref() != Some("na.rm") && !arg.is_null() && arg != R_NilValue() {
             arg_vecs.push(arg);
             if TYPEOF(arg) == SEXPTYPE::STRSXP {
                 result_type = SEXPTYPE::STRSXP;
@@ -812,13 +809,9 @@ fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
     result
 }
 fn difftime_unit_seconds(x: SEXP) -> f64 {
-    let units = crate::sexp::attrib_core::getAttrib(
-        x,
-        install_str("units"),
-    );
+    let units = crate::sexp::attrib_core::getAttrib(x, install_str("units"));
     let name_owned;
-    let name = if units.is_null() || units == R_NilValue() || TYPEOF(units) != SEXPTYPE::STRSXP
-    {
+    let name = if units.is_null() || units == R_NilValue() || TYPEOF(units) != SEXPTYPE::STRSXP {
         "secs"
     } else {
         name_owned = owner_sexp(active_owner(), units)
@@ -882,9 +875,7 @@ fn pminmax_character(arg_vecs: &[SEXP], max_len: R_xlen_t, is_min: bool, na_rm: 
                 }
             } else {
                 let cstr = CString::new(best.clone()).unwrap_or_default();
-                if let Ok(charsxp) =
-                    owner.sexp(mk_char_cstr(&cstr))
-                {
+                if let Ok(charsxp) = owner.sexp(mk_char_cstr(&cstr)) {
                     let _ = result_mut.try_set_string_elt(i, charsxp);
                 }
             }
@@ -899,10 +890,7 @@ fn pminmax_factor_result(
     is_min: bool,
     na_rm: bool,
 ) -> Option<SEXP> {
-    let owner = arg_vecs
-        .iter()
-        .copied()
-        .find(|arg| is_factor(*arg) != 0)?;
+    let owner = arg_vecs.iter().copied().find(|arg| is_factor(*arg) != 0)?;
     let levels = crate::sexp::attrib_core::getAttrib(owner, install_str("levels"));
     if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
         return None;
@@ -977,11 +965,7 @@ fn pminmax_factor_result(
     }
     let class =
         crate::sexp::attrib_core::getAttrib(owner, crate::sexp::attrib_core::R_ClassSymbol());
-    crate::sexp::attrib_core::setAttrib(
-        result,
-        crate::sexp::attrib_core::R_ClassSymbol(),
-        class,
-    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
     crate::sexp::attrib_core::setAttrib(result, install_str("levels"), levels);
     Some(result)
 }
@@ -1089,12 +1073,9 @@ pub fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .try_set_vector_elt(i + vlen, elt)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        let xn =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        let vn = crate::sexp::attrib_core::getAttrib(
-            values,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let xn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let vn =
+            crate::sexp::attrib_core::getAttrib(values, crate::sexp::attrib_core::R_NamesSymbol());
         if (!xn.is_null() && xn != R_NilValue()) || (!vn.is_null() && vn != R_NilValue()) {
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, total);
             let xn_owned = owner_sexp(owner, xn);
@@ -1747,9 +1728,7 @@ fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
                     owner_sexp(owner, arg)
                         .try_vector_elt(i)
                         .map(|elt| elt.as_raw())
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        })
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                 } else {
                     arg
                 };
@@ -1767,16 +1746,10 @@ fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
     let names =
         crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
     if !names.is_null() && names != R_NilValue() {
-        crate::sexp::attrib_core::setAttrib(
-            out,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
+        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
     }
-    let rows = crate::sexp::attrib_core::getAttrib(
-        frame,
-        crate::sexp::attrib_core::R_RowNamesSymbol(),
-    );
+    let rows =
+        crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_RowNamesSymbol());
     if !rows.is_null() && rows != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(
             out,

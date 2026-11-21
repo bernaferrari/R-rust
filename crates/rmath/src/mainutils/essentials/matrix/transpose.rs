@@ -93,7 +93,11 @@ pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let _dim_guard = protect(new_dim);
             for (out_i, axis) in kept_axes.iter().enumerate() {
-                set_integer_checked(new_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
+                set_integer_checked(
+                    new_dim,
+                    (out_i) as R_xlen_t,
+                    integer_elt_checked(dim, (*axis as usize) as R_xlen_t),
+                );
             }
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -242,11 +246,7 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             mk_char_cstr(c"")
                         },
                     );
-                    crate::sexp::attrib_core::setAttrib(
-                        new_dimnames,
-                        R_NamesSymbol(),
-                        new_names,
-                    );
+                    crate::sexp::attrib_core::setAttrib(new_dimnames, R_NamesSymbol(), new_names);
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, R_DimNamesSymbol(), new_dimnames);

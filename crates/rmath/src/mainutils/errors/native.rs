@@ -490,7 +490,8 @@ mod tests {
         unsafe {
             super::super::errorcall_cstr(
                 crate::sexp::globals::R_NilValue(),
-                c"rendered native error");
+                c"rendered native error",
+            );
         }
         unreachable!()
     }
@@ -674,19 +675,12 @@ mod tests {
                 Some(c"objectNotFoundError"),
                 None,
                 2,
-                Some(c"typed native error")));
+                Some(c"typed native error"),
+            ));
             let name = factory.strings(&["original name"]).unwrap();
             let mode = factory.strings(&["function"]).unwrap();
-            super::super::R_setConditionField(
-                condition.as_raw(),
-                2,
-                c"name",
-                name.as_raw());
-            super::super::R_setConditionField(
-                condition.as_raw(),
-                3,
-                c"mode",
-                mode.as_raw());
+            super::super::R_setConditionField(condition.as_raw(), 2, c"name", name.as_raw());
+            super::super::R_setConditionField(condition.as_raw(), 3, c"mode", mode.as_raw());
             super::super::R_signalErrorConditionEx(
                 condition.as_raw(),
                 factory.nil().as_raw(),

@@ -214,16 +214,13 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     let sym = install_str("last.warning");
     let mut last = crate::sexp::accessors::SYMVALUE(sym);
-    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-    {
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue() {
         last = find_var(sym, crate::sexp::globals::R_BaseEnv());
     }
-    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-    {
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue() {
         last = find_var(sym, crate::sexp::globals::R_BaseEnv());
     }
-    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-    {
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue() {
         last = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
     }
     let _last = protect(last);

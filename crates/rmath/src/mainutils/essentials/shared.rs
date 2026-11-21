@@ -200,8 +200,7 @@ mod methods_startup_tests {
         drop(metadata);
         session.with_active(|| {
             let ns = cached_namespace_by_name("methods").expect("default methods namespace loaded");
-            let raw =
-                find_var_in_frame(ns, install_str("cacheMetaData"));
+            let raw = find_var_in_frame(ns, install_str("cacheMetaData"));
             let raw = if TYPEOF(raw) == SEXPTYPE::PROMSXP {
                 force_promise(raw)
             } else {

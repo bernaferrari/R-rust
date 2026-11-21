@@ -83,7 +83,8 @@ fn child_length(x: &Sexp<'_>, i: i64, class_symbol: &Sexp<'_>, check: &impl Fn()
             for j in 0..class.len() {
                 let name = class.try_string_elt(j).expect("lengths class name");
                 check();
-                let matches = crate::mainutils::essentials::charsxp_cstring(name.as_raw()).to_bytes()
+                let matches = crate::mainutils::essentials::charsxp_cstring(name.as_raw())
+                    .to_bytes()
                     == b"POSIXlt";
                 if matches {
                     posixlt = true;

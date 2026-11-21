@@ -433,7 +433,8 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'stati
             .sexp(result)
             .and_then(Sexp::into_owned)
             .unwrap_or_else(|error| binding_error(error.to_string()))
-    }).unwrap_or_else(|error| binding_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 /// Typed, owner-scoped environment facade.
@@ -815,7 +816,8 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
                     promise_callback(&authority, || {
                         crate::mainutils::errors::Rf_warningcall1(
                             call.as_raw(),
-                            c"restarting interrupted promise evaluation");
+                            c"restarting interrupted promise evaluation",
+                        );
                     })?;
                     restart.enter()
                 }
@@ -1007,7 +1009,8 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             .require_active()
             .unwrap_or_else(|error| binding_error(error.to_string()));
         true
-    }).unwrap_or_else(|error| binding_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 /// Publish a validated workspace without an allocation or active binding
@@ -1623,7 +1626,8 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> b
             return false;
         }
         propagated_missing(sym, env, depth)
-    }).unwrap_or_else(|error| binding_error(error.to_string()))
+    })
+    .unwrap_or_else(|error| binding_error(error.to_string()))
 }
 
 fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, depth: u32) -> bool {

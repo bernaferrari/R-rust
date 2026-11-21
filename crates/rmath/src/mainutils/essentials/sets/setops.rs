@@ -1067,11 +1067,7 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let flat = crate::mainutils::duplicate::Rf_duplicate(x);
         let _f = protect(flat);
         crate::sexp::attrib_core::setAttrib(flat, install_str("dim"), R_NilValue());
-        crate::sexp::attrib_core::setAttrib(
-            flat,
-            install_str("dimnames"),
-            R_NilValue(),
-        );
+        crate::sexp::attrib_core::setAttrib(flat, install_str("dimnames"), R_NilValue());
 
         let new_args = Rf_cons(flat, R_NilValue());
         let _n = protect(new_args);
@@ -1127,15 +1123,11 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             for row in 0..total {
                 if encountered.contains(&row_strings[row]) {
                     dst.try_set_logical_elt(row as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     encountered.insert(row_strings[row].clone());
                     dst.try_set_logical_elt(row as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         } else {
@@ -1148,15 +1140,11 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 let key = parts.join("\x01");
                 if seen.contains(&key) {
                     dst.try_set_logical_elt(row as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     seen.insert(key);
                     dst.try_set_logical_elt(row as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         }
@@ -1192,15 +1180,11 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             for col in 0..total {
                 if encountered.contains(&col_strings[col]) {
                     dst.try_set_logical_elt(col as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     encountered.insert(col_strings[col].clone());
                     dst.try_set_logical_elt(col as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         } else {
@@ -1213,15 +1197,11 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 let key = parts.join("\x01");
                 if seen.contains(&key) {
                     dst.try_set_logical_elt(col as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     seen.insert(key);
                     dst.try_set_logical_elt(col as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         }
@@ -1265,30 +1245,22 @@ pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             for s in (0..n_slices).rev() {
                 if seen.contains(&keys[s]) {
                     dst.try_set_logical_elt(s as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     seen.insert(keys[s].clone());
                     dst.try_set_logical_elt(s as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         } else {
             for s in 0..n_slices {
                 if seen.contains(&keys[s]) {
                     dst.try_set_logical_elt(s as R_xlen_t, TRUE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 } else {
                     seen.insert(keys[s].clone());
                     dst.try_set_logical_elt(s as R_xlen_t, FALSE)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
             }
         }

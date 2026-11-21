@@ -48,8 +48,7 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         // Check length
         let rlen = LENGTH(resultsxp);
         if rlen != n {
-            Rf_error_cstr(
-                c"evaluation of function gave a result of wrong length");
+            Rf_error_cstr(c"evaluation of function gave a result of wrong length");
         }
 
         // Check type and coerce if needed

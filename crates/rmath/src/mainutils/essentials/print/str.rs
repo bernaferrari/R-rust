@@ -262,8 +262,7 @@ fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
             } else {
                 ("1".to_string(), n.to_string())
             };
-        let dim =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let lestr = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
             let dims: Vec<String> = (0..XLENGTH(dim))
                 .map(|i| format!("1:{}", integer_elt_checked(dim, (i as usize) as R_xlen_t)))
@@ -280,8 +279,7 @@ fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
     let t = TYPEOF(x);
     let n = XLENGTH(x);
     let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-    let names =
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
     let has_dim = !dim.is_null()
         && dim != R_NilValue()
         && TYPEOF(dim) == SEXPTYPE::INTSXP
@@ -748,8 +746,7 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         str_emit_line(" NULL");
         return R_NilValue();
     }
-    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && !sexp_has_class_name(x, "envRefClass")
-    {
+    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && !sexp_has_class_name(x, "envRefClass") {
         str_s4_formal_class(x);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         return x;
@@ -883,8 +880,7 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     "'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}"
                 ));
             } else {
-                let quoted: Vec<String> =
-                    extra_classes.iter().map(|c| format!("'{c}'")).collect();
+                let quoted: Vec<String> = extra_classes.iter().map(|c| format!("'{c}'")).collect();
                 str_emit_line(&format!(
                     "Classes {} and 'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}",
                     quoted.join(", ")
@@ -947,8 +943,8 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             while !p.is_null() && p != R_NilValue() {
                 let tag = TAG(p);
                 if !tag.is_null() && tag != R_NilValue() {
-                    let name = charsxp_text(crate::sexp::accessors::PRINTNAME(tag))
-                        .unwrap_or_default();
+                    let name =
+                        charsxp_text(crate::sexp::accessors::PRINTNAME(tag)).unwrap_or_default();
                     let v = CAR(p);
                     let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
                         integer_elt_checked(v, 0) as i64
@@ -970,29 +966,22 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             STR_LEVEL.store(max_level, std::sync::atomic::Ordering::Relaxed);
             STR_LIST_LEN.store(list_len, std::sync::atomic::Ordering::Relaxed);
             let show = n.min(list_len.max(0) as R_xlen_t);
-            let class_attr = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            );
+            let class_attr =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
             let mut header = format!("List of {n}");
             if TYPEOF(class_attr) == SEXPTYPE::STRSXP && XLENGTH(class_attr) > 0 {
                 let cname = elt_to_string(class_attr, 0);
                 let len_args = Rf_cons(x, R_NilValue());
                 let _len_guard = protect(len_args);
-                let len_sexp = crate::eval::arithmetic::do_length(
-                    R_NilValue(),
-                    R_NilValue(),
-                    len_args,
-                    _rho,
-                );
-                let dispatched =
-                    if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
-                        integer_elt_checked(len_sexp, 0) as i64
-                    } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
-                        real_elt_checked(len_sexp, 0) as i64
-                    } else {
-                        n as i64
-                    };
+                let len_sexp =
+                    crate::eval::arithmetic::do_length(R_NilValue(), R_NilValue(), len_args, _rho);
+                let dispatched = if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
+                    integer_elt_checked(len_sexp, 0) as i64
+                } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
+                    real_elt_checked(len_sexp, 0) as i64
+                } else {
+                    n as i64
+                };
                 if dispatched != n as i64 {
                     header = format!("Class '{cname}'  hidden list of {n}");
                 }

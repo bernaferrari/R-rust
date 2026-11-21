@@ -135,19 +135,17 @@ fn environment_mutation_allowed() -> bool {
 }
 
 fn denied_setenv_result(args: SEXP) -> SEXP {
-    
-        let mut n = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            n += 1;
-            current = CDR(current);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        for i in 0..n {
-            set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
-        }
-        result
-    
+    let mut n = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        n += 1;
+        current = CDR(current);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    for i in 0..n {
+        set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
+    }
+    result
 }
 
 /// Unset a variable live via std::env::remove_var; false on invalid input.
@@ -172,93 +170,89 @@ static mut environ: *mut *mut c_char = std::ptr::null_mut();
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        if !environment_mutation_allowed() {
-            return denied_setenv_result(args);
-        }
-        let mut results: Vec<c_int> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            let ok = if !arg.is_null() && arg != R_NilValue() {
+    if !environment_mutation_allowed() {
+        return denied_setenv_result(args);
+    }
+    let mut results: Vec<c_int> = Vec::new();
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        let ok = if !arg.is_null() && arg != R_NilValue() {
+            if let Some(key) = tag_name(current)
+                && !key.is_empty()
+            {
+                libc_setenv(&key, &elt_to_string(arg, 0))
+            } else {
+                // Unnamed "NAME=value" argument; '=' in NAME fails like stock.
+                let s = elt_to_string(arg, 0);
+                match s.find('=') {
+                    Some(pos) => libc_setenv(&s[..pos], &s[pos + 1..]),
+                    None => false,
+                }
+            }
+        } else {
+            false
+        };
+        if ok {
+            let is_tz = (|| {
                 if let Some(key) = tag_name(current)
                     && !key.is_empty()
                 {
-                    libc_setenv(&key, &elt_to_string(arg, 0))
-                } else {
-                    // Unnamed "NAME=value" argument; '=' in NAME fails like stock.
-                    let s = elt_to_string(arg, 0);
-                    match s.find('=') {
-                        Some(pos) => libc_setenv(&s[..pos], &s[pos + 1..]),
-                        None => false,
-                    }
+                    return key == "TZ";
                 }
-            } else {
-                false
-            };
-            if ok {
-                let is_tz = (|| {
-                    if let Some(key) = tag_name(current)
-                        && !key.is_empty()
-                    {
-                        return key == "TZ";
-                    }
-                    let s = elt_to_string(arg, 0);
-                    match s.find('=') {
-                        Some(pos) => &s[..pos] == "TZ",
-                        None => false,
-                    }
-                })();
-                if is_tz {
-                    // GNU tzcode: a changed TZ invalidates the cached zone.
-                    crate::tzone::set_timezone_override(None);
+                let s = elt_to_string(arg, 0);
+                match s.find('=') {
+                    Some(pos) => &s[..pos] == "TZ",
+                    None => false,
                 }
+            })();
+            if is_tz {
+                // GNU tzcode: a changed TZ invalidates the cached zone.
+                crate::tzone::set_timezone_override(None);
             }
-            results.push(if ok { TRUE } else { FALSE });
-            current = CDR(current);
         }
-        let n = results.len() as R_xlen_t;
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        for (i, ok) in results.iter().enumerate() {
-            set_logical_checked(ans, (i) as R_xlen_t, *ok);
-        }
-        ans
-    
+        results.push(if ok { TRUE } else { FALSE });
+        current = CDR(current);
+    }
+    let n = results.len() as R_xlen_t;
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
+    for (i, ok) in results.iter().enumerate() {
+        set_logical_checked(ans, (i) as R_xlen_t, *ok);
+    }
+    ans
 }
 
 /// R's `Sys.unsetenv(x)` — unset environment variables.
 pub fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    
-        if !environment_mutation_allowed() {
-            let x = arg_by_name_or_position(args, &["x"], 0);
-            if x.is_null() || x == R_NilValue() {
-                return Rf_ScalarLogical(FALSE);
-            }
-            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, XLENGTH(x));
-            for i in 0..XLENGTH(x) {
-                set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
-            }
-            return result;
-        }
+    if !environment_mutation_allowed() {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let n = XLENGTH(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        for i in 0..n {
-            let name = elt_to_string(x, i);
-            let ok = if name.is_empty() {
-                false
-            } else {
-                libc_unsetenv(&name)
-            };
-            set_logical_checked(ans, (i as usize) as R_xlen_t, if ok { TRUE } else { FALSE });
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, XLENGTH(x));
+        for i in 0..XLENGTH(x) {
+            set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
         }
-        ans
-    
+        return result;
+    }
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let n = XLENGTH(x);
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
+    for i in 0..n {
+        let name = elt_to_string(x, i);
+        let ok = if name.is_empty() {
+            false
+        } else {
+            libc_unsetenv(&name)
+        };
+        set_logical_checked(ans, (i as usize) as R_xlen_t, if ok { TRUE } else { FALSE });
+    }
+    ans
 }
 
 /// R's `Sys.which(names)` — resolve command names against PATH.

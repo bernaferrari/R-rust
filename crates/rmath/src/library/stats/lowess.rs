@@ -519,7 +519,8 @@ pub(crate) fn emit_supsmu_trace(events: &super::supsmu::TraceBuffer) -> Result<(
             return Err("operation cancelled".into());
         }
         Ok(())
-    }).map_err(|error| error.to_string())?
+    })
+    .map_err(|error| error.to_string())?
 }
 
 fn write_g<const N: usize>(
@@ -900,8 +901,7 @@ pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         (value, tail.iter().all(u8::is_ascii_whitespace))
                     };
                     if !complete {
-                        crate::mainutils::errors::Rf_warning1(
-                            c"NAs introduced by coercion");
+                        crate::mainutils::errors::Rf_warning1(c"NAs introduced by coercion");
 
                         Ok(f64::NAN)
                     } else {

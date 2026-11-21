@@ -220,7 +220,8 @@ impl<'session> ZeroinCtx<'session> {
                     let number = number?;
                     if number == crate::sexp::ffi::NA_INTEGER {
                         crate::mainutils::errors::Rf_warning1(
-                            c"NA replaced by maximum positive value");
+                            c"NA replaced by maximum positive value",
+                        );
                         owner.require_active()?;
                         f64::MAX
                     } else {
@@ -539,8 +540,7 @@ unsafe extern "C" fn nlm_fcn(
                 }
                 let iv = INTEGER_ELT(value, 0);
                 if iv == NA_INTEGER {
-                    crate::mainutils::errors::Rf_warning1(
-                        c"NA replaced by maximum positive value");
+                    crate::mainutils::errors::Rf_warning1(c"NA replaced by maximum positive value");
                     *f = f64::MAX;
                 } else {
                     *f = iv as f64;
@@ -555,7 +555,8 @@ unsafe extern "C" fn nlm_fcn(
                     if rv == f64::NEG_INFINITY {
                         // keep sign for root finding !
                         crate::mainutils::errors::Rf_warning1(
-                            c"-Inf replaced by maximally negative value");
+                            c"-Inf replaced by maximally negative value",
+                        );
                         *f = -f64::MAX;
                     } else {
                         crate::mainutils::errors::Rf_warning1(if ISNAN(rv) {
@@ -904,12 +905,14 @@ pub unsafe fn do_nlm(
                         state.have_hessian = true;
                     } else {
                         crate::mainutils::errors::Rf_warning1(
-                            c"hessian supplied is of the wrong length or mode, so ignored");
+                            c"hessian supplied is of the wrong length or mode, so ignored",
+                        );
                     }
                 }
             } else {
                 crate::mainutils::errors::Rf_warning1(
-                    c"gradient supplied is of the wrong length or mode, so ignored");
+                    c"gradient supplied is of the wrong length or mode, so ignored",
+                );
             }
         }
         if (msg / 4) % 2 != 0 && iahflg == 0 {

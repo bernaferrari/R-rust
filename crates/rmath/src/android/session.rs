@@ -744,16 +744,20 @@ impl RSession {
         let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
         // SAFETY: `backend` comes from a live `&mut` DrawTarget borrow that
         // outlives `'session`, as the method requires.
-        unsafe { self.core.eval_script_with_output_capture_then_renderplot(
-            code,
-            backend,
-            |result, captured, visible| match result {
-                Ok(result) => {
-                    result_from_eval(result, captured, visible, limit, false, original.as_ref())
-                }
-                Err(e) => error_result_with_captured(e.to_string(), &captured, original.as_ref()),
-            },
-        ) }
+        unsafe {
+            self.core.eval_script_with_output_capture_then_renderplot(
+                code,
+                backend,
+                |result, captured, visible| match result {
+                    Ok(result) => {
+                        result_from_eval(result, captured, visible, limit, false, original.as_ref())
+                    }
+                    Err(e) => {
+                        error_result_with_captured(e.to_string(), &captured, original.as_ref())
+                    }
+                },
+            )
+        }
     }
 }
 
