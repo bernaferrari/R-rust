@@ -125,7 +125,7 @@ mod eval_expression_tests {
         unsafe {
             let owner = session.owner_token().unwrap();
             let function = owner
-                .sexp(crate::sexp::envir::R_findVar(
+                .sexp(find_var(
                     install_str("f"),
                     session.global_env().unwrap().as_raw(),
                 ))
@@ -177,7 +177,7 @@ mod eval_expression_tests {
                 .unwrap()
                 .into_owned()
                 .unwrap();
-            crate::sexp::envir::defineVar(
+            define_var(
                 install_str("e"),
                 argument.as_raw(),
                 environment.as_raw(),

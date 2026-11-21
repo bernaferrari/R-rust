@@ -579,7 +579,7 @@ pub fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 };
                 let name = elt_to_string(names, i);
                 let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-                crate::sexp::envir::defineVar(sym, value, env);
+                define_var(sym, value, env);
             }
             return env;
         }
@@ -796,7 +796,7 @@ pub fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = crate::sexp::envir::forcePromise(x);
+            x = force_promise(x);
         }
         if x.is_null() {
             return R_NilValue();
@@ -814,7 +814,7 @@ pub fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             return x;
         };
-        let val = crate::sexp::envir::findFun(sym, rho);
+        let val = find_fun(sym, rho);
         if !val.is_null()
             && val != R_UnboundValue()
             && (TYPEOF(val) == SEXPTYPE::CLOSXP

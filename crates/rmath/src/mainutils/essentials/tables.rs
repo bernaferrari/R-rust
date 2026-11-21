@@ -1469,13 +1469,13 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if fun.is_null() || fun == R_NilValue() {
             let sym = install_str("mean");
-            fun = crate::sexp::envir::findFun(sym, rho);
+            fun = find_fun(sym, rho);
         } else if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-            fun = crate::sexp::envir::findFun(fun, rho);
+            fun = find_fun(fun, rho);
         } else if TYPEOF(fun) == SEXPTYPE::STRSXP {
             let name = elt_to_string(fun, 0);
             let cstr = CString::new(name).unwrap_or_default();
-            fun = crate::sexp::envir::findFun(install_cstr(&cstr), rho);
+            fun = find_fun(install_cstr(&cstr), rho);
         }
         let _fun = protect(fun);
 
@@ -1557,7 +1557,7 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// and print.by) bound from gnu_by.R.
 pub fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = crate::sexp::envir::R_findVarInFrame(
+        let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("by"),
         );

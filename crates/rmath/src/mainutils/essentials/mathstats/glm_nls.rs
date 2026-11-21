@@ -1020,11 +1020,11 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             ys[i] = elt_real_safe(y, i as i64);
         }
         for _ in 0..30 {
-            crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b), rho);
+            define_var(psym, Rf_ScalarReal(b), rho);
             let pred = crate::eval::eval::Rf_eval(rhs, rho);
             let _p = protect(pred);
             let eps = 1e-6 * (b.abs() + 1.0);
-            crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b + eps), rho);
+            define_var(psym, Rf_ScalarReal(b + eps), rho);
             let pred2 = crate::eval::eval::Rf_eval(rhs, rho);
             let _p2 = protect(pred2);
             let mut jtj = 0.0;
@@ -1045,7 +1045,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 break;
             }
         }
-        crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b), rho);
+        define_var(psym, Rf_ScalarReal(b), rho);
         let coef = Rf_ScalarReal(b);
         let _c = protect(coef);
         let pname_str = charsxp_text(pname).unwrap_or_default();

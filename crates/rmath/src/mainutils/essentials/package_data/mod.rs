@@ -1,4 +1,5 @@
 //! Owning serialized package data admission and publication.
+use crate::mainutils::essentials::define_var;
 use crate::sexp::{
     object::{Sexp, SexpError, SexpResult},
     owner::{OwnerToken, RuntimeAccess},
@@ -69,7 +70,7 @@ fn publish(
         // checked values; no loan spans the active binding callback.
         unsafe {
             crate::sexp::session::with_instance_active(owner.as_ptr(), || {
-                crate::sexp::envir::defineVar(
+                define_var(
                     symbol.as_raw(),
                     value.as_raw(),
                     environment.as_raw(),

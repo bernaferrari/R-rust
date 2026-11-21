@@ -206,7 +206,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             }
             let expr = CAR(argument);
             if expr == crate::sexp::symbol::R_DotsSymbol() {
-                let h = crate::sexp::envir::R_findVar(expr, rho);
+                let h = find_var(expr, rho);
                 if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                     let mut dh = h;
                     while !dh.is_null() && dh != R_NilValue() {
@@ -454,17 +454,15 @@ pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// R's `force(x)` — force evaluation of a promise.
 pub fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        // If x is a PROMSXP, force it
-        if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(x)
-        } else {
-            x
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    // If x is a PROMSXP, force it
+    if TYPEOF(x) == SEXPTYPE::PROMSXP {
+        force_promise(x)
+    } else {
+        x
     }
 }
 

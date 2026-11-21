@@ -135,7 +135,7 @@ pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
         if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return None;
         }
-        let lines = crate::sexp::envir::R_findVarInFrame(srcfile, install_str("lines"));
+        let lines = find_var_in_frame(srcfile, install_str("lines"));
         if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
             return None;
         }

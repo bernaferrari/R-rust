@@ -116,7 +116,7 @@ pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return do_xtfrm_Date(call, op, args, rho);
         }
         // GNU sort.c do_xtfrm: DispatchOrEval miss → xtfrm.default.
-        let fn_ = crate::sexp::envir::findFun(install_str("xtfrm.default"), rho);
+        let fn_ = find_fun(install_str("xtfrm.default"), rho);
         if !fn_.is_null()
             && fn_ != crate::sexp::globals::R_UnboundValue()
             && (TYPEOF(fn_) == SEXPTYPE::CLOSXP
@@ -399,7 +399,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // The `$<-` primitive must use R_DispatchOrEvalSP for formal
                 // methods, then R_subassign3_dflt for classes without a
                 // method. The custom path below is for ordinary/S3 values.
-                let primitive = crate::sexp::envir::R_findVarInFrame(
+                let primitive = find_var_in_frame(
                     crate::sexp::globals::R_BaseEnv(),
                     install_str("$<-"),
                 );

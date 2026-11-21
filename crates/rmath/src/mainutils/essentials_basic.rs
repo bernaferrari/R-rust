@@ -22,7 +22,8 @@ use crate::sexp::protect::protect;
 
 use crate::mainutils::essentials::{
     active_owner, cat_elt_to_string, charsxp_utf8_lossy, elt_to_string, integer_like_elt,
-    install_cstr, install_str, is_string_na, mk_char_cstr, mk_string_cstr, owner_sexp,
+    find_var_in_frame, install_cstr, install_str, is_string_na, mk_char_cstr, mk_string_cstr,
+    owner_sexp,
 };
 use crate::sexp::object::{Sexp, SexpMut, SexpResult};
 
@@ -2386,7 +2387,7 @@ pub fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                     // SAFETY: `c_name` is a live NUL-terminated CString; `x`
                     // is a live ENVSXP whose frame rooted `sym`'s print name.
                     let sym = install_cstr(&c_name);
-                    let mut value = unsafe { crate::sexp::envir::R_findVarInFrame(x, sym) };
+                    let mut value = find_var_in_frame(x, sym);
                     if TYPEOF(value) == SEXPTYPE::PROMSXP {
                         // SAFETY: `value` is a live PROMSXP in environment `x`.
                         value = unsafe { crate::eval::eval::Rf_eval(value, x) };

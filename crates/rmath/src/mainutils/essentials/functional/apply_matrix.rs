@@ -188,24 +188,22 @@ pub fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn apply_fun(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let evaluated = callable_arg_by_name_or_position(args, &["FUN"], 2, rho);
-        if is_function(evaluated) {
-            return evaluated;
-        }
-        // `apply(x, 1, diff)` inside a function whose formal is `diff = TRUE`
-        // still means base::diff. GNU match.fun recovers the symbol and
-        // skips the non-function binding.
-        let uneval = CDR(call);
-        let expr = arg_by_name_or_position(uneval, &["FUN"], 2);
-        if !expr.is_null() && TYPEOF(expr) == SEXPTYPE::SYMSXP {
-            let found = crate::sexp::envir::findFun(expr, rho);
-            if is_function(found) {
-                return found;
-            }
-        }
-        evaluated
+    let evaluated = callable_arg_by_name_or_position(args, &["FUN"], 2, rho);
+    if is_function(evaluated) {
+        return evaluated;
     }
+    // `apply(x, 1, diff)` inside a function whose formal is `diff = TRUE`
+    // still means base::diff. GNU match.fun recovers the symbol and
+    // skips the non-function binding.
+    let uneval = CDR(call);
+    let expr = arg_by_name_or_position(uneval, &["FUN"], 2);
+    if !expr.is_null() && TYPEOF(expr) == SEXPTYPE::SYMSXP {
+        let found = find_fun(expr, rho);
+        if is_function(found) {
+            return found;
+        }
+    }
+    evaluated
 }
 
 pub(super) fn is_function(value: SEXP) -> bool {
@@ -691,45 +689,43 @@ pub(super) fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
 }
 
 pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if fun_arg.is_null() || fun_arg == R_NilValue() {
-            return crate::sexp::envir::findFun(install_str("*"), rho);
-        }
-        let ty = TYPEOF(fun_arg);
-        if ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
-            return fun_arg;
-        }
-        let sym = if ty == SEXPTYPE::STRSXP {
-            let name = elt_to_string(fun_arg, 0);
-            let cstr = CString::new(name.as_str()).unwrap_or_default();
-            install_cstr(&cstr)
-        } else if ty == SEXPTYPE::SYMSXP {
-            fun_arg
-        } else {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "object of mode 'function' was not found",
-            );
-        };
-        let fun = crate::sexp::envir::findFun(sym, rho);
-        if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
-            let name = if TYPEOF(sym) == SEXPTYPE::SYMSXP {
-                let p = PRINTNAME(sym);
-                if p.is_null() {
-                    "FUN".to_string()
-                } else {
-                    charsxp_text(p).unwrap_or_default()
-                }
-            } else {
-                "FUN".to_string()
-            };
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                &format!("object '{name}' of mode 'function' was not found"),
-            );
-        }
-        fun
+    if fun_arg.is_null() || fun_arg == R_NilValue() {
+        return find_fun(install_str("*"), rho);
     }
+    let ty = TYPEOF(fun_arg);
+    if ty == SEXPTYPE::CLOSXP || ty == SEXPTYPE::BUILTINSXP || ty == SEXPTYPE::SPECIALSXP {
+        return fun_arg;
+    }
+    let sym = if ty == SEXPTYPE::STRSXP {
+        let name = elt_to_string(fun_arg, 0);
+        let cstr = CString::new(name.as_str()).unwrap_or_default();
+        install_cstr(&cstr)
+    } else if ty == SEXPTYPE::SYMSXP {
+        fun_arg
+    } else {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "object of mode 'function' was not found",
+        );
+    };
+    let fun = find_fun(sym, rho);
+    if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
+        let name = if TYPEOF(sym) == SEXPTYPE::SYMSXP {
+            let p = PRINTNAME(sym);
+            if p.is_null() {
+                "FUN".to_string()
+            } else {
+                charsxp_text(p).unwrap_or_default()
+            }
+        } else {
+            "FUN".to_string()
+        };
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            &format!("object '{name}' of mode 'function' was not found"),
+        );
+    }
+    fun
 }
 
 pub(super) fn rep_times(x: SEXP, times: i64) -> SEXP {

@@ -31,7 +31,7 @@ fn try_methods_bind(
         }
 
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let mut fun = crate::sexp::envir::R_findVarInFrame(
+        let mut fun = find_var_in_frame(
             ns,
             crate::sexp::symbol::Rf_install(generic.as_ptr() as *const std::os::raw::c_char),
         );
@@ -39,7 +39,7 @@ fn try_methods_bind(
             return None;
         }
         if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = crate::sexp::envir::forcePromise(fun);
+            fun = force_promise(fun);
         }
         if TYPEOF(fun) != SEXPTYPE::CLOSXP
             && TYPEOF(fun) != SEXPTYPE::BUILTINSXP
@@ -130,13 +130,11 @@ unsafe fn eval_bind_internal_args<'s>(
 }
 
 fn force_bind_arg(cell: SEXP) -> SEXP {
-    unsafe {
-        let mut arg = CAR(cell);
-        while !arg.is_null() && TYPEOF(arg) == SEXPTYPE::PROMSXP {
-            arg = crate::sexp::envir::forcePromise(arg);
-        }
-        arg
+    let mut arg = CAR(cell);
+    while !arg.is_null() && TYPEOF(arg) == SEXPTYPE::PROMSXP {
+        arg = force_promise(arg);
     }
+    arg
 }
 
 fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP> {
@@ -172,12 +170,12 @@ fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP>
                         crate::eval::runtime::base_env(),
                         crate::sexp::globals::R_GlobalEnv(),
                     ] {
-                        let table = crate::sexp::envir::R_findVarInFrame(
+                        let table = find_var_in_frame(
                             env,
                             crate::mainutils::objects::S3MethodsTable_symbol(),
                         );
                         if TYPEOF(table) == SEXPTYPE::ENVSXP {
-                            let found = crate::sexp::envir::R_findVarInFrame(table, sym);
+                            let found = find_var_in_frame(table, sym);
                             if crate::mainutils::essentials::s3::is_function_value(found) {
                                 method = found;
                                 break;
@@ -440,7 +438,7 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
             let sym = install_str("rbind.data.frame");
-            let method = crate::sexp::envir::R_findVar(sym, rho);
+            let method = find_var(sym, rho);
             if TYPEOF(method) == SEXPTYPE::CLOSXP {
                 return crate::eval::closure::applyClosure(
                     call,
@@ -2011,8 +2009,8 @@ mod owned_bind_argument_tests {
         );
         let environment = session.global_env().unwrap();
         unsafe {
-            crate::sexp::envir::defineVar(x_symbol.as_raw(), x.as_raw(), environment.as_raw());
-            crate::sexp::envir::defineVar(y_symbol.as_raw(), y.as_raw(), environment.as_raw());
+            define_var(x_symbol.as_raw(), x.as_raw(), environment.as_raw());
+            define_var(y_symbol.as_raw(), y.as_raw(), environment.as_raw());
         }
         let mut call = PairlistBuilder::from_factory(factory.clone());
         call.push(generic, None).unwrap();

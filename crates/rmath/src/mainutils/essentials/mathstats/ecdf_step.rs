@@ -445,9 +445,9 @@ pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             set_real_checked(vx, (i) as R_xlen_t, *v);
             set_real_checked(vy, (i) as R_xlen_t, ys[i]);
         }
-        crate::sexp::envir::defineVar(install_str("vals"), vx, env);
-        crate::sexp::envir::defineVar(install_str("ys"), vy, env);
-        crate::sexp::envir::defineVar(
+        define_var(install_str("vals"), vx, env);
+        define_var(install_str("ys"), vy, env);
+        define_var(
             install_str("nobs"),
             Rf_ScalarInteger(n as c_int),
             env,
@@ -469,20 +469,18 @@ pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `knots(Fn)` — unique x of an ecdf/stepfun.
 pub fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let fun = CAR(args);
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return R_NilValue();
-        }
-        let env = crate::sexp::accessors::CLOENV(fun);
-        for name in [c"x", c"vals"] {
-            let v = crate::sexp::envir::R_findVarInFrame(env, install_cstr(&name));
-            if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue() {
-                return v;
-            }
-        }
-        R_NilValue()
+    let fun = CAR(args);
+    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        return R_NilValue();
     }
+    let env = crate::sexp::accessors::CLOENV(fun);
+    for name in [c"x", c"vals"] {
+        let v = find_var_in_frame(env, install_cstr(&name));
+        if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue() {
+            return v;
+        }
+    }
+    R_NilValue()
 }
 
 /// GNU `plot.stepfun(x)` — knot/height coordinates (no device).
@@ -499,7 +497,7 @@ pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let env = crate::sexp::accessors::CLOENV(fun);
             let mut found = R_NilValue();
             for name in [c"x", c"vals"] {
-                let v = crate::sexp::envir::R_findVarInFrame(env, install_cstr(&name));
+                let v = find_var_in_frame(env, install_cstr(&name));
                 if !v.is_null() && v != R_NilValue() && v != crate::sexp::globals::R_UnboundValue()
                 {
                     found = v;
@@ -558,26 +556,24 @@ pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
-    unsafe {
-        let env = crate::sexp::accessors::CLOENV(fun);
-        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
-        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
-        let nv = XLENGTH(mids) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
-        if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
-            return result;
-        }
-        let n = XLENGTH(x) as usize;
-        for j in 0..nv {
-            let t = elt_real_safe(mids, j as i64);
-            let mut i = 0usize;
-            while i < n && elt_real_safe(x, i as i64) <= t {
-                i += 1;
-            }
-            set_real_checked(result, (j) as R_xlen_t, elt_real_safe(y, i as i64));
-        }
-        result
+    let env = crate::sexp::accessors::CLOENV(fun);
+    let x = find_var_in_frame(env, install_str("x"));
+    let y = find_var_in_frame(env, install_str("y"));
+    let nv = XLENGTH(mids) as usize;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+    if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
+        return result;
     }
+    let n = XLENGTH(x) as usize;
+    for j in 0..nv {
+        let t = elt_real_safe(mids, j as i64);
+        let mut i = 0usize;
+        while i < n && elt_real_safe(x, i as i64) <= t {
+            i += 1;
+        }
+        set_real_checked(result, (j) as R_xlen_t, elt_real_safe(y, i as i64));
+    }
+    result
 }
 
 /// GNU `plot.ecdf(x)` — `plot.stepfun` then `abline`; returns invisible NULL.
@@ -743,8 +739,8 @@ pub fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         let _env = protect(env);
-        crate::sexp::envir::defineVar(install_str("x"), x, env);
-        crate::sexp::envir::defineVar(install_str("y"), y, env);
+        define_var(install_str("x"), x, env);
+        define_var(install_str("y"), y, env);
         let vsym = install_str("v");
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
@@ -762,28 +758,26 @@ pub fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Evaluate `stepfun` at `v`.
 pub fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let v = CAR(args);
-        let env = crate::sexp::accessors::ENCLOS(rho);
-        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
-        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
-        if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(x) as usize;
-        let nv = XLENGTH(v) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
-        let _r = protect(result);
-        for j in 0..nv {
-            let t = elt_real_safe(v, j as i64);
-            let mut i = 0usize;
-            while i < n && elt_real_safe(x, i as i64) <= t {
-                i += 1;
-            }
-            set_real_checked(result, (j) as R_xlen_t, elt_real_safe(y, i as i64));
-        }
-        result
+    let v = CAR(args);
+    let env = crate::sexp::accessors::ENCLOS(rho);
+    let x = find_var_in_frame(env, install_str("x"));
+    let y = find_var_in_frame(env, install_str("y"));
+    if x.is_null() || y.is_null() || x == crate::sexp::globals::R_UnboundValue() {
+        return R_NilValue();
     }
+    let n = XLENGTH(x) as usize;
+    let nv = XLENGTH(v) as usize;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+    let _r = protect(result);
+    for j in 0..nv {
+        let t = elt_real_safe(v, j as i64);
+        let mut i = 0usize;
+        while i < n && elt_real_safe(x, i as i64) <= t {
+            i += 1;
+        }
+        set_real_checked(result, (j) as R_xlen_t, elt_real_safe(y, i as i64));
+    }
+    result
 }
 
 /// GNU `splinefunH(x, y, m)` — cubic Hermite interpolant.
@@ -794,9 +788,9 @@ pub fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let m = CAR(CDR(CDR(args)));
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         let _env = protect(env);
-        crate::sexp::envir::defineVar(install_str("x"), x, env);
-        crate::sexp::envir::defineVar(install_str("y"), y, env);
-        crate::sexp::envir::defineVar(install_str("m"), m, env);
+        define_var(install_str("x"), x, env);
+        define_var(install_str("y"), y, env);
+        define_var(install_str("m"), m, env);
         let vsym = install_str("v");
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
         SETTAG(formals, vsym);
@@ -808,83 +802,79 @@ pub fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Evaluate cubic Hermite at `v`.
 pub fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let v = CAR(args);
-        let env = crate::sexp::accessors::ENCLOS(rho);
-        let x = crate::sexp::envir::R_findVarInFrame(env, install_str("x"));
-        let y = crate::sexp::envir::R_findVarInFrame(env, install_str("y"));
-        let m = crate::sexp::envir::R_findVarInFrame(env, install_str("m"));
-        let n = XLENGTH(x) as usize;
-        if n < 2 {
-            return R_NilValue();
-        }
-        let nv = XLENGTH(v) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
-        let _r = protect(result);
-        for j in 0..nv {
-            let t0 = elt_real_safe(v, j as i64);
-            let mut i = 0usize;
-            while i + 1 < n && elt_real_safe(x, (i + 1) as i64) <= t0 {
-                i += 1;
-            }
-            if i + 1 >= n {
-                i = n - 2;
-            }
-            let x0 = elt_real_safe(x, i as i64);
-            let x1 = elt_real_safe(x, (i + 1) as i64);
-            let h = x1 - x0;
-            let t = if h != 0.0 { (t0 - x0) / h } else { 0.0 };
-            let t2 = t * t;
-            let t3 = t2 * t;
-            let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-            let h10 = t3 - 2.0 * t2 + t;
-            let h01 = -2.0 * t3 + 3.0 * t2;
-            let h11 = t3 - t2;
-            let y0 = elt_real_safe(y, i as i64);
-            let y1 = elt_real_safe(y, (i + 1) as i64);
-            let m0 = elt_real_safe(m, i as i64);
-            let m1 = elt_real_safe(m, (i + 1) as i64);
-            set_real_checked(result, (j) as R_xlen_t, h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1);
-        }
-        result
+    let v = CAR(args);
+    let env = crate::sexp::accessors::ENCLOS(rho);
+    let x = find_var_in_frame(env, install_str("x"));
+    let y = find_var_in_frame(env, install_str("y"));
+    let m = find_var_in_frame(env, install_str("m"));
+    let n = XLENGTH(x) as usize;
+    if n < 2 {
+        return R_NilValue();
     }
+    let nv = XLENGTH(v) as usize;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, nv as i64);
+    let _r = protect(result);
+    for j in 0..nv {
+        let t0 = elt_real_safe(v, j as i64);
+        let mut i = 0usize;
+        while i + 1 < n && elt_real_safe(x, (i + 1) as i64) <= t0 {
+            i += 1;
+        }
+        if i + 1 >= n {
+            i = n - 2;
+        }
+        let x0 = elt_real_safe(x, i as i64);
+        let x1 = elt_real_safe(x, (i + 1) as i64);
+        let h = x1 - x0;
+        let t = if h != 0.0 { (t0 - x0) / h } else { 0.0 };
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+        let h10 = t3 - 2.0 * t2 + t;
+        let h01 = -2.0 * t3 + 3.0 * t2;
+        let h11 = t3 - t2;
+        let y0 = elt_real_safe(y, i as i64);
+        let y1 = elt_real_safe(y, (i + 1) as i64);
+        let m0 = elt_real_safe(m, i as i64);
+        let m1 = elt_real_safe(m, (i + 1) as i64);
+        set_real_checked(result, (j) as R_xlen_t, h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1);
+    }
+    result
 }
 
 /// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
 pub fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let v = CAR(args);
-        let parent = crate::sexp::accessors::ENCLOS(rho);
-        let vals = crate::sexp::envir::R_findVar(install_str("vals"), parent);
-        let ys = crate::sexp::envir::R_findVar(install_str("ys"), parent);
-        if vals.is_null()
-            || ys.is_null()
-            || TYPEOF(vals) != SEXPTYPE::REALSXP
-            || TYPEOF(ys) != SEXPTYPE::REALSXP
-        {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-        }
-        let nv = XLENGTH(vals) as usize;
-        let nq = XLENGTH(v);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nq);
-        for i in 0..nq {
-            let q = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                real_elt_checked(v, (i as usize) as R_xlen_t)
-            } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                integer_elt_checked(v, (i as usize) as R_xlen_t) as f64
-            } else {
-                NA_REAL
-            };
-            let mut y = 0.0;
-            for j in 0..nv {
-                if real_elt_checked(vals, (j) as R_xlen_t) <= q {
-                    y = real_elt_checked(ys, (j) as R_xlen_t);
-                } else {
-                    break;
-                }
-            }
-            set_real_checked(result, (i as usize) as R_xlen_t, y);
-        }
-        result
+    let v = CAR(args);
+    let parent = crate::sexp::accessors::ENCLOS(rho);
+    let vals = find_var(install_str("vals"), parent);
+    let ys = find_var(install_str("ys"), parent);
+    if vals.is_null()
+        || ys.is_null()
+        || TYPEOF(vals) != SEXPTYPE::REALSXP
+        || TYPEOF(ys) != SEXPTYPE::REALSXP
+    {
+        return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
     }
+    let nv = XLENGTH(vals) as usize;
+    let nq = XLENGTH(v);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, nq);
+    for i in 0..nq {
+        let q = if TYPEOF(v) == SEXPTYPE::REALSXP {
+            real_elt_checked(v, (i as usize) as R_xlen_t)
+        } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+            integer_elt_checked(v, (i as usize) as R_xlen_t) as f64
+        } else {
+            NA_REAL
+        };
+        let mut y = 0.0;
+        for j in 0..nv {
+            if real_elt_checked(vals, (j) as R_xlen_t) <= q {
+                y = real_elt_checked(ys, (j) as R_xlen_t);
+            } else {
+                break;
+            }
+        }
+        set_real_checked(result, (i as usize) as R_xlen_t, y);
+    }
+    result
 }

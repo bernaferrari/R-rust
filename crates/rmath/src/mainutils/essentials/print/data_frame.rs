@@ -71,39 +71,37 @@ fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
 /// Explicit `digits=` only. NULL/missing keeps the historical cell text
 /// so default frames stay on `elt_to_string`.
 fn data_frame_print_digits(args: SEXP) -> Option<i32> {
-    unsafe {
-        let sym = install_str("digits");
-        let mut arg = args;
-        while !arg.is_null() && arg != R_NilValue() {
-            if TAG(arg) == sym {
-                let mut value = CAR(arg);
-                if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
-                    value = crate::sexp::envir::forcePromise(value);
-                }
-                if value.is_null() || value == R_NilValue() {
-                    return None;
-                }
-                let digits = if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
-                    integer_elt_checked(value, 0)
-                } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
-                    let number = real_elt_checked(value, 0);
-                    if number.is_finite() {
-                        number as i32
-                    } else {
-                        return None;
-                    }
+    let sym = install_str("digits");
+    let mut arg = args;
+    while !arg.is_null() && arg != R_NilValue() {
+        if TAG(arg) == sym {
+            let mut value = CAR(arg);
+            if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+                value = force_promise(value);
+            }
+            if value.is_null() || value == R_NilValue() {
+                return None;
+            }
+            let digits = if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
+                integer_elt_checked(value, 0)
+            } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                let number = real_elt_checked(value, 0);
+                if number.is_finite() {
+                    number as i32
                 } else {
                     return None;
-                };
-                if digits == NA_INTEGER || digits < 1 {
-                    return None;
                 }
-                return Some(digits);
+            } else {
+                return None;
+            };
+            if digits == NA_INTEGER || digits < 1 {
+                return None;
             }
-            arg = CDR(arg);
+            return Some(digits);
         }
-        None
+        arg = CDR(arg);
     }
+    None
 }
 
 fn plain_numeric_column(col: SEXP) -> bool {
@@ -722,7 +720,7 @@ fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usi
 /// as.data.frame.list assembly with cut.names).
 pub fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = crate::sexp::envir::R_findVarInFrame(
+        let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("format.data.frame"),
         );

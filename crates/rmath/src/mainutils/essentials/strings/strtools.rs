@@ -9,7 +9,7 @@ pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let missing = crate::sexp::globals::R_MissingArg();
         let force = |v: SEXP| -> SEXP {
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(v)
+                force_promise(v)
             } else {
                 v
             }
@@ -253,7 +253,7 @@ pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
 pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = crate::sexp::envir::R_findVarInFrame(
+        let fun = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("strwrap"),
         );

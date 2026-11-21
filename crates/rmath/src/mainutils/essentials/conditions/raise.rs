@@ -216,36 +216,34 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `warnings()` — return `last.warning` as a `"warnings"` object.
 pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let sym = install_str("last.warning");
-        let mut last = crate::sexp::accessors::SYMVALUE(sym);
-        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-        {
-            last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
-        }
-        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-        {
-            last = crate::sexp::envir::R_findVar(sym, crate::sexp::globals::R_BaseEnv());
-        }
-        if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
-        {
-            last = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        }
-        let _last = protect(last);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _class = protect(class);
-        {
-            let owner = active_owner();
-            if let (Ok(mut class_mut), Ok(charsxp)) = (
-                owner.sexp(class).and_then(SexpMut::try_from_checked),
-                owner.sexp(mk_char_cstr(c"warnings")),
-            ) {
-                let _ = class_mut.try_set_string_elt(0, charsxp);
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(last, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        last
+    let sym = install_str("last.warning");
+    let mut last = crate::sexp::accessors::SYMVALUE(sym);
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
+    {
+        last = find_var(sym, crate::sexp::globals::R_BaseEnv());
     }
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
+    {
+        last = find_var(sym, crate::sexp::globals::R_BaseEnv());
+    }
+    if last.is_null() || last == R_NilValue() || last == crate::sexp::globals::R_UnboundValue()
+    {
+        last = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+    }
+    let _last = protect(last);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _class = protect(class);
+    {
+        let owner = active_owner();
+        if let (Ok(mut class_mut), Ok(charsxp)) = (
+            owner.sexp(class).and_then(SexpMut::try_from_checked),
+            owner.sexp(mk_char_cstr(c"warnings")),
+        ) {
+            let _ = class_mut.try_set_string_elt(0, charsxp);
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(last, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    last
 }
 
 /// R's `message(...)` — print message.

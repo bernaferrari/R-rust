@@ -7,7 +7,7 @@ pub fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = crate::sexp::envir::forcePromise(x);
+            x = force_promise(x);
         }
         let value = CAR(CDR(args));
         let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";
@@ -145,7 +145,7 @@ pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // so TYPEOF stays PROMSXP and tag-clearing is skipped.
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = crate::sexp::envir::forcePromise(x);
+            x = force_promise(x);
             owner
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -153,7 +153,7 @@ pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let mut value = CAR(CDR(args));
         if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = crate::sexp::envir::forcePromise(value);
+            value = force_promise(value);
             owner
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -947,12 +947,10 @@ pub fn comment_symbol() -> SEXP {
 }
 
 fn force_namespace_value(value: SEXP) -> SEXP {
-    unsafe {
-        if !value.is_null() && value != R_UnboundValue() && TYPEOF(value) == SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(value)
-        } else {
-            value
-        }
+    if !value.is_null() && value != R_UnboundValue() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+        force_promise(value)
+    } else {
+        value
     }
 }
 
@@ -972,27 +970,25 @@ fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
 /// GNU's original getExportedValue closure uses the same namespace identity
 /// and export-name mapping as qualified lookup, including dotted exports.
 pub fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let ns_arg = CAR(args);
-        let base = crate::sexp::envir::R_BaseNamespace();
-        let info_symbol = install_str(".__NAMESPACE__.");
-        let namespace = if ns_arg == base
-            || (TYPEOF(ns_arg) == SEXPTYPE::ENVSXP
-                && TYPEOF(crate::sexp::envir::R_findVarInFrame(ns_arg, info_symbol))
-                    == SEXPTYPE::ENVSXP)
-        {
-            ns_arg
-        } else {
-            let package = namespace_lookup_name(ns_arg, "bad namespace name");
-            let package = symbol_name(package).unwrap_or_default();
-            load_package_namespace_by_name(&package)
-                .unwrap_or_else(|message| package_error(message))
-        };
-        let _namespace = protect(namespace);
-        let name = namespace_lookup_name(CAR(CDR(args)), "bad variable name");
-        let exported = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args)))) != FALSE;
-        namespace_value(namespace, name, exported)
-    }
+    let ns_arg = CAR(args);
+    let base = crate::sexp::envir::R_BaseNamespace();
+    let info_symbol = install_str(".__NAMESPACE__.");
+    let namespace = if ns_arg == base
+        || (TYPEOF(ns_arg) == SEXPTYPE::ENVSXP
+            && TYPEOF(find_var_in_frame(ns_arg, info_symbol))
+                == SEXPTYPE::ENVSXP)
+    {
+        ns_arg
+    } else {
+        let package = namespace_lookup_name(ns_arg, "bad namespace name");
+        let package = symbol_name(package).unwrap_or_default();
+        load_package_namespace_by_name(&package)
+            .unwrap_or_else(|message| package_error(message))
+    };
+    let _namespace = protect(namespace);
+    let name = namespace_lookup_name(CAR(CDR(args)), "bad variable name");
+    let exported = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args)))) != FALSE;
+    namespace_value(namespace, name, exported)
 }
 
 fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
@@ -1000,7 +996,7 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
         let _namespace = protect(namespace);
         let base = crate::sexp::envir::R_BaseNamespace();
         if namespace == base || !exported {
-            let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            let value = find_var_in_frame(namespace, name);
             if value == R_UnboundValue() {
                 package_error(format!(
                     "object '{}' not found",
@@ -1013,7 +1009,7 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
             crate::mainutils::essentials::shared::namespace_export_environment(namespace)
         {
             let _exports = protect(exports);
-            let alias = crate::sexp::envir::R_findVarInFrame(exports, name);
+            let alias = find_var_in_frame(exports, name);
             if alias != R_UnboundValue() {
                 let _alias = protect(alias);
                 let alias = force_namespace_value(alias);
@@ -1031,19 +1027,19 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
                 return crate::eval::eval::Rf_eval(alias, namespace);
             }
         }
-        let info = crate::sexp::envir::R_findVarInFrame(
+        let info = find_var_in_frame(
             namespace,
             install_str(".__NAMESPACE__."),
         );
         let _info = protect(info);
-        let lazy = crate::sexp::envir::R_findVarInFrame(info, install_str("lazydata"));
+        let lazy = find_var_in_frame(info, install_str("lazydata"));
         if TYPEOF(lazy) == SEXPTYPE::ENVSXP {
-            let value = crate::sexp::envir::R_findVarInFrame(lazy, name);
+            let value = find_var_in_frame(lazy, name);
             if value != R_UnboundValue() {
                 return force_namespace_value(value);
             }
         }
-        let spec = crate::sexp::envir::R_findVarInFrame(info, install_str("spec"));
+        let spec = find_var_in_frame(info, install_str("spec"));
         package_error(format!(
             "'{}' is not an exported object from 'namespace:{}'",
             symbol_name(name).unwrap_or_default(),
@@ -1086,7 +1082,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ));
             }
             let namespace = crate::mainutils::portable_grid::namespace();
-            return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
+            return force_namespace_value(find_var_in_frame(namespace, name));
         }
 
         if package_name == "compiler" {
@@ -1097,7 +1093,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let namespace = crate::eval::compiler::namespace();
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-            return force_namespace_value(crate::sexp::envir::R_findVarInFrame(namespace, name));
+            return force_namespace_value(find_var_in_frame(namespace, name));
         }
 
         if package_name == "tools" {
@@ -1149,7 +1145,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             {
                 if let Ok(namespace) = load_package_namespace_by_name("tools") {
                     crate::library::tools::native_calls::install_tools_assert_closures(namespace);
-                    let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+                    let value = find_var_in_frame(namespace, name);
                     if value != crate::sexp::globals::R_UnboundValue() {
                         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                         return force_namespace_value(value);
@@ -1215,13 +1211,13 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     message: format!("object '{lookup_name}' not found"),
                 });
             }
-            let mut value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            let mut value = find_var_in_frame(namespace, name);
             if !private_lookup
                 && (value == crate::sexp::globals::R_UnboundValue() || value.is_null())
             {
                 let parent = crate::sexp::accessors::ENCLOS(namespace);
                 if !parent.is_null() && parent != R_NilValue() {
-                    value = crate::sexp::envir::R_findVarInFrame(parent, name);
+                    value = find_var_in_frame(parent, name);
                 }
             }
             if value == crate::sexp::globals::R_UnboundValue() {
@@ -1253,7 +1249,7 @@ fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP
         let sym = crate::sexp::symbol::Rf_install(
             std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
         );
-        let value = crate::sexp::envir::R_findVarInFrame(scratch, sym);
+        let value = find_var_in_frame(scratch, sym);
         if value == crate::sexp::globals::R_UnboundValue() || value.is_null() {
             None
         } else {

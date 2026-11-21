@@ -2411,61 +2411,59 @@ pub fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `registerS3method(generic, class, method)` — register S3 method.
 pub fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let generic = elt_to_string(CAR(args), 0);
-        let class = elt_to_string(CAR(CDR(args)), 0);
-        let mut method = CAR(CDR(CDR(args)));
-        let env_arg = CDR(CDR(CDR(args)));
-        let target_env = if !env_arg.is_null() && env_arg != R_NilValue() {
-            CAR(env_arg)
+    let generic = elt_to_string(CAR(args), 0);
+    let class = elt_to_string(CAR(CDR(args)), 0);
+    let mut method = CAR(CDR(CDR(args)));
+    let env_arg = CDR(CDR(CDR(args)));
+    let target_env = if !env_arg.is_null() && env_arg != R_NilValue() {
+        CAR(env_arg)
+    } else {
+        rho
+    };
+    if TYPEOF(method) == SEXPTYPE::PROMSXP {
+        force_promise(method);
+        method = crate::sexp::accessors::PRVALUE(method);
+    }
+    if TYPEOF(method) == SEXPTYPE::SYMSXP {
+        let looked = find_fun(method, target_env);
+        if is_function_value(looked) {
+            method = looked;
         } else {
-            rho
-        };
-        if TYPEOF(method) == SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(method);
-            method = crate::sexp::accessors::PRVALUE(method);
-        }
-        if TYPEOF(method) == SEXPTYPE::SYMSXP {
-            let looked = crate::sexp::envir::findFun(method, target_env);
+            let looked = find_fun(method, rho);
             if is_function_value(looked) {
                 method = looked;
-            } else {
-                let looked = crate::sexp::envir::findFun(method, rho);
-                if is_function_value(looked) {
-                    method = looked;
-                }
             }
         }
-        if !is_function_value(method) {
-            let composed = format!("{generic}.{class}");
-            if let Ok(cname) = CString::new(composed) {
-                let sym = install_cstr(&cname);
-                let mut bound = crate::sexp::envir::R_findVarInFrame(target_env, sym);
-                if TYPEOF(bound) == SEXPTYPE::PROMSXP {
-                    crate::sexp::envir::forcePromise(bound);
-                    bound = crate::sexp::accessors::PRVALUE(bound);
-                }
-                if is_function_value(bound) {
-                    method = bound;
-                }
-            }
-        }
-        let gen_sym = {
-            let cname = CString::new(generic.clone()).unwrap_or_default();
-            install_cstr(&cname)
-        };
-        let genfun = crate::sexp::envir::findFun(gen_sym, target_env);
-        let defenv = if TYPEOF(genfun) == SEXPTYPE::CLOSXP {
-            crate::sexp::accessors::CLOENV(genfun)
-        } else {
-            crate::eval::runtime::base_env()
-        };
-        if let Err(message) = define_s3_method(defenv, &generic, &class, method) {
-            package_error(message);
-        }
-        crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
     }
+    if !is_function_value(method) {
+        let composed = format!("{generic}.{class}");
+        if let Ok(cname) = CString::new(composed) {
+            let sym = install_cstr(&cname);
+            let mut bound = find_var_in_frame(target_env, sym);
+            if TYPEOF(bound) == SEXPTYPE::PROMSXP {
+                force_promise(bound);
+                bound = crate::sexp::accessors::PRVALUE(bound);
+            }
+            if is_function_value(bound) {
+                method = bound;
+            }
+        }
+    }
+    let gen_sym = {
+        let cname = CString::new(generic.clone()).unwrap_or_default();
+        install_cstr(&cname)
+    };
+    let genfun = find_fun(gen_sym, target_env);
+    let defenv = if TYPEOF(genfun) == SEXPTYPE::CLOSXP {
+        crate::sexp::accessors::CLOENV(genfun)
+    } else {
+        crate::eval::runtime::base_env()
+    };
+    if let Err(message) = define_s3_method(defenv, &generic, &class, method) {
+        package_error(message);
+    }
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
 }
 
 pub(crate) fn s3_methods_table_symbol() -> SEXP {
@@ -2473,32 +2471,30 @@ pub(crate) fn s3_methods_table_symbol() -> SEXP {
 }
 
 pub(crate) fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
-    unsafe {
-        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return Err("S3 method registration requires an environment".to_string());
-        }
-
-        let table_sym = s3_methods_table_symbol();
-        let existing = crate::sexp::envir::R_findVarInFrame(env, table_sym);
-        if !existing.is_null()
-            && existing != crate::sexp::globals::R_UnboundValue()
-            && TYPEOF(existing) == SEXPTYPE::ENVSXP
-        {
-            return Ok(existing);
-        }
-
-        let table = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            crate::sexp::globals::R_BaseEnv(),
-            R_NilValue(),
-        );
-        if table.is_null() {
-            return Err("could not create S3 methods table".to_string());
-        }
-        let _table_guard = crate::sexp::protect::protect(table);
-        crate::sexp::envir::defineVar(table_sym, table, env);
-        Ok(table)
+    if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        return Err("S3 method registration requires an environment".to_string());
     }
+
+    let table_sym = s3_methods_table_symbol();
+    let existing = find_var_in_frame(env, table_sym);
+    if !existing.is_null()
+        && existing != crate::sexp::globals::R_UnboundValue()
+        && TYPEOF(existing) == SEXPTYPE::ENVSXP
+    {
+        return Ok(existing);
+    }
+
+    let table = crate::sexp::memory_ext::NewEnvironment(
+        R_NilValue(),
+        crate::sexp::globals::R_BaseEnv(),
+        R_NilValue(),
+    );
+    if table.is_null() {
+        return Err("could not create S3 methods table".to_string());
+    }
+    let _table_guard = crate::sexp::protect::protect(table);
+    define_var(table_sym, table, env);
+    Ok(table)
 }
 
 pub(crate) fn define_s3_method(
@@ -2507,39 +2503,35 @@ pub(crate) fn define_s3_method(
     class: &str,
     method: SEXP,
 ) -> Result<(), String> {
-    unsafe {
-        if !is_function_value(method) && TYPEOF(method) != SEXPTYPE::PROMSXP {
-            return Err(format!(
-                "S3 method '{}.{}' must be a function",
-                generic, class
-            ));
-        }
-        let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(generic, class) else {
-            return Err(format!(
-                "invalid S3 method signature '{}.{}'",
-                generic, class
-            ));
-        };
-        let table = ensure_s3_methods_table(env)?;
-        crate::sexp::envir::defineVar(method_sym, method, table);
-        Ok(())
+    if !is_function_value(method) && TYPEOF(method) != SEXPTYPE::PROMSXP {
+        return Err(format!(
+            "S3 method '{}.{}' must be a function",
+            generic, class
+        ));
     }
+    let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(generic, class) else {
+        return Err(format!(
+            "invalid S3 method signature '{}.{}'",
+            generic, class
+        ));
+    };
+    let table = ensure_s3_methods_table(env)?;
+    define_var(method_sym, method, table);
+    Ok(())
 }
 
 fn effective_s3_defrho(rho: SEXP) -> SEXP {
-    unsafe {
-        if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP {
-            crate::sexp::globals::R_GlobalEnv()
+    if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP {
+        crate::sexp::globals::R_GlobalEnv()
+    } else {
+        let namespace_env = find_var_in_frame(rho, namespace_env_symbol());
+        if !namespace_env.is_null()
+            && namespace_env != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(namespace_env) == SEXPTYPE::ENVSXP
+        {
+            namespace_env
         } else {
-            let namespace_env = crate::sexp::envir::R_findVarInFrame(rho, namespace_env_symbol());
-            if !namespace_env.is_null()
-                && namespace_env != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(namespace_env) == SEXPTYPE::ENVSXP
-            {
-                namespace_env
-            } else {
-                rho
-            }
+            rho
         }
     }
 }
@@ -2559,63 +2551,61 @@ pub(crate) fn is_function_value(value: SEXP) -> bool {
 }
 
 fn initialize_generic_dispatch_tables(generic: SEXP) {
-    unsafe {
-        if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
-            return;
-        }
-
-        let f_env = crate::sexp::accessors::CLOENV(generic);
-        if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
-            return;
-        }
-
-        let all_mtable_sym = install_str(".AllMTable");
-        let existing_mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
-        if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
-            let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
-            if !mtable.is_null() {
-                let _table_guard = protect(mtable);
-                crate::sexp::envir::defineVar(all_mtable_sym, mtable, f_env);
-            }
-        }
-
-        let sig_args_sym = install_str(".SigArgs");
-        let sig_length_sym = install_str(".SigLength");
-        let existing_sig_args = crate::sexp::envir::R_findVarInFrame(f_env, sig_args_sym);
-        if existing_sig_args != R_UnboundValue() {
-            return;
-        }
-
-        let mut formals = FORMALS(generic);
-        let mut arg_syms = Vec::new();
-        while !formals.is_null() && formals != R_NilValue() {
-            let tag = TAG(formals);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                arg_syms.push(tag);
-            }
-            formals = CDR(formals);
-        }
-
-        let sigargs = Rf_allocVector3(SEXPTYPE::VECSXP, arg_syms.len() as R_xlen_t);
-        if sigargs.is_null() {
-            return;
-        }
-        let _sigargs_guard = protect(sigargs);
-        let owner = active_owner();
-        if let Ok(mut sigargs_mut) = owner.sexp(sigargs).and_then(SexpMut::try_from_checked) {
-            for (index, sym) in arg_syms.iter().enumerate() {
-                if let Ok(sym_owned) = owner.sexp(*sym) {
-                    let _ = sigargs_mut.try_set_vector_elt(index as R_xlen_t, sym_owned);
-                }
-            }
-        }
-        crate::sexp::envir::defineVar(sig_args_sym, sigargs, f_env);
-        crate::sexp::envir::defineVar(
-            sig_length_sym,
-            Rf_ScalarInteger(arg_syms.len() as c_int),
-            f_env,
-        );
+    if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
+        return;
     }
+
+    let f_env = crate::sexp::accessors::CLOENV(generic);
+    if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+        return;
+    }
+
+    let all_mtable_sym = install_str(".AllMTable");
+    let existing_mtable = find_var_in_frame(f_env, all_mtable_sym);
+    if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
+        let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
+        if !mtable.is_null() {
+            let _table_guard = protect(mtable);
+            define_var(all_mtable_sym, mtable, f_env);
+        }
+    }
+
+    let sig_args_sym = install_str(".SigArgs");
+    let sig_length_sym = install_str(".SigLength");
+    let existing_sig_args = find_var_in_frame(f_env, sig_args_sym);
+    if existing_sig_args != R_UnboundValue() {
+        return;
+    }
+
+    let mut formals = FORMALS(generic);
+    let mut arg_syms = Vec::new();
+    while !formals.is_null() && formals != R_NilValue() {
+        let tag = TAG(formals);
+        if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            arg_syms.push(tag);
+        }
+        formals = CDR(formals);
+    }
+
+    let sigargs = Rf_allocVector3(SEXPTYPE::VECSXP, arg_syms.len() as R_xlen_t);
+    if sigargs.is_null() {
+        return;
+    }
+    let _sigargs_guard = protect(sigargs);
+    let owner = active_owner();
+    if let Ok(mut sigargs_mut) = owner.sexp(sigargs).and_then(SexpMut::try_from_checked) {
+        for (index, sym) in arg_syms.iter().enumerate() {
+            if let Ok(sym_owned) = owner.sexp(*sym) {
+                let _ = sigargs_mut.try_set_vector_elt(index as R_xlen_t, sym_owned);
+            }
+        }
+    }
+    define_var(sig_args_sym, sigargs, f_env);
+    define_var(
+        sig_length_sym,
+        Rf_ScalarInteger(arg_syms.len() as c_int),
+        f_env,
+    );
 }
 
 /// R's `setGeneric(f, fdef, ...)` — set generic function.
@@ -2695,13 +2685,13 @@ pub fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     } else {
                         crate::sexp::globals::R_GlobalEnv()
                     };
-                let existing = crate::sexp::envir::R_findVarInFrame(target_env, name_sym);
+                let existing = find_var_in_frame(target_env, name_sym);
                 let already_generic = !existing.is_null()
                     && existing != R_UnboundValue()
                     && is_function_type(existing)
                     && crate::eval::attrib_core::isObject(existing) != FALSE;
                 if !already_generic {
-                    crate::sexp::envir::defineVar(name_sym, generic, target_env);
+                    define_var(name_sym, generic, target_env);
                 }
             }
         }
@@ -2793,7 +2783,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let all_mtable_sym = install_str(".AllMTable");
-        let existing = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
+        let existing = find_var_in_frame(f_env, all_mtable_sym);
         let mtable = if !existing.is_null()
             && existing != R_UnboundValue()
             && TYPEOF(existing) == SEXPTYPE::ENVSXP
@@ -2805,7 +2795,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 return definition;
             }
             let _table_guard = protect(table);
-            crate::sexp::envir::defineVar(all_mtable_sym, table, f_env);
+            define_var(all_mtable_sym, table, f_env);
             table
         };
 
@@ -2817,7 +2807,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 crate::eval::attrib_core::getAttrib(signature_arg, install_str("names"));
             if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
                 let sigargs =
-                    crate::sexp::envir::R_findVarInFrame(f_env, install_str(".SigArgs"));
+                    find_var_in_frame(f_env, install_str(".SigArgs"));
                 if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
                     base_error("generic has no valid signature arguments");
                 }
@@ -2856,7 +2846,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 ordered.join("#")
             } else {
                 let sigargs =
-                    crate::sexp::envir::R_findVarInFrame(f_env, install_str(".SigArgs"));
+                    find_var_in_frame(f_env, install_str(".SigArgs"));
                 if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
                     base_error("generic has no valid signature arguments");
                 }
@@ -2880,7 +2870,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
 
         let method_sym = Rf_install(CString::new(label).unwrap_or_default().as_ptr());
-        crate::sexp::envir::defineVar(method_sym, definition, mtable);
+        define_var(method_sym, definition, mtable);
 
         definition
     }

@@ -1,5 +1,5 @@
 //! Original-domain environment arguments remain owned through admission and writes.
-use crate::mainutils::essentials::{install_cstr, install_str};
+use crate::mainutils::essentials::{find_var_in_frame, install_cstr, install_str};
 use crate::sexp::{
     ffi::{SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpResult},
@@ -62,12 +62,12 @@ fn lookup(
     env: &Sexp<'static>,
     name: &std::ffi::CStr,
 ) -> SexpResult<Sexp<'static>> {
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         let symbol = owner
             .sexp(install_cstr(&name))?
             .into_owned()?;
         owner
-            .sexp(crate::sexp::envir::R_findVarInFrame(
+            .sexp(find_var_in_frame(
                 env.as_raw(),
                 symbol.as_raw(),
             ))?

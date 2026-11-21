@@ -1,5 +1,5 @@
 //! Rooted public `1 + as.logical(expon.scaled)` evaluation.
-use crate::mainutils::essentials::install_cstr;
+use crate::mainutils::essentials::{find_fun, install_cstr};
 use crate::sexp::{
     object::{Sexp, SexpResult},
     owner::OwnerToken,
@@ -19,7 +19,7 @@ pub(super) fn prepare(
         owner.require_active()?;
         let symbol = root(install_cstr(&name))?;
         owner.require_active()?;
-        let raw = unsafe { crate::sexp::envir::findFun(symbol.as_raw(), base.as_raw()) };
+        let raw = find_fun(symbol.as_raw(), base.as_raw());
         owner.require_active()?;
         root(raw)
     };

@@ -39,59 +39,57 @@ pub(crate) fn populate_package_namespace(
     loading: &mut Vec<String>,
     fields: &BTreeMap<String, String>,
 ) -> Result<Option<NamespaceDirectives>, String> {
-    unsafe {
-        let namespace = read_namespace_directives(package_dir)?;
-        if let Some(directives) = namespace.as_ref() {
-            // Installed GNU metadata applies Imports constraints only to
-            // packages referenced by NAMESPACE import directives. Check
-            // before imports or package source can observe this namespace.
-            check_dependency_versions(package, fields, "Imports", |dependency| {
-                directives
-                    .imports
-                    .iter()
-                    .any(|import| import.package() == dependency)
-            })?;
+    let namespace = read_namespace_directives(package_dir)?;
+    if let Some(directives) = namespace.as_ref() {
+        // Installed GNU metadata applies Imports constraints only to
+        // packages referenced by NAMESPACE import directives. Check
+        // before imports or package source can observe this namespace.
+        check_dependency_versions(package, fields, "Imports", |dependency| {
+            directives
+                .imports
+                .iter()
+                .any(|import| import.package() == dependency)
+        })?;
+    }
+    apply_description_depends(package, package_dir, package_env, loading)?;
+    if let Some(directives) = namespace.as_ref() {
+        if !is_builtin_package_dependency(package) {
+            reject_native_namespace_directives(package, directives)?;
         }
-        apply_description_depends(package, package_dir, package_env, loading)?;
-        if let Some(directives) = namespace.as_ref() {
-            if !is_builtin_package_dependency(package) {
-                reject_native_namespace_directives(package, directives)?;
-            }
-            apply_namespace_imports(package, package_env, directives, loading)?;
-        }
+        apply_namespace_imports(package, package_env, directives, loading)?;
+    }
 
-        source_package_r_files(package, package_dir, package_env)?;
-        let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
-        define_lazy_data_names(package_env, &lazy_data_names);
-        if let Some(directives) = namespace.as_ref() {
-            // The namespace metadata must exist before registration records
-            // its declarations; the final refresh also publishes later exports.
-            ensure_namespace_info(package, package_dir, package_env, Some(directives));
-            if crate::mainutils::browser_files::enabled() {
-                let exports = namespace_export_environment(package_env)
-                    .ok_or_else(|| format!("browser package '{package}' has no exports table"))?;
-                for name in &directives.exports {
-                    let key = CString::new(name.as_str()).map_err(|_| {
-                        format!("browser package '{package}' has an invalid export")
-                    })?;
-                    let value =
-                        crate::sexp::envir::R_findVarInFrame(exports, install_cstr(&key));
-                    if value == crate::sexp::globals::R_UnboundValue() {
-                        return Err(format!(
-                            "browser package '{package}' is missing export '{name}'"
-                        ));
-                    }
+    source_package_r_files(package, package_dir, package_env)?;
+    let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
+    define_lazy_data_names(package_env, &lazy_data_names);
+    if let Some(directives) = namespace.as_ref() {
+        // The namespace metadata must exist before registration records
+        // its declarations; the final refresh also publishes later exports.
+        ensure_namespace_info(package, package_dir, package_env, Some(directives));
+        if crate::mainutils::browser_files::enabled() {
+            let exports = namespace_export_environment(package_env)
+                .ok_or_else(|| format!("browser package '{package}' has no exports table"))?;
+            for name in &directives.exports {
+                let key = CString::new(name.as_str()).map_err(|_| {
+                    format!("browser package '{package}' has an invalid export")
+                })?;
+                let value =
+                    find_var_in_frame(exports, install_cstr(&key));
+                if value == crate::sexp::globals::R_UnboundValue() {
+                    return Err(format!(
+                        "browser package '{package}' is missing export '{name}'"
+                    ));
                 }
             }
-            register_namespace_s3_methods(
-                package,
-                package_env,
-                directives,
-                S3MethodMetadata::Record,
-            )?;
         }
-        Ok(namespace)
+        register_namespace_s3_methods(
+            package,
+            package_env,
+            directives,
+            S3MethodMetadata::Record,
+        )?;
     }
+    Ok(namespace)
 }
 
 pub(crate) fn apply_description_depends(
@@ -145,38 +143,36 @@ pub(super) fn bind_cached_builtin_imports(
     package_env: SEXP,
     import: &NamespaceImport,
 ) -> Result<(), String> {
-    unsafe {
-        let import_package = import.package();
-        let Some(import_env) = cached_namespace_by_name(import_package) else {
-            return Ok(());
-        };
-        let imported_names = match import {
-            NamespaceImport::All { .. } => {
-                let names = namespace_info_export_names(import_env);
-                if names.is_empty() {
-                    namespace_exports(None, import_env)
-                } else {
-                    names
-                }
+    let import_package = import.package();
+    let Some(import_env) = cached_namespace_by_name(import_package) else {
+        return Ok(());
+    };
+    let imported_names = match import {
+        NamespaceImport::All { .. } => {
+            let names = namespace_info_export_names(import_env);
+            if names.is_empty() {
+                namespace_exports(None, import_env)
+            } else {
+                names
             }
-            NamespaceImport::From { names, .. } => names.clone(),
-        };
-        for name in imported_names {
-            let Ok(symbol_name) = CString::new(name.as_str()) else {
-                continue;
-            };
-            let symbol = install_cstr(&symbol_name);
-            let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
-            if value.is_null()
-                || value == R_NilValue()
-                || value == crate::sexp::globals::R_UnboundValue()
-            {
-                continue;
-            }
-            crate::sexp::envir::defineVar(symbol, value, namespace_imports_env(package_env));
         }
-        Ok(())
+        NamespaceImport::From { names, .. } => names.clone(),
+    };
+    for name in imported_names {
+        let Ok(symbol_name) = CString::new(name.as_str()) else {
+            continue;
+        };
+        let symbol = install_cstr(&symbol_name);
+        let value = find_var_in_frame(import_env, symbol);
+        if value.is_null()
+            || value == R_NilValue()
+            || value == crate::sexp::globals::R_UnboundValue()
+        {
+            continue;
+        }
+        define_var(symbol, value, namespace_imports_env(package_env));
     }
+    Ok(())
 }
 
 pub(crate) fn apply_namespace_imports(
@@ -252,73 +248,69 @@ fn bind_namespace_imports(
     import_env: SEXP,
     namespace: Option<&NamespaceDirectives>,
 ) -> Result<(), String> {
-    unsafe {
-        let _import_guard = crate::sexp::protect::protect(import_env);
+    let _import_guard = crate::sexp::protect::protect(import_env);
 
-        let imported_names = match import {
-            NamespaceImport::All { .. } => match namespace_export_environment(import_env) {
-                Some(exports) => frame_binding_names(exports, true),
-                None => namespace_exports(namespace, import_env),
-            },
-            NamespaceImport::From { names, .. } => names.clone(),
+    let imported_names = match import {
+        NamespaceImport::All { .. } => match namespace_export_environment(import_env) {
+            Some(exports) => frame_binding_names(exports, true),
+            None => namespace_exports(namespace, import_env),
+        },
+        NamespaceImport::From { names, .. } => names.clone(),
+    };
+
+    let mut missing = Vec::new();
+    for name in imported_names {
+        let Ok(symbol_name) = CString::new(name.as_str()) else {
+            missing.push(name);
+            continue;
         };
-
-        let mut missing = Vec::new();
-        for name in imported_names {
-            let Ok(symbol_name) = CString::new(name.as_str()) else {
-                missing.push(name);
-                continue;
-            };
-            let symbol = install_cstr(&symbol_name);
-            let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
-            if value.is_null()
-                || value == R_NilValue()
-                || value == crate::sexp::globals::R_UnboundValue()
-            {
-                missing.push(name);
-            } else {
-                crate::sexp::envir::defineVar(symbol, value, namespace_imports_env(package_env));
-            }
-        }
-
-        if missing.is_empty() {
-            Ok(())
+        let symbol = install_cstr(&symbol_name);
+        let value = find_var_in_frame(import_env, symbol);
+        if value.is_null()
+            || value == R_NilValue()
+            || value == crate::sexp::globals::R_UnboundValue()
+        {
+            missing.push(name);
         } else {
-            Err(format!(
-                "package '{}' imports undefined objects from '{}': {}",
-                package,
-                import.package(),
-                missing.join(", ")
-            ))
+            define_var(symbol, value, namespace_imports_env(package_env));
         }
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "package '{}' imports undefined objects from '{}': {}",
+            package,
+            import.package(),
+            missing.join(", ")
+        ))
     }
 }
 
 pub(super) fn namespace_imports_env(package_env: SEXP) -> SEXP {
-    unsafe {
-        let parent = crate::sexp::accessors::ENCLOS(package_env);
-        let marker = install_str(".__imports__.");
-        if !parent.is_null()
-            && parent != R_NilValue()
-            && TYPEOF(parent) == SEXPTYPE::ENVSXP
-            && crate::sexp::envir::R_findVarInFrame(parent, marker)
-                != crate::sexp::globals::R_UnboundValue()
-        {
-            return parent;
-        }
-        let imports = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            if parent.is_null() {
-                crate::sexp::envir::R_BaseNamespace()
-            } else {
-                parent
-            },
-            R_NilValue(),
-        );
-        crate::sexp::envir::defineVar(marker, Rf_ScalarLogical(1), imports);
-        crate::sexp::accessors::SET_ENCLOS(package_env, imports);
-        imports
+    let parent = crate::sexp::accessors::ENCLOS(package_env);
+    let marker = install_str(".__imports__.");
+    if !parent.is_null()
+        && parent != R_NilValue()
+        && TYPEOF(parent) == SEXPTYPE::ENVSXP
+        && find_var_in_frame(parent, marker)
+            != crate::sexp::globals::R_UnboundValue()
+    {
+        return parent;
     }
+    let imports = crate::sexp::memory_ext::NewEnvironment(
+        R_NilValue(),
+        if parent.is_null() {
+            crate::sexp::envir::R_BaseNamespace()
+        } else {
+            parent
+        },
+        R_NilValue(),
+    );
+    define_var(marker, Rf_ScalarLogical(1), imports);
+    crate::sexp::accessors::SET_ENCLOS(package_env, imports);
+    imports
 }
 
 pub(crate) fn make_package_attach_env(
@@ -362,13 +354,13 @@ pub(super) fn make_package_attach_env_inner(
         let _attach_guard = crate::sexp::protect::protect(attach_env);
 
         define_package_metadata(package, attach_env);
-        crate::sexp::envir::defineVar(namespace_env_symbol(), package_env, attach_env);
-        let s3_table = crate::sexp::envir::R_findVarInFrame(package_env, s3_methods_table_symbol());
+        define_var(namespace_env_symbol(), package_env, attach_env);
+        let s3_table = find_var_in_frame(package_env, s3_methods_table_symbol());
         if !s3_table.is_null()
             && s3_table != crate::sexp::globals::R_UnboundValue()
             && TYPEOF(s3_table) == SEXPTYPE::ENVSXP
         {
-            crate::sexp::envir::defineVar(s3_methods_table_symbol(), s3_table, attach_env);
+            define_var(s3_methods_table_symbol(), s3_table, attach_env);
         }
 
         let mut exports = namespace_exports(Some(directives), package_env);
@@ -407,12 +399,12 @@ pub(super) fn make_package_attach_env_inner(
                 continue;
             };
             let symbol = install_cstr(&symbol_name);
-            let mut value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
+            let mut value = find_var_in_frame(package_env, symbol);
             if value.is_null()
                 || value == R_NilValue()
                 || value == crate::sexp::globals::R_UnboundValue()
             {
-                value = crate::sexp::envir::R_findVar(symbol, package_env);
+                value = find_var(symbol, package_env);
             }
             if package == "graphics"
                 && export == "plot"
@@ -432,7 +424,7 @@ pub(super) fn make_package_attach_env_inner(
                 }
                 continue;
             }
-            crate::sexp::envir::defineVar(symbol, value, attach_env);
+            define_var(symbol, value, attach_env);
         }
 
         if package == "methods" {

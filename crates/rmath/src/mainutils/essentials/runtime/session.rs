@@ -252,12 +252,12 @@ pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let nm = elt_to_string(names, i);
             let cname = CString::new(nm.as_str()).unwrap_or_default();
             let sym = install_cstr(&cname);
-            let mut val = crate::sexp::envir::R_findVar(sym, env);
+            let mut val = find_var(sym, env);
             if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }
             if TYPEOF(val) == SEXPTYPE::PROMSXP {
-                val = crate::sexp::envir::forcePromise(val);
+                val = force_promise(val);
             }
             let lines = deparse_lines(val);
             if crate::mainutils::deparse::isValidName(cname.as_ptr()) {

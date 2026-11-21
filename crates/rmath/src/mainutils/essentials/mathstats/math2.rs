@@ -631,7 +631,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let missing = crate::sexp::globals::R_MissingArg();
         let force = |v: SEXP| -> SEXP {
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
-                crate::sexp::envir::forcePromise(v)
+                force_promise(v)
             } else {
                 v
             }

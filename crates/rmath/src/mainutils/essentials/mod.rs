@@ -248,6 +248,6 @@ pub fn register_essentials_builtins(env: SEXP) {
         .expect("base Recall wrapper parses");
         let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
         let _recall = protect(recall);
-        crate::sexp::envir::defineVar(install_str("Recall"), recall, env);
+        define_var(install_str("Recall"), recall, env);
     }
 }

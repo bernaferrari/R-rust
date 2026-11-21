@@ -1148,7 +1148,7 @@ pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // GNU's as.matrix.data.frame closure (exact base dataframe.R
             // semantics: automatic row names collapse to NULL, matrix and
             // data-frame columns expand, classed columns format).
-            let method = crate::sexp::envir::R_findVarInFrame(
+            let method = find_var_in_frame(
                 crate::sexp::globals::R_BaseEnv(),
                 install_str("as.matrix.data.frame"),
             );
@@ -1165,7 +1165,7 @@ pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         // Run the original default workflow so all vector kinds, names and
         // higher-dimensional arrays share array()'s admission and allocation.
-        let default = crate::sexp::envir::R_findVarInFrame(
+        let default = find_var_in_frame(
             crate::sexp::globals::R_BaseEnv(),
             install_str("as.matrix.default"),
         );

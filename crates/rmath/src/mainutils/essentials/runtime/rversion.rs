@@ -120,14 +120,14 @@ pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         for registry in [".ArgsEnv", ".GenericArgsEnv"] {
             let registry_symbol = Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
-            let registry_env = crate::sexp::envir::R_findVarInFrame(
+            let registry_env = find_var_in_frame(
                 crate::sexp::globals::R_BaseEnv(),
                 registry_symbol,
             );
             if registry_env == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }
-            let prototype = crate::sexp::envir::R_findVarInFrame(registry_env, primitive_symbol);
+            let prototype = find_var_in_frame(registry_env, primitive_symbol);
             if prototype != crate::sexp::globals::R_UnboundValue()
                 && TYPEOF(prototype) == SEXPTYPE::CLOSXP
             {

@@ -63,9 +63,9 @@ pub fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             false
         } else if mode == "function" {
             let mut value = if inherits {
-                crate::sexp::envir::R_findVar(sym, env)
+                find_var(sym, env)
             } else {
-                crate::sexp::envir::R_findVarInFrame(env, sym)
+                find_var_in_frame(env, sym)
             };
             if TYPEOF(value) == SEXPTYPE::PROMSXP {
                 value = crate::eval::eval::Rf_eval(value, env);
@@ -169,21 +169,19 @@ fn find_numeric_result(matches: &[String]) -> SEXP {
 }
 
 fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -> bool {
-    unsafe {
-        if env.is_null() || env == R_NilValue() {
-            return false;
-        }
-        let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
-        let is_base_builtin = env == crate::sexp::globals::R_BaseEnv()
-            && crate::eval::builtin::has_builtin_handler(name);
-        if value == R_UnboundValue() {
-            return !want_function && is_base_builtin;
-        }
-        if want_function {
-            is_function_value(value) || is_base_builtin
-        } else {
-            true
-        }
+    if env.is_null() || env == R_NilValue() {
+        return false;
+    }
+    let value = find_var_in_frame(env, symbol);
+    let is_base_builtin = env == crate::sexp::globals::R_BaseEnv()
+        && crate::eval::builtin::has_builtin_handler(name);
+    if value == R_UnboundValue() {
+        return !want_function && is_base_builtin;
+    }
+    if want_function {
+        is_function_value(value) || is_base_builtin
+    } else {
+        true
     }
 }
 
@@ -422,7 +420,7 @@ pub fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let env = environment_arg_or_default(args, &["envir", "pos"], 2, rho);
-        crate::sexp::envir::defineVar(
+        define_var(
             Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
             val,
             env,
@@ -540,7 +538,7 @@ pub fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 continue;
             };
             let sym = Rf_install(CString::new(text).unwrap_or_default().as_ptr());
-            let val = crate::sexp::envir::R_findVarInFrame(env, sym);
+            let val = find_var_in_frame(env, sym);
             if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
                 continue;
             }

@@ -342,9 +342,9 @@ pub(crate) fn load_package_data_set(
                 let sym = crate::sexp::symbol::Rf_install(
                     std::ffi::CString::new(topic).unwrap_or_default().as_ptr(),
                 );
-                let value = crate::sexp::envir::R_findVarInFrame(scratch, sym);
+                let value = find_var_in_frame(scratch, sym);
                 if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
-                    crate::sexp::envir::defineVar(sym, value, target_env);
+                    define_var(sym, value, target_env);
                     return Ok(true);
                 }
             }
@@ -391,7 +391,7 @@ pub(super) fn define_package_name(package: &str, package_env: SEXP) {
     unsafe {
         let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
         if !package_string.is_null() {
-            crate::sexp::envir::defineVar(package_name_symbol(), package_string, package_env);
+            define_var(package_name_symbol(), package_string, package_env);
         }
     }
 }
@@ -421,22 +421,20 @@ pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
 /// GNU utils' `.osVersion()`: a pretty OS description. Assigned into the
 /// utils namespace when its `.onLoad` could not (GNU's zzz.R).
 pub(super) fn ensure_utils_os_version(package_env: SEXP) {
-    unsafe {
-        let sym = install_str("osVersion");
-        let existing = crate::sexp::envir::R_findVarInFrame(package_env, sym);
-        if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
-            return;
-        }
-        let Some(text) = gnu_os_version_string() else {
-            return;
-        };
-        let Ok(cstring) = std::ffi::CString::new(text) else {
-            return;
-        };
-        let value = mk_string_cstr(&cstring);
-        let _v = protect(value);
-        crate::sexp::envir::defineVar(sym, value, package_env);
+    let sym = install_str("osVersion");
+    let existing = find_var_in_frame(package_env, sym);
+    if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
+        return;
     }
+    let Some(text) = gnu_os_version_string() else {
+        return;
+    };
+    let Ok(cstring) = std::ffi::CString::new(text) else {
+        return;
+    };
+    let value = mk_string_cstr(&cstring);
+    let _v = protect(value);
+    define_var(sym, value, package_env);
 }
 
 pub(super) fn gnu_os_version_string() -> Option<String> {
@@ -476,25 +474,23 @@ pub(super) fn gnu_os_version_string() -> Option<String> {
 }
 
 pub(super) fn ensure_s3methods_slot(info: SEXP) {
-    unsafe {
-        let sym = install_str("S3methods");
-        let existing = crate::sexp::envir::R_findVarInFrame(info, sym);
-        if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
-            return;
-        }
-        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        set_integer_checked(dim, 0, 0);
-        set_integer_checked(dim, (1) as R_xlen_t, 4);
-        crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        crate::sexp::envir::defineVar(sym, methods, info);
+    let sym = install_str("S3methods");
+    let existing = find_var_in_frame(info, sym);
+    if !existing.is_null() && existing != crate::sexp::globals::R_UnboundValue() {
+        return;
     }
+    let methods = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    set_integer_checked(dim, 0, 0);
+    set_integer_checked(dim, (1) as R_xlen_t, 4);
+    crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    define_var(sym, methods, info);
 }
 
 pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &NamespaceDirectives) {
     unsafe {
         let info_sym = install_str(".__NAMESPACE__.");
-        let info = crate::sexp::envir::R_findVarInFrame(package_env, info_sym);
+        let info = find_var_in_frame(package_env, info_sym);
         if info.is_null()
             || info == crate::sexp::globals::R_UnboundValue()
             || TYPEOF(info) != SEXPTYPE::ENVSXP
@@ -544,6 +540,6 @@ pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &Names
                 SET_STRING_ELT(methods, row as i64 + col as i64 * i64::from(n), value);
             }
         }
-        crate::sexp::envir::defineVar(sym, methods, info);
+        define_var(sym, methods, info);
     }
 }

@@ -61,47 +61,45 @@ pub(crate) fn namespace_exports_contains(
     package_env: SEXP,
     name: &str,
 ) -> bool {
-    unsafe {
-        // GNU's getNamespaceExports("base") is names(.BaseNamespaceEnv),
-        // not the exports environment stored in .__NAMESPACE__. The latter
-        // can omit bindings that GNU exposes through the base namespace.
-        // Use the live namespace frame so qualified base lookup has the same
-        // authority and still cannot inherit names from the search path.
-        if package_env == crate::sexp::envir::R_BaseNamespace() {
-            return frame_binding_names(package_env, true)
-                .iter()
-                .any(|binding| binding == name);
-        }
-
-        // Portable namespaces have no host NAMESPACE file. Their original
-        // exports environment is also the live authority for namespaceExport
-        // additions; a leading dot does not make an explicit export private.
-        if let Some(exports) = namespace_export_environment(package_env) {
-            let Ok(name) = CString::new(name) else {
-                return false;
-            };
-            let value = crate::sexp::envir::R_findVarInFrame(exports, install_cstr(&name));
-            return !value.is_null() && value != crate::sexp::globals::R_UnboundValue();
-        }
-        let Some(directives) = cached_namespace_directives(package_dir) else {
-            return frame_binding_names(package_env, false)
-                .iter()
-                .any(|n| n == name);
-        };
-        if directives.exports.iter().any(|export| export == name) {
-            return true;
-        }
-        if !directives
-            .export_patterns
+    // GNU's getNamespaceExports("base") is names(.BaseNamespaceEnv),
+    // not the exports environment stored in .__NAMESPACE__. The latter
+    // can omit bindings that GNU exposes through the base namespace.
+    // Use the live namespace frame so qualified base lookup has the same
+    // authority and still cannot inherit names from the search path.
+    if package_env == crate::sexp::envir::R_BaseNamespace() {
+        return frame_binding_names(package_env, true)
             .iter()
-            .any(|pattern| simple_namespace_pattern_matches(pattern, name))
-        {
-            return false;
-        }
-        let c_name = CString::new(name).unwrap_or_else(|_| CString::new("").unwrap());
-        let value = crate::sexp::envir::R_findVarInFrame(package_env, install_cstr(&c_name));
-        !value.is_null() && value != crate::sexp::globals::R_UnboundValue()
+            .any(|binding| binding == name);
     }
+
+    // Portable namespaces have no host NAMESPACE file. Their original
+    // exports environment is also the live authority for namespaceExport
+    // additions; a leading dot does not make an explicit export private.
+    if let Some(exports) = namespace_export_environment(package_env) {
+        let Ok(name) = CString::new(name) else {
+            return false;
+        };
+        let value = find_var_in_frame(exports, install_cstr(&name));
+        return !value.is_null() && value != crate::sexp::globals::R_UnboundValue();
+    }
+    let Some(directives) = cached_namespace_directives(package_dir) else {
+        return frame_binding_names(package_env, false)
+            .iter()
+            .any(|n| n == name);
+    };
+    if directives.exports.iter().any(|export| export == name) {
+        return true;
+    }
+    if !directives
+        .export_patterns
+        .iter()
+        .any(|pattern| simple_namespace_pattern_matches(pattern, name))
+    {
+        return false;
+    }
+    let c_name = CString::new(name).unwrap_or_else(|_| CString::new("").unwrap());
+    let value = find_var_in_frame(package_env, install_cstr(&c_name));
+    !value.is_null() && value != crate::sexp::globals::R_UnboundValue()
 }
 
 pub(crate) fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
@@ -229,93 +227,91 @@ pub(crate) fn register_namespace_s3_methods(
     directives: &NamespaceDirectives,
     metadata: S3MethodMetadata,
 ) -> Result<(), String> {
-    unsafe {
-        if matches!(metadata, S3MethodMetadata::Record) {
-            record_namespace_s3_metadata(package_env, directives);
+    if matches!(metadata, S3MethodMetadata::Record) {
+        record_namespace_s3_metadata(package_env, directives);
+    }
+    for method in &directives.s3_methods {
+        // Upstream loadNamespace strips a "pkg::" qualifier from the
+        // generic when deriving the default method function name:
+        // S3method(utils::.DollarNames, R6) registers the function
+        // `.DollarNames.R6` for generic `.DollarNames`
+        // (base/R/namespace.R: paste0(sub("^.*::", "", generic), ".", class)).
+        let local_generic = method.generic.rsplit("::").next().unwrap_or("");
+        if local_generic.is_empty() {
+            continue;
         }
-        for method in &directives.s3_methods {
-            // Upstream loadNamespace strips a "pkg::" qualifier from the
-            // generic when deriving the default method function name:
-            // S3method(utils::.DollarNames, R6) registers the function
-            // `.DollarNames.R6` for generic `.DollarNames`
-            // (base/R/namespace.R: paste0(sub("^.*::", "", generic), ".", class)).
-            let local_generic = method.generic.rsplit("::").next().unwrap_or("");
-            if local_generic.is_empty() {
-                continue;
-            }
-            let method_name = method
-                .method
-                .clone()
-                .unwrap_or_else(|| format!("{}.{}", local_generic, method.class));
-            let Ok(method_cstr) = CString::new(method_name.as_str()) else {
-                return Err(format!(
-                    "package '{}' has invalid S3 method name '{}'",
-                    package, method_name
-                ));
-            };
-            let method_sym = install_cstr(&method_cstr);
-            let method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
-            if method_value.is_null()
-                || method_value == R_NilValue()
-                || method_value == crate::sexp::globals::R_UnboundValue()
-            {
-                // GNU registerS3methods() skips methods that are not bound
-                // in the namespace (Windows-only utils methods on Unix).
-                continue;
-            }
-            // GNU registers namespace methods lazily. Dispatch forces the
-            // promise; initialization must not deserialize every method body.
-            define_s3_method(package_env, local_generic, &method.class, method_value)?;
+        let method_name = method
+            .method
+            .clone()
+            .unwrap_or_else(|| format!("{}.{}", local_generic, method.class));
+        let Ok(method_cstr) = CString::new(method_name.as_str()) else {
+            return Err(format!(
+                "package '{}' has invalid S3 method name '{}'",
+                package, method_name
+            ));
+        };
+        let method_sym = install_cstr(&method_cstr);
+        let method_value = find_var_in_frame(package_env, method_sym);
+        if method_value.is_null()
+            || method_value == R_NilValue()
+            || method_value == crate::sexp::globals::R_UnboundValue()
+        {
+            // GNU registerS3methods() skips methods that are not bound
+            // in the namespace (Windows-only utils methods on Unix).
+            continue;
+        }
+        // GNU registers namespace methods lazily. Dispatch forces the
+        // promise; initialization must not deserialize every method body.
+        define_s3_method(package_env, local_generic, &method.class, method_value)?;
 
-            // GNU registerS3method admits group generics directly in the base
-            // namespace; there need not be a callable function named "Ops".
-            if matches!(
+        // GNU registerS3method admits group generics directly in the base
+        // namespace; there need not be a callable function named "Ops".
+        if matches!(
+            local_generic,
+            "Math" | "Ops" | "matrixOps" | "Summary" | "Complex"
+        ) {
+            define_s3_method(
+                crate::sexp::envir::R_BaseNamespace(),
                 local_generic,
-                "Math" | "Ops" | "matrixOps" | "Summary" | "Complex"
-            ) {
+                &method.class,
+                method_value,
+            )?;
+            continue;
+        }
+
+        // GNU registerS3method: methods for a closure generic live in
+        // environment(fdef); primitives use .BaseNamespaceEnv.
+        if let Ok(generic_cstr) = CString::new(local_generic) {
+            let generic_sym = install_cstr(&generic_cstr);
+            let fdef = find_fun(generic_sym, package_env);
+            if is_function_value(fdef) {
+                let defenv = if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
+                    crate::sexp::accessors::CLOENV(fdef)
+                } else {
+                    crate::sexp::globals::R_BaseEnv()
+                };
+                if !defenv.is_null()
+                    && TYPEOF(defenv) == SEXPTYPE::ENVSXP
+                    && defenv != package_env
+                {
+                    define_s3_method(defenv, local_generic, &method.class, method_value)?;
+                }
+            }
+            let base_fdef =
+                find_fun(generic_sym, crate::sexp::globals::R_BaseEnv());
+            if TYPEOF(base_fdef) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(base_fdef) == SEXPTYPE::SPECIALSXP
+            {
                 define_s3_method(
-                    crate::sexp::envir::R_BaseNamespace(),
+                    crate::sexp::globals::R_BaseEnv(),
                     local_generic,
                     &method.class,
                     method_value,
                 )?;
-                continue;
-            }
-
-            // GNU registerS3method: methods for a closure generic live in
-            // environment(fdef); primitives use .BaseNamespaceEnv.
-            if let Ok(generic_cstr) = CString::new(local_generic) {
-                let generic_sym = install_cstr(&generic_cstr);
-                let fdef = crate::sexp::envir::findFun(generic_sym, package_env);
-                if is_function_value(fdef) {
-                    let defenv = if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
-                        crate::sexp::accessors::CLOENV(fdef)
-                    } else {
-                        crate::sexp::globals::R_BaseEnv()
-                    };
-                    if !defenv.is_null()
-                        && TYPEOF(defenv) == SEXPTYPE::ENVSXP
-                        && defenv != package_env
-                    {
-                        define_s3_method(defenv, local_generic, &method.class, method_value)?;
-                    }
-                }
-                let base_fdef =
-                    crate::sexp::envir::findFun(generic_sym, crate::sexp::globals::R_BaseEnv());
-                if TYPEOF(base_fdef) == SEXPTYPE::BUILTINSXP
-                    || TYPEOF(base_fdef) == SEXPTYPE::SPECIALSXP
-                {
-                    define_s3_method(
-                        crate::sexp::globals::R_BaseEnv(),
-                        local_generic,
-                        &method.class,
-                        method_value,
-                    )?;
-                }
             }
         }
-        Ok(())
     }
+    Ok(())
 }
 
 pub(crate) fn strip_namespace_comments(content: &str) -> String {
@@ -527,33 +523,31 @@ pub(super) fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
 }
 
 pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
-    unsafe {
-        let mut info = crate::sexp::envir::R_findVarInFrame(
-            package_env,
-            install_str(".__NAMESPACE__."),
-        );
-        if TYPEOF(info) == SEXPTYPE::PROMSXP {
-            info = crate::sexp::envir::forcePromise(info);
-        }
-        if info.is_null()
-            || info == crate::sexp::globals::R_UnboundValue()
-            || TYPEOF(info) != SEXPTYPE::ENVSXP
-        {
-            return None;
-        }
-        let mut exports =
-            crate::sexp::envir::R_findVarInFrame(info, install_str("exports"));
-        if TYPEOF(exports) == SEXPTYPE::PROMSXP {
-            exports = crate::sexp::envir::forcePromise(exports);
-        }
-        if exports.is_null()
-            || exports == crate::sexp::globals::R_UnboundValue()
-            || TYPEOF(exports) != SEXPTYPE::ENVSXP
-        {
-            return None;
-        }
-        Some(exports)
+    let mut info = find_var_in_frame(
+        package_env,
+        install_str(".__NAMESPACE__."),
+    );
+    if TYPEOF(info) == SEXPTYPE::PROMSXP {
+        info = force_promise(info);
     }
+    if info.is_null()
+        || info == crate::sexp::globals::R_UnboundValue()
+        || TYPEOF(info) != SEXPTYPE::ENVSXP
+    {
+        return None;
+    }
+    let mut exports =
+        find_var_in_frame(info, install_str("exports"));
+    if TYPEOF(exports) == SEXPTYPE::PROMSXP {
+        exports = force_promise(exports);
+    }
+    if exports.is_null()
+        || exports == crate::sexp::globals::R_UnboundValue()
+        || TYPEOF(exports) != SEXPTYPE::ENVSXP
+    {
+        return None;
+    }
+    Some(exports)
 }
 
 pub(crate) fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
@@ -702,74 +696,70 @@ pub(super) fn unescape_r_string(s: &str) -> String {
 /// copies `.__C__signature` into `.GlobalEnv`, and a later `removeClass` of
 /// global classes uncaches `initialize,signature`.
 pub(super) fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
-    unsafe {
-        if namespace.is_null()
-            || attach_env.is_null()
-            || namespace == R_NilValue()
-            || attach_env == R_NilValue()
+    if namespace.is_null()
+        || attach_env.is_null()
+        || namespace == R_NilValue()
+        || attach_env == R_NilValue()
+    {
+        return;
+    }
+    for name in frame_binding_names(namespace, true) {
+        if !(name.starts_with(".__C__")
+            || name.starts_with(".__M__")
+            || name.starts_with(".__T__"))
         {
-            return;
+            continue;
         }
-        for name in frame_binding_names(namespace, true) {
-            if !(name.starts_with(".__C__")
-                || name.starts_with(".__M__")
-                || name.starts_with(".__T__"))
-            {
-                continue;
-            }
-            let Ok(cname) = CString::new(name.as_str()) else {
-                continue;
-            };
-            let symbol = install_cstr(&cname);
-            let value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
-            if value.is_null()
-                || value == R_NilValue()
-                || value == crate::sexp::globals::R_UnboundValue()
-            {
-                continue;
-            }
-            crate::sexp::envir::defineVar(symbol, value, attach_env);
+        let Ok(cname) = CString::new(name.as_str()) else {
+            continue;
+        };
+        let symbol = install_cstr(&cname);
+        let value = find_var_in_frame(namespace, symbol);
+        if value.is_null()
+            || value == R_NilValue()
+            || value == crate::sexp::globals::R_UnboundValue()
+        {
+            continue;
         }
+        define_var(symbol, value, attach_env);
     }
 }
 
 pub(crate) fn attach_package_env(package_env: SEXP) {
-    unsafe {
-        // Every attached package participates in S3 search, including small
-        // export frames below the ordinary automatic-promotion threshold.
-        // Admit the existing canonical frame index so repeated absent method
-        // lookups do not walk those exports. The index still reads current
-        // binding cells and uses the existing mutation/collection invalidation.
-        crate::sexp::env_hash::promote_to_hash_table(package_env);
-        let global = crate::sexp::globals::R_GlobalEnv();
-        let old_enclos = crate::sexp::accessors::ENCLOS(global);
-        crate::sexp::accessors::SET_ENCLOS(global, package_env);
-        crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
-        // The installed methods image already contains its namespace metadata.
-        // Re-running it on package:methods walks every methods generic.
-        // Still copy GNU exportPattern class/method metadata onto the
-        // attached env so findClass/exists(inherits=FALSE) see .__C__*.
-        if attached_search_name(package_env).as_deref() == Some("package:methods") {
-            let ns = crate::sexp::envir::R_findVarInFrame(package_env, namespace_env_symbol());
-            if !ns.is_null()
-                && ns != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(ns) == SEXPTYPE::ENVSXP
-            {
-                export_s4_metadata_to_package_env(ns, package_env);
-            } else if let Some(ns) = cached_namespace_by_name("methods") {
-                export_s4_metadata_to_package_env(ns, package_env);
-            }
+    // Every attached package participates in S3 search, including small
+    // export frames below the ordinary automatic-promotion threshold.
+    // Admit the existing canonical frame index so repeated absent method
+    // lookups do not walk those exports. The index still reads current
+    // binding cells and uses the existing mutation/collection invalidation.
+    crate::sexp::env_hash::promote_to_hash_table(package_env);
+    let global = crate::sexp::globals::R_GlobalEnv();
+    let old_enclos = crate::sexp::accessors::ENCLOS(global);
+    crate::sexp::accessors::SET_ENCLOS(global, package_env);
+    crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
+    // The installed methods image already contains its namespace metadata.
+    // Re-running it on package:methods walks every methods generic.
+    // Still copy GNU exportPattern class/method metadata onto the
+    // attached env so findClass/exists(inherits=FALSE) see .__C__*.
+    if attached_search_name(package_env).as_deref() == Some("package:methods") {
+        let ns = find_var_in_frame(package_env, namespace_env_symbol());
+        if !ns.is_null()
+            && ns != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(ns) == SEXPTYPE::ENVSXP
+        {
+            export_s4_metadata_to_package_env(ns, package_env);
+        } else if let Some(ns) = cached_namespace_by_name("methods") {
+            export_s4_metadata_to_package_env(ns, package_env);
+        }
+        return;
+    }
+    CACHING_ATTACHED_S4.with(|flag| {
+        if flag.get() {
             return;
         }
-        CACHING_ATTACHED_S4.with(|flag| {
-            if flag.get() {
-                return;
-            }
-            flag.set(true);
-            cache_attached_package_metadata(package_env);
-            flag.set(false);
-        });
-    }
+        flag.set(true);
+        cache_attached_package_metadata(package_env);
+        flag.set(false);
+    });
 }
 
 pub(super) fn attached_search_name(package_env: SEXP) -> Option<String> {

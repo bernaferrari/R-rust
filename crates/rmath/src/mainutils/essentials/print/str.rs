@@ -745,7 +745,7 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _str_digits_guard = StrDigitsGuard::new(str_digits_arg);
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = crate::sexp::envir::forcePromise(x);
+            x = force_promise(x);
         }
         if x.is_null() || x == R_NilValue() {
             str_emit_line(" NULL");

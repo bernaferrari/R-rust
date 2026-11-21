@@ -168,7 +168,7 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let code = crate::sexp::accessors::PRCODE(dots);
                         let penv = crate::sexp::accessors::PRENV(dots);
                         if code == dots_symbol && TYPEOF(penv) == SEXPTYPE::ENVSXP {
-                            dots = crate::sexp::envir::R_findVarInFrame(penv, dots_symbol);
+                            dots = find_var_in_frame(penv, dots_symbol);
                             continue;
                         }
                         let value = crate::sexp::accessors::PRVALUE(dots);
@@ -180,7 +180,7 @@ pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                     dots
                 };
-                let mut dots = resolve(crate::sexp::envir::R_findVar(dots_symbol, envir));
+                let mut dots = resolve(find_var(dots_symbol, envir));
                 if dots == crate::sexp::globals::R_UnboundValue() {
                     base_error("... used in a situation where it does not exist");
                 }

@@ -421,21 +421,19 @@ fn ensure_methods_namespace() -> Option<SEXP> {
 }
 
 fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
-    unsafe {
-        let namespace = ensure_methods_namespace()?;
-        let symbol = install_cstr(&name);
-        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
-        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
-            return None;
-        }
-        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = crate::sexp::envir::forcePromise(value);
-        }
-        if TYPEOF(value) == SEXPTYPE::CLOSXP {
-            Some(value)
-        } else {
-            None
-        }
+    let namespace = ensure_methods_namespace()?;
+    let symbol = install_cstr(&name);
+    let mut value = find_var_in_frame(namespace, symbol);
+    if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+        return None;
+    }
+    if TYPEOF(value) == SEXPTYPE::PROMSXP {
+        value = force_promise(value);
+    }
+    if TYPEOF(value) == SEXPTYPE::CLOSXP {
+        Some(value)
+    } else {
+        None
     }
 }
 
@@ -1562,13 +1560,13 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
         let mut generic = if TYPEOF(f) == SEXPTYPE::CLOSXP {
             f
         } else if !inherit && TYPEOF(f) == SEXPTYPE::SYMSXP {
-            crate::sexp::envir::R_findVar(f, env)
+            find_var(f, env)
         } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
             let chars = owner_sexp(active_owner(), f)
                 .try_string_elt(0)
                 .map(|elt| elt.as_raw())
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            crate::sexp::envir::R_findVar(Rf_install(CHAR(chars)), env)
+            find_var(Rf_install(CHAR(chars)), env)
         } else {
             fail("invalid generic function specification")
         };
@@ -1576,7 +1574,7 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
             return Rf_ScalarLogical(FALSE);
         }
         if TYPEOF(generic) == SEXPTYPE::PROMSXP {
-            generic = crate::sexp::envir::forcePromise(generic);
+            generic = force_promise(generic);
         }
         if TYPEOF(generic) != SEXPTYPE::CLOSXP {
             return Rf_ScalarLogical(FALSE);
@@ -1584,9 +1582,9 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
         let _generic_root = protect(generic);
         let generic_env = crate::sexp::accessors::CLOENV(generic);
         let table =
-            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".AllMTable"));
+            find_var_in_frame(generic_env, install_str(".AllMTable"));
         let sigargs =
-            crate::sexp::envir::R_findVarInFrame(generic_env, install_str(".SigArgs"));
+            find_var_in_frame(generic_env, install_str(".SigArgs"));
         if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
             return Rf_ScalarLogical(FALSE);
         }
@@ -1665,7 +1663,7 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .try_string_elt(0)
                 .map(|elt| elt.as_raw())
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            crate::sexp::envir::findFun(Rf_install(CHAR(chars)), rho)
+            find_fun(Rf_install(CHAR(chars)), rho)
         } else {
             fail("invalid generic function specification")
         };
@@ -1674,8 +1672,8 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let _generic_root = protect(generic);
         let env = crate::sexp::accessors::CLOENV(generic);
-        let table = crate::sexp::envir::R_findVarInFrame(env, install_str(".AllMTable"));
-        let sigargs = crate::sexp::envir::R_findVarInFrame(env, install_str(".SigArgs"));
+        let table = find_var_in_frame(env, install_str(".AllMTable"));
+        let sigargs = find_var_in_frame(env, install_str(".SigArgs"));
         if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
             fail("no generic function found")
         }

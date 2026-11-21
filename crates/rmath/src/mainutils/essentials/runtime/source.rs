@@ -1150,12 +1150,10 @@ fn example_argument(args: SEXP, name: &str) -> Option<SEXP> {
 }
 
 fn force_example_argument(value: SEXP) -> SEXP {
-    unsafe {
-        if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(value)
-        } else {
-            value
-        }
+    if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+        force_promise(value)
+    } else {
+        value
     }
 }
 
@@ -1180,22 +1178,20 @@ fn abbreviate_example_topic(topic: &str) -> String {
 }
 
 fn utils_example_closure() -> Option<SEXP> {
-    unsafe {
-        let namespace =
-            crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
-        let symbol = install_str("example");
-        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
-        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
-            return None;
-        }
-        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = crate::sexp::envir::forcePromise(value);
-        }
-        if TYPEOF(value) == SEXPTYPE::CLOSXP {
-            Some(value)
-        } else {
-            None
-        }
+    let namespace =
+        crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
+    let symbol = install_str("example");
+    let mut value = find_var_in_frame(namespace, symbol);
+    if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+        return None;
+    }
+    if TYPEOF(value) == SEXPTYPE::PROMSXP {
+        value = force_promise(value);
+    }
+    if TYPEOF(value) == SEXPTYPE::CLOSXP {
+        Some(value)
+    } else {
+        None
     }
 }
 

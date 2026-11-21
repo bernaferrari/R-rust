@@ -193,20 +193,18 @@ pub fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// The non-base namespace spec shared by recognition and naming.
 pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
-    unsafe {
-        if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return None;
-        }
-        let _environment = protect(env);
-        let info =
-            crate::sexp::envir::R_findVarInFrame(env, install_str(".__NAMESPACE__."));
-        if TYPEOF(info) != SEXPTYPE::ENVSXP {
-            return None;
-        }
-        let _info = protect(info);
-        let spec = crate::sexp::envir::R_findVarInFrame(info, install_str("spec"));
-        (TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0).then_some(spec)
+    if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        return None;
     }
+    let _environment = protect(env);
+    let info =
+        find_var_in_frame(env, install_str(".__NAMESPACE__."));
+    if TYPEOF(info) != SEXPTYPE::ENVSXP {
+        return None;
+    }
+    let _info = protect(info);
+    let spec = find_var_in_frame(info, install_str("spec"));
+    (TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0).then_some(spec)
 }
 
 /// R's `environmentName(env)` — returns the name of an environment.

@@ -86,7 +86,7 @@ pub(crate) fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
                 continue;
             }
             let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            crate::sexp::envir::defineVar(symbol, VECTOR_ELT(data, i), env);
+            define_var(symbol, VECTOR_ELT(data, i), env);
         }
         env
     }
