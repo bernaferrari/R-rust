@@ -62,9 +62,7 @@ fn HT_TypeFromString(x: SEXP) -> c_int {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
             Rf_error_cstr(c"hash table type must be a scalar string");
         }
-        // SAFETY: STRING_ELT yields a canonical CHARSXP whose payload pointer
-        // is valid and NUL-terminated for the node's lifetime.
-        let s_bytes = unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(x, 0))) }.to_bytes();
+        let s_bytes = &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(x, 0))[..];
         if s_bytes == b"identical" {
             HT_TYPE_IDENTICAL
         } else if s_bytes == b"address" {

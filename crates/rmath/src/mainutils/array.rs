@@ -18,7 +18,7 @@ use std::os::raw::c_int;
 
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRINTNAME, SET_ATTRIB, SET_OBJECT,
+    ATTRIB, CADR, CAR, CDR, INTEGER, LENGTH, OBJECT, PRINTNAME, SET_ATTRIB, SET_OBJECT,
     SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF,
     UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
@@ -190,10 +190,7 @@ fn arg_tag_name(cell: SEXP) -> Option<String> {
             return None;
         }
         Some(
-            // SAFETY: `printname` is a live CHARSXP; CHAR returns its
-            // NUL-terminated contents valid for the borrow.
-            unsafe { CStr::from_ptr(CHAR(printname)) }
-                .to_string_lossy()
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(printname))
                 .into_owned(),
         )
     }
@@ -525,17 +522,16 @@ fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
             }
             let mut values = Vec::with_capacity(ndim);
             for index in 0..ndim {
-                // SAFETY: each STRING_ELT of a live STRSXP yields a CHARSXP
-                // whose CHAR pointer is valid for the borrow.
-                let want =
-                    unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(perm, index as R_xlen_t))) }
-                        .to_string_lossy();
+                let want = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
+                    STRING_ELT(perm, index as R_xlen_t),
+                ))
+                .into_owned();
                 let mut found = None;
                 for axis in 0..XLENGTH(dn_names) {
-                    // SAFETY: same CHARSXP borrow contract as `want`.
-                    let have =
-                        unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(dn_names, axis))) }
-                            .to_string_lossy();
+                    let have = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
+                        STRING_ELT(dn_names, axis),
+                    ))
+                    .into_owned();
                     if have == want {
                         found = Some(axis as usize);
                         break;
@@ -883,10 +879,11 @@ fn parse_ties_method(value: SEXP) -> c_int {
         {
             return 1;
         }
-        // SAFETY: STRING_ELT of a live STRSXP yields a CHARSXP whose CHAR
-        // pointer is valid for the borrow.
-        let method = unsafe { CStr::from_ptr(CHAR(STRING_ELT(value, 0))) }.to_string_lossy();
-        match method.as_ref() {
+        let method = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+            value, 0,
+        )))
+        .into_owned();
+        match method.as_str() {
             "random" => 1,
             "first" => 2,
             "last" => 3,

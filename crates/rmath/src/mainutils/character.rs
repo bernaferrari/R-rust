@@ -1155,9 +1155,7 @@ mod tests {
     /// Helper to read back a STRSXP element as a Rust String.
     unsafe fn strsxp_to_string(s: SEXP, i: R_xlen_t) -> String {
         let el = unsafe { STRING_ELT(s, i) };
-        unsafe { std::ffi::CStr::from_ptr(CHAR(el)) }
-            .to_string_lossy()
-            .into_owned()
+        String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(el)).into_owned()
     }
 
     /// Helper to build a pairlist (args) from a vec of SEXP values.

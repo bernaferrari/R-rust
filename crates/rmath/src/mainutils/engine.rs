@@ -1287,11 +1287,8 @@ pub fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line end code to an R string.
 pub fn GE_LENDget(lend: c_int) -> SEXP {
     match lend {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         GE_BUTT_CAP => crate::sexp::constructors::mk_string_str("butt"),
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         GE_SQUARE_CAP => crate::sexp::constructors::mk_string_str("square"),
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         _ => crate::sexp::constructors::mk_string_str("round"),
     }
 }
@@ -1315,11 +1312,8 @@ pub fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line join code to an R string.
 pub fn GE_LJOINget(ljoin: c_int) -> SEXP {
     match ljoin {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         GE_MITRE_JOIN => crate::sexp::constructors::mk_string_str("mitre"),
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         GE_BEVEL_JOIN => crate::sexp::constructors::mk_string_str("bevel"),
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         _ => crate::sexp::constructors::mk_string_str("round"),
     }
 }

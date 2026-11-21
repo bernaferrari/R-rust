@@ -252,10 +252,7 @@ pub(crate) unsafe extern "C-unwind" fn remove(which: SEXP) -> SEXP {
             let position = if let Some(name) = &name {
                 // CHAR and try_char_eq only read immutable character backing;
                 // neither can allocate, collect, invoke providers or callbacks.
-                let text = unsafe {
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name.as_raw()))
-                }
-                .to_bytes();
+                let text = &crate::sexp::accessors::char_cstr_bytes(name.as_raw())[..];
                 let mut found = None;
                 for (i, callback) in callbacks.iter().enumerate() {
                     if callback.name.try_char_eq(text)? {

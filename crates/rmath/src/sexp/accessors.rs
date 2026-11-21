@@ -1502,11 +1502,7 @@ mod tests {
         );
         let blank = unsafe { STRING_ELT(node, 0) };
         assert_eq!(unsafe { TYPEOF(blank) }, SEXPTYPE::CHARSXP);
-        assert!(
-            unsafe { std::ffi::CStr::from_ptr(CHAR(blank)) }
-                .to_bytes()
-                .is_empty()
-        );
+        assert!((&crate::sexp::accessors::char_cstr_bytes(blank)[..]).is_empty());
     }
 
     #[test]
@@ -1516,11 +1512,7 @@ mod tests {
         for index in 0..2 {
             let blank = unsafe { STRING_ELT(vector, index) };
             assert_eq!(unsafe { TYPEOF(blank) }, SEXPTYPE::CHARSXP);
-            assert!(
-                unsafe { std::ffi::CStr::from_ptr(CHAR(blank)) }
-                    .to_bytes()
-                    .is_empty()
-            );
+            assert!((&crate::sexp::accessors::char_cstr_bytes(blank)[..]).is_empty());
         }
         let empty = arena.alloc_vector(SEXPTYPE::STRSXP, 0);
         assert_eq!(unsafe { XLENGTH(empty) }, 0);
