@@ -1,43 +1,41 @@
 use super::*;
 
 /// Handle comparison operators: <, >, <=, >=, ==, !=
-pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        // Relational primitives are members of the Ops group too. GNU R
-        // performs S3 group dispatch before the ordinary comparison ladder.
-        if let Some(result) = try_group_dispatch(b"Ops\0", call, op, args, rho) {
-            return result;
-        }
-        let op_name = get_op_name(op, call);
-        match op_name {
-            "<" | ">" | "<=" | ">=" | "==" | "!=" => {
-                let a = CAR(args);
-                let b = CAR(CDR(args));
-                if a.is_null() || b.is_null() {
-                    return R_NilValue();
-                }
-                // Ops.data.frame compares NULL as an empty column and still
-                // returns a logical matrix. The scalar NULL shortcut below
-                // would drop that dimension.
-                if let Some(result) = data_frame_compare(op_name, call, a, b) {
-                    return result;
-                }
-                // stock relop.c: either operand NULL yields logical(0)
-                if a == R_NilValue() || b == R_NilValue() {
-                    let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-                    let _empty_guard = protect(empty);
-                    let src_a = if a == R_NilValue() { empty } else { a };
-                    let src_b = if b == R_NilValue() { empty } else { b };
-                    propagate_binary_vector_attributes(empty, src_a, src_b, 0);
-                    return empty;
-                }
-                if let Some(result) = data_frame_compare(op_name, call, a, b) {
-                    return result;
-                }
-                compare_values(op_name, call, a, b)
+pub fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    // Relational primitives are members of the Ops group too. GNU R
+    // performs S3 group dispatch before the ordinary comparison ladder.
+    if let Some(result) = try_group_dispatch(b"Ops\0", call, op, args, rho) {
+        return result;
+    }
+    let op_name = get_op_name(op, call);
+    match op_name {
+        "<" | ">" | "<=" | ">=" | "==" | "!=" => {
+            let a = CAR(args);
+            let b = CAR(CDR(args));
+            if a.is_null() || b.is_null() {
+                return R_NilValue();
             }
-            _ => R_NilValue(),
+            // Ops.data.frame compares NULL as an empty column and still
+            // returns a logical matrix. The scalar NULL shortcut below
+            // would drop that dimension.
+            if let Some(result) = data_frame_compare(op_name, call, a, b) {
+                return result;
+            }
+            // stock relop.c: either operand NULL yields logical(0)
+            if a == R_NilValue() || b == R_NilValue() {
+                let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+                let _empty_guard = protect(empty);
+                let src_a = if a == R_NilValue() { empty } else { a };
+                let src_b = if b == R_NilValue() { empty } else { b };
+                propagate_binary_vector_attributes(empty, src_a, src_b, 0);
+                return empty;
+            }
+            if let Some(result) = data_frame_compare(op_name, call, a, b) {
+                return result;
+            }
+            compare_values(op_name, call, a, b)
         }
+        _ => R_NilValue(),
     }
 }
 
@@ -46,122 +44,120 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `Ops.data.frame` applies the primitive separately to each column, so keeping
 /// this path factored lets data-frame dispatch reuse Date/factor/character and
 /// numeric behavior instead of growing a second, subtly different comparator.
-pub(crate) unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe {
-        if let Some(result) = numeric_version_comparison(op_name, a, b) {
-            return result;
-        }
-        if let Some(result) = date_binary_comparison(op_name, a, b) {
-            return result;
-        }
-
-        let a = posixlt_as_posixct_operand(call, a);
-        let b = posixlt_as_posixct_operand(call, b);
-        if let Some(result) = posixct_binary_comparison(op_name, a, b) {
-            return result;
-        }
-
-        if let Some(result) = difftime_binary_comparison(op_name, a, b) {
-            return result;
-        }
-        if let Some(result) = ordered_factor_compare(op_name, a, b) {
-            return result;
-        }
-        if let Some(result) = unordered_factor_compare(op_name, call, a, b) {
-            return result;
-        }
-        // stock relop.c: symbols and calls deparse to strings first
-        let a = if TYPEOF(a) == SEXPTYPE::SYMSXP || TYPEOF(a) == SEXPTYPE::LANGSXP {
-            crate::mainutils::deparse::deparse1line(a, false)
-        } else {
-            a
-        };
-        let b = if TYPEOF(b) == SEXPTYPE::SYMSXP || TYPEOF(b) == SEXPTYPE::LANGSXP {
-            crate::mainutils::deparse::deparse1line(b, false)
-        } else {
-            b
-        };
-        let relop_ok = |s: SEXP| {
-            let t = TYPEOF(s);
-            t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::RAWSXP
-                || t == SEXPTYPE::VECSXP
-                || t == SEXPTYPE::EXPRSXP
-        };
-        if !relop_ok(a) || !relop_ok(b) {
-            arithmetic_error(format!(
-                "comparison ({op_name}) is possible only for atomic and list types"
-            ));
-        }
-        // stock coercion ladder: string involvement compares as
-        // character, then complex, then raw/numeric coercion.
-        let a_str = TYPEOF(a) == SEXPTYPE::STRSXP;
-        let b_str = TYPEOF(b) == SEXPTYPE::STRSXP;
-        if a_str || b_str {
-            if matches!(SEXPTYPE(TYPEOF(a)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
-                || matches!(SEXPTYPE(TYPEOF(b)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
-            {
-                return super::list_character::compare(op_name, a, b)
-                    .unwrap_or_else(|error| arithmetic_error(error));
-            }
-            let a = if a_str {
-                a
-            } else {
-                relop_operand_to_character(a)
-            };
-            let b = if b_str {
-                b
-            } else {
-                relop_operand_to_character(b)
-            };
-            return character_compare(op_name, a, b);
-        }
-        if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
-            return complex_relop(op_name, a, b);
-        }
-        if (TYPEOF(a) == SEXPTYPE::INTSXP
-            || TYPEOF(a) == SEXPTYPE::REALSXP
-            || TYPEOF(a) == SEXPTYPE::LGLSXP)
-            && (TYPEOF(b) == SEXPTYPE::INTSXP
-                || TYPEOF(b) == SEXPTYPE::REALSXP
-                || TYPEOF(b) == SEXPTYPE::LGLSXP)
-        {
-            return binary_compare(op_name, a, b);
-        }
-        if TYPEOF(a) == SEXPTYPE::REALSXP || TYPEOF(b) == SEXPTYPE::REALSXP {
-            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
-            let _a = protect(a);
-            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
-            let _b = protect(b);
-            return binary_compare(op_name, a, b);
-        }
-        if TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::INTSXP {
-            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::INTSXP.into());
-            let _a = protect(a);
-            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::INTSXP.into());
-            let _b = protect(b);
-            return binary_compare(op_name, a, b);
-        }
-        if TYPEOF(a) == SEXPTYPE::LGLSXP || TYPEOF(b) == SEXPTYPE::LGLSXP {
-            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::LGLSXP.into());
-            let _a = protect(a);
-            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::LGLSXP.into());
-            let _b = protect(b);
-            return binary_compare(op_name, a, b);
-        }
-        if TYPEOF(a) == SEXPTYPE::RAWSXP || TYPEOF(b) == SEXPTYPE::RAWSXP {
-            let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
-            let _a = protect(a);
-            let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
-            let _b = protect(b);
-            return binary_compare(op_name, a, b);
-        }
-        arithmetic_error("comparison of these types is not implemented");
+pub(crate) fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP) -> SEXP {
+    if let Some(result) = numeric_version_comparison(op_name, a, b) {
+        return result;
     }
+    if let Some(result) = date_binary_comparison(op_name, a, b) {
+        return result;
+    }
+
+    let a = posixlt_as_posixct_operand(call, a);
+    let b = posixlt_as_posixct_operand(call, b);
+    if let Some(result) = posixct_binary_comparison(op_name, a, b) {
+        return result;
+    }
+
+    if let Some(result) = difftime_binary_comparison(op_name, a, b) {
+        return result;
+    }
+    if let Some(result) = ordered_factor_compare(op_name, a, b) {
+        return result;
+    }
+    if let Some(result) = unordered_factor_compare(op_name, call, a, b) {
+        return result;
+    }
+    // stock relop.c: symbols and calls deparse to strings first
+    let a = if TYPEOF(a) == SEXPTYPE::SYMSXP || TYPEOF(a) == SEXPTYPE::LANGSXP {
+        crate::mainutils::deparse::deparse1line(a, false)
+    } else {
+        a
+    };
+    let b = if TYPEOF(b) == SEXPTYPE::SYMSXP || TYPEOF(b) == SEXPTYPE::LANGSXP {
+        crate::mainutils::deparse::deparse1line(b, false)
+    } else {
+        b
+    };
+    let relop_ok = |s: SEXP| {
+        let t = TYPEOF(s);
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::EXPRSXP
+    };
+    if !relop_ok(a) || !relop_ok(b) {
+        arithmetic_error(format!(
+            "comparison ({op_name}) is possible only for atomic and list types"
+        ));
+    }
+    // stock coercion ladder: string involvement compares as
+    // character, then complex, then raw/numeric coercion.
+    let a_str = TYPEOF(a) == SEXPTYPE::STRSXP;
+    let b_str = TYPEOF(b) == SEXPTYPE::STRSXP;
+    if a_str || b_str {
+        if matches!(SEXPTYPE(TYPEOF(a)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
+            || matches!(SEXPTYPE(TYPEOF(b)), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP)
+        {
+            return super::list_character::compare(op_name, a, b)
+                .unwrap_or_else(|error| arithmetic_error(error));
+        }
+        let a = if a_str {
+            a
+        } else {
+            relop_operand_to_character(a)
+        };
+        let b = if b_str {
+            b
+        } else {
+            relop_operand_to_character(b)
+        };
+        return character_compare(op_name, a, b);
+    }
+    if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+        return complex_relop(op_name, a, b);
+    }
+    if (TYPEOF(a) == SEXPTYPE::INTSXP
+        || TYPEOF(a) == SEXPTYPE::REALSXP
+        || TYPEOF(a) == SEXPTYPE::LGLSXP)
+        && (TYPEOF(b) == SEXPTYPE::INTSXP
+            || TYPEOF(b) == SEXPTYPE::REALSXP
+            || TYPEOF(b) == SEXPTYPE::LGLSXP)
+    {
+        return binary_compare(op_name, a, b);
+    }
+    if TYPEOF(a) == SEXPTYPE::REALSXP || TYPEOF(b) == SEXPTYPE::REALSXP {
+        let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
+        let _a = protect(a);
+        let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
+        let _b = protect(b);
+        return binary_compare(op_name, a, b);
+    }
+    if TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::INTSXP {
+        let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::INTSXP.into());
+        let _a = protect(a);
+        let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::INTSXP.into());
+        let _b = protect(b);
+        return binary_compare(op_name, a, b);
+    }
+    if TYPEOF(a) == SEXPTYPE::LGLSXP || TYPEOF(b) == SEXPTYPE::LGLSXP {
+        let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::LGLSXP.into());
+        let _a = protect(a);
+        let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::LGLSXP.into());
+        let _b = protect(b);
+        return binary_compare(op_name, a, b);
+    }
+    if TYPEOF(a) == SEXPTYPE::RAWSXP || TYPEOF(b) == SEXPTYPE::RAWSXP {
+        let a = crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into());
+        let _a = protect(a);
+        let b = crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into());
+        let _b = protect(b);
+        return binary_compare(op_name, a, b);
+    }
+    arithmetic_error("comparison of these types is not implemented");
 }
 
 /// Port the comparison branch of GNU R's `Ops.data.frame`.
@@ -169,71 +165,69 @@ pub(crate) unsafe fn compare_values(op_name: &str, call: SEXP, a: SEXP, b: SEXP)
 /// Atomic non-scalar operands are laid out column-major across the frame;
 /// lists supply one operand per column; scalars are broadcast. Comparisons
 /// return a logical matrix rather than leaking the frame's underlying VECSXP.
-pub(crate) unsafe fn data_frame_compare(
+pub(crate) fn data_frame_compare(
     op_name: &str,
     call: SEXP,
     lhs: SEXP,
     rhs: SEXP,
 ) -> Option<SEXP> {
-    unsafe {
-        let lhs_frame = has_class(lhs, "data.frame") && TYPEOF(lhs) == SEXPTYPE::VECSXP;
-        let rhs_frame = has_class(rhs, "data.frame") && TYPEOF(rhs) == SEXPTYPE::VECSXP;
-        if !lhs_frame && !rhs_frame {
-            return None;
-        }
-
-        let frame = if lhs_frame { lhs } else { rhs };
-        let ncol = XLENGTH(frame);
-        let nrow = crate::mainutils::essentials::data_frame_row_count(frame);
-
-        if lhs_frame
-            && rhs_frame
-            && (XLENGTH(lhs) != XLENGTH(rhs)
-                || crate::mainutils::essentials::data_frame_row_count(lhs)
-                    != crate::mainutils::essentials::data_frame_row_count(rhs))
-        {
-            arithmetic_error(format!(
-                "'{op_name}' only defined for equally-sized data frames"
-            ));
-        }
-
-        validate_data_frame_operand(lhs, lhs_frame, ncol);
-        validate_data_frame_operand(rhs, rhs_frame, ncol);
-
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow.saturating_mul(ncol));
-        let _result_guard = protect(result);
-        for column in 0..ncol {
-            let (left, _left_guard) = data_frame_column_operand(lhs, lhs_frame, column, nrow);
-            let (right, _right_guard) = data_frame_column_operand(rhs, rhs_frame, column, nrow);
-            let compared = compare_values(op_name, call, left, right);
-            let _compared_guard = protect(compared);
-            if TYPEOF(compared) != SEXPTYPE::LGLSXP || XLENGTH(compared) != nrow {
-                arithmetic_error("dimension mismatch in data frame comparison");
-            }
-            for row in 0..nrow {
-                SET_LOGICAL_ELT(
-                    result,
-                    (column * nrow + row) as i32,
-                    LOGICAL_ELT(compared, row as i32),
-                );
-            }
-        }
-
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _dim_guard = protect(dim);
-        SET_INTEGER_ELT(dim, 0, nrow as i32);
-        SET_INTEGER_ELT(dim, 1, ncol as i32);
-        setAttrib(result, R_DimSymbol(), dim);
-
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dimnames_guard = protect(dimnames);
-        SET_VECTOR_ELT(dimnames, 0, explicit_data_frame_row_names(frame));
-        SET_VECTOR_ELT(dimnames, 1, getAttrib(frame, R_NamesSymbol()));
-        setAttrib(result, R_DimNamesSymbol(), dimnames);
-        Some(result)
+    let lhs_frame = has_class(lhs, "data.frame") && TYPEOF(lhs) == SEXPTYPE::VECSXP;
+    let rhs_frame = has_class(rhs, "data.frame") && TYPEOF(rhs) == SEXPTYPE::VECSXP;
+    if !lhs_frame && !rhs_frame {
+        return None;
     }
+
+    let frame = if lhs_frame { lhs } else { rhs };
+    let ncol = XLENGTH(frame);
+    let nrow = crate::mainutils::essentials::data_frame_row_count(frame);
+
+    if lhs_frame
+        && rhs_frame
+        && (XLENGTH(lhs) != XLENGTH(rhs)
+            || crate::mainutils::essentials::data_frame_row_count(lhs)
+                != crate::mainutils::essentials::data_frame_row_count(rhs))
+    {
+        arithmetic_error(format!(
+            "'{op_name}' only defined for equally-sized data frames"
+        ));
+    }
+
+    validate_data_frame_operand(lhs, lhs_frame, ncol);
+    validate_data_frame_operand(rhs, rhs_frame, ncol);
+
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow.saturating_mul(ncol));
+    let _result_guard = protect(result);
+    for column in 0..ncol {
+        let (left, _left_guard) = data_frame_column_operand(lhs, lhs_frame, column, nrow);
+        let (right, _right_guard) = data_frame_column_operand(rhs, rhs_frame, column, nrow);
+        let compared = compare_values(op_name, call, left, right);
+        let _compared_guard = protect(compared);
+        if TYPEOF(compared) != SEXPTYPE::LGLSXP || XLENGTH(compared) != nrow {
+            arithmetic_error("dimension mismatch in data frame comparison");
+        }
+        for row in 0..nrow {
+            SET_LOGICAL_ELT(
+                result,
+                (column * nrow + row) as i32,
+                LOGICAL_ELT(compared, row as i32),
+            );
+        }
+    }
+
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _dim_guard = protect(dim);
+    SET_INTEGER_ELT(dim, 0, nrow as i32);
+    SET_INTEGER_ELT(dim, 1, ncol as i32);
+    setAttrib(result, R_DimSymbol(), dim);
+
+    let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dimnames_guard = protect(dimnames);
+    SET_VECTOR_ELT(dimnames, 0, explicit_data_frame_row_names(frame));
+    SET_VECTOR_ELT(dimnames, 1, getAttrib(frame, R_NamesSymbol()));
+    setAttrib(result, R_DimNamesSymbol(), dimnames);
+    Some(result)
 }
-pub(crate) unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
+pub(crate) fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
     unsafe {
         let lhs_frame = has_class(sa, "data.frame") && TYPEOF(sa) == SEXPTYPE::VECSXP;
         let rhs_frame = has_class(sb, "data.frame") && TYPEOF(sb) == SEXPTYPE::VECSXP;
@@ -268,21 +262,19 @@ pub(crate) unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SE
 }
 
 pub(crate) fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
+    if is_frame
+        || value == R_NilValue()
+        || TYPEOF(value) == SEXPTYPE::NILSXP
+        || TYPEOF(value) != SEXPTYPE::VECSXP
     {
-        if is_frame
-            || value == R_NilValue()
-            || TYPEOF(value) == SEXPTYPE::NILSXP
-            || TYPEOF(value) != SEXPTYPE::VECSXP
-        {
-            return;
-        }
-        let len = XLENGTH(value);
-        if len > 1 && len != ncol {
-            arithmetic_error(format!("list of length {len} not meaningful"));
-        }
-        if len == 0 {
-            arithmetic_error("subscript out of bounds");
-        }
+        return;
+    }
+    let len = XLENGTH(value);
+    if len > 1 && len != ncol {
+        arithmetic_error(format!("list of length {len} not meaningful"));
+    }
+    if len == 0 {
+        arithmetic_error("subscript out of bounds");
     }
 }
 
@@ -360,33 +352,31 @@ pub(crate)  fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
 
 /// Unary plus on a logical is an integer. Integer and real unary plus
 /// return the object unchanged.
-pub(crate) unsafe fn unary_plus_logical(x: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let _guard = protect(result);
-        for i in 0..n {
-            SET_INTEGER_ELT(result, i as i32, LOGICAL_ELT(x, i as i32));
-        }
-        propagate_unary_vector_attributes(result, x, n);
-        if has_class(x, "ts") || has_class(x, "mts") {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                R_NilValue(),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_TspSymbol(),
-                R_NilValue(),
-            );
-        }
-        result
+pub(crate) fn unary_plus_logical(x: SEXP) -> SEXP {
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    let _guard = protect(result);
+    for i in 0..n {
+        SET_INTEGER_ELT(result, i as i32, LOGICAL_ELT(x, i as i32));
     }
+    propagate_unary_vector_attributes(result, x, n);
+    if has_class(x, "ts") || has_class(x, "mts") {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_TspSymbol(),
+            R_NilValue(),
+        );
+    }
+    result
 }
 
 /// Unary minus — negate each element of a numeric vector.
-pub(crate) unsafe fn unary_minus(x: SEXP) -> SEXP {
+pub(crate) fn unary_minus(x: SEXP) -> SEXP {
     unsafe {
         let Some(input) = NumericVector::from_raw(x) else {
             return R_NilValue();
@@ -441,7 +431,7 @@ pub(crate) unsafe fn unary_minus(x: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
+pub(crate) fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
     unsafe {
         let a_ordered = has_class(sa, "ordered");
         let b_ordered = has_class(sb, "ordered");
@@ -516,40 +506,38 @@ pub(crate) fn ordered_code_compare(op: &str, lhs: OrderedOperand, rhs: OrderedOp
     }
 }
 
-pub(crate) unsafe fn ordered_operand_code(
+pub(crate) fn ordered_operand_code(
     value: SEXP,
     index: R_xlen_t,
     levels: &[String],
 ) -> OrderedOperand {
-    unsafe {
-        if has_class(value, "ordered") {
-            let code = INTEGER_ELT(value, index as i32);
-            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
-                OrderedOperand::Missing
-            } else {
-                OrderedOperand::Code(code)
-            }
-        } else if TYPEOF(value) == SEXPTYPE::STRSXP {
-            let charsxp = STRING_ELT(value, index);
-            let Some(label) = charsxp_to_string(charsxp) else {
-                return OrderedOperand::Missing;
-            };
-            levels
-                .iter()
-                .position(|level| level == &label)
-                .map(|position| OrderedOperand::Code(position as i32 + 1))
-                .unwrap_or(OrderedOperand::UnknownLevel)
+    if has_class(value, "ordered") {
+        let code = INTEGER_ELT(value, index as i32);
+        if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+            OrderedOperand::Missing
         } else {
-            OrderedOperand::UnknownLevel
+            OrderedOperand::Code(code)
         }
+    } else if TYPEOF(value) == SEXPTYPE::STRSXP {
+        let charsxp = STRING_ELT(value, index);
+        let Some(label) = charsxp_to_string(charsxp) else {
+            return OrderedOperand::Missing;
+        };
+        levels
+            .iter()
+            .position(|level| level == &label)
+            .map(|position| OrderedOperand::Code(position as i32 + 1))
+            .unwrap_or(OrderedOperand::UnknownLevel)
+    } else {
+        OrderedOperand::UnknownLevel
     }
 }
 
-pub(crate) unsafe fn factor_levels_match(value: SEXP, expected: &[String]) -> bool {
-    unsafe { factor_levels(value).is_some_and(|levels| levels == expected) }
+pub(crate) fn factor_levels_match(value: SEXP, expected: &[String]) -> bool {
+    factor_levels(value).is_some_and(|levels| levels == expected)
 }
 
-pub(crate) unsafe fn factor_levels(value: SEXP) -> Option<Vec<String>> {
+pub(crate) fn factor_levels(value: SEXP) -> Option<Vec<String>> {
     unsafe {
         let levels = getAttrib(value, Rf_install(c"levels".as_ptr()));
         if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
@@ -563,7 +551,7 @@ pub(crate) unsafe fn factor_levels(value: SEXP) -> Option<Vec<String>> {
     }
 }
 
-pub(crate) unsafe fn has_class(value: SEXP, class_name: &str) -> bool {
+pub(crate) fn has_class(value: SEXP, class_name: &str) -> bool {
     unsafe {
         let class = getAttrib(value, Rf_install(c"class".as_ptr()));
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
@@ -574,7 +562,7 @@ pub(crate) unsafe fn has_class(value: SEXP, class_name: &str) -> bool {
     }
 }
 
-pub(crate) unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
+pub(crate) fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
     unsafe {
         if charsxp.is_null() || charsxp == R_NaString() {
             return None;
@@ -583,7 +571,7 @@ pub(crate) unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub(crate) fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let Some(a) = Sexp::from_raw(sa) else {
             return R_NilValue();

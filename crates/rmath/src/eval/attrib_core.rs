@@ -52,7 +52,7 @@ pub unsafe fn R_LevelsSymbol() -> SEXP {
 }
 
 /// Get the "use.names" symbol.
-pub unsafe fn R_UseNamesSymbol() -> SEXP {
+pub fn R_UseNamesSymbol() -> SEXP {
     unsafe { Rf_install(c"use.names".as_ptr()) }
 }
 
@@ -62,22 +62,22 @@ pub unsafe fn R_TspSymbol() -> SEXP {
 }
 
 /// Get the "srcref" symbol.
-pub unsafe fn R_SrcRefSymbol() -> SEXP {
+pub fn R_SrcRefSymbol() -> SEXP {
     unsafe { Rf_install(c"srcref".as_ptr()) }
 }
 
 /// Get the "srcfile" symbol.
-pub unsafe fn R_SrcFileSymbol() -> SEXP {
+pub fn R_SrcFileSymbol() -> SEXP {
     unsafe { Rf_install(c"srcfile".as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
-pub unsafe fn R_RowNamesSymbol() -> SEXP {
+pub fn R_RowNamesSymbol() -> SEXP {
     unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
 /// Get the ".Environment" symbol.
-pub unsafe fn R_EnvironmentSymbol() -> SEXP {
+pub fn R_EnvironmentSymbol() -> SEXP {
     unsafe { Rf_install(c".Environment".as_ptr()) }
 }
 
@@ -230,7 +230,7 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 
 /// GNU `namesgets` / `removeAttrib(names)` for LISTSXP/LANGSXP.
 /// Non-NULL values install tags (coerced to STRSXP). NULL clears tags.
-unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
+fn namesgets_pairlist(list: SEXP, value: SEXP) {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             let mut cell = list;
@@ -276,7 +276,7 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
     }
 }
 
-unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
+fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         let name = crate::sexp::accessors::PRINTNAME(which);
         if !name.is_null() {
@@ -306,12 +306,10 @@ unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
 ///
 /// This is the equivalent of R's `isObject()` macro.
 pub fn isObject(x: SEXP) -> c_int {
-    {
-        if x.is_null() {
-            return 0;
-        }
-        crate::sexp::accessors::OBJECT(x)
+    if x.is_null() {
+        return 0;
     }
+    crate::sexp::accessors::OBJECT(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +319,7 @@ pub fn isObject(x: SEXP) -> c_int {
 /// Set the class attribute of an object.
 ///
 /// This is the equivalent of R's `R_classgets()`.
-pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
+pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
     unsafe {
         if klass.is_null() || klass == R_NilValue() {
             return x;
@@ -359,7 +357,7 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 
 /// GNU `lang2str`: implicit class of a language object is the syntactic
 /// head (`if`, `while`, `for`, `=`, `<-`, `(`, `{`) or `"call"`.
-pub unsafe fn language_implicit_class_chars(obj: SEXP) -> SEXP {
+pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
     unsafe {
         let symb = CAR(obj);
         if TYPEOF(symb) == SEXPTYPE::SYMSXP {
@@ -460,7 +458,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get the length of an object via the "length" attribute.
-pub unsafe fn R_length_gets(x: SEXP) -> c_int {
+pub fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
         let len_sym = Rf_install(c"length".as_ptr());
         let val = getAttrib(x, len_sym);
@@ -480,12 +478,12 @@ pub unsafe fn R_length_gets(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// FFI-compatible version of getAttrib.
-pub unsafe fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe { getAttrib(x, which) }
 }
 
 /// FFI-compatible version of setAttrib.
-pub unsafe fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+pub fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         setAttrib(x, which, value);
     }

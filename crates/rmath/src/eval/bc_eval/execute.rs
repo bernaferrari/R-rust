@@ -10,7 +10,7 @@ pub(crate) fn execute_gnu_instruction(f: impl FnOnce()) {
     f();
 }
 
-pub(crate) unsafe fn eval_gnu_adapter(
+pub(crate) fn eval_gnu_adapter(
     body: SEXP,
     rho: SEXP,
     pin: &crate::sexp::owner::OwnerPin,

@@ -17,7 +17,7 @@ pub(crate) fn poll_vector_cancellation(i: R_xlen_t) {
 ///
 /// Returns REALSXP if either operand is REALSXP, otherwise returns INTSXP/LGLSXP.
 /// Integer overflow produces NA_INTEGER.
-pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         if sa.is_null() || sb.is_null() {
             return R_NilValue();
@@ -180,7 +180,7 @@ pub(crate) fn binary_arithmetic_value(op: &str, x: f64, y: f64) -> f64 {
 /// Vectorized binary comparison with recycling.
 ///
 /// Always returns LGLSXP of the result length.
-pub(crate) unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub(crate) fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let Some(a) = NumericVector::from_raw(sa) else {
             arithmetic_error("comparison of these types is not implemented");
@@ -291,7 +291,7 @@ pub(crate) fn arithmetic_error(message: impl Into<String>) -> ! {
     });
 }
 
-pub(crate) unsafe fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> bool {
+pub(crate) fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> bool {
     unsafe {
         let attr = getAttrib(source, symbol);
         if attr.is_null() || attr == R_NilValue() {
@@ -303,7 +303,7 @@ pub(crate) unsafe fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SE
     }
 }
 
-pub(crate) unsafe fn copy_dims_if_present(
+pub(crate) fn copy_dims_if_present(
     result: SEXP,
     source: SEXP,
     result_len: R_xlen_t,
@@ -342,7 +342,7 @@ pub(crate) unsafe fn copy_dims_if_present(
 /// Arithmetic preserves non-shape attributes from a full-length operand;
 /// when lengths tie, the left operand overwrites matching right attributes.
 /// Comparisons use the separate shape-only path below (GNU arithmetic.c).
-pub(crate) unsafe fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
+pub(crate) fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
     unsafe {
         if XLENGTH(b) == n {
             crate::mainutils::array::copyMostAttrib(b, result);
@@ -354,7 +354,7 @@ pub(crate) unsafe fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: S
     }
 }
 
-pub(super) unsafe fn propagate_binary_vector_attributes(
+pub(super) fn propagate_binary_vector_attributes(
     result: SEXP,
     a: SEXP,
     b: SEXP,
@@ -405,18 +405,16 @@ pub(super) unsafe fn propagate_binary_vector_attributes(
 }
 
 /// Plain-vector tail of the upstream decision table: names only, `x` wins.
-pub(crate) unsafe fn propagate_plain_names(result: SEXP, a: SEXP, b: SEXP, result_len: R_xlen_t) {
-    unsafe {
-        if LENGTH(a) as R_xlen_t == result_len && copy_attr_if_present(result, a, R_NamesSymbol()) {
-            return;
-        }
-        if LENGTH(b) as R_xlen_t == result_len {
-            copy_attr_if_present(result, b, R_NamesSymbol());
-        }
+pub(crate) fn propagate_plain_names(result: SEXP, a: SEXP, b: SEXP, result_len: R_xlen_t) {
+    if LENGTH(a) as R_xlen_t == result_len && copy_attr_if_present(result, a, R_NamesSymbol()) {
+        return;
+    }
+    if LENGTH(b) as R_xlen_t == result_len {
+        copy_attr_if_present(result, b, R_NamesSymbol());
     }
 }
 
-pub(crate) unsafe fn set_single_string_class(result: SEXP, class_name: &str) {
+pub(crate) fn set_single_string_class(result: SEXP, class_name: &str) {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if class.is_null() {
@@ -429,7 +427,7 @@ pub(crate) unsafe fn set_single_string_class(result: SEXP, class_name: &str) {
     }
 }
 
-pub(crate) unsafe fn set_string_attribute(result: SEXP, name: &str, value: &str) {
+pub(crate) fn set_string_attribute(result: SEXP, name: &str, value: &str) {
     unsafe {
         let attr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if attr.is_null() {
@@ -443,7 +441,7 @@ pub(crate) unsafe fn set_string_attribute(result: SEXP, name: &str, value: &str)
     }
 }
 
-pub(crate) unsafe fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
+pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
@@ -464,7 +462,7 @@ pub(crate) unsafe fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
     }
 }
 
-pub(crate) unsafe fn first_summary_data_arg(args: SEXP) -> SEXP {
+pub(crate) fn first_summary_data_arg(args: SEXP) -> SEXP {
     unsafe {
         let na_rm_sym = Rf_install(c"na.rm".as_ptr());
         let finite_sym = Rf_install(c"finite".as_ptr());
@@ -480,19 +478,17 @@ pub(crate) unsafe fn first_summary_data_arg(args: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
-    unsafe {
-        if source.is_null() || source == R_NilValue() || result.is_null() || result == R_NilValue()
-        {
-            return;
-        }
-        if crate::mainutils::essentials::sexp_has_class(source, "Date") {
-            set_single_string_class(result, "Date");
-        } else if crate::mainutils::essentials::sexp_has_class(source, "POSIXct")
-            || crate::mainutils::essentials::sexp_has_class(source, "POSIXt")
-        {
-            set_posixct_attributes_from(result, source);
-        }
+pub(crate) fn restore_datetime_summary_class(source: SEXP, result: SEXP) {
+    if source.is_null() || source == R_NilValue() || result.is_null() || result == R_NilValue()
+    {
+        return;
+    }
+    if crate::mainutils::essentials::sexp_has_class(source, "Date") {
+        set_single_string_class(result, "Date");
+    } else if crate::mainutils::essentials::sexp_has_class(source, "POSIXct")
+        || crate::mainutils::essentials::sexp_has_class(source, "POSIXt")
+    {
+        set_posixct_attributes_from(result, source);
     }
 }
 
@@ -537,7 +533,7 @@ pub(crate)  fn coerce_summary_posixlt_args(
     out
 }
 
-pub(crate) unsafe fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
+pub(crate) fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
     unsafe {
         let attr = getAttrib(source, Rf_install(name.as_ptr()));
         let attr = Sexp::from_raw(attr)?;

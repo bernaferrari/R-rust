@@ -86,7 +86,7 @@ fn allocate_vector<'a>(
 }
 
 /// Coerce a numeric SEXP to CPLXSXP.
-pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
+pub fn coerce_to_complex(x: SEXP) -> SEXP {
     if TYPEOF(x) == SEXPTYPE::CPLXSXP {
         return x;
     }
@@ -116,7 +116,7 @@ pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
 ///
 /// If both inputs are REALSXP/INTSXP/LGLSXP, the result is REALSXP if possible.
 /// If either input is CPLXSXP, the result is CPLXSXP.
-pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     let na = XLENGTH(sa);
     let nb = XLENGTH(sb);
     if na == 0 || nb == 0 {
@@ -125,7 +125,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     }
     if TYPEOF(sa) != SEXPTYPE::CPLXSXP && TYPEOF(sb) != SEXPTYPE::CPLXSXP {
         // SAFETY: the translated caller retains both original arguments.
-        return unsafe { crate::eval::arithmetic::real_binary(op, sa, sb) };
+        return crate::eval::arithmetic::real_binary(op, sa, sb);
     }
 
     let n = na.max(nb);
@@ -190,7 +190,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     }
     let result = result.freeze();
     // SAFETY: the checked operands and result stay rooted during attribute propagation.
-    unsafe {
+    {
         super::arithmetic::propagate_arithmetic_attributes(
             result.as_raw(),
             a.as_raw(),
@@ -221,7 +221,7 @@ fn complex_abs(z: Rcomplex) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Complex absolute value (Modulus) — returns REALSXP.
-pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
+pub fn complex_abs_vec(sa: SEXP) -> SEXP {
     if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
         return R_NilValue();
     }

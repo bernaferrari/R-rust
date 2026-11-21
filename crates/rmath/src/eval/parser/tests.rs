@@ -176,7 +176,7 @@ fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
     }
 }
 
-unsafe fn call_head_name(call: SEXP) -> String {
+fn call_head_name(call: SEXP) -> String {
     unsafe {
         let printname = PRINTNAME(CAR(call));
         let chars = CHAR(printname);

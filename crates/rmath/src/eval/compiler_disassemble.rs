@@ -143,7 +143,7 @@ const GNU_NAMES: [&str; 129] = [
     "DECLNKSTK.OP",
 ];
 
-unsafe fn expand(code: SEXP, depth: usize) -> SEXP {
+fn expand(code: SEXP, depth: usize) -> SEXP {
     unsafe {
         if depth > 128 {
             compiler_error("bytecode disassembly nesting exceeds limit");
@@ -197,36 +197,34 @@ unsafe fn expand(code: SEXP, depth: usize) -> SEXP {
     }
 }
 
-pub unsafe fn do_disassemble(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            compiler_error("argument 'code' is missing, with no default");
-        }
-        if CDR(args) != R_NilValue() {
-            compiler_error("unused argument (...)");
-        }
-        let input = CAR(args);
-        let code = if TYPEOF(input) == SEXPTYPE::CLOSXP {
-            BODY(input)
-        } else {
-            input
-        };
-        if TYPEOF(code) != SEXPTYPE::BCODESXP {
-            compiler_error(if TYPEOF(input) == SEXPTYPE::CLOSXP {
-                "function is not compiled"
-            } else {
-                "argument is not a byte code object"
-            });
-        }
-        let _code_root = protect(code);
-        let result = expand(code, 0);
-        let _result_root = protect(result);
-        let dump_args = Rf_cons(result, R_NilValue());
-        let _args_root = protect(dump_args);
-        crate::mainutils::essentials::do_dput(call, op, dump_args, rho);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        result
+pub fn do_disassemble(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    if args.is_null() || args == R_NilValue() {
+        compiler_error("argument 'code' is missing, with no default");
     }
+    if CDR(args) != R_NilValue() {
+        compiler_error("unused argument (...)");
+    }
+    let input = CAR(args);
+    let code = if TYPEOF(input) == SEXPTYPE::CLOSXP {
+        BODY(input)
+    } else {
+        input
+    };
+    if TYPEOF(code) != SEXPTYPE::BCODESXP {
+        compiler_error(if TYPEOF(input) == SEXPTYPE::CLOSXP {
+            "function is not compiled"
+        } else {
+            "argument is not a byte code object"
+        });
+    }
+    let _code_root = protect(code);
+    let result = expand(code, 0);
+    let _result_root = protect(result);
+    let dump_args = Rf_cons(result, R_NilValue());
+    let _args_root = protect(dump_args);
+    crate::mainutils::essentials::do_dput(call, op, dump_args, rho);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    result
 }
 
 #[cfg(test)]

@@ -90,7 +90,7 @@ use crate::sexp::symbol::{
 /// Mirrors GNU R's `R_InBCInterpreter = mkSymMarker(mkChar("<in-bc-interp>"))`.
 /// The symbol is uninterned and rooted in `ProfilingState::in_bc_interpreter`,
 /// so no user R value can collide with it by pointer identity.
-pub(crate) unsafe fn get_R_InBCInterpreter() -> SEXP {
+pub(crate) fn get_R_InBCInterpreter() -> SEXP {
     unsafe { with_required_current_instance(|instance| get_R_InBCInterpreter_in(instance)) }
 }
 
@@ -123,7 +123,7 @@ pub(crate) unsafe fn get_R_InBCInterpreter_in(instance: *mut RInstance) -> SEXP 
 }
 
 /// Update the active `R_Srcref` on the current runtime instance.
-pub(crate) unsafe fn set_current_srcref(srcref: SEXP) {
+pub(crate) fn set_current_srcref(srcref: SEXP) {
     unsafe {
         with_required_current_instance(|instance| set_current_srcref_in(instance, srcref));
     }
@@ -216,7 +216,7 @@ pub(crate) struct BcEvalSrcrefGuard {
 }
 
 impl BcEvalSrcrefGuard {
-    pub(crate) unsafe fn enter(body: SEXP, initial_pc: isize) -> Self {
+    pub(crate) fn enter(body: SEXP, initial_pc: isize) -> Self {
         unsafe {
             with_required_current_instance(|instance| {
                 let pin = crate::sexp::context::pin_context_owner_in(instance);
@@ -243,7 +243,7 @@ impl BcEvalSrcrefGuard {
     }
 
     #[inline]
-    pub(crate) unsafe fn set_pc(&self, pc: isize) {
+    pub(crate) fn set_pc(&self, pc: isize) {
         unsafe {
             if self
                 .pin
@@ -280,7 +280,7 @@ impl Drop for BcEvalSrcrefGuard {
     }
 }
 
-unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
+fn get_R_ToplevelContext() -> *mut RCNTXT {
     unsafe {
         let mut context = super::runtime::global_context();
         while !context.is_null() && !(*context).nextcontext.is_null() {
@@ -319,7 +319,7 @@ unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
 }
 
 /// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.
-unsafe fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
+fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
     unsafe {
         if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0
         {
@@ -500,7 +500,7 @@ fn write_profile_sample(
     if ready {
         let _guard = SamplingGuard(epoch);
         let _visibility = super::runtime::VisibilityGuard::new();
-        unsafe {
+        {
             doprof(0);
         }
         owner.require_active()?;
@@ -838,7 +838,7 @@ fn ensure_source_slots(
 
 /// The typed filename and buffer owners survive providers. Reborrow character
 /// bytes only after callbacks, so no filename or source-offset copy is needed.
-unsafe fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
+fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
     unsafe {
         if filename.typeof_() != SEXPTYPE::CHARSXP {
             return 0;
@@ -1148,7 +1148,7 @@ fn pf_str(_s: *const c_char) -> isize {
 /// Write an integer to the profile output file.
 ///
 /// Ported from R's `pf_int()` in eval.c.
-unsafe fn pf_int(num: c_int) {
+fn pf_int(num: c_int) {
     unsafe {
         let mut buf = [0u8; 32];
         let mut pb = profbuf {
@@ -1173,7 +1173,7 @@ unsafe fn pf_int(num: c_int) {
 /// Get the current source reference for profiling.
 ///
 /// Ported from R's `R_getCurrentSrcref()` in eval.c.
-unsafe fn R_getCurrentSrcref() -> SEXP {
+fn R_getCurrentSrcref() -> SEXP {
     unsafe {
         let srcref = with_profiling_state(|state| state.sref.as_raw());
         let in_bc = get_R_InBCInterpreter();
@@ -1197,7 +1197,7 @@ unsafe fn R_getCurrentSrcref() -> SEXP {
 /// owners and discard samples retained through stop/restart callbacks.
 ///
 /// Ported from R's `doprof()` in eval.c.
-unsafe fn doprof(_sig: c_int) {
+fn doprof(_sig: c_int) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -1532,7 +1532,7 @@ fn R_EndProfiling() {
 /// profiling flags (no fd to close since the wasm `R_InitProfiling`
 /// stub never opens one).
 #[cfg(target_arch = "wasm32")]
-unsafe fn R_EndProfiling() {
+fn R_EndProfiling() {
     unsafe {
         with_profiling_state(|state| {
             state.profile_generation = state.profile_generation.wrapping_add(1);
@@ -1571,7 +1571,7 @@ unsafe fn R_EndProfiling() {
 /// deadlines are serviced on the owner thread; `R_WriteProfile` also supports
 /// an explicit sample without creating a worker or installing a signal.
 #[cfg(not(target_arch = "wasm32"))]
-unsafe fn R_InitProfiling(
+fn R_InitProfiling(
     filename: SEXP,
     append: c_int,
     dinterval: c_double,
@@ -1859,7 +1859,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 /// (matching upstream's `error(_("R profiling is not available on this system"))`
 /// fallback). Stopping with an empty filename stays a silent no-op.
 #[cfg(any(target_arch = "wasm32", test))]
-pub unsafe fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -2056,7 +2056,7 @@ fn dobcprof_null(_sig: c_int) {
 ///
 /// Ported from R's `do_bcprofstart()` in eval.c.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let dinterval: c_double = 0.02;
         let interval: c_int = (1e6 * dinterval + 0.5) as c_int;
@@ -2115,7 +2115,7 @@ pub fn do_bcprofstart(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_bcprofstop()` in eval.c.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if with_profiling_state(|state| state.bc_profiling) == 0 {
             // Not byte code profiling
@@ -2160,7 +2160,7 @@ pub fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_bcprofcounts()` in eval.c.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let val = Rf_allocVector(SEXPTYPE::INTSXP, OPCOUNT as c_int);
         if val.is_null() {
@@ -2218,12 +2218,12 @@ mod tests {
     use crate::sexp::instance::RInstance;
     use crate::sexp::memory::with_arena;
 
-    unsafe fn r_string(text: &str) -> SEXP {
+    fn r_string(text: &str) -> SEXP {
         let c_text = std::ffi::CString::new(text).expect("test string without interior nul");
         unsafe { Rf_mkString(c_text.as_ptr()) }
     }
 
-    unsafe fn pairlist(values: &[SEXP]) -> SEXP {
+    fn pairlist(values: &[SEXP]) -> SEXP {
         unsafe {
             values
                 .iter()

@@ -51,19 +51,19 @@ struct BytecodeCompiler {
 }
 
 impl BytecodeCompiler {
-    unsafe fn new(rho: SEXP) -> Self {
+    fn new(rho: SEXP) -> Self {
         BytecodeCompiler {
             consts: Vec::new(),
             code: Vec::new(),
             srcrefs_index: Vec::new(),
             current_srcref: -1,
             stack_hint: 8,
-            rho: unsafe { own_operand(rho) },
+            rho: { own_operand(rho) },
             compiled_local_funs: Vec::new(),
         }
     }
 
-    unsafe fn add_const(&mut self, value: SEXP) -> c_int {
+    fn add_const(&mut self, value: SEXP) -> c_int {
         // Bytecode constant operands skip slot 0, which stores the source expr.
         let idx = self
             .consts
@@ -71,7 +71,7 @@ impl BytecodeCompiler {
             .checked_add(1)
             .and_then(|n| c_int::try_from(n).ok())
             .unwrap_or_else(|| compiler_error("bytecode constant pool is too large"));
-        let value = unsafe { own_operand(value) };
+        let value = { own_operand(value) };
         self.consts
             .try_reserve(1)
             .unwrap_or_else(|_| compiler_error("cannot grow bytecode constant pool"));
@@ -98,80 +98,78 @@ impl BytecodeCompiler {
         self.emit(operand);
     }
 
-    unsafe fn compile_expr(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let expr_owned = own_operand(if expr.is_null() { R_NilValue() } else { expr });
-            let expr = expr_owned.as_raw();
-            if expr.is_null() || expr == R_NilValue() {
-                let idx = self.add_const(R_NilValue());
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                return true;
-            }
-
-            let prev_srcref = self.current_srcref;
-            let expr_srcref = crate::sexp::attrib_core::getAttrib(
-                expr,
-                crate::sexp::attrib_core::R_SrcRefSymbol(),
-            );
-            if !expr_srcref.is_null()
-                && expr_srcref != R_NilValue()
-                && TYPEOF(expr_srcref) == SEXPTYPE::INTSXP
-            {
-                self.current_srcref = self.add_const(expr_srcref);
-            }
-
-            let compiled = match TYPEOF(expr) {
-                t if t == SEXPTYPE::LGLSXP => {
-                    let idx = self.add_const(expr);
-                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    true
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    let idx = self.add_const(expr);
-                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    true
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    let idx = self.add_const(expr);
-                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    true
-                }
-                t if t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP => {
-                    let idx = self.add_const(expr);
-                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    true
-                }
-                t if t == SEXPTYPE::SYMSXP => {
-                    // `...` must never compile to OP_GETVAR: the DOTSXP frame
-                    // binding is spliced by the AST evaluator (dispatch.rs
-                    // evalList/promiseArgs), not fetched as an ordinary value
-                    // (mirrors GNU R, where the compiler never emits GETVAR
-                    // for R_DotsSymbol). Leave the expression on the AST path.
-                    if expr == R_DotsSymbol() {
-                        return false;
-                    }
-                    // A missing subscript (`x[]`) is the R_MissingArg sentinel,
-                    // not a variable lookup.
-                    if expr == crate::sexp::globals::R_MissingArg() {
-                        let idx = self.add_const(expr);
-                        self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                        return true;
-                    }
-                    let idx = self.add_const(expr);
-                    self.emit_operand(opcodes::OP_GETVAR, idx);
-                    true
-                }
-                t if t == SEXPTYPE::CLOSXP => self.compile_closure_expr(expr),
-                t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
-                _ => false,
-            };
-            self.current_srcref = prev_srcref;
-            compiled
+    fn compile_expr(&mut self, expr: SEXP) -> bool {
+        let expr_owned = own_operand(if expr.is_null() { R_NilValue() } else { expr });
+        let expr = expr_owned.as_raw();
+        if expr.is_null() || expr == R_NilValue() {
+            let idx = self.add_const(R_NilValue());
+            self.emit_operand(opcodes::OP_PUSHCONST, idx);
+            return true;
         }
+
+        let prev_srcref = self.current_srcref;
+        let expr_srcref = crate::sexp::attrib_core::getAttrib(
+            expr,
+            crate::sexp::attrib_core::R_SrcRefSymbol(),
+        );
+        if !expr_srcref.is_null()
+            && expr_srcref != R_NilValue()
+            && TYPEOF(expr_srcref) == SEXPTYPE::INTSXP
+        {
+            self.current_srcref = self.add_const(expr_srcref);
+        }
+
+        let compiled = match TYPEOF(expr) {
+            t if t == SEXPTYPE::LGLSXP => {
+                let idx = self.add_const(expr);
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                true
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                let idx = self.add_const(expr);
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                true
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let idx = self.add_const(expr);
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                true
+            }
+            t if t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP => {
+                let idx = self.add_const(expr);
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                true
+            }
+            t if t == SEXPTYPE::SYMSXP => {
+                // `...` must never compile to OP_GETVAR: the DOTSXP frame
+                // binding is spliced by the AST evaluator (dispatch.rs
+                // evalList/promiseArgs), not fetched as an ordinary value
+                // (mirrors GNU R, where the compiler never emits GETVAR
+                // for R_DotsSymbol). Leave the expression on the AST path.
+                if expr == R_DotsSymbol() {
+                    return false;
+                }
+                // A missing subscript (`x[]`) is the R_MissingArg sentinel,
+                // not a variable lookup.
+                if expr == crate::sexp::globals::R_MissingArg() {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    return true;
+                }
+                let idx = self.add_const(expr);
+                self.emit_operand(opcodes::OP_GETVAR, idx);
+                true
+            }
+            t if t == SEXPTYPE::CLOSXP => self.compile_closure_expr(expr),
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
+            _ => false,
+        };
+        self.current_srcref = prev_srcref;
+        compiled
     }
 
     /// Lower a function expression to a closure constant.  GNU's compiler
-    unsafe fn compile_closure_expr(&mut self, expr: SEXP) -> bool {
+    fn compile_closure_expr(&mut self, expr: SEXP) -> bool {
         unsafe {
             let closure = crate::mainutils::duplicate::duplicate(expr);
             if closure.is_null() || TYPEOF(closure) != SEXPTYPE::CLOSXP {
@@ -194,148 +192,146 @@ impl BytecodeCompiler {
         }
     }
 
-    unsafe fn compile_call(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let fun_owned = own_operand(CAR(expr));
+    fn compile_call(&mut self, expr: SEXP) -> bool {
+        let fun_owned = own_operand(CAR(expr));
 
-            let fun = fun_owned.as_raw();
-            if fun.is_null() {
-                return false;
+        let fun = fun_owned.as_raw();
+        if fun.is_null() {
+            return false;
+        }
+        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+            let name = symbol_name_from_sexp(fun);
+            if name.as_deref() == Some("(") {
+                // GNU inlines `(`: compile the inner expression and
+                // keep the value visible.
+                let argument_owned = own_operand(CAR(CDR(expr)));
+
+                let argument = argument_owned.as_raw();
+                return if argument.is_null() || argument == R_NilValue() {
+                    false
+                } else {
+                    self.compile_expr(argument) && {
+                        self.emit(opcodes::OP_visible);
+                        true
+                    }
+                };
             }
-            if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-                let name = symbol_name_from_sexp(fun);
-                if name.as_deref() == Some("(") {
-                    // GNU inlines `(`: compile the inner expression and
-                    // keep the value visible.
-                    let argument_owned = own_operand(CAR(CDR(expr)));
-
-                    let argument = argument_owned.as_raw();
-                    return if argument.is_null() || argument == R_NilValue() {
-                        false
-                    } else {
-                        self.compile_expr(argument) && {
-                            self.emit(opcodes::OP_visible);
-                            true
-                        }
-                    };
-                }
-                if name.as_deref() == Some("{") {
-                    return self.compile_block(expr);
-                }
-                if name.as_deref() == Some("if") {
-                    return self.compile_if(expr);
-                }
-                if name.as_deref() == Some("while") {
-                    return self.compile_while(expr);
-                }
-                if name.as_deref() == Some("for") {
-                    return self.compile_for(expr);
-                }
-                if matches!(name.as_deref(), Some("<-") | Some("=")) {
-                    return self.compile_assignment(expr);
-                }
-                if name.as_deref() == Some("<<-") {
-                    return self.compile_superassignment(expr);
-                }
-                if name.as_deref() == Some("function") {
-                    return self.compile_function_expr(expr);
-                }
-                let local_fun = self.is_compiled_local_fun(fun);
-                let eager = name.as_deref().is_some_and(is_eager_builtin_call);
-                let is_missing = name.as_deref() == Some("missing");
-                let is_internal = name.as_deref() == Some(".Internal");
-                let is_at = name.as_deref() == Some("@") || name.as_deref() == Some("$");
-                let syntax_call = is_internal
-                    || is_missing
-                    || is_at
-                    || name.as_deref().is_some_and(|name| {
-                        super::primitive::fun_tab_index_by_name(name).is_some_and(|index| {
-                            super::primitive::primitive_kind_for_eval(
-                                crate::mainutils::names::R_FunTab[index as usize].eval,
-                            ) == SEXPTYPE::SPECIALSXP
-                        })
-                    });
-                let mut arg_cells = Vec::new();
-                let mut cur = CDR(expr);
-                let mut seen_cur = std::collections::HashSet::new();
-                while !cur.is_null() && cur != R_NilValue() {
-                    seen_cur
-                        .try_reserve(1)
-                        .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
-                    if !seen_cur.insert(cur.addr()) {
-                        compiler_error("cyclic bytecode source list");
-                    }
-                    arg_cells.push(own_operand(cur));
-                    cur = CDR(cur);
-                }
-                // Dots are syntax, not a GETVAR operand or an eager value.
-                // Forward the whole call's expressions through the existing
-                // promiseArgs/evalList path so tags, missingness and laziness
-                // survive expansion in the original caller frame.
-                let forwards_dots = arg_cells
-                    .iter()
-                    .any(|cell| CAR(cell.as_raw()) == R_DotsSymbol());
-                let syntax_call = syntax_call || forwards_dots;
-                // Closure calls receive lazy promises like GNU MAKEPROM.
-                // An unsupplied argument is the R_MissingArg sentinel, not a
-                // promise (a promise makes missing() false). .Internal must
-                // see the call, not a promise of it.
-                let subset = matches!(
-                    name.as_deref(),
-                    Some("[") | Some("[<-") | Some("[[") | Some("[[<-")
-                );
-                for (arg_index, cell) in arg_cells.iter().enumerate() {
-                    let argument_owned = own_operand(CAR(cell.as_raw()));
-
-                    let argument = argument_owned.as_raw();
-                    let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
-                    let missing_arg = argument == crate::sexp::globals::R_MissingArg();
-                    if missing_arg || syntax_call {
-                        let idx = self.add_const(argument);
-                        self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    } else if (!eager || local_fun) && !constant {
-                        let code =
-                            if TYPEOF(argument) == SEXPTYPE::SYMSXP && argument != R_DotsSymbol() {
-                                symbol_getvar_bcode(argument)
-                            } else {
-                                argument
-                            };
-                        let idx = self.add_const(code);
-                        self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
-                    } else if !self.compile_expr(argument) {
-                        return false;
-                    }
-                    let later = arg_index + 1 < arg_cells.len();
-                    let is_object = subset && arg_index == 0;
-                    if later && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
-                        self.emit(opcodes::OP_MARK_SHARED);
-                    }
-                    let tag = TAG(cell.as_raw());
-                    if !tag.is_null() && tag != R_NilValue() {
-                        let tag_idx = self.add_const(tag);
-                        self.emit_operand(opcodes::OP_SETTAG, tag_idx);
-                    }
-                }
-                let fun_idx = self.add_const(fun);
-                self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
-                self.emit_operand(
-                    if forwards_dots {
-                        opcodes::OP_CALL_SYNTAX_WITH_SOURCE
-                    } else if syntax_call {
-                        opcodes::OP_CALLSPECIAL
-                    } else {
-                        opcodes::OP_CALL_WITH_SOURCE
-                    },
-                    arg_cells.len() as c_int,
-                );
-                if forwards_dots || !syntax_call {
-                    let source = self.add_const(expr);
-                    self.emit(source);
-                }
-                true
-            } else {
-                return false;
+            if name.as_deref() == Some("{") {
+                return self.compile_block(expr);
             }
+            if name.as_deref() == Some("if") {
+                return self.compile_if(expr);
+            }
+            if name.as_deref() == Some("while") {
+                return self.compile_while(expr);
+            }
+            if name.as_deref() == Some("for") {
+                return self.compile_for(expr);
+            }
+            if matches!(name.as_deref(), Some("<-") | Some("=")) {
+                return self.compile_assignment(expr);
+            }
+            if name.as_deref() == Some("<<-") {
+                return self.compile_superassignment(expr);
+            }
+            if name.as_deref() == Some("function") {
+                return self.compile_function_expr(expr);
+            }
+            let local_fun = self.is_compiled_local_fun(fun);
+            let eager = name.as_deref().is_some_and(is_eager_builtin_call);
+            let is_missing = name.as_deref() == Some("missing");
+            let is_internal = name.as_deref() == Some(".Internal");
+            let is_at = name.as_deref() == Some("@") || name.as_deref() == Some("$");
+            let syntax_call = is_internal
+                || is_missing
+                || is_at
+                || name.as_deref().is_some_and(|name| {
+                    super::primitive::fun_tab_index_by_name(name).is_some_and(|index| {
+                        super::primitive::primitive_kind_for_eval(
+                            crate::mainutils::names::R_FunTab[index as usize].eval,
+                        ) == SEXPTYPE::SPECIALSXP
+                    })
+                });
+            let mut arg_cells = Vec::new();
+            let mut cur = CDR(expr);
+            let mut seen_cur = std::collections::HashSet::new();
+            while !cur.is_null() && cur != R_NilValue() {
+                seen_cur
+                    .try_reserve(1)
+                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+                if !seen_cur.insert(cur.addr()) {
+                    compiler_error("cyclic bytecode source list");
+                }
+                arg_cells.push(own_operand(cur));
+                cur = CDR(cur);
+            }
+            // Dots are syntax, not a GETVAR operand or an eager value.
+            // Forward the whole call's expressions through the existing
+            // promiseArgs/evalList path so tags, missingness and laziness
+            // survive expansion in the original caller frame.
+            let forwards_dots = arg_cells
+                .iter()
+                .any(|cell| CAR(cell.as_raw()) == R_DotsSymbol());
+            let syntax_call = syntax_call || forwards_dots;
+            // Closure calls receive lazy promises like GNU MAKEPROM.
+            // An unsupplied argument is the R_MissingArg sentinel, not a
+            // promise (a promise makes missing() false). .Internal must
+            // see the call, not a promise of it.
+            let subset = matches!(
+                name.as_deref(),
+                Some("[") | Some("[<-") | Some("[[") | Some("[[<-")
+            );
+            for (arg_index, cell) in arg_cells.iter().enumerate() {
+                let argument_owned = own_operand(CAR(cell.as_raw()));
+
+                let argument = argument_owned.as_raw();
+                let constant = matches!(TYPEOF(argument), 0 | 10 | 13 | 14 | 15 | 16 | 24);
+                let missing_arg = argument == crate::sexp::globals::R_MissingArg();
+                if missing_arg || syntax_call {
+                    let idx = self.add_const(argument);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                } else if (!eager || local_fun) && !constant {
+                    let code =
+                        if TYPEOF(argument) == SEXPTYPE::SYMSXP && argument != R_DotsSymbol() {
+                            symbol_getvar_bcode(argument)
+                        } else {
+                            argument
+                        };
+                    let idx = self.add_const(code);
+                    self.emit_operand(opcodes::OP_MAKEPROMISE, idx);
+                } else if !self.compile_expr(argument) {
+                    return false;
+                }
+                let later = arg_index + 1 < arg_cells.len();
+                let is_object = subset && arg_index == 0;
+                if later && !is_object && TYPEOF(argument) == SEXPTYPE::SYMSXP {
+                    self.emit(opcodes::OP_MARK_SHARED);
+                }
+                let tag = TAG(cell.as_raw());
+                if !tag.is_null() && tag != R_NilValue() {
+                    let tag_idx = self.add_const(tag);
+                    self.emit_operand(opcodes::OP_SETTAG, tag_idx);
+                }
+            }
+            let fun_idx = self.add_const(fun);
+            self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
+            self.emit_operand(
+                if forwards_dots {
+                    opcodes::OP_CALL_SYNTAX_WITH_SOURCE
+                } else if syntax_call {
+                    opcodes::OP_CALLSPECIAL
+                } else {
+                    opcodes::OP_CALL_WITH_SOURCE
+                },
+                arg_cells.len() as c_int,
+            );
+            if forwards_dots || !syntax_call {
+                let source = self.add_const(expr);
+                self.emit(source);
+            }
+            true
+        } else {
+            return false;
         }
     }
 
@@ -343,7 +339,7 @@ impl BytecodeCompiler {
     /// MAKECLOSURE: the runtime frame becomes the closure environment,
     /// exactly like eval.c OP(MAKECLOSURE) — a compile-time environment
     /// would break lexical capture of enclosing locals.
-    unsafe fn compile_function_expr(&mut self, expr: SEXP) -> bool {
+    fn compile_function_expr(&mut self, expr: SEXP) -> bool {
         unsafe {
             let formals_cell = CDR(expr);
             let body_cell = if !formals_cell.is_null() {
@@ -384,153 +380,147 @@ impl BytecodeCompiler {
         }
     }
 
-    unsafe fn compile_while(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            // while (test) body
-            let test_owned = own_operand(CAR(CDR(expr)));
+    fn compile_while(&mut self, expr: SEXP) -> bool {
+        // while (test) body
+        let test_owned = own_operand(CAR(CDR(expr)));
 
-            let test = test_owned.as_raw();
-            let body_owned = own_operand(CAR(CDR(CDR(expr))));
+        let test = test_owned.as_raw();
+        let body_owned = own_operand(CAR(CDR(CDR(expr))));
 
-            let body = body_owned.as_raw();
-            let begin_idx = self.code.len();
-            self.emit(opcodes::OP_BEGINLOOP);
-            self.emit(0); // break -> ENDLOOP
-            self.emit(0); // next -> test
-            let test_label = self.code.len() as c_int;
-            if !self.compile_expr(test) {
-                return false;
-            }
-            let brif_idx = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_BRIFNOT, 0);
-            if !self.compile_expr(body) {
-                return false;
-            }
-            self.emit(opcodes::OP_POP);
-            self.emit_operand(opcodes::OP_GOTO, test_label);
-            let endloop_pc = self.code.len() as c_int;
-            self.emit(opcodes::OP_ENDLOOP);
-            let after = self.code.len() as c_int;
-            self.code[begin_idx + 1] = endloop_pc;
-            self.code[begin_idx + 2] = test_label;
-            self.code[brif_idx as usize + 1] = endloop_pc;
-            let nil_idx = self.add_const(R_NilValue());
-            self.emit_operand(opcodes::OP_PUSHCONST, nil_idx);
-            self.emit(opcodes::OPinvisible);
-            true
+        let body = body_owned.as_raw();
+        let begin_idx = self.code.len();
+        self.emit(opcodes::OP_BEGINLOOP);
+        self.emit(0); // break -> ENDLOOP
+        self.emit(0); // next -> test
+        let test_label = self.code.len() as c_int;
+        if !self.compile_expr(test) {
+            return false;
         }
+        let brif_idx = self.code.len() as c_int;
+        self.emit_operand(opcodes::OP_BRIFNOT, 0);
+        if !self.compile_expr(body) {
+            return false;
+        }
+        self.emit(opcodes::OP_POP);
+        self.emit_operand(opcodes::OP_GOTO, test_label);
+        let endloop_pc = self.code.len() as c_int;
+        self.emit(opcodes::OP_ENDLOOP);
+        let after = self.code.len() as c_int;
+        self.code[begin_idx + 1] = endloop_pc;
+        self.code[begin_idx + 2] = test_label;
+        self.code[brif_idx as usize + 1] = endloop_pc;
+        let nil_idx = self.add_const(R_NilValue());
+        self.emit_operand(opcodes::OP_PUSHCONST, nil_idx);
+        self.emit(opcodes::OPinvisible);
+        true
     }
 
-    unsafe fn compile_for(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            // for (symbol in sequence) body
-            let symbol_owned = own_operand(CAR(CDR(expr)));
+    fn compile_for(&mut self, expr: SEXP) -> bool {
+        // for (symbol in sequence) body
+        let symbol_owned = own_operand(CAR(CDR(expr)));
 
-            let symbol = symbol_owned.as_raw();
-            let sequence_owned = own_operand(CAR(CDR(CDR(expr))));
+        let symbol = symbol_owned.as_raw();
+        let sequence_owned = own_operand(CAR(CDR(CDR(expr))));
 
-            let sequence = sequence_owned.as_raw();
-            let body_owned = own_operand(CAR(CDR(CDR(CDR(expr)))));
+        let sequence = sequence_owned.as_raw();
+        let body_owned = own_operand(CAR(CDR(CDR(CDR(expr)))));
 
-            let body = body_owned.as_raw();
-            if TYPEOF(symbol) != SEXPTYPE::SYMSXP || !self.compile_expr(sequence) {
-                return false;
-            }
-
-            let symbol_idx = self.add_const(symbol);
-            let start_idx = self.code.len();
-            self.emit(opcodes::OP_STARTFOR);
-            self.emit(symbol_idx);
-            self.emit(0); // empty-sequence target, patched below
-
-            let begin_idx = self.code.len();
-            self.emit(opcodes::OP_BEGINLOOP);
-            self.emit(0); // break -> ENDLOOP
-            self.emit(0); // next -> NEXTFOR
-
-            let body_start = self.code.len() as c_int;
-            if !self.compile_expr(body) {
-                return false;
-            }
-            self.emit(opcodes::OP_POP);
-            let next_pc = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_NEXTFOR, body_start);
-            let endloop_pc = self.code.len() as c_int;
-            self.emit(opcodes::OP_ENDLOOP);
-            let after = self.code.len() as c_int;
-
-            self.code[start_idx + 2] = after;
-            self.code[begin_idx + 1] = endloop_pc;
-            self.code[begin_idx + 2] = next_pc;
-            self.emit(opcodes::OPinvisible);
-            true
+        let body = body_owned.as_raw();
+        if TYPEOF(symbol) != SEXPTYPE::SYMSXP || !self.compile_expr(sequence) {
+            return false;
         }
+
+        let symbol_idx = self.add_const(symbol);
+        let start_idx = self.code.len();
+        self.emit(opcodes::OP_STARTFOR);
+        self.emit(symbol_idx);
+        self.emit(0); // empty-sequence target, patched below
+
+        let begin_idx = self.code.len();
+        self.emit(opcodes::OP_BEGINLOOP);
+        self.emit(0); // break -> ENDLOOP
+        self.emit(0); // next -> NEXTFOR
+
+        let body_start = self.code.len() as c_int;
+        if !self.compile_expr(body) {
+            return false;
+        }
+        self.emit(opcodes::OP_POP);
+        let next_pc = self.code.len() as c_int;
+        self.emit_operand(opcodes::OP_NEXTFOR, body_start);
+        let endloop_pc = self.code.len() as c_int;
+        self.emit(opcodes::OP_ENDLOOP);
+        let after = self.code.len() as c_int;
+
+        self.code[start_idx + 2] = after;
+        self.code[begin_idx + 1] = endloop_pc;
+        self.code[begin_idx + 2] = next_pc;
+        self.emit(opcodes::OPinvisible);
+        true
     }
 
-    unsafe fn compile_assignment(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let lhs_owned = own_operand(CAR(CDR(expr)));
+    fn compile_assignment(&mut self, expr: SEXP) -> bool {
+        let lhs_owned = own_operand(CAR(CDR(expr)));
 
-            let lhs = lhs_owned.as_raw();
-            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
+        let lhs = lhs_owned.as_raw();
+        let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
 
-            let rhs = rhs_owned.as_raw();
-            if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
-                // A namespace-qualified getter head is itself a language
-                // object even when its target is a plain symbol. Let the
-                // strict general-chain recognizer decide whether it is a
-                // supported ::/::: form; arbitrary dynamic heads still
-                // decline and retain source evaluation semantics.
-                if TYPEOF(CAR(lhs)) == SEXPTYPE::LANGSXP {
+        let rhs = rhs_owned.as_raw();
+        if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+            // A namespace-qualified getter head is itself a language
+            // object even when its target is a plain symbol. Let the
+            // strict general-chain recognizer decide whether it is a
+            // supported ::/::: form; arbitrary dynamic heads still
+            // decline and retain source evaluation semantics.
+            if TYPEOF(CAR(lhs)) == SEXPTYPE::LANGSXP {
+                return self.compile_general_replacement(lhs, rhs, false);
+            }
+            let object = own_operand(CAR(CDR(lhs)));
+            if object.typeof_() == SEXPTYPE::LANGSXP {
+                let dollar_root = symbol_name_from_sexp(CAR(object.as_raw())).as_deref()
+                    == Some("$")
+                    && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP;
+                if !dollar_root
+                    || !matches!(
+                        symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                        Some("[") | Some("[[")
+                    )
+                {
                     return self.compile_general_replacement(lhs, rhs, false);
                 }
+            }
+            return if matches!(
+                symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                Some("[") | Some("[[")
+            ) {
                 let object = own_operand(CAR(CDR(lhs)));
-                if object.typeof_() == SEXPTYPE::LANGSXP {
-                    let dollar_root = symbol_name_from_sexp(CAR(object.as_raw())).as_deref()
-                        == Some("$")
-                        && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP;
-                    if !dollar_root
-                        || !matches!(
-                            symbol_name_from_sexp(CAR(lhs)).as_deref(),
-                            Some("[") | Some("[[")
-                        )
-                    {
-                        return self.compile_general_replacement(lhs, rhs, false);
-                    }
-                }
-                return if matches!(
-                    symbol_name_from_sexp(CAR(lhs)).as_deref(),
-                    Some("[") | Some("[[")
-                ) {
-                    let object = own_operand(CAR(CDR(lhs)));
-                    if object.typeof_() == SEXPTYPE::SYMSXP {
-                        // Subassignment is also replacement: GNU evaluates
-                        // the RHS before selecting the target and indices,
-                        // writes the changed object, then returns that RHS.
-                        self.compile_replacement(lhs, rhs)
-                    } else {
-                        self.compile_subassign(expr, false)
-                    }
-                } else {
+                if object.typeof_() == SEXPTYPE::SYMSXP {
+                    // Subassignment is also replacement: GNU evaluates
+                    // the RHS before selecting the target and indices,
+                    // writes the changed object, then returns that RHS.
                     self.compile_replacement(lhs, rhs)
-                };
-            }
-            let binds_compiled_fun = is_function_syntax(rhs);
-            if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
-                return false;
-            }
-            if binds_compiled_fun {
-                self.compiled_local_funs.push(own_operand(lhs));
-            }
-            let symbol_idx = self.add_const(lhs);
-            self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
-            true
+                } else {
+                    self.compile_subassign(expr, false)
+                }
+            } else {
+                self.compile_replacement(lhs, rhs)
+            };
         }
+        let binds_compiled_fun = is_function_syntax(rhs);
+        if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
+            return false;
+        }
+        if binds_compiled_fun {
+            self.compiled_local_funs.push(own_operand(lhs));
+        }
+        let symbol_idx = self.add_const(lhs);
+        self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+        true
     }
 
     /// Flat replacement assigns the modified object but returns the original
     /// RHS. Evaluate RHS first; retain other arguments as expressions/promises.
-    unsafe fn compile_replacement(&mut self, lhs: SEXP, rhs: SEXP) -> bool {
+    fn compile_replacement(&mut self, lhs: SEXP, rhs: SEXP) -> bool {
         unsafe {
             let function = own_operand(CAR(lhs));
             let Some(name) = symbol_name_from_sexp(function.as_raw()) else {
@@ -603,101 +593,99 @@ impl BytecodeCompiler {
     /// Snapshot a finite syntax spine before compilation can run callbacks.
     /// Instruction operands describe checked owning levels, not mutable lists
     /// that execution would reread after the RHS changes their source graph.
-    unsafe fn compile_general_replacement(
+    fn compile_general_replacement(
         &mut self,
         lhs: SEXP,
         rhs: SEXP,
         superassign: bool,
     ) -> bool {
-        unsafe {
-            let rhs = own_operand(rhs);
-            let mut current = own_operand(lhs);
-            let mut levels = Vec::new();
-            let mut path = std::collections::HashSet::new();
-            while current.typeof_() == SEXPTYPE::LANGSXP {
-                path.try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track replacement syntax spine"));
-                if !path.insert(current.as_raw().addr()) {
-                    compiler_error("cyclic replacement syntax spine");
+        let rhs = own_operand(rhs);
+        let mut current = own_operand(lhs);
+        let mut levels = Vec::new();
+        let mut path = std::collections::HashSet::new();
+        while current.typeof_() == SEXPTYPE::LANGSXP {
+            path.try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot track replacement syntax spine"));
+            if !path.insert(current.as_raw().addr()) {
+                compiler_error("cyclic replacement syntax spine");
+            }
+            let getter = own_operand(CAR(current.as_raw()));
+            let Some(setter) = Self::replacement_setter_head(&getter) else {
+                return false;
+            };
+            let mut cell = CDR(current.as_raw());
+            let mut seen = std::collections::HashSet::new();
+            let mut arguments = Vec::new();
+            while !cell.is_null() && cell != R_NilValue() {
+                seen.try_reserve(1).unwrap_or_else(|_| {
+                    compiler_error("cannot track replacement level arguments")
+                });
+                if !seen.insert(cell.addr()) {
+                    compiler_error("cyclic replacement level arguments");
                 }
-                let getter = own_operand(CAR(current.as_raw()));
-                let Some(setter) = Self::replacement_setter_head(&getter) else {
-                    return false;
-                };
-                let mut cell = CDR(current.as_raw());
-                let mut seen = std::collections::HashSet::new();
-                let mut arguments = Vec::new();
-                while !cell.is_null() && cell != R_NilValue() {
-                    seen.try_reserve(1).unwrap_or_else(|_| {
-                        compiler_error("cannot track replacement level arguments")
-                    });
-                    if !seen.insert(cell.addr()) {
-                        compiler_error("cyclic replacement level arguments");
-                    }
-                    arguments.try_reserve(1).unwrap_or_else(|_| {
-                        compiler_error("cannot snapshot replacement level arguments")
-                    });
-                    let owned = own_operand(cell);
-                    let value = own_operand(CAR(cell));
-                    let tag = TAG(cell);
-                    if value.as_raw() == R_DotsSymbol() {
-                        return false;
-                    }
-                    arguments.push((
-                        value,
-                        own_operand(if tag.is_null() { R_NilValue() } else { tag }),
-                    ));
-                    cell = CDR(owned.as_raw());
-                }
-                if arguments.is_empty() {
+                arguments.try_reserve(1).unwrap_or_else(|_| {
+                    compiler_error("cannot snapshot replacement level arguments")
+                });
+                let owned = own_operand(cell);
+                let value = own_operand(CAR(cell));
+                let tag = TAG(cell);
+                if value.as_raw() == R_DotsSymbol() {
                     return false;
                 }
-                current = arguments.remove(0).0;
-                levels
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot snapshot replacement levels"));
-                levels.push((getter, setter, arguments));
+                arguments.push((
+                    value,
+                    own_operand(if tag.is_null() { R_NilValue() } else { tag }),
+                ));
+                cell = CDR(owned.as_raw());
             }
-            if current.typeof_() != SEXPTYPE::SYMSXP || levels.is_empty() {
+            if arguments.is_empty() {
                 return false;
             }
-            let root = self.add_const(current.as_raw());
-            let expression = self.add_const(rhs.as_raw());
-            let mut operands = Vec::new();
-            for (getter, setter, arguments) in levels.iter().rev() {
-                operands
-                    .try_reserve(3)
-                    .unwrap_or_else(|_| compiler_error("cannot encode replacement levels"));
-                operands.push(self.add_const(getter.as_raw()));
-                operands.push(self.add_const(setter.as_raw()));
-                operands
-                    .push(c_int::try_from(arguments.len()).unwrap_or_else(|_| {
-                        compiler_error("too many replacement level arguments")
-                    }));
-                for (argument, tag) in arguments {
-                    operands
-                        .try_reserve(2)
-                        .unwrap_or_else(|_| compiler_error("cannot encode replacement arguments"));
-                    operands.push(self.add_const(argument.as_raw()));
-                    operands.push(self.add_const(tag.as_raw()));
-                }
-            }
-            if !self.compile_expr(rhs.as_raw()) {
-                return false;
-            }
-            self.emit(opcodes::OP_MARK_SHARED);
-            self.emit_operand(opcodes::OP_REPLACEMENT_CHAIN, root);
-            self.emit(i32::from(superassign));
-            self.emit(expression);
-            self.emit(
-                c_int::try_from(levels.len())
-                    .unwrap_or_else(|_| compiler_error("too many replacement levels")),
-            );
-            for operand in operands {
-                self.emit(operand);
-            }
-            true
+            current = arguments.remove(0).0;
+            levels
+                .try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot snapshot replacement levels"));
+            levels.push((getter, setter, arguments));
         }
+        if current.typeof_() != SEXPTYPE::SYMSXP || levels.is_empty() {
+            return false;
+        }
+        let root = self.add_const(current.as_raw());
+        let expression = self.add_const(rhs.as_raw());
+        let mut operands = Vec::new();
+        for (getter, setter, arguments) in levels.iter().rev() {
+            operands
+                .try_reserve(3)
+                .unwrap_or_else(|_| compiler_error("cannot encode replacement levels"));
+            operands.push(self.add_const(getter.as_raw()));
+            operands.push(self.add_const(setter.as_raw()));
+            operands
+                .push(c_int::try_from(arguments.len()).unwrap_or_else(|_| {
+                    compiler_error("too many replacement level arguments")
+                }));
+            for (argument, tag) in arguments {
+                operands
+                    .try_reserve(2)
+                    .unwrap_or_else(|_| compiler_error("cannot encode replacement arguments"));
+                operands.push(self.add_const(argument.as_raw()));
+                operands.push(self.add_const(tag.as_raw()));
+            }
+        }
+        if !self.compile_expr(rhs.as_raw()) {
+            return false;
+        }
+        self.emit(opcodes::OP_MARK_SHARED);
+        self.emit_operand(opcodes::OP_REPLACEMENT_CHAIN, root);
+        self.emit(i32::from(superassign));
+        self.emit(expression);
+        self.emit(
+            c_int::try_from(levels.len())
+                .unwrap_or_else(|_| compiler_error("too many replacement levels")),
+        );
+        for operand in operands {
+            self.emit(operand);
+        }
+        true
     }
 
     /// Construct the matching setter head for source getters that the
@@ -705,7 +693,7 @@ impl BytecodeCompiler {
     /// symbols; an explicit `::`/`:::` namespace call retains its syntax so
     /// the runtime can resolve it in the original owner. Other callable heads
     /// stay on the source path.
-    unsafe fn replacement_setter_head(getter: &Sexp<'static>) -> Option<Sexp<'static>> {
+    fn replacement_setter_head(getter: &Sexp<'static>) -> Option<Sexp<'static>> {
         unsafe {
             let name = if getter.typeof_() == SEXPTYPE::SYMSXP {
                 symbol_name_from_sexp(getter.as_raw())?
@@ -760,7 +748,7 @@ impl BytecodeCompiler {
 
     /// Select a bounded replacement path after evaluating its RHS. The opcode
     /// owns the selected root and child; indices stay original lazy syntax.
-    unsafe fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
+    fn compile_subassign(&mut self, expr: SEXP, superassign: bool) -> bool {
         unsafe {
             let lhs = own_operand(CAR(CDR(expr)));
             let rhs = own_operand(CAR(CDR(CDR(expr))));
@@ -852,141 +840,135 @@ impl BytecodeCompiler {
 
     /// `<<-`: compile the value, then store into the enclosing frame via
     /// OP_SETVAR2 (eval.c SETVAR2 semantics; the value stays on the stack).
-    unsafe fn compile_superassignment(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let lhs_owned = own_operand(CAR(CDR(expr)));
+    fn compile_superassignment(&mut self, expr: SEXP) -> bool {
+        let lhs_owned = own_operand(CAR(CDR(expr)));
 
-            let lhs = lhs_owned.as_raw();
-            let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
+        let lhs = lhs_owned.as_raw();
+        let rhs_owned = own_operand(CAR(CDR(CDR(expr))));
 
-            let rhs = rhs_owned.as_raw();
-            if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
-                let object = own_operand(CAR(CDR(lhs)));
-                let subscript = matches!(
-                    symbol_name_from_sexp(CAR(lhs)).as_deref(),
-                    Some("[") | Some("[[")
-                );
-                let simple = object.typeof_() == SEXPTYPE::SYMSXP
-                    || (object.typeof_() == SEXPTYPE::LANGSXP
-                        && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
-                        && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP);
-                return if subscript && simple {
-                    self.compile_subassign(expr, true)
-                } else {
-                    self.compile_general_replacement(lhs, rhs, true)
-                };
-            }
-            if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
-                return false;
-            }
-            let symbol_idx = self.add_const(lhs);
-            self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
-            true
-        }
-    }
-    unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            // if (test) then else ; form is lang if test then else
-            let test_owned = own_operand(CAR(CDR(expr)));
-
-            let test = test_owned.as_raw();
-            let then_e_owned = own_operand(CAR(CDR(CDR(expr))));
-
-            let then_e = then_e_owned.as_raw();
-            let else_e = if CDR(CDR(CDR(expr))).is_null() {
-                R_NilValue()
+        let rhs = rhs_owned.as_raw();
+        if TYPEOF(lhs) == SEXPTYPE::LANGSXP {
+            let object = own_operand(CAR(CDR(lhs)));
+            let subscript = matches!(
+                symbol_name_from_sexp(CAR(lhs)).as_deref(),
+                Some("[") | Some("[[")
+            );
+            let simple = object.typeof_() == SEXPTYPE::SYMSXP
+                || (object.typeof_() == SEXPTYPE::LANGSXP
+                    && symbol_name_from_sexp(CAR(object.as_raw())).as_deref() == Some("$")
+                    && TYPEOF(CAR(CDR(object.as_raw()))) == SEXPTYPE::SYMSXP);
+            return if subscript && simple {
+                self.compile_subassign(expr, true)
             } else {
-                CAR(CDR(CDR(CDR(expr))))
+                self.compile_general_replacement(lhs, rhs, true)
             };
-
-            let else_e_owned = own_operand(else_e);
-            let else_e = else_e_owned.as_raw();
-            if !self.compile_expr(test) {
-                return false;
-            }
-            let brif_idx = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_BRIFNOT, 0); // placeholder target
-
-            if !self.compile_expr(then_e) {
-                return false;
-            }
-            let goto_idx = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_GOTO, 0); // placeholder
-
-            let else_label = self.code.len() as c_int;
-            self.code[brif_idx as usize + 1] = else_label; // fix BRIFNOT target
-
-            if !self.compile_expr(else_e) {
-                return false;
-            }
-            let end_label = self.code.len() as c_int;
-            self.code[goto_idx as usize + 1] = end_label; // fix GOTO target
-
-            true
         }
+        if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
+            return false;
+        }
+        let symbol_idx = self.add_const(lhs);
+        self.emit_operand(opcodes::OP_SETVAR2, symbol_idx);
+        true
+    }
+    fn compile_if(&mut self, expr: SEXP) -> bool {
+        // if (test) then else ; form is lang if test then else
+        let test_owned = own_operand(CAR(CDR(expr)));
+
+        let test = test_owned.as_raw();
+        let then_e_owned = own_operand(CAR(CDR(CDR(expr))));
+
+        let then_e = then_e_owned.as_raw();
+        let else_e = if CDR(CDR(CDR(expr))).is_null() {
+            R_NilValue()
+        } else {
+            CAR(CDR(CDR(CDR(expr))))
+        };
+
+        let else_e_owned = own_operand(else_e);
+        let else_e = else_e_owned.as_raw();
+        if !self.compile_expr(test) {
+            return false;
+        }
+        let brif_idx = self.code.len() as c_int;
+        self.emit_operand(opcodes::OP_BRIFNOT, 0); // placeholder target
+
+        if !self.compile_expr(then_e) {
+            return false;
+        }
+        let goto_idx = self.code.len() as c_int;
+        self.emit_operand(opcodes::OP_GOTO, 0); // placeholder
+
+        let else_label = self.code.len() as c_int;
+        self.code[brif_idx as usize + 1] = else_label; // fix BRIFNOT target
+
+        if !self.compile_expr(else_e) {
+            return false;
+        }
+        let end_label = self.code.len() as c_int;
+        self.code[goto_idx as usize + 1] = end_label; // fix GOTO target
+
+        true
     }
 
-    unsafe fn compile_block(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let mut exprs = Vec::new();
-            let mut cur = CDR(expr);
-            let mut seen_cur = std::collections::HashSet::new();
-            while !cur.is_null() && cur != R_NilValue() {
-                seen_cur
-                    .try_reserve(1)
-                    .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
-                if !seen_cur.insert(cur.addr()) {
-                    compiler_error("cyclic bytecode source list");
-                }
-                exprs.push(own_operand(CAR(cur)));
-                cur = CDR(cur);
+    fn compile_block(&mut self, expr: SEXP) -> bool {
+        let mut exprs = Vec::new();
+        let mut cur = CDR(expr);
+        let mut seen_cur = std::collections::HashSet::new();
+        while !cur.is_null() && cur != R_NilValue() {
+            seen_cur
+                .try_reserve(1)
+                .unwrap_or_else(|_| compiler_error("cannot track bytecode source list"));
+            if !seen_cur.insert(cur.addr()) {
+                compiler_error("cyclic bytecode source list");
             }
+            exprs.push(own_operand(CAR(cur)));
+            cur = CDR(cur);
+        }
 
-            if exprs.is_empty() {
-                let idx = self.add_const(R_NilValue());
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                return true;
+        if exprs.is_empty() {
+            let idx = self.add_const(R_NilValue());
+            self.emit_operand(opcodes::OP_PUSHCONST, idx);
+            return true;
+        }
+
+        let block_srcrefs = {
+            let s = crate::sexp::attrib_core::getAttrib(
+                expr,
+                crate::sexp::attrib_core::R_SrcRefSymbol(),
+            );
+            if !s.is_null() && s != R_NilValue() && TYPEOF(s) == SEXPTYPE::VECSXP {
+                Some(own_operand(s))
+            } else {
+                None
             }
+        };
 
-            let block_srcrefs = {
-                let s = crate::sexp::attrib_core::getAttrib(
-                    expr,
-                    crate::sexp::attrib_core::R_SrcRefSymbol(),
-                );
-                if !s.is_null() && s != R_NilValue() && TYPEOF(s) == SEXPTYPE::VECSXP {
-                    Some(own_operand(s))
-                } else {
-                    None
-                }
-            };
-
-            let last = exprs.len().saturating_sub(1);
-            let prev_srcref = self.current_srcref;
-            for (index, body) in exprs.into_iter().enumerate() {
-                if let Some(list) = &block_srcrefs {
-                    let raw_list = list.as_raw();
-                    let slot = (index + 1) as i64;
-                    if slot < crate::sexp::accessors::XLENGTH(raw_list) {
-                        let stmt_sref = crate::sexp::accessors::VECTOR_ELT(raw_list, slot);
-                        if !stmt_sref.is_null()
-                            && stmt_sref != R_NilValue()
-                            && TYPEOF(stmt_sref) == SEXPTYPE::INTSXP
-                        {
-                            self.current_srcref = self.add_const(stmt_sref);
-                        }
+        let last = exprs.len().saturating_sub(1);
+        let prev_srcref = self.current_srcref;
+        for (index, body) in exprs.into_iter().enumerate() {
+            if let Some(list) = &block_srcrefs {
+                let raw_list = list.as_raw();
+                let slot = (index + 1) as i64;
+                if slot < crate::sexp::accessors::XLENGTH(raw_list) {
+                    let stmt_sref = crate::sexp::accessors::VECTOR_ELT(raw_list, slot);
+                    if !stmt_sref.is_null()
+                        && stmt_sref != R_NilValue()
+                        && TYPEOF(stmt_sref) == SEXPTYPE::INTSXP
+                    {
+                        self.current_srcref = self.add_const(stmt_sref);
                     }
                 }
-                if !self.compile_expr(body.as_raw()) {
-                    self.current_srcref = prev_srcref;
-                    return false;
-                }
-                if index != last {
-                    self.emit(opcodes::OP_POP);
-                }
             }
-            self.current_srcref = prev_srcref;
-            true
+            if !self.compile_expr(body.as_raw()) {
+                self.current_srcref = prev_srcref;
+                return false;
+            }
+            if index != last {
+                self.emit(opcodes::OP_POP);
+            }
         }
+        self.current_srcref = prev_srcref;
+        true
     }
 
     fn is_compiled_local_fun(&self, fun: SEXP) -> bool {
@@ -995,7 +977,7 @@ impl BytecodeCompiler {
             .any(|value| value.as_raw() == fun)
     }
 
-    unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {
+    fn finish(&mut self, source_expr: SEXP) -> SEXP {
         unsafe {
             self.emit(opcodes::OP_RETURN);
             let has_srcrefs = self.srcrefs_index.iter().any(|&idx| idx >= 0);
@@ -1167,26 +1149,22 @@ fn is_eager_builtin_call(name: &str) -> bool {
 }
 
 fn is_function_syntax(expr: SEXP) -> bool {
-    {
-        !expr.is_null()
-            && expr != R_NilValue()
-            && TYPEOF(expr) == SEXPTYPE::LANGSXP
-            && symbol_name_from_sexp(CAR(expr)).as_deref() == Some("function")
-    }
+    !expr.is_null()
+        && expr != R_NilValue()
+        && TYPEOF(expr) == SEXPTYPE::LANGSXP
+        && symbol_name_from_sexp(CAR(expr)).as_deref() == Some("function")
 }
 
 pub(crate) fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
-    {
-        if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        crate::sexp::symbol::symbol_name_from_ptr(sym)
+    if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    crate::sexp::symbol::symbol_name_from_ptr(sym)
 }
 
 /// Try to compile `expr` to bytecode. Returns `None` when the expression is too
 /// complex for the minimal compiler.
-pub unsafe fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
+pub fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
     unsafe {
         let source_owned = own_operand(expr);
         let pin = crate::sexp::owner::OwnerToken::current()
@@ -1209,34 +1187,32 @@ pub unsafe fn compile_expr(expr: SEXP, _rho: SEXP) -> Option<SEXP> {
 }
 
 /// Try to compile a closure body and install bytecode on success.
-pub unsafe fn compile_closure(fun: SEXP) -> bool {
-    unsafe {
-        if fun.is_null() {
-            return false;
-        }
-        let fun_owned = own_operand(fun);
-        let pin = fun_owned
-            .pin_runtime()
-            .unwrap_or_else(|error| compiler_error(error.to_string()))
-            .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
-        let fun = fun_owned.as_raw();
-        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return false;
-        }
-        let body = BODY(fun);
-        if body.is_null() || TYPEOF(body) == SEXPTYPE::BCODESXP {
-            return false;
-        }
-        let cloenv = crate::sexp::accessors::CLOENV(fun);
-        let Some(bcode) = compile_expr(body, cloenv) else {
-            return false;
-        };
-        let _guard = own_operand(bcode);
-        pin.require_live()
-            .unwrap_or_else(|error| compiler_error(error.to_string()));
-        SET_BODY(fun, bcode);
-        true
+pub fn compile_closure(fun: SEXP) -> bool {
+    if fun.is_null() {
+        return false;
     }
+    let fun_owned = own_operand(fun);
+    let pin = fun_owned
+        .pin_runtime()
+        .unwrap_or_else(|error| compiler_error(error.to_string()))
+        .unwrap_or_else(|| compiler_error("bytecode compilation requires a runtime owner"));
+    let fun = fun_owned.as_raw();
+    if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        return false;
+    }
+    let body = BODY(fun);
+    if body.is_null() || TYPEOF(body) == SEXPTYPE::BCODESXP {
+        return false;
+    }
+    let cloenv = crate::sexp::accessors::CLOENV(fun);
+    let Some(bcode) = compile_expr(body, cloenv) else {
+        return false;
+    };
+    let _guard = own_operand(bcode);
+    pin.require_live()
+        .unwrap_or_else(|error| compiler_error(error.to_string()));
+    SET_BODY(fun, bcode);
+    true
 }
 
 #[cfg(test)]

@@ -3,9 +3,9 @@
 use super::*;
 
 /// Get the stack depth from a BCODESXP.
-pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
-    let body = unsafe { own_operand(x) };
-    let hint = unsafe { own_operand(VECTOR_ELT(body.as_raw(), 2)) };
+pub fn BCODE_STACK(x: SEXP) -> c_int {
+    let body = { own_operand(x) };
+    let hint = { own_operand(VECTOR_ELT(body.as_raw(), 2)) };
     if hint.typeof_() != SEXPTYPE::INTSXP || hint.len() != 1 {
         bc_error("bytecode stack hint must be a scalar integer");
     }
@@ -24,18 +24,16 @@ pub(crate) fn read_operand(
     code_len: c_int,
     opname: &str,
 ) -> c_int {
-    {
-        if *pc >= code_len {
-            bc_error(format!("{opname} bytecode operand is truncated"));
-        }
-        let value = usize::try_from(*pc)
-            .ok()
-            .and_then(|index| code_ptr.get(index))
-            .copied()
-            .unwrap_or_else(|| bc_error(format!("{opname} bytecode operand is truncated")));
-        *pc += 1;
-        value
+    if *pc >= code_len {
+        bc_error(format!("{opname} bytecode operand is truncated"));
     }
+    let value = usize::try_from(*pc)
+        .ok()
+        .and_then(|index| code_ptr.get(index))
+        .copied()
+        .unwrap_or_else(|| bc_error(format!("{opname} bytecode operand is truncated")));
+    *pc += 1;
+    value
 }
 
 pub(crate) fn read_jump_target(
@@ -44,15 +42,13 @@ pub(crate) fn read_jump_target(
     code_len: c_int,
     opname: &str,
 ) -> c_int {
-    {
-        let target = read_operand(code_ptr, pc, code_len, opname);
-        if target < 0 || target > code_len {
-            bc_error(format!(
-                "{opname} bytecode jump target {target} is outside instruction stream length {code_len}"
-            ));
-        }
-        target
+    let target = read_operand(code_ptr, pc, code_len, opname);
+    if target < 0 || target > code_len {
+        bc_error(format!(
+            "{opname} bytecode jump target {target} is outside instruction stream length {code_len}"
+        ));
     }
+    target
 }
 
 pub(crate) fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> Sexp<'static> {

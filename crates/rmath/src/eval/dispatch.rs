@@ -35,7 +35,7 @@ use super::eval::Rf_eval;
 /// Resolve an Ops conflict in a temporary frame, as GNU R does. Passing
 /// symbols bound to the evaluated values preserves the hook's promise
 /// expressions (`x`, `y`, ..., `rev`) and its caller environment.
-unsafe fn choose_ops_method(
+fn choose_ops_method(
     x: SEXP,
     y: SEXP,
     mx: SEXP,
@@ -106,20 +106,18 @@ unsafe fn choose_ops_method(
 }
 
 fn method_name_is(method: SEXP, name: &[u8]) -> bool {
-    {
-        if method.is_null() || TYPEOF(method) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        // SAFETY: the translated caller retains the active runtime.
-        let Ok(owner) = (unsafe { crate::sexp::owner::OwnerToken::current() }) else {
-            return false;
-        };
-        owner
-            .sexp(method)
-            .and_then(|method| method.try_printname())
-            .and_then(|printed| printed.try_char_eq(name))
-            .unwrap_or(false)
+    if method.is_null() || TYPEOF(method) != SEXPTYPE::SYMSXP {
+        return false;
     }
+    // SAFETY: the translated caller retains the active runtime.
+    let Ok(owner) = (unsafe { crate::sexp::owner::OwnerToken::current() }) else {
+        return false;
+    };
+    owner
+        .sexp(method)
+        .and_then(|method| method.try_printname())
+        .and_then(|printed| printed.try_char_eq(name))
+        .unwrap_or(false)
 }
 
 fn summary_pairlist_next<'s>(cell: &Sexp<'s>) -> crate::sexp::object::SexpResult<Option<Sexp<'s>>> {
@@ -282,7 +280,7 @@ fn admit_summary_dispatch_result<'s>(factory: &SessionNodeFactory<'s>, value: SE
 /// Capture the active owner once at a translated evaluator entry.
 /// # Safety
 /// The caller retains this owner for `'s` and excludes overlapping payload loans.
-pub(super) unsafe fn active_argument_factory<'s>() -> SessionNodeFactory<'s> {
+pub(super) fn active_argument_factory<'s>() -> SessionNodeFactory<'s> {
     SessionNodeFactory::new(
         unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
@@ -532,7 +530,7 @@ pub(crate) unsafe fn promiseArgs<'s>(
 /// Evaluate arguments, optionally dropping missing values.
 /// Used by DispatchOrEval when args need to be evaluated before passing
 /// to the generic code.
-unsafe fn evalArgs<'a>(
+fn evalArgs<'a>(
     args: SEXP,
     rho: SEXP,
     dropmissing: c_int,
@@ -577,16 +575,14 @@ unsafe fn evalArgs<'a>(
 // ---------------------------------------------------------------------------
 
 fn isFunction(x: SEXP) -> c_int {
-    {
-        if x.is_null() || x == R_NilValue() {
-            return FALSE;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            TRUE
-        } else {
-            FALSE
-        }
+    if x.is_null() || x == R_NilValue() {
+        return FALSE;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        TRUE
+    } else {
+        FALSE
     }
 }
 
@@ -595,15 +591,13 @@ fn isFunction(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 fn isSymbol(x: SEXP) -> c_int {
-    {
-        if x.is_null() || x == R_NilValue() {
-            return FALSE;
-        }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            TRUE
-        } else {
-            FALSE
-        }
+    if x.is_null() || x == R_NilValue() {
+        return FALSE;
+    }
+    if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        TRUE
+    } else {
+        FALSE
     }
 }
 
@@ -611,7 +605,7 @@ fn isSymbol(x: SEXP) -> c_int {
 // Helper: translateChar — get C string from CHARSXP
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
@@ -727,7 +721,7 @@ unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the data class of an object, equivalent to R's R_data_class2.
-unsafe fn R_data_class(obj: SEXP) -> SEXP {
+fn R_data_class(obj: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() {
             return R_NilValue();
@@ -740,7 +734,7 @@ unsafe fn R_data_class(obj: SEXP) -> SEXP {
 // Helper: R_BlankScalarString — return a blank scalar string
 // ---------------------------------------------------------------------------
 
-unsafe fn R_BlankScalarString_val() -> SEXP {
+fn R_BlankScalarString_val() -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 
@@ -751,7 +745,7 @@ unsafe fn R_BlankScalarString_val() -> SEXP {
 /// Force the first n promises in an argument list and call a function.
 ///
 /// This is the equivalent of R's `R_forceAndCall()` in eval.c.
-pub unsafe fn R_forceAndCall(e: SEXP, op: SEXP, args: SEXP, rho: SEXP, n: c_int) -> SEXP {
+pub fn R_forceAndCall(e: SEXP, op: SEXP, args: SEXP, rho: SEXP, n: c_int) -> SEXP {
     unsafe {
         // Force the first n promises
         let forced_args = args;

@@ -139,68 +139,64 @@ fn hash_payload_sexp(e: SEXP) -> Option<Sexp<'static>> {
 }
 
 fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
-    {
-        if e.is_null() || e == R_NilValue() {
-            return h;
-        }
-        let len = LENGTH(e);
-        let type_val = TYPEOF(e);
-        let mut h = hash(&type_val.to_ne_bytes(), h);
-        h = hash(&len.to_ne_bytes(), h);
+    if e.is_null() || e == R_NilValue() {
+        return h;
+    }
+    let len = LENGTH(e);
+    let type_val = TYPEOF(e);
+    let mut h = hash(&type_val.to_ne_bytes(), h);
+    h = hash(&len.to_ne_bytes(), h);
 
-        match type_val {
-            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
-                let mut cur = e;
-                while !cur.is_null() && cur != R_NilValue() {
-                    h = hashexpr1(CAR(cur), h);
-                    cur = CDR(cur);
-                }
-                h
+    match type_val {
+        t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
+            let mut cur = e;
+            while !cur.is_null() && cur != R_NilValue() {
+                h = hashexpr1(CAR(cur), h);
+                cur = CDR(cur);
             }
-            t if t == SEXPTYPE::LGLSXP && len == 1 => {
-                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.logical_elt(0)) {
-                    h = hash(&v.to_ne_bytes(), h);
-                }
-                h
+            h
+        }
+        t if t == SEXPTYPE::LGLSXP && len == 1 => {
+            if let Some(v) = hash_payload_sexp(e).and_then(|s| s.logical_elt(0)) {
+                h = hash(&v.to_ne_bytes(), h);
             }
-            t if t == SEXPTYPE::INTSXP && len == 1 => {
-                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.integer_elt(0)) {
-                    h = hash(&v.to_ne_bytes(), h);
-                }
-                h
+            h
+        }
+        t if t == SEXPTYPE::INTSXP && len == 1 => {
+            if let Some(v) = hash_payload_sexp(e).and_then(|s| s.integer_elt(0)) {
+                h = hash(&v.to_ne_bytes(), h);
             }
-            t if t == SEXPTYPE::REALSXP && len == 1 => {
-                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.real_elt(0)) {
-                    h = hash(&v.to_ne_bytes(), h);
-                }
-                h
+            h
+        }
+        t if t == SEXPTYPE::REALSXP && len == 1 => {
+            if let Some(v) = hash_payload_sexp(e).and_then(|s| s.real_elt(0)) {
+                h = hash(&v.to_ne_bytes(), h);
             }
-            t if t == SEXPTYPE::STRSXP && len == 1 => {
-                if let Some(s) = hash_payload_sexp(e)
-                    .and_then(|s| s.string_elt(0))
-                    .and_then(|elt| elt.as_string())
-                {
-                    h = hash(s.as_bytes(), h);
-                }
-                h
+            h
+        }
+        t if t == SEXPTYPE::STRSXP && len == 1 => {
+            if let Some(s) = hash_payload_sexp(e)
+                .and_then(|s| s.string_elt(0))
+                .and_then(|elt| elt.as_string())
+            {
+                h = hash(s.as_bytes(), h);
             }
-            _ => {
-                // Hash by address for non-scalar types
-                let addr = e as u64;
-                h = hash(&addr.to_ne_bytes(), h);
-                h
-            }
+            h
+        }
+        _ => {
+            // Hash by address for non-scalar types
+            let addr = e as u64;
+            h = hash(&addr.to_ne_bytes(), h);
+            h
         }
     }
 }
 
 fn hashexpr(e: SEXP) -> R_exprhash_t {
-    {
-        hashexpr1(e, 5381) // djb2 initial value
-    }
+    hashexpr1(e, 5381) // djb2 initial value
 }
 
-unsafe fn hashfun(f: SEXP) -> R_exprhash_t {
+fn hashfun(f: SEXP) -> R_exprhash_t {
     unsafe {
         let body = BODY(f);
         let mut h = hashexpr(body);
@@ -213,19 +209,17 @@ unsafe fn hashfun(f: SEXP) -> R_exprhash_t {
 }
 
 fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
-    {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::INTSXP || LENGTH(e) < 6 {
-            return h;
-        }
-        if let Some(data) = hash_payload_sexp(e) {
-            for i in 0..6 {
-                if let Some(v) = data.integer_elt(i) {
-                    h = hash(&v.to_ne_bytes(), h);
-                }
+    if e.is_null() || TYPEOF(e) != SEXPTYPE::INTSXP || LENGTH(e) < 6 {
+        return h;
+    }
+    if let Some(data) = hash_payload_sexp(e) {
+        for i in 0..6 {
+            if let Some(v) = data.integer_elt(i) {
+                h = hash(&v.to_ne_bytes(), h);
             }
         }
-        h
     }
+    h
 }
 
 /// Compute the JIT score for a closure.
@@ -237,32 +231,30 @@ fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
 ///
 /// Functions with a score >= MIN_JIT_SCORE are compiled to bytecode.
 pub fn JIT_score(e: SEXP) -> c_int {
-    {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP {
-            return 0;
-        }
-
-        let body = BODY(e);
-        if body.is_null() {
-            return 0;
-        }
-
-        // If already bytecode, no need to compile
-        if TYPEOF(body) == SEXPTYPE::BCODESXP {
-            return 0;
-        }
-
-        let mut score: c_int = 0;
-
-        // Count function calls and loops in the body
-        score += count_calls(body, 0);
-
-        // Add score for loops
-        score += count_loops(body, 0);
-
-        // Check if the function has been called enough times
-        score
+    if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP {
+        return 0;
     }
+
+    let body = BODY(e);
+    if body.is_null() {
+        return 0;
+    }
+
+    // If already bytecode, no need to compile
+    if TYPEOF(body) == SEXPTYPE::BCODESXP {
+        return 0;
+    }
+
+    let mut score: c_int = 0;
+
+    // Count function calls and loops in the body
+    score += count_calls(body, 0);
+
+    // Add score for loops
+    score += count_loops(body, 0);
+
+    // Check if the function has been called enough times
+    score
 }
 
 /// Recursively count function calls in an expression.
@@ -335,26 +327,24 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
 ///
 /// Ported from R's `R_cmpfun()` in eval.c. Compiles the body of a
 /// closure to bytecode if it isn't already compiled.
-pub unsafe fn R_cmpfun(fun: SEXP) -> bool {
-    unsafe {
-        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return false;
-        }
-
-        let body = BODY(fun);
-        if body.is_null() {
-            return false;
-        }
-        if TYPEOF(body) == SEXPTYPE::BCODESXP {
-            return true;
-        }
-
-        if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
-            return false;
-        }
-
-        super::bc_compile::compile_closure(fun)
+pub fn R_cmpfun(fun: SEXP) -> bool {
+    if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        return false;
     }
+
+    let body = BODY(fun);
+    if body.is_null() {
+        return false;
+    }
+    if TYPEOF(body) == SEXPTYPE::BCODESXP {
+        return true;
+    }
+
+    if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
+        return false;
+    }
+
+    super::bc_compile::compile_closure(fun)
 }
 
 /// The supported part of `compiler::cmpfun`.
@@ -370,7 +360,7 @@ pub unsafe fn R_cmpfun(fun: SEXP) -> bool {
 /// preserving formals, environment, and attributes while replacing its body
 /// with bytecode. The internal `R_cmpfun` entry point remains the in-place JIT
 /// operation used by the evaluator.
-pub unsafe fn compiler_cmpfun(fun: SEXP) -> Result<SEXP, &'static str> {
+pub fn compiler_cmpfun(fun: SEXP) -> Result<SEXP, &'static str> {
     unsafe {
         if fun.is_null() {
             return Err("cannot compile a non-function");
@@ -403,11 +393,11 @@ pub unsafe fn compiler_cmpfun(fun: SEXP) -> Result<SEXP, &'static str> {
 /// Compile an expression to bytecode.
 ///
 /// Ported from R's `R_compileExpr()` in eval.c.
-pub unsafe fn R_compileExpr(expr: SEXP, rho: SEXP) -> SEXP {
+pub fn R_compileExpr(expr: SEXP, rho: SEXP) -> SEXP {
     if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
         return expr;
     }
-    unsafe { super::bc_compile::compile_expr(expr, rho).unwrap_or(expr) }
+    super::bc_compile::compile_expr(expr, rho).unwrap_or(expr)
 }
 
 // ---------------------------------------------------------------------------
@@ -500,11 +490,9 @@ pub  fn compiler_enable_jit(level: SEXP) -> c_int {
 /// - R_DISABLE_BYTECODE: disable bytecode
 /// - _R_COMPILE_PKGS_: compile packages
 pub fn R_init_jit_enabled() {
-    {
-        let settings = current_env_settings();
-        checkCompilerOptions(settings.jit_enabled);
-        apply_jit_settings(settings);
-    }
+    let settings = current_env_settings();
+    checkCompilerOptions(settings.jit_enabled);
+    apply_jit_settings(settings);
 }
 
 pub(crate) fn R_init_jit_enabled_in(inst: *mut RInstance) {
@@ -519,34 +507,32 @@ pub(crate) fn R_init_jit_enabled_in(inst: *mut RInstance) {
 ///
 /// Ported from R's `R_CheckJIT()` in eval.c. Returns TRUE if the
 /// function should be compiled based on JIT settings and scoring.
-pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
-    unsafe {
-        if get_R_jit_enabled() == 0 || get_R_disable_bytecode() != 0 || !BYTECODE_COMPILER_AVAILABLE
-        {
-            return FALSE;
-        }
-        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
-            return FALSE;
-        }
-        let body = BODY(op);
-        if TYPEOF(body) == SEXPTYPE::BCODESXP {
-            return FALSE; // Already compiled
-        }
+pub fn R_CheckJIT(op: SEXP) -> c_int {
+    if get_R_jit_enabled() == 0 || get_R_disable_bytecode() != 0 || !BYTECODE_COMPILER_AVAILABLE
+    {
+        return FALSE;
+    }
+    if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
+        return FALSE;
+    }
+    let body = BODY(op);
+    if TYPEOF(body) == SEXPTYPE::BCODESXP {
+        return FALSE; // Already compiled
+    }
 
-        let score = JIT_score(op);
-        if score >= with_required_current_instance(get_R_min_jit_score_in) {
-            if R_cmpfun(op) {
-                TRUE
-            } else {
-                // A score only measures complexity.  The compiler can still
-                // decline unsupported syntax; report that truthfully instead
-                // of claiming JIT compilation succeeded while leaving the
-                // closure interpreted.
-                FALSE
-            }
+    let score = JIT_score(op);
+    if score >= with_required_current_instance(get_R_min_jit_score_in) {
+        if R_cmpfun(op) {
+            TRUE
         } else {
+            // A score only measures complexity.  The compiler can still
+            // decline unsupported syntax; report that truthfully instead
+            // of claiming JIT compilation succeeded while leaving the
+            // closure interpreted.
             FALSE
         }
+    } else {
+        FALSE
     }
 }
 
@@ -616,7 +602,7 @@ pub(crate) fn set_R_loop_jit_score_in(inst: *mut RInstance, val: c_int) {
 // ---------------------------------------------------------------------------
 
 // Initialize the actual owning exec token for tail call support.
-pub unsafe fn init_exec_token() {
+pub fn init_exec_token() {
     with_required_current_instance(|inst| unsafe { init_exec_token_in(inst) });
 }
 
@@ -661,7 +647,7 @@ pub(crate) fn set_R_exec_token_in(inst: *mut RInstance, token: SEXP) {
 }
 
 /// Check if a value is an exec continuation (for tail call optimization).
-pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
+pub fn is_exec_continuation(val: SEXP) -> c_int {
     with_required_current_instance(|inst| unsafe { is_exec_continuation_in(inst, val) })
 }
 
@@ -748,7 +734,7 @@ pub unsafe fn handle_exec_continuation(val: SEXP) -> SEXP {
 
 /// Keep both the source expressions and rewritten promises alive through
 /// lookups that can invoke active bindings or allocation callbacks.
-unsafe fn tailcall_promise_args<'s>(
+fn tailcall_promise_args<'s>(
     factory: &SessionNodeFactory<'s>,
     call: Sexp<'s>,
     rho: Sexp<'s>,
@@ -828,7 +814,7 @@ fn tailcall_error(message: impl Into<String>) -> ! {
     })
 }
 
-unsafe fn is_in_tail_position() -> bool {
+fn is_in_tail_position() -> bool {
     unsafe {
         let top = crate::eval::runtime::global_context();
         if top.is_null() {
@@ -838,7 +824,7 @@ unsafe fn is_in_tail_position() -> bool {
     }
 }
 
-unsafe fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
+fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
     unsafe {
         with_required_current_instance(|inst| {
             let pin = crate::sexp::context::pin_context_owner_in(inst);
@@ -876,7 +862,7 @@ unsafe fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
     }
 }
 
-unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
+fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             tailcall_error("argument \"expr\" is missing, with no default");
@@ -943,7 +929,7 @@ unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
 /// `cloenv` is `rho`. `eval()` also pushes `CTXT_FUNCTION`, but its
 /// `callfun` is the `eval` primitive, so that frame is not a jump target.
 /// An `on.exit` or `cend` closer than the closure blocks the jump.
-unsafe fn get_tailcall_target(rho: SEXP, mask: c_int) -> *mut crate::sexp::context::RCNTXT {
+fn get_tailcall_target(rho: SEXP, mask: c_int) -> *mut crate::sexp::context::RCNTXT {
     unsafe {
         let mut c = crate::eval::runtime::global_context();
         while !c.is_null() {
@@ -970,7 +956,7 @@ unsafe fn get_tailcall_target(rho: SEXP, mask: c_int) -> *mut crate::sexp::conte
     }
 }
 
-unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
+fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             tailcall_error("argument \"FUN\" is missing, with no default");
@@ -1020,7 +1006,7 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
 /// When these calls appear in tail position inside a closure, GNU R returns an
 /// exec continuation vector that `handle_exec_continuation()` unwinds until a
 /// concrete value is produced.
-pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let is_exec = !op.is_null()
             && crate::eval::primitive::PrimitiveDescriptor::from_raw(op)

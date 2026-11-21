@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Apply a unary real function element-wise to a numeric vector.
-pub(crate) unsafe fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
+pub(crate) fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
     unsafe {
         let Some(x) = NumericVector::from_raw(sa) else {
             return R_NilValue();
@@ -47,21 +47,19 @@ pub(crate) unsafe fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP 
 
 /// True for logical/integer/real vectors — stock's `isNumeric` minus NULL.
 pub(crate) fn is_numeric_operand(x: SEXP) -> bool {
-    {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
-    }
+    let t = TYPEOF(x);
+    t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
 }
 
 /// An unordered factor: carries the "factor" class but not "ordered".
 pub(crate) fn is_plain_factor(x: SEXP) -> bool {
-    unsafe { has_class(x, "factor") && !has_class(x, "ordered") }
+    has_class(x, "factor") && !has_class(x, "ordered")
 }
 
 /// Emit a group-generic warning attributed to the S3 method call the way
 /// stock dispatch does (`In Ops.factor(e1, e2) : ...`). `e1`/`e2` are the
 /// unevaluated operand expressions of the applied call.
-pub(crate) unsafe fn factor_not_meaningful_warning(
+pub(crate) fn factor_not_meaningful_warning(
     method: &'static str,
     message: &str,
     e1: SEXP,
@@ -88,7 +86,7 @@ pub(crate) unsafe fn factor_not_meaningful_warning(
 /// `rep.int(NA, max(length(e1), if (!missing(e2)) length(e2)))` — the
 /// logical NA vector stock Ops.factor/Ops.ordered return for operators
 /// that are not meaningful for factors.
-pub(crate) unsafe fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
+pub(crate) fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
     unsafe {
         let n1 = if e1.is_null() || e1 == R_NilValue() {
             0
@@ -121,30 +119,28 @@ pub(crate) unsafe fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
 /// unevaluated operand expressions come from `call` so the warning is
 /// attributed exactly like stock. Returns None when neither operand is a
 /// factor.
-pub(crate) unsafe fn factor_arith(op: &str, call: SEXP, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_factor = has_class(a, "factor");
-        let b_factor = has_class(b, "factor");
-        if !a_factor && !b_factor {
-            return None;
-        }
-        let ordered = has_class(a, "ordered") || has_class(b, "ordered");
-        let message = if ordered {
-            format!("'{op}' is not meaningful for ordered factors")
-        } else {
-            format!("'{op}' not meaningful for factors")
-        };
-        let method = if ordered { "Ops.ordered" } else { "Ops.factor" };
-        let e1_expr = CAR(CDR(call));
-        let e2_expr = CAR(CDR(CDR(call)));
-        factor_not_meaningful_warning(method, &message, e1_expr, e2_expr);
-        Some(factor_na_result(a, b))
+pub(crate) fn factor_arith(op: &str, call: SEXP, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_factor = has_class(a, "factor");
+    let b_factor = has_class(b, "factor");
+    if !a_factor && !b_factor {
+        return None;
     }
+    let ordered = has_class(a, "ordered") || has_class(b, "ordered");
+    let message = if ordered {
+        format!("'{op}' is not meaningful for ordered factors")
+    } else {
+        format!("'{op}' not meaningful for factors")
+    };
+    let method = if ordered { "Ops.ordered" } else { "Ops.factor" };
+    let e1_expr = CAR(CDR(call));
+    let e2_expr = CAR(CDR(CDR(call)));
+    factor_not_meaningful_warning(method, &message, e1_expr, e2_expr);
+    Some(factor_na_result(a, b))
 }
 
 /// as.character(<factor>): level strings by 1-based code; NA and 0 codes
 /// stay NA.
-pub(crate) unsafe fn factor_as_character(f: SEXP) -> SEXP {
+pub(crate) fn factor_as_character(f: SEXP) -> SEXP {
     unsafe {
         let n = XLENGTH(f);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -175,30 +171,28 @@ pub(crate) unsafe fn factor_as_character(f: SEXP) -> SEXP {
         out
     }
 }
-pub(crate) unsafe fn na_level_sentinel(levels: SEXP, n_levels: i32) -> String {
-    unsafe {
-        let mut sentinel = "  NA ".to_string();
-        loop {
-            let mut taken = false;
-            for i in 0..n_levels {
-                let level = STRING_ELT(levels, i as i64);
-                if level.is_null() || level == R_NaString() {
-                    continue;
-                }
-                if charsxp_to_string(level).as_deref() == Some(sentinel.as_str()) {
-                    taken = true;
-                    break;
-                }
+pub(crate) fn na_level_sentinel(levels: SEXP, n_levels: i32) -> String {
+    let mut sentinel = "  NA ".to_string();
+    loop {
+        let mut taken = false;
+        for i in 0..n_levels {
+            let level = STRING_ELT(levels, i as i64);
+            if level.is_null() || level == R_NaString() {
+                continue;
             }
-            if !taken {
-                return sentinel;
+            if charsxp_to_string(level).as_deref() == Some(sentinel.as_str()) {
+                taken = true;
+                break;
             }
-            sentinel.push_str(" .");
         }
+        if !taken {
+            return sentinel;
+        }
+        sentinel.push_str(" .");
     }
 }
 
-pub(crate) unsafe fn rewritten_level_labels(f: SEXP) -> Vec<String> {
+pub(crate) fn rewritten_level_labels(f: SEXP) -> Vec<String> {
     unsafe {
         let levels = getAttrib(f, Rf_install(c"levels".as_ptr()));
         if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
@@ -237,7 +231,7 @@ pub(crate)  fn relop_operand_to_character(x: SEXP) -> SEXP {
 /// applies when both sides are converted), any other operator warns and
 /// returns logical NAs. Returns None when neither operand is an unordered
 /// factor.
-pub(crate) unsafe fn unordered_factor_compare(
+pub(crate) fn unordered_factor_compare(
     op: &str,
     call: SEXP,
     sa: SEXP,
@@ -321,7 +315,7 @@ pub(crate) unsafe fn unordered_factor_compare(
 }
 
 /// stock fastpath: `leq <- (levels == other)` indexed by the factor codes.
-pub(crate) unsafe fn factor_scalar_string_compare(
+pub(crate) fn factor_scalar_string_compare(
     op: &str,
     f: SEXP,
     levels: &[String],
@@ -358,7 +352,7 @@ pub(crate) fn complex_negate(c: Rcomplex) -> Rcomplex {
 
 /// stock complex_relop: only `==`/`!=` are defined; ordering comparisons
 /// error. Equality compares component-wise with NA propagation.
-pub(crate) unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub(crate) fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         if op != "==" && op != "!=" {
             arithmetic_error("invalid comparison with complex values");
@@ -396,7 +390,7 @@ pub(crate) unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 
 /// Attempt S3 group-generic dispatch (Ops / Math / Summary / Complex).
 /// Returns Some(result) when a method was found and applied.
-pub(crate) unsafe fn try_group_dispatch(
+pub(crate) fn try_group_dispatch(
     group: &[u8],
     call: SEXP,
     op: SEXP,
@@ -421,20 +415,20 @@ pub(crate) unsafe fn try_group_dispatch(
 }
 
 /// Shared Ops dispatch used by GNU AND/OR/NOT bytecode.
-pub(crate) unsafe fn try_ops_group_dispatch(
+pub(crate) fn try_ops_group_dispatch(
     call: SEXP,
     op: SEXP,
     args: SEXP,
     rho: SEXP,
 ) -> Option<SEXP> {
-    unsafe { try_group_dispatch(b"Ops\0", call, op, args, rho) }
+    try_group_dispatch(b"Ops\0", call, op, args, rho)
 }
 
 // ---------------------------------------------------------------------------
 // Top-level dispatch functions (called by the evaluator)
 // ---------------------------------------------------------------------------
 /// Handle binary arithmetic: +, -, *, /, ^, %%, %/%
-pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(result) = try_group_dispatch(b"Ops\0", call, op, args, rho) {
             return result;

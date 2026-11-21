@@ -286,7 +286,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
 /// original pool entries before lazy table readers can run callbacks.
 /// # Safety
 /// The inputs are live projections of the active interpreter on entry.
-pub unsafe fn validate_gnu_adapter_with_constants(
+pub fn validate_gnu_adapter_with_constants(
     code: SEXP,
     constants: SEXP,
 ) -> Result<bool, String> {

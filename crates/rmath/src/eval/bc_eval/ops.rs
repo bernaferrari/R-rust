@@ -97,7 +97,7 @@ pub(crate) fn recover_loop_jump(
 /// (`Error`, `Return`, condition-handler jumps, ...) re-panics unchanged.
 /// With no loop context on record the signal also re-panics, letting an
 /// enclosing AST loop (or the top level) handle it.
-pub(crate) unsafe fn eval_call_with_loop_routing(
+pub(crate) fn eval_call_with_loop_routing(
     call: SEXP,
     rho: SEXP,
     loop_stack: &[LoopContext],
@@ -128,17 +128,15 @@ pub(crate) unsafe fn eval_call_with_loop_routing(
 /// Root the residual operand stack around a nested call evaluation and route
 /// escaping loop signals. Combines the GC-rooting window of
 /// `with_stack_rooted` with `eval_call_with_loop_routing`.
-pub(crate) unsafe fn eval_nested_call(
+pub(crate) fn eval_nested_call(
     call: SEXP,
     rho: SEXP,
     stack: &R_bcstack_t,
     loop_stack: &[LoopContext],
 ) -> Result<SEXP, LoopJump> {
-    unsafe {
-        with_stack_rooted(stack, call, || {
-            eval_call_with_loop_routing(call, rho, loop_stack)
-        })
-    }
+    with_stack_rooted(stack, call, || {
+        eval_call_with_loop_routing(call, rho, loop_stack)
+    })
 }
 
 /// Apply a resolved loop jump: discard partial loop operands and for-loop
@@ -148,36 +146,32 @@ pub(crate) fn apply_loop_jump<T>(
     for_loops: &mut Vec<T>,
     jump: LoopJump,
 ) -> c_int {
-    {
-        for_loops.truncate(jump.for_depth);
-        stack.set_depth(jump.stack_depth);
-        jump.target
-    }
+    for_loops.truncate(jump.for_depth);
+    stack.set_depth(jump.stack_depth);
+    jump.target
 }
 
 pub(crate) fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
-    {
-        match TYPEOF(sequence) {
-            t if t == SEXPTYPE::NILSXP => Some(0),
-            t if t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::RAWSXP
-                || t == SEXPTYPE::VECSXP
-                || t == SEXPTYPE::EXPRSXP
-                || t == SEXPTYPE::LISTSXP
-                || t == SEXPTYPE::LANGSXP =>
-            {
-                Some(LENGTH(sequence))
-            }
-            _ => None,
+    match TYPEOF(sequence) {
+        t if t == SEXPTYPE::NILSXP => Some(0),
+        t if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::EXPRSXP
+            || t == SEXPTYPE::LISTSXP
+            || t == SEXPTYPE::LANGSXP =>
+        {
+            Some(LENGTH(sequence))
         }
+        _ => None,
     }
 }
 
-pub(crate) unsafe fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
+pub(crate) fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
     unsafe {
         match TYPEOF(sequence) {
             t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(sequence).add(index as usize)),
@@ -250,7 +244,7 @@ pub(crate)  fn eval_bc_condition(val: SEXP) -> bool {
 
 /// GNU ISNULL..ISNUMERIC match eval.c DO_ISTEST/DO_ISTYPE.
 /// is.integer excludes factors; is.numeric is numeric-but-not-logical.
-pub(crate) unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
+pub(crate) fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
     unsafe {
         use super::super::bytecode::{
             GNU_OP_ISCHARACTER, GNU_OP_ISCOMPLEX, GNU_OP_ISDOUBLE, GNU_OP_ISINTEGER,
@@ -283,7 +277,7 @@ pub(crate) unsafe fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
 }
 
 /// GNU DOLLAR matches eval.c: dispatch `$` on objects, else R_subset3_dflt.
-pub(crate) unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if crate::sexp::accessors::OBJECT(x) != 0 {
             let dollar = crate::sexp::symbol::Rf_install(c"$".as_ptr());
@@ -305,7 +299,7 @@ pub(crate) unsafe fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEX
 }
 
 /// GNU DOLLARGETS matches eval.c: dispatch `$<-` on objects, else R_subassign3_dflt.
-pub(crate) unsafe fn eval_gnu_dollargets(
+pub(crate) fn eval_gnu_dollargets(
     call: SEXP,
     symbol: SEXP,
     mut x: SEXP,
@@ -381,7 +375,7 @@ pub(crate)  fn decrement_named_link(value: SEXP) {
 /// GNU `findVar` is unforced. `R_findVar` forces promises, which collapses a
 /// supplied empty-name value into `R_MissingArg` and makes GETVAR treat
 /// `recurse(formals(fn)[[i]])` as an unsupplied formal.
-pub(crate) unsafe fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let symbol = crate::sexp::object::Sexp::from_raw_unchecked(symbol);
         let rho = crate::sexp::object::Sexp::from_raw_unchecked(rho);
@@ -394,7 +388,7 @@ pub(crate) unsafe fn find_var_unforced(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU GETVAR / GETVAR_MISSOK match eval.c getvar(keepmiss).
-pub(crate) unsafe fn eval_gnu_getvar(
+pub(crate) fn eval_gnu_getvar(
     symbol: SEXP,
     rho: SEXP,
     keep_missing: bool,

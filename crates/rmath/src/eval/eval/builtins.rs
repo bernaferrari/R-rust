@@ -15,10 +15,8 @@ use super::*;
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
 pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    unsafe {
-        /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
-        eval_safe(e, rho)
-    }
+    /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
+    eval_safe(e, rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +45,7 @@ pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     let env = factory
         .wrap(rho)
         .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
-    match unsafe {
+    match {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         eval_expr(expr, env)
     } {
@@ -72,7 +70,7 @@ pub(crate) fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
 }
 
 /// Raw entry for operations being migrated to owned evaluation.
-pub(crate) unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
     unsafe { Rf_eval(e, rho) }
 }
 
@@ -83,7 +81,7 @@ pub(crate) unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
 /// Evaluate an expression, preserving the R_Visible flag.
 ///
 /// This is the equivalent of R's `evalKeepVis()` from errors.c.
-pub(crate) unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
     let _visibility = super::super::runtime::VisibilityGuard::new();
     let val = unsafe { Rf_eval(e, rho) };
     val
@@ -97,7 +95,7 @@ pub(crate) unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_withVisible()` in eval.c.
 /// This is a special `.Internal`.
-pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
     use crate::sexp::accessors::{CAR, SET_STRING_ELT, SET_VECTOR_ELT};
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
@@ -135,7 +133,7 @@ pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 ///
 /// Ported from R's `do_recall()` in eval.c.
 /// This is a special `.Internal`.
-pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::closure::applyClosure;
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CAR, TYPEOF};

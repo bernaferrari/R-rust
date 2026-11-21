@@ -7,7 +7,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Get the bytecode instruction array from a BCODESXP.
-pub unsafe fn BCODE_CODE(x: SEXP) -> *const c_int {
+pub fn BCODE_CODE(x: SEXP) -> *const c_int {
     unsafe {
         if x.is_null() {
             return ptr::null();
@@ -32,7 +32,7 @@ pub  fn BCODE_CONSTS(x: SEXP) -> SEXP {
 
 /// Whether this BCODESXP was built by the GNU R deserialization adapter.
 /// The marker is an owned internal payload slot, never a guessed opcode.
-pub unsafe fn BCODE_IS_GNU(x: SEXP) -> bool {
+pub fn BCODE_IS_GNU(x: SEXP) -> bool {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP || (*x).data.vector().length < 4 {
             return false;
@@ -66,44 +66,40 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
 }
 
 pub(crate) fn gnu_plain_numeric(x: SEXP) -> bool {
-    {
-        let ty = TYPEOF(x);
-        ty == SEXPTYPE::LGLSXP || ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP
-    }
+    let ty = TYPEOF(x);
+    ty == SEXPTYPE::LGLSXP || ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP
 }
 
 /// Non-object `LOGBASE` follows GNU `math2`: a zero-length numeric side
 /// yields `numeric(0)`, with attributes taken from `x` only when `x` is
 /// empty. Objects and complex values keep the `do_math1` path.
-pub(crate) unsafe fn gnu_logbase_empty_result(value: SEXP, base: SEXP) -> Option<SEXP> {
-    unsafe {
-        if crate::sexp::accessors::OBJECT(value) != 0 || crate::sexp::accessors::OBJECT(base) != 0 {
-            return None;
-        }
-        let n_value = crate::sexp::accessors::XLENGTH(value);
-        let n_base = crate::sexp::accessors::XLENGTH(base);
-        if n_value != 0 && n_base != 0 {
-            return None;
-        }
-        if TYPEOF(value) == SEXPTYPE::CPLXSXP || TYPEOF(base) == SEXPTYPE::CPLXSXP {
-            return None;
-        }
-        if !gnu_plain_numeric(value) || !gnu_plain_numeric(base) {
-            bc_error("non-numeric argument to mathematical function");
-        }
-        let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-        let _empty = own_operand(empty);
-        if n_value == 0 {
-            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(empty, value);
-        }
-        Some(empty)
+pub(crate) fn gnu_logbase_empty_result(value: SEXP, base: SEXP) -> Option<SEXP> {
+    if crate::sexp::accessors::OBJECT(value) != 0 || crate::sexp::accessors::OBJECT(base) != 0 {
+        return None;
     }
+    let n_value = crate::sexp::accessors::XLENGTH(value);
+    let n_base = crate::sexp::accessors::XLENGTH(base);
+    if n_value != 0 && n_base != 0 {
+        return None;
+    }
+    if TYPEOF(value) == SEXPTYPE::CPLXSXP || TYPEOF(base) == SEXPTYPE::CPLXSXP {
+        return None;
+    }
+    if !gnu_plain_numeric(value) || !gnu_plain_numeric(base) {
+        bc_error("non-numeric argument to mathematical function");
+    }
+    let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+    let _empty = own_operand(empty);
+    if n_value == 0 {
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(empty, value);
+    }
+    Some(empty)
 }
 
 /// GNU `math1` / `do_math1` always return real for `log`, `floor`, and
 /// `ceiling`. The shared dispatcher may narrow an integer or logical input
 /// to `INTSXP` when every image fits in an int, including length 0.
-pub(crate) unsafe fn gnu_math1_real_result(result: SEXP) -> SEXP {
+pub(crate) fn gnu_math1_real_result(result: SEXP) -> SEXP {
     unsafe {
         if result.is_null() || result == R_NilValue() || TYPEOF(result) != SEXPTYPE::INTSXP {
             return result;

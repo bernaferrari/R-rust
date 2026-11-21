@@ -2,57 +2,55 @@ use super::*;
 
 /// Handle summary functions: sum, min, max, prod, range.
 /// These accept multiple arguments and aggregate across all elements.
-pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if let Some(result) = try_group_dispatch(b"Summary\0", call, op, args, rho) {
-            return result;
-        }
-        let summary_op = SummaryOp::from_name(get_op_name(op, call));
-        #[cfg(feature = "renderplot-device")]
-        if let Some(result) =
-            crate::mainutils::portable_grid::unit_summary(get_op_name(op, call), args)
-        {
-            return result;
-        }
-        let na_rm = parse_summary_na_rm(args);
-        let finite = parse_summary_finite(args);
-        let first = first_summary_data_arg(args);
-        let first_is_lt = crate::mainutils::essentials::sexp_has_class(first, "POSIXlt")
-            && TYPEOF(first) == SEXPTYPE::VECSXP;
-        let args = if first_is_lt {
-            coerce_summary_posixlt_args(call, op, args, rho)
-        } else {
-            args
-        };
-        let _args = protect(args);
-        let shape = scan_summary_shape(args, summary_op);
-        let first = first_summary_data_arg(args);
-
-        let result = match summary_op {
-            SummaryOp::Sum => eval_sum(args, shape, na_rm),
-            SummaryOp::Prod => eval_prod(args, shape, na_rm),
-            SummaryOp::Min => eval_minmax(args, shape, na_rm, finite, SummaryOp::Min),
-            SummaryOp::Max => eval_minmax(args, shape, na_rm, finite, SummaryOp::Max),
-            SummaryOp::Range => eval_range(args, shape, na_rm, finite),
-        };
-        let _r = protect(result);
-
-        if matches!(
-            summary_op,
-            SummaryOp::Min | SummaryOp::Max | SummaryOp::Range
-        ) {
-            restore_datetime_summary_class(first, result);
-            if first_is_lt {
-                return crate::mainutils::datetime::do_as_POSIXlt(
-                    call,
-                    op,
-                    Rf_cons(result, R_NilValue()),
-                    rho,
-                );
-            }
-        }
-        result
+pub fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    if let Some(result) = try_group_dispatch(b"Summary\0", call, op, args, rho) {
+        return result;
     }
+    let summary_op = SummaryOp::from_name(get_op_name(op, call));
+    #[cfg(feature = "renderplot-device")]
+    if let Some(result) =
+        crate::mainutils::portable_grid::unit_summary(get_op_name(op, call), args)
+    {
+        return result;
+    }
+    let na_rm = parse_summary_na_rm(args);
+    let finite = parse_summary_finite(args);
+    let first = first_summary_data_arg(args);
+    let first_is_lt = crate::mainutils::essentials::sexp_has_class(first, "POSIXlt")
+        && TYPEOF(first) == SEXPTYPE::VECSXP;
+    let args = if first_is_lt {
+        coerce_summary_posixlt_args(call, op, args, rho)
+    } else {
+        args
+    };
+    let _args = protect(args);
+    let shape = scan_summary_shape(args, summary_op);
+    let first = first_summary_data_arg(args);
+
+    let result = match summary_op {
+        SummaryOp::Sum => eval_sum(args, shape, na_rm),
+        SummaryOp::Prod => eval_prod(args, shape, na_rm),
+        SummaryOp::Min => eval_minmax(args, shape, na_rm, finite, SummaryOp::Min),
+        SummaryOp::Max => eval_minmax(args, shape, na_rm, finite, SummaryOp::Max),
+        SummaryOp::Range => eval_range(args, shape, na_rm, finite),
+    };
+    let _r = protect(result);
+
+    if matches!(
+        summary_op,
+        SummaryOp::Min | SummaryOp::Max | SummaryOp::Range
+    ) {
+        restore_datetime_summary_class(first, result);
+        if first_is_lt {
+            return crate::mainutils::datetime::do_as_POSIXlt(
+                call,
+                op,
+                Rf_cons(result, R_NilValue()),
+                rho,
+            );
+        }
+    }
+    result
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -121,47 +119,43 @@ pub(crate) fn complex_missing(value: Rcomplex) -> bool {
     value.r.is_nan() || value.i.is_nan()
 }
 
-pub(crate) unsafe fn parse_summary_na_rm(args: SEXP) -> bool {
-    unsafe {
-        let mut na_rm = false;
-        let mut seen = false;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "na.rm") {
-                if seen {
-                    summary_error("formal argument \"na.rm\" matched by multiple actual arguments");
-                }
-                seen = true;
-                na_rm = summary_logical_arg(CAR(current));
+pub(crate) fn parse_summary_na_rm(args: SEXP) -> bool {
+    let mut na_rm = false;
+    let mut seen = false;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        if tag_name_is(TAG(current), "na.rm") {
+            if seen {
+                summary_error("formal argument \"na.rm\" matched by multiple actual arguments");
             }
-            current = CDR(current);
+            seen = true;
+            na_rm = summary_logical_arg(CAR(current));
         }
-        na_rm
+        current = CDR(current);
     }
+    na_rm
 }
 
-pub(crate) unsafe fn parse_summary_finite(args: SEXP) -> bool {
-    unsafe {
-        let mut finite = false;
-        let mut seen = false;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            if tag_name_is(TAG(current), "finite") {
-                if seen {
-                    summary_error(
-                        "formal argument \"finite\" matched by multiple actual arguments",
-                    );
-                }
-                seen = true;
-                finite = summary_logical_arg(CAR(current));
+pub(crate) fn parse_summary_finite(args: SEXP) -> bool {
+    let mut finite = false;
+    let mut seen = false;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        if tag_name_is(TAG(current), "finite") {
+            if seen {
+                summary_error(
+                    "formal argument \"finite\" matched by multiple actual arguments",
+                );
             }
-            current = CDR(current);
+            seen = true;
+            finite = summary_logical_arg(CAR(current));
         }
-        finite
+        current = CDR(current);
     }
+    finite
 }
 
-pub(crate) unsafe fn summary_logical_arg(x: SEXP) -> bool {
+pub(crate) fn summary_logical_arg(x: SEXP) -> bool {
     unsafe {
         let Some(arg) = NumericVector::from_raw(x) else {
             summary_error("invalid 'na.rm' value");
@@ -189,7 +183,7 @@ pub(crate) unsafe fn summary_logical_arg(x: SEXP) -> bool {
     }
 }
 
-pub(crate) unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
+pub(crate) fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
     unsafe {
         let mut shape = SummaryShape::default();
         let mut current = args;
@@ -231,7 +225,7 @@ pub(crate) unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummarySha
     }
 }
 
-pub(crate) unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+pub(crate) fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
     unsafe {
         let mut int_total: i64 = 0;
         let mut real_total = 0.0;
@@ -323,7 +317,7 @@ pub(crate) unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> S
     }
 }
 
-pub(crate) unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+pub(crate) fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
     unsafe {
         let mut real_total = 1.0;
         let mut complex_total = Rcomplex { r: 1.0, i: 0.0 };
@@ -407,7 +401,7 @@ pub(crate) unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> 
     }
 }
 
-pub(crate) unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
+pub(crate) fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
     unsafe {
         let mut best: Option<String> = None;
         let mut current = args;
@@ -520,7 +514,7 @@ pub(crate) unsafe fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) 
     }
 }
 
-pub(crate) unsafe fn eval_minmax(
+pub(crate) fn eval_minmax(
     args: SEXP,
     shape: SummaryShape,
     na_rm: bool,
@@ -636,7 +630,7 @@ pub(crate) unsafe fn eval_minmax(
     }
 }
 
-pub(crate) unsafe fn eval_range(
+pub(crate) fn eval_range(
     args: SEXP,
     shape: SummaryShape,
     na_rm: bool,
@@ -726,7 +720,7 @@ pub(crate) fn tag_name_is(tag: SEXP, expected: &str) -> bool {
     }
 }
 
-pub(crate) unsafe fn logical_arg_is_true(x: SEXP) -> bool {
+pub(crate) fn logical_arg_is_true(x: SEXP) -> bool {
     unsafe {
         let Some(arg) = NumericVector::from_raw(x) else {
             return false;
@@ -803,7 +797,7 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
 /// is.complex, is.logical, is.character, is.null, is.raw.
-pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let op_name = get_op_name(op, call);
         if op_name == "is.numeric" {
@@ -861,7 +855,7 @@ pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // Operator name extraction
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn get_op_name(op: SEXP, call: SEXP) -> &'static str {
+pub(crate) fn get_op_name(op: SEXP, call: SEXP) -> &'static str {
     unsafe {
         // Use descriptor identity, including session-local portable bindings,
         // so aliases and NextMethod's synthetic calls keep the same operation.
@@ -935,7 +929,7 @@ pub(crate) unsafe fn get_op_name(op: SEXP, call: SEXP) -> &'static str {
 // Registration functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn register_special_forms(env: SEXP) {
+pub fn register_special_forms(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
         use crate::sexp::constructors::Rf_cons;

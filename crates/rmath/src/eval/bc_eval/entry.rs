@@ -11,14 +11,14 @@ use super::*;
 /// This is the equivalent of R's `bcEval()` from eval.c.
 /// Translate the final owning result to a native projection only after the
 /// original runtime remains physically pinned and revocation is checked.
-pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
-    let body = unsafe { own_operand(body) };
-    let rho = unsafe { own_operand(rho) };
+pub fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
+    let body = { own_operand(body) };
+    let rho = { own_operand(rho) };
     let pin = body
         .pin_runtime()
         .unwrap_or_else(|error| bc_error(error.to_string()))
         .unwrap_or_else(|| bc_error("bytecode requires a runtime owner"));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         bc_eval_owned(body, rho, &pin)
     }));
     // A callback can revoke this exact runtime while native continuation code
@@ -33,30 +33,28 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 }
 
 #[inline(never)]
-pub(crate) unsafe fn bc_eval_owned(
+pub(crate) fn bc_eval_owned(
     body_owned: Sexp<'static>,
     rho_owned: Sexp<'static>,
     pin: &crate::sexp::owner::OwnerPin,
 ) -> Sexp<'static> {
-    unsafe {
-        let body = body_owned.as_raw();
-        let rho = rho_owned.as_raw();
-        if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP {
-            bc_error("bcEval requires a bytecode object");
-        }
-
-        if BCODE_IS_GNU(body) {
-            return eval_gnu_adapter(body, rho, pin);
-        }
-
-        bc_eval_private(body_owned, rho_owned, pin)
+    let body = body_owned.as_raw();
+    let rho = rho_owned.as_raw();
+    if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP {
+        bc_error("bcEval requires a bytecode object");
     }
+
+    if BCODE_IS_GNU(body) {
+        return eval_gnu_adapter(body, rho, pin);
+    }
+
+    bc_eval_private(body_owned, rho_owned, pin)
 }
 
 // GNU execution must not reserve the private instruction dispatch's locals.
 // Both branches retain the same original roots and scoped owning runtime pin.
 #[inline(never)]
-pub(crate) unsafe fn bc_eval_private(
+pub(crate) fn bc_eval_private(
     body_owned: Sexp<'static>,
     rho_owned: Sexp<'static>,
     pin: &crate::sexp::owner::OwnerPin,
@@ -965,22 +963,20 @@ pub(crate) unsafe fn bc_eval_private(
                     if obj.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        {
-                            let dbracket_sym = crate::sexp::symbol::Rf_install(c"[[".as_ptr());
-                            let nil = R_NilValue();
-                            let args = Rf_cons(obj, Rf_cons(idx, nil));
-                            let call = Rf_cons(dbracket_sym, args);
-                            if !call.is_null() {
-                                crate::sexp::accessors::SET_TYPEOF(
-                                    call,
-                                    SEXPTYPE::LANGSXP.as_c_int(),
-                                );
-                            }
-                            let result = with_stack_rooted(&stack, call, || {
-                                crate::eval::eval::Rf_eval(call, rho)
-                            });
-                            stack.push(result);
+                        let dbracket_sym = crate::sexp::symbol::Rf_install(c"[[".as_ptr());
+                        let nil = R_NilValue();
+                        let args = Rf_cons(obj, Rf_cons(idx, nil));
+                        let call = Rf_cons(dbracket_sym, args);
+                        if !call.is_null() {
+                            crate::sexp::accessors::SET_TYPEOF(
+                                call,
+                                SEXPTYPE::LANGSXP.as_c_int(),
+                            );
                         }
+                        let result = with_stack_rooted(&stack, call, || {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
+                        stack.push(result);
                     }
                 }
 
@@ -1040,11 +1036,9 @@ pub(crate) unsafe fn bc_eval_private(
                     let sym_owned = stack_pop_checked(&mut stack, "PUTBASE symbol");
                     let sym = sym_owned.as_raw();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
-                        {
-                            with_stack_rooted(&stack, val, || {
-                                defineVar(sym, val, super::super::runtime::base_env())
-                            });
-                        }
+                        with_stack_rooted(&stack, val, || {
+                            defineVar(sym, val, super::super::runtime::base_env())
+                        });
                     }
                     stack.push(val);
                     super::super::runtime::set_visible(FALSE);
@@ -1057,11 +1051,9 @@ pub(crate) unsafe fn bc_eval_private(
                     let sym_owned = stack_pop_checked(&mut stack, "PUTBASE_SEP symbol");
                     let sym = sym_owned.as_raw();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
-                        {
-                            with_stack_rooted(&stack, val, || {
-                                defineVar(sym, val, super::super::runtime::base_env())
-                            });
-                        }
+                        with_stack_rooted(&stack, val, || {
+                            defineVar(sym, val, super::super::runtime::base_env())
+                        });
                     }
                     stack.push(val);
                 }

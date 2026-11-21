@@ -5,7 +5,7 @@ use super::*;
 // Lookup/evaluation may reenter. Its locals end before applying the resolved
 // function; the caller retains the original call, arguments and environment.
 #[inline(never)]
-pub(crate) unsafe fn resolve_call_function<'a>(
+pub(crate) fn resolve_call_function<'a>(
     fun: &Sexp<'a>,
     e: &Sexp<'a>,
     rho: &Sexp<'a>,
@@ -23,7 +23,7 @@ pub(crate) unsafe fn resolve_call_function<'a>(
                 },
             }
         } else {
-            (unsafe {
+            ({
                 /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
                 eval_safe(fun.clone(), rho.clone())
             })?
@@ -72,8 +72,8 @@ pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
-    (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ find_var_result(symbol, rho) }).ok().flatten()
+pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    ({ /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ find_var_result(symbol, rho) }).ok().flatten()
 }
 
 /// Raise R's missing-argument error, attributed like upstream.
@@ -100,7 +100,7 @@ pub(crate) fn missing_arg_error(name: &str) -> ! {
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub(crate) unsafe fn find_var_result<'a>(
+pub(crate) fn find_var_result<'a>(
     symbol: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Option<Sexp<'a>>, String> {
@@ -141,7 +141,7 @@ pub(crate) unsafe fn find_var_result<'a>(
         missing_arg_error(&name);
     }
     if binding.clone().typeof_() == SEXPTYPE::PROMSXP {
-        return (unsafe { /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ eval_promise_safe(binding, rho) }).map(|v| { mark_named_on_read(v.clone().as_raw()); Some(v) });
+        return ({ /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */ eval_promise_safe(binding, rho) }).map(|v| { mark_named_on_read(v.clone().as_raw()); Some(v) });
     }
     mark_named_on_read(binding.clone().as_raw());
     Ok(Some(binding))
@@ -153,7 +153,7 @@ pub(crate) fn mark_named_on_read(x: SEXP) {
 }
 
 /// Safe promise evaluation.
-pub(crate) unsafe fn eval_promise_safe<'a>(
+pub(crate) fn eval_promise_safe<'a>(
     prom: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {

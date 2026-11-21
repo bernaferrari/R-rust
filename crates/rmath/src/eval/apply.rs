@@ -157,7 +157,7 @@ pub(crate) fn apply_special_safe<'a>(
             primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw())
         })
     } else {
-        crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
+        crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || {
             super::special::do_special_dispatch(
                 call.as_raw(),
                 fun.as_raw(),
@@ -382,7 +382,7 @@ fn apply_unevaluated_builtin<'a>(
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
-    unsafe {
+    {
         check_prototype_first_arg(
             op_name,
             frame.args.clone().as_raw(),
@@ -419,7 +419,7 @@ fn apply_evaluated_builtin<'a>(
     let args = frame.args.clone();
     let rho = frame.rho.clone();
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
-        unsafe {
+        {
             check_prototype_first_arg(op_name, evaled_args, call.clone().as_raw());
         }
         let result =
@@ -461,7 +461,7 @@ fn apply_evaluated_builtin<'a>(
         });
     }
 }
-unsafe fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP) {
+fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP) {
     unsafe {
         match first_prototype_formal(op_name) {
             None => {}
@@ -493,7 +493,7 @@ unsafe fn check_prototype_first_arg(op_name: &str, evaled_args: SEXP, call: SEXP
     }
 }
 
-unsafe fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
+fn first_prototype_formal(op_name: &str) -> Option<Option<String>> {
     unsafe {
         let base = crate::sexp::globals::R_BaseEnv();
         let Ok(name_c) = std::ffi::CString::new(op_name) else {

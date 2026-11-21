@@ -59,48 +59,44 @@ pub struct R_varloc_t {
 }
 
 pub(crate) fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t {
-    {
-        if rho.is_null() || symbol.is_null() {
-            return R_varloc_t {
-                cell: ptr::null_mut(),
-            };
-        }
-        let found = find_binding_cell(FRAME(rho), symbol);
-        if !found.is_null() {
-            return R_varloc_t { cell: found };
-        }
-        let hashtab = HASHTAB(rho);
-        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
-            // SAFETY: the translated caller retains the active runtime.
-            if let Ok(owner) = unsafe { crate::sexp::owner::OwnerToken::current() }
-                && let Ok(hashtab) = owner.sexp(hashtab)
-            {
-                for i in 0..hashtab.len() {
-                    if let Ok(bucket) = hashtab.try_vector_elt(i) {
-                        let found = find_binding_cell(bucket.as_raw(), symbol);
-                        if !found.is_null() {
-                            return R_varloc_t { cell: found };
-                        }
+    if rho.is_null() || symbol.is_null() {
+        return R_varloc_t {
+            cell: ptr::null_mut(),
+        };
+    }
+    let found = find_binding_cell(FRAME(rho), symbol);
+    if !found.is_null() {
+        return R_varloc_t { cell: found };
+    }
+    let hashtab = HASHTAB(rho);
+    if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+        // SAFETY: the translated caller retains the active runtime.
+        if let Ok(owner) = unsafe { crate::sexp::owner::OwnerToken::current() }
+            && let Ok(hashtab) = owner.sexp(hashtab)
+        {
+            for i in 0..hashtab.len() {
+                if let Ok(bucket) = hashtab.try_vector_elt(i) {
+                    let found = find_binding_cell(bucket.as_raw(), symbol);
+                    if !found.is_null() {
+                        return R_varloc_t { cell: found };
                     }
                 }
             }
         }
-        R_varloc_t {
-            cell: ptr::null_mut(),
-        }
+    }
+    R_varloc_t {
+        cell: ptr::null_mut(),
     }
 }
 
 fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
-    {
-        while !cell.is_null() && cell != R_NilValue() {
-            if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
-                return cell;
-            }
-            cell = CDR(cell);
+    while !cell.is_null() && cell != R_NilValue() {
+        if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
+            return cell;
         }
-        ptr::null_mut()
+        cell = CDR(cell);
     }
+    ptr::null_mut()
 }
 
 fn dots_context_error(message: &str) -> ! {
@@ -109,7 +105,7 @@ fn dots_context_error(message: &str) -> ! {
     });
 }
 
-unsafe fn current_dots(rho: SEXP) -> SEXP {
+fn current_dots(rho: SEXP) -> SEXP {
     unsafe {
         let dots = R_findVarInFrame(rho, R_DotsSymbol());
         if dots.is_null() || dots == R_UnboundValue() {
@@ -126,35 +122,31 @@ unsafe fn current_dots(rho: SEXP) -> SEXP {
 }
 
 fn dots_len(dots: SEXP) -> c_int {
-    {
-        let mut n = 0;
-        let mut cell = dots;
-        while !cell.is_null() && cell != R_NilValue() {
-            n += 1;
-            cell = CDR(cell);
-        }
-        n
+    let mut n = 0;
+    let mut cell = dots;
+    while !cell.is_null() && cell != R_NilValue() {
+        n += 1;
+        cell = CDR(cell);
     }
+    n
 }
 
 fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
-    {
-        if index <= 0 {
-            dots_context_error("indexing '...' with an invalid index");
-        }
-
-        let mut i = 1;
-        let mut cell = dots;
-        while !cell.is_null() && cell != R_NilValue() {
-            if i == index {
-                return cell;
-            }
-            i += 1;
-            cell = CDR(cell);
-        }
-
+    if index <= 0 {
         dots_context_error("indexing '...' with an invalid index");
     }
+
+    let mut i = 1;
+    let mut cell = dots;
+    while !cell.is_null() && cell != R_NilValue() {
+        if i == index {
+            return cell;
+        }
+        i += 1;
+        cell = CDR(cell);
+    }
+
+    dots_context_error("indexing '...' with an invalid index");
 }
 
  fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
@@ -181,11 +173,11 @@ fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
     call
 }
 
-pub unsafe fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarInteger(dots_len(current_dots(rho))) }
+pub fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    Rf_ScalarInteger(dots_len(current_dots(rho)))
 }
 
-pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let dots = current_dots(rho);
         let len = dots_len(dots);
@@ -225,7 +217,7 @@ pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> S
     }
 }
 
-pub unsafe fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let index = if args.is_null() || args == R_NilValue() {
             NA_INTEGER
@@ -250,7 +242,7 @@ pub unsafe fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 ///
 /// Ported from R's `VectorToPairListNamed()` in eval.c. Used by do_eval()
 /// to convert a VECSXP environment to a pairlist for NewEnvironment.
-pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
+pub fn VectorToPairListNamed(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -389,7 +381,7 @@ pub unsafe fn DispatchAnyOrEval(
 ///
 /// Ported from R's `classForGroupDispatch()` in eval.c. Returns the
 /// class attribute if it exists, otherwise the implicit class.
-unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
+fn classForGroupDispatch(obj: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() {
             return R_NilValue();
@@ -407,7 +399,7 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
 /// GNU reads `SYMVALUE(install(generic))`. This port leaves that slot
 /// unbound unless `InitNames` ran, and stores the real primitive in the
 /// base frame. Method tables are keyed by that primitive.
-unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
+fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
     unsafe {
         let op = crate::sexp::accessors::SYMVALUE(generic_sym);
         if dispatch_op_usable(op) {
@@ -419,14 +411,12 @@ unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
 }
 
 fn dispatch_op_usable(op: SEXP) -> bool {
-    {
-        !op.is_null()
-            && op != R_UnboundValue()
-            && op != R_NilValue()
-            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP
-                || TYPEOF(op) == SEXPTYPE::SPECIALSXP
-                || TYPEOF(op) == SEXPTYPE::CLOSXP)
-    }
+    !op.is_null()
+        && op != R_UnboundValue()
+        && op != R_NilValue()
+        && (TYPEOF(op) == SEXPTYPE::BUILTINSXP
+            || TYPEOF(op) == SEXPTYPE::SPECIALSXP
+            || TYPEOF(op) == SEXPTYPE::CLOSXP)
 }
 
 /// Ported from R's `tryDispatch()` in eval.c. Creates promises for
@@ -616,7 +606,7 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
 /// Print a call for debugging purposes.
 ///
 /// Ported from R's `PrintCall()` in eval.c. Used when debugging closures.
-pub unsafe fn PrintCall(call: SEXP, _rho: SEXP) {
+pub fn PrintCall(call: SEXP, _rho: SEXP) {
     unsafe {
         if call.is_null() {
             return;
@@ -832,7 +822,7 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
 ///
 /// Ported from R's `replaceCall()` in eval.c. Constructs a call like:
 ///   fun(target, indices..., value = rhs)
-pub unsafe fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
+pub fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
         let nargs = if !args.is_null() && args != R_NilValue() {
             LENGTH(args)
@@ -904,7 +894,7 @@ pub  fn unpromiseArgs(pargs: SEXP) {
 /// Ported from R's `signalMissingArgError()` in eval.c. Called when
 /// the bytecode interpreter encounters a missing argument in a context
 /// where one is required.
-pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
+pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
     unsafe {
         let msg = if arg_sym.is_null() {
             "argument is missing, with no default".to_string()
@@ -939,7 +929,7 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
 /// Check that the protect stack is balanced after a primitive call.
 ///
 /// Ported from R's `check_stack_balance()` in eval.c.
-pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
+pub fn check_stack_balance(op: SEXP, save: c_int) {
     unsafe {
         let current = crate::mainutils::main::R_PPStackTop();
         if save == current {
@@ -962,7 +952,7 @@ pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
 /// Ported from R's `do_forceAndCall()` in eval.c. Forces the first n
 /// promises in the argument list and then calls the function.
 // no_mangle removed (duplicate)
-pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = super::dispatch::active_argument_factory();
         let _call_owner = super::dispatch::argument_value(&factory, call);
@@ -1044,7 +1034,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
 ///
 /// Ported from R's `do_eval()` in eval.c. Evaluates an expression in
 /// the specified environment.
-pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let mut env = CADR(args);
@@ -1114,7 +1104,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `R_initEvalSymbols()` in eval.c. Installs symbols
 /// for assignment operators and other special forms.
-pub unsafe fn R_initEvalSymbols() {
+pub fn R_initEvalSymbols() {
     unsafe {
         // Assignment operator symbols
         Rf_install(b":=\x00".as_ptr() as *const c_char);
@@ -1161,7 +1151,7 @@ pub unsafe fn R_initEvalSymbols() {
 /// Ported from R's `evalseq()` in eval.c. This recursively evaluates
 /// the LHS of a complex assignment (e.g., x[i][j] <- val) to find
 /// the target variable and intermediate values.
-pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
+pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             eprintln!("Error: invalid (NULL) left side of assignment");
@@ -1253,15 +1243,13 @@ pub(crate) fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
 ///
 /// Ported from R's `markSpecialArgs()` in eval.c.
 pub fn markSpecialArgs(args: SEXP) -> SEXP {
-    {
-        if args.is_null() || args == R_NilValue() {
-            return args;
-        }
-        // Simplified: return args as-is
-        // In the full implementation, this marks nodes with special flags
-        // for the bytecode interpreter
-        args
+    if args.is_null() || args == R_NilValue() {
+        return args;
     }
+    // Simplified: return args as-is
+    // In the full implementation, this marks nodes with special flags
+    // for the bytecode interpreter
+    args
 }
 
 // ---------------------------------------------------------------------------
@@ -1274,15 +1262,13 @@ pub fn markSpecialArgs(args: SEXP) -> SEXP {
 /// compiler produces compact assignment calls that need to be expanded
 /// to their full form for the interpreter.
 pub fn inflateAssignmentCall(expr: SEXP) -> SEXP {
-    {
-        if expr.is_null() || expr == R_NilValue() {
-            return R_NilValue();
-        }
-        // Simplified: return as-is
-        // In the full implementation, this expands compact assignment forms
-        // like x[i] <- val into [<-(x, i, value)
-        expr
+    if expr.is_null() || expr == R_NilValue() {
+        return R_NilValue();
     }
+    // Simplified: return as-is
+    // In the full implementation, this expands compact assignment forms
+    // like x[i] <- val into [<-(x, i, value)
+    expr
 }
 
 // ---------------------------------------------------------------------------
@@ -1365,9 +1351,7 @@ pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// This is called when a function exits (normally or via error).
 pub fn run_onexits() {
-    {
-        super::context::R_run_onexits();
-    }
+    super::context::R_run_onexits();
 }
 
 // ---------------------------------------------------------------------------
@@ -1375,10 +1359,8 @@ pub fn run_onexits() {
 // ---------------------------------------------------------------------------
 
 /// Set the current source reference.
-pub unsafe fn set_R_Srcref(srcref: SEXP) {
-    unsafe {
-        super::profiling::set_current_srcref(srcref);
-    }
+pub fn set_R_Srcref(srcref: SEXP) {
+    super::profiling::set_current_srcref(srcref);
 }
 
 // ---------------------------------------------------------------------------

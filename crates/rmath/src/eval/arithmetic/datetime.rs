@@ -11,11 +11,11 @@ pub(crate) fn difftime_unit_scale(unit: &str) -> f64 {
     }
 }
 
-pub(crate) unsafe fn difftime_units(source: SEXP) -> String {
-    unsafe { string_attribute_value(source, c"units").unwrap_or_else(|| "secs".to_string()) }
+pub(crate) fn difftime_units(source: SEXP) -> String {
+    string_attribute_value(source, c"units").unwrap_or_else(|| "secs".to_string())
 }
 
-pub(crate) unsafe fn coerce_difftime_operand(
+pub(crate) fn coerce_difftime_operand(
     source: SEXP,
     target_unit_seconds: f64,
     round_result: bool,
@@ -51,14 +51,14 @@ pub(crate) unsafe fn coerce_difftime_operand(
     }
 }
 
-pub(crate) unsafe fn has_class_attribute(source: SEXP) -> bool {
+pub(crate) fn has_class_attribute(source: SEXP) -> bool {
     unsafe {
         let class = getAttrib(source, Rf_install(c"class".as_ptr()));
         !class.is_null() && class != R_NilValue()
     }
 }
 
-pub(crate) unsafe fn coerce_character_comparison_operand(
+pub(crate) fn coerce_character_comparison_operand(
     source: SEXP,
     parser: fn(&str) -> Option<f64>,
 ) -> SEXP {
@@ -93,21 +93,19 @@ pub(crate) unsafe fn coerce_character_comparison_operand(
     }
 }
 
-pub(crate) unsafe fn difftime_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
-        let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
-        if !a_is_difftime && !b_is_difftime {
-            return None;
-        }
-
-        // GNU's C comparison has no difftime unit logic: unit coercion
-        // happens in the R-level Ops.difftime (coerceTimeUnit) before
-        // NextMethod reaches this `.default` backend, so both operands'
-        // raw values are already seconds. Rescaling by the (possibly
-        // stale) units label here would apply the coercion twice.
-        Some(binary_compare(op, a, b))
+pub(crate) fn difftime_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
+    let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
+    if !a_is_difftime && !b_is_difftime {
+        return None;
     }
+
+    // GNU's C comparison has no difftime unit logic: unit coercion
+    // happens in the R-level Ops.difftime (coerceTimeUnit) before
+    // NextMethod reaches this `.default` backend, so both operands'
+    // raw values are already seconds. Rescaling by the (possibly
+    // stale) units label here would apply the coercion twice.
+    Some(binary_compare(op, a, b))
 }
 
 pub(crate) fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
@@ -120,7 +118,7 @@ pub(crate)  fn is_numeric_version(x: SEXP) -> bool {
         || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
 }
 
-pub(crate) unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
+pub(crate) fn version_components(x: SEXP) -> Option<Vec<i32>> {
     unsafe {
         if is_numeric_version(x) && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1 {
             let elt = VECTOR_ELT(x, 0);
@@ -153,56 +151,52 @@ pub(crate) unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
     }
 }
 
-pub(crate) unsafe fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        if !is_numeric_version(a) && !is_numeric_version(b) {
-            return None;
-        }
-        let av = version_components(a)?;
-        let bv = version_components(b)?;
-        let n = av.len().max(bv.len());
-        let mut ord = 0i32;
-        for i in 0..n {
-            let x = av.get(i).copied().unwrap_or(0);
-            let y = bv.get(i).copied().unwrap_or(0);
-            if x != y {
-                ord = if x < y { -1 } else { 1 };
-                break;
-            }
-        }
-        let yes = match op {
-            "<" => ord < 0,
-            ">" => ord > 0,
-            "<=" => ord <= 0,
-            ">=" => ord >= 0,
-            "==" => ord == 0,
-            "!=" => ord != 0,
-            _ => return None,
-        };
-        Some(Rf_ScalarLogical(if yes { TRUE } else { FALSE }))
+pub(crate) fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    if !is_numeric_version(a) && !is_numeric_version(b) {
+        return None;
     }
+    let av = version_components(a)?;
+    let bv = version_components(b)?;
+    let n = av.len().max(bv.len());
+    let mut ord = 0i32;
+    for i in 0..n {
+        let x = av.get(i).copied().unwrap_or(0);
+        let y = bv.get(i).copied().unwrap_or(0);
+        if x != y {
+            ord = if x < y { -1 } else { 1 };
+            break;
+        }
+    }
+    let yes = match op {
+        "<" => ord < 0,
+        ">" => ord > 0,
+        "<=" => ord <= 0,
+        ">=" => ord >= 0,
+        "==" => ord == 0,
+        "!=" => ord != 0,
+        _ => return None,
+    };
+    Some(Rf_ScalarLogical(if yes { TRUE } else { FALSE }))
 }
 
-pub(crate) unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
-        let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
-        if !a_is_date && !b_is_date {
-            return None;
-        }
-
-        let a = coerce_character_comparison_operand(
-            a,
-            crate::mainutils::essentials::parse_iso_date_days,
-        );
-        let b = coerce_character_comparison_operand(
-            b,
-            crate::mainutils::essentials::parse_iso_date_days,
-        );
-        let _a_guard = protect(a);
-        let _b_guard = protect(b);
-        Some(binary_compare(op, a, b))
+pub(crate) fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
+    let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
+    if !a_is_date && !b_is_date {
+        return None;
     }
+
+    let a = coerce_character_comparison_operand(
+        a,
+        crate::mainutils::essentials::parse_iso_date_days,
+    );
+    let b = coerce_character_comparison_operand(
+        b,
+        crate::mainutils::essentials::parse_iso_date_days,
+    );
+    let _a_guard = protect(a);
+    let _b_guard = protect(b);
+    Some(binary_compare(op, a, b))
 }
 pub(crate)  fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
     if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
@@ -219,20 +213,18 @@ pub(crate)  fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn posixct_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_is_posixct = crate::mainutils::essentials::sexp_has_class(a, "POSIXct");
-        let b_is_posixct = crate::mainutils::essentials::sexp_has_class(b, "POSIXct");
-        if !a_is_posixct && !b_is_posixct {
-            return None;
-        }
-
-        let a = coerce_character_comparison_operand(a, parse_posixct_comparison_seconds);
-        let b = coerce_character_comparison_operand(b, parse_posixct_comparison_seconds);
-        let _a_guard = protect(a);
-        let _b_guard = protect(b);
-        Some(binary_compare(op, a, b))
+pub(crate) fn posixct_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_is_posixct = crate::mainutils::essentials::sexp_has_class(a, "POSIXct");
+    let b_is_posixct = crate::mainutils::essentials::sexp_has_class(b, "POSIXct");
+    if !a_is_posixct && !b_is_posixct {
+        return None;
     }
+
+    let a = coerce_character_comparison_operand(a, parse_posixct_comparison_seconds);
+    let b = coerce_character_comparison_operand(b, parse_posixct_comparison_seconds);
+    let _a_guard = protect(a);
+    let _b_guard = protect(b);
+    Some(binary_compare(op, a, b))
 }
 
 pub(crate) fn auto_difftime_units(seconds: &[f64]) -> (&'static str, f64) {
@@ -253,107 +245,101 @@ pub(crate) fn auto_difftime_units(seconds: &[f64]) -> (&'static str, f64) {
     }
 }
 
-pub(crate) unsafe fn set_difftime_attributes(result: SEXP, units: &str) {
-    unsafe {
-        set_string_attribute(result, "units", units);
-        set_single_string_class(result, "difftime");
+pub(crate) fn set_difftime_attributes(result: SEXP, units: &str) {
+    set_string_attribute(result, "units", units);
+    set_single_string_class(result, "difftime");
+}
+
+pub(crate) fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
+    let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
+    if !a_is_date && !b_is_date {
+        return None;
+    }
+
+    match op {
+        "+" if a_is_date && b_is_date => {
+            arithmetic_error("binary + is not defined for \"Date\" objects");
+        }
+        "+" if a_is_date || b_is_date => {
+            let a = coerce_difftime_operand(a, 86_400.0, true);
+            let b = coerce_difftime_operand(b, 86_400.0, true);
+            let _a_guard = protect(a);
+            let _b_guard = protect(b);
+            let result = real_binary(op, a, b);
+            set_single_string_class(result, "Date");
+            Some(result)
+        }
+        "-" if a_is_date && b_is_date => {
+            let result = real_binary(op, a, b);
+            set_difftime_attributes(result, "days");
+            Some(result)
+        }
+        "-" if a_is_date => {
+            if has_class_attribute(b)
+                && !crate::mainutils::essentials::sexp_has_class(b, "difftime")
+            {
+                arithmetic_error("can only subtract numbers from \"Date\" objects");
+            }
+            let b = coerce_difftime_operand(b, 86_400.0, true);
+            let _b_guard = protect(b);
+            let result = real_binary(op, a, b);
+            set_single_string_class(result, "Date");
+            Some(result)
+        }
+        "-" if b_is_date => {
+            arithmetic_error("can only subtract from \"Date\" objects");
+        }
+        "*" | "/" | "^" | "%%" | "%/%" => {
+            arithmetic_error(format!("{op} not defined for \"Date\" objects"));
+        }
+        _ => None,
     }
 }
 
-pub(crate) unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
-        let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
-        if !a_is_date && !b_is_date {
-            return None;
-        }
+pub(crate) fn difftime_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
+    let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
+    if !a_is_difftime && !b_is_difftime {
+        return None;
+    }
 
-        match op {
-            "+" if a_is_date && b_is_date => {
-                arithmetic_error("binary + is not defined for \"Date\" objects");
-            }
-            "+" if a_is_date || b_is_date => {
-                let a = coerce_difftime_operand(a, 86_400.0, true);
-                let b = coerce_difftime_operand(b, 86_400.0, true);
-                let _a_guard = protect(a);
-                let _b_guard = protect(b);
-                let result = real_binary(op, a, b);
-                set_single_string_class(result, "Date");
-                Some(result)
-            }
-            "-" if a_is_date && b_is_date => {
-                let result = real_binary(op, a, b);
-                set_difftime_attributes(result, "days");
-                Some(result)
-            }
-            "-" if a_is_date => {
-                if has_class_attribute(b)
-                    && !crate::mainutils::essentials::sexp_has_class(b, "difftime")
-                {
-                    arithmetic_error("can only subtract numbers from \"Date\" objects");
-                }
-                let b = coerce_difftime_operand(b, 86_400.0, true);
-                let _b_guard = protect(b);
-                let result = real_binary(op, a, b);
-                set_single_string_class(result, "Date");
-                Some(result)
-            }
-            "-" if b_is_date => {
-                arithmetic_error("can only subtract from \"Date\" objects");
-            }
-            "*" | "/" | "^" | "%%" | "%/%" => {
-                arithmetic_error(format!("{op} not defined for \"Date\" objects"));
-            }
-            _ => None,
+    match op {
+        // Operands reaching the arithmetic primitive with a difftime
+        // class have already been unit-coerced by Ops.difftime (the
+        // primitive is entered with dispatch suppressed via the
+        // `.default` call name). GNU's R_binary therefore does raw
+        // arithmetic and never rescales: converting here would apply
+        // the scale twice (e.g. `dt + half` -> 3630 secs).
+        "+" | "-" => {
+            let result = real_binary(op, a, b);
+            set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
+            Some(result)
         }
+        "*" if a_is_difftime && b_is_difftime => {
+            arithmetic_error("both arguments of * cannot be \"difftime\" objects");
+        }
+        "*" if a_is_difftime || b_is_difftime => {
+            let result = real_binary(op, a, b);
+            set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
+            Some(result)
+        }
+        "/" if b_is_difftime => {
+            arithmetic_error("second argument of / cannot be a \"difftime\" object");
+        }
+        "/" if a_is_difftime => {
+            let result = real_binary(op, a, b);
+            set_difftime_attributes(result, &difftime_units(a));
+            Some(result)
+        }
+        "^" | "%%" | "%/%" => {
+            arithmetic_error(format!("'{op}' not defined for \"difftime\" objects"));
+        }
+        _ => None,
     }
 }
 
-pub(crate) unsafe fn difftime_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
-    unsafe {
-        let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
-        let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
-        if !a_is_difftime && !b_is_difftime {
-            return None;
-        }
-
-        match op {
-            // Operands reaching the arithmetic primitive with a difftime
-            // class have already been unit-coerced by Ops.difftime (the
-            // primitive is entered with dispatch suppressed via the
-            // `.default` call name). GNU's R_binary therefore does raw
-            // arithmetic and never rescales: converting here would apply
-            // the scale twice (e.g. `dt + half` -> 3630 secs).
-            "+" | "-" => {
-                let result = real_binary(op, a, b);
-                set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
-                Some(result)
-            }
-            "*" if a_is_difftime && b_is_difftime => {
-                arithmetic_error("both arguments of * cannot be \"difftime\" objects");
-            }
-            "*" if a_is_difftime || b_is_difftime => {
-                let result = real_binary(op, a, b);
-                set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
-                Some(result)
-            }
-            "/" if b_is_difftime => {
-                arithmetic_error("second argument of / cannot be a \"difftime\" object");
-            }
-            "/" if a_is_difftime => {
-                let result = real_binary(op, a, b);
-                set_difftime_attributes(result, &difftime_units(a));
-                Some(result)
-            }
-            "^" | "%%" | "%/%" => {
-                arithmetic_error(format!("'{op}' not defined for \"difftime\" objects"));
-            }
-            _ => None,
-        }
-    }
-}
-
-pub(crate) unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+pub(crate) fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
         let a_is_posixct = crate::mainutils::essentials::sexp_has_class(a, "POSIXct");
         let b_is_posixct = crate::mainutils::essentials::sexp_has_class(b, "POSIXct");
@@ -421,21 +407,19 @@ pub(crate) unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Op
     }
 }
 
-pub(crate) unsafe fn propagate_unary_vector_attributes(
+pub(crate) fn propagate_unary_vector_attributes(
     result: SEXP,
     source: SEXP,
     result_len: R_xlen_t,
 ) {
-    unsafe {
-        if copy_dims_if_present(result, source, result_len) {
-            return;
-        }
-        if LENGTH(source) as R_xlen_t == result_len {
-            copy_attr_if_present(result, source, R_NamesSymbol());
-        }
-        if has_class(source, "ts") || has_class(source, "mts") {
-            copy_attr_if_present(result, source, crate::sexp::attrib_core::R_ClassSymbol());
-            copy_attr_if_present(result, source, crate::sexp::attrib_core::R_TspSymbol());
-        }
+    if copy_dims_if_present(result, source, result_len) {
+        return;
+    }
+    if LENGTH(source) as R_xlen_t == result_len {
+        copy_attr_if_present(result, source, R_NamesSymbol());
+    }
+    if has_class(source, "ts") || has_class(source, "mts") {
+        copy_attr_if_present(result, source, crate::sexp::attrib_core::R_ClassSymbol());
+        copy_attr_if_present(result, source, crate::sexp::attrib_core::R_TspSymbol());
     }
 }

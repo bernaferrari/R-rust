@@ -34,7 +34,7 @@ struct SourceAssignCall {
 }
 
 impl SourceAssignCall {
-    unsafe fn enter(call: SEXP) -> Self {
+    fn enter(call: SEXP) -> Self {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
         let owner = unsafe { (*instance).runtime_owner.clone() }
             .unwrap_or_else(|| error("source assignment requires an original managed owner"))
@@ -286,7 +286,7 @@ fn apply_custom_replacement(
 /// Matches C's `do_set()` in eval.c line 3565.
 ///
 /// `op` carries PRIMVAL: 1 or 3 for `<-`/`=`, 2 for `<<-`.
-pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args == R_NilValue() || CDR(args) == R_NilValue() || CDDR(args) != R_NilValue() {
             error("wrong argument count for assignment");
@@ -338,14 +338,12 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
-    unsafe {
-        bind_assignment(sym, value, primval, rho);
-        super::runtime::set_visible(FALSE);
-    }
+fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
+    bind_assignment(sym, value, primval, rho);
+    super::runtime::set_visible(FALSE);
 }
 
-unsafe fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
+fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     let target_env = if primval == 2 { ENCLOS(rho) } else { rho };
     let (Some(sym), Some(value), Some(target_env)) = (
         unsafe { Sexp::from_raw(sym) },
@@ -372,7 +370,7 @@ unsafe fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
 /// Evaluate a sequence of expressions (for use in multi-expression bodies).
 ///
 /// This is the equivalent of R's `evalseq()` in eval.c.
-pub unsafe fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
+pub fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
@@ -399,7 +397,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
 /// for nested assignments, then walks back up applying replacement functions.
 ///
 /// Ported from applydefine() in eval.c:3367.
-pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -695,36 +693,32 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn symbol_name(symbol: SEXP) -> Option<String> {
-    {
-        if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        crate::sexp::symbol::symbol_name_from_ptr(symbol)
+    if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    crate::sexp::symbol::symbol_name_from_ptr(symbol)
 }
 
 fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
-    {
-        if field.is_null() || field == R_NilValue() {
-            return None;
-        }
-        if TYPEOF(field) == SEXPTYPE::SYMSXP {
-            return Some(field);
-        }
-        if TYPEOF(field) == SEXPTYPE::STRSXP && XLENGTH(field) > 0 {
-            // SAFETY: the translated caller retains the active runtime, and
-            // installTrChar only inspects a checked STRSXP element.
-            return unsafe {
-                let owner = crate::sexp::owner::OwnerToken::current().ok()?;
-                let charsxp = owner.sexp(field).ok()?.try_string_elt(0).ok()?;
-                Some(crate::mainutils::subset::installTrChar(charsxp.as_raw()))
-            };
-        }
-        None
+    if field.is_null() || field == R_NilValue() {
+        return None;
     }
+    if TYPEOF(field) == SEXPTYPE::SYMSXP {
+        return Some(field);
+    }
+    if TYPEOF(field) == SEXPTYPE::STRSXP && XLENGTH(field) > 0 {
+        // SAFETY: the translated caller retains the active runtime, and
+        // installTrChar only inspects a checked STRSXP element.
+        return unsafe {
+            let owner = crate::sexp::owner::OwnerToken::current().ok()?;
+            let charsxp = owner.sexp(field).ok()?.try_string_elt(0).ok()?;
+            Some(crate::mainutils::subset::installTrChar(charsxp.as_raw()))
+        };
+    }
+    None
 }
 
-unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
+fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let wrap_lang = |x: SEXP| match TYPEOF(x) {
             t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP => {
@@ -761,7 +755,7 @@ unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP 
     }
 }
 
-unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
             return Rf_eval(call, rho);
@@ -798,106 +792,102 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
 }
 
 fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
+    if subs == R_NilValue() || subs.is_null() || CDR(subs) != R_NilValue() {
+        return None;
+    }
+    if !matches!(
+        SEXPTYPE(TYPEOF(target)),
+        SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) || !matches!(
+        SEXPTYPE(TYPEOF(value)),
+        SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) || XLENGTH(value) < 1
     {
-        if subs == R_NilValue() || subs.is_null() || CDR(subs) != R_NilValue() {
-            return None;
-        }
-        if !matches!(
-            SEXPTYPE(TYPEOF(target)),
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-        ) || !matches!(
-            SEXPTYPE(TYPEOF(value)),
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-        ) || XLENGTH(value) < 1
-        {
-            return None;
-        }
+        return None;
+    }
 
-        let index = scalar_positive_index(CAR(subs))?;
-        if index >= XLENGTH(target) {
-            return None;
-        }
+    let index = scalar_positive_index(CAR(subs))?;
+    if index >= XLENGTH(target) {
+        return None;
+    }
 
-        // GNU do_subassign_dflt duplicates when MAYBE_SHARED (NAMED >= 2).
-        // This AST scalar shortcut used to mutate in place and alias every
-        // binding of the same vector (`y <- x; x[1] <- 9L`). Fall through
-        // so the default path can shallow-duplicate first.
-        if NAMED(target) >= 2 {
-            return None;
-        }
+    // GNU do_subassign_dflt duplicates when MAYBE_SHARED (NAMED >= 2).
+    // This AST scalar shortcut used to mutate in place and alias every
+    // binding of the same vector (`y <- x; x[1] <- 9L`). Fall through
+    // so the default path can shallow-duplicate first.
+    if NAMED(target) >= 2 {
+        return None;
+    }
 
-        // SAFETY: the translated caller retains the active runtime.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
-        let mut target_mut =
-            crate::sexp::object::SexpMut::try_from_checked(owner.sexp(target).ok()?).ok()?;
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
+    let mut target_mut =
+        crate::sexp::object::SexpMut::try_from_checked(owner.sexp(target).ok()?).ok()?;
 
-        match TYPEOF(target) {
-            t if t == SEXPTYPE::REALSXP => {
-                let replacement = match TYPEOF(value) {
-                    vt if vt == SEXPTYPE::REALSXP => REAL_ELT(value, 0),
-                    vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => {
-                        let v = if vt == SEXPTYPE::INTSXP {
-                            INTEGER_ELT(value, 0)
-                        } else {
-                            LOGICAL_ELT(value, 0)
-                        };
-                        if v == crate::sexp::ffi::NA_INTEGER {
-                            crate::sexp::ffi::NA_REAL
-                        } else {
-                            v as f64
-                        }
+    match TYPEOF(target) {
+        t if t == SEXPTYPE::REALSXP => {
+            let replacement = match TYPEOF(value) {
+                vt if vt == SEXPTYPE::REALSXP => REAL_ELT(value, 0),
+                vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => {
+                    let v = if vt == SEXPTYPE::INTSXP {
+                        INTEGER_ELT(value, 0)
+                    } else {
+                        LOGICAL_ELT(value, 0)
+                    };
+                    if v == crate::sexp::ffi::NA_INTEGER {
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        v as f64
                     }
-                    _ => return None,
-                };
-                target_mut.try_set_real_elt(index, replacement).ok()?;
-                Some(target)
-            }
-            t if t == SEXPTYPE::INTSXP => {
-                let replacement = match TYPEOF(value) {
-                    vt if vt == SEXPTYPE::INTSXP => INTEGER_ELT(value, 0),
-                    vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
-                    _ => return None,
-                };
-                target_mut.try_set_integer_elt(index, replacement).ok()?;
-                Some(target)
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                let replacement = match TYPEOF(value) {
-                    vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
-                    _ => return None,
-                };
-                target_mut.try_set_logical_elt(index, replacement).ok()?;
-                Some(target)
-            }
-            _ => None,
+                }
+                _ => return None,
+            };
+            target_mut.try_set_real_elt(index, replacement).ok()?;
+            Some(target)
         }
+        t if t == SEXPTYPE::INTSXP => {
+            let replacement = match TYPEOF(value) {
+                vt if vt == SEXPTYPE::INTSXP => INTEGER_ELT(value, 0),
+                vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
+                _ => return None,
+            };
+            target_mut.try_set_integer_elt(index, replacement).ok()?;
+            Some(target)
+        }
+        t if t == SEXPTYPE::LGLSXP => {
+            let replacement = match TYPEOF(value) {
+                vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
+                _ => return None,
+            };
+            target_mut.try_set_logical_elt(index, replacement).ok()?;
+            Some(target)
+        }
+        _ => None,
     }
 }
 
 fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
+    if index.is_null()
+        || !matches!(
+            SEXPTYPE(TYPEOF(index)),
+            SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+        )
+        || XLENGTH(index) != 1
     {
-        if index.is_null()
-            || !matches!(
-                SEXPTYPE(TYPEOF(index)),
-                SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
-            )
-            || XLENGTH(index) != 1
-        {
-            return None;
-        }
-        let raw = match TYPEOF(index) {
-            t if t == SEXPTYPE::INTSXP => INTEGER_ELT(index, 0) as crate::sexp::ffi::R_xlen_t,
-            t if t == SEXPTYPE::REALSXP => {
-                let value = REAL_ELT(index, 0);
-                if !value.is_finite() || value.fract() != 0.0 {
-                    return None;
-                }
-                value as crate::sexp::ffi::R_xlen_t
-            }
-            _ => return None,
-        };
-        if raw < 1 { None } else { Some(raw - 1) }
+        return None;
     }
+    let raw = match TYPEOF(index) {
+        t if t == SEXPTYPE::INTSXP => INTEGER_ELT(index, 0) as crate::sexp::ffi::R_xlen_t,
+        t if t == SEXPTYPE::REALSXP => {
+            let value = REAL_ELT(index, 0);
+            if !value.is_finite() || value.fract() != 0.0 {
+                return None;
+            }
+            value as crate::sexp::ffi::R_xlen_t
+        }
+        _ => return None,
+    };
+    if raw < 1 { None } else { Some(raw - 1) }
 }
 
 /// Cached replacement values retain their original promise code separately.

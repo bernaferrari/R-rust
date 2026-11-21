@@ -10,12 +10,12 @@ use super::*;
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let _timer = EvalTimerGuard::start_if_needed();
     crate::sexp::instance::check_cancellation();
     super::super::runtime::set_visible(TRUE);
 
-    match unsafe {
+    match {
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         eval_safe(expr.clone(), env)
     } {
@@ -40,7 +40,7 @@ pub unsafe fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // Capture once and install automatic roots before the first callback.
     // Raw entry points are normalized here into the actual active heap.
     let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
@@ -68,7 +68,7 @@ pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
             // provider errors share this typed evaluation's unwind boundary.
             crate::eval::profiling::sample_at_safe_point(owner)
                 .map_err(|err| sexp_err("profiling sample", err))?;
-            unsafe {
+            {
                 /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
                 eval_safe_inner(expr, env)
             }
@@ -115,14 +115,14 @@ pub(crate) fn symbol_name_for_error(expr: Sexp<'_>) -> String {
 }
 
 #[inline(never)]
-pub(crate) unsafe fn eval_safe_inner<'a>(
+pub(crate) fn eval_safe_inner<'a>(
     expr: Sexp<'a>,
     env: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     match classify_expr(&expr) {
         EvalKind::SelfEvaluating => Ok(expr),
-        EvalKind::Symbol => unsafe { eval_symbol_safe(expr, env) },
-        EvalKind::Language => unsafe {
+        EvalKind::Symbol => { eval_symbol_safe(expr, env) },
+        EvalKind::Language => {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_lang_safe(expr, env)
         },
@@ -131,22 +131,22 @@ pub(crate) unsafe fn eval_safe_inner<'a>(
         // ENVSXP unchanged): `local({...})` blocks capture them via
         // `environment()`, and package shims return them as values.
         EvalKind::Environment => Ok(expr),
-        EvalKind::Promise => unsafe {
+        EvalKind::Promise => {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_promise_safe(expr, env)
         },
         EvalKind::Dots => eval_dots_safe(expr, env),
-        EvalKind::Bytecode => unsafe { eval_bytecode_safe(expr, env) },
+        EvalKind::Bytecode => { eval_bytecode_safe(expr, env) },
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
 }
 
 #[inline(never)]
-pub(crate) unsafe fn eval_symbol_safe<'a>(
+pub(crate) fn eval_symbol_safe<'a>(
     expr: Sexp<'a>,
     env: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
-    if let Some(value) = (unsafe {
+    if let Some(value) = ({
         /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
         find_var_result(expr.clone(), env.clone())
     })? {
@@ -154,7 +154,7 @@ pub(crate) unsafe fn eval_symbol_safe<'a>(
     }
     match primitive_for_symbol(expr.clone()) {
         Some(primitive) => Ok(primitive),
-        None => unsafe {
+        None => {
             crate::mainutils::errors::R_ObjectNotFoundError(
                 expr.as_raw(),
                 super::super::context::get_lexical_call(env.as_raw()),
@@ -164,7 +164,7 @@ pub(crate) unsafe fn eval_symbol_safe<'a>(
     }
 }
 
-pub(crate) unsafe fn eval_bytecode_safe<'a>(
+pub(crate) fn eval_bytecode_safe<'a>(
     expr: Sexp<'a>,
     env: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
@@ -176,7 +176,7 @@ pub(crate) unsafe fn eval_bytecode_safe<'a>(
     let factory = env
         .node_factory()
         .map_err(|err| sexp_err("bytecode owner", err))?;
-    let result = unsafe { super::super::bc_eval::bcEval(expr.as_raw(), env.as_raw()) };
+    let result = { super::super::bc_eval::bcEval(expr.as_raw(), env.as_raw()) };
     factory
         .wrap(result)
         .map_err(|err| sexp_err("bytecode result", err))
@@ -236,13 +236,13 @@ pub(crate) fn classify_expr(expr: &Sexp<'_>) -> EvalKind {
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
 #[inline(never)]
-pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let fun = e.try_car().map_err(|err| sexp_err("empty call", err))?;
     let args = e.try_cdr().map_err(|err| sexp_err("missing args", err))?;
 
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
-    let fun_val = unsafe { resolve_call_function(&fun, &e, &rho) }?;
+    let fun_val = { resolve_call_function(&fun, &e, &rho) }?;
 
     match fun_val.typeof_() {
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),

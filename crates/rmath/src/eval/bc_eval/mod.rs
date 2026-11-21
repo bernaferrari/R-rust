@@ -98,13 +98,11 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
 }
 
 fn bc_unbound_object_error(symbol: SEXP, rho: SEXP) -> ! {
-    unsafe {
-        crate::mainutils::errors::R_ObjectNotFoundError(
-            symbol,
-            super::context::get_lexical_call(rho),
-            None,
-        )
-    }
+    crate::mainutils::errors::R_ObjectNotFoundError(
+        symbol,
+        super::context::get_lexical_call(rho),
+        None,
+    )
 }
 
 // ---------------------------------------------------------------------------

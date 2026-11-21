@@ -1,10 +1,10 @@
 use super::*;
 use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
 
-unsafe fn frame(name: &str) -> crate::sexp::context::ContextGuard {
+fn frame(name: &str) -> crate::sexp::context::ContextGuard {
     unsafe { frame_in(name, R_NilValue(), R_NilValue()) }
 }
-unsafe fn frame_in(
+fn frame_in(
     name: &str,
     environment: SEXP,
     parent: SEXP,
@@ -64,10 +64,10 @@ fn owner_profile_includes_the_current_leaf_frame() {
     });
 }
 
-unsafe fn source_provider(owner: OwnerToken<'_>) -> Sexp<'static> {
+fn source_provider(owner: OwnerToken<'_>) -> Sexp<'static> {
     unsafe { source_provider_body(owner, "function() { 1L + 2L; \"owner-profile.R\" }") }
 }
-unsafe fn source_provider_body(owner: OwnerToken<'_>, body: &str) -> Sexp<'static> {
+fn source_provider_body(owner: OwnerToken<'_>, body: &str) -> Sexp<'static> {
     unsafe {
         let factory = owner.node_factory();
         let nil = factory.nil();
@@ -311,7 +311,7 @@ fn owner_profile_wasm_boundary_refuses_start_and_keeps_stop_a_noop() {
     });
 }
 
-unsafe fn profile_arguments(
+fn profile_arguments(
     owner: OwnerToken<'_>,
     filename: Sexp<'static>,
     interval: Sexp<'static>,

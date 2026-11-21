@@ -2,7 +2,7 @@ use super::*;
 
 /// stock `math2(x, base, logbase)`: `log(x)/log(base)` with Math2
 /// recycling, zero-length handling, attributes, and NaN warnings.
-pub(crate) unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
+pub(crate) fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
     unsafe {
         let x = NumericVector::from_raw(sx);
         let base = NumericVector::from_raw(sbase);
@@ -64,7 +64,7 @@ pub(crate) unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
 }
 
 /// stock complex_math2 `logbase`: `Clog(x) / Clog(base)` element-wise.
-pub unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
+pub fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
     unsafe {
         let as_cplx = |s: SEXP| -> SEXP {
             if TYPEOF(s) == SEXPTYPE::CPLXSXP {
@@ -122,7 +122,7 @@ pub(crate)  fn copy_all_attrib(dst: SEXP, src: SEXP) {
 
 /// Handle unary math functions: abs, sqrt, log, log2, log10, exp,
 /// ceiling, floor, trunc, round, sign.
-pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             let op_name = get_op_name(op, call);
@@ -335,7 +335,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Handle `length(x)`.
-pub unsafe fn do_length(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_length(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(

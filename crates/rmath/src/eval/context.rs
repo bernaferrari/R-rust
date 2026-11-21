@@ -54,7 +54,7 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
 
 /// GNU `getLexicalCall(rho)`: call of the first `CTXT_FUNCTION` context
 /// whose `cloenv` is `rho`. Top-level eval has no such frame, so `R_NilValue`.
-pub unsafe fn get_lexical_call(rho: SEXP) -> SEXP {
+pub fn get_lexical_call(rho: SEXP) -> SEXP {
     unsafe {
         let mut c = crate::sexp::context::R_GlobalContext();
         while !c.is_null() {
@@ -231,7 +231,7 @@ pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNT
 // countContexts — count contexts of a given type
 // ---------------------------------------------------------------------------
 
-pub unsafe fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
+pub fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
     with_required_current_instance(|instance| unsafe {
         countContexts_in(instance, ctxttype, browser)
     })
@@ -300,7 +300,7 @@ pub unsafe fn R_findParentContext(cptr: *mut RCNTXT, mut n: c_int) -> *mut RCNTX
 // getLexicalContext — find first CTXT_FUNCTION context matching env
 // ---------------------------------------------------------------------------
 
-pub unsafe fn getLexicalContext(rho: SEXP) -> *mut RCNTXT {
+pub fn getLexicalContext(rho: SEXP) -> *mut RCNTXT {
     with_required_current_instance(|instance| unsafe { getLexicalContext_in(instance, rho) })
 }
 
@@ -324,7 +324,7 @@ pub unsafe fn getLexicalContext_in(instance: *mut RInstance, rho: SEXP) -> *mut 
 // do_sys — central dispatcher for sys.parent/call/frame/nframe/calls/frames/on.exit/parents/function
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     with_required_current_instance(|instance| unsafe { do_sys_in(instance, call, op, args, rho) })
 }
 
@@ -447,7 +447,7 @@ pub unsafe fn do_sys_in(
 // do_parentframe — parent.frame()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     with_required_current_instance(|instance| unsafe {
         do_parentframe_in(instance, call, op, args, rho)
     })
@@ -483,7 +483,7 @@ pub unsafe fn do_parentframe_in(
 // do_sysbrowser — browser context queries
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     with_required_current_instance(|instance| unsafe {
         do_sysbrowser_in(instance, call, op, args, rho)
     })
@@ -689,7 +689,7 @@ pub unsafe fn R_jumpctxt(target: *mut RCNTXT, mask: c_int, val: SEXP) -> ! {
 }
 
 /// Locate a matching context and [`R_jumpctxt`] into it (GNU `findcontext`).
-pub unsafe fn findcontext_jump(mask: c_int, env: SEXP, val: SEXP) -> ! {
+pub fn findcontext_jump(mask: c_int, env: SEXP, val: SEXP) -> ! {
     with_required_current_instance(|instance| unsafe {
         findcontext_jump_in(instance, mask, env, val);
     });
@@ -769,7 +769,7 @@ pub fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
 // R_GetCurrentEnv — get cloenv of current function context
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_GetCurrentEnv() -> SEXP {
+pub fn R_GetCurrentEnv() -> SEXP {
     with_required_current_instance(|instance| unsafe { R_GetCurrentEnv_in(instance) })
 }
 

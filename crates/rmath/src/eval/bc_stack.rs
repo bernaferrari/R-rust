@@ -18,7 +18,7 @@ fn stack_error(message: impl Into<String>) -> ! {
 ///
 /// # Safety
 /// `value` must be a live native projection at this boundary.
-pub(super) unsafe fn own_operand(value: SEXP) -> Sexp<'static> {
+pub(super) fn own_operand(value: SEXP) -> Sexp<'static> {
     unsafe { crate::sexp::owner::OwnerToken::current() }
         .and_then(|owner| owner.sexp(value))
         .and_then(Sexp::into_owned)
@@ -40,7 +40,7 @@ impl R_bcstack_t {
 
     /// Native instruction adapter. Ownership is acquired before publication.
     pub unsafe fn push(&mut self, value: SEXP) {
-        self.push_owned(unsafe { own_operand(value) });
+        self.push_owned(own_operand(value));
     }
 
     pub fn push_owned(&mut self, value: Sexp<'static>) {
@@ -97,7 +97,7 @@ impl R_bcstack_t {
     }
 
     pub unsafe fn set(&mut self, index: usize, value: SEXP) {
-        let value = unsafe { own_operand(value) };
+        let value = { own_operand(value) };
         self.set_owned(index, value);
     }
 
@@ -122,7 +122,7 @@ impl Default for R_bcstack_t {
 
 /// # Safety
 /// The closure is a local stack operation and cannot reenter R or collect.
-pub unsafe fn with_bc_stack<F, R>(f: F) -> R
+pub fn with_bc_stack<F, R>(f: F) -> R
 where
     F: FnOnce(&mut R_bcstack_t) -> R,
 {

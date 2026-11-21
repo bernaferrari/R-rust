@@ -110,7 +110,7 @@ impl<'a> EvalContext<'a> {
         if !expr.clone().is_owner_scoped() {
             return Err("eval expression is not owner-scoped".to_string());
         }
-        unsafe {
+        {
             /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */
             eval_expr(expr, self.env)
         }

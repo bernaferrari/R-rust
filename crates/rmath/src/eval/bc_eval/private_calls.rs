@@ -60,7 +60,7 @@ pub(crate) fn private_call_owned(
 }
 
 /// Execute cached arguments while exposing the original call to the callee.
-pub(crate) unsafe fn eval_source_call(
+pub(crate) fn eval_source_call(
     execution: &Sexp<'static>,
     function: &Sexp<'static>,
     source: &Sexp<'static>,
@@ -620,27 +620,23 @@ pub(crate) fn private_argument_tags(
 }
 
 pub(crate) fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SEXP {
-    {
-        let value = stack.top();
-        if value.is_null() {
-            bc_error(format!("{context} bytecode stack underflow"));
-        }
-        value
+    let value = stack.top();
+    if value.is_null() {
+        bc_error(format!("{context} bytecode stack underflow"));
     }
+    value
 }
 
 pub(crate) fn stack_at_checked(stack: &R_bcstack_t, index: usize, context: &str) -> SEXP {
-    {
-        if index >= stack.depth() {
-            bc_error(format!("{context} bytecode stack slot {index} is missing"));
-        }
-        stack.at(index)
+    if index >= stack.depth() {
+        bc_error(format!("{context} bytecode stack slot {index} is missing"));
     }
+    stack.at(index)
 }
 
 /// The operand stack already owns its live values. Retain only the actual
 /// extra native value while translated operations can invoke R callbacks.
-pub(crate) unsafe fn with_stack_rooted<F, R>(_stack: &R_bcstack_t, extra: SEXP, f: F) -> R
+pub(crate) fn with_stack_rooted<F, R>(_stack: &R_bcstack_t, extra: SEXP, f: F) -> R
 where
     F: FnOnce() -> R,
 {
@@ -655,7 +651,7 @@ where
     let _extra = if extra.is_null() {
         None
     } else {
-        Some(unsafe { own_operand(extra) })
+        Some(own_operand(extra))
     };
     let result = f();
     pin.require_live()
@@ -663,7 +659,7 @@ where
     result
 }
 
-pub(crate) unsafe fn bind_for_element(
+pub(crate) fn bind_for_element(
     stack: &R_bcstack_t,
     sequence: SEXP,
     symbol: SEXP,

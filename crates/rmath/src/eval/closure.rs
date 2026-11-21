@@ -32,7 +32,7 @@ fn sexp_err(context: &str, err: SexpError) -> String {
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
+pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
     if formals.clone().is_nil() {
         return Ok(args);
     }
@@ -41,7 +41,7 @@ pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<S
         .node_factory()
         .or_else(|_| args.node_factory())
         .map_err(|err| sexp_err("argument matching owner", err))?;
-    unsafe { match_closure_args(&factory, formals, args) }
+    match_closure_args(&factory, formals, args)
 }
 
 /// Safe environment creation.
@@ -51,7 +51,7 @@ pub unsafe fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<S
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn create_env_safe<'a>(
+pub fn create_env_safe<'a>(
     bindings: Sexp<'a>,
     parent: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
@@ -81,20 +81,18 @@ pub unsafe fn applyClosure(
     suppliedenv: SEXP,
     _R_verbose: c_int,
 ) -> SEXP {
-    unsafe {
-        applyClosureWithFrameVars(
-            call,
-            op,
-            arglist,
-            rho,
-            suppliedenv,
-            R_NilValue(),
-            _R_verbose,
-        )
-    }
+    applyClosureWithFrameVars(
+        call,
+        op,
+        arglist,
+        rho,
+        suppliedenv,
+        R_NilValue(),
+        _R_verbose,
+    )
 }
 
-pub(crate) unsafe fn applyClosureWithFrameVars(
+pub(crate) fn applyClosureWithFrameVars(
     call: SEXP,
     op: SEXP,
     arglist: SEXP,
@@ -295,7 +293,7 @@ fn require_closure_owner(
     }
 }
 
-unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
+fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
     unsafe {
         while !vars.is_null() && vars != R_NilValue() {
             let tag = TAG(vars);
@@ -314,37 +312,33 @@ unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
 /// Create the environment for a closure application.
 ///
 fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
-    {
-        if needle.is_null() {
-            return false;
-        }
-        let Some(instance) = crate::sexp::instance::current_instance_ptr() else {
-            return false;
-        };
-        let empty = crate::sexp::globals::R_EmptyEnv_in(instance);
-        let mut hops = 0;
-        while !start.is_null() && start != crate::sexp::globals::R_NilValue() && hops < 64 {
-            if start == needle {
-                return true;
-            }
-            if start == empty {
-                break;
-            }
-            start = crate::sexp::accessors::ENCLOS(start);
-            hops += 1;
-        }
-        false
+    if needle.is_null() {
+        return false;
     }
+    let Some(instance) = crate::sexp::instance::current_instance_ptr() else {
+        return false;
+    };
+    let empty = crate::sexp::globals::R_EmptyEnv_in(instance);
+    let mut hops = 0;
+    while !start.is_null() && start != crate::sexp::globals::R_NilValue() && hops < 64 {
+        if start == needle {
+            return true;
+        }
+        if start == empty {
+            break;
+        }
+        start = crate::sexp::accessors::ENCLOS(start);
+        hops += 1;
+    }
+    false
 }
 
 fn disconnected_methods_snapshot(cloenv: SEXP, empty: SEXP, base: SEXP) -> bool {
-    {
-        let parent = crate::sexp::accessors::ENCLOS(cloenv);
-        parent.is_null() || parent == empty || parent == base
-    }
+    let parent = crate::sexp::accessors::ENCLOS(cloenv);
+    parent.is_null() || parent == empty || parent == base
 }
 
-unsafe fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
+fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
     unsafe {
         if op.is_null() || crate::sexp::accessors::TYPEOF(op) != SEXPTYPE::CLOSXP {
             return false;
@@ -382,7 +376,7 @@ unsafe fn methods_namespace_owns_closure(methods: SEXP, op: SEXP) -> bool {
     }
 }
 
-unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
+fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
         else {
@@ -447,7 +441,7 @@ fn is_function_sexp(value: SEXP) -> bool {
 }
 
 /// This is a helper that separates environment creation from body evaluation.
-unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
+fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let empty = crate::sexp::globals::R_EmptyEnv();
         if cloenv.is_null() {
@@ -472,10 +466,10 @@ unsafe fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
+pub fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
     // Retain the raw entry frame before method remapping or argument matching
     // can allocate and invoke the collector.
-    let factory = unsafe { super::dispatch::active_argument_factory() };
+    let factory = { super::dispatch::active_argument_factory() };
     let _call_owner = super::dispatch::argument_value(&factory, call);
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         match (
@@ -540,12 +534,10 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
 }
 
 fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
-    {
-        if formal_tag.is_null() || TYPEOF(formal_tag) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        crate::sexp::symbol::symbol_name_from_ptr(formal_tag)
+    if formal_tag.is_null() || TYPEOF(formal_tag) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    crate::sexp::symbol::symbol_name_from_ptr(formal_tag)
 }
 
 /// Port of R's `matchArgs_NR` (r-source/src/main/match.c).
@@ -560,7 +552,7 @@ fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
 /// a DOTSXP; with no `...` formal present, an "unused arguments" error is
 /// raised. The returned pairlist has one element per formal, in formal order,
 /// each holding the matched value or `R_MissingArg`.
-pub(super) unsafe fn match_closure_args<'s>(
+pub(super) fn match_closure_args<'s>(
     factory: &SessionNodeFactory<'s>,
     formals: Sexp<'s>,
     supplied: Sexp<'s>,
@@ -869,7 +861,7 @@ fn closure_unwind_to_error(payload: Box<dyn std::any::Any + Send>) -> crate::sex
 /// Execute a closure, returning the result.
 ///
 /// Uses catch_unwind for error recovery.
-pub unsafe fn R_execClosure(
+pub fn R_execClosure(
     op: SEXP,
     arglist: SEXP,
     rho: SEXP,

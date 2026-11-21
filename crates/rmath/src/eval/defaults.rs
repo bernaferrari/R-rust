@@ -31,43 +31,37 @@ use super::dispatch::DispatchGroup;
 ///
 /// Defined in arithmetic.c. Dispatches unary arithmetic/math operators.
 /// The function signature matches R's definition.
-pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let arg_list = Rf_cons(args, R_NilValue());
-        let _arg_list_guard = protect(arg_list);
-        crate::eval::arithmetic::do_arith(call, op, arg_list, rho)
-    }
+pub fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let arg_list = Rf_cons(args, R_NilValue());
+    let _arg_list_guard = protect(arg_list);
+    crate::eval::arithmetic::do_arith(call, op, arg_list, rho)
 }
 
 /// `R_binary(call, op, lhs, rhs)` - binary operator default.
 ///
 /// Defined in arithmetic.c. Dispatches binary arithmetic operators.
-pub unsafe fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
-    unsafe {
-        let rhs_list = Rf_cons(rhs, R_NilValue());
-        let _rhs_list_guard = protect(rhs_list);
-        let arg_list = Rf_cons(lhs, rhs_list);
-        let _arg_list_guard = protect(arg_list);
-        crate::eval::arithmetic::do_arith(call, op, arg_list, R_NilValue())
-    }
+pub fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
+    let rhs_list = Rf_cons(rhs, R_NilValue());
+    let _rhs_list_guard = protect(rhs_list);
+    let arg_list = Rf_cons(lhs, rhs_list);
+    let _arg_list_guard = protect(arg_list);
+    crate::eval::arithmetic::do_arith(call, op, arg_list, R_NilValue())
 }
 
 /// `do_math1(call, op, args, rho)` - math function of one argument.
 ///
 /// Defined in math.c. Implements math functions like abs, sqrt, log, etc.
 // no_mangle removed (duplicate)
-pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        // Forward to the arithmetic module's do_math1 dispatcher.
-        crate::eval::arithmetic::do_math1(call, op, args, rho)
-    }
+pub fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    // Forward to the arithmetic module's do_math1 dispatcher.
+    crate::eval::arithmetic::do_math1(call, op, args, rho)
 }
 
 /// `do_relop_dflt(call, op, lhs, rhs)` - relational operator default.
 ///
 /// Defined in relop.c. Implements comparison operators.
 // no_mangle removed (duplicate)
-pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
+pub fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     unsafe { crate::mainutils::relop::do_relop_dflt(call, op, lhs, rhs) }
 }
 
@@ -75,7 +69,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP 
 ///
 /// Defined in complex.c. Implements &, |, ! operators.
 // no_mangle removed (duplicate)
-pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::logic::do_logic(call, op, args, rho) }
 }
 
@@ -159,7 +153,7 @@ unsafe fn getPrimitive(name: *const c_char, kind: c_int) -> SEXP {
 /// interpreter for inline comparison operations. If either operand
 /// is an object, it tries group dispatch to "Ops"; otherwise it
 /// calls do_relop_dflt.
-pub unsafe fn cmp_relop(
+pub fn cmp_relop(
     call: SEXP,
     _opval: c_int,
     opsym: SEXP,
@@ -209,7 +203,7 @@ pub unsafe fn cmp_relop(
 ///
 /// Ported from R's `cmp_arith1()` in eval.c. Used by the bytecode
 /// interpreter for inline unary operations (-, +).
-pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
+pub fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
@@ -244,7 +238,7 @@ pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `cmp_arith2()` in eval.c. Used by the bytecode
 /// interpreter for inline binary operations (+, -, *, /, ^, etc.).
-pub unsafe fn cmp_arith2(
+pub fn cmp_arith2(
     call: SEXP,
     _opval: c_int,
     opsym: SEXP,
@@ -307,13 +301,11 @@ pub fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
 ///
 /// Used in the bytecode interpreter for type checks.
 pub fn isNumericOnly(x: SEXP) -> c_int {
-    {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::INTSXP {
-            TRUE
-        } else {
-            FALSE
-        }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::INTSXP {
+        TRUE
+    } else {
+        FALSE
     }
 }
 
@@ -325,7 +317,7 @@ pub fn isNumericOnly(x: SEXP) -> c_int {
 ///
 /// Ported from R's `asLogicalNoNA()` in eval.c. Used in condition
 /// evaluation for if/while statements.
-pub unsafe fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
+pub fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
     unsafe {
         let len = LENGTH(s);
         if len > 1 {

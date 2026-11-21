@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU STARTSUBSET_N / STARTSUBSET2_N match eval.c DO_STARTDISPATCH_N.
 /// Object methods jump to the label; the default path leaves x on the stack.
-pub(crate) unsafe fn eval_gnu_startsubset_n(
+pub(crate) fn eval_gnu_startsubset_n(
     generic: &std::ffi::CStr,
     call: SEXP,
     x: SEXP,
@@ -35,7 +35,7 @@ pub(crate) unsafe fn eval_gnu_startsubset_n(
 /// scoped like every other closure call). Returns the shadow's result, or
 /// `None` when the generic still resolves to the base primitive and the
 /// default machinery should run.
-pub(crate) unsafe fn eval_gnu_lexical_generic(
+pub(crate) fn eval_gnu_lexical_generic(
     generic: &std::ffi::CStr,
     call: SEXP,
     args: SEXP,
@@ -80,7 +80,7 @@ pub(crate) unsafe fn eval_gnu_lexical_generic(
 }
 
 /// GNU STARTSUBASSIGN_N matches eval.c DO_START_ASSIGN_DISPATCH_N.
-pub(crate) unsafe fn eval_gnu_startsubassign_n(
+pub(crate) fn eval_gnu_startsubassign_n(
     generic: &std::ffi::CStr,
     call: SEXP,
     lhs: SEXP,
@@ -113,7 +113,7 @@ pub(crate) unsafe fn eval_gnu_startsubassign_n(
 
 /// GNU VECSUBSET / VECSUBSET2 fall through to do_subset(_2)_dflt, honoring a
 /// lexical shadow of the generic first.
-pub(crate) unsafe fn eval_gnu_vecsubset(
+pub(crate) fn eval_gnu_vecsubset(
     call: SEXP,
     x: SEXP,
     index: SEXP,
@@ -158,7 +158,7 @@ pub(crate) unsafe fn eval_gnu_vecsubset(
 
 /// GNU MATSUBSET / SUBSET_N fall through to the default subset helpers,
 /// honoring a lexical shadow of the generic first.
-pub(crate) unsafe fn eval_gnu_subset_indices(
+pub(crate) fn eval_gnu_subset_indices(
     call: SEXP,
     x: SEXP,
     indices: &[SEXP],
@@ -203,7 +203,7 @@ pub(crate) unsafe fn eval_gnu_subset_indices(
 }
 
 /// GNU VECSUBASSIGN / VECSUBASSIGN2 fall through to do_subassign(_2)_dflt.
-pub(crate) unsafe fn eval_gnu_vecsubassign(
+pub(crate) fn eval_gnu_vecsubassign(
     call: SEXP,
     x: SEXP,
     rhs: SEXP,
@@ -242,7 +242,7 @@ pub(crate) unsafe fn eval_gnu_vecsubassign(
 }
 
 /// GNU MATSUBASSIGN / MATSUBASSIGN2 fall through to do_subassign(_2)_dflt.
-pub(crate) unsafe fn eval_gnu_matsubassign(
+pub(crate) fn eval_gnu_matsubassign(
     call: SEXP,
     x: SEXP,
     rhs: SEXP,
@@ -284,7 +284,7 @@ pub(crate) unsafe fn eval_gnu_matsubassign(
 }
 
 /// GNU SUBASSIGN_N / SUBASSIGN2_N fall through to do_subassign(_2)_dflt.
-pub(crate) unsafe fn eval_gnu_subassign_indices(
+pub(crate) fn eval_gnu_subassign_indices(
     call: SEXP,
     x: SEXP,
     rhs: SEXP,

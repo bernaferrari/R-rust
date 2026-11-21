@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU AND/OR/NOT reuse the same primitive as interpreted `&` / `|` / `!`.
-pub(crate) unsafe fn eval_gnu_logic(
+pub(crate) fn eval_gnu_logic(
     call: SEXP,
     symbol: &std::ffi::CStr,
     left: SEXP,
@@ -43,7 +43,7 @@ pub(crate) unsafe fn eval_gnu_logic(
 /// calls. Builtin handlers take values. MAKEPROM args (e.g. `attr(x, n) <-`)
 /// are unforced; GNU SPECIAL `attr<-` evaluates them, and a BUILTIN port
 /// must force them before `apply_builtin_values_safe`.
-pub(crate) unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
+pub(crate) fn force_gnu_builtin_arglist(mut args: SEXP) {
     unsafe {
         while !args.is_null() && args != R_NilValue() {
             let car = CAR(args);
@@ -58,7 +58,7 @@ pub(crate) unsafe fn force_gnu_builtin_arglist(mut args: SEXP) {
 
 /// GNU SETTER_CALL matches eval.c: replace the first call argument with lhs,
 /// append rhs tagged `value`, and apply the replacement function.
-pub(crate) unsafe fn eval_gnu_setter_call(
+pub(crate) fn eval_gnu_setter_call(
     fun: SEXP,
     call: SEXP,
     vexpr: SEXP,
@@ -150,7 +150,7 @@ pub(crate) unsafe fn eval_gnu_setter_call(
 
 /// GNU GETTER_CALL matches eval.c: replace the first call argument with lhs
 /// and apply the getter, leaving lhs/rhs below the result for SWAP.
-pub(crate) unsafe fn eval_gnu_getter_call(
+pub(crate) fn eval_gnu_getter_call(
     fun: SEXP,
     call: SEXP,
     lhs: SEXP,

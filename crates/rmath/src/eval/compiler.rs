@@ -51,7 +51,7 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
 /// Arguments are already evaluated by the builtin dispatcher. Options are
 /// accepted, including non-list values accepted by GNU R; the portable compiler
 /// currently emits the same dialect regardless of optimization options.
-pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Named formals are matched before unnamed arguments, independent of
         // their order in the call. Both names have distinct initial letters,
@@ -105,21 +105,19 @@ pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// `compiler::compile(e)` — byte-compile one expression. Failure stays an
 /// error; falling back to the original AST would hide evaluation order.
-pub unsafe fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            compiler_error("argument is missing, with no default");
-        }
-        let expr = CAR(args);
-        let env = if rho.is_null() || rho == R_NilValue() {
-            R_BaseEnv()
-        } else {
-            rho
-        };
-        match crate::eval::bc_compile::compile_expr(expr, env) {
-            Some(code) => code,
-            None => compiler_error("expression uses unsupported compiler syntax"),
-        }
+pub fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    if args.is_null() || args == R_NilValue() {
+        compiler_error("argument is missing, with no default");
+    }
+    let expr = CAR(args);
+    let env = if rho.is_null() || rho == R_NilValue() {
+        R_BaseEnv()
+    } else {
+        rho
+    };
+    match crate::eval::bc_compile::compile_expr(expr, env) {
+        Some(code) => code,
+        None => compiler_error("expression uses unsupported compiler syntax"),
     }
 }
 /// GNU `.Internal(bcVersion())` — current bytecode format, `R_bcVersion`.
@@ -128,7 +126,7 @@ pub  fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// on every closure invocation.
-pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null()
             || args == R_NilValue()
@@ -149,7 +147,7 @@ pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-unsafe fn new_compiler_environment() -> SEXP {
+fn new_compiler_environment() -> SEXP {
     unsafe {
         let env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
@@ -201,7 +199,7 @@ unsafe fn new_compiler_environment() -> SEXP {
 }
 
 /// Return the per-session compiler namespace, creating it on first lookup.
-pub(crate) unsafe fn namespace() -> SEXP {
+pub(crate) fn namespace() -> SEXP {
     unsafe {
         if let Some(env) = with_required_current_instance(|inst| {
             (*inst)
@@ -242,7 +240,7 @@ pub  fn do_growconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `.Internal(putconst(constBuf, constCount, x))`.
-pub unsafe fn do_putconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_putconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let const_buf = CAR(args);
         if TYPEOF(const_buf) != SEXPTYPE::VECSXP {

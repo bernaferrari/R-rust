@@ -162,7 +162,7 @@ fn attributes<'a>(
 }
 
 /// Preserve the original owner, operands and shape across coercion callbacks.
-pub(super) unsafe fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, String> {
+pub(super) fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, String> {
     let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
     let _pin = owner.pin().map_err(|error| error.to_string())?;
     let factory = owner.node_factory();

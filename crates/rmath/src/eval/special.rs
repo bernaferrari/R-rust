@@ -25,7 +25,7 @@ use super::eval::Rf_eval;
 /// Dispatch a special form call.
 ///
 /// This is called by eval_lang when the function is a SPECIALSXP.
-pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let offset = crate::sexp::accessors::PRIMOFFSET(op);
 
@@ -62,7 +62,7 @@ pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 }
 
 /// Dispatch special forms by name.
-unsafe fn dispatch_special_by_name(
+fn dispatch_special_by_name(
     name: &str,
     call: SEXP,
     op: SEXP,
@@ -172,7 +172,7 @@ unsafe fn dispatch_special_by_name(
     }
 }
 
-unsafe fn do_expression(args: SEXP) -> SEXP {
+fn do_expression(args: SEXP) -> SEXP {
     unsafe {
         let mut len = 0;
         let mut current = args;
@@ -259,7 +259,7 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
     s
 }
 
-unsafe fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT {
+fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT {
     unsafe {
         let mut ctxt = super::runtime::global_context();
         while !ctxt.is_null()
@@ -348,7 +348,7 @@ pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Implement `invisible(x)` when it is reached through the special-form path.
-unsafe fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
+fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = if args.is_null() || args == R_NilValue() {
             R_NilValue()
@@ -367,7 +367,7 @@ unsafe fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Stock StrToLogical (coerce.c): the strings accepted by asLogical on a
 /// character vector; anything else (including NA) is NA.
-unsafe fn str_to_logical(x: SEXP) -> c_int {
+fn str_to_logical(x: SEXP) -> c_int {
     unsafe {
         let s = crate::sexp::accessors::STRING_ELT(x, 0);
         if s.is_null() || s == crate::sexp::globals::R_NaString() {
@@ -384,7 +384,7 @@ unsafe fn str_to_logical(x: SEXP) -> c_int {
 }
 
 /// Implement the `if` special form.
-unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
+fn do_if(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // args = (condition, true_branch, [false_branch])
         let cond = CAR(args);
@@ -501,7 +501,7 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `while` special form.
-unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
+fn do_while(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let cond = CAR(args);
         let body = CADR(args);
@@ -552,7 +552,7 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `for` special form.
-unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
+fn do_for(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let var_sym = CAR(args);
         let seq_expr = CADR(args);
@@ -681,7 +681,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `repeat` special form.
-unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
+fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let body = CAR(args);
         let _body_guard = protect(body);
@@ -731,10 +731,8 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `break` statement via findcontext + R_jumpctxt.
-pub unsafe fn do_break(rho: SEXP) -> SEXP {
-    unsafe {
-        super::context::findcontext_jump(super::context::JUMP_BREAK, rho, R_NilValue());
-    }
+pub fn do_break(rho: SEXP) -> SEXP {
+    super::context::findcontext_jump(super::context::JUMP_BREAK, rho, R_NilValue());
 }
 
 // ---------------------------------------------------------------------------
@@ -742,10 +740,8 @@ pub unsafe fn do_break(rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `next` statement via findcontext + R_jumpctxt.
-pub unsafe fn do_next(rho: SEXP) -> SEXP {
-    unsafe {
-        super::context::findcontext_jump(super::context::JUMP_NEXT, rho, R_NilValue());
-    }
+pub fn do_next(rho: SEXP) -> SEXP {
+    super::context::findcontext_jump(super::context::JUMP_NEXT, rho, R_NilValue());
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +753,7 @@ pub unsafe fn do_next(rho: SEXP) -> SEXP {
 /// GNU `do_function` (eval.c): `mkCLOSXP(formals, body, rho)` then copy
 /// the optional fourth language argument (the parse `srcref`) onto the
 /// closure so `getSrcref` / `print.srcref` recover source.
-unsafe fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formals = CAR(args);
         let body = CAR(CDR(args));
@@ -793,13 +789,13 @@ unsafe fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Implement the `{` special form (begin/compound expression).
 ///
 /// Evaluates each expression in sequence, returning the last.
-pub unsafe fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_begin_with_call(R_NilValue(), args, rho) }
+pub fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
+    do_begin_with_call(R_NilValue(), args, rho)
 }
 
 /// Implement the `{` special form with GNU R's per-statement `R_Srcref`
 /// tracking (`eval.c:do_begin`).
-pub(crate) unsafe fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -860,7 +856,7 @@ pub(crate) unsafe fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SE
 /// arity-checked, it returns its single (already evaluated) argument. The
 /// unevaluated special-form path (`do_paren`) keeps serving the name-based
 /// dispatch fallback.
-pub unsafe extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = call;
         let _ = rho;
@@ -876,7 +872,7 @@ pub unsafe extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho:
 }
 
 /// Implement the `(` special form (parenthesized expression).
-unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
+fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -892,7 +888,7 @@ unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Implement the `return` special form via findcontext + R_jumpctxt.
-unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
+fn do_return(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let val = if args.is_null() || args == R_NilValue() {
             R_NilValue()

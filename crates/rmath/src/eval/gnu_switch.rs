@@ -292,7 +292,7 @@ mod tests {
         ]
     }
 
-    unsafe fn integers(values: &[i32]) -> Sexp<'static> {
+    fn integers(values: &[i32]) -> Sexp<'static> {
         let mut value = SexpMut::try_from_checked(unsafe {
             own_operand(Rf_allocVector(
                 SEXPTYPE::INTSXP,
