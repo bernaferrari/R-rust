@@ -28,6 +28,25 @@ fn error(msg: &str) -> ! {
     });
 }
 
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: sort helpers only run inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+    )
+}
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -1033,7 +1052,7 @@ pub unsafe fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     const SORTED_INCR: c_int = 1;
     const SORTED_INCR_NA_1ST: c_int = 2;
 
-    unsafe {
+    {
         let decr = asInteger_scan(CADR(args));
         let nalast = asInteger_scan(CADDR(args));
         // makeSortEnum: decr == NA_INTEGER (INT_MIN) marks UNKNOWN_SORTEDNESS;
@@ -1066,12 +1085,12 @@ pub unsafe fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if !done && TYPEOF(x) == SEXPTYPE::INTSXP && wanted > 0 {
             let len = XLENGTH(x);
             if len > 0 {
-                let px = INTEGER(x) as *const c_int;
-                let mut last = *px;
+                let xv = wrapped(x);
+                let mut last = checked(xv.try_integer_elt(0));
                 if last != NA_INTEGER {
                     done = true;
-                    for i in 1..(len as usize) {
-                        let next = *px.add(i);
+                    for i in 1..len {
+                        let next = checked(xv.try_integer_elt(i));
                         if next < last || next == NA_INTEGER {
                             done = false;
                             break;
@@ -1474,7 +1493,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 }
 
 /// Local `asLogical` helper for do_radixsort.
-unsafe fn asLogical_local(x: SEXP) -> c_int {
+fn asLogical_local(x: SEXP) -> c_int {
     if Rf_isNull(x) != 0 {
         return NA_LOGICAL;
     }
@@ -1510,7 +1529,7 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
 
 /// Local `asInteger` helper for do_sorted_fpass (GNU `asInteger` coercion
 /// of a length-one logical/integer/double scalar, NA preserved).
-unsafe fn asInteger_scan(x: SEXP) -> c_int {
+fn asInteger_scan(x: SEXP) -> c_int {
     if Rf_isNull(x) != 0 {
         return NA_INTEGER;
     }
@@ -1535,8 +1554,8 @@ unsafe fn asInteger_scan(x: SEXP) -> c_int {
 }
 
 /// Local `asBool` helper for do_radixsort.
-unsafe fn asBool_local(x: SEXP) -> c_int {
-    unsafe {
+fn asBool_local(x: SEXP) -> c_int {
+    {
         let v = asLogical_local(x);
         if v == NA_LOGICAL { 0 } else { v }
     }
@@ -1816,13 +1835,17 @@ enum CharacterSortKey<'a> {
     Value(&'a [u8]),
 }
 
-unsafe fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> {
-    unsafe {
+fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> {
+    {
         let charsxp = STRING_ELT(x, index as R_xlen_t);
         if charsxp.is_null() || charsxp == R_NaString() {
             CharacterSortKey::Missing
         } else {
-            CharacterSortKey::Value(CStr::from_ptr(CHAR(charsxp)).to_bytes())
+            // SAFETY: `charsxp` is a live CHARSXP element; CHAR returns its
+            // NUL-terminated contents valid for the borrow.
+            CharacterSortKey::Value(
+                unsafe { CStr::from_ptr(CHAR(charsxp)) }.to_bytes(),
+            )
         }
     }
 }
