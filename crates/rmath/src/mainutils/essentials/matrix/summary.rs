@@ -704,11 +704,11 @@ unsafe fn rowcol_indices(dims: *mut c_int, len: c_int, is_row: bool) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = INTEGER(result);
+        let mut dst = owner_sexp_mut(result);
         for j in 0..ncol {
             for i in 0..nrow {
                 let idx = (j * nrow + i) as usize;
-                *dst.add(idx) = (if is_row { i + 1 } else { j + 1 }) as c_int;
+                sexp_ok(dst.try_set_integer_elt(idx as R_xlen_t, (if is_row { i + 1 } else { j + 1 }) as c_int));
             }
         }
         set_two_dim_attr(result, nrow, ncol);

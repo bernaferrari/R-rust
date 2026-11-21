@@ -166,165 +166,141 @@ pub fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `charmatch(x, table)` — character matching.
 /// Returns integer index of exact match (1-based), or 0 if no match, or NA if ambiguous.
 pub fn do_charmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x_arg = CAR(args);
-        let table_arg = CAR(CDR(args));
-        let nomatch_arg = CAR(CDR(CDR(args)));
-        let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
-            NA_INTEGER
-        } else {
-            real_or_default(nomatch_arg, NA_REAL) as c_int
-        };
+    let x_arg = CAR(args);
+    let table_arg = CAR(CDR(args));
+    let nomatch_arg = CAR(CDR(CDR(args)));
+    let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
+        NA_INTEGER
+    } else {
+        real_or_default(nomatch_arg, NA_REAL) as c_int
+    };
 
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let nx = XLENGTH(x_arg);
-        let nt = if table_arg.is_null() || table_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(table_arg)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let nx = XLENGTH(x_arg);
+    let nt = if table_arg.is_null() || table_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(table_arg)
+    };
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..nx {
-            let x_is_na = as_character_element_is_na(x_arg, i);
-            let x_str = if x_is_na {
-                String::new()
+    for i in 0..nx {
+        let x_is_na = as_character_element_is_na(x_arg, i);
+        let x_str = if x_is_na {
+            String::new()
+        } else {
+            elt_to_string(x_arg, i)
+        };
+        let mut exact_matches = 0usize;
+        let mut exact_index = nomatch;
+        for j in 0..nt {
+            let table_is_na = as_character_element_is_na(table_arg, j);
+            let exact = if x_is_na || table_is_na {
+                x_is_na && table_is_na
             } else {
-                elt_to_string(x_arg, i)
+                elt_to_string(table_arg, j) == x_str
             };
-            let mut exact_matches = 0usize;
-            let mut exact_index = nomatch;
+            if exact {
+                exact_matches += 1;
+                exact_index = (j + 1) as c_int;
+            }
+        }
+
+        if exact_matches == 1 {
+            sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, exact_index));
+            continue;
+        }
+        if exact_matches > 1 {
+            sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, 0));
+            continue;
+        }
+
+        let mut partial_matches = 0usize;
+        let mut partial_index = nomatch;
+        if !x_is_na {
             for j in 0..nt {
-                let table_is_na = as_character_element_is_na(table_arg, j);
-                let exact = if x_is_na || table_is_na {
-                    x_is_na && table_is_na
-                } else {
-                    elt_to_string(table_arg, j) == x_str
-                };
-                if exact {
-                    exact_matches += 1;
-                    exact_index = (j + 1) as c_int;
+                if as_character_element_is_na(table_arg, j) {
+                    continue;
+                }
+                let table_str = elt_to_string(table_arg, j);
+                if table_str.starts_with(&x_str) {
+                    partial_matches += 1;
+                    partial_index = (j + 1) as c_int;
                 }
             }
-
-            if exact_matches == 1 {
-                *dst.add(i as usize) = exact_index;
-                continue;
-            }
-            if exact_matches > 1 {
-                *dst.add(i as usize) = 0;
-                continue;
-            }
-
-            let mut partial_matches = 0usize;
-            let mut partial_index = nomatch;
-            if !x_is_na {
-                for j in 0..nt {
-                    if as_character_element_is_na(table_arg, j) {
-                        continue;
-                    }
-                    let table_str = elt_to_string(table_arg, j);
-                    if table_str.starts_with(&x_str) {
-                        partial_matches += 1;
-                        partial_index = (j + 1) as c_int;
-                    }
-                }
-            }
-            *dst.add(i as usize) = if partial_matches == 1 {
+        }
+        sexp_ok(dst.try_set_integer_elt(
+            (i as usize) as R_xlen_t,
+            if partial_matches == 1 {
                 partial_index
             } else if partial_matches > 1 {
                 0
             } else {
                 nomatch
-            };
-        }
-        result
+            },
+        ));
     }
+    result
 }
 
 /// R's `pmatch(x, table, nomatch=NA, duplicates.ok=FALSE)` — partial matching.
 /// Returns integer vector of matches (1-based).
 pub fn do_pmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x_arg = CAR(args);
-        let table_arg = CAR(CDR(args));
-        let nomatch_arg = CAR(CDR(CDR(args)));
-        let duplicates_arg = CAR(CDR(CDR(CDR(args))));
-        let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
-            NA_INTEGER
+    let x_arg = CAR(args);
+    let table_arg = CAR(CDR(args));
+    let nomatch_arg = CAR(CDR(CDR(args)));
+    let duplicates_arg = CAR(CDR(CDR(CDR(args))));
+    let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
+        NA_INTEGER
+    } else {
+        real_or_default(nomatch_arg, NA_REAL as f64) as c_int
+    };
+    let duplicates_ok = if duplicates_arg.is_null() || duplicates_arg == R_NilValue() {
+        false
+    } else {
+        real_or_default(duplicates_arg, 0.0) != 0.0
+    };
+
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let nx = XLENGTH(x_arg);
+    let nt = if table_arg.is_null() || table_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(table_arg)
+    };
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
+
+    // Track which table entries are already matched
+    let mut used = vec![false; nt as usize];
+
+    for i in 0..nx {
+        let x_is_na = as_character_element_is_na(x_arg, i);
+        let x_str = if x_is_na {
+            String::new()
         } else {
-            real_or_default(nomatch_arg, NA_REAL as f64) as c_int
+            elt_to_string(x_arg, i)
         };
-        let duplicates_ok = if duplicates_arg.is_null() || duplicates_arg == R_NilValue() {
-            false
-        } else {
-            real_or_default(duplicates_arg, 0.0) != 0.0
-        };
-
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let nx = XLENGTH(x_arg);
-        let nt = if table_arg.is_null() || table_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(table_arg)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
-
-        // Track which table entries are already matched
-        let mut used = vec![false; nt as usize];
-
-        for i in 0..nx {
-            let x_is_na = as_character_element_is_na(x_arg, i);
-            let x_str = if x_is_na {
-                String::new()
-            } else {
-                elt_to_string(x_arg, i)
-            };
-            let mut best_match: c_int = nomatch;
-            if x_is_na {
-                for j in 0..nt {
-                    if !duplicates_ok && used[j as usize] {
-                        continue;
-                    }
-                    if as_character_element_is_na(table_arg, j) {
-                        best_match = (j + 1) as c_int;
-                        if !duplicates_ok {
-                            used[j as usize] = true;
-                        }
-                        break;
-                    }
-                }
-                *dst.add(i as usize) = best_match;
-                continue;
-            }
-
-            if x_str.is_empty() {
-                *dst.add(i as usize) = nomatch;
-                continue;
-            }
-
+        let mut best_match: c_int = nomatch;
+        if x_is_na {
             for j in 0..nt {
                 if !duplicates_ok && used[j as usize] {
                     continue;
                 }
                 if as_character_element_is_na(table_arg, j) {
-                    continue;
-                }
-                if elt_to_string(table_arg, j) == x_str {
                     best_match = (j + 1) as c_int;
                     if !duplicates_ok {
                         used[j as usize] = true;
@@ -332,69 +308,93 @@ pub fn do_pmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     break;
                 }
             }
+            sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, best_match));
+            continue;
+        }
 
-            if best_match == nomatch {
-                let mut partial_matches = 0usize;
-                let mut partial_index = nomatch;
-                for j in 0..nt {
-                    if !duplicates_ok && used[j as usize] {
-                        continue;
-                    }
-                    if as_character_element_is_na(table_arg, j) {
-                        continue;
-                    }
-                    let t_str = elt_to_string(table_arg, j);
-                    if t_str.starts_with(&x_str) {
-                        partial_matches += 1;
-                        partial_index = (j + 1) as c_int;
-                    }
+        if x_str.is_empty() {
+            sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, nomatch));
+            continue;
+        }
+
+        for j in 0..nt {
+            if !duplicates_ok && used[j as usize] {
+                continue;
+            }
+            if as_character_element_is_na(table_arg, j) {
+                continue;
+            }
+            if elt_to_string(table_arg, j) == x_str {
+                best_match = (j + 1) as c_int;
+                if !duplicates_ok {
+                    used[j as usize] = true;
                 }
-                if partial_matches == 1 {
-                    best_match = partial_index;
-                    if !duplicates_ok {
-                        used[(partial_index - 1) as usize] = true;
-                    }
+                break;
+            }
+        }
+
+        if best_match == nomatch {
+            let mut partial_matches = 0usize;
+            let mut partial_index = nomatch;
+            for j in 0..nt {
+                if !duplicates_ok && used[j as usize] {
+                    continue;
+                }
+                if as_character_element_is_na(table_arg, j) {
+                    continue;
+                }
+                let t_str = elt_to_string(table_arg, j);
+                if t_str.starts_with(&x_str) {
+                    partial_matches += 1;
+                    partial_index = (j + 1) as c_int;
                 }
             }
-            *dst.add(i as usize) = best_match;
+            if partial_matches == 1 {
+                best_match = partial_index;
+                if !duplicates_ok {
+                    used[(partial_index - 1) as usize] = true;
+                }
+            }
         }
-        result
+        sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, best_match));
     }
+    result
 }
 
 /// R's `strtoi(x, base=10L)` — convert strings to integers.
 pub fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x_arg = CAR(args);
-        let base_arg = CAR(CDR(args));
-        let base = if base_arg.is_null() || base_arg == R_NilValue() {
-            10
-        } else {
-            real_or_default(base_arg, 10.0) as i32
-        };
+    let x_arg = CAR(args);
+    let base_arg = CAR(CDR(args));
+    let base = if base_arg.is_null() || base_arg == R_NilValue() {
+        10
+    } else {
+        real_or_default(base_arg, 10.0) as i32
+    };
 
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let n = XLENGTH(x_arg);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let n = XLENGTH(x_arg);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let s = elt_to_string(x_arg, i);
-            let val = i64::from_str_radix(s.trim(), base as u32).unwrap_or(NA_INTEGER as i64);
-            *dst.add(i as usize) = if val > c_int::MAX as i64 || val < c_int::MIN as i64 {
+    for i in 0..n {
+        let s = elt_to_string(x_arg, i);
+        let val = i64::from_str_radix(s.trim(), base as u32).unwrap_or(NA_INTEGER as i64);
+        sexp_ok(dst.try_set_integer_elt(
+            (i as usize) as R_xlen_t,
+            if val > c_int::MAX as i64 || val < c_int::MIN as i64 {
                 NA_INTEGER
             } else {
                 val as c_int
-            };
-        }
-        result
+            },
+        ));
     }
+    result
 }
 
 /// R's `strtrim(x, width)` — truncate strings to a maximum width.

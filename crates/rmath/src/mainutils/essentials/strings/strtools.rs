@@ -116,31 +116,29 @@ pub fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `str_count(x, pattern)` — count occurrences of pattern in strings.
 pub fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let pattern_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || pattern_arg.is_null() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let pattern = elt_to_string(pattern_arg, 0);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let count = if pattern.is_empty() {
-                s.len() + 1
-            } else {
-                s.matches(&pattern).count()
-            };
-            *dst.add(i as usize) = count as c_int;
-        }
-        result
+    let x = CAR(args);
+    let pattern_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
     }
+    let pattern = elt_to_string(pattern_arg, 0);
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let count = if pattern.is_empty() {
+            s.len() + 1
+        } else {
+            s.matches(&pattern).count()
+        };
+        sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, count as c_int));
+    }
+    result
 }
 
 /// R's `str_replace(x, pattern, replacement)` — alias for sub.
@@ -155,31 +153,30 @@ pub fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R-like `str_detect(x, pattern)` — returns logical vector indicating which elements match.
 pub fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let pattern_arg = CAR(CDR(args));
+    let x = CAR(args);
+    let pattern_arg = CAR(CDR(args));
 
-        if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue()
-        {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-
-        let pattern_str = elt_to_string(pattern_arg, 0);
-        let n = XLENGTH(x).max(1);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = LOGICAL(result);
-
-        for i in 0..n {
-            let s = elt_to_string(x, i);
-            let matches = s.contains(&pattern_str);
-            *dst.add(i as usize) = if matches { TRUE } else { FALSE };
-        }
-        result
+    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() || pattern_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
     }
+
+    let pattern_str = elt_to_string(pattern_arg, 0);
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let matches = s.contains(&pattern_str);
+        sexp_ok(
+            dst.try_set_logical_elt((i as usize) as R_xlen_t, if matches { TRUE } else { FALSE }),
+        );
+    }
+    result
 }
 
 /// R-like `str_extract(x, pattern)` — extracts first occurrence of pattern from each element.
@@ -433,24 +430,22 @@ fn system_file_parts(args: SEXP) -> Vec<String> {
 
 /// R's `str_locate(x, pattern)` — locate first occurrence of pattern (simplified).
 pub fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let pattern = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || pattern.is_null() {
-            return R_NilValue();
-        }
-        // Return a 1x2 matrix with start/end (simplified: return c(start, end))
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = INTEGER(result);
-        // Simplified: set to NA (no match)
-        *dst.add(0) = NA_INTEGER;
-        *dst.add(1) = NA_INTEGER;
-        result
+    let x = CAR(args);
+    let pattern = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || pattern.is_null() {
+        return R_NilValue();
     }
+    // Return a 1x2 matrix with start/end (simplified: return c(start, end))
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    // Simplified: set to NA (no match)
+    sexp_ok(dst.try_set_integer_elt(0, NA_INTEGER));
+    sexp_ok(dst.try_set_integer_elt(1 as R_xlen_t, NA_INTEGER));
+    result
 }
 
 /// R's `str_locate_all(x, pattern)` — locate all occurrences (simplified).

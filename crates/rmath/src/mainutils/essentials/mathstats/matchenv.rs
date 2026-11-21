@@ -747,42 +747,40 @@ fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
 
 /// R's `outer(X, Y, FUN)` — outer product (enhanced).
 pub fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let fun = CAR(CDR(CDR(args)));
-        if x.is_null() || y.is_null() {
-            return R_NilValue();
-        }
-        let nx = XLENGTH(x);
-        let ny = XLENGTH(y);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let fun = CAR(CDR(CDR(args)));
+    if x.is_null() || y.is_null() {
+        return R_NilValue();
+    }
+    let nx = XLENGTH(x);
+    let ny = XLENGTH(y);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
 
-        // Default: multiplication
-        if nx > 0 && ny > 0 {
-            let dst = REAL(result);
-            for i in 0..nx {
-                let xi = elt_real_safe(x, i);
-                for j in 0..ny {
-                    let yj = elt_real_safe(y, j);
-                    *dst.add((i * ny + j) as usize) = xi * yj;
-                }
+    // Default: multiplication
+    if nx > 0 && ny > 0 {
+        let mut dst = owner_sexp_mut(result);
+        for i in 0..nx {
+            let xi = elt_real_safe(x, i);
+            for j in 0..ny {
+                let yj = elt_real_safe(y, j);
+                sexp_ok(dst.try_set_real_elt(((i * ny + j) as usize) as R_xlen_t, xi * yj));
             }
         }
-
-        // Set dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            set_integer_checked(dim, 0, nx as c_int);
-            set_integer_checked(dim, (1) as R_xlen_t, ny as c_int);
-            crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
-        }
-        result
     }
+
+    // Set dim attribute
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if !dim.is_null() {
+        set_integer_checked(dim, 0, nx as c_int);
+        set_integer_checked(dim, (1) as R_xlen_t, ny as c_int);
+        crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
+    }
+    result
 }
 
 /// GNU `match.fun(FUN)`: functions pass through; character/symbol names

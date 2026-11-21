@@ -81,44 +81,42 @@ pub fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `getRversion()` — returns an `R_system_version` package-version object.
 pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        let version = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        if !version.is_null() {
-            let _version_guard = protect(version);
-            let data = INTEGER(version);
-            for (index, component) in crate::mainutils::compatibility_target::COMPONENTS
-                .into_iter()
-                .enumerate()
-            {
-                *data.add(index) = component;
-            }
-            SET_VECTOR_ELT(result, 0, version);
-        }
-
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        if !class.is_null() {
-            let _class_guard = protect(class);
-            for (i, name) in ["R_system_version", "package_version", "numeric_version"]
-                .iter()
-                .enumerate()
-            {
-                let value = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(class, i as R_xlen_t, mk_char_cstr(&value));
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
-        result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+
+    let version = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+    if !version.is_null() {
+        let _version_guard = protect(version);
+        let mut data = owner_sexp_mut(version);
+        for (index, component) in crate::mainutils::compatibility_target::COMPONENTS
+            .into_iter()
+            .enumerate()
+        {
+            sexp_ok(data.try_set_integer_elt(index as R_xlen_t, component));
+        }
+        SET_VECTOR_ELT(result, 0, version);
+    }
+
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+    if !class.is_null() {
+        let _class_guard = protect(class);
+        for (i, name) in ["R_system_version", "package_version", "numeric_version"]
+            .iter()
+            .enumerate()
+        {
+            let value = CString::new(*name).unwrap_or_default();
+            SET_STRING_ELT(class, i as R_xlen_t, mk_char_cstr(&value));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
+    result
 }
 
 /// `getNamespaceVersion(ns)` for a base package is the R version.

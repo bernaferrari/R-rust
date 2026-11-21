@@ -228,9 +228,9 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
             let _p2 = protect(dim);
-            let d = INTEGER(dim);
-            *d.add(0) = 2;
-            *d.add(1) = ncols as c_int;
+            let mut d = owner_sexp_mut(dim);
+            sexp_ok(d.try_set_integer_elt(0, 2));
+            sexp_ok(d.try_set_integer_elt(1 as R_xlen_t, ncols as c_int));
             crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
         }
         // dimnames = list(c("Ncells", "Vcells"), col_names)

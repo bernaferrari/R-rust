@@ -54,7 +54,7 @@ pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         let log_base = base.ln();
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
@@ -65,7 +65,7 @@ pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 NA_REAL
             };
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 NA_REAL
             } else if v == 0.0 {
                 f64::NEG_INFINITY
@@ -73,7 +73,7 @@ pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 f64::NAN
             } else {
                 v.ln() / log_base
-            };
+            }));
         }
         result
     }
@@ -335,7 +335,7 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
                 real_elt_checked(x_arg, (i as usize) as R_xlen_t)
@@ -345,11 +345,14 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 NA_REAL
             };
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                NA_REAL
-            } else {
-                fround(v, digits)
-            };
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    fround(v, digits)
+                },
+            ));
         }
         let dim =
             crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_DimSymbol());
@@ -670,7 +673,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         for i in 0..n {
             let xi = if nx == 0 { 0 } else { i % nx };
             let v = if t == SEXPTYPE::REALSXP {
@@ -699,12 +702,14 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 real_elt_or_default(digits_arg, i, 6.0)
             };
             let digits_is_na = digits.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-            *dst.add(i as usize) =
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
                 if digits_is_na || v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL
                 } else {
                     crate::fprec::fprec(v, digits)
-                };
+                },
+            ));
         }
         // GNU FINISH_Math2: SHALLOW_DUPLICATE_ATTRIB from x when the
         // result length matches x, otherwise from digits.
@@ -748,7 +753,7 @@ pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
                 real_elt_checked(x_arg, (i as usize) as R_xlen_t)
@@ -758,11 +763,14 @@ pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 NA_REAL
             };
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                NA_REAL
-            } else {
-                v.trunc()
-            };
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    v.trunc()
+                },
+            ));
         }
         result
     }

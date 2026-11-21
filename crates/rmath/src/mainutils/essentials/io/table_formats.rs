@@ -6,92 +6,90 @@ use super::*;
 
 /// R's `read.csv2(file, ...)` — European CSV reader (semicolons as separator).
 pub fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let file_arg = CAR(args);
-        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
+    let file_arg = CAR(args);
+    let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
 
-        // Read file
-        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(s) => s,
-            Err(e) => {
-                base_error(format!("cannot read file '{}': {}", file_path, e));
-            }
-        };
-
-        let mut lines: Vec<&str> = content.lines().collect();
-        if lines.is_empty() {
-            return R_NilValue();
+    // Read file
+    let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
+        Ok(s) => s,
+        Err(e) => {
+            base_error(format!("cannot read file '{}': {}", file_path, e));
         }
+    };
 
-        // Header from first line
-        let header_line = lines.remove(0);
-        let col_names: Vec<String> = header_line
-            .split(';')
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .collect();
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return R_NilValue();
+    }
 
-        let ncols = col_names.len();
-        if ncols == 0 {
-            return R_NilValue();
-        }
+    // Header from first line
+    let header_line = lines.remove(0);
+    let col_names: Vec<String> = header_line
+        .split(';')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .collect();
 
-        // Parse data rows — European format uses comma as decimal separator
-        let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
-        for line in &lines {
-            let fields: Vec<&str> = line.split(';').collect();
-            for j in 0..ncols {
-                let val = if j < fields.len() {
-                    // Replace comma decimal with dot
-                    let cleaned = fields[j].trim().replace(',', ".");
-                    cleaned.parse::<f64>().unwrap_or(NA_REAL)
-                } else {
-                    NA_REAL
-                };
-                col_data[j].push(val);
-            }
-        }
+    let ncols = col_names.len();
+    if ncols == 0 {
+        return R_NilValue();
+    }
 
-        // Build list result (data.frame)
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
-        let _p2 = protect(names_vec);
-
+    // Parse data rows — European format uses comma as decimal separator
+    let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
+    for line in &lines {
+        let fields: Vec<&str> = line.split(';').collect();
         for j in 0..ncols {
-            let nrow = col_data[j].len();
-            let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow as R_xlen_t);
-            if !col.is_null() {
-                let dst = REAL(col);
-                for (i, &v) in col_data[j].iter().enumerate() {
-                    *dst.add(i) = v;
-                }
-            }
-            crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
+            let val = if j < fields.len() {
+                // Replace comma decimal with dot
+                let cleaned = fields[j].trim().replace(',', ".");
+                cleaned.parse::<f64>().unwrap_or(NA_REAL)
+            } else {
+                NA_REAL
+            };
+            col_data[j].push(val);
+        }
+    }
 
-            let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
+    // Build list result (data.frame)
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
+    let _p2 = protect(names_vec);
+
+    for j in 0..ncols {
+        let nrow = col_data[j].len();
+        let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow as R_xlen_t);
+        if !col.is_null() {
+            let mut dst = owner_sexp_mut(col);
+            for (i, &v) in col_data[j].iter().enumerate() {
+                sexp_ok(dst.try_set_real_elt(i as R_xlen_t, v));
             }
         }
+        crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
-        // Set names
-        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
-        // Set class to data.frame
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _p3 = protect(class_vec);
-        let cstr = c"data.frame";
+        let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
         let charsxp = mk_char_cstr(&cstr);
         if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
+            crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
-        result
     }
+
+    // Set names
+    crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
+    // Set class to data.frame
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _p3 = protect(class_vec);
+    let cstr = c"data.frame";
+    let charsxp = mk_char_cstr(&cstr);
+    if !charsxp.is_null() {
+        crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
+    }
+    crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
+    result
 }
 
 /// R's `write.csv2(x, file, ...)` — European CSV writer (semicolons, comma decimal).
@@ -185,99 +183,97 @@ pub fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `read.delim(file, ...)` — delimited file reader.
 pub fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let file_arg = CAR(args);
-        let sep_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(CDR(args))
-        };
+    let file_arg = CAR(args);
+    let sep_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
 
-        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
-        let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
-            "\t".to_string()
-        } else {
-            elt_to_string(sep_arg, 0)
-        };
+    let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
+    let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
+        "\t".to_string()
+    } else {
+        elt_to_string(sep_arg, 0)
+    };
 
-        // Read file
-        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(s) => s,
-            Err(e) => {
-                base_error(format!("cannot read file '{}': {}", file_path, e));
-            }
-        };
-
-        let mut lines: Vec<&str> = content.lines().collect();
-        if lines.is_empty() {
-            return R_NilValue();
+    // Read file
+    let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
+        Ok(s) => s,
+        Err(e) => {
+            base_error(format!("cannot read file '{}': {}", file_path, e));
         }
+    };
 
-        // Header
-        let header_line = lines.remove(0);
-        let col_names: Vec<String> = header_line
-            .split(&sep)
-            .map(|s| s.trim().to_string())
-            .collect();
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return R_NilValue();
+    }
 
-        let ncols = col_names.len();
-        if ncols == 0 {
-            return R_NilValue();
-        }
+    // Header
+    let header_line = lines.remove(0);
+    let col_names: Vec<String> = header_line
+        .split(&sep)
+        .map(|s| s.trim().to_string())
+        .collect();
 
-        // Parse rows
-        let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
-        for line in &lines {
-            let fields: Vec<&str> = line.split(&sep).collect();
-            for j in 0..ncols {
-                let val = if j < fields.len() {
-                    fields[j].trim().parse::<f64>().unwrap_or(NA_REAL)
-                } else {
-                    NA_REAL
-                };
-                col_data[j].push(val);
-            }
-        }
+    let ncols = col_names.len();
+    if ncols == 0 {
+        return R_NilValue();
+    }
 
-        // Build data.frame result
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
-        let _p2 = protect(names_vec);
-
+    // Parse rows
+    let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
+    for line in &lines {
+        let fields: Vec<&str> = line.split(&sep).collect();
         for j in 0..ncols {
-            let nrow = col_data[j].len();
-            let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow as R_xlen_t);
-            if !col.is_null() {
-                let dst = REAL(col);
-                for (i, &v) in col_data[j].iter().enumerate() {
-                    *dst.add(i) = v;
-                }
-            }
-            crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
+            let val = if j < fields.len() {
+                fields[j].trim().parse::<f64>().unwrap_or(NA_REAL)
+            } else {
+                NA_REAL
+            };
+            col_data[j].push(val);
+        }
+    }
 
-            let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
+    // Build data.frame result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
+    let _p2 = protect(names_vec);
+
+    for j in 0..ncols {
+        let nrow = col_data[j].len();
+        let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrow as R_xlen_t);
+        if !col.is_null() {
+            let mut dst = owner_sexp_mut(col);
+            for (i, &v) in col_data[j].iter().enumerate() {
+                sexp_ok(dst.try_set_real_elt(i as R_xlen_t, v));
             }
         }
+        crate::sexp::accessors::SET_VECTOR_ELT(result, j as R_xlen_t, col);
 
-        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _p3 = protect(class_vec);
-        let cstr = c"data.frame";
+        let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
         let charsxp = mk_char_cstr(&cstr);
         if !charsxp.is_null() {
-            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
+            crate::sexp::accessors::SET_STRING_ELT(names_vec, j as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
-        result
     }
+
+    crate::sexp::attrib_core::setAttrib(result, install_str("names"), names_vec);
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _p3 = protect(class_vec);
+    let cstr = c"data.frame";
+    let charsxp = mk_char_cstr(&cstr);
+    if !charsxp.is_null() {
+        crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
+    }
+    crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
+    result
 }
 
 /// R's `read.fwf(file, widths, ...)` — fixed-width file reader.
@@ -318,11 +314,9 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut widths: Vec<i64> = Vec::new();
         for i in 0..nfields {
             let w = if TYPEOF(widths_arg) == SEXPTYPE::REALSXP {
-                let rp = REAL(widths_arg);
-                *rp.add(i as usize) as i64
+                real_elt_checked(widths_arg, (i as usize) as R_xlen_t) as i64
             } else if TYPEOF(widths_arg) == SEXPTYPE::INTSXP {
-                let ip = INTEGER(widths_arg);
-                *ip.add(i as usize) as i64
+                integer_elt_checked(widths_arg, (i as usize) as R_xlen_t) as i64
             } else {
                 1_i64
             };
@@ -423,9 +417,9 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let col = if col_numeric[j] {
                 let col = Rf_allocVector3(SEXPTYPE::REALSXP, nrows as R_xlen_t);
                 if !col.is_null() {
-                    let dst = REAL(col);
+                    let mut dst = owner_sexp_mut(col);
                     for (i, &v) in col_num[j].iter().enumerate() {
-                        *dst.add(i) = v;
+                        sexp_ok(dst.try_set_real_elt(i as R_xlen_t, v));
                     }
                 }
                 col

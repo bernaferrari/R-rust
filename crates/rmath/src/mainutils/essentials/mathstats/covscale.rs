@@ -491,7 +491,7 @@ pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 real_elt_checked(arg, (i as usize) as R_xlen_t)
             }
         };
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         let mut centers = vec![0.0; ncol as usize];
         let mut scales = vec![1.0; ncol as usize];
         for j in 0..ncol {
@@ -538,11 +538,11 @@ pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for i in 0..nrow {
                 let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
                 let centered = if cen.is_nan() { NA_REAL } else { v - cen };
-                *dst.add((i + j * nrow) as usize) = if sc.is_finite() && sc != 0.0 {
+                sexp_ok(dst.try_set_real_elt(((i + j * nrow) as usize) as R_xlen_t, if sc.is_finite() && sc != 0.0 {
                     centered / sc
                 } else {
                     centered
-                };
+                }));
             }
         }
         let colnames =
@@ -606,84 +606,82 @@ fn scale_argument(args: SEXP, formal: &str, position: usize) -> SEXP {
 
 /// R's `rle(x)` — run-length encoding.
 pub fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let has_dim = !dim.is_null() && dim != R_NilValue();
-        let atomic = matches!(
-            TYPEOF(x),
-            t if t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::RAWSXP
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let has_dim = !dim.is_null() && dim != R_NilValue();
+    let atomic = matches!(
+        TYPEOF(x),
+        t if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+    );
+    if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be a vector of an atomic type",
         );
-        if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'x' must be a vector of an atomic type",
-            );
-        }
+    }
 
-        let n = XLENGTH(x);
-        if n == 0 {
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            SET_VECTOR_ELT(result, 0, Rf_allocVector3(SEXPTYPE::INTSXP, 0));
-            SET_VECTOR_ELT(result, 1, Rf_allocVector3(TYPEOF(x), 0));
-            set_rle_attrs(result);
-            return result;
-        }
-
-        // Collect run lengths and starting indices. Missing values are never
-        // equal to the previous value in GNU R's rle().
-        let mut lengths: Vec<i32> = Vec::new();
-        let mut value_indices: Vec<R_xlen_t> = Vec::new();
-
-        value_indices.push(0);
-        lengths.push(1);
-
-        for i in 1..n {
-            let last_start = *value_indices.last().unwrap_or(&0);
-            if rle_values_equal(x, i, last_start) {
-                let last_idx = lengths.len() - 1;
-                lengths[last_idx] += 1;
-            } else {
-                value_indices.push(i);
-                lengths.push(1);
-            }
-        }
-
-        let n_runs = lengths.len() as R_xlen_t;
+    let n = XLENGTH(x);
+    if n == 0 {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-
-        let lengths_sexp = Rf_allocVector3(SEXPTYPE::INTSXP, n_runs);
-        let values_sexp = Rf_allocVector3(TYPEOF(x), n_runs);
-        let _p2 = protect(lengths_sexp);
-        let _p3 = protect(values_sexp);
-
-        let dst_l = INTEGER(lengths_sexp);
-        for i in 0..n_runs {
-            *dst_l.add(i as usize) = lengths[i as usize];
-            copy_vector_elt(values_sexp, i, x, value_indices[i as usize]);
-        }
-
-        SET_VECTOR_ELT(result, 0, lengths_sexp);
-        SET_VECTOR_ELT(result, 1, values_sexp);
+        SET_VECTOR_ELT(result, 0, Rf_allocVector3(SEXPTYPE::INTSXP, 0));
+        SET_VECTOR_ELT(result, 1, Rf_allocVector3(TYPEOF(x), 0));
         set_rle_attrs(result);
-        result
+        return result;
     }
+
+    // Collect run lengths and starting indices. Missing values are never
+    // equal to the previous value in GNU R's rle().
+    let mut lengths: Vec<i32> = Vec::new();
+    let mut value_indices: Vec<R_xlen_t> = Vec::new();
+
+    value_indices.push(0);
+    lengths.push(1);
+
+    for i in 1..n {
+        let last_start = *value_indices.last().unwrap_or(&0);
+        if rle_values_equal(x, i, last_start) {
+            let last_idx = lengths.len() - 1;
+            lengths[last_idx] += 1;
+        } else {
+            value_indices.push(i);
+            lengths.push(1);
+        }
+    }
+
+    let n_runs = lengths.len() as R_xlen_t;
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    let lengths_sexp = Rf_allocVector3(SEXPTYPE::INTSXP, n_runs);
+    let values_sexp = Rf_allocVector3(TYPEOF(x), n_runs);
+    let _p2 = protect(lengths_sexp);
+    let _p3 = protect(values_sexp);
+
+    let mut dst_l = owner_sexp_mut(lengths_sexp);
+    for i in 0..n_runs {
+        sexp_ok(dst_l.try_set_integer_elt((i as usize) as R_xlen_t, lengths[i as usize]));
+        copy_vector_elt(values_sexp, i, x, value_indices[i as usize]);
+    }
+
+    SET_VECTOR_ELT(result, 0, lengths_sexp);
+    SET_VECTOR_ELT(result, 1, values_sexp);
+    set_rle_attrs(result);
+    result
 }
 
 fn set_rle_attrs(x: SEXP) {

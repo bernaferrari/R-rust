@@ -153,11 +153,11 @@ pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .map(|(idx, value)| (value, (idx + 1) as c_int))
                     .collect();
 
-                let data = INTEGER(out);
+                let mut data = owner_sexp_mut(out);
                 for (i, value) in values.into_iter().enumerate() {
-                    *data.add(i) = value
+                    sexp_ok(data.try_set_integer_elt(i as R_xlen_t, value
                         .and_then(|value| ranks.get(&value).copied())
-                        .unwrap_or(NA_INTEGER);
+                        .unwrap_or(NA_INTEGER)));
                 }
                 out
             }

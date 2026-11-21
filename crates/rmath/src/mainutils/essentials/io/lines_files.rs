@@ -135,30 +135,31 @@ pub fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `file.exists(...)` — check if files exist.
 pub fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let path = elt_to_string(x, i);
-            *dst.add(i as usize) = if std::path::Path::new(&path).exists()
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..n {
+        let path = elt_to_string(x, i);
+        sexp_ok(dst.try_set_logical_elt(
+            (i as usize) as R_xlen_t,
+            if std::path::Path::new(&path).exists()
                 || crate::library::builtin_files::path_exists(&path)
             {
                 TRUE
             } else {
                 FALSE
-            };
-        }
-        result
+            },
+        ));
     }
+    result
 }
 
 /// R's `list.files(path)` — list files in directory.

@@ -164,110 +164,118 @@ pub fn do_compact(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R-like `keep(x, i)` — keep elements at 1-based indices from a list/vector.
 pub fn do_keep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let i_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || i_arg.is_null() || i_arg == R_NilValue() {
-            return x;
-        }
-
-        let t = TYPEOF(x);
-        let n_i = XLENGTH(i_arg);
-        let result = Rf_allocVector3(t, n_i);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        if t == SEXPTYPE::VECSXP {
-            for j in 0..n_i {
-                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t; // 1-based to 0-based
-                if idx >= 0 {
-                    let elem = VECTOR_ELT(x, idx);
-                    SET_VECTOR_ELT(result, j as i64, elem);
-                }
-            }
-        } else if t == SEXPTYPE::REALSXP {
-            let dst = REAL(result);
-            for j in 0..n_i {
-                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
-                if idx >= 0 {
-                    *dst.add(j as usize) = real_elt_checked(x, (idx as usize) as R_xlen_t);
-                } else {
-                    *dst.add(j as usize) = NA_REAL;
-                }
-            }
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let dst = INTEGER(result);
-            for j in 0..n_i {
-                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
-                if idx >= 0 {
-                    *dst.add(j as usize) = integer_elt_checked(x, (idx as usize) as R_xlen_t);
-                } else {
-                    *dst.add(j as usize) = NA_INTEGER;
-                }
-            }
-        }
-        result
+    let x = CAR(args);
+    let i_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || i_arg.is_null() || i_arg == R_NilValue() {
+        return x;
     }
+
+    let t = TYPEOF(x);
+    let n_i = XLENGTH(i_arg);
+    let result = Rf_allocVector3(t, n_i);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    if t == SEXPTYPE::VECSXP {
+        for j in 0..n_i {
+            let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t; // 1-based to 0-based
+            if idx >= 0 {
+                let elem = VECTOR_ELT(x, idx);
+                SET_VECTOR_ELT(result, j as i64, elem);
+            }
+        }
+    } else if t == SEXPTYPE::REALSXP {
+        let mut dst = owner_sexp_mut(result);
+        for j in 0..n_i {
+            let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
+            if idx >= 0 {
+                sexp_ok(dst.try_set_real_elt(
+                    (j as usize) as R_xlen_t,
+                    real_elt_checked(x, (idx as usize) as R_xlen_t),
+                ));
+            } else {
+                sexp_ok(dst.try_set_real_elt((j as usize) as R_xlen_t, NA_REAL));
+            }
+        }
+    } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        let mut dst = owner_sexp_mut(result);
+        for j in 0..n_i {
+            let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
+            if idx >= 0 {
+                sexp_ok(dst.try_set_integer_elt(
+                    (j as usize) as R_xlen_t,
+                    integer_elt_checked(x, (idx as usize) as R_xlen_t),
+                ));
+            } else {
+                sexp_ok(dst.try_set_integer_elt((j as usize) as R_xlen_t, NA_INTEGER));
+            }
+        }
+    }
+    result
 }
 
 /// R-like `discard(x, i)` — discard elements at 1-based indices from a list/vector.
 pub fn do_discard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let i_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || i_arg.is_null() || i_arg == R_NilValue() {
-            return x;
-        }
-
-        let n = XLENGTH(x);
-        let n_i = XLENGTH(i_arg);
-
-        // Collect which indices to discard (0-based)
-        let mut discard_set: std::collections::HashSet<R_xlen_t> = std::collections::HashSet::new();
-        for j in 0..n_i {
-            let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
-            if idx >= 0 && idx < n {
-                discard_set.insert(idx);
-            }
-        }
-
-        let t = TYPEOF(x);
-        let new_len = n - discard_set.len() as R_xlen_t;
-        let result = Rf_allocVector3(t, new_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let mut out_idx: R_xlen_t = 0;
-        if t == SEXPTYPE::VECSXP {
-            for i in 0..n {
-                if !discard_set.contains(&i) {
-                    SET_VECTOR_ELT(result, out_idx as i64, VECTOR_ELT(x, i));
-                    out_idx += 1;
-                }
-            }
-        } else if t == SEXPTYPE::REALSXP {
-            let dst = REAL(result);
-            for i in 0..n {
-                if !discard_set.contains(&i) {
-                    *dst.add(out_idx as usize) = real_elt_checked(x, (i as usize) as R_xlen_t);
-                    out_idx += 1;
-                }
-            }
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let dst = INTEGER(result);
-            for i in 0..n {
-                if !discard_set.contains(&i) {
-                    *dst.add(out_idx as usize) = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                    out_idx += 1;
-                }
-            }
-        }
-        result
+    let x = CAR(args);
+    let i_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || i_arg.is_null() || i_arg == R_NilValue() {
+        return x;
     }
+
+    let n = XLENGTH(x);
+    let n_i = XLENGTH(i_arg);
+
+    // Collect which indices to discard (0-based)
+    let mut discard_set: std::collections::HashSet<R_xlen_t> = std::collections::HashSet::new();
+    for j in 0..n_i {
+        let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
+        if idx >= 0 && idx < n {
+            discard_set.insert(idx);
+        }
+    }
+
+    let t = TYPEOF(x);
+    let new_len = n - discard_set.len() as R_xlen_t;
+    let result = Rf_allocVector3(t, new_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+
+    let mut out_idx: R_xlen_t = 0;
+    if t == SEXPTYPE::VECSXP {
+        for i in 0..n {
+            if !discard_set.contains(&i) {
+                SET_VECTOR_ELT(result, out_idx as i64, VECTOR_ELT(x, i));
+                out_idx += 1;
+            }
+        }
+    } else if t == SEXPTYPE::REALSXP {
+        let mut dst = owner_sexp_mut(result);
+        for i in 0..n {
+            if !discard_set.contains(&i) {
+                sexp_ok(dst.try_set_real_elt(
+                    (out_idx as usize) as R_xlen_t,
+                    real_elt_checked(x, (i as usize) as R_xlen_t),
+                ));
+                out_idx += 1;
+            }
+        }
+    } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        let mut dst = owner_sexp_mut(result);
+        for i in 0..n {
+            if !discard_set.contains(&i) {
+                sexp_ok(dst.try_set_integer_elt(
+                    (out_idx as usize) as R_xlen_t,
+                    integer_elt_checked(x, (i as usize) as R_xlen_t),
+                ));
+                out_idx += 1;
+            }
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------

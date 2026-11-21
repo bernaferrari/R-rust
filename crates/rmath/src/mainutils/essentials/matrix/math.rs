@@ -5,43 +5,43 @@ use super::*;
 /// `function(x, table) match(x, table, nomatch = 0) > 0`: an empty table
 /// yields FALSE for every element of `x` (never a zero-length result).
 pub fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let table = CAR(CDR(args));
+    let x = CAR(args);
+    let table = CAR(CDR(args));
 
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = LOGICAL(result);
-
-        let table_empty = table.is_null() || table == R_NilValue() || XLENGTH(table) == 0;
-        for i in 0..n {
-            let found = if table_empty {
-                false
-            } else {
-                let elem = elt_to_string(x, i);
-                let table_len = XLENGTH(table);
-                let mut found = false;
-                for j in 0..table_len {
-                    let tbl_elem = elt_to_string(table, j);
-                    if elem == tbl_elem {
-                        found = true;
-                        break;
-                    }
-                }
-                found
-            };
-            *dst.add(i as usize) = if found { TRUE } else { FALSE };
-        }
-        result
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+
+    let table_empty = table.is_null() || table == R_NilValue() || XLENGTH(table) == 0;
+    for i in 0..n {
+        let found = if table_empty {
+            false
+        } else {
+            let elem = elt_to_string(x, i);
+            let table_len = XLENGTH(table);
+            let mut found = false;
+            for j in 0..table_len {
+                let tbl_elem = elt_to_string(table, j);
+                if elem == tbl_elem {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        sexp_ok(
+            dst.try_set_logical_elt((i as usize) as R_xlen_t, if found { TRUE } else { FALSE }),
+        );
+    }
+    result
 }
 
 fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
@@ -64,49 +64,47 @@ fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
 }
 
 pub fn real_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
-    unsafe {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        let mut naflag = false;
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-
-            let out = if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                NA_REAL
-            } else {
-                f(val)
-            };
-            if val.is_finite() && out.is_nan() {
-                naflag = true;
-            }
-            *dst.add(i as usize) = out;
-        }
-        if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
-        }
-        result
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
     }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    let mut naflag = false;
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        let out = if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            NA_REAL
+        } else {
+            f(val)
+        };
+        if val.is_finite() && out.is_nan() {
+            naflag = true;
+        }
+        sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, out));
+    }
+    if naflag {
+        crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
+    }
+    result
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -321,7 +319,7 @@ pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -334,9 +332,9 @@ pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.sin();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.sin()));
             }
         }
         result
@@ -367,7 +365,7 @@ pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -380,9 +378,9 @@ pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.cos();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.cos()));
             }
         }
         result
@@ -413,7 +411,7 @@ pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -426,9 +424,9 @@ pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.tan();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.tan()));
             }
         }
         result
@@ -460,7 +458,7 @@ pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -473,9 +471,9 @@ pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.asin();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.asin()));
             }
         }
         result
@@ -508,7 +506,7 @@ pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -521,9 +519,9 @@ pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.acos();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.acos()));
             }
         }
         result
@@ -556,7 +554,7 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -569,9 +567,9 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val.atan();
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.atan()));
             }
         }
         result
@@ -624,7 +622,7 @@ pub fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
 
         for i in 0..n {
             let y_len = XLENGTH(y);
@@ -653,9 +651,9 @@ pub fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
                 || val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
             {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
-                *dst.add(i as usize) = val_y.atan2(val_x);
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val_y.atan2(val_x)));
             }
         }
         result

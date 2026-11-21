@@ -435,41 +435,44 @@ pub fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `summary.proc_time` adds the child times into user/sys, keeps the first
 /// three entries and names them user/system/elapsed (base time.R).
 pub fn do_print_proc_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::REALSXP {
-            return x;
-        }
-        let src = REAL(x);
-        let n = XLENGTH(x).min(5) as usize;
-        let at = |i: usize| -> f64 { if i < n { *src.add(i) } else { f64::NAN } };
-        let mut vals = [at(0), at(1), at(2)];
-        let v4 = at(3);
-        if !v4.is_nan() {
-            vals[0] += v4;
-        }
-        let v5 = at(4);
-        if !v5.is_nan() {
-            vals[1] += v5;
-        }
-
-        let out = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        let _out_guard = protect(out);
-        for (i, v) in vals.iter().enumerate() {
-            set_real_checked(out, (i) as R_xlen_t, *v);
-        }
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        let _names_guard = protect(names);
-        for (i, name) in ["user", "system", "elapsed"].iter().enumerate() {
-            let cstr = std::ffi::CString::new(*name).unwrap_or_default();
-            SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&cstr));
-        }
-        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
-
-        let print_args = Rf_cons(out, R_NilValue());
-        let _pa_guard = protect(print_args);
-        do_print_default(R_NilValue(), R_NilValue(), print_args, _rho);
-        x
+    let x = CAR(args);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::REALSXP {
+        return x;
     }
+    let n = XLENGTH(x).min(5) as usize;
+    let at = |i: usize| -> f64 {
+        if i < n {
+            real_elt_checked(x, i as R_xlen_t)
+        } else {
+            f64::NAN
+        }
+    };
+    let mut vals = [at(0), at(1), at(2)];
+    let v4 = at(3);
+    if !v4.is_nan() {
+        vals[0] += v4;
+    }
+    let v5 = at(4);
+    if !v5.is_nan() {
+        vals[1] += v5;
+    }
+
+    let out = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+    let _out_guard = protect(out);
+    for (i, v) in vals.iter().enumerate() {
+        set_real_checked(out, (i) as R_xlen_t, *v);
+    }
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+    let _names_guard = protect(names);
+    for (i, name) in ["user", "system", "elapsed"].iter().enumerate() {
+        let cstr = std::ffi::CString::new(*name).unwrap_or_default();
+        SET_STRING_ELT(names, i as R_xlen_t, mk_char_cstr(&cstr));
+    }
+    crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+
+    let print_args = Rf_cons(out, R_NilValue());
+    let _pa_guard = protect(print_args);
+    do_print_default(R_NilValue(), R_NilValue(), print_args, _rho);
+    x
 }

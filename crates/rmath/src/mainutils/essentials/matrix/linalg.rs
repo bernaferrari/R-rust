@@ -20,72 +20,69 @@ pub fn do_tcrossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `det(x)` — determinant of a square matrix (simplified via LU-like approach).
 /// For a 2x2 matrix: det = a*d - b*c. For larger, uses LU decomposition concept.
 pub fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
-        if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
-            return Rf_ScalarReal(NA_REAL);
-        }
-        let n = integer_elt_checked(dim_attr, 0) as usize;
-        let m = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
-        if n != m || n == 0 {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        // Compute determinant using LU decomposition (without pivoting for simplicity)
-        let src = REAL(x);
-        // Copy matrix data
-        let mut mat: Vec<f64> = Vec::with_capacity(n * n);
-        for i in 0..n * n {
-            mat.push(*src.add(i));
-        }
-
-        let mut det_val = 1.0_f64;
-        for i in 0..n {
-            // Find pivot
-            let mut max_val = mat[i * n + i].abs();
-            let mut max_row = i;
-            for k in (i + 1)..n {
-                let v = mat[k * n + i].abs();
-                if v > max_val {
-                    max_val = v;
-                    max_row = k;
-                }
-            }
-            if max_val == 0.0 {
-                return Rf_ScalarReal(0.0);
-            }
-            // Swap rows
-            if max_row != i {
-                for j in 0..n {
-                    let tmp = mat[i * n + j];
-                    mat[i * n + j] = mat[max_row * n + j];
-                    mat[max_row * n + j] = tmp;
-                }
-                det_val = -det_val;
-            }
-            det_val *= mat[i * n + i];
-            // Eliminate
-            let pivot = mat[i * n + i];
-            for k in (i + 1)..n {
-                let factor = mat[k * n + i] / pivot;
-                mat[k * n + i] = 0.0;
-                for j in (i + 1)..n {
-                    mat[k * n + j] -= factor * mat[i * n + j];
-                }
-            }
-        }
-
-        Rf_ScalarReal(det_val)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
     }
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
+        return Rf_ScalarReal(NA_REAL);
+    }
+    let n = integer_elt_checked(dim_attr, 0) as usize;
+    let m = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
+    if n != m || n == 0 {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    // Compute determinant using LU decomposition (without pivoting for simplicity)
+    // Copy matrix data
+    let mut mat: Vec<f64> = Vec::with_capacity(n * n);
+    for i in 0..n * n {
+        mat.push(real_elt_checked(x, i as R_xlen_t));
+    }
+
+    let mut det_val = 1.0_f64;
+    for i in 0..n {
+        // Find pivot
+        let mut max_val = mat[i * n + i].abs();
+        let mut max_row = i;
+        for k in (i + 1)..n {
+            let v = mat[k * n + i].abs();
+            if v > max_val {
+                max_val = v;
+                max_row = k;
+            }
+        }
+        if max_val == 0.0 {
+            return Rf_ScalarReal(0.0);
+        }
+        // Swap rows
+        if max_row != i {
+            for j in 0..n {
+                let tmp = mat[i * n + j];
+                mat[i * n + j] = mat[max_row * n + j];
+                mat[max_row * n + j] = tmp;
+            }
+            det_val = -det_val;
+        }
+        det_val *= mat[i * n + i];
+        // Eliminate
+        let pivot = mat[i * n + i];
+        for k in (i + 1)..n {
+            let factor = mat[k * n + i] / pivot;
+            mat[k * n + i] = 0.0;
+            for j in (i + 1)..n {
+                mat[k * n + j] -= factor * mat[i * n + j];
+            }
+        }
+    }
+
+    Rf_ScalarReal(det_val)
 }
 
 /// GNU `.Internal(La_svd(jobu, x, s, u, vt))`.

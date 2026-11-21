@@ -269,9 +269,9 @@ pub fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));
         let cv = Rf_allocVector3(SEXPTYPE::INTSXP, counts.len() as R_xlen_t);
         let _cv = protect(cv);
-        let ip = INTEGER(cv);
+        let mut ip = owner_sexp_mut(cv);
         for (i, c) in counts.iter().enumerate() {
-            *ip.add(i) = *c;
+            sexp_ok(ip.try_set_integer_elt(i as R_xlen_t, *c));
         }
         crate::sexp::accessors::SET_VECTOR_ELT(ans, 2, cv);
         ans

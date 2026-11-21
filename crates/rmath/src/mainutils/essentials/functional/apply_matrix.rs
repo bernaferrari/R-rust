@@ -551,11 +551,11 @@ pub fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let robj = if star {
             let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
             let _result = protect(result);
-            let dst = REAL(result);
+            let mut dst = owner_sexp_mut(result);
             for i in 0..nx {
                 let xi = elt_real_safe(x, i);
                 for j in 0..ny {
-                    *dst.add((j * nx + i) as usize) = xi * elt_real_safe(y, j);
+                    sexp_ok(dst.try_set_real_elt(((j * nx + i) as usize) as R_xlen_t, xi * elt_real_safe(y, j)));
                 }
             }
             result

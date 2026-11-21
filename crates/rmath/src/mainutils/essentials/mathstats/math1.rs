@@ -184,14 +184,14 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let dst = INTEGER(result);
+            let mut dst = owner_sexp_mut(result);
             for i in 0..n {
                 let value = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
-                *dst.add(i as usize) = if value == NA_INTEGER || value == c_int::MIN {
+                sexp_ok(dst.try_set_integer_elt((i as usize) as R_xlen_t, if value == NA_INTEGER || value == c_int::MIN {
                     NA_INTEGER
                 } else {
                     value.abs()
-                };
+                }));
             }
             copy_most_attrib(x_arg, result);
             math1_copy_dim_and_names(x_arg, result);
@@ -203,14 +203,17 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         for i in 0..n {
             let v = real_elt_checked(x_arg, (i as usize) as R_xlen_t);
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                v
-            } else {
-                v.abs()
-            };
+            sexp_ok(dst.try_set_real_elt(
+                (i as usize) as R_xlen_t,
+                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    v
+                } else {
+                    v.abs()
+                },
+            ));
         }
         copy_most_attrib(x_arg, result);
         math1_copy_dim_and_names(x_arg, result);
@@ -265,7 +268,7 @@ pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
                 real_elt_checked(x_arg, (i as usize) as R_xlen_t)
@@ -273,7 +276,7 @@ pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             };
-            *dst.add(i as usize) = if v.is_nan() {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, if v.is_nan() {
                 v // preserve NaN/NA
             } else if v == 0.0 {
                 0.0
@@ -281,7 +284,7 @@ pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 1.0
             } else {
                 -1.0
-            };
+            }));
         }
         result
     }
@@ -325,7 +328,7 @@ fn apply_unary_scalar_fn(
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let mut dst = owner_sexp_mut(result);
         let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
@@ -337,10 +340,10 @@ fn apply_unary_scalar_fn(
                 NA_REAL
             };
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
             } else {
                 let out = scalar_fn(val);
-                *dst.add(i as usize) = out;
+                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, out));
                 if out.is_nan() && !val.is_nan() {
                     naflag = true;
                 }
@@ -361,75 +364,73 @@ fn apply_binary_scalar_fn(
     y: SEXP,
     scalar_fn: impl Fn(f64, f64) -> f64,
 ) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
-            return R_NilValue();
-        }
-        let x_len = XLENGTH(x);
-        let y_len = XLENGTH(y);
-        let n = if x_len == 0 || y_len == 0 {
-            0
-        } else {
-            x_len.max(y_len)
-        };
-        let tx = TYPEOF(x);
-        let ty = TYPEOF(y);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        if x_len == 0 || y_len == 0 {
-            if x_len == 0 {
-                copy_all_attribs(result, x);
-            }
-            return result;
-        }
-        let dst = REAL(result);
-        let mut naflag = false;
-        for i in 0..n {
-            let xi = if x_len > 0 { i % x_len } else { 0 };
-            let yi = if y_len > 0 { i % y_len } else { 0 };
-            let val_x = if tx == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (xi as usize) as R_xlen_t)
-            } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            let val_y = if ty == SEXPTYPE::REALSXP {
-                real_elt_checked(y, (yi as usize) as R_xlen_t)
-            } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if crate::sexp::ffi::R_IsNA(val_x) || crate::sexp::ffi::R_IsNA(val_y) {
-                *dst.add(i as usize) = NA_REAL;
-            } else if val_x.is_nan() || val_y.is_nan() {
-                // GNU Math2 skips the scalar kernel for missing operands.
-                // In particular a NaN psigamma derivative must not cast to0.
-                *dst.add(i as usize) = f64::NAN;
-            } else {
-                let out = scalar_fn(val_x, val_y);
-                *dst.add(i as usize) = out;
-                if out.is_nan() && !val_x.is_nan() && !val_y.is_nan() {
-                    naflag = true;
-                }
-            }
-        }
-        if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
-        }
-        if n == x_len {
-            copy_all_attribs(result, x);
-        } else if n == y_len {
-            copy_all_attribs(result, y);
-        }
-        result
+    if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+        return R_NilValue();
     }
+    let x_len = XLENGTH(x);
+    let y_len = XLENGTH(y);
+    let n = if x_len == 0 || y_len == 0 {
+        0
+    } else {
+        x_len.max(y_len)
+    };
+    let tx = TYPEOF(x);
+    let ty = TYPEOF(y);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    if x_len == 0 || y_len == 0 {
+        if x_len == 0 {
+            copy_all_attribs(result, x);
+        }
+        return result;
+    }
+    let mut dst = owner_sexp_mut(result);
+    let mut naflag = false;
+    for i in 0..n {
+        let xi = if x_len > 0 { i % x_len } else { 0 };
+        let yi = if y_len > 0 { i % y_len } else { 0 };
+        let val_x = if tx == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (xi as usize) as R_xlen_t)
+        } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        let val_y = if ty == SEXPTYPE::REALSXP {
+            real_elt_checked(y, (yi as usize) as R_xlen_t)
+        } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if crate::sexp::ffi::R_IsNA(val_x) || crate::sexp::ffi::R_IsNA(val_y) {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else if val_x.is_nan() || val_y.is_nan() {
+            // GNU Math2 skips the scalar kernel for missing operands.
+            // In particular a NaN psigamma derivative must not cast to0.
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, f64::NAN));
+        } else {
+            let out = scalar_fn(val_x, val_y);
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, out));
+            if out.is_nan() && !val_x.is_nan() && !val_y.is_nan() {
+                naflag = true;
+            }
+        }
+    }
+    if naflag {
+        crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
+    }
+    if n == x_len {
+        copy_all_attribs(result, x);
+    } else if n == y_len {
+        copy_all_attribs(result, y);
+    }
+    result
 }
 
 pub fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

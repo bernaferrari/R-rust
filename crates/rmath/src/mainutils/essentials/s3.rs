@@ -605,54 +605,55 @@ pub fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// R's `dir.exists(paths)` — check if directories exist.
 pub fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let path = elt_to_string(x, i);
-            *dst.add(i as usize) = if std::path::Path::new(&path).is_dir() {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..n {
+        let path = elt_to_string(x, i);
+        sexp_ok(dst.try_set_logical_elt(
+            (i as usize) as R_xlen_t,
+            if std::path::Path::new(&path).is_dir() {
                 TRUE
             } else {
                 FALSE
-            };
-        }
-        result
+            },
+        ));
     }
+    result
 }
 
 /// R's `file.create(...)` — create empty files.
 pub fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let path = elt_to_string(x, i);
-            *dst.add(i as usize) =
-                match crate::mainutils::platform::create_file_with_session_umask(&path) {
-                    Ok(_) => TRUE,
-                    Err(_) => FALSE,
-                };
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..n {
+        let path = elt_to_string(x, i);
+        sexp_ok(dst.try_set_logical_elt(
+            (i as usize) as R_xlen_t,
+            match crate::mainutils::platform::create_file_with_session_umask(&path) {
+                Ok(_) => TRUE,
+                Err(_) => FALSE,
+            },
+        ));
+    }
+    result
 }
 
 /// R's `unlink(x, recursive)` — delete files or directories.
@@ -1213,45 +1214,43 @@ pub fn do_reshape(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `complete_cases(...)` — returns logical vector: TRUE where all args are non-NA.
 pub fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Collect all argument vectors
-        let mut arg_vecs: Vec<SEXP> = Vec::new();
-        let mut max_len: R_xlen_t = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                arg_vecs.push(arg);
-                let n = XLENGTH(arg);
-                if n > max_len {
-                    max_len = n;
-                }
+    // Collect all argument vectors
+    let mut arg_vecs: Vec<SEXP> = Vec::new();
+    let mut max_len: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            arg_vecs.push(arg);
+            let n = XLENGTH(arg);
+            if n > max_len {
+                max_len = n;
             }
-            current = CDR(current);
         }
-        if arg_vecs.is_empty() || max_len == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, max_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..max_len {
-            let mut complete = TRUE;
-            for &arg in &arg_vecs {
-                let n = XLENGTH(arg);
-                let idx = if n == 0 { 0 } else { i % n };
-                if atomic_value_is_missing(arg, idx) {
-                    complete = FALSE;
-                    break;
-                }
-            }
-            *dst.add(i as usize) = complete;
-        }
-        result
+        current = CDR(current);
     }
+    if arg_vecs.is_empty() || max_len == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, max_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..max_len {
+        let mut complete = TRUE;
+        for &arg in &arg_vecs {
+            let n = XLENGTH(arg);
+            let idx = if n == 0 { 0 } else { i % n };
+            if atomic_value_is_missing(arg, idx) {
+                complete = FALSE;
+                break;
+            }
+        }
+        sexp_ok(dst.try_set_logical_elt((i as usize) as R_xlen_t, complete));
+    }
+    result
 }
 
 /// R's `na.omit(x)` — returns x with rows containing any NA removed (simplified: works on vectors).
@@ -1387,24 +1386,22 @@ fn set_na_action_attribute(source: SEXP, result: SEXP, dropped: &[R_xlen_t], act
 
 /// R's `is_complete(x)` — logical vector of complete cases for a single vector.
 pub fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let na = atomic_value_is_missing(x, i);
-            *dst.add(i as usize) = if na { FALSE } else { TRUE };
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
     }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for i in 0..n {
+        let na = atomic_value_is_missing(x, i);
+        sexp_ok(dst.try_set_logical_elt((i as usize) as R_xlen_t, if na { FALSE } else { TRUE }));
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -1998,15 +1995,13 @@ fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
             *pans.add(i as usize) = Rcomplex { r: 0.0, i: 0.0 };
         }
         if n > 0 && nr > 0 {
-            let pre = REAL(re);
             for i in 0..n {
-                (*pans.add(i as usize)).r = *pre.add((i % nr) as usize);
+                (*pans.add(i as usize)).r = real_elt_checked(re, ((i % nr) as usize) as R_xlen_t);
             }
         }
         if n > 0 && ni > 0 {
-            let pim = REAL(im);
             for i in 0..n {
-                (*pans.add(i as usize)).i = *pim.add((i % ni) as usize);
+                (*pans.add(i as usize)).i = real_elt_checked(im, ((i % ni) as usize) as R_xlen_t);
             }
         }
         ans
@@ -2071,7 +2066,6 @@ fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
         let n = n_len as R_xlen_t;
         let mlen = XLENGTH(m);
         let alen = XLENGTH(a);
-        let pm = REAL(m);
         let pa = REAL(a);
 
         let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
@@ -2079,13 +2073,13 @@ fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
             return R_NilValue();
         }
         let _ans_guard = protect(ans);
-        let pans = COMPLEX(ans);
+        let mut pans = owner_sexp_mut(ans);
         for i in 0..n {
             // rep_len: an empty operand rep_len's to NA.
             let mv = if mlen == 0 {
                 NA_REAL
             } else {
-                *pm.add((i % mlen) as usize)
+                real_elt_checked(m, ((i % mlen) as usize) as R_xlen_t)
             };
             let av = if alen == 0 {
                 NA_REAL
@@ -2096,10 +2090,13 @@ fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
             // (mv, 0) reproduces stock edge cases (modulus=Inf, argument=0
             // gives Inf+NaNi, an all-NA operand gives NA).
             let (ct, st) = (av.cos(), av.sin());
-            *pans.add(i as usize) = Rcomplex {
-                r: mv * ct - 0.0 * st,
-                i: mv * st + 0.0 * ct,
-            };
+            sexp_ok(pans.try_set_complex_elt(
+                (i as usize) as R_xlen_t,
+                Rcomplex {
+                    r: mv * ct - 0.0 * st,
+                    i: mv * st + 0.0 * ct,
+                },
+            ));
         }
         ans
     }
