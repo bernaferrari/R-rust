@@ -26,11 +26,9 @@ use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 
 use crate::mainutils::{colors, engine as ge};
-use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, REAL, SET_VECTOR_ELT, STRING_ELT, VECTOR_ELT};
-use crate::sexp::constructors::Rf_mkString;
+use crate::sexp::accessors::{INTEGER, LENGTH};
 use crate::sexp::ffi::{R_xlen_t, SEXP};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
 
 use super::gpar::gcontextFromgpar;
 use super::grid::{getDevice, getViewportTransform};
@@ -38,6 +36,7 @@ use super::state::gridStateElement;
 use super::types::*;
 use super::unit::transformLocn;
 use super::viewport::fillViewportContextFromViewport;
+use super::{char_ptr, duplicate, integer_elt, mk_string, protect, real_elt, set_vector_elt, string_elt, vector_elt};
 
 /// GE_INCHES constant for unit conversion
 const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
@@ -47,19 +46,18 @@ struct GridModeGuard {
 }
 
 impl GridModeGuard {
+    // SAFETY: `GEMode` is an engine mode-switch bridge; callers pass the live
+    // device returned by `getDevice`.
     unsafe fn enter(dd: pGEDevDesc) -> Self {
-        unsafe {
-            ge::GEMode(1, dd);
-        }
+        unsafe { ge::GEMode(1, dd) };
         Self { dd }
     }
 }
 
 impl Drop for GridModeGuard {
     fn drop(&mut self) {
-        unsafe {
-            ge::GEMode(0, self.dd);
-        }
+        // SAFETY: `dd` was a live device when the guard was entered.
+        unsafe { ge::GEMode(0, self.dd) };
     }
 }
 
@@ -67,8 +65,9 @@ impl Drop for GridModeGuard {
 // renderGlyphs — internal function to render glyph runs
 // ---------------------------------------------------------------------------
 
-unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
+fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
     let nruns = LENGTH(runs);
+    // SAFETY: device registry bridge; a null result means no open device.
     let dd = unsafe { getDevice() };
     if dd.is_null() {
         return;
@@ -90,13 +89,13 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     let mut _gc: [u8; 256] = [0; 256];
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
-    let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(currentgp) };
-    let _currentgp_guard = unsafe { protect(currentgp) };
-    let fill = unsafe { Rf_mkString(b"black\0".as_ptr() as *const std::os::raw::c_char) };
-    unsafe {
-        SET_VECTOR_ELT(currentgp, GP_FILL as R_xlen_t, fill);
-    }
+    let currentgp = duplicate(currentgp);
+    let _currentgp_guard = protect(currentgp);
+    let fill = mk_string("black");
+    set_vector_elt(currentgp, GP_FILL as R_xlen_t, fill);
 
+    // SAFETY: `currentvp`/`dd` keep their raw device-state contracts; the
+    // viewport transform bridge writes through `dd`.
     let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
         unsafe { getViewportTransform(currentvp, dd) };
 
@@ -109,60 +108,79 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     fillViewportContextFromViewport(currentvp, &mut vpc);
 
     let _mode_guard = if draw {
+        // SAFETY: `dd` is the live device returned by `getDevice` above.
         Some(unsafe { GridModeGuard::enter(dd) })
     } else {
         None
     };
 
+    // SAFETY: glyph-info accessors are raw engine SEXP bridges; `glyphInfo`
+    // is the checked object passed down from `L_glyph`.
     let glyphs = unsafe { ge::R_GE_glyphInfoGlyphs(glyphInfo) };
     let fonts = unsafe { ge::R_GE_glyphInfoFonts(glyphInfo) };
-    let id = unsafe { INTEGER(ge::R_GE_glyphID(glyphs)) };
-    let n = unsafe { LENGTH(ge::R_GE_glyphID(glyphs)) };
+    let glyph_id = unsafe { ge::R_GE_glyphID(glyphs) };
+    // SAFETY: `GEGlyph` below needs the raw glyph-id buffer; the pointer is
+    // lent only for that engine call.
+    let id = unsafe { INTEGER(glyph_id) };
+    let n = LENGTH(glyph_id);
 
     // Allocate gx and gy arrays
     let mut gx: Vec<f64> = vec![0.0; n as usize];
     let mut gy: Vec<f64> = vec![0.0; n as usize];
 
     for i in 0..n {
-                        let (xx, yy) = transformLocn(x,
+        let (xx, yy) = transformLocn(
+            x,
             y,
             i,
             vpc,
             _gc.as_ptr() as *const c_void,
             vpWidthCM,
             vpHeightCM,
-            dd, &transform);
+            dd,
+            &transform,
+        );
+        // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
+        // bridges over the device state.
         gx[i as usize] = unsafe { ge::toDeviceX(xx, GE_INCHES, dd) };
         gy[i as usize] = unsafe { ge::toDeviceY(yy, GE_INCHES, dd) };
     }
 
+    // SAFETY: remaining per-glyph vectors are raw engine SEXP bridges over the
+    // live `glyphs` list returned above.
+    let glyph_font = unsafe { ge::R_GE_glyphFont(glyphs) };
+    let glyph_size = unsafe { ge::R_GE_glyphSize(glyphs) };
+    let glyph_colour = unsafe { ge::R_GE_glyphColour(glyphs) };
+
     let mut offset: c_int = 0;
     for i in 0..nruns {
-        let run_length = unsafe { *INTEGER(runs).add(i as usize) };
-        let font = unsafe {
-            VECTOR_ELT(
-                fonts,
-                (*INTEGER(ge::R_GE_glyphFont(glyphs)).add(offset as usize) - 1) as R_xlen_t,
-            )
-        };
-        let size = unsafe { *REAL(ge::R_GE_glyphSize(glyphs)).add(offset as usize) };
+        let run_length = integer_elt(runs, i as R_xlen_t);
+        let font = vector_elt(
+            fonts,
+            (integer_elt(glyph_font, offset as R_xlen_t) - 1) as R_xlen_t,
+        );
+        let size = real_elt(glyph_size, offset as R_xlen_t);
         let glyph_rotation = if unsafe { ge::R_GE_hasGlyphRotation(glyphs) } != 0 {
-            unsafe { *REAL(ge::R_GE_glyphRotation(glyphs)).add(offset as usize) }
+            // SAFETY: presence was just confirmed by the flag above.
+            real_elt(unsafe { ge::R_GE_glyphRotation(glyphs) }, offset as R_xlen_t)
         } else {
             0.0
         };
         let final_rotation = rotationAngle + glyph_rotation;
 
         let mut colstr: [std::os::raw::c_char; 51] = [0; 51];
+        let colour_src = char_ptr(string_elt(glyph_colour, offset as R_xlen_t));
+        // SAFETY: `colour_src` is a NUL-terminated CHAR payload; the 51-byte
+        // destination buffer is fully initialized and truncated like the C
+        // original.
         unsafe {
-            std::ptr::copy_nonoverlapping(
-                CHAR(STRING_ELT(ge::R_GE_glyphColour(glyphs), offset as R_xlen_t)),
-                colstr.as_mut_ptr(),
-                50,
-            );
+            std::ptr::copy_nonoverlapping(colour_src, colstr.as_mut_ptr(), 50);
         }
+        // SAFETY: `colstr` is a NUL-terminated buffer sized for the parser.
         let colour = unsafe { colors::R_GE_str2col(colstr.as_ptr()) as c_int };
 
+        // SAFETY: `id`, `gx`, `gy`, `font` and `dd` are the raw engine-side
+        // pointers this bridge consumes; all were produced above.
         unsafe {
             ge::GEGlyph(
                 run_length,
@@ -186,7 +204,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
 // L_glyph — public entry point for glyph rendering
 // ---------------------------------------------------------------------------
 
-pub unsafe fn L_glyph(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    unsafe { renderGlyphs(runs, glyphInfo, x, y, true) };
+pub fn L_glyph(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP) -> SEXP {
+    renderGlyphs(runs, glyphInfo, x, y, true);
     R_NilValue()
 }
