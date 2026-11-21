@@ -8,22 +8,6 @@ use super::*;
 
 pub(crate) const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
-/// Build a CHARSXP from a borrowed NUL-terminated name.
-///
-/// SAFETY contract (crate-internal): callers only pass pointers produced by
-/// `RGB2rgb_func`/`RGBA2rgb_func`, `incol2name`, the `COLOR_DATA_BASE` name
-/// table, or byte-string literals, all of which are NUL-terminated and live
-/// for the duration of the R session.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn mk_char_ptr(name: *const c_char) -> SEXP {
-    unsafe { Rf_mkChar(name) }
-}
-
 #[inline]
 fn hex_pair(v: u32) -> [u8; 2] {
     [
