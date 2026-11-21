@@ -59,87 +59,84 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol (install if needed).
 #[inline]
 fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(c"dim".as_ptr()) }
+    crate::sexp::symbol::install_str("dim")
 }
 
 /// Get the "names" symbol.
 #[inline]
 fn sym_Names() -> SEXP {
-    unsafe { Rf_install(c"names".as_ptr()) }
+    crate::sexp::symbol::install_str("names")
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(c"dimnames".as_ptr()) }
+    crate::sexp::symbol::install_str("dimnames")
 }
 
 /// Get the "class" symbol.
 #[inline]
 fn sym_Class() -> SEXP {
-    unsafe { Rf_install(c"class".as_ptr()) }
+    crate::sexp::symbol::install_str("class")
 }
 
 /// Get the "srcref" symbol.
 #[inline]
 fn sym_Srcref() -> SEXP {
-    unsafe { Rf_install(c"srcref".as_ptr()) }
+    crate::sexp::symbol::install_str("srcref")
 }
 
 /// Get the "tsp" symbol.
 #[inline]
 fn sym_Tsp() -> SEXP {
-    unsafe { Rf_install(c"tsp".as_ptr()) }
+    crate::sexp::symbol::install_str("tsp")
 }
 
 /// Get the "tzone" symbol.
 #[inline]
 fn sym_Tzone() -> SEXP {
-    unsafe { Rf_install(c"tzone".as_ptr()) }
+    crate::sexp::symbol::install_str("tzone")
 }
 
 /// Get the "drop" symbol.
 #[inline]
 fn sym_Drop() -> SEXP {
-    unsafe { Rf_install(c"drop".as_ptr()) }
+    crate::sexp::symbol::install_str("drop")
 }
 
 /// Get the "exact" symbol.
 #[inline]
 fn sym_Exact() -> SEXP {
-    unsafe { Rf_install(c"exact".as_ptr()) }
+    crate::sexp::symbol::install_str("exact")
 }
 
 /// Get the "contrasts" symbol.
 #[inline]
 fn sym_Contrasts() -> SEXP {
-    unsafe { Rf_install(c"contrasts".as_ptr()) }
+    crate::sexp::symbol::install_str("contrasts")
 }
 
 /// Get the "row.names" symbol.
 #[inline]
 fn sym_RowNames() -> SEXP {
-    unsafe { Rf_install(c"row.names".as_ptr()) }
+    crate::sexp::symbol::install_str("row.names")
 }
 
 pub(crate) fn is_data_frame(x: SEXP) -> bool {
-    unsafe {
-        let class = getAttrib(x, sym_Class());
-        if isNull(class) || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        for i in 0..XLENGTH(class) {
-            let elt = STRING_ELT(class, i);
-            if isNull(elt) {
-                continue;
-            }
-            let ptr = CHAR(elt);
-            if !ptr.is_null() && std::ffi::CStr::from_ptr(ptr).to_str().ok() == Some("data.frame") {
-                return true;
-            }
-        }
-        false
+    let class = getAttrib(x, sym_Class());
+    if isNull(class) || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return false;
     }
+    for i in 0..XLENGTH(class) {
+        let elt = STRING_ELT(class, i);
+        if isNull(elt) {
+            continue;
+        }
+        if char_bytes(elt) == b"data.frame" {
+            return true;
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -187,37 +184,35 @@ fn isLanguage(x: SEXP) -> bool {
 
 /// Names of a pairlist/language object from cell tags, like names().
 fn pairlist_tag_names(x: SEXP) -> SEXP {
-    unsafe {
-        let n = xlength(x);
-        if n <= 0 {
-            return R_NilValue();
-        }
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if names.is_null() {
-            return R_NilValue();
-        }
-        let _names_guard = protect(names);
-        let mut cell = x;
-        let mut i: R_xlen_t = 0;
-        let mut any = false;
-        while !cell.is_null() && cell != R_NilValue() && i < n {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let printname = PRINTNAME(tag);
-                if !printname.is_null() && printname != R_NilValue() {
-                    SET_STRING_ELT(names, i, printname);
-                    any = true;
-                } else {
-                    SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
-                }
-            } else {
-                SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
-            }
-            i += 1;
-            cell = CDR(cell);
-        }
-        if any { names } else { R_NilValue() }
+    let n = xlength(x);
+    if n <= 0 {
+        return R_NilValue();
     }
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if names.is_null() {
+        return R_NilValue();
+    }
+    let _names_guard = protect(names);
+    let mut cell = x;
+    let mut i: R_xlen_t = 0;
+    let mut any = false;
+    while !cell.is_null() && cell != R_NilValue() && i < n {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let printname = PRINTNAME(tag);
+            if !printname.is_null() && printname != R_NilValue() {
+                SET_STRING_ELT(names, i, printname);
+                any = true;
+            } else {
+                SET_STRING_ELT(names, i, mk_char(""));
+            }
+        } else {
+            SET_STRING_ELT(names, i, mk_char(""));
+        }
+        i += 1;
+        cell = CDR(cell);
+    }
+    if any { names } else { R_NilValue() }
 }
 
 /// Check if x is an environment.
@@ -264,43 +259,35 @@ fn isObject(x: SEXP) -> bool {
 
 /// Check if x is a matrix (has "dim" attribute of length 2).
 fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        !isNull(dim) && LENGTH(dim) == 2
-    }
+    let dim = getAttrib(x, sym_Dim());
+    !isNull(dim) && LENGTH(dim) == 2
 }
 
 /// Check if x is an array (has "dim" attribute of length >= 1).
 fn isArray(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        !isNull(dim) && LENGTH(dim) >= 1
-    }
+    let dim = getAttrib(x, sym_Dim());
+    !isNull(dim) && LENGTH(dim) >= 1
 }
 
 /// Get the number of rows of x (assumes matrix).
 fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        if isNull(dim) {
-            return LENGTH(x);
-        }
-        INTEGER_ELT(dim, 0)
+    let dim = getAttrib(x, sym_Dim());
+    if isNull(dim) {
+        return LENGTH(x);
     }
+    INTEGER_ELT(dim, 0)
 }
 
 /// Get the number of columns of x (assumes matrix).
 fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        if isNull(dim) {
-            return 1;
-        }
-        if LENGTH(dim) >= 2 {
-            INTEGER_ELT(dim, 1)
-        } else {
-            1
-        }
+    let dim = getAttrib(x, sym_Dim());
+    if isNull(dim) {
+        return 1;
+    }
+    if LENGTH(dim) >= 2 {
+        INTEGER_ELT(dim, 1)
+    } else {
+        1
     }
 }
 
@@ -348,10 +335,28 @@ fn ENSURE_NAMEDMAX(x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get attribute -- delegates to the eval/attrib_core implementation.
-use crate::eval::attrib_core::getAttrib;
+use crate::sexp::attrib_core::getAttrib;
 
 /// Set attribute -- delegates to the eval/attrib_core implementation.
-use crate::eval::attrib_core::setAttrib;
+fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    // SAFETY: callers pass live, rooted nodes of the current subset call; the
+    // evaluator setter keeps GNU attribute normalization (names, class, tsp).
+    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) }
+}
+
+/// Raw CHAR bytes of a CHARSXP (GNU `CHAR(x)`).
+fn char_bytes(x: SEXP) -> Vec<u8> {
+    crate::mainutils::printutils::charsxp_bytes(x)
+}
+
+/// Checked CHARSXP for `text` on the active session heap (`Rf_mkChar`).
+fn mk_char(text: &str) -> SEXP {
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .character(text)
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
 
 // ---------------------------------------------------------------------------
 // Internal error helpers (module-private)
@@ -479,128 +484,126 @@ fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 /// because callers pass freshly allocated subset results (dropping a
 /// singleton dimension never reorders column-major data).
 fn DropDims(x: SEXP) -> SEXP {
-    unsafe {
-        if isNull(x) {
-            return x;
-        }
-        let dim = getAttrib(x, sym_Dim());
-        if isNull(dim) {
-            return x;
-        }
-        let ndim = LENGTH(dim);
-        if ndim < 2 {
-            return x;
-        }
-
-        let mut kept: Vec<c_int> = Vec::with_capacity(ndim as usize);
-        let mut kept_idx: Vec<c_int> = Vec::with_capacity(ndim as usize);
-        for i in 0..ndim {
-            let d = INTEGER_ELT(dim, i);
-            if d != 1 {
-                kept.push(d);
-                kept_idx.push(i);
-            }
-        }
-
-        let dimnames = getAttrib(x, sym_DimNames());
-        let _dimnames_guard = protect(dimnames);
-        let slot = |i: c_int| -> SEXP {
-            if dimnames.is_null()
-                || dimnames == R_NilValue()
-                || TYPEOF(dimnames) != SEXPTYPE::VECSXP
-                || i >= LENGTH(dimnames)
-            {
-                R_NilValue()
-            } else {
-                VECTOR_ELT(dimnames, i as R_xlen_t)
-            }
-        };
-
-        if kept.is_empty() {
-            setAttrib(x, sym_Dim(), R_NilValue());
-            setAttrib(x, sym_DimNames(), R_NilValue());
-            let mut chosen = R_NilValue();
-            let mut found = 0;
-            for i in 0..ndim {
-                let candidate = slot(i);
-                if !isNull(candidate) && candidate != R_NilValue() {
-                    found += 1;
-                    chosen = candidate;
-                }
-            }
-            if found == 1 {
-                setAttrib(x, sym_Names(), chosen);
-            }
-            return x;
-        }
-        if kept.len() == 1 {
-            // Single surviving dimension: plain vector, with that
-            // dimension's names carried over as vector names.
-            let names = slot(kept_idx[0]);
-            let _names_guard = protect(names);
-            setAttrib(x, sym_Dim(), R_NilValue());
-            setAttrib(x, sym_DimNames(), R_NilValue());
-            if !isNull(names) && names != R_MissingArg() {
-                setAttrib(x, sym_Names(), names);
-            }
-            return x;
-        }
-
-        let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept.len() as R_xlen_t);
-        let _new_dim_guard = protect(new_dim);
-        for (j, d) in kept.iter().enumerate() {
-            *INTEGER(new_dim).add(j) = *d;
-        }
-        let dim_names = getAttrib(dim, sym_Names());
-        if !isNull(dim_names) && TYPEOF(dim_names) == SEXPTYPE::STRSXP {
-            let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
-            let _new_names = protect(new_names);
-            for (j, i) in kept_idx.iter().enumerate() {
-                SET_STRING_ELT(
-                    new_names,
-                    j as R_xlen_t,
-                    STRING_ELT(dim_names, *i as R_xlen_t),
-                );
-            }
-            setAttrib(new_dim, sym_Names(), new_names);
-        }
-        setAttrib(x, sym_Dim(), new_dim);
-
-        if !dimnames.is_null() && dimnames != R_NilValue() {
-            let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, kept.len() as R_xlen_t);
-            let _new_dimnames_guard = protect(new_dimnames);
-            let mut any = false;
-            for (j, i) in kept_idx.iter().enumerate() {
-                let slot_i = slot(*i);
-                if !slot_i.is_null() && slot_i != R_NilValue() {
-                    any = true;
-                }
-                SET_VECTOR_ELT(new_dimnames, j as R_xlen_t, slot_i);
-            }
-            if any {
-                let dimnames_names = getAttrib(dimnames, sym_Names());
-                let _dimnames_names_guard = protect(dimnames_names);
-                if !isNull(dimnames_names) && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP {
-                    let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
-                    let _new_names = protect(new_names);
-                    for (j, i) in kept_idx.iter().enumerate() {
-                        if (*i as R_xlen_t) < XLENGTH(dimnames_names) {
-                            SET_STRING_ELT(
-                                new_names,
-                                j as R_xlen_t,
-                                STRING_ELT(dimnames_names, *i as R_xlen_t),
-                            );
-                        }
-                    }
-                    setAttrib(new_dimnames, sym_Names(), new_names);
-                }
-                setAttrib(x, sym_DimNames(), new_dimnames);
-            } else {
-                setAttrib(x, sym_DimNames(), R_NilValue());
-            }
-        }
-        x
+    if isNull(x) {
+        return x;
     }
+    let dim = getAttrib(x, sym_Dim());
+    if isNull(dim) {
+        return x;
+    }
+    let ndim = LENGTH(dim);
+    if ndim < 2 {
+        return x;
+    }
+
+    let mut kept: Vec<c_int> = Vec::with_capacity(ndim as usize);
+    let mut kept_idx: Vec<c_int> = Vec::with_capacity(ndim as usize);
+    for i in 0..ndim {
+        let d = INTEGER_ELT(dim, i);
+        if d != 1 {
+            kept.push(d);
+            kept_idx.push(i);
+        }
+    }
+
+    let dimnames = getAttrib(x, sym_DimNames());
+    let _dimnames_guard = protect(dimnames);
+    let slot = |i: c_int| -> SEXP {
+        if dimnames.is_null()
+            || dimnames == R_NilValue()
+            || TYPEOF(dimnames) != SEXPTYPE::VECSXP
+            || i >= LENGTH(dimnames)
+        {
+            R_NilValue()
+        } else {
+            VECTOR_ELT(dimnames, i as R_xlen_t)
+        }
+    };
+
+    if kept.is_empty() {
+        setAttrib(x, sym_Dim(), R_NilValue());
+        setAttrib(x, sym_DimNames(), R_NilValue());
+        let mut chosen = R_NilValue();
+        let mut found = 0;
+        for i in 0..ndim {
+            let candidate = slot(i);
+            if !isNull(candidate) && candidate != R_NilValue() {
+                found += 1;
+                chosen = candidate;
+            }
+        }
+        if found == 1 {
+            setAttrib(x, sym_Names(), chosen);
+        }
+        return x;
+    }
+    if kept.len() == 1 {
+        // Single surviving dimension: plain vector, with that
+        // dimension's names carried over as vector names.
+        let names = slot(kept_idx[0]);
+        let _names_guard = protect(names);
+        setAttrib(x, sym_Dim(), R_NilValue());
+        setAttrib(x, sym_DimNames(), R_NilValue());
+        if !isNull(names) && names != R_MissingArg() {
+            setAttrib(x, sym_Names(), names);
+        }
+        return x;
+    }
+
+    let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept.len() as R_xlen_t);
+    let _new_dim_guard = protect(new_dim);
+    for (j, d) in kept.iter().enumerate() {
+        SET_INTEGER_ELT(new_dim, j as c_int, *d);
+    }
+    let dim_names = getAttrib(dim, sym_Names());
+    if !isNull(dim_names) && TYPEOF(dim_names) == SEXPTYPE::STRSXP {
+        let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
+        let _new_names = protect(new_names);
+        for (j, i) in kept_idx.iter().enumerate() {
+            SET_STRING_ELT(
+                new_names,
+                j as R_xlen_t,
+                STRING_ELT(dim_names, *i as R_xlen_t),
+            );
+        }
+        setAttrib(new_dim, sym_Names(), new_names);
+    }
+    setAttrib(x, sym_Dim(), new_dim);
+
+    if !dimnames.is_null() && dimnames != R_NilValue() {
+        let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, kept.len() as R_xlen_t);
+        let _new_dimnames_guard = protect(new_dimnames);
+        let mut any = false;
+        for (j, i) in kept_idx.iter().enumerate() {
+            let slot_i = slot(*i);
+            if !slot_i.is_null() && slot_i != R_NilValue() {
+                any = true;
+            }
+            SET_VECTOR_ELT(new_dimnames, j as R_xlen_t, slot_i);
+        }
+        if any {
+            let dimnames_names = getAttrib(dimnames, sym_Names());
+            let _dimnames_names_guard = protect(dimnames_names);
+            if !isNull(dimnames_names) && TYPEOF(dimnames_names) == SEXPTYPE::STRSXP {
+                let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept.len() as R_xlen_t);
+                let _new_names = protect(new_names);
+                for (j, i) in kept_idx.iter().enumerate() {
+                    if (*i as R_xlen_t) < XLENGTH(dimnames_names) {
+                        SET_STRING_ELT(
+                            new_names,
+                            j as R_xlen_t,
+                            STRING_ELT(dimnames_names, *i as R_xlen_t),
+                        );
+                    }
+                }
+                setAttrib(new_dimnames, sym_Names(), new_names);
+            }
+            setAttrib(x, sym_DimNames(), new_dimnames);
+        } else {
+            setAttrib(x, sym_DimNames(), R_NilValue());
+        }
+    }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -625,7 +628,7 @@ fn GetRowNames(dimnames: SEXP) -> SEXP {
 
 /// Get the dimnames attribute of x.
 fn GetArrayDimnames(x: SEXP) -> SEXP {
-    unsafe { getAttrib(x, sym_DimNames()) }
+    getAttrib(x, sym_DimNames())
 }
 
 // ---------------------------------------------------------------------------
@@ -634,25 +637,18 @@ fn GetArrayDimnames(x: SEXP) -> SEXP {
 
 /// Install a symbol from a CHARSXP (translate character).
 pub(crate) fn installTrChar(input: SEXP) -> SEXP {
-    unsafe {
-        if isNull(input) {
-            return R_NilValue();
-        }
-        let c = CHAR(input);
-        if c.is_null() {
-            return R_NilValue();
-        }
-        Rf_install(c)
+    if isNull(input) {
+        return R_NilValue();
+    }
+    match std::str::from_utf8(&char_bytes(input)) {
+        Ok(name) => crate::sexp::symbol::install_str(name),
+        Err(_) => ptr::null_mut(),
     }
 }
 
 // ---------------------------------------------------------------------------
 // translateChar -- get the UTF-8 string from a CHARSXP
 // ---------------------------------------------------------------------------
-
-unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(x) }
-}
 
 // ---------------------------------------------------------------------------
 // checkArity -- local stub (no-op for now)
@@ -690,43 +686,38 @@ enum pmatch {
 /// Returns EXACT_MATCH if strings are identical, PARTIAL_MATCH if target
 /// starts with the input prefix, NO_MATCH otherwise.
 fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
-    unsafe {
-        if isNull(target) {
-            return pmatch::NO_MATCH;
-        }
+    if isNull(target) {
+        return pmatch::NO_MATCH;
+    }
 
-        let st: *const c_char = match TYPEOF(target) {
-            t if t == SEXPTYPE::SYMSXP => CHAR(PRINTNAME(target)),
-            t if t == SEXPTYPE::CHARSXP => translateChar(target),
-            _ => return pmatch::NO_MATCH,
-        };
+    let st = match TYPEOF(target) {
+        t if t == SEXPTYPE::SYMSXP => PRINTNAME(target),
+        t if t == SEXPTYPE::CHARSXP => target,
+        _ => return pmatch::NO_MATCH,
+    };
+    if st.is_null() || input.is_null() {
+        return pmatch::NO_MATCH;
+    }
 
-        let si = translateChar(input);
-        if st.is_null() || si.is_null() {
-            return pmatch::NO_MATCH;
-        }
+    let st_owned = char_bytes(st);
+    let si_owned = char_bytes(input);
+    let st_bytes = st_owned.as_slice();
+    let si_bytes = si_owned.as_slice();
 
-        let st_slice = std::ffi::CStr::from_ptr(st);
-        let si_slice = std::ffi::CStr::from_ptr(si);
+    // input must be non-empty
+    if si_bytes.is_empty() {
+        return pmatch::NO_MATCH;
+    }
 
-        let st_bytes = st_slice.to_bytes();
-        let si_bytes = si_slice.to_bytes();
-
-        // input must be non-empty
-        if si_bytes.is_empty() {
-            return pmatch::NO_MATCH;
-        }
-
-        // target must start with input
-        if slen <= st_bytes.len() && st_bytes[..slen] == *si_bytes {
-            if st_bytes.len() == slen {
-                pmatch::EXACT_MATCH
-            } else {
-                pmatch::PARTIAL_MATCH
-            }
+    // target must start with input
+    if slen <= st_bytes.len() && st_bytes[..slen] == *si_bytes {
+        if st_bytes.len() == slen {
+            pmatch::EXACT_MATCH
         } else {
-            pmatch::NO_MATCH
+            pmatch::PARTIAL_MATCH
         }
+    } else {
+        pmatch::NO_MATCH
     }
 }
 

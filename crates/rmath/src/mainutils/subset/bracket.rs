@@ -552,23 +552,21 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         /// `|n|`. A 2-D AsIs column has length nrow*ncol, so `length(x[[1]])`
         /// is the wrong unit.
         fn data_frame_nrows(x: SEXP, first: SEXP) -> c_int {
-            unsafe {
-                let rownames = getAttrib(x, sym_RowNames());
-                if TYPEOF(rownames) == SEXPTYPE::INTSXP
-                    && length_int(rownames) == 2
-                    && INTEGER_ELT(rownames, 0) == NA_INTEGER
-                {
-                    let n = INTEGER_ELT(rownames, 1);
-                    return if n == c_int::MIN { 0 } else { n.abs() };
-                }
-                if !isNull(rownames) && length_int(rownames) > 0 {
-                    return length_int(rownames);
-                }
-                if isMatrix(first) {
-                    return nrows(first);
-                }
-                length_int(first)
+            let rownames = getAttrib(x, sym_RowNames());
+            if TYPEOF(rownames) == SEXPTYPE::INTSXP
+                && length_int(rownames) == 2
+                && INTEGER_ELT(rownames, 0) == NA_INTEGER
+            {
+                let n = INTEGER_ELT(rownames, 1);
+                return if n == c_int::MIN { 0 } else { n.abs() };
             }
+            if !isNull(rownames) && length_int(rownames) > 0 {
+                return length_int(rownames);
+            }
+            if isMatrix(first) {
+                return nrows(first);
+            }
+            length_int(first)
         }
         fn fix_na_row_names(rows: SEXP) -> SEXP {
             unsafe {
