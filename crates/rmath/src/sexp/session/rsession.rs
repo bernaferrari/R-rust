@@ -308,8 +308,8 @@ impl RSession {
     pub(crate) fn construct_detached(constructor: impl FnOnce() -> Self) -> Self {
         let _ambient = CurrentInstanceGuard::detached();
         let session = constructor();
-        detach_state(unsafe { &(*session.instance).math_state });
-        detach_rng(unsafe { &(*session.instance).rng_state });
+        detach_state(&session.inst().math_state);
+        detach_rng(&session.inst().rng_state);
         clear_current_instance_if(session.instance);
         session
     }
@@ -351,16 +351,11 @@ impl RSession {
     }
     pub fn get_browser_file(&mut self, path: &str) -> Option<Vec<u8>> {
         let _guard = self.activate();
-        unsafe {
-            (*self.instance)
-                .browser_files
-                .read(path)
-                .map(<[u8]>::to_vec)
-        }
+        self.inst().browser_files.read(path).map(<[u8]>::to_vec)
     }
     pub fn list_browser_files(&mut self) -> Vec<String> {
         let _guard = self.activate();
-        unsafe { (*self.instance).browser_files.names() }
+        self.inst().browser_files.names()
     }
     pub fn remove_browser_file(&mut self, path: &str) -> bool {
         let _guard = self.activate();
