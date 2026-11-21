@@ -277,7 +277,7 @@ fn init_loaded_dll() {
 }
 
 /// Called at R startup to initialize dynamic loading.
-pub unsafe fn InitDynload() {
+pub fn InitDynload() {
     unsafe {
         init_loaded_dll();
 
@@ -360,11 +360,11 @@ unsafe extern "C" {
 // wasm-libc facade, with dlsym always failing (the dynload reject policy —
 // nothing is ever loaded, so nothing can be looked up).
 #[cfg(target_arch = "wasm32")]
-unsafe fn malloc(size: usize) -> *mut c_void {
+fn malloc(size: usize) -> *mut c_void {
     unsafe { crate::mainutils::raw_heap::malloc(size) }
 }
 #[cfg(target_arch = "wasm32")]
-unsafe fn calloc(nmemb: usize, size: usize) -> *mut c_void {
+fn calloc(nmemb: usize, size: usize) -> *mut c_void {
     unsafe { crate::mainutils::raw_heap::calloc(nmemb, size) }
 }
 #[cfg(target_arch = "wasm32")]
@@ -438,7 +438,7 @@ unsafe fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void {
     }
 }
 
-unsafe fn libc_malloc(size: usize) -> *mut c_void {
+fn libc_malloc(size: usize) -> *mut c_void {
     unsafe { malloc(size) }
 }
 
@@ -446,7 +446,7 @@ unsafe fn libc_free(ptr: *mut c_void) {
     unsafe { free(ptr) }
 }
 
-unsafe fn libc_calloc(n: usize, size: usize) -> *mut c_void {
+fn libc_calloc(n: usize, size: usize) -> *mut c_void {
     unsafe { calloc(n, size) }
 }
 
@@ -490,7 +490,7 @@ fn R_getDllIndex(info: *mut DllInfo) -> isize {
 // R_getEmbeddingDllInfo
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_getEmbeddingDllInfo() -> *mut DllInfo {
+pub fn R_getEmbeddingDllInfo() -> *mut DllInfo {
     unsafe {
         let embed_path = b"(embedding)\0".as_ptr() as *const c_char;
         let mut dll = R_getDllInfo(embed_path);
@@ -1018,7 +1018,7 @@ unsafe fn call_init_routine(info: *mut DllInfo) {
 // R_getSymbolInfo — resolve a symbol and return its info as an SEXP
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) -> SEXP {
+pub fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(spackage) == SEXPTYPE::EXTPTRSXP {
             let result = (|| {
@@ -1124,16 +1124,14 @@ pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: S
 // R_getDllTable — return info on all loaded DLLs
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_getDllTable() -> SEXP {
-    unsafe {
-        if native_extensions_enabled() {
-            return legacy_foreign_dll_table();
-        }
-        bundled_dll_table_entry()
+pub fn R_getDllTable() -> SEXP {
+    if native_extensions_enabled() {
+        return legacy_foreign_dll_table();
     }
+    bundled_dll_table_entry()
 }
 
-unsafe fn bundled_dll_table_entry() -> SEXP {
+fn bundled_dll_table_entry() -> SEXP {
     unsafe {
         let result = (|| {
             let owner = crate::sexp::owner::OwnerToken::current()?;
@@ -1154,7 +1152,7 @@ unsafe fn bundled_dll_table_entry() -> SEXP {
     }
 }
 
-unsafe fn legacy_foreign_dll_table() -> SEXP {
+fn legacy_foreign_dll_table() -> SEXP {
     unsafe {
         let dlls = with_dynload_state(|state| state.loaded_dll.clone());
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, dlls.len() as c_int);
@@ -1248,7 +1246,7 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
 // R_getRegisteredRoutines — return registered routines for a DLL
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
+pub fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
     unsafe {
         // In a full implementation, we'd extract the DllInfo* from the external pointer.
         // For now, return empty lists since we don't have a real external pointer to dereference.
@@ -1275,7 +1273,7 @@ pub unsafe fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// `.Internal(dyn.load(...))` handler.
-pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if native_dynamic_loading_policy_enabled() {
             native_dynamic_loading_policy_error("dyn.load()");
@@ -1319,7 +1317,7 @@ pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 /// `.Internal(dyn.unload(...))` handler.
-pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if native_dynamic_loading_policy_enabled() {
             native_dynamic_loading_policy_error("dyn.unload()");
@@ -1344,7 +1342,7 @@ pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // do_getSymbolInfo / do_getDllTable / do_getRegisteredRoutines
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         // The public pure-R wrapper admits only authenticated bundled DLL
@@ -1359,14 +1357,14 @@ pub unsafe fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
     }
 }
 
-pub unsafe fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         bundled_dll_table_entry()
     }
 }
 
-pub unsafe fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         R_getRegisteredRoutines(CAR(args))
@@ -1395,7 +1393,7 @@ pub unsafe fn R_moduleCdynload(module: *const c_char, local: c_int, now: c_int) 
     }
 }
 
-pub unsafe fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
+pub fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
     unsafe {
         let r_home = std::env::var("R_HOME").unwrap_or_default();
         if r_home.is_empty() {
