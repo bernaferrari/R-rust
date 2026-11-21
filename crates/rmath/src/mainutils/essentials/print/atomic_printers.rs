@@ -261,7 +261,7 @@ pub(crate) fn append_closure_environment(x: SEXP, rendered: &mut String) {
 
 /// R's `print.environment(x)` — print environment summary.
 pub fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             println!("NULL");

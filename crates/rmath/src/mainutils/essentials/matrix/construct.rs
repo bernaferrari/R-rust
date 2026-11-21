@@ -1945,8 +1945,7 @@ pub fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// PRIMNAME(op) (`as.numeric.*`); S4 methods on `as.numeric` go through
 /// `R_possible_dispatch(op)` inside DispatchOrEval.
 pub fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    // SAFETY: forwards the raw native call boundary unchanged.
-    unsafe { do_as_double(call, op, args, rho) }
+    do_as_double(call, op, args, rho)
 }
 
 /// GNU `embed(x, dimension)`.

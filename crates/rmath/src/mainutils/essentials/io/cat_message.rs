@@ -6,7 +6,7 @@ use super::*;
 
 /// R-like `cat_args(...)` — cat with better formatting.
 pub fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_cat(_call, _op, args, _rho) }
+    do_cat(_call, _op, args, _rho)
 }
 
 /// R-like `message_args(...)` — message with domain.
@@ -476,10 +476,8 @@ pub fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's enhanced `cat(..., file, sep, fill, labels, append)` — simplified.
 pub fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Simplified: delegates to existing do_cat
-        do_cat(_call, _op, args, _rho)
-    }
+    // Simplified: delegates to existing do_cat
+    do_cat(_call, _op, args, _rho)
 }
 
 /// R's enhanced `message(..., domain, appendLF)` — simplified.

@@ -320,7 +320,7 @@ pub fn do_length_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `names(x)` for lists — names of list elements.
 /// Wrapper that delegates to do_names.
 pub fn do_names_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_names(_call, _op, args, _rho) }
+    do_names(_call, _op, args, _rho)
 }
 
 /// R's `[[i]]` — get element i from a list (1-indexed).

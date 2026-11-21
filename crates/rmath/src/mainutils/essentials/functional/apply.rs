@@ -591,7 +591,7 @@ pub(super) fn vapply_use_names(args: SEXP, rho: SEXP) -> bool {
 /// pairlists, calls, expressions, environments — goes through as.list
 /// (which flattens atomic input, matching as.list.default).
 pub(super) fn normalize_vapply_x(x: SEXP) -> SEXP {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }

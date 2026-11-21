@@ -31,14 +31,12 @@ pub(super) fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SEXP {
                         let factory = original.node_factory();
                         let arguments =
                             factory.pairlist_cell(value, &factory.nil(), &factory.nil())?;
-                        unsafe {
-                            crate::mainutils::essentials_basic::do_as_character(
-                                factory.nil().as_raw(),
-                                factory.nil().as_raw(),
-                                arguments.as_raw(),
-                                environment.as_raw(),
-                            )
-                        }
+                        crate::mainutils::essentials_basic::do_as_character(
+                            factory.nil().as_raw(),
+                            factory.nil().as_raw(),
+                            arguments.as_raw(),
+                            environment.as_raw(),
+                        )
                     } else {
                         crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
                     };

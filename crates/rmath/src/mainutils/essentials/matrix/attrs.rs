@@ -130,7 +130,7 @@ pub fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `names(x)` — get names attribute (alias for do_names).
 pub fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_names(_call, _op, args, _rho) }
+    do_names(_call, _op, args, _rho)
 }
 
 /// GNU `names(x) <- value`. Pairlists and language objects store names

@@ -1211,7 +1211,7 @@ mod as_data_frame_tests {
 /// R's `as.list(x)` — generic list conversion.
 /// Delegates to do_as_list but available as a separate entry point.
 pub fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_as_list(_call, _op, args, _rho) }
+    do_as_list(_call, _op, args, _rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -2311,7 +2311,7 @@ pub fn do_as_raw(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `as(x, Class)` — S4-style coercion (simplified: delegates to appropriate as.* function).
 pub fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let class_arg = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || class_arg.is_null() || class_arg == R_NilValue() {
