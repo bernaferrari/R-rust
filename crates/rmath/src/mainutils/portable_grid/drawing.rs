@@ -122,14 +122,14 @@ pub(crate) fn point_symbol(
     d
 }
 
-pub(crate) unsafe fn arrow_heads(
+pub(crate) fn arrow_heads(
     frame: &Frame,
     arrow: SEXP,
     a: Point,
     b: Point,
     i: usize,
 ) -> Vec<Drawing> {
-    unsafe {
+    {
         if arrow == R_NilValue() {
             return vec![];
         }
@@ -181,13 +181,13 @@ pub(crate) unsafe fn arrow_heads(
         out
     }
 }
-pub(crate) unsafe fn draw_commands(
+pub(crate) fn draw_commands(
     kind: &str,
     data: SEXP,
     frame: &Frame,
     target: &dyn DrawTarget,
 ) -> Vec<Drawing> {
-    unsafe {
+    {
         let default = string(field(data, "default.units"), "npc");
         let empty = |x: SEXP| x != R_NilValue() && XLENGTH(x) == 0;
         let coordinate = |name, axis, dim| units(field(data, name), &default, frame, axis, dim);
@@ -345,7 +345,11 @@ pub(crate) unsafe fn draw_commands(
             }
             "text" => {
                 let check_overlap = num(field(data, "check.overlap"), 0.) != 0.;
-                let labels = crate::mainutils::plotmath::labels(field(data, "label"));
+                // SAFETY: audited boundary — label decoding reads a live
+                // argument under the active runtime.
+                let labels = unsafe {
+                    crate::mainutils::plotmath::labels(field(data, "label"))
+                };
                 let count = labels.len();
                 if count == 0 {
                     return out;
@@ -427,7 +431,7 @@ pub(crate) unsafe fn draw_commands(
 
 macro_rules! wrapper {
     ($name:ident, $public:literal, $file:literal) => {
-        pub unsafe fn $name(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+        pub fn $name(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             unsafe {
                 crate::mainutils::base_wrappers::apply_in_environment(
                     $public,
@@ -451,8 +455,8 @@ wrapper!(
 );
 wrapper!(do_is_unit, "is.unit", "../portable_grid/is_unit.R");
 /// Number of coordinates in the portable unit representation, not list slots.
-pub(crate) unsafe fn unit_value_length(x: SEXP) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(XLENGTH(field(x, "value")) as i32) }
+pub(crate) fn unit_value_length(x: SEXP) -> SEXP {
+    scalar_integer(XLENGTH(field(x, "value")) as i32)
 }
 wrapper!(
     do_length_unit,

@@ -384,86 +384,96 @@ pub(crate) fn device() -> crate::library::grdevices::target::GraphicsTarget {
     crate::library::grdevices::device_registry::active_target()
         .unwrap_or_else(|| base_error("grid requires an active graphics device"))
 }
-pub(crate) unsafe fn field(x: SEXP, name: &str) -> SEXP {
-    unsafe {
-        if x == R_NilValue() {
-            return R_NilValue();
+pub(crate) fn field(x: SEXP, name: &str) -> SEXP {
+    if x == R_NilValue() {
+        return R_NilValue();
+    }
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        base_error("invalid grid object");
+    }
+    let names = attribute(x, names_symbol());
+    if TYPEOF(names) != SEXPTYPE::STRSXP {
+        return R_NilValue();
+    }
+    let limit = XLENGTH(x).min(XLENGTH(names));
+    if limit == 0 {
+        return R_NilValue();
+    }
+    let object = node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    for i in 0..limit {
+        if elt_to_string(names, i) == name {
+            return object
+                .try_vector_elt(i)
+                .map(|element| element.as_raw())
+                .unwrap_or_else(|error| base_error(error.to_string()));
         }
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            base_error("invalid grid object");
-        }
-        let names = getAttrib(x, R_NamesSymbol());
-        if TYPEOF(names) != SEXPTYPE::STRSXP {
-            return R_NilValue();
-        }
-        for i in 0..XLENGTH(x).min(XLENGTH(names)) {
-            if elt_to_string(names, i) == name {
-                return VECTOR_ELT(x, i);
+    }
+    R_NilValue()
+}
+pub(crate) fn numbers(x: SEXP) -> Vec<f64> {
+    if x == R_NilValue() {
+        return vec![];
+    }
+    if !matches!(
+        SEXPTYPE(TYPEOF(x)),
+        SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) {
+        base_error("grid expects numeric coordinates");
+    }
+    let object = node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    (0..XLENGTH(x))
+        .map(|i| {
+            let v = match SEXPTYPE(TYPEOF(x)) {
+                SEXPTYPE::REALSXP => object.try_real_elt(i),
+                SEXPTYPE::INTSXP => object.try_integer_elt(i).map(|n| {
+                    if n == i32::MIN { f64::NAN } else { f64::from(n) }
+                }),
+                _ => object.try_logical_elt(i).map(|n| {
+                    if n == i32::MIN { f64::NAN } else { f64::from(n) }
+                }),
+            };
+            let v = v.unwrap_or_else(|error| base_error(error.to_string()));
+            if !v.is_finite() {
+                base_error("grid coordinates must be finite");
             }
-        }
-        R_NilValue()
+            v
+        })
+        .collect()
+}
+pub(crate) fn num(x: SEXP, default: f64) -> f64 {
+    let v = numbers(x);
+    if v.is_empty() {
+        default
+    } else if v.len() == 1 {
+        v[0]
+    } else {
+        base_error("grid expected one numeric value")
     }
 }
-pub(crate) unsafe fn numbers(x: SEXP) -> Vec<f64> {
-    unsafe {
-        if x == R_NilValue() {
-            return vec![];
-        }
-        if !matches!(
-            SEXPTYPE(TYPEOF(x)),
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-        ) {
-            base_error("grid expects numeric coordinates");
-        }
-        (0..XLENGTH(x))
-            .map(|i| {
-                let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
-                } else {
-                    let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                        *INTEGER(x).add(i as usize)
-                    } else {
-                        *LOGICAL(x).add(i as usize)
-                    };
-                    if n == i32::MIN { f64::NAN } else { n as f64 }
-                };
-                if !v.is_finite() {
-                    base_error("grid coordinates must be finite");
-                }
-                v
-            })
-            .collect()
-    }
-}
-pub(crate) unsafe fn num(x: SEXP, default: f64) -> f64 {
-    unsafe {
-        let v = numbers(x);
-        if v.is_empty() {
-            default
-        } else if v.len() == 1 {
-            v[0]
-        } else {
-            base_error("grid expected one numeric value")
-        }
-    }
-}
-pub(crate) unsafe fn string(x: SEXP, default: &str) -> String {
-    unsafe {
-        if x == R_NilValue() || XLENGTH(x) == 0 {
-            default.into()
-        } else {
-            elt_to_string(x, 0)
-        }
+pub(crate) fn string(x: SEXP, default: &str) -> String {
+    if x == R_NilValue() || XLENGTH(x) == 0 {
+        default.into()
+    } else {
+        elt_to_string(x, 0)
     }
 }
 pub(crate) fn result(v: &[f64]) -> SEXP {
-    unsafe {
-        let x = Rf_allocVector3(SEXPTYPE::REALSXP, v.len() as i64);
-        for (i, value) in v.iter().enumerate() {
-            *REAL(x).add(i) = *value;
-        }
-        x
+    let factory = node_factory();
+    let vector = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, v.len() as i64)))
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    let mut vector = crate::sexp::object::SexpMut::try_from_checked(vector)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    for (i, value) in v.iter().enumerate() {
+        vector
+            .try_set_real_elt(i as i64, *value)
+            .unwrap_or_else(|error| base_error(error.to_string()));
     }
+    vector.freeze().as_raw()
 }
 pub(crate) fn plot_params(style: &Gp, dpi: f64) -> PlotParameters {
     PlotParameters {
@@ -478,24 +488,32 @@ pub(crate) fn plot_params(style: &Gp, dpi: f64) -> PlotParameters {
 /// Width and height, in device pixels, of one label at `index`.
 /// A list (stringWidth's data) selects one element; a character or
 /// expression vector selects one label. An empty string still has font height.
-pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp, dpi: f64) -> (f64, f64) {
-    unsafe {
-        if item == R_NilValue() {
-            base_error("data is required for stringWidth/stringHeight units");
+pub(crate) fn label_box(item: SEXP, index: usize, style: &Gp, dpi: f64) -> (f64, f64) {
+    if item == R_NilValue() {
+        base_error("data is required for stringWidth/stringHeight units");
+    }
+    let params = plot_params(style, dpi);
+    let element = if TYPEOF(item) == SEXPTYPE::VECSXP {
+        if XLENGTH(item) == 0 {
+            return (0., 0.);
         }
-        let params = plot_params(style, dpi);
-        let owned = if TYPEOF(item) == SEXPTYPE::VECSXP {
-            if XLENGTH(item) == 0 {
-                return (0., 0.);
-            }
-            crate::mainutils::plotmath::labels(VECTOR_ELT(item, (index as i64) % XLENGTH(item)))
-        } else {
-            crate::mainutils::plotmath::labels(item)
-        };
+        let at = (index as i64) % XLENGTH(item);
+        Some(
+            node_factory()
+                .wrap(item)
+                .and_then(|item| item.try_vector_elt(at))
+                .map(|element| element.as_raw())
+                .unwrap_or_else(|error| base_error(error.to_string())),
+        )
+    } else {
+        None
+    };
+    // SAFETY: audited boundary — label decoding reads a live argument.
+    let owned = unsafe { crate::mainutils::plotmath::labels(element.unwrap_or(item)) };
         if owned.is_empty() {
             return (0., 0.);
         }
-        let label = if TYPEOF(item) == SEXPTYPE::VECSXP {
+        let label = if element.is_some() {
             &owned[0]
         } else {
             &owned[index % owned.len()]
@@ -506,14 +524,12 @@ pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp, dpi: f64) -
             base_error("grid unit conversion overflow");
         }
         (w, h)
-    }
 }
 /// GNU sizes text by the positions actually drawn, which is
 /// max(length(x), length(y)), recycling labels. One shared anchor therefore
 /// measures only the first label. The result is the axis-aligned box after
 /// the grob's own rotation, using the grob gpar over the viewport gpar.
-pub(crate) unsafe fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axis: usize) -> f64 {
-    unsafe {
+pub(crate) fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axis: usize) -> f64 {
         let style = gp(field(grob, "gp"), frame);
         let labels = field(data, "label");
         if labels == R_NilValue() || XLENGTH(labels) == 0 {
@@ -554,11 +570,9 @@ pub(crate) unsafe fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axi
             base_error("grid unit conversion overflow");
         }
         extent
-    }
 }
-pub(crate) unsafe fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 {
-    unsafe {
-        if grob == R_NilValue() || !crate::mainutils::essentials::sexp_has_class(grob, "grob") {
+pub(crate) fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 {
+        if grob == R_NilValue() || !has_class(grob, "grob") {
             base_error("grob unit data must be a grob");
         }
         let kind = string(field(grob, "primitive"), "");
@@ -570,16 +584,14 @@ pub(crate) unsafe fn grob_extent(grob: SEXP, frame: &Frame, axis: usize) -> f64 
             ("text", _) => text_grob_extent(grob, data, frame, axis),
             _ => base_error(format!("grob unit is not supported for primitive '{kind}'")),
         }
-    }
 }
-pub(crate) unsafe fn units(
+pub(crate) fn units(
     x: SEXP,
     default: &str,
     frame: &Frame,
     axis: usize,
     dimension: bool,
 ) -> Vec<f64> {
-    unsafe {
         let (values, names, data) = if TYPEOF(x) == SEXPTYPE::VECSXP {
             (
                 numbers(field(x, "value")),
@@ -592,6 +604,14 @@ pub(crate) unsafe fn units(
         if values.is_empty() {
             base_error("grid unit must have positive length");
         }
+        let data_element = |i: usize| -> SEXP {
+            let at = i as i64 % XLENGTH(data);
+            node_factory()
+                .wrap(data)
+                .and_then(|data| data.try_vector_elt(at))
+                .map(|element| element.as_raw())
+                .unwrap_or_else(|error| base_error(error.to_string()))
+        };
         values
             .into_iter()
             .enumerate()
@@ -608,7 +628,7 @@ pub(crate) unsafe fn units(
                     if TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
                         base_error("invalid grid expression data");
                     }
-                    let child = VECTOR_ELT(data, (i as i64) % XLENGTH(data));
+                    let child = data_element(i);
                     let resolved = units(child, default, frame, axis, dimension);
                     if resolved.len() != 1 {
                         base_error("grid coordinate expression must resolve to one value");
@@ -621,7 +641,7 @@ pub(crate) unsafe fn units(
                 {
                     let mut parts = Vec::new();
                     for j in 0..XLENGTH(data) {
-                        parts.push(units(VECTOR_ELT(data, j), default, frame, axis, dimension));
+                        parts.push(units(data_element(j as usize), default, frame, axis, dimension));
                     }
                     let terms = parts.into_iter().flatten();
                     return v * match name.as_str() {
@@ -663,10 +683,8 @@ pub(crate) unsafe fn units(
                 resolved
             })
             .collect()
-    }
 }
-pub(crate) unsafe fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
-    unsafe {
+pub(crate) fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
         if x == R_NilValue() {
             return old.to_vec();
         }
@@ -681,7 +699,11 @@ pub(crate) unsafe fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
         }
         (0..XLENGTH(x))
             .map(|i| {
-                let c = crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff);
+                // SAFETY: audited boundary — device color conversion reads a
+                // live argument element.
+                let c = unsafe {
+                    crate::library::grdevices::colors::inRGBpar3(x, i as i32, 0x00ffffff)
+                };
                 Color {
                     r: c as u8,
                     g: (c >> 8) as u8,
@@ -690,15 +712,13 @@ pub(crate) unsafe fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
                 }
             })
             .collect()
-    }
 }
-pub(crate) unsafe fn gp(x: SEXP, frame: &Frame) -> Gp {
-    unsafe {
+pub(crate) fn gp(x: SEXP, frame: &Frame) -> Gp {
         let mut p = frame.gp.clone();
         if x == R_NilValue() {
             return p;
         }
-        let names = getAttrib(x, R_NamesSymbol());
+        let names = attribute(x, names_symbol());
         for i in 0..XLENGTH(names) {
             let name = elt_to_string(names, i);
             if !matches!(
@@ -775,5 +795,4 @@ pub(crate) unsafe fn gp(x: SEXP, frame: &Frame) -> Gp {
             p.lineheight = num(field(x, "lineheight"), 1.2);
         }
         p
-    }
 }
