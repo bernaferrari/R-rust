@@ -14,12 +14,14 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::protect;
 use crate::{mainutils::colors::RGBpar3, mainutils::engine as ge};
 
 use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
-use super::{char_ptr, integer_elt, real_elt, set_vector_elt, string_elt, vector_elt};
+use super::{
+    alloc_vector, char_ptr, integer_elt, mk_string, protect, real_elt, scalar_integer,
+    scalar_real, set_vector_elt, string_elt, vector_elt,
+};
 use super::types::{GSS_GPAR, GSS_GPSAVED};
 
 // GP_* constants from types.rs
@@ -75,7 +77,7 @@ pub fn gpColSXP(gp: SEXP) -> SEXP {
     vector_elt(gp, GP_COL as R_xlen_t)
 }
 
-pub unsafe fn gpCol(gp: SEXP, i: c_int) -> c_int {
+pub fn gpCol(gp: SEXP, i: c_int) -> c_int {
     if gp.is_null() || Rf_isNull(gp) != 0 {
         return R_TRANWHITE;
     }
@@ -93,7 +95,7 @@ pub fn gpFillSXP(gp: SEXP) -> SEXP {
     vector_elt(gp, GP_FILL as R_xlen_t)
 }
 
-pub unsafe fn gpFill(gp: SEXP, i: c_int) -> c_int {
+pub fn gpFill(gp: SEXP, i: c_int) -> c_int {
     if gp.is_null() || Rf_isNull(gp) != 0 {
         return R_TRANWHITE;
     }
@@ -121,7 +123,7 @@ pub fn gpLineTypeSXP(gp: SEXP) -> SEXP {
     vector_elt(gp, GP_LTY as R_xlen_t)
 }
 
-pub unsafe fn gpLineType(gp: SEXP, i: c_int) -> c_int {
+pub fn gpLineType(gp: SEXP, i: c_int) -> c_int {
     let linetype = gpLineTypeSXP(gp);
     // SAFETY: `linetype` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
@@ -182,7 +184,7 @@ pub fn gpLineEndSXP(gp: SEXP) -> SEXP {
     vector_elt(gp, GP_LINEEND as R_xlen_t)
 }
 
-pub unsafe fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
+pub fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
     let lineend = gpLineEndSXP(gp);
     // SAFETY: `lineend` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
@@ -193,7 +195,7 @@ pub fn gpLineJoinSXP(gp: SEXP) -> SEXP {
     vector_elt(gp, GP_LINEJOIN as R_xlen_t)
 }
 
-pub unsafe fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
+pub fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
     let linejoin = gpLineJoinSXP(gp);
     // SAFETY: `linejoin` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
@@ -236,20 +238,16 @@ pub fn gpLineHeight2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
     real_elt(lineheight, (i % LENGTH(lineheight)) as R_xlen_t)
 }
 
-pub unsafe fn gpCol2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
+pub fn gpCol2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
     let col = gpColSXP(gp);
     gpIsScalar[GP_COL as usize] = if LENGTH(col) == 1 { 1 } else { 0 };
-    // SAFETY: delegates to the still-unsafe engine bridge above; the
-    // caller's recycle-index contract is unchanged.
-    unsafe { gpCol(gp, i) }
+    gpCol(gp, i)
 }
 
-pub unsafe fn gpFill2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
+pub fn gpFill2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
     let fill = gpFillSXP(gp);
     gpIsScalar[GP_FILL as usize] = if LENGTH(fill) == 1 { 1 } else { 0 };
-    // SAFETY: delegates to the still-unsafe engine bridge above; the
-    // caller's recycle-index contract is unchanged.
-    unsafe { gpFill(gp, i) }
+    gpFill(gp, i)
 }
 
 pub fn gpGamma2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
@@ -258,12 +256,10 @@ pub fn gpGamma2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
     real_elt(gamma, (i % LENGTH(gamma)) as R_xlen_t)
 }
 
-pub unsafe fn gpLineType2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
+pub fn gpLineType2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
     let linetype = gpLineTypeSXP(gp);
     gpIsScalar[GP_LTY as usize] = if LENGTH(linetype) == 1 { 1 } else { 0 };
-    // SAFETY: delegates to the still-unsafe engine bridge above; the
-    // caller's recycle-index contract is unchanged.
-    unsafe { gpLineType(gp, i) }
+    gpLineType(gp, i)
 }
 
 pub fn gpLineWidth2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
@@ -296,20 +292,16 @@ pub fn gpAlpha2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
     real_elt(alpha, (i % LENGTH(alpha)) as R_xlen_t)
 }
 
-pub unsafe fn gpLineEnd2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
+pub fn gpLineEnd2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
     let lineend = gpLineEndSXP(gp);
     gpIsScalar[GP_LINEEND as usize] = if LENGTH(lineend) == 1 { 1 } else { 0 };
-    // SAFETY: delegates to the still-unsafe engine bridge above; the
-    // caller's recycle-index contract is unchanged.
-    unsafe { gpLineEnd(gp, i) }
+    gpLineEnd(gp, i)
 }
 
-pub unsafe fn gpLineJoin2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
+pub fn gpLineJoin2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_int {
     let linejoin = gpLineJoinSXP(gp);
     gpIsScalar[GP_LINEJOIN as usize] = if LENGTH(linejoin) == 1 { 1 } else { 0 };
-    // SAFETY: delegates to the still-unsafe engine bridge above; the
-    // caller's recycle-index contract is unchanged.
-    unsafe { gpLineJoin(gp, i) }
+    gpLineJoin(gp, i)
 }
 
 pub fn gpLineMitre2(gp: SEXP, i: c_int, gpIsScalar: &mut [c_int]) -> c_double {
@@ -336,7 +328,7 @@ pub fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
  * gcontextFromgpar -- partial helper
  * ============================== */
 
-pub unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
+pub fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
     let gp = resolveGPar(_gp, 0);
     if gp.is_null() || Rf_isNull(gp) != 0 || _gc.is_null() {
         return;
@@ -344,26 +336,23 @@ pub unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDe
 
     // The real R_GE_gcontext layout is still opaque here, so we resolve and
     // validate the gpar values that feed it without trying to write fields.
-    // SAFETY: `gp` is a live gpar list; `_i` is the caller's recycle index.
-    let _ = unsafe {
-        (
-            gpCol(gp, _i),
-            gpFill(gp, _i),
-            gpGamma(gp, _i),
-            gpLineType(gp, _i),
-            gpLineWidth(gp, _i),
-            gpCex(gp, _i),
-            gpFontSize(gp, _i),
-            gpLineHeight(gp, _i),
-            gpFont(gp, _i),
-            gpFontFamily(gp, _i),
-            gpAlpha(gp, _i),
-            gpLineEnd(gp, _i),
-            gpLineJoin(gp, _i),
-            gpLineMitre(gp, _i),
-            gpLex(gp, _i),
-        )
-    };
+    let _ = (
+        gpCol(gp, _i),
+        gpFill(gp, _i),
+        gpGamma(gp, _i),
+        gpLineType(gp, _i),
+        gpLineWidth(gp, _i),
+        gpCex(gp, _i),
+        gpFontSize(gp, _i),
+        gpLineHeight(gp, _i),
+        gpFont(gp, _i),
+        gpFontFamily(gp, _i),
+        gpAlpha(gp, _i),
+        gpLineEnd(gp, _i),
+        gpLineJoin(gp, _i),
+        gpLineMitre(gp, _i),
+        gpLex(gp, _i),
+    );
     let _ = _gc;
     let _ = _dd;
 }
@@ -404,15 +393,14 @@ fn set_gpar_scalar_flags(gp: SEXP, gpIsScalar: &mut [c_int]) {
     }
 }
 
-pub unsafe fn initGContext(
+pub fn initGContext(
     gp: SEXP,
     gc: pGEcontext,
     dd: pGEDevDesc,
     gpIsScalar: &mut [c_int],
     gcCache: pGEcontext,
 ) {
-    // SAFETY: `gp`, `gc` and `dd` keep their raw-pointer contracts.
-    unsafe { gcontextFromgpar(gp, 0, gc, dd) };
+    gcontextFromgpar(gp, 0, gc, dd);
     set_gpar_scalar_flags(gp, gpIsScalar);
     let _ = gcCache;
 }
@@ -421,7 +409,7 @@ pub unsafe fn initGContext(
  * updateGContext -- partial helper
  * ============================== */
 
-pub unsafe fn updateGContext(
+pub fn updateGContext(
     gp: SEXP,
     i: c_int,
     gc: pGEcontext,
@@ -429,8 +417,7 @@ pub unsafe fn updateGContext(
     gpIsScalar: &mut [c_int],
     gcCache: pGEcontext,
 ) {
-    // SAFETY: `gp`, `gc` and `dd` keep their raw-pointer contracts.
-    unsafe { gcontextFromgpar(gp, i, gc, dd) };
+    gcontextFromgpar(gp, i, gc, dd);
     set_gpar_scalar_flags(gp, gpIsScalar);
     let _ = gcCache;
 }
@@ -439,73 +426,71 @@ pub unsafe fn updateGContext(
  * initGPar -- initializes grid gpar for a device
  * ============================== */
 
-pub unsafe fn initGPar(dd: pGEDevDesc) {
-    unsafe {
-        let gp = Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1);
-        let _gp_guard = protect(gp);
+pub fn initGPar(dd: pGEDevDesc) {
+    let gp = alloc_vector(SEXPTYPE::VECSXP, GP_FONTFACE + 1);
+    let _gp_guard = protect(gp);
 
-        // GP_FILL (0): transparent white
-        set_vector_elt(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(R_TRANWHITE));
+    // GP_FILL (0): transparent white
+    set_vector_elt(gp, GP_FILL as R_xlen_t, scalar_integer(R_TRANWHITE));
 
-        // GP_COL (1): black (R colour index 1)
-        set_vector_elt(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
+    // GP_COL (1): black (R colour index 1)
+    set_vector_elt(gp, GP_COL as R_xlen_t, scalar_integer(1));
 
-        // GP_GAMMA (2): 1.0
-        set_vector_elt(gp, GP_GAMMA as R_xlen_t, Rf_ScalarReal(1.0));
+    // GP_GAMMA (2): 1.0
+    set_vector_elt(gp, GP_GAMMA as R_xlen_t, scalar_real(1.0));
 
-        // GP_LTY (3): solid line type
-        set_vector_elt(gp, GP_LTY as R_xlen_t, Rf_ScalarInteger(0x01010101));
+    // GP_LTY (3): solid line type
+    set_vector_elt(gp, GP_LTY as R_xlen_t, scalar_integer(0x01010101));
 
-        // GP_LWD (4): line width 1.0
-        set_vector_elt(gp, GP_LWD as R_xlen_t, Rf_ScalarReal(1.0));
+    // GP_LWD (4): line width 1.0
+    set_vector_elt(gp, GP_LWD as R_xlen_t, scalar_real(1.0));
 
-        // GP_CEX (5): character expansion 1.0
-        set_vector_elt(gp, GP_CEX as R_xlen_t, Rf_ScalarReal(1.0));
+    // GP_CEX (5): character expansion 1.0
+    set_vector_elt(gp, GP_CEX as R_xlen_t, scalar_real(1.0));
 
-        // GP_FONTSIZE (6): 12 pt
-        set_vector_elt(gp, GP_FONTSIZE as R_xlen_t, Rf_ScalarReal(12.0));
+    // GP_FONTSIZE (6): 12 pt
+    set_vector_elt(gp, GP_FONTSIZE as R_xlen_t, scalar_real(12.0));
 
-        // GP_LINEHEIGHT (7): 1.2
-        set_vector_elt(gp, GP_LINEHEIGHT as R_xlen_t, Rf_ScalarReal(1.2));
+    // GP_LINEHEIGHT (7): 1.2
+    set_vector_elt(gp, GP_LINEHEIGHT as R_xlen_t, scalar_real(1.2));
 
-        // GP_FONT (8): plain (1)
-        set_vector_elt(gp, GP_FONT as R_xlen_t, Rf_ScalarInteger(1));
+    // GP_FONT (8): plain (1)
+    set_vector_elt(gp, GP_FONT as R_xlen_t, scalar_integer(1));
 
-        // GP_FONTFAMILY (9): "" (default)
-        set_vector_elt(
-            gp,
-            GP_FONTFAMILY as R_xlen_t,
-            Rf_mkString(b"\0".as_ptr() as *const c_char),
-        );
+    // GP_FONTFAMILY (9): "" (default)
+    set_vector_elt(
+        gp,
+        GP_FONTFAMILY as R_xlen_t,
+        mk_string(""),
+    );
 
-        // GP_ALPHA (10): 1.0 (fully opaque)
-        set_vector_elt(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
+    // GP_ALPHA (10): 1.0 (fully opaque)
+    set_vector_elt(gp, GP_ALPHA as R_xlen_t, scalar_real(1.0));
 
-        // GP_LINEEND (11): round cap
-        set_vector_elt(
-            gp,
-            GP_LINEEND as R_xlen_t,
-            Rf_ScalarInteger(ge::GE_ROUND_CAP),
-        );
+    // GP_LINEEND (11): round cap
+    set_vector_elt(
+        gp,
+        GP_LINEEND as R_xlen_t,
+        scalar_integer(ge::GE_ROUND_CAP),
+    );
 
-        // GP_LINEJOIN (12): round join
-        set_vector_elt(
-            gp,
-            GP_LINEJOIN as R_xlen_t,
-            Rf_ScalarInteger(ge::GE_ROUND_JOIN),
-        );
+    // GP_LINEJOIN (12): round join
+    set_vector_elt(
+        gp,
+        GP_LINEJOIN as R_xlen_t,
+        scalar_integer(ge::GE_ROUND_JOIN),
+    );
 
-        // GP_LINEMITRE (13): 10.0
-        set_vector_elt(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
+    // GP_LINEMITRE (13): 10.0
+    set_vector_elt(gp, GP_LINEMITRE as R_xlen_t, scalar_real(10.0));
 
-        // GP_LEX (14): line expansion 1.0
-        set_vector_elt(gp, GP_LEX as R_xlen_t, Rf_ScalarReal(1.0));
+    // GP_LEX (14): line expansion 1.0
+    set_vector_elt(gp, GP_LEX as R_xlen_t, scalar_real(1.0));
 
-        // GP_FONTFACE (15): 1 (plain)
-        set_vector_elt(gp, GP_FONTFACE as R_xlen_t, Rf_ScalarInteger(1));
+    // GP_FONTFACE (15): 1 (plain)
+    set_vector_elt(gp, GP_FONTFACE as R_xlen_t, scalar_integer(1));
 
-        setGridStateElement(dd, GSS_GPAR, gp);
-    }
+    setGridStateElement(dd, GSS_GPAR, gp);
 }
 
 #[cfg(test)]
@@ -517,19 +502,19 @@ mod tests {
             let gp = Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1);
             let _gp_guard = protect(gp);
 
-            set_vector_elt(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(1));
-            set_vector_elt(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
-            set_vector_elt(gp, GP_GAMMA as R_xlen_t, Rf_ScalarReal(1.0));
+            set_vector_elt(gp, GP_FILL as R_xlen_t, scalar_integer(1));
+            set_vector_elt(gp, GP_COL as R_xlen_t, scalar_integer(1));
+            set_vector_elt(gp, GP_GAMMA as R_xlen_t, scalar_real(1.0));
             set_vector_elt(
                 gp,
                 GP_LTY as R_xlen_t,
                 Rf_mkString(b"dashed\0".as_ptr() as *const c_char),
             );
-            set_vector_elt(gp, GP_LWD as R_xlen_t, Rf_ScalarReal(1.0));
-            set_vector_elt(gp, GP_CEX as R_xlen_t, Rf_ScalarReal(1.0));
-            set_vector_elt(gp, GP_FONTSIZE as R_xlen_t, Rf_ScalarReal(12.0));
-            set_vector_elt(gp, GP_LINEHEIGHT as R_xlen_t, Rf_ScalarReal(1.2));
-            set_vector_elt(gp, GP_FONT as R_xlen_t, Rf_ScalarInteger(1));
+            set_vector_elt(gp, GP_LWD as R_xlen_t, scalar_real(1.0));
+            set_vector_elt(gp, GP_CEX as R_xlen_t, scalar_real(1.0));
+            set_vector_elt(gp, GP_FONTSIZE as R_xlen_t, scalar_real(12.0));
+            set_vector_elt(gp, GP_LINEHEIGHT as R_xlen_t, scalar_real(1.2));
+            set_vector_elt(gp, GP_FONT as R_xlen_t, scalar_integer(1));
 
             let fontfamily = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             SET_STRING_ELT(
@@ -544,17 +529,17 @@ mod tests {
             );
             set_vector_elt(gp, GP_FONTFAMILY as R_xlen_t, fontfamily);
 
-            set_vector_elt(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
-            set_vector_elt(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(2));
+            set_vector_elt(gp, GP_ALPHA as R_xlen_t, scalar_real(1.0));
+            set_vector_elt(gp, GP_LINEEND as R_xlen_t, scalar_integer(2));
 
             let linejoin = Rf_allocVector(SEXPTYPE::INTSXP, 2);
             *INTEGER(linejoin) = 1;
             *INTEGER(linejoin).add(1) = 2;
             set_vector_elt(gp, GP_LINEJOIN as R_xlen_t, linejoin);
 
-            set_vector_elt(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
-            set_vector_elt(gp, GP_LEX as R_xlen_t, Rf_ScalarReal(1.0));
-            set_vector_elt(gp, GP_FONTFACE as R_xlen_t, Rf_ScalarInteger(1));
+            set_vector_elt(gp, GP_LINEMITRE as R_xlen_t, scalar_real(10.0));
+            set_vector_elt(gp, GP_LEX as R_xlen_t, scalar_real(1.0));
+            set_vector_elt(gp, GP_FONTFACE as R_xlen_t, scalar_integer(1));
 
             gp
         }

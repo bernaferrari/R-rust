@@ -335,7 +335,7 @@ pub unsafe fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     // writes here, but we can at least resolve/validate the viewport gpar
     // path through the shared gpar accessor.
     // SAFETY: raw context/device pointers keep their caller contracts.
-    unsafe { gcontextFromgpar(gpar, 0, gc, dd) };
+    gcontextFromgpar(gpar, 0, gc, dd);
 }
 
 pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {

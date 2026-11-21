@@ -88,7 +88,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     // accessors; keep this call path delegated there until the GE glyphInfo
     // SEXP layout is available.
     let mut _gc: [u8; 256] = [0; 256];
-    unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
+    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(currentgp) };
     let _currentgp_guard = unsafe { protect(currentgp) };

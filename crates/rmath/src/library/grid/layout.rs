@@ -690,8 +690,8 @@ fn subRegion(
 mod tests {
     use super::*;
     use crate::library::grid::unit::{L_CM, L_NULL, constructUnits, unit, unitLength, unitUnit};
-    use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT};
-    use crate::sexp::constructors::{Rf_allocVector, Rf_ScalarInteger};
+    use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT, VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_allocVector, Rf_ScalarInteger, Rf_ScalarReal};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::protect::protect;
@@ -766,8 +766,8 @@ mod tests {
             let null_unit = unit(1.0, L_NULL);
             let cm_unit = unit(1.0, L_CM);
 
-            assert!(relativeUnit(null_unit, 0, std::ptr::null()));
-            assert!(!relativeUnit(cm_unit, 0, std::ptr::null()));
+            assert!(relativeUnit(null_unit, 0, std::ptr::null_mut()));
+            assert!(!relativeUnit(cm_unit, 0, std::ptr::null_mut()));
         }
     }
 
@@ -785,8 +785,8 @@ mod tests {
                 10.0,
                 6.0,
                 LViewportContext::default(),
-                std::ptr::null(),
-                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             );
 
             let layout_widths = VECTOR_ELT(vp, PVP_WIDTHS as R_xlen_t);
@@ -814,8 +814,8 @@ mod tests {
                 10.0,
                 6.0,
                 LViewportContext::default(),
-                std::ptr::null(),
-                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             );
 
             let mut vpl = LViewportLocation {
