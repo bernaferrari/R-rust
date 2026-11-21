@@ -3,46 +3,44 @@ use super::*;
 
 /// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
 pub fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
-        let mut x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = force_promise(x);
-        }
-        let value = CAR(CDR(args));
-        let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";
-        let target_type = match storage_mode_target(value, allow_numeric) {
-            Ok(target_type) => target_type,
-            Err(message) => {
-                std::panic::panic_any(RError { message });
-            }
-        };
-
-        if TYPEOF(x) == target_type {
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-        if inherits_class(x, "factor") {
-            std::panic::panic_any(RError {
-                message: "invalid to change the storage mode of a factor".to_string(),
-            });
-        }
-
-        if target_type == SEXPTYPE::VECSXP.as_c_int() {
-            // mode<- "list" is as.list, including calls and pairlists.
-            let list_args = crate::sexp::constructors::Rf_cons(x, R_NilValue());
-            let _list_args = protect(list_args);
-            let result = crate::mainutils::essentials::do_as_list(call, op, list_args, _rho);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return result;
-        }
-
-        let result = crate::mainutils::coerce::coerceVector(x, target_type);
-        let _result_guard = protect(result);
-        crate::sexp::accessors::SET_ATTRIB(result, ATTRIB(x));
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        result
+    check1arg_cstr(args, call, c"x");
+    let mut x = CAR(args);
+    if TYPEOF(x) == SEXPTYPE::PROMSXP {
+        x = force_promise(x);
     }
+    let value = CAR(CDR(args));
+    let allow_numeric = crate::eval::eval::PRIMNAME(op) == "mode<-";
+    let target_type = match storage_mode_target(value, allow_numeric) {
+        Ok(target_type) => target_type,
+        Err(message) => {
+            std::panic::panic_any(RError { message });
+        }
+    };
+
+    if TYPEOF(x) == target_type {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    if inherits_class(x, "factor") {
+        std::panic::panic_any(RError {
+            message: "invalid to change the storage mode of a factor".to_string(),
+        });
+    }
+
+    if target_type == SEXPTYPE::VECSXP.as_c_int() {
+        // mode<- "list" is as.list, including calls and pairlists.
+        let list_args = crate::sexp::constructors::Rf_cons(x, R_NilValue());
+        let _list_args = protect(list_args);
+        let result = crate::mainutils::essentials::do_as_list(call, op, list_args, _rho);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return result;
+    }
+
+    let result = crate::mainutils::coerce::coerceVector(x, target_type);
+    let _result_guard = protect(result);
+    crate::sexp::accessors::SET_ATTRIB(result, ATTRIB(x));
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    result
 }
 
 pub fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_int, String> {
@@ -500,13 +498,11 @@ pub fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
 }
 
 pub fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return mk_string_cstr(c"NULL");
-        }
-        crate::eval::attrib_core::R_data_class(x)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return mk_string_cstr(c"NULL");
     }
+    data_class(x)
 }
 
 /// R's `.class2(x)` — GNU `R_data_class2`, including S4 extends.
@@ -806,116 +802,112 @@ pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `attr(x, which) <- value` — set or remove a single attribute.
 pub fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = R_NilValue();
-        let mut which = R_NilValue();
-        let mut value = R_NilValue();
-        let mut positional: Vec<SEXP> = Vec::new();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if pname.is_null() {
-                    String::new()
-                } else {
-                    charsxp_text(crate::sexp::accessors::PRINTNAME(tag)).unwrap_or_default()
-                }
-            } else {
+    let mut x = R_NilValue();
+    let mut which = R_NilValue();
+    let mut value = R_NilValue();
+    let mut positional: Vec<SEXP> = Vec::new();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = crate::sexp::accessors::TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if pname.is_null() {
                 String::new()
-            };
-            let arg = CAR(cell);
-            match name.as_str() {
-                "x" => x = arg,
-                "which" => which = arg,
-                "value" => value = arg,
-                _ => positional.push(arg),
+            } else {
+                charsxp_text(crate::sexp::accessors::PRINTNAME(tag)).unwrap_or_default()
             }
-            cell = CDR(cell);
+        } else {
+            String::new()
+        };
+        let arg = CAR(cell);
+        match name.as_str() {
+            "x" => x = arg,
+            "which" => which = arg,
+            "value" => value = arg,
+            _ => positional.push(arg),
         }
-        let mut rest = positional.into_iter();
-        if x.is_null() || x == R_NilValue() {
-            x = rest.next().unwrap_or(R_NilValue());
-        }
-        if which.is_null() || which == R_NilValue() {
-            which = rest.next().unwrap_or(R_NilValue());
-        }
-        if value.is_null() || value == R_NilValue() {
-            value = rest.next().unwrap_or(R_NilValue());
-        }
-        if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
-            return R_NilValue();
-        }
-        // MAYBE_REFERENCED: see shallow_duplicate_if_shared.
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-
-        let attr_name = elt_to_string(which, 0);
-        crate::eval::attrib_core::setAttrib(
-            x,
-            install_cstr(&CString::new(attr_name).unwrap_or_default()),
-            value,
-        );
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        cell = CDR(cell);
     }
+    let mut rest = positional.into_iter();
+    if x.is_null() || x == R_NilValue() {
+        x = rest.next().unwrap_or(R_NilValue());
+    }
+    if which.is_null() || which == R_NilValue() {
+        which = rest.next().unwrap_or(R_NilValue());
+    }
+    if value.is_null() || value == R_NilValue() {
+        value = rest.next().unwrap_or(R_NilValue());
+    }
+    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        return R_NilValue();
+    }
+    // MAYBE_REFERENCED: see shallow_duplicate_if_shared.
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+
+    let attr_name = elt_to_string(which, 0);
+    crate::mainutils::relop::setAttrib(
+        x,
+        install_cstr(&CString::new(attr_name).unwrap_or_default()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `attributes(x) <- value` — replace all attributes from a named list.
 pub fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
+    let mut x = CAR(args);
 
-        let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-
-        crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
-        // GNU attrib.c do_attributesgets: emptying the list drops OBJECT;
-        // a NULL replacement also drops the S4 bit.
-        crate::sexp::accessors::SET_OBJECT(x, 0);
-        if value.is_null() || value == R_NilValue() {
-            crate::sexp::accessors::UNSET_S4_OBJECT(x);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-        if TYPEOF(value) != SEXPTYPE::VECSXP {
-            std::panic::panic_any(RError {
-                message: "attributes must be a list or NULL".to_string(),
-            });
-        }
-        if XLENGTH(value) == 0 {
-            crate::sexp::accessors::UNSET_S4_OBJECT(x);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-
-        let names =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            std::panic::panic_any(RError {
-                message: "attributes must be named".to_string(),
-            });
-        }
-
-        for i in 0..XLENGTH(value) {
-            let name_elt = STRING_ELT(names, i);
-            if name_elt.is_null() || name_elt == crate::sexp::globals::R_NaString() {
-                continue;
-            }
-            let name = CHAR(name_elt);
-            if name.is_null() || CStr::from_ptr(name).to_bytes().is_empty() {
-                continue;
-            }
-            crate::sexp::attrib_core::setAttrib(x, Rf_install(name), VECTOR_ELT(value, i));
-        }
-
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+
+    crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
+    // GNU attrib.c do_attributesgets: emptying the list drops OBJECT;
+    // a NULL replacement also drops the S4 bit.
+    crate::sexp::accessors::SET_OBJECT(x, 0);
+    if value.is_null() || value == R_NilValue() {
+        crate::sexp::accessors::UNSET_S4_OBJECT(x);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    if TYPEOF(value) != SEXPTYPE::VECSXP {
+        std::panic::panic_any(RError {
+            message: "attributes must be a list or NULL".to_string(),
+        });
+    }
+    if XLENGTH(value) == 0 {
+        crate::sexp::accessors::UNSET_S4_OBJECT(x);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+
+    let names =
+        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        std::panic::panic_any(RError {
+            message: "attributes must be named".to_string(),
+        });
+    }
+
+    for i in 0..XLENGTH(value) {
+        let name_elt = STRING_ELT(names, i);
+        if name_elt.is_null() || name_elt == crate::sexp::globals::R_NaString() {
+            continue;
+        }
+        let name = charsxp_cstring(name_elt);
+        if name.to_bytes().is_empty() {
+            continue;
+        }
+        crate::sexp::attrib_core::setAttrib(x, install_cstr(&name), VECTOR_ELT(value, i));
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `comment(x)` — get the comment attribute.
@@ -1229,27 +1221,25 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {
-    unsafe {
-        if package == "datasets" && package_path.is_empty() {
-            return crate::library::datasets::value(name)
-                .unwrap_or_else(|message| std::panic::panic_any(RError { message }))
-                .map(|value| value.as_raw());
-        }
-        let scratch = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
-        let _guard = protect(scratch);
-        crate::mainutils::essentials::source_package_lazy_data(
-            package,
-            std::path::Path::new(package_path),
-            scratch,
-        )
-        .ok()?;
-        let sym = install_cstr(&std::ffi::CString::new(name).unwrap_or_default());
-        let value = find_var_in_frame(scratch, sym);
-        if value == crate::sexp::globals::R_UnboundValue() || value.is_null() {
-            None
-        } else {
-            Some(force_namespace_value(value))
-        }
+    if package == "datasets" && package_path.is_empty() {
+        return crate::library::datasets::value(name)
+            .unwrap_or_else(|message| std::panic::panic_any(RError { message }))
+            .map(|value| value.as_raw());
+    }
+    let scratch = new_hashed_env(crate::sexp::globals::R_EmptyEnv(), 0);
+    let _guard = protect(scratch);
+    crate::mainutils::essentials::source_package_lazy_data(
+        package,
+        std::path::Path::new(package_path),
+        scratch,
+    )
+    .ok()?;
+    let sym = install_cstr(&std::ffi::CString::new(name).unwrap_or_default());
+    let value = find_var_in_frame(scratch, sym);
+    if value == crate::sexp::globals::R_UnboundValue() || value.is_null() {
+        None
+    } else {
+        Some(force_namespace_value(value))
     }
 }
 

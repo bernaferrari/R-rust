@@ -203,7 +203,7 @@ fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP>
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let factory = crate::eval::parser::active_factory();
+        let factory = active_owner().node_factory();
         let arguments = if args.is_null() {
             factory.nil()
         } else {
@@ -395,7 +395,7 @@ pub fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let factory = crate::eval::parser::active_factory();
+        let factory = active_owner().node_factory();
         let arguments = if args.is_null() {
             factory.nil()
         } else {
@@ -1317,42 +1317,40 @@ pub fn copy_bind_value(dst: SEXP, dst_i: R_xlen_t, dst_type: SEXPTYPE, src: SEXP
 }
 
 pub fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
-    unsafe {
-        let factory = crate::eval::parser::active_factory();
-        let owned = |raw: SEXP| {
-            if raw.is_null() {
-                factory.nil()
-            } else {
-                factory
-                    .wrap(raw)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            }
-        };
-        // Capture every input before allocation can run collection callbacks.
-        let result = owned(result);
-        let rows = owned(row_names);
-        let cols = owned(col_names);
-        let dimnames = factory
-            .allocate(|arena| {
-                let raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-                (!raw.is_null()).then_some(raw)
-            })
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut dimnames = crate::sexp::object::SexpMut::try_from_checked(dimnames)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        dimnames
-            .try_set_vector_elt(0, rows)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        dimnames
-            .try_set_vector_elt(1, cols)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let dimnames = dimnames.freeze();
-        crate::sexp::attrib_core::setAttrib(
-            result.as_raw(),
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dimnames.as_raw(),
-        );
-    }
+    let factory = active_owner().node_factory();
+    let owned = |raw: SEXP| {
+        if raw.is_null() {
+            factory.nil()
+        } else {
+            factory
+                .wrap(raw)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        }
+    };
+    // Capture every input before allocation can run collection callbacks.
+    let result = owned(result);
+    let rows = owned(row_names);
+    let cols = owned(col_names);
+    let dimnames = factory
+        .allocate(|arena| {
+            let raw = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+            (!raw.is_null()).then_some(raw)
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut dimnames = crate::sexp::object::SexpMut::try_from_checked(dimnames)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    dimnames
+        .try_set_vector_elt(0, rows)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    dimnames
+        .try_set_vector_elt(1, cols)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let dimnames = dimnames.freeze();
+    crate::sexp::attrib_core::setAttrib(
+        result.as_raw(),
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dimnames.as_raw(),
+    );
 }
 /// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.
 pub fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

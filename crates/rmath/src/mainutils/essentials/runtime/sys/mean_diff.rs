@@ -45,121 +45,114 @@ pub fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `diff.POSIXt(x)`.
 pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-        }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
-            do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
-        } else {
-            x
-        };
-        let _x = protect(x);
-        let lag = {
-            let arg =
-                crate::mainutils::essentials::shared::arg_by_name_or_position(args, &["lag"], 1);
-            let v = if arg.is_null()
-                || arg == R_NilValue()
-                || arg == crate::sexp::globals::R_MissingArg()
-            {
-                1.0
-            } else {
-                crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
-            };
-            if v < 1.0 { 1 } else { v as usize }
-        };
-        let differences = {
-            let arg = crate::mainutils::essentials::shared::arg_by_name_or_position(
-                args,
-                &["differences"],
-                2,
-            );
-            let v = if arg.is_null()
-                || arg == R_NilValue()
-                || arg == crate::sexp::globals::R_MissingArg()
-            {
-                1.0
-            } else {
-                crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
-            };
-            if v < 1.0 { 1 } else { v as usize }
-        };
-        let n = XLENGTH(x);
-        if n < 2 || n <= lag as R_xlen_t {
-            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-            let _e = protect(empty);
-            set_single_class(empty, "difftime");
-            crate::sexp::attrib_core::setAttrib(
-                empty,
-                install_str("units"),
-                mk_string_cstr(c"secs"),
-            );
-            return empty;
-        }
-        let seconds_at = |x: SEXP, i: usize| -> f64 {
-            if TYPEOF(x) == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i) as R_xlen_t)
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let v = *crate::sexp::accessors::INTEGER(x).add(i);
-                if v == crate::sexp::ffi::NA_INTEGER {
-                    crate::sexp::ffi::NA_REAL
-                } else {
-                    v as f64
-                }
-            } else {
-                0.0
-            }
-        };
-        let mut z = Vec::with_capacity((n as usize).saturating_sub(lag));
-        for i in 0..(n as usize - lag) {
-            z.push(seconds_at(x, i + lag) - seconds_at(x, i));
-        }
-        let zz = z
-            .iter()
-            .copied()
-            .filter(|v| v.is_finite())
-            .map(|v| v.abs())
-            .fold(f64::INFINITY, f64::min);
-        let units = if !zz.is_finite() || zz < 60.0 {
-            "secs"
-        } else if zz < 3600.0 {
-            "mins"
-        } else if zz < 86400.0 {
-            "hours"
-        } else {
-            "days"
-        };
-        let scale = match units {
-            "mins" => 60.0,
-            "hours" => 3600.0,
-            "days" => 86_400.0,
-            _ => 1.0,
-        };
-        for v in &mut z {
-            *v /= scale;
-        }
-        for _ in 1..differences {
-            if z.len() <= lag {
-                z.clear();
-                break;
-            }
-            let next: Vec<f64> = (0..z.len() - lag).map(|i| z[i + lag] - z[i]).collect();
-            z = next;
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, z.len() as i64);
-        let _r = protect(result);
-        for (i, v) in z.iter().enumerate() {
-            set_real_checked(result, (i) as R_xlen_t, *v);
-        }
-        set_single_class(result, "difftime");
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("units"),
-            mk_string_cstr(&CString::new(units).unwrap_or_default()),
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
     }
+    let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
+        do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
+    } else {
+        x
+    };
+    let _x = protect(x);
+    let lag = {
+        let arg = crate::mainutils::essentials::shared::arg_by_name_or_position(args, &["lag"], 1);
+        let v = if arg.is_null()
+            || arg == R_NilValue()
+            || arg == crate::sexp::globals::R_MissingArg()
+        {
+            1.0
+        } else {
+            crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
+        };
+        if v < 1.0 { 1 } else { v as usize }
+    };
+    let differences = {
+        let arg = crate::mainutils::essentials::shared::arg_by_name_or_position(
+            args,
+            &["differences"],
+            2,
+        );
+        let v = if arg.is_null()
+            || arg == R_NilValue()
+            || arg == crate::sexp::globals::R_MissingArg()
+        {
+            1.0
+        } else {
+            crate::mainutils::essentials::shared::real_or_default(arg, 1.0)
+        };
+        if v < 1.0 { 1 } else { v as usize }
+    };
+    let n = XLENGTH(x);
+    if n < 2 || n <= lag as R_xlen_t {
+        let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _e = protect(empty);
+        set_single_class(empty, "difftime");
+        crate::sexp::attrib_core::setAttrib(empty, install_str("units"), mk_string_cstr(c"secs"));
+        return empty;
+    }
+    let seconds_at = |x: SEXP, i: usize| -> f64 {
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i) as R_xlen_t)
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let v = integer_elt_checked(x, i as R_xlen_t);
+            if v == crate::sexp::ffi::NA_INTEGER {
+                crate::sexp::ffi::NA_REAL
+            } else {
+                v as f64
+            }
+        } else {
+            0.0
+        }
+    };
+    let mut z = Vec::with_capacity((n as usize).saturating_sub(lag));
+    for i in 0..(n as usize - lag) {
+        z.push(seconds_at(x, i + lag) - seconds_at(x, i));
+    }
+    let zz = z
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .map(|v| v.abs())
+        .fold(f64::INFINITY, f64::min);
+    let units = if !zz.is_finite() || zz < 60.0 {
+        "secs"
+    } else if zz < 3600.0 {
+        "mins"
+    } else if zz < 86400.0 {
+        "hours"
+    } else {
+        "days"
+    };
+    let scale = match units {
+        "mins" => 60.0,
+        "hours" => 3600.0,
+        "days" => 86_400.0,
+        _ => 1.0,
+    };
+    for v in &mut z {
+        *v /= scale;
+    }
+    for _ in 1..differences {
+        if z.len() <= lag {
+            z.clear();
+            break;
+        }
+        let next: Vec<f64> = (0..z.len() - lag).map(|i| z[i + lag] - z[i]).collect();
+        z = next;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, z.len() as i64);
+    let _r = protect(result);
+    for (i, v) in z.iter().enumerate() {
+        set_real_checked(result, (i) as R_xlen_t, *v);
+    }
+    set_single_class(result, "difftime");
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("units"),
+        mk_string_cstr(&CString::new(units).unwrap_or_default()),
+    );
+    result
 }
 
 /// GNU `trunc.POSIXt(x, units)`.

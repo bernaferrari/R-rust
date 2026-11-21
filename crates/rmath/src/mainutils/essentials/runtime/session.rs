@@ -126,13 +126,12 @@ pub fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// R's `R.version.string` — returns the full R version string.
 pub fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        Rf_mkString(
-            crate::mainutils::compatibility_target::VERSION_STRING_C
-                .as_ptr()
-                .cast(),
+    mk_string_cstr(
+        std::ffi::CStr::from_bytes_until_nul(
+            crate::mainutils::compatibility_target::VERSION_STRING_C,
         )
-    }
+        .unwrap_or_default(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -316,11 +315,11 @@ pub fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 message: format!("cannot read dump file '{}': {err}", path),
             })
         });
-        let parser_factory = crate::eval::parser::active_factory();
-        let expr = crate::sexp::memory::with_arena(|arena| {
+        let parser_factory = active_owner().node_factory();
+        let expr = sexp_ok(active_owner().with_arena(|arena| {
             crate::eval::parser::parse(&code, arena, parser_factory.clone())
                 .map_err(|err| err.to_string())
-        })
+        }))
         .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
         if expr.clone().as_raw() == R_NilValue() {
             R_NilValue()

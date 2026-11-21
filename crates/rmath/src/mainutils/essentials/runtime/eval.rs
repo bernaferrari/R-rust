@@ -1023,15 +1023,15 @@ pub fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Parse with byte spans and attach srcrefs + srcfile (keep.source).
 pub(crate) fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
     unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let spans = crate::sexp::memory::with_arena(|arena| {
+        let parser_factory = active_owner().node_factory();
+        let spans = sexp_ok(active_owner().with_arena(|arena| {
             let mut parser =
                 crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
             parser.set_keep_srcrefs(true);
             parser
                 .parse_top_level_with_spans()
                 .map_err(|e| e.to_string())
-        });
+        }));
         match spans {
             Ok(spans) => {
                 let exprs: Vec<SEXP> = spans.iter().map(|(e, _, _)| e.clone().as_raw()).collect();
@@ -1067,24 +1067,22 @@ fn parse_source_strings(source: &[String]) -> SEXP {
 }
 
 pub(crate) fn parse_source_expression_vector(source: &str) -> SEXP {
-    unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions_strict(source, arena, parser_factory.clone())
-                .map_err(|err| err.to_string())
-        })
-        .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
+    let parser_factory = active_owner().node_factory();
+    let parsed = sexp_ok(active_owner().with_arena(|arena| {
+        crate::eval::parser::parse_expressions_strict(source, arena, parser_factory.clone())
+            .map_err(|err| err.to_string())
+    }))
+    .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
 
-        let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, parsed.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for (i, value) in parsed.iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, value.clone().as_raw());
-        }
-        result
+    let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, parsed.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+    for (i, value) in parsed.iter().enumerate() {
+        SET_VECTOR_ELT(result, i as R_xlen_t, value.clone().as_raw());
+    }
+    result
 }
 
 fn d_symbol_name(sym: SEXP) -> String {

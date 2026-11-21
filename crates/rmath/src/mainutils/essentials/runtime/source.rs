@@ -702,15 +702,15 @@ fn eval_source_text_with_options(
         // GNU source() echo with keep.source: original file text via spans
         // (comments, spacing, skip.echo header).
 
-        let parser_factory = crate::eval::parser::active_factory();
-        let spans = crate::sexp::memory::with_arena(|arena| {
+        let parser_factory = active_owner().node_factory();
+        let spans = sexp_ok(active_owner().with_arena(|arena| {
             let mut parser =
                 crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
             parser.set_keep_srcrefs(true);
             parser
                 .parse_top_level_with_spans()
                 .map_err(|e| e.to_string())
-        });
+        }));
         let Ok(spans) = spans else {
             // GNU raises the parse error; nothing is echoed for a file that
             // does not parse completely.
@@ -854,15 +854,15 @@ fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str, keep_sou
     unsafe {
         let keep_source = keep_source || option_keep_source();
         if keep_source {
-            let parser_factory = crate::eval::parser::active_factory();
-            let spans = crate::sexp::memory::with_arena(|arena| {
+            let parser_factory = active_owner().node_factory();
+            let spans = sexp_ok(active_owner().with_arena(|arena| {
                 let mut parser =
                     crate::eval::parser::Parser::new(content, arena, parser_factory.clone());
                 parser.set_keep_srcrefs(true);
                 parser
                     .parse_top_level_with_spans()
                     .map_err(|e| e.to_string())
-            });
+            }));
             let mut result = R_NilValue();
             let mut last_visible = FALSE;
             if let Ok(spans) = spans {

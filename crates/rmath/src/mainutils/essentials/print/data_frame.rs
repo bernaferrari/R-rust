@@ -1,71 +1,61 @@
 use super::*;
 
 fn print_data_frame_show_row_names(args: SEXP) -> bool {
-    unsafe {
-        let row_names_sym = install_str("row.names");
-        let mut arg = CDR(args);
-        while !arg.is_null() && arg != R_NilValue() {
-            if TAG(arg) == row_names_sym {
-                let value = CAR(arg);
-                if TYPEOF(value) == SEXPTYPE::LGLSXP {
-                    let data = LOGICAL(value);
-                    if !data.is_null() {
-                        return *data != FALSE;
-                    }
+    let row_names_sym = install_str("row.names");
+    let mut arg = CDR(args);
+    while !arg.is_null() && arg != R_NilValue() {
+        if TAG(arg) == row_names_sym {
+            let value = CAR(arg);
+            if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                if XLENGTH(value) > 0 {
+                    return logical_elt_checked(value, 0) != FALSE;
                 }
             }
-            arg = CDR(arg);
         }
-        true
+        arg = CDR(arg);
     }
+    true
 }
 fn print_data_frame_max(args: SEXP) -> i64 {
-    unsafe {
-        let max_sym = install_str("max");
-        let mut arg = CDR(args);
-        while !arg.is_null() && arg != R_NilValue() {
-            if TAG(arg) == max_sym {
-                let value = CAR(arg);
-                if TYPEOF(value) == SEXPTYPE::INTSXP {
-                    let data = INTEGER(value);
-                    if !data.is_null() && *data != NA_INTEGER {
-                        return (*data as i64).max(1);
-                    }
-                }
-                if TYPEOF(value) == SEXPTYPE::REALSXP {
-                    let data = REAL(value);
-                    if !data.is_null() && data.read().is_finite() {
-                        return data.read() as i64;
-                    }
+    let max_sym = install_str("max");
+    let mut arg = CDR(args);
+    while !arg.is_null() && arg != R_NilValue() {
+        if TAG(arg) == max_sym {
+            let value = CAR(arg);
+            if TYPEOF(value) == SEXPTYPE::INTSXP {
+                if XLENGTH(value) > 0 && integer_elt_checked(value, 0) != NA_INTEGER {
+                    return (integer_elt_checked(value, 0) as i64).max(1);
                 }
             }
-            arg = CDR(arg);
+            if TYPEOF(value) == SEXPTYPE::REALSXP {
+                if XLENGTH(value) > 0 && real_elt_checked(value, 0).is_finite() {
+                    return real_elt_checked(value, 0) as i64;
+                }
+            }
         }
-        crate::mainutils::options::GetOptionMaxPrint().max(1) as i64
+        arg = CDR(arg);
     }
+    crate::mainutils::options::GetOptionMaxPrint().max(1) as i64
 }
 /// GNU `print.data.frame` leaves character and logical NA unencoded
 /// (`na.encode = FALSE`) and `print.default` renders those as `<NA>`.
 /// Numeric NA stays `NA`.
 fn data_frame_cell_text(col: SEXP, i: R_xlen_t) -> String {
-    unsafe {
-        if col.is_null() {
-            return "NULL".to_string();
-        }
-        let t = TYPEOF(col);
-        if t == SEXPTYPE::STRSXP {
-            let elt = STRING_ELT(col, i);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-                return "<NA>".to_string();
-            }
-        } else if t == SEXPTYPE::LGLSXP {
-            let data = LOGICAL(col);
-            if !data.is_null() && *data.add(i as usize) == NA_INTEGER {
-                return "<NA>".to_string();
-            }
-        }
-        elt_to_string(col, i)
+    if col.is_null() {
+        return "NULL".to_string();
     }
+    let t = TYPEOF(col);
+    if t == SEXPTYPE::STRSXP {
+        let elt = STRING_ELT(col, i);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            return "<NA>".to_string();
+        }
+    } else if t == SEXPTYPE::LGLSXP {
+        if logical_elt_checked(col, i) == NA_INTEGER {
+            return "<NA>".to_string();
+        }
+    }
+    elt_to_string(col, i)
 }
 
 /// Explicit `digits=` only. NULL/missing keeps the historical cell text
@@ -324,26 +314,19 @@ fn print_empty_data_frame(x: SEXP, ncol: R_xlen_t) {
 /// character `row.names` are used verbatim.
 fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String> {
     let n = nrow.min(limit).max(0);
-    let row_names =
-        crate::sexp::attrib_core::getAttrib(x, install_str("row.names"));
-    unsafe {
-        if !row_names.is_null() {
-            let t = TYPEOF(row_names);
-            if t == SEXPTYPE::STRSXP && XLENGTH(row_names) == nrow {
-                return (0..n).map(|i| elt_to_string(row_names, i)).collect();
-            }
-            if t == SEXPTYPE::INTSXP && nrow > 0 && XLENGTH(row_names) == nrow {
-                let data = INTEGER(row_names);
-                if !data.is_null() {
-                    let first = *data;
-                    let is_compact =
-                        XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
-                    if !is_compact {
-                        return (0..n)
-                            .map(|i| data.add(i as usize).read().to_string())
-                            .collect();
-                    }
-                }
+    let row_names = crate::sexp::attrib_core::getAttrib(x, install_str("row.names"));
+    if !row_names.is_null() {
+        let t = TYPEOF(row_names);
+        if t == SEXPTYPE::STRSXP && XLENGTH(row_names) == nrow {
+            return (0..n).map(|i| elt_to_string(row_names, i)).collect();
+        }
+        if t == SEXPTYPE::INTSXP && nrow > 0 && XLENGTH(row_names) == nrow {
+            let first = integer_elt_checked(row_names, 0);
+            let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
+            if !is_compact {
+                return (0..n)
+                    .map(|i| integer_elt_checked(row_names, i).to_string())
+                    .collect();
             }
         }
     }

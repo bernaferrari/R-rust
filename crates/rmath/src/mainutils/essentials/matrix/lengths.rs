@@ -118,107 +118,105 @@ fn allocate<'s>(
 }
 
 pub(super) fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::mainutils::essentials::current_owner().expect("active lengths owner");
-        let pin = owner.pin().expect("live lengths owner");
-        let f = owner.node_factory();
-        let args = f.wrap(args).expect("lengths argument owner");
-        let _call = (!call.is_null()).then(|| f.wrap(call).expect("lengths call owner"));
-        let _op = (!op.is_null()).then(|| f.wrap(op).expect("lengths operation owner"));
-        let _rho = (!rho.is_null()).then(|| f.wrap(rho).expect("lengths environment owner"));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
-                    .expect("live lengths owner after callback");
-            }
-            f.require_active()
-                .expect("original lengths owner after callback");
-        };
-        let x = args.try_car().expect("lengths input root");
-        let tail = args.try_cdr().expect("lengths flag cell");
-        let use_names = if tail.is_nil() {
-            true
+    let owner = crate::mainutils::essentials::current_owner().expect("active lengths owner");
+    let pin = owner.pin().expect("live lengths owner");
+    let f = owner.node_factory();
+    let args = f.wrap(args).expect("lengths argument owner");
+    let _call = (!call.is_null()).then(|| f.wrap(call).expect("lengths call owner"));
+    let _op = (!op.is_null()).then(|| f.wrap(op).expect("lengths operation owner"));
+    let _rho = (!rho.is_null()).then(|| f.wrap(rho).expect("lengths environment owner"));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .expect("live lengths owner after callback");
+        }
+        f.require_active()
+            .expect("original lengths owner after callback");
+    };
+    let x = args.try_car().expect("lengths input root");
+    let tail = args.try_cdr().expect("lengths flag cell");
+    let use_names = if tail.is_nil() {
+        true
+    } else {
+        let flag = tail.try_car().expect("lengths flag root");
+        let value = if flag.as_raw() == crate::sexp::globals::R_MissingArg() {
+            1 // The R wrapper's use.names default also covers an empty slot.
         } else {
-            let flag = tail.try_car().expect("lengths flag root");
-            let value = if flag.as_raw() == crate::sexp::globals::R_MissingArg() {
-                1 // The R wrapper's use.names default also covers an empty slot.
-            } else {
-                crate::mainutils::coerce::asLogical(flag.as_raw())
-            };
-            check();
-            if value == NA_INTEGER {
-                crate::sexp::context::r_error("invalid 'use.names' value");
-            }
-            value != 0
+            crate::mainutils::coerce::asLogical(flag.as_raw())
         };
-        let list = matches!(x.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP);
-        if !list
-            && !matches!(
-                x.typeof_(),
-                SEXPTYPE::NILSXP
-                    | SEXPTYPE::CHARSXP
-                    | SEXPTYPE::LGLSXP
-                    | SEXPTYPE::INTSXP
-                    | SEXPTYPE::REALSXP
-                    | SEXPTYPE::CPLXSXP
-                    | SEXPTYPE::STRSXP
-                    | SEXPTYPE::RAWSXP
-            )
-        {
-            crate::sexp::context::r_error("'x' must be a list or atomic vector");
-        }
-        let n = x.len();
-        let class_symbol = f.wrap(crate::eval::attrib_core::R_ClassSymbol()).unwrap();
-        let mut output = allocate(&f, SEXPTYPE::INTSXP, n, &check);
-        for i in 0..n {
-            let count = if list {
-                child_length(&x, i, &class_symbol, &check)
-            } else {
-                1
-            };
-            if count > i32::MAX as i64 {
-                // GNU restarts in REAL width after the first long child.
-                let mut wide = allocate(&f, SEXPTYPE::REALSXP, n, &check);
-                for j in 0..n {
-                    let value = child_length(&x, j, &class_symbol, &check);
-                    wide.try_set_real_elt(j, value as f64)
-                        .expect("lengths wide element");
-                }
-                output = wide;
-                break;
-            }
-            output
-                .try_set_integer_elt(i, count as i32)
-                .expect("lengths integer element");
-        }
-        let output = output.freeze();
-        // GNU reads shape after element callbacks, in dim/names/dimnames
-        // order. Root each selection before its setter can allocate or collect.
-        let dim_symbol = f.wrap(crate::eval::attrib_core::R_DimSymbol()).unwrap();
-        let names_symbol = f.wrap(crate::eval::attrib_core::R_NamesSymbol()).unwrap();
-        let dimnames_symbol = f
-            .wrap(crate::eval::attrib_core::R_DimNamesSymbol())
-            .unwrap();
-        for (symbol, copy) in [
-            (&dim_symbol, true),
-            (&names_symbol, use_names),
-            (&dimnames_symbol, use_names),
-        ] {
-            if copy {
-                let value = attribute(&x, symbol);
-                if !value.is_nil() {
-                    crate::eval::attrib_core::setAttrib(
-                        output.as_raw(),
-                        symbol.as_raw(),
-                        value.as_raw(),
-                    );
-                    check();
-                }
-            }
-        }
         check();
-        output.as_raw()
+        if value == NA_INTEGER {
+            crate::sexp::context::r_error("invalid 'use.names' value");
+        }
+        value != 0
+    };
+    let list = matches!(x.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP);
+    if !list
+        && !matches!(
+            x.typeof_(),
+            SEXPTYPE::NILSXP
+                | SEXPTYPE::CHARSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::RAWSXP
+        )
+    {
+        crate::sexp::context::r_error("'x' must be a list or atomic vector");
     }
+    let n = x.len();
+    let class_symbol = f.wrap(crate::sexp::attrib_core::R_ClassSymbol()).unwrap();
+    let mut output = allocate(&f, SEXPTYPE::INTSXP, n, &check);
+    for i in 0..n {
+        let count = if list {
+            child_length(&x, i, &class_symbol, &check)
+        } else {
+            1
+        };
+        if count > i32::MAX as i64 {
+            // GNU restarts in REAL width after the first long child.
+            let mut wide = allocate(&f, SEXPTYPE::REALSXP, n, &check);
+            for j in 0..n {
+                let value = child_length(&x, j, &class_symbol, &check);
+                wide.try_set_real_elt(j, value as f64)
+                    .expect("lengths wide element");
+            }
+            output = wide;
+            break;
+        }
+        output
+            .try_set_integer_elt(i, count as i32)
+            .expect("lengths integer element");
+    }
+    let output = output.freeze();
+    // GNU reads shape after element callbacks, in dim/names/dimnames
+    // order. Root each selection before its setter can allocate or collect.
+    let dim_symbol = f.wrap(crate::sexp::attrib_core::R_DimSymbol()).unwrap();
+    let names_symbol = f.wrap(crate::sexp::attrib_core::R_NamesSymbol()).unwrap();
+    let dimnames_symbol = f
+        .wrap(crate::sexp::attrib_core::R_DimNamesSymbol())
+        .unwrap();
+    for (symbol, copy) in [
+        (&dim_symbol, true),
+        (&names_symbol, use_names),
+        (&dimnames_symbol, use_names),
+    ] {
+        if copy {
+            let value = attribute(&x, symbol);
+            if !value.is_nil() {
+                crate::mainutils::relop::setAttrib(
+                    output.as_raw(),
+                    symbol.as_raw(),
+                    value.as_raw(),
+                );
+                check();
+            }
+        }
+    }
+    check();
+    output.as_raw()
 }
 
 #[cfg(test)]

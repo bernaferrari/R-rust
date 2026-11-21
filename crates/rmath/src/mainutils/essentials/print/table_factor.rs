@@ -216,7 +216,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 attr = CDR(attr);
             }
-            if let Some(sexp) = crate::sexp::object::Sexp::from_raw(xx) {
+            if let Some(sexp) = active_owner().sexp(xx).ok() {
                 let text = crate::sexp::output::format_vector_stock(sexp, quote);
                 emit_print_text(&format!("{text}\n"));
             }

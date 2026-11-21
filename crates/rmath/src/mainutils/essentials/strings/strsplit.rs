@@ -128,109 +128,106 @@ pub fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `chartr(old, new, x)` — character-by-character translation.
 pub fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let old_arg = CAR(args);
-        let new_arg = CAR(CDR(args));
-        let x_arg = CAR(CDR(CDR(args)));
-        // SAFETY: this primitive entry point is dispatched with one active,
-        // live original R owner and retains no arena or payload loan here.
-        let owner = { current_owner() }.unwrap_or_else(|_| chartr_original_owner_error());
-        if old_arg.is_null() || new_arg.is_null() {
-            return R_NilValue();
+    let old_arg = CAR(args);
+    let new_arg = CAR(CDR(args));
+    let x_arg = CAR(CDR(CDR(args)));
+    // SAFETY: this primitive entry point is dispatched with one active,
+    // live original R owner and retains no arena or payload loan here.
+    let owner = { current_owner() }.unwrap_or_else(|_| chartr_original_owner_error());
+    if old_arg.is_null() || new_arg.is_null() {
+        return R_NilValue();
+    }
+    let old_str = elt_to_string(old_arg, 0);
+    chartr_require_original_owner(owner);
+    let new_str = elt_to_string(new_arg, 0);
+    chartr_require_original_owner(owner);
+    // Character/range scratch storage is admitted to the original owner's
+    // ledger before each buffer allocation, including replacement peaks.
+    let workspace = crate::mainutils::grep::regex_workspace();
+    let old_chars = match expand_chartr_spec(&workspace, &old_str) {
+        Ok(chars) => chars,
+        Err(message) => crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            &message,
+        ),
+    };
+    let new_chars = match expand_chartr_spec(&workspace, &new_str) {
+        Ok(chars) => chars,
+        Err(message) => crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            &message,
+        ),
+    };
+    if old_chars.len() > new_chars.len() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'old' is longer than 'new'",
+        );
+    }
+    let n = if x_arg.is_null() || x_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x_arg)
+    };
+    chartr_require_original_owner(owner);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    chartr_require_original_owner(owner);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        if as_character_element_is_na(x_arg, i) {
+            chartr_require_original_owner(owner);
+            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            continue;
         }
-        let old_str = elt_to_string(old_arg, 0);
         chartr_require_original_owner(owner);
-        let new_str = elt_to_string(new_arg, 0);
+        let s = elt_to_string(x_arg, i);
         chartr_require_original_owner(owner);
-        // Character/range scratch storage is admitted to the original owner's
-        // ledger before each buffer allocation, including replacement peaks.
-        let workspace = crate::mainutils::grep::regex_workspace();
-        let old_chars = match expand_chartr_spec(&workspace, &old_str) {
-            Ok(chars) => chars,
+        let translated_len = match chartr_translated_len(&s, &old_chars, &new_chars) {
+            Ok(length) => length,
             Err(message) => crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 &message,
             ),
         };
-        let new_chars = match expand_chartr_spec(&workspace, &new_str) {
-            Ok(chars) => chars,
-            Err(message) => crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                &message,
-            ),
-        };
-        if old_chars.len() > new_chars.len() {
+        let Ok(length) = std::ffi::c_int::try_from(translated_len) else {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "'old' is longer than 'new'",
+                "character translation result is too long",
             );
-        }
-        let n = if x_arg.is_null() || x_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x_arg)
         };
-        chartr_require_original_owner(owner);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        chartr_require_original_owner(owner);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..n {
-            if as_character_element_is_na(x_arg, i) {
-                chartr_require_original_owner(owner);
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            chartr_require_original_owner(owner);
-            let s = elt_to_string(x_arg, i);
-            chartr_require_original_owner(owner);
-            let translated_len = match chartr_translated_len(&s, &old_chars, &new_chars) {
-                Ok(length) => length,
-                Err(message) => crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    &message,
-                ),
-            };
-            let Ok(length) = std::ffi::c_int::try_from(translated_len) else {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "character translation result is too long",
-                );
-            };
-            let mut translated = match workspace.try_buffer::<u8>(translated_len) {
-                Ok(buffer) => buffer,
-                Err(()) => crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "character translation workspace exceeds session memory limit",
-                ),
-            };
-            for c in s.chars() {
-                let mapped = old_chars
-                    .iter()
-                    .rposition(|&oc| oc == u32::from(c))
-                    .and_then(|pos| char::from_u32(new_chars[pos]))
-                    .unwrap_or(c);
-                let mut encoded = [0; 4];
-                for byte in mapped.encode_utf8(&mut encoded).bytes() {
-                    if translated.try_push(byte).is_err() {
-                        crate::mainutils::errors::errorcall_str(
-                            crate::mainutils::errors::R_getCurrentCall(),
-                            "character translation workspace exceeds session memory limit",
-                        );
-                    }
+        let mut translated = match workspace.try_buffer::<u8>(translated_len) {
+            Ok(buffer) => buffer,
+            Err(()) => crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "character translation workspace exceeds session memory limit",
+            ),
+        };
+        for c in s.chars() {
+            let mapped = old_chars
+                .iter()
+                .rposition(|&oc| oc == u32::from(c))
+                .and_then(|pos| char::from_u32(new_chars[pos]))
+                .unwrap_or(c);
+            let mut encoded = [0; 4];
+            for byte in mapped.encode_utf8(&mut encoded).bytes() {
+                if translated.try_push(byte).is_err() {
+                    crate::mainutils::errors::errorcall_str(
+                        crate::mainutils::errors::R_getCurrentCall(),
+                        "character translation workspace exceeds session memory limit",
+                    );
                 }
             }
-            let charsxp =
-                crate::sexp::constructors::Rf_mkCharLen(translated.as_ptr().cast(), length);
-            chartr_require_original_owner(owner);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
         }
-        result
+        let charsxp = mk_char_len(&translated, length);
+        chartr_require_original_owner(owner);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
     }
+    result
 }
 
 fn expand_chartr_spec(

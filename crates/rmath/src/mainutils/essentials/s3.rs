@@ -80,7 +80,7 @@ pub(crate) fn apply_s3_closure_method(
             // Portable (Rust-only) primitives carry a session-local negative
             // PRIMOFFSET, so PRIMFUN cannot resolve them; route through the
             // evaluated-builtin handler table by name instead.
-            if let Some(sexp) = crate::sexp::object::Sexp::try_from_raw(method.method).ok()
+            if let Some(sexp) = active_owner().sexp(method.method).ok()
                 && let Some(name) = crate::eval::primitive::portable_primitive_name(sexp)
                 && let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(&name)
             {
@@ -1864,23 +1864,21 @@ pub fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// otherwise it builds `rep_len(modulus, n) * exp(1i * rep_len(argument, n))`
 /// with `n = max(length.out, length(argument), length(modulus))`.
 pub fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Upstream evaluates this inside base::complex's closure, so
-        // coercion warnings raised here attribute to that call ("In
-        // complex(...) : NAs introduced by coercion"). The port folds the
-        // wrapper into one builtin with no closure context of its own, so
-        // install the call as the warning attribution override for the
-        // handler body; the guard restores the previous value even when a
-        // base_error panic unwinds through.
-        let _restore = crate::mainutils::errors::warning_call_guard(call);
-        let supplied = match_complex_formals(args);
+    // Upstream evaluates this inside base::complex's closure, so
+    // coercion warnings raised here attribute to that call ("In
+    // complex(...) : NAs introduced by coercion"). The port folds the
+    // wrapper into one builtin with no closure context of its own, so
+    // install the call as the warning attribution override for the
+    // handler body; the guard restores the previous value even when a
+    // base_error panic unwinds through.
+    let _restore = crate::mainutils::errors::warning_call_guard(call);
+    let supplied = match_complex_formals(args);
 
-        // Wrapper: `if (missing(modulus) && missing(argument))`.
-        if supplied[3].is_none() && supplied[4].is_none() {
-            return complex_from_real_imaginary(&supplied);
-        }
-        complex_from_polar(&supplied)
+    // Wrapper: `if (missing(modulus) && missing(argument))`.
+    if supplied[3].is_none() && supplied[4].is_none() {
+        return complex_from_real_imaginary(&supplied);
     }
+    complex_from_polar(&supplied)
 }
 
 /// Formals of base's `complex` closure, in positional order.
@@ -1890,7 +1888,7 @@ const COMPLEX_FORMALS: [&str; 5] = ["length.out", "real", "imaginary", "modulus"
 /// first (partial matching — the five formals start with distinct letters, so
 /// a prefix matches one formal or none), then positional arguments fill the
 /// remaining slots in order.
-unsafe fn match_complex_formals(args: SEXP) -> [Option<SEXP>; 5] {
+fn match_complex_formals(args: SEXP) -> [Option<SEXP>; 5] {
     {
         let mut slots: [Option<SEXP>; 5] = [None; 5];
         let mut positionals: Vec<SEXP> = Vec::new();
@@ -1963,143 +1961,137 @@ fn complex_real_part(x: SEXP) -> SEXP {
 
 /// `.Internal(complex(length.out, real, imaginary))`.
 fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
-    unsafe {
-        let na = crate::mainutils::coerce::asInteger(match supplied[0] {
-            Some(v) => v,
-            None => Rf_ScalarInteger(0), // wrapper default `length.out = 0L`
-        });
-        if na == NA_INTEGER || na < 0 {
-            base_error("invalid length");
-        }
-        let re = complex_real_part(supplied[1].unwrap_or(R_NilValue()));
-        let _re_guard = protect(re);
-        let im = complex_real_part(supplied[2].unwrap_or(R_NilValue()));
-        let _im_guard = protect(im);
-        let nr = XLENGTH(re);
-        let ni = XLENGTH(im);
-        let mut n = na as R_xlen_t;
-        if nr > n {
-            n = nr;
-        }
-        if ni > n {
-            n = ni;
-        }
-
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if ans.is_null() {
-            return R_NilValue();
-        }
-        let _ans_guard = protect(ans);
-        let pans = COMPLEX(ans);
-        for i in 0..n {
-            *pans.add(i as usize) = Rcomplex { r: 0.0, i: 0.0 };
-        }
-        if n > 0 && nr > 0 {
-            for i in 0..n {
-                (*pans.add(i as usize)).r = real_elt_checked(re, ((i % nr) as usize) as R_xlen_t);
-            }
-        }
-        if n > 0 && ni > 0 {
-            for i in 0..n {
-                (*pans.add(i as usize)).i = real_elt_checked(im, ((i % ni) as usize) as R_xlen_t);
-            }
-        }
-        ans
+    let na = crate::mainutils::coerce::asInteger(match supplied[0] {
+        Some(v) => v,
+        None => Rf_ScalarInteger(0), // wrapper default `length.out = 0L`
+    });
+    if na == NA_INTEGER || na < 0 {
+        base_error("invalid length");
     }
+    let re = complex_real_part(supplied[1].unwrap_or(R_NilValue()));
+    let _re_guard = protect(re);
+    let im = complex_real_part(supplied[2].unwrap_or(R_NilValue()));
+    let _im_guard = protect(im);
+    let nr = XLENGTH(re);
+    let ni = XLENGTH(im);
+    let mut n = na as R_xlen_t;
+    if nr > n {
+        n = nr;
+    }
+    if ni > n {
+        n = ni;
+    }
+
+    let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+    if ans.is_null() {
+        return R_NilValue();
+    }
+    let _ans_guard = protect(ans);
+    let mut pans = owner_sexp_mut(ans);
+    for i in 0..n {
+        let r = if nr > 0 {
+            real_elt_checked(re, ((i % nr) as usize) as R_xlen_t)
+        } else {
+            0.0
+        };
+        let im_part = if ni > 0 {
+            real_elt_checked(im, ((i % ni) as usize) as R_xlen_t)
+        } else {
+            0.0
+        };
+        sexp_ok(pans.try_set_complex_elt(i as R_xlen_t, Rcomplex { r, i: im_part }));
+    }
+    ans
 }
 
 /// Wrapper's polar branch:
 /// `n <- max(length.out, length(argument), length(modulus));
 ///  rep_len(modulus, n) * exp(1i * rep_len(argument, n))`.
 fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
-    unsafe {
-        let m = complex_real_part(match supplied[3] {
-            Some(v) => v,               // supplied `modulus`
-            None => Rf_ScalarReal(1.0), // wrapper default `modulus = 1`
-        });
-        let _m_guard = protect(m);
-        let a = complex_real_part(match supplied[4] {
-            Some(v) => v,               // supplied `argument`
-            None => Rf_ScalarReal(0.0), // wrapper default `argument = 0`
-        });
-        let _a_guard = protect(a);
+    let m = complex_real_part(match supplied[3] {
+        Some(v) => v,               // supplied `modulus`
+        None => Rf_ScalarReal(1.0), // wrapper default `modulus = 1`
+    });
+    let _m_guard = protect(m);
+    let a = complex_real_part(match supplied[4] {
+        Some(v) => v,               // supplied `argument`
+        None => Rf_ScalarReal(0.0), // wrapper default `argument = 0`
+    });
+    let _a_guard = protect(a);
 
-        // max(<length.out elements>, length(argument), length(modulus));
-        // any NA in length.out propagates (na.rm = FALSE).
-        let lo = complex_real_part(supplied[0].unwrap_or(R_NilValue()));
-        let _lo_guard = protect(lo);
-        let mut lo_max = f64::NEG_INFINITY;
-        let lo_n = XLENGTH(lo);
-        let lo_owned = owner_sexp(active_owner(), lo);
-        for i in 0..lo_n {
-            let e = lo_owned
-                .try_real_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if e.is_nan() {
-                lo_max = f64::NAN;
-                break;
-            }
-            if e > lo_max {
-                lo_max = e;
-            }
+    // max(<length.out elements>, length(argument), length(modulus));
+    // any NA in length.out propagates (na.rm = FALSE).
+    let lo = complex_real_part(supplied[0].unwrap_or(R_NilValue()));
+    let _lo_guard = protect(lo);
+    let mut lo_max = f64::NEG_INFINITY;
+    let lo_n = XLENGTH(lo);
+    let lo_owned = owner_sexp(active_owner(), lo);
+    for i in 0..lo_n {
+        let e = lo_owned
+            .try_real_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if e.is_nan() {
+            lo_max = f64::NAN;
+            break;
         }
-        let n = if lo_n == 0 {
-            (XLENGTH(a) as f64).max(XLENGTH(m) as f64)
-        } else if lo_max.is_nan() {
-            // max(na.rm = FALSE): an NA in length.out propagates. f64::max
-            // would silently swallow it.
-            f64::NAN
-        } else {
-            lo_max.max(XLENGTH(a) as f64).max(XLENGTH(m) as f64)
-        };
-
-        // do_rep_len: length.out goes through asInteger (with its coercion
-        // warning), and NA/negative lengths error.
-        let n_len = crate::mainutils::coerce::asInteger(Rf_ScalarReal(n));
-        if n_len == NA_INTEGER || n_len < 0 {
-            base_error("invalid 'length.out' value");
+        if e > lo_max {
+            lo_max = e;
         }
-        if n_len == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
-        }
-
-        let n = n_len as R_xlen_t;
-        let mlen = XLENGTH(m);
-        let alen = XLENGTH(a);
-        let pa = REAL(a);
-
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if ans.is_null() {
-            return R_NilValue();
-        }
-        let _ans_guard = protect(ans);
-        let mut pans = owner_sexp_mut(ans);
-        for i in 0..n {
-            // rep_len: an empty operand rep_len's to NA.
-            let mv = if mlen == 0 {
-                NA_REAL
-            } else {
-                real_elt_checked(m, ((i % mlen) as usize) as R_xlen_t)
-            };
-            let av = if alen == 0 {
-                NA_REAL
-            } else {
-                *pa.add((i % alen) as usize)
-            };
-            // exp(1i * av) is (cos, sin); the full C99 complex multiply by
-            // (mv, 0) reproduces stock edge cases (modulus=Inf, argument=0
-            // gives Inf+NaNi, an all-NA operand gives NA).
-            let (ct, st) = (av.cos(), av.sin());
-            sexp_ok(pans.try_set_complex_elt(
-                (i as usize) as R_xlen_t,
-                Rcomplex {
-                    r: mv * ct - 0.0 * st,
-                    i: mv * st + 0.0 * ct,
-                },
-            ));
-        }
-        ans
     }
+    let n = if lo_n == 0 {
+        (XLENGTH(a) as f64).max(XLENGTH(m) as f64)
+    } else if lo_max.is_nan() {
+        // max(na.rm = FALSE): an NA in length.out propagates. f64::max
+        // would silently swallow it.
+        f64::NAN
+    } else {
+        lo_max.max(XLENGTH(a) as f64).max(XLENGTH(m) as f64)
+    };
+
+    // do_rep_len: length.out goes through asInteger (with its coercion
+    // warning), and NA/negative lengths error.
+    let n_len = crate::mainutils::coerce::asInteger(Rf_ScalarReal(n));
+    if n_len == NA_INTEGER || n_len < 0 {
+        base_error("invalid 'length.out' value");
+    }
+    if n_len == 0 {
+        return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
+    }
+
+    let n = n_len as R_xlen_t;
+    let mlen = XLENGTH(m);
+    let alen = XLENGTH(a);
+    let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+    if ans.is_null() {
+        return R_NilValue();
+    }
+    let _ans_guard = protect(ans);
+    let mut pans = owner_sexp_mut(ans);
+    for i in 0..n {
+        // rep_len: an empty operand rep_len's to NA.
+        let mv = if mlen == 0 {
+            NA_REAL
+        } else {
+            real_elt_checked(m, ((i % mlen) as usize) as R_xlen_t)
+        };
+        let av = if alen == 0 {
+            NA_REAL
+        } else {
+            real_elt_checked(a, (i % alen) as R_xlen_t)
+        };
+        // exp(1i * av) is (cos, sin); the full C99 complex multiply by
+        // (mv, 0) reproduces stock edge cases (modulus=Inf, argument=0
+        // gives Inf+NaNi, an all-NA operand gives NA).
+        let (ct, st) = (av.cos(), av.sin());
+        sexp_ok(pans.try_set_complex_elt(
+            (i as usize) as R_xlen_t,
+            Rcomplex {
+                r: mv * ct - 0.0 * st,
+                i: mv * st + 0.0 * ct,
+            },
+        ));
+    }
+    ans
 }
 
 /// R's `character(length = 0)` constructor.
@@ -2602,94 +2594,92 @@ fn initialize_generic_dispatch_tables(generic: SEXP) {
 
 /// R's `setGeneric(f, fdef, ...)` — set generic function.
 pub fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let f_arg = CAR(args);
-        let fdef_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
-            R_NilValue()
+    let f_arg = CAR(args);
+    let fdef_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
+
+    let mut generic = if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
+        fdef_arg
+    } else {
+        f_arg
+    };
+
+    // Upstream setGeneric rebinds the name in the defining environment to
+    // the generic closure and marks it as an object carrying the "generic"
+    // attribute, so standardGeneric can find it via get_this_generic.
+    if !generic.is_null() && generic != R_NilValue() && TYPEOF(generic) == SEXPTYPE::CLOSXP {
+        let source_generic = generic;
+        generic = crate::mainutils::duplicate::Rf_duplicate(generic);
+        let _generic_guard = protect(generic);
+        // Each generic owns its dispatch metadata. Its lexical environment
+        // remains the parent, so captured bindings keep their usual meaning.
+        let dispatch_env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::accessors::CLOENV(generic),
+            R_NilValue(),
+        );
+        let _dispatch_guard = protect(dispatch_env);
+        crate::sexp::accessors::SET_CLOENV(generic, dispatch_env);
+        initialize_generic_dispatch_tables(generic);
+
+        // Resolve the generic's name: explicit first argument, else the
+        // symbol this closure is bound to in the defining environment.
+        let mut name_sexp: Option<String> = None;
+        if !f_arg.is_null()
+            && f_arg != R_NilValue()
+            && (TYPEOF(f_arg) == SEXPTYPE::STRSXP || TYPEOF(f_arg) == SEXPTYPE::SYMSXP)
+        {
+            name_sexp = Some(elt_to_string(f_arg, 0));
         } else {
-            CAR(CDR(args))
-        };
-
-        let mut generic = if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
-            fdef_arg
-        } else {
-            f_arg
-        };
-
-        // Upstream setGeneric rebinds the name in the defining environment to
-        // the generic closure and marks it as an object carrying the "generic"
-        // attribute, so standardGeneric can find it via get_this_generic.
-        if !generic.is_null() && generic != R_NilValue() && TYPEOF(generic) == SEXPTYPE::CLOSXP {
-            let source_generic = generic;
-            generic = crate::mainutils::duplicate::Rf_duplicate(generic);
-            let _generic_guard = protect(generic);
-            // Each generic owns its dispatch metadata. Its lexical environment
-            // remains the parent, so captured bindings keep their usual meaning.
-            let dispatch_env = crate::sexp::memory_ext::NewEnvironment(
-                R_NilValue(),
-                crate::sexp::accessors::CLOENV(generic),
-                R_NilValue(),
-            );
-            let _dispatch_guard = protect(dispatch_env);
-            crate::sexp::accessors::SET_CLOENV(generic, dispatch_env);
-            initialize_generic_dispatch_tables(generic);
-
-            // Resolve the generic's name: explicit first argument, else the
-            // symbol this closure is bound to in the defining environment.
-            let mut name_sexp: Option<String> = None;
-            if !f_arg.is_null()
-                && f_arg != R_NilValue()
-                && (TYPEOF(f_arg) == SEXPTYPE::STRSXP || TYPEOF(f_arg) == SEXPTYPE::SYMSXP)
-            {
-                name_sexp = Some(elt_to_string(f_arg, 0));
-            } else {
-                let target_env =
-                    if !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
-                        rho
-                    } else {
-                        crate::sexp::globals::R_GlobalEnv()
-                    };
-                let name_sym = find_binding_name_for_value(target_env, source_generic);
-                if let Some(nm) = name_sym {
-                    let pname = PRINTNAME(nm);
-                    if !pname.is_null() && pname != R_NilValue() {
-                        name_sexp = Some(elt_to_string(pname, 0));
-                    }
-                }
-            }
-
-            if let Some(name) = name_sexp.filter(|n| !n.is_empty()) {
-                let cname = CString::new(name.clone()).unwrap_or_default();
-                let name_sym = install_cstr(&cname);
-                let name_str = mk_string_cstr(&cname);
-                let _name_guard = protect(name_str);
-
-                // Mark the closure as a generic function object: attribute
-                // "generic" = the generic's name, plus the OBJECT bit.
-                let generic_sym = install_str("generic");
-                crate::eval::attrib_core::setAttrib(generic, generic_sym, name_str);
-                crate::sexp::accessors::SET_OBJECT(generic, 1);
-
-                // Rebind the name to the generic closure in the calling frame.
-                let target_env =
-                    if !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
-                        rho
-                    } else {
-                        crate::sexp::globals::R_GlobalEnv()
-                    };
-                let existing = find_var_in_frame(target_env, name_sym);
-                let already_generic = !existing.is_null()
-                    && existing != R_UnboundValue()
-                    && is_function_type(existing)
-                    && crate::eval::attrib_core::isObject(existing) != FALSE;
-                if !already_generic {
-                    define_var(name_sym, generic, target_env);
+            let target_env =
+                if !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
+                    rho
+                } else {
+                    crate::sexp::globals::R_GlobalEnv()
+                };
+            let name_sym = find_binding_name_for_value(target_env, source_generic);
+            if let Some(nm) = name_sym {
+                let pname = PRINTNAME(nm);
+                if !pname.is_null() && pname != R_NilValue() {
+                    name_sexp = Some(elt_to_string(pname, 0));
                 }
             }
         }
 
-        generic
+        if let Some(name) = name_sexp.filter(|n| !n.is_empty()) {
+            let cname = CString::new(name.clone()).unwrap_or_default();
+            let name_sym = install_cstr(&cname);
+            let name_str = mk_string_cstr(&cname);
+            let _name_guard = protect(name_str);
+
+            // Mark the closure as a generic function object: attribute
+            // "generic" = the generic's name, plus the OBJECT bit.
+            let generic_sym = install_str("generic");
+            crate::mainutils::relop::setAttrib(generic, generic_sym, name_str);
+            crate::sexp::accessors::SET_OBJECT(generic, 1);
+
+            // Rebind the name to the generic closure in the calling frame.
+            let target_env =
+                if !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
+                    rho
+                } else {
+                    crate::sexp::globals::R_GlobalEnv()
+                };
+            let existing = find_var_in_frame(target_env, name_sym);
+            let already_generic = !existing.is_null()
+                && existing != R_UnboundValue()
+                && is_function_type(existing)
+                && crate::eval::attrib_core::isObject(existing) != FALSE;
+            if !already_generic {
+                define_var(name_sym, generic, target_env);
+            }
+        }
     }
+
+    generic
 }
 
 fn is_function_type(value: SEXP) -> bool {
@@ -2743,127 +2733,120 @@ fn find_binding_name_for_value(env: SEXP, value: SEXP) -> Option<SEXP> {
 
 /// R's `setMethod(f, signature, definition, ...)` — set S4 method.
 pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let f_arg = CAR(args);
-        let signature_arg = CAR(CDR(args));
-        let definition = CAR(CDR(CDR(args)));
+    let f_arg = CAR(args);
+    let signature_arg = CAR(CDR(args));
+    let definition = CAR(CDR(CDR(args)));
 
-        if definition.is_null() || definition == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let generic = if TYPEOF(f_arg) == SEXPTYPE::CLOSXP {
-            f_arg
-        } else if TYPEOF(f_arg) == SEXPTYPE::STRSXP || TYPEOF(f_arg) == SEXPTYPE::SYMSXP {
-            crate::library::methods::methods_list_dispatch::R_getGenericByName(
-                f_arg,
-                Rf_ScalarLogical(TRUE),
-                rho,
-                R_NilValue(),
-            )
-        } else {
-            return definition;
-        };
-
-        if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
-            return definition;
-        }
-
-        let f_env = crate::sexp::accessors::CLOENV(generic);
-        if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
-            return definition;
-        }
-
-        let all_mtable_sym = install_str(".AllMTable");
-        let existing = find_var_in_frame(f_env, all_mtable_sym);
-        let mtable = if !existing.is_null()
-            && existing != R_UnboundValue()
-            && TYPEOF(existing) == SEXPTYPE::ENVSXP
-        {
-            existing
-        } else {
-            let table = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
-            if table.is_null() {
-                return definition;
-            }
-            let _table_guard = protect(table);
-            define_var(all_mtable_sym, table, f_env);
-            table
-        };
-
-        let label = if signature_arg.is_null() || signature_arg == R_NilValue() {
-            String::new()
-        } else if TYPEOF(signature_arg) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(signature_arg);
-            let names =
-                crate::eval::attrib_core::getAttrib(signature_arg, install_str("names"));
-            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                let sigargs =
-                    find_var_in_frame(f_env, install_str(".SigArgs"));
-                if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
-                    base_error("generic has no valid signature arguments");
-                }
-                let sigargs_owned = owner_sexp(active_owner(), sigargs);
-                let formals: Vec<String> = (0..XLENGTH(sigargs))
-                    .map(|i| {
-                        let elt = sigargs_owned
-                            .try_vector_elt(i)
-                            .map(|elt| elt.as_raw())
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
-                        elt_to_string(elt, 0)
-                    })
-                    .collect();
-                let mut ordered = vec!["ANY".to_string(); formals.len()];
-                let mut assigned = vec![false; formals.len()];
-                for i in 0..n {
-                    let name = elt_to_string(names, i);
-                    let index = if name.is_empty() {
-                        i as usize
-                    } else {
-                        formals
-                            .iter()
-                            .position(|formal| formal == &name)
-                            .unwrap_or_else(|| {
-                                base_error("named signature argument is not in the generic")
-                            })
-                    };
-                    if index >= ordered.len() || assigned[index] {
-                        base_error("invalid or duplicated method signature argument");
-                    }
-                    ordered[index] = elt_to_string(signature_arg, i);
-                    assigned[index] = true;
-                }
-                ordered.join("#")
-            } else {
-                let sigargs =
-                    find_var_in_frame(f_env, install_str(".SigArgs"));
-                if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
-                    base_error("generic has no valid signature arguments");
-                }
-                let arity = XLENGTH(sigargs);
-                if n > arity {
-                    base_error("method signature is longer than the generic signature");
-                }
-                (0..arity)
-                    .map(|i| {
-                        if i < n {
-                            elt_to_string(signature_arg, i)
-                        } else {
-                            "ANY".to_string()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("#")
-            }
-        } else {
-            elt_to_string(signature_arg, 0)
-        };
-
-        let method_sym = install_cstr(&CString::new(label).unwrap_or_default());
-        define_var(method_sym, definition, mtable);
-
-        definition
+    if definition.is_null() || definition == R_NilValue() {
+        return R_NilValue();
     }
+
+    let generic = if TYPEOF(f_arg) == SEXPTYPE::CLOSXP {
+        f_arg
+    } else if TYPEOF(f_arg) == SEXPTYPE::STRSXP || TYPEOF(f_arg) == SEXPTYPE::SYMSXP {
+        crate::library::methods::methods_list_dispatch::R_getGenericByName(
+            f_arg,
+            Rf_ScalarLogical(TRUE),
+            rho,
+            R_NilValue(),
+        )
+    } else {
+        return definition;
+    };
+
+    if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
+        return definition;
+    }
+
+    let f_env = crate::sexp::accessors::CLOENV(generic);
+    if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+        return definition;
+    }
+
+    let all_mtable_sym = install_str(".AllMTable");
+    let existing = find_var_in_frame(f_env, all_mtable_sym);
+    let mtable = if !existing.is_null()
+        && existing != R_UnboundValue()
+        && TYPEOF(existing) == SEXPTYPE::ENVSXP
+    {
+        existing
+    } else {
+        let table = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
+        if table.is_null() {
+            return definition;
+        }
+        let _table_guard = protect(table);
+        define_var(all_mtable_sym, table, f_env);
+        table
+    };
+
+    let label = if signature_arg.is_null() || signature_arg == R_NilValue() {
+        String::new()
+    } else if TYPEOF(signature_arg) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(signature_arg);
+        let names = crate::sexp::attrib_core::getAttrib(signature_arg, install_str("names"));
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let sigargs = find_var_in_frame(f_env, install_str(".SigArgs"));
+            if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+                base_error("generic has no valid signature arguments");
+            }
+            let sigargs_owned = owner_sexp(active_owner(), sigargs);
+            let formals: Vec<String> = (0..XLENGTH(sigargs))
+                .map(|i| {
+                    let elt = sigargs_owned
+                        .try_vector_elt(i)
+                        .map(|elt| elt.as_raw())
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    elt_to_string(elt, 0)
+                })
+                .collect();
+            let mut ordered = vec!["ANY".to_string(); formals.len()];
+            let mut assigned = vec![false; formals.len()];
+            for i in 0..n {
+                let name = elt_to_string(names, i);
+                let index = if name.is_empty() {
+                    i as usize
+                } else {
+                    formals
+                        .iter()
+                        .position(|formal| formal == &name)
+                        .unwrap_or_else(|| {
+                            base_error("named signature argument is not in the generic")
+                        })
+                };
+                if index >= ordered.len() || assigned[index] {
+                    base_error("invalid or duplicated method signature argument");
+                }
+                ordered[index] = elt_to_string(signature_arg, i);
+                assigned[index] = true;
+            }
+            ordered.join("#")
+        } else {
+            let sigargs = find_var_in_frame(f_env, install_str(".SigArgs"));
+            if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+                base_error("generic has no valid signature arguments");
+            }
+            let arity = XLENGTH(sigargs);
+            if n > arity {
+                base_error("method signature is longer than the generic signature");
+            }
+            (0..arity)
+                .map(|i| {
+                    if i < n {
+                        elt_to_string(signature_arg, i)
+                    } else {
+                        "ANY".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("#")
+        }
+    } else {
+        elt_to_string(signature_arg, 0)
+    };
+
+    let method_sym = install_cstr(&CString::new(label).unwrap_or_default());
+    define_var(method_sym, definition, mtable);
+
+    definition
 }

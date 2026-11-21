@@ -55,530 +55,515 @@ pub fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `cor(x, y)` — Pearson correlation between two numeric vectors.
 pub fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y_cdr = CDR(args);
-        let y = if y_cdr.is_null() || y_cdr == R_NilValue() || CAR(y_cdr) == R_MissingArg() {
-            R_NilValue()
-        } else {
-            CAR(y_cdr)
-        };
+    let x = CAR(args);
+    let y_cdr = CDR(args);
+    let y = if y_cdr.is_null() || y_cdr == R_NilValue() || CAR(y_cdr) == R_MissingArg() {
+        R_NilValue()
+    } else {
+        CAR(y_cdr)
+    };
 
-        if x.is_null() || x == R_NilValue() || x == R_MissingArg() {
-            return Rf_ScalarReal(NA_REAL);
-        }
+    if x.is_null() || x == R_NilValue() || x == R_MissingArg() {
+        return Rf_ScalarReal(NA_REAL);
+    }
 
-        let mut extra = if y_cdr.is_null() || y_cdr == R_NilValue() {
-            R_NilValue()
-        } else {
-            CDR(y_cdr)
-        };
-        let mut position = 2;
-        let mut use_mode = "everything".to_string();
-        let mut method_mode = "pearson".to_string();
-        while !extra.is_null() && extra != R_NilValue() {
-            let name = tag_name(extra).unwrap_or_else(|| {
-                if position == 2 {
-                    "use".into()
-                } else if position == 3 {
-                    "method".into()
-                } else {
-                    "unknown".into()
-                }
-            });
-            let value = CAR(extra);
-            if name == "method" {
-                if value != R_MissingArg()
-                    && (TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 || {
-                        let method =
-                            charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
-                        method.as_bytes() != b"pearson" && method.as_bytes() != b"spearman"
-                    })
-                {
-                    base_error("unsupported cor method");
-                }
-                if value != R_MissingArg() {
-                    method_mode = charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
-                }
-            } else if name == "use" {
-                if value != R_MissingArg() {
-                    if TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 {
-                        base_error("invalid 'use' argument");
-                    }
-                    use_mode = charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
-                    if !matches!(
-                        use_mode.as_str(),
-                        "everything"
-                            | "all.obs"
-                            | "complete.obs"
-                            | "na.or.complete"
-                            | "pairwise.complete.obs"
-                    ) {
-                        base_error("invalid 'use' argument");
-                    }
-                }
+    let mut extra = if y_cdr.is_null() || y_cdr == R_NilValue() {
+        R_NilValue()
+    } else {
+        CDR(y_cdr)
+    };
+    let mut position = 2;
+    let mut use_mode = "everything".to_string();
+    let mut method_mode = "pearson".to_string();
+    while !extra.is_null() && extra != R_NilValue() {
+        let name = tag_name(extra).unwrap_or_else(|| {
+            if position == 2 {
+                "use".into()
+            } else if position == 3 {
+                "method".into()
             } else {
-                base_error("unsupported cor argument");
+                "unknown".into()
             }
-            position += 1;
-            extra = CDR(extra);
-        }
-
-        // Matrices are column-major in R.  Support Pearson correlation for
-        // finite numeric columns while retaining the scalar vector path below.
-        let dims = |value: SEXP| -> Option<(usize, usize)> {
-            let dim =
-                crate::eval::attrib_core::getAttrib(value, crate::eval::attrib_core::R_DimSymbol());
-            if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
-                return None;
-            }
-            let rows = integer_elt_checked(dim, 0) as isize;
-            let cols = integer_elt_checked(dim, (1) as R_xlen_t) as isize;
-            (rows >= 0 && cols >= 0).then_some((rows as usize, cols as usize))
-        };
-        let x_dims = dims(x);
-        let y_missing = y.is_null() || y == R_NilValue() || y == R_MissingArg();
-        let y_dims = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
-            None
-        } else {
-            dims(y)
-        };
-        if x_dims.is_some() || y_dims.is_some() {
-            if use_mode != "everything" || method_mode != "pearson" {
-                base_error("matrix cor currently supports only use='everything', method='pearson'");
-            }
-            let (x_rows, nx) = x_dims.unwrap_or((XLENGTH(x) as usize, 1));
-            let (y_rows, ny) = match y_dims {
-                Some((rows, cols)) => (rows, cols),
-                None if x_dims.is_some() && y_missing => (x_rows, nx),
-                None => (x_rows, 1),
-            };
-            if y_rows != x_rows {
-                base_error(format!("incompatible dimensions ({x_rows} vs {y_rows})"));
-            }
-            let x_data = get_numeric_data(x);
-            let y_data = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
-                x_data.clone()
-            } else {
-                get_numeric_data(y)
-            };
-            // The matrix implementation intentionally covers the finite,
-            // default Pearson case only.  Do not silently turn R's default
-            // `use = "everything"` NA semantics into pairwise deletion.
-            if x_data.iter().any(|value| !value.is_finite())
-                || y_data.iter().any(|value| !value.is_finite())
+        });
+        let value = CAR(extra);
+        if name == "method" {
+            if value != R_MissingArg()
+                && (TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 || {
+                    let method = charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
+                    method.as_bytes() != b"pearson" && method.as_bytes() != b"spearman"
+                })
             {
-                base_error("matrix cor currently requires finite numeric data");
+                base_error("unsupported cor method");
             }
-            let x_is_matrix = x_dims.is_some();
-            let y_is_matrix = y_dims.is_some() || y_missing && x_is_matrix;
-            if (!x_is_matrix && x_data.len() != x_rows) || (!y_is_matrix && y_data.len() != y_rows)
-            {
-                base_error("incompatible dimensions");
+            if value != R_MissingArg() {
+                method_mode = charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
             }
-            if x_rows.checked_mul(nx) != Some(x_data.len())
-                || y_rows.checked_mul(ny) != Some(y_data.len())
-            {
-                base_error("matrix dimensions do not match correlation data");
-            }
-            let result_len = nx
-                .checked_mul(ny)
-                .unwrap_or_else(|| base_error("correlation matrix is too large"));
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len as i64);
-            let _guard = protect(result);
-            for j in 0..ny {
-                for i in 0..nx {
-                    let (mut sx, mut sy, mut count) = (0., 0., 0usize);
-                    for r in 0..x_rows {
-                        let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
-                        let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
-                        if xv.is_finite() && yv.is_finite() {
-                            sx += xv;
-                            sy += yv;
-                            count += 1;
-                        }
-                    }
-                    let value = if count < 2 {
-                        NA_REAL
-                    } else {
-                        let (mx, my) = (sx / count as f64, sy / count as f64);
-                        let (mut cov, mut vx, mut vy) = (0., 0., 0.);
-                        for r in 0..x_rows {
-                            let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
-                            let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
-                            if xv.is_finite() && yv.is_finite() {
-                                let dx = xv - mx;
-                                let dy = yv - my;
-                                cov += dx * dy;
-                                vx += dx * dx;
-                                vy += dy * dy;
-                            }
-                        }
-                        let denom = (vx * vy).sqrt();
-                        if denom == 0. { NA_REAL } else { cov / denom }
-                    };
-                    set_real_checked(result, (j * nx + i) as R_xlen_t, value);
+        } else if name == "use" {
+            if value != R_MissingArg() {
+                if TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 {
+                    base_error("invalid 'use' argument");
+                }
+                use_mode = charsxp_text(STRING_ELT(value, 0)).unwrap_or_default();
+                if !matches!(
+                    use_mode.as_str(),
+                    "everything"
+                        | "all.obs"
+                        | "complete.obs"
+                        | "na.or.complete"
+                        | "pairwise.complete.obs"
+                ) {
+                    base_error("invalid 'use' argument");
                 }
             }
-            // R returns a matrix whenever either argument is a matrix,
-            // including matrix/vector and vector/matrix correlations.
-            if x_is_matrix || y_is_matrix {
-                let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-                let _dim_guard = protect(dim);
-                set_integer_checked(dim, 0, nx as i32);
-                set_integer_checked(dim, (1) as R_xlen_t, ny as i32);
-                crate::eval::attrib_core::setAttrib(
-                    result,
-                    crate::eval::attrib_core::R_DimSymbol(),
-                    dim,
-                );
-                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _dng = protect(dimnames);
-                let column_names = |value: SEXP| {
-                    let dn = crate::eval::attrib_core::getAttrib(
-                        value,
-                        crate::eval::attrib_core::R_DimNamesSymbol(),
-                    );
-                    if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
-                        VECTOR_ELT(dn, 1)
-                    } else {
-                        R_NilValue()
-                    }
-                };
-                SET_VECTOR_ELT(
-                    dimnames,
-                    0,
-                    if x_is_matrix {
-                        column_names(x)
-                    } else {
-                        R_NilValue()
-                    },
-                );
-                SET_VECTOR_ELT(
-                    dimnames,
-                    1,
-                    if y_is_matrix {
-                        if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
-                            column_names(x)
-                        } else {
-                            column_names(y)
-                        }
-                    } else if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
-                        column_names(x)
-                    } else {
-                        R_NilValue()
-                    },
-                );
-                crate::eval::attrib_core::setAttrib(
-                    result,
-                    crate::eval::attrib_core::R_DimNamesSymbol(),
-                    dimnames,
-                );
-            }
-            return result;
+        } else {
+            base_error("unsupported cor argument");
         }
+        position += 1;
+        extra = CDR(extra);
+    }
 
+    // Matrices are column-major in R.  Support Pearson correlation for
+    // finite numeric columns while retaining the scalar vector path below.
+    let dims = |value: SEXP| -> Option<(usize, usize)> {
+        let dim =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
+            return None;
+        }
+        let rows = integer_elt_checked(dim, 0) as isize;
+        let cols = integer_elt_checked(dim, (1) as R_xlen_t) as isize;
+        (rows >= 0 && cols >= 0).then_some((rows as usize, cols as usize))
+    };
+    let x_dims = dims(x);
+    let y_missing = y.is_null() || y == R_NilValue() || y == R_MissingArg();
+    let y_dims = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+        None
+    } else {
+        dims(y)
+    };
+    if x_dims.is_some() || y_dims.is_some() {
+        if use_mode != "everything" || method_mode != "pearson" {
+            base_error("matrix cor currently supports only use='everything', method='pearson'");
+        }
+        let (x_rows, nx) = x_dims.unwrap_or((XLENGTH(x) as usize, 1));
+        let (y_rows, ny) = match y_dims {
+            Some((rows, cols)) => (rows, cols),
+            None if x_dims.is_some() && y_missing => (x_rows, nx),
+            None => (x_rows, 1),
+        };
+        if y_rows != x_rows {
+            base_error(format!("incompatible dimensions ({x_rows} vs {y_rows})"));
+        }
         let x_data = get_numeric_data(x);
         let y_data = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
             x_data.clone()
         } else {
             get_numeric_data(y)
         };
-
-        if x_data.len() != y_data.len() {
-            base_error("incompatible lengths");
+        // The matrix implementation intentionally covers the finite,
+        // default Pearson case only.  Do not silently turn R's default
+        // `use = "everything"` NA semantics into pairwise deletion.
+        if x_data.iter().any(|value| !value.is_finite())
+            || y_data.iter().any(|value| !value.is_finite())
+        {
+            base_error("matrix cor currently requires finite numeric data");
         }
-        let n = x_data.len();
-        if n == 0 {
-            match use_mode.as_str() {
-                "complete.obs" => base_error("no complete element pairs"),
-                "pairwise.complete.obs" => base_error("'x' is empty"),
-                _ => return Rf_ScalarReal(NA_REAL),
+        let x_is_matrix = x_dims.is_some();
+        let y_is_matrix = y_dims.is_some() || y_missing && x_is_matrix;
+        if (!x_is_matrix && x_data.len() != x_rows) || (!y_is_matrix && y_data.len() != y_rows) {
+            base_error("incompatible dimensions");
+        }
+        if x_rows.checked_mul(nx) != Some(x_data.len())
+            || y_rows.checked_mul(ny) != Some(y_data.len())
+        {
+            base_error("matrix dimensions do not match correlation data");
+        }
+        let result_len = nx
+            .checked_mul(ny)
+            .unwrap_or_else(|| base_error("correlation matrix is too large"));
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len as i64);
+        let _guard = protect(result);
+        for j in 0..ny {
+            for i in 0..nx {
+                let (mut sx, mut sy, mut count) = (0., 0., 0usize);
+                for r in 0..x_rows {
+                    let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
+                    let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
+                    if xv.is_finite() && yv.is_finite() {
+                        sx += xv;
+                        sy += yv;
+                        count += 1;
+                    }
+                }
+                let value = if count < 2 {
+                    NA_REAL
+                } else {
+                    let (mx, my) = (sx / count as f64, sy / count as f64);
+                    let (mut cov, mut vx, mut vy) = (0., 0., 0.);
+                    for r in 0..x_rows {
+                        let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
+                        let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
+                        if xv.is_finite() && yv.is_finite() {
+                            let dx = xv - mx;
+                            let dy = yv - my;
+                            cov += dx * dy;
+                            vx += dx * dx;
+                            vy += dy * dy;
+                        }
+                    }
+                    let denom = (vx * vy).sqrt();
+                    if denom == 0. { NA_REAL } else { cov / denom }
+                };
+                set_real_checked(result, (j * nx + i) as R_xlen_t, value);
             }
         }
-
-        let missing = |value: f64| value.is_nan();
-        let missing_count = (0..n)
-            .filter(|&i| missing(x_data[i]) || missing(y_data[i]))
-            .count();
-        match use_mode.as_str() {
-            "everything" if missing_count > 0 => return Rf_ScalarReal(NA_REAL),
-            "all.obs" if missing_count > 0 => base_error("missing observations in cov/cor"),
-            _ => {}
-        }
-
-        let ranked: Option<(Vec<f64>, Vec<f64>)> = if method_mode == "spearman" {
-            let active: Vec<usize> = (0..n)
-                .filter(|&i| {
-                    use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i]))
-                })
-                .collect();
-            let rank = |values: &[f64]| -> Vec<f64> {
-                let mut order: Vec<usize> = (0..values.len()).collect();
-                order.sort_by(|&a, &b| values[a].total_cmp(&values[b]));
-                let mut ranks = vec![0.0; values.len()];
-                let mut start = 0;
-                while start < order.len() {
-                    let mut end = start + 1;
-                    while end < order.len() && values[order[end]] == values[order[start]] {
-                        end += 1;
-                    }
-                    let average = (start + end + 1) as f64 / 2.0;
-                    for &index in &order[start..end] {
-                        ranks[index] = average;
-                    }
-                    start = end;
+        // R returns a matrix whenever either argument is a matrix,
+        // including matrix/vector and vector/matrix correlations.
+        if x_is_matrix || y_is_matrix {
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _dim_guard = protect(dim);
+            set_integer_checked(dim, 0, nx as i32);
+            set_integer_checked(dim, (1) as R_xlen_t, ny as i32);
+            crate::mainutils::relop::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dng = protect(dimnames);
+            let column_names = |value: SEXP| {
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                    VECTOR_ELT(dn, 1)
+                } else {
+                    R_NilValue()
                 }
-                ranks
             };
-            let xv: Vec<f64> = active.iter().map(|&i| x_data[i]).collect();
-            let yv: Vec<f64> = active.iter().map(|&i| y_data[i]).collect();
-            Some((rank(&xv), rank(&yv)))
-        } else {
-            None
-        };
-
-        let mut sum_x = 0.0_f64;
-        let mut sum_y = 0.0_f64;
-        let count = if let Some((calc_x, calc_y)) = ranked.as_ref() {
-            for i in 0..calc_x.len() {
-                sum_x += calc_x[i];
-                sum_y += calc_y[i];
-            }
-            calc_x.len() as i64
-        } else {
-            let mut count = 0_i64;
-            for i in 0..n {
-                if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
-                    sum_x += x_data[i];
-                    sum_y += y_data[i];
-                    count += 1;
-                }
-            }
-            count
-        };
-        if count < 2 {
-            if count == 0 && use_mode == "complete.obs" {
-                base_error("no complete element pairs");
-            }
-            return Rf_ScalarReal(NA_REAL);
+            SET_VECTOR_ELT(
+                dimnames,
+                0,
+                if x_is_matrix {
+                    column_names(x)
+                } else {
+                    R_NilValue()
+                },
+            );
+            SET_VECTOR_ELT(
+                dimnames,
+                1,
+                if y_is_matrix {
+                    if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+                        column_names(x)
+                    } else {
+                        column_names(y)
+                    }
+                } else if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+                    column_names(x)
+                } else {
+                    R_NilValue()
+                },
+            );
+            crate::mainutils::relop::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
         }
-        let mean_x = sum_x / count as f64;
-        let mean_y = sum_y / count as f64;
+        return result;
+    }
 
-        let mut cov = 0.0_f64;
-        let mut var_x = 0.0_f64;
-        let mut var_y = 0.0_f64;
-        if let Some((calc_x, calc_y)) = ranked.as_ref() {
-            for i in 0..calc_x.len() {
-                let dx = calc_x[i] - mean_x;
-                let dy = calc_y[i] - mean_y;
+    let x_data = get_numeric_data(x);
+    let y_data = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+        x_data.clone()
+    } else {
+        get_numeric_data(y)
+    };
+
+    if x_data.len() != y_data.len() {
+        base_error("incompatible lengths");
+    }
+    let n = x_data.len();
+    if n == 0 {
+        match use_mode.as_str() {
+            "complete.obs" => base_error("no complete element pairs"),
+            "pairwise.complete.obs" => base_error("'x' is empty"),
+            _ => return Rf_ScalarReal(NA_REAL),
+        }
+    }
+
+    let missing = |value: f64| value.is_nan();
+    let missing_count = (0..n)
+        .filter(|&i| missing(x_data[i]) || missing(y_data[i]))
+        .count();
+    match use_mode.as_str() {
+        "everything" if missing_count > 0 => return Rf_ScalarReal(NA_REAL),
+        "all.obs" if missing_count > 0 => base_error("missing observations in cov/cor"),
+        _ => {}
+    }
+
+    let ranked: Option<(Vec<f64>, Vec<f64>)> = if method_mode == "spearman" {
+        let active: Vec<usize> = (0..n)
+            .filter(|&i| use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])))
+            .collect();
+        let rank = |values: &[f64]| -> Vec<f64> {
+            let mut order: Vec<usize> = (0..values.len()).collect();
+            order.sort_by(|&a, &b| values[a].total_cmp(&values[b]));
+            let mut ranks = vec![0.0; values.len()];
+            let mut start = 0;
+            while start < order.len() {
+                let mut end = start + 1;
+                while end < order.len() && values[order[end]] == values[order[start]] {
+                    end += 1;
+                }
+                let average = (start + end + 1) as f64 / 2.0;
+                for &index in &order[start..end] {
+                    ranks[index] = average;
+                }
+                start = end;
+            }
+            ranks
+        };
+        let xv: Vec<f64> = active.iter().map(|&i| x_data[i]).collect();
+        let yv: Vec<f64> = active.iter().map(|&i| y_data[i]).collect();
+        Some((rank(&xv), rank(&yv)))
+    } else {
+        None
+    };
+
+    let mut sum_x = 0.0_f64;
+    let mut sum_y = 0.0_f64;
+    let count = if let Some((calc_x, calc_y)) = ranked.as_ref() {
+        for i in 0..calc_x.len() {
+            sum_x += calc_x[i];
+            sum_y += calc_y[i];
+        }
+        calc_x.len() as i64
+    } else {
+        let mut count = 0_i64;
+        for i in 0..n {
+            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
+                sum_x += x_data[i];
+                sum_y += y_data[i];
+                count += 1;
+            }
+        }
+        count
+    };
+    if count < 2 {
+        if count == 0 && use_mode == "complete.obs" {
+            base_error("no complete element pairs");
+        }
+        return Rf_ScalarReal(NA_REAL);
+    }
+    let mean_x = sum_x / count as f64;
+    let mean_y = sum_y / count as f64;
+
+    let mut cov = 0.0_f64;
+    let mut var_x = 0.0_f64;
+    let mut var_y = 0.0_f64;
+    if let Some((calc_x, calc_y)) = ranked.as_ref() {
+        for i in 0..calc_x.len() {
+            let dx = calc_x[i] - mean_x;
+            let dy = calc_y[i] - mean_y;
+            cov += dx * dy;
+            var_x += dx * dx;
+            var_y += dy * dy;
+        }
+    } else {
+        for i in 0..n {
+            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
+                let dx = x_data[i] - mean_x;
+                let dy = y_data[i] - mean_y;
                 cov += dx * dy;
                 var_x += dx * dx;
                 var_y += dy * dy;
             }
-        } else {
-            for i in 0..n {
-                if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
-                    let dx = x_data[i] - mean_x;
-                    let dy = y_data[i] - mean_y;
-                    cov += dx * dy;
-                    var_x += dx * dx;
-                    var_y += dy * dy;
-                }
-            }
         }
-        let denom = (var_x * var_y).sqrt();
-        if denom == 0.0 {
-            crate::mainutils::errors::Rf_warningcall1(
-                call,
-                c"the standard deviation is zero");
-            return Rf_ScalarReal(NA_REAL);
-        }
-        Rf_ScalarReal(cov / denom)
     }
+    let denom = (var_x * var_y).sqrt();
+    if denom == 0.0 {
+        crate::mainutils::errors::Rf_warningcall1(call, c"the standard deviation is zero");
+        return Rf_ScalarReal(NA_REAL);
+    }
+    Rf_ScalarReal(cov / denom)
 }
 
 /// R's `scale(x, center=TRUE, scale=TRUE)` — standardize a numeric vector.
 pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = scale_argument(args, "x", 0);
-        let center_arg = scale_argument(args, "center", 1);
-        let scale_arg = scale_argument(args, "scale", 2);
+    let x = scale_argument(args, "x", 0);
+    let center_arg = scale_argument(args, "center", 1);
+    let scale_arg = scale_argument(args, "scale", 2);
 
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (nrow, ncol) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as R_xlen_t, integer_elt_checked(dim, (1) as R_xlen_t) as R_xlen_t)
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (nrow, ncol) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (
+            integer_elt_checked(dim, 0) as R_xlen_t,
+            integer_elt_checked(dim, (1) as R_xlen_t) as R_xlen_t,
+        )
+    } else {
+        (XLENGTH(x), 1)
+    };
+    let n = nrow.saturating_mul(ncol);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let result_dim = if !dim.is_null() && dim != R_NilValue() {
+        dim
+    } else {
+        let result_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        set_integer_checked(result_dim, 0, nrow as c_int);
+        set_integer_checked(result_dim, (1) as R_xlen_t, ncol as c_int);
+        result_dim
+    };
+    let _result_dim_guard = protect(result_dim);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimSymbol(),
+        result_dim,
+    );
+    let input_dimnames =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let result_dimnames = if !input_dimnames.is_null() && input_dimnames != R_NilValue() {
+        input_dimnames
+    } else {
+        let input_names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+        if input_names.is_null() || input_names == R_NilValue() {
+            R_NilValue()
         } else {
-            (XLENGTH(x), 1)
-        };
-        let n = nrow.saturating_mul(ncol);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dn = protect(dimnames);
+            SET_VECTOR_ELT(dimnames, 0, input_names);
+            SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+            dimnames
         }
-        let _p = protect(result);
-        let result_dim = if !dim.is_null() && dim != R_NilValue() {
-            dim
-        } else {
-            let result_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            set_integer_checked(result_dim, 0, nrow as c_int);
-            set_integer_checked(result_dim, (1) as R_xlen_t, ncol as c_int);
-            result_dim
-        };
-        let _result_dim_guard = protect(result_dim);
+    };
+    let _result_dimnames_guard = protect(result_dimnames);
+    if !result_dimnames.is_null() && result_dimnames != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(
             result,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            result_dim,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            result_dimnames,
         );
-        let input_dimnames =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        let result_dimnames = if !input_dimnames.is_null() && input_dimnames != R_NilValue() {
-            input_dimnames
+    }
+    let center_numeric = !center_arg.is_null()
+        && center_arg != R_NilValue()
+        && (TYPEOF(center_arg) == SEXPTYPE::REALSXP || TYPEOF(center_arg) == SEXPTYPE::INTSXP);
+    let scale_numeric = !scale_arg.is_null()
+        && scale_arg != R_NilValue()
+        && (TYPEOF(scale_arg) == SEXPTYPE::REALSXP || TYPEOF(scale_arg) == SEXPTYPE::INTSXP);
+    let do_center = !center_numeric
+        && (center_arg.is_null()
+            || center_arg == R_NilValue()
+            || (TYPEOF(center_arg) == SEXPTYPE::LGLSXP
+                && logical_elt_checked(center_arg, 0) == TRUE));
+    let do_scale = !scale_numeric
+        && (scale_arg.is_null()
+            || scale_arg == R_NilValue()
+            || (TYPEOF(scale_arg) == SEXPTYPE::LGLSXP
+                && logical_elt_checked(scale_arg, 0) == TRUE));
+    let number_at = |arg: SEXP, j: R_xlen_t| -> f64 {
+        let len = XLENGTH(arg).max(1);
+        let i = j % len;
+        if TYPEOF(arg) == SEXPTYPE::INTSXP {
+            let v = integer_elt_checked(arg, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
         } else {
-            let input_names = crate::sexp::attrib_core::getAttrib(
-                x,
-                install_str("names"),
-            );
-            if input_names.is_null() || input_names == R_NilValue() {
-                R_NilValue()
-            } else {
-                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _dn = protect(dimnames);
-                SET_VECTOR_ELT(dimnames, 0, input_names);
-                SET_VECTOR_ELT(dimnames, 1, R_NilValue());
-                dimnames
-            }
-        };
-        let _result_dimnames_guard = protect(result_dimnames);
-        if !result_dimnames.is_null() && result_dimnames != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                result_dimnames,
-            );
+            real_elt_checked(arg, (i as usize) as R_xlen_t)
         }
-        let center_numeric = !center_arg.is_null()
-            && center_arg != R_NilValue()
-            && (TYPEOF(center_arg) == SEXPTYPE::REALSXP || TYPEOF(center_arg) == SEXPTYPE::INTSXP);
-        let scale_numeric = !scale_arg.is_null()
-            && scale_arg != R_NilValue()
-            && (TYPEOF(scale_arg) == SEXPTYPE::REALSXP || TYPEOF(scale_arg) == SEXPTYPE::INTSXP);
-        let do_center = !center_numeric
-            && (center_arg.is_null()
-                || center_arg == R_NilValue()
-                || (TYPEOF(center_arg) == SEXPTYPE::LGLSXP && logical_elt_checked(center_arg, 0) == TRUE));
-        let do_scale = !scale_numeric
-            && (scale_arg.is_null()
-                || scale_arg == R_NilValue()
-                || (TYPEOF(scale_arg) == SEXPTYPE::LGLSXP && logical_elt_checked(scale_arg, 0) == TRUE));
-        let number_at = |arg: SEXP, j: R_xlen_t| -> f64 {
-            let len = XLENGTH(arg).max(1);
-            let i = j % len;
-            if TYPEOF(arg) == SEXPTYPE::INTSXP {
-                let v = integer_elt_checked(arg, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                real_elt_checked(arg, (i as usize) as R_xlen_t)
+    };
+    let mut dst = owner_sexp_mut(result);
+    let mut centers = vec![0.0; ncol as usize];
+    let mut scales = vec![1.0; ncol as usize];
+    for j in 0..ncol {
+        let mut sum = 0.0;
+        let mut count = 0i64;
+        for i in 0..nrow {
+            let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
+            if v.is_finite() {
+                sum += v;
+                count += 1;
             }
-        };
-        let mut dst = owner_sexp_mut(result);
-        let mut centers = vec![0.0; ncol as usize];
-        let mut scales = vec![1.0; ncol as usize];
-        for j in 0..ncol {
-            let mut sum = 0.0;
-            let mut count = 0i64;
+        }
+        let mean = if count > 0 { sum / count as f64 } else { 0.0 };
+        let mut var_sum = 0.0;
+        if do_scale {
             for i in 0..nrow {
                 let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
                 if v.is_finite() {
-                    sum += v;
-                    count += 1;
+                    var_sum += (v - mean) * (v - mean);
                 }
             }
-            let mean = if count > 0 { sum / count as f64 } else { 0.0 };
-            let mut var_sum = 0.0;
-            if do_scale {
-                for i in 0..nrow {
-                    let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
-                    if v.is_finite() {
-                        var_sum += (v - mean) * (v - mean);
-                    }
-                }
-            }
-            let sd = if count > 1 {
-                (var_sum / (count as f64 - 1.0)).sqrt()
-            } else {
-                1.0
-            };
-            let cen = if center_numeric {
-                number_at(center_arg, j)
-            } else if do_center {
-                mean
-            } else {
-                0.0
-            };
-            let sc = if scale_numeric {
-                number_at(scale_arg, j)
-            } else if do_scale && sd != 0.0 && sd.is_finite() {
-                sd
-            } else {
-                1.0
-            };
-            centers[j as usize] = cen;
-            scales[j as usize] = sc;
-            for i in 0..nrow {
-                let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
-                let centered = if cen.is_nan() { NA_REAL } else { v - cen };
-                sexp_ok(dst.try_set_real_elt(((i + j * nrow) as usize) as R_xlen_t, if sc.is_finite() && sc != 0.0 {
+        }
+        let sd = if count > 1 {
+            (var_sum / (count as f64 - 1.0)).sqrt()
+        } else {
+            1.0
+        };
+        let cen = if center_numeric {
+            number_at(center_arg, j)
+        } else if do_center {
+            mean
+        } else {
+            0.0
+        };
+        let sc = if scale_numeric {
+            number_at(scale_arg, j)
+        } else if do_scale && sd != 0.0 && sd.is_finite() {
+            sd
+        } else {
+            1.0
+        };
+        centers[j as usize] = cen;
+        scales[j as usize] = sc;
+        for i in 0..nrow {
+            let v = real_or_default(elt_to_sexp(x, i + j * nrow), NA_REAL);
+            let centered = if cen.is_nan() { NA_REAL } else { v - cen };
+            sexp_ok(dst.try_set_real_elt(
+                ((i + j * nrow) as usize) as R_xlen_t,
+                if sc.is_finite() && sc != 0.0 {
                     centered / sc
                 } else {
                     centered
-                }));
-            }
+                },
+            ));
         }
-        let colnames =
-            if TYPEOF(result_dimnames) == SEXPTYPE::VECSXP && XLENGTH(result_dimnames) > 1 {
-                VECTOR_ELT(result_dimnames, 1)
-            } else {
-                R_NilValue()
-            };
-        let set_scale_metadata = |name: &'static [u8], values: &[f64]| {
-            let attribute = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
-            let _a = protect(attribute);
-            for (i, value) in values.iter().enumerate() {
-                set_real_checked(attribute, (i) as R_xlen_t, *value);
-            }
-            if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == values.len() as R_xlen_t
-            {
-                crate::sexp::attrib_core::setAttrib(
-                    attribute,
-                    install_str("names"),
-                    colnames,
-                );
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::symbol::Rf_install(name.as_ptr().cast()),
-                attribute,
-            );
-        };
-        if do_center || center_numeric {
-            set_scale_metadata(b"scaled:center\0", &centers);
-        }
-        if do_scale || scale_numeric {
-            set_scale_metadata(b"scaled:scale\0", &scales);
-        }
-        result
     }
+    let colnames = if TYPEOF(result_dimnames) == SEXPTYPE::VECSXP && XLENGTH(result_dimnames) > 1 {
+        VECTOR_ELT(result_dimnames, 1)
+    } else {
+        R_NilValue()
+    };
+    let set_scale_metadata = |name: &'static std::ffi::CStr, values: &[f64]| {
+        let attribute = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+        let _a = protect(attribute);
+        for (i, value) in values.iter().enumerate() {
+            set_real_checked(attribute, (i) as R_xlen_t, *value);
+        }
+        if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == values.len() as R_xlen_t {
+            crate::sexp::attrib_core::setAttrib(attribute, install_str("names"), colnames);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_cstr(name), attribute);
+    };
+    if do_center || center_numeric {
+        set_scale_metadata(c"scaled:center", &centers);
+    }
+    if do_scale || scale_numeric {
+        set_scale_metadata(c"scaled:scale", &scales);
+    }
+    result
 }
 
 fn scale_argument(args: SEXP, formal: &str, position: usize) -> SEXP {

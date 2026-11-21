@@ -1072,26 +1072,20 @@ pub(super) fn retarget_envref_object_parent(ns: SEXP) {
 /// Repair the restored reference-class definition when its lazy record is
 /// actually requested, retaining GNU's deferred class-loading behavior.
 pub(crate) fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP) {
-    unsafe {
-        let ref_methods =
-            crate::eval::attrib_core::getAttrib(class_def, install_str("refMethods"));
-        if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {
-            return;
-        }
-        let object_parent = find_var_in_frame(
-            ref_methods,
-            install_str(".objectParent"),
-        );
-        if object_parent.is_null()
-            || object_parent == crate::sexp::globals::R_UnboundValue()
-            || TYPEOF(object_parent) != SEXPTYPE::ENVSXP
-            || object_parent == ns
-            || env_chain_contains(ns, object_parent)
-        {
-            return;
-        }
-        SET_ENCLOS(object_parent, ns);
+    let ref_methods = crate::sexp::attrib_core::getAttrib(class_def, install_str("refMethods"));
+    if TYPEOF(ref_methods) != SEXPTYPE::ENVSXP {
+        return;
     }
+    let object_parent = find_var_in_frame(ref_methods, install_str(".objectParent"));
+    if object_parent.is_null()
+        || object_parent == crate::sexp::globals::R_UnboundValue()
+        || TYPEOF(object_parent) != SEXPTYPE::ENVSXP
+        || object_parent == ns
+        || env_chain_contains(ns, object_parent)
+    {
+        return;
+    }
+    SET_ENCLOS(object_parent, ns);
 }
 
 /// GNU `utils:::.onLoad` sets `options(str = strOptions())`.

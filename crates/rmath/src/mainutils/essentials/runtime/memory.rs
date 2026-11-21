@@ -113,15 +113,14 @@ fn bytes_to_mb(bytes: usize) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, value: f64) {
-    unsafe {
-        *data.add(col * rows + row) = value;
-    }
+fn set_real_matrix_cell(
+    data: &mut crate::sexp::object::SexpMut<'_>,
+    row: usize,
+    col: usize,
+    rows: usize,
+    value: f64,
+) {
+    sexp_ok(data.try_set_real_elt((col * rows + row) as R_xlen_t, value));
 }
 
 /// R's `gc()` — garbage collection with session-owned memory counters.
@@ -136,141 +135,127 @@ unsafe fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usi
 /// The `limit (Mb)` column is always present (NA where no ceiling applies).
 /// Unlike the old port, the result is *visible* (stock prints it).
 pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::memory_main::R_gc();
-        let snapshot = runtime_memory_snapshot();
-        let node_size = std::mem::size_of::<crate::sexp::ffi::SexprecCore>();
-        let ncell_bytes = snapshot.active_nodes.saturating_mul(node_size);
-        let ncell_trigger = (snapshot.active_nodes + snapshot.free_nodes)
-            .saturating_mul(2)
-            .max(snapshot.active_nodes);
-        let ncell_peak = snapshot
-            .active_nodes
-            .saturating_add(crate::sexp::gengc::get_gc_stats().freed);
-        let vcell_size = std::mem::size_of::<SEXP>();
-        let vcell_used = snapshot.current_bytes / vcell_size;
-        let vcell_trigger_bytes = snapshot
-            .current_bytes
-            .saturating_mul(2)
-            .max(snapshot.current_bytes);
-        let vcell_peak = snapshot.peak_bytes / vcell_size;
+    crate::mainutils::memory_main::R_gc();
+    let snapshot = runtime_memory_snapshot();
+    let node_size = std::mem::size_of::<crate::sexp::ffi::SexprecCore>();
+    let ncell_bytes = snapshot.active_nodes.saturating_mul(node_size);
+    let ncell_trigger = (snapshot.active_nodes + snapshot.free_nodes)
+        .saturating_mul(2)
+        .max(snapshot.active_nodes);
+    let ncell_peak = snapshot
+        .active_nodes
+        .saturating_add(crate::sexp::gengc::get_gc_stats().freed);
+    let vcell_size = std::mem::size_of::<SEXP>();
+    let vcell_used = snapshot.current_bytes / vcell_size;
+    let vcell_trigger_bytes = snapshot
+        .current_bytes
+        .saturating_mul(2)
+        .max(snapshot.current_bytes);
+    let vcell_peak = snapshot.peak_bytes / vcell_size;
 
-        // R rounds the (Mb) columns up to 0.1 Mb.
-        let mb = |bytes: usize| 0.1 * (10.0 * bytes_to_mb(bytes)).ceil();
+    // R rounds the (Mb) columns up to 0.1 Mb.
+    let mb = |bytes: usize| 0.1 * (10.0 * bytes_to_mb(bytes)).ceil();
 
-        // Cell limits for the `limit (Mb)` column (memory.c do_gc): NA
-        // unless a ceiling is set; Ncells counts nodes, Vcells is bytes.
-        let max_n = crate::mainutils::memory_main::R_GetMaxNSize_memory();
-        let max_v = crate::mainutils::memory_main::R_GetMaxVSize_memory();
-        let limit = (
-            if max_n == u64::MAX {
-                NA_REAL
-            } else {
-                mb((max_n.saturating_mul(node_size as u64)) as usize)
-            },
-            if max_v == u64::MAX {
-                NA_REAL
-            } else {
-                mb(max_v as usize)
-            },
-        );
+    // Cell limits for the `limit (Mb)` column (memory.c do_gc): NA
+    // unless a ceiling is set; Ncells counts nodes, Vcells is bytes.
+    let max_n = crate::mainutils::memory_main::R_GetMaxNSize_memory();
+    let max_v = crate::mainutils::memory_main::R_GetMaxVSize_memory();
+    let limit = (
+        if max_n == u64::MAX {
+            NA_REAL
+        } else {
+            mb((max_n.saturating_mul(node_size as u64)) as usize)
+        },
+        if max_v == u64::MAX {
+            NA_REAL
+        } else {
+            mb(max_v as usize)
+        },
+    );
 
-        // Full stock layout, column-major with 2 rows:
-        //   used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used | (Mb)
-        let full: [(f64, f64); 7] = [
-            (snapshot.active_nodes as f64, vcell_used as f64),
-            (mb(ncell_bytes), mb(snapshot.current_bytes)),
-            (
-                ncell_trigger as f64,
-                (vcell_trigger_bytes / vcell_size) as f64,
-            ),
-            (
-                mb(ncell_trigger.saturating_mul(node_size)),
-                mb(vcell_trigger_bytes),
-            ),
-            limit,
-            (ncell_peak as f64, vcell_peak as f64),
-            (
-                mb(ncell_peak.saturating_mul(node_size)),
-                mb(snapshot.peak_bytes),
-            ),
-        ];
+    // Full stock layout, column-major with 2 rows:
+    //   used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used | (Mb)
+    let full: [(f64, f64); 7] = [
+        (snapshot.active_nodes as f64, vcell_used as f64),
+        (mb(ncell_bytes), mb(snapshot.current_bytes)),
+        (
+            ncell_trigger as f64,
+            (vcell_trigger_bytes / vcell_size) as f64,
+        ),
+        (
+            mb(ncell_trigger.saturating_mul(node_size)),
+            mb(vcell_trigger_bytes),
+        ),
+        limit,
+        (ncell_peak as f64, vcell_peak as f64),
+        (
+            mb(ncell_peak.saturating_mul(node_size)),
+            mb(snapshot.peak_bytes),
+        ),
+    ];
 
-        // Stock `base::gc` visible table is 2x7: rows Ncells/Vcells,
-        // columns used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used
-        // | (Mb). The `limit (Mb)` column is NA for Ncells (no node
-        // ceiling) and the platform vector-pool ceiling for Vcells
-        // (NA when unlimited); the column is always present.
-        let cols: Vec<&(f64, f64)> = full.iter().collect();
-        let col_names: Vec<&str> = vec![
-            "used",
-            "(Mb)",
-            "gc trigger",
-            "(Mb)",
-            "limit (Mb)",
-            "max used",
-            "(Mb)",
-        ];
+    // Stock `base::gc` visible table is 2x7: rows Ncells/Vcells,
+    // columns used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used
+    // | (Mb). The `limit (Mb)` column is NA for Ncells (no node
+    // ceiling) and the platform vector-pool ceiling for Vcells
+    // (NA when unlimited); the column is always present.
+    let cols: Vec<&(f64, f64)> = full.iter().collect();
+    let col_names: Vec<&str> = vec![
+        "used",
+        "(Mb)",
+        "gc trigger",
+        "(Mb)",
+        "limit (Mb)",
+        "max used",
+        "(Mb)",
+    ];
 
-        let ncols = cols.len();
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (2 * ncols) as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        for (col, (ncell, vcell)) in cols.iter().enumerate() {
-            set_real_matrix_cell(dst, 0, col, 2, *ncell);
-            set_real_matrix_cell(dst, 1, col, 2, *vcell);
-        }
-
-        // dim = c(2, ncol)
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _p2 = protect(dim);
-            let mut d = owner_sexp_mut(dim);
-            sexp_ok(d.try_set_integer_elt(0, 2));
-            sexp_ok(d.try_set_integer_elt(1 as R_xlen_t, ncols as c_int));
-            crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
-        }
-        // dimnames = list(c("Ncells", "Vcells"), col_names)
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if !dn.is_null() {
-            let _p3 = protect(dn);
-            let row_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            if !row_names.is_null() {
-                let _p4 = protect(row_names);
-                let s1 = c"Ncells";
-                let s2 = c"Vcells";
-                SET_STRING_ELT(
-                    row_names,
-                    0,
-                    mk_char_cstr(&s1),
-                );
-                SET_STRING_ELT(
-                    row_names,
-                    1,
-                    mk_char_cstr(&s2),
-                );
-                SET_VECTOR_ELT(dn, 0, row_names);
-            }
-            let col_names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
-            if !col_names_vec.is_null() {
-                let _p5 = protect(col_names_vec);
-                for (i, name) in col_names.iter().enumerate() {
-                    let cstr = CString::new(*name).unwrap_or_default();
-                    SET_STRING_ELT(
-                        col_names_vec,
-                        i as R_xlen_t,
-                        mk_char_cstr(&cstr),
-                    );
-                }
-                SET_VECTOR_ELT(dn, 1, col_names_vec);
-            }
-            crate::sexp::attrib_core::setAttrib(result, install_str("dimnames"), dn);
-        }
-        result
+    let ncols = cols.len();
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, (2 * ncols) as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+    for (col, (ncell, vcell)) in cols.iter().enumerate() {
+        set_real_matrix_cell(&mut dst, 0, col, 2, *ncell);
+        set_real_matrix_cell(&mut dst, 1, col, 2, *vcell);
+    }
+
+    // dim = c(2, ncol)
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if !dim.is_null() {
+        let _p2 = protect(dim);
+        let mut d = owner_sexp_mut(dim);
+        sexp_ok(d.try_set_integer_elt(0, 2));
+        sexp_ok(d.try_set_integer_elt(1 as R_xlen_t, ncols as c_int));
+        crate::sexp::attrib_core::setAttrib(result, install_str("dim"), dim);
+    }
+    // dimnames = list(c("Ncells", "Vcells"), col_names)
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    if !dn.is_null() {
+        let _p3 = protect(dn);
+        let row_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !row_names.is_null() {
+            let _p4 = protect(row_names);
+            let s1 = c"Ncells";
+            let s2 = c"Vcells";
+            SET_STRING_ELT(row_names, 0, mk_char_cstr(&s1));
+            SET_STRING_ELT(row_names, 1, mk_char_cstr(&s2));
+            SET_VECTOR_ELT(dn, 0, row_names);
+        }
+        let col_names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
+        if !col_names_vec.is_null() {
+            let _p5 = protect(col_names_vec);
+            for (i, name) in col_names.iter().enumerate() {
+                let cstr = CString::new(*name).unwrap_or_default();
+                SET_STRING_ELT(col_names_vec, i as R_xlen_t, mk_char_cstr(&cstr));
+            }
+            SET_VECTOR_ELT(dn, 1, col_names_vec);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("dimnames"), dn);
+    }
+    result
 }
 
 /// R's `gc.time()` — current GC timing counters.
@@ -379,11 +364,8 @@ pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let data = INTEGER(result);
-        for i in 0..PROFILE_TYPES.len() {
-            *data.add(i) = 0;
-        }
-        *data = 1;
+        let mut counts = vec![0 as c_int; PROFILE_TYPES.len()];
+        counts[0] = 1;
 
         crate::sexp::instance::with_required_current_instance(|instance| {
             for node in (*instance).arena.active_nodes() {
@@ -394,10 +376,14 @@ pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
                     .find(|(_, (_, profile_ty))| ty == *profile_ty)
                 {
                     // `S4SXP` shares the OBJSXP tag; match GNU R's public bucket name.
-                    *data.add(idx) = (*data.add(idx)).saturating_add(1);
+                    counts[idx] = counts[idx].saturating_add(1);
                 }
             }
         });
+        let mut data = owner_sexp_mut(result);
+        for (i, count) in counts.iter().enumerate() {
+            sexp_ok(data.try_set_integer_elt(i as R_xlen_t, *count));
+        }
 
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, PROFILE_TYPES.len() as R_xlen_t);
         if !names.is_null() {

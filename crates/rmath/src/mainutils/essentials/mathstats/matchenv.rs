@@ -542,7 +542,7 @@ pub fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // from the elements, parent = emptyenv() (whisker's partials
             // path relies on this).
             let n = XLENGTH(x);
-            let env = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
+            let env = new_hashed_env(crate::sexp::globals::R_EmptyEnv(), 0);
             let _env_guard = protect(env);
             if n == 0 {
                 return env;

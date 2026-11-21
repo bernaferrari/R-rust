@@ -236,14 +236,14 @@ pub fn register_essentials_builtins(env: SEXP) {
         SET_FRAME(env, chain);
         // GNU base defines Recall as a closure. Its wrapper frame carries
         // the new promises to .Internal(Recall) while retaining caller identity.
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
+        let parser_factory = active_owner().node_factory();
+        let parsed = sexp_ok(active_owner().with_arena(|arena| {
             crate::eval::parser::parse(
                 "function(...) .Internal(Recall(...))",
                 arena,
                 parser_factory.clone(),
             )
-        })
+        }))
         .expect("base Recall wrapper parses");
         let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
         let _recall = protect(recall);

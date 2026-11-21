@@ -183,69 +183,67 @@ pub fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `Encoding<-` — mark CHARSXP encodings, recycling `value`.
 pub fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        let enc = CADR(args);
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "a character vector argument expected",
-            );
-        }
-        if TYPEOF(enc) != SEXPTYPE::STRSXP {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "a character vector 'value' expected",
-            );
-        }
-        let m = XLENGTH(enc);
-        if m == 0 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'value' must be of positive length",
-            );
-        }
-        if crate::sexp::accessors::NAMED(x) > 0 {
-            x = crate::mainutils::duplicate::duplicate(x);
-        }
-        let _x = protect(x);
-        let n = XLENGTH(x);
-        for i in 0..n {
-            let tmp = STRING_ELT(x, i);
-            if tmp == crate::sexp::globals::R_NaString() {
-                continue;
-            }
-            // GNU: ASCII strings never have a declared encoding.
-            if crate::sexp::accessors::IS_ASCII(tmp) != 0 {
-                continue;
-            }
-            let label = elt_to_string(enc, i % m);
-            let kind = match label.as_str() {
-                "latin1" => "latin1",
-                "UTF-8" => "UTF-8",
-                "bytes" => "bytes",
-                _ => "unknown",
-            };
-            let already = match kind {
-                "latin1" => crate::sexp::accessors::IS_LATIN1(tmp) != 0,
-                "UTF-8" => crate::sexp::accessors::IS_UTF8(tmp) != 0,
-                "bytes" => crate::sexp::accessors::IS_BYTES(tmp) != 0,
-                _ => {
-                    crate::sexp::accessors::IS_LATIN1(tmp) == 0
-                        && crate::sexp::accessors::IS_UTF8(tmp) == 0
-                        && crate::sexp::accessors::IS_BYTES(tmp) == 0
-                }
-            };
-            if already {
-                continue;
-            }
-            let len = crate::sexp::accessors::LENGTH(tmp);
-            let marked = crate::sexp::constructors::Rf_mkCharLen(CHAR(tmp), len);
-            crate::sexp::accessors::mark_charsxp_encoding(marked, kind);
-            SET_STRING_ELT(x, i, marked);
-        }
-        x
+    let mut x = CAR(args);
+    let enc = CADR(args);
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "a character vector argument expected",
+        );
     }
+    if TYPEOF(enc) != SEXPTYPE::STRSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "a character vector 'value' expected",
+        );
+    }
+    let m = XLENGTH(enc);
+    if m == 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'value' must be of positive length",
+        );
+    }
+    if crate::sexp::accessors::NAMED(x) > 0 {
+        x = crate::mainutils::duplicate::duplicate(x);
+    }
+    let _x = protect(x);
+    let n = XLENGTH(x);
+    for i in 0..n {
+        let tmp = STRING_ELT(x, i);
+        if tmp == crate::sexp::globals::R_NaString() {
+            continue;
+        }
+        // GNU: ASCII strings never have a declared encoding.
+        if crate::sexp::accessors::IS_ASCII(tmp) != 0 {
+            continue;
+        }
+        let label = elt_to_string(enc, i % m);
+        let kind = match label.as_str() {
+            "latin1" => "latin1",
+            "UTF-8" => "UTF-8",
+            "bytes" => "bytes",
+            _ => "unknown",
+        };
+        let already = match kind {
+            "latin1" => crate::sexp::accessors::IS_LATIN1(tmp) != 0,
+            "UTF-8" => crate::sexp::accessors::IS_UTF8(tmp) != 0,
+            "bytes" => crate::sexp::accessors::IS_BYTES(tmp) != 0,
+            _ => {
+                crate::sexp::accessors::IS_LATIN1(tmp) == 0
+                    && crate::sexp::accessors::IS_UTF8(tmp) == 0
+                    && crate::sexp::accessors::IS_BYTES(tmp) == 0
+            }
+        };
+        if already {
+            continue;
+        }
+        let len = crate::sexp::accessors::LENGTH(tmp);
+        let marked = mk_char_len(&crate::mainutils::printutils::charsxp_bytes(tmp), len);
+        crate::sexp::accessors::mark_charsxp_encoding(marked, kind);
+        SET_STRING_ELT(x, i, marked);
+    }
+    x
 }
 
 /// GNU `localeToCharset(locale)`.

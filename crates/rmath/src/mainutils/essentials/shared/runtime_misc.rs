@@ -1265,3 +1265,35 @@ pub(crate) fn charsxp_text_of(x: SEXP) -> CharsxpText {
         CharsxpText(Some(charsxp_cstring(x)))
     }
 }
+
+/// `Rf_mkCharLen` over the first `len` bytes of a borrowed slice; a negative
+/// `len` yields a null SEXP exactly like `Rf_mkCharLen`.
+pub(crate) fn mk_char_len(bytes: &[u8], len: c_int) -> SEXP {
+    let Ok(count) = usize::try_from(len) else {
+        return std::ptr::null_mut();
+    };
+    let bytes = &bytes[..count];
+    // SAFETY: `bytes` is a live borrowed slice of exactly `len` bytes.
+    unsafe { crate::sexp::constructors::Rf_mkCharLen(bytes.as_ptr().cast(), len) }
+}
+
+/// `R_data_class(x)` on a live SEXP.
+pub(crate) fn data_class(x: SEXP) -> SEXP {
+    // SAFETY: `x` is a live SEXP; R_data_class only reads its attributes and
+    // allocates the class vector it returns.
+    unsafe { crate::eval::attrib_core::R_data_class(x) }
+}
+
+/// `check1arg(args, call, name)` with the formal name as a borrowed C string.
+pub(crate) fn check1arg_cstr(args: SEXP, call: SEXP, name: &std::ffi::CStr) {
+    // SAFETY: `name` is a live NUL-terminated borrow for the whole call and
+    // `args`/`call` are live SEXPs supplied by the builtin dispatcher.
+    unsafe { crate::mainutils::seq::check1arg(args, call, name.as_ptr()) }
+}
+
+/// `R_NewHashedEnv(enclos, size)` on a live enclosure.
+pub(crate) fn new_hashed_env(enclos: SEXP, size: c_int) -> SEXP {
+    // SAFETY: `enclos` is a live environment; R_NewHashedEnv only allocates a
+    // fresh environment and promotes it to a hashed frame.
+    unsafe { crate::sexp::envir::R_NewHashedEnv(enclos, size) }
+}

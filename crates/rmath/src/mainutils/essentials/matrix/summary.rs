@@ -47,7 +47,7 @@ pub fn do_lengths(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
 pub fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
+        check1arg_cstr(args, call, c"x");
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
             call,
@@ -657,44 +657,39 @@ pub fn do_row_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
-    unsafe {
-        let la = CAR(args);
-        if !la.is_null() && la != R_NilValue() && TYPEOF(la) == SEXPTYPE::INTSXP && LENGTH(la) >= 1
-        {
-            let dim_attr = crate::sexp::attrib_core::getAttrib(la, install_str("dim"));
-            if dim_attr.is_null() || dim_attr == R_NilValue() {
-                return rowcol_indices(INTEGER(la), LENGTH(la), is_row);
-            }
+    let la = CAR(args);
+    if !la.is_null() && la != R_NilValue() && TYPEOF(la) == SEXPTYPE::INTSXP && LENGTH(la) >= 1 {
+        let dim_attr = crate::sexp::attrib_core::getAttrib(la, install_str("dim"));
+        if dim_attr.is_null() || dim_attr == R_NilValue() {
+            return rowcol_indices(la, is_row);
         }
-        rowcol_from_matrix_arg(args, is_row)
     }
+    rowcol_from_matrix_arg(args, is_row)
 }
 
 fn rowcol_from_matrix_arg(args: SEXP, is_row: bool) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
-        if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
-            std::panic::panic_any(RError {
-                message: format!(
-                    "a matrix-like object is required as argument to '{}'",
-                    if is_row { "row" } else { "col" }
-                ),
-            });
-        }
-        rowcol_indices(INTEGER(dim_attr), LENGTH(dim_attr), is_row)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, install_str("dim"));
+    if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
+        std::panic::panic_any(RError {
+            message: format!(
+                "a matrix-like object is required as argument to '{}'",
+                if is_row { "row" } else { "col" }
+            ),
+        });
+    }
+    rowcol_indices(dim_attr, is_row)
 }
 
 /// Build the row/col index matrix from an integer dim vector.
-unsafe fn rowcol_indices(dims: *mut c_int, len: c_int, is_row: bool) -> SEXP {
-    unsafe {
-        let nrow = *dims as R_xlen_t;
-        let ncol = if len >= 2 {
-            *dims.add(1) as R_xlen_t
+fn rowcol_indices(dims: SEXP, is_row: bool) -> SEXP {
+    {
+        let nrow = integer_elt_checked(dims, 0) as R_xlen_t;
+        let ncol = if LENGTH(dims) >= 2 {
+            integer_elt_checked(dims, 1) as R_xlen_t
         } else {
             1
         };

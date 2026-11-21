@@ -174,7 +174,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     // GNU c.POSIXlt: factor goes through as.character().
                     let levels = crate::sexp::attrib_core::getAttrib(
                         v,
-                        crate::eval::attrib_core::R_LevelsSymbol(),
+                        install_str("levels"),
                     );
                     let n = XLENGTH(v);
                     let text = Rf_allocVector3(SEXPTYPE::STRSXP, n);

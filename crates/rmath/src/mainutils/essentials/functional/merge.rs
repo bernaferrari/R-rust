@@ -78,40 +78,30 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn merge_named_true(args: SEXP, name: &str) -> bool {
-    unsafe {
-        let cname = std::ffi::CString::new(name).unwrap_or_default();
-        let sym = crate::sexp::symbol::Rf_installChar(
-            cname.as_ptr(),
-            name.len() as crate::sexp::ffi::R_xlen_t,
-        );
-        let mut cell = args;
-        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-            let mut v = CAR(cell);
-            if TYPEOF(v) == SEXPTYPE::PROMSXP {
-                v = crate::sexp::accessors::PRVALUE(v);
-            }
-            let tag = crate::sexp::accessors::TAG(cell);
-            let is_true = (TYPEOF(v) == SEXPTYPE::LGLSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
-                && !v.is_null()
-                && integer_elt_checked(v, 0) == 1;
-            if tag == sym {
-                if is_true {
-                    return true;
-                }
-            }
-            cell = CDR(cell);
+    let sym = install_str(name);
+    let mut cell = args;
+    while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+        let mut v = CAR(cell);
+        if TYPEOF(v) == SEXPTYPE::PROMSXP {
+            v = crate::sexp::accessors::PRVALUE(v);
         }
-        false
+        let tag = crate::sexp::accessors::TAG(cell);
+        let is_true = (TYPEOF(v) == SEXPTYPE::LGLSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
+            && !v.is_null()
+            && integer_elt_checked(v, 0) == 1;
+        if tag == sym {
+            if is_true {
+                return true;
+            }
+        }
+        cell = CDR(cell);
     }
+    false
 }
 
 pub(super) fn merge_named_value(args: SEXP, name: &str) -> SEXP {
     unsafe {
-        let cname = std::ffi::CString::new(name).unwrap_or_default();
-        let sym = crate::sexp::symbol::Rf_installChar(
-            cname.as_ptr(),
-            name.len() as crate::sexp::ffi::R_xlen_t,
-        );
+        let sym = install_str(name);
         let mut cell = args;
         while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
             let tag = crate::sexp::accessors::TAG(cell);

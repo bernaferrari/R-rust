@@ -578,84 +578,82 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `atan2(y, x)` — two-argument arc tangent function.
 pub fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let y = CAR(args);
-        let x = CAR(CDR(args));
+    let y = CAR(args);
+    let x = CAR(CDR(args));
 
-        if y.is_null() || y == R_NilValue() || x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    if y.is_null() || y == R_NilValue() || x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(y).max(XLENGTH(x));
-        let ty = TYPEOF(y);
-        let tx = TYPEOF(x);
-        if ty == SEXPTYPE::CPLXSXP || tx == SEXPTYPE::CPLXSXP {
-            let y_c = crate::eval::complex_arith::coerce_to_complex(y);
-            let _y_guard = protect(y_c);
-            let x_c = crate::eval::complex_arith::coerce_to_complex(x);
-            let _x_guard = protect(x_c);
-            let ny = XLENGTH(y_c);
-            let nx = XLENGTH(x_c);
-            let n = ny.max(nx);
-            let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _r_guard = protect(result);
-            let dst = crate::sexp::accessors::COMPLEX(result);
-            let ys = crate::sexp::accessors::COMPLEX(y_c);
-            let xs = crate::sexp::accessors::COMPLEX(x_c);
-            for i in 0..n {
-                let yi = if ny > 0 { i % ny } else { 0 };
-                let xi = if nx > 0 { i % nx } else { 0 };
-                crate::mainutils::complex_cmath::z_atan2(
-                    &mut *dst.add(i as usize),
-                    &*ys.add(yi as usize),
-                    &*xs.add(xi as usize),
-                );
-            }
-            return result;
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let n = XLENGTH(y).max(XLENGTH(x));
+    let ty = TYPEOF(y);
+    let tx = TYPEOF(x);
+    if ty == SEXPTYPE::CPLXSXP || tx == SEXPTYPE::CPLXSXP {
+        let y_c = crate::eval::complex_arith::coerce_to_complex(y);
+        let _y_guard = protect(y_c);
+        let x_c = crate::eval::complex_arith::coerce_to_complex(x);
+        let _x_guard = protect(x_c);
+        let ny = XLENGTH(y_c);
+        let nx = XLENGTH(x_c);
+        let n = ny.max(nx);
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = protect(result);
+        let _r_guard = protect(result);
         let mut dst = owner_sexp_mut(result);
-
         for i in 0..n {
-            let y_len = XLENGTH(y);
-            let x_len = XLENGTH(x);
-            let yi = if y_len > 0 { i % y_len } else { 0 };
-            let xi = if x_len > 0 { i % x_len } else { 0 };
-
-            let val_y = if ty == SEXPTYPE::REALSXP {
-                real_elt_checked(y, (yi as usize) as R_xlen_t)
-            } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-
-            let val_x = if tx == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (xi as usize) as R_xlen_t)
-            } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-
-            if val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                || val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val_y.atan2(val_x)));
-            }
+            let yi = if ny > 0 { i % ny } else { 0 };
+            let xi = if nx > 0 { i % nx } else { 0 };
+            let mut out = Rcomplex { r: 0.0, i: 0.0 };
+            crate::mainutils::complex_cmath::z_atan2(
+                &mut out,
+                &complex_elt_checked(y_c, yi),
+                &complex_elt_checked(x_c, xi),
+            );
+            sexp_ok(dst.try_set_complex_elt(i, out));
         }
-        result
+        return result;
     }
+
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
+
+    for i in 0..n {
+        let y_len = XLENGTH(y);
+        let x_len = XLENGTH(x);
+        let yi = if y_len > 0 { i % y_len } else { 0 };
+        let xi = if x_len > 0 { i % x_len } else { 0 };
+
+        let val_y = if ty == SEXPTYPE::REALSXP {
+            real_elt_checked(y, (yi as usize) as R_xlen_t)
+        } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        let val_x = if tx == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (xi as usize) as R_xlen_t)
+        } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            || val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val_y.atan2(val_x)));
+        }
+    }
+    result
 }

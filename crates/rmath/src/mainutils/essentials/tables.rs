@@ -2487,7 +2487,7 @@ pub fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `levels(x) <- value` — replace factor levels or the raw levels attribute.
 pub fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
+        check1arg_cstr(args, call, c"x");
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
             call,

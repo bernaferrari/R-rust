@@ -543,20 +543,16 @@ pub(super) fn record_plot_window(args: SEXP) {
 
 #[cfg(not(feature = "renderplot-device"))]
 pub(super) fn numeric_plot_values(x: SEXP) -> Vec<f64> {
-    unsafe {
-        let n = crate::sexp::accessors::XLENGTH(x) as usize;
-        let t = crate::sexp::accessors::TYPEOF(x);
-        if t == crate::sexp::ffi::SEXPTYPE::REALSXP {
-            (0..n)
-                .map(|i| crate::sexp::accessors::REAL(x).add(i).read())
-                .collect()
-        } else if t == crate::sexp::ffi::SEXPTYPE::INTSXP {
-            (0..n)
-                .map(|i| crate::sexp::accessors::INTEGER(x).add(i).read() as f64)
-                .collect()
-        } else {
-            Vec::new()
-        }
+    let n = crate::sexp::accessors::XLENGTH(x) as usize;
+    let t = crate::sexp::accessors::TYPEOF(x);
+    if t == crate::sexp::ffi::SEXPTYPE::REALSXP {
+        (0..n).map(|i| real_elt_checked(x, i as R_xlen_t)).collect()
+    } else if t == crate::sexp::ffi::SEXPTYPE::INTSXP {
+        (0..n)
+            .map(|i| integer_elt_checked(x, i as R_xlen_t) as f64)
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 

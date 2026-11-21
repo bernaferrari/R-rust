@@ -6,123 +6,113 @@ use super::*;
 
 /// R's `print.integer(x)` — print integer vector with index labels.
 pub fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("integer(0)");
-            return R_NilValue();
-        }
-        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            crate::sexp::output::format_vector_stock(sexp, true)
-        } else {
-            String::new()
-        };
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&rendered);
-        } else {
-            print!("{rendered}");
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("integer(0)");
+        return R_NilValue();
     }
+    let rendered = if let Some(sexp) = active_owner().sexp(x).ok() {
+        crate::sexp::output::format_vector_stock(sexp, true)
+    } else {
+        String::new()
+    };
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&rendered);
+    } else {
+        print!("{rendered}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `print.numeric(x)` — print numeric (double) vector with index labels.
 pub fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("numeric(0)");
-            return R_NilValue();
-        }
-        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            crate::sexp::output::format_vector_stock(sexp, true)
-        } else {
-            String::new()
-        };
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&rendered);
-        } else {
-            print!("{rendered}");
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("numeric(0)");
+        return R_NilValue();
     }
+    let rendered = if let Some(sexp) = active_owner().sexp(x).ok() {
+        crate::sexp::output::format_vector_stock(sexp, true)
+    } else {
+        String::new()
+    };
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&rendered);
+    } else {
+        print!("{rendered}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `print.logical(x)` — print logical vector with index labels.
 pub fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("logical(0)");
-            return R_NilValue();
-        }
-        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            crate::sexp::output::format_vector_stock(sexp, true)
-        } else {
-            String::new()
-        };
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&rendered);
-        } else {
-            print!("{rendered}");
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("logical(0)");
+        return R_NilValue();
     }
+    let rendered = if let Some(sexp) = active_owner().sexp(x).ok() {
+        crate::sexp::output::format_vector_stock(sexp, true)
+    } else {
+        String::new()
+    };
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&rendered);
+    } else {
+        print!("{rendered}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `print.character(x)` — print character vector with index labels.
 pub fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("character(0)");
-            return R_NilValue();
-        }
-        let n = XLENGTH(x);
-        if n == 0 {
-            println!("character(0)");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            crate::sexp::output::format_vector_stock(sexp, true)
-        } else {
-            String::new()
-        };
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&rendered);
-        } else {
-            print!("{rendered}");
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("character(0)");
+        return R_NilValue();
     }
+    let n = XLENGTH(x);
+    if n == 0 {
+        println!("character(0)");
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    let rendered = if let Some(sexp) = active_owner().sexp(x).ok() {
+        crate::sexp::output::format_vector_stock(sexp, true)
+    } else {
+        String::new()
+    };
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&rendered);
+    } else {
+        print!("{rendered}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `print.complex(x)` — print complex vector with index labels.
 pub fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("complex(0)");
-            return R_NilValue();
-        }
-        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            crate::sexp::output::format_vector_stock(sexp, true)
-        } else {
-            String::new()
-        };
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stdout(&rendered);
-        } else {
-            print!("{rendered}");
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("complex(0)");
+        return R_NilValue();
     }
+    let rendered = if let Some(sexp) = active_owner().sexp(x).ok() {
+        crate::sexp::output::format_vector_stock(sexp, true)
+    } else {
+        String::new()
+    };
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&rendered);
+    } else {
+        print!("{rendered}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
@@ -326,7 +316,7 @@ fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
                     continue;
                 }
                 let Some(mut _reservation) =
-                    crate::sexp::memory::with_arena(|arena| arena.reserve_workspace(byte_len))
+                    sexp_ok(active_owner().with_arena(|arena| arena.reserve_workspace(byte_len)))
                 else {
                     base_error("cannot allocate UTF-8 conversion workspace");
                 };

@@ -375,11 +375,11 @@ pub(crate) fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), Strin
     unsafe {
         let code = read_package_text(file)
             .map_err(|err| format!("could not read {}: {err}", file.display()))?;
-        let parser_factory = crate::eval::parser::active_factory();
-        let expr = crate::sexp::memory::with_arena(|arena| {
+        let parser_factory = active_owner().node_factory();
+        let expr = sexp_ok(active_owner().with_arena(|arena| {
             crate::eval::parser::parse(&code, arena, parser_factory.clone())
                 .map_err(|err| err.to_string())
-        })?;
+        }))?;
         let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
         Ok(())
     }

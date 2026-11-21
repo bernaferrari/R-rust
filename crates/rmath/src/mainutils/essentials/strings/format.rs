@@ -647,144 +647,140 @@ pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `format(x, digits, nsmall)` — format numbers as strings.
 pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let digits_arg = CAR(CDR(args));
-        let nsmall_arg = CAR(CDR(CDR(args)));
-        if x.is_null() || x == R_NilValue() {
-            return mk_string_cstr(c"");
-        }
-        // Upstream `format` is a UseMethod generic; its .Internal core
-        // (do_format) never dispatches — GNU reaches the internal only via
-        // `format.default`'s .Internal(format(...)), and S3 dispatch already
-        // happened at the generic. Skip closure AND builtin-class dispatch
-        // when invoked from inside the `format` generic or `format.default`
-        // (NextMethod frames keep the generic-name sys.call, so they match)
-        // so `format.default` on a classed object cannot re-dispatch into
-        // e.g. `format.AsIs` (infinite recursion) and
-        // format.default(POSIXct) formats the raw number like GNU. Direct
-        // Rust callers that stand in for the generic (print/output column
-        // formatting) and other contexts still dispatch.
-        let inside_format_default = called_from_format_generic_or_default();
-        if !inside_format_default
-            && let Some(result) =
-                crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
-        {
-            return result;
-        }
-        if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"POSIXlt") != FALSE
-        {
-            return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
-        }
-        if !inside_format_default
-            && (crate::mainutils::objects::inherits2(x, c"POSIXct") != FALSE
-                || crate::mainutils::objects::inherits2(x, c"POSIXt") != FALSE)
-        {
-            return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
-        }
-        if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"Date") != FALSE
-        {
-            return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
-        }
-        if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"data.frame") != FALSE
-        {
-            return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
-        }
-        if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE
-        {
-            return format_mode_ints(x, true);
-        }
-        if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"octmode") != FALSE
-        {
-            return format_mode_ints(x, false);
-        }
-        // format.default: environments render as their display form
-        // ("<environment: 0x...>"); closures deparse. These types have no
-        // meaningful XLENGTH — the vector loop below must not see them.
-        let x_type = TYPEOF(x);
-        if x_type == SEXPTYPE::ENVSXP {
-            if let Some(env_sexp) = crate::sexp::object::Sexp::from_raw(x) {
-                let rendered = crate::sexp::output::format_environment_public(env_sexp);
-                let cstr = CString::new(rendered).unwrap_or_default();
-                return mk_string_cstr(&cstr);
-            }
-            return mk_string_cstr(c"<environment>");
-        }
-        if x_type == SEXPTYPE::CLOSXP
-            || x_type == SEXPTYPE::SPECIALSXP
-            || x_type == SEXPTYPE::BUILTINSXP
-        {
-            return crate::mainutils::deparse::deparse_symbolic(x, true);
-        }
-        // format.default formats symbolic objects by deparse:
-        // call/expression/"function"/"(" -> deparse(x, backtick=TRUE),
-        // name -> deparse(x, backtick=FALSE). Reaching the vector path with
-        // a LANGSXP/SYMSXP walks garbage pairlist memory (XLENGTH is only
-        // meaningful for vectors).
-        if x_type == SEXPTYPE::LANGSXP || x_type == SEXPTYPE::EXPRSXP || x_type == SEXPTYPE::SYMSXP
-        {
-            return crate::mainutils::deparse::deparse_symbolic(x, x_type != SEXPTYPE::SYMSXP);
-        }
-        if x_type == SEXPTYPE::BCODESXP {
-            crate::mainutils::errors::errorcall_str(
-                _call,
-                "Found no format() method for class \"bytecode\"",
-            );
-        }
-        let nsmall = if nsmall_arg.is_null() || nsmall_arg == R_NilValue() {
-            0usize
-        } else {
-            real_or_default(nsmall_arg, 0.0) as usize
-        };
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        // GNU format.default numeric core: compute the common field
-        // parameters across the whole vector, encode each element with the
-        // Encode* printers, and right-justify to the shared width.
-        let x_type_now = TYPEOF(x);
-        if matches!(x_type_now, 10 | 13 | 14 | 15) {
-            return format_numeric_vector(x, n, args);
-        }
-        if x_type_now == SEXPTYPE::STRSXP {
-            return format_character_vector(x, n, args);
-        }
-        for i in 0..n {
-            let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
-                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    "NA".to_string()
-                } else if nsmall > 0 {
-                    format!("{:.*}", nsmall, v)
-                } else {
-                    format!("{}", v)
-                }
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER {
-                    "NA".to_string()
-                } else {
-                    format!("{}", v)
-                }
-            } else {
-                elt_to_string(x, i)
-            };
-            let cstr = CString::new(s).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        result
+    let x = CAR(args);
+    let digits_arg = CAR(CDR(args));
+    let nsmall_arg = CAR(CDR(CDR(args)));
+    if x.is_null() || x == R_NilValue() {
+        return mk_string_cstr(c"");
     }
+    // Upstream `format` is a UseMethod generic; its .Internal core
+    // (do_format) never dispatches — GNU reaches the internal only via
+    // `format.default`'s .Internal(format(...)), and S3 dispatch already
+    // happened at the generic. Skip closure AND builtin-class dispatch
+    // when invoked from inside the `format` generic or `format.default`
+    // (NextMethod frames keep the generic-name sys.call, so they match)
+    // so `format.default` on a classed object cannot re-dispatch into
+    // e.g. `format.AsIs` (infinite recursion) and
+    // format.default(POSIXct) formats the raw number like GNU. Direct
+    // Rust callers that stand in for the generic (print/output column
+    // formatting) and other contexts still dispatch.
+    let inside_format_default = called_from_format_generic_or_default();
+    if !inside_format_default
+        && let Some(result) =
+            crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
+    {
+        return result;
+    }
+    if !inside_format_default
+        && crate::mainutils::objects::inherits2(x, c"POSIXlt") != FALSE
+    {
+        return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
+    }
+    if !inside_format_default
+        && (crate::mainutils::objects::inherits2(x, c"POSIXct") != FALSE
+            || crate::mainutils::objects::inherits2(x, c"POSIXt") != FALSE)
+    {
+        return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
+    }
+    if !inside_format_default && crate::mainutils::objects::inherits2(x, c"Date") != FALSE
+    {
+        return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
+    }
+    if !inside_format_default
+        && crate::mainutils::objects::inherits2(x, c"data.frame") != FALSE
+    {
+        return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
+    }
+    if !inside_format_default
+        && crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE
+    {
+        return format_mode_ints(x, true);
+    }
+    if !inside_format_default
+        && crate::mainutils::objects::inherits2(x, c"octmode") != FALSE
+    {
+        return format_mode_ints(x, false);
+    }
+    // format.default: environments render as their display form
+    // ("<environment: 0x...>"); closures deparse. These types have no
+    // meaningful XLENGTH — the vector loop below must not see them.
+    let x_type = TYPEOF(x);
+    if x_type == SEXPTYPE::ENVSXP {
+        if let Some(env_sexp) = active_owner().sexp(x).ok() {
+            let rendered = crate::sexp::output::format_environment_public(env_sexp);
+            let cstr = CString::new(rendered).unwrap_or_default();
+            return mk_string_cstr(&cstr);
+        }
+        return mk_string_cstr(c"<environment>");
+    }
+    if x_type == SEXPTYPE::CLOSXP
+        || x_type == SEXPTYPE::SPECIALSXP
+        || x_type == SEXPTYPE::BUILTINSXP
+    {
+        return crate::mainutils::deparse::deparse_symbolic(x, true);
+    }
+    // format.default formats symbolic objects by deparse:
+    // call/expression/"function"/"(" -> deparse(x, backtick=TRUE),
+    // name -> deparse(x, backtick=FALSE). Reaching the vector path with
+    // a LANGSXP/SYMSXP walks garbage pairlist memory (XLENGTH is only
+    // meaningful for vectors).
+    if x_type == SEXPTYPE::LANGSXP || x_type == SEXPTYPE::EXPRSXP || x_type == SEXPTYPE::SYMSXP {
+        return crate::mainutils::deparse::deparse_symbolic(x, x_type != SEXPTYPE::SYMSXP);
+    }
+    if x_type == SEXPTYPE::BCODESXP {
+        crate::mainutils::errors::errorcall_str(
+            _call,
+            "Found no format() method for class \"bytecode\"",
+        );
+    }
+    let nsmall = if nsmall_arg.is_null() || nsmall_arg == R_NilValue() {
+        0usize
+    } else {
+        real_or_default(nsmall_arg, 0.0) as usize
+    };
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    // GNU format.default numeric core: compute the common field
+    // parameters across the whole vector, encode each element with the
+    // Encode* printers, and right-justify to the shared width.
+    let x_type_now = TYPEOF(x);
+    if matches!(x_type_now, 10 | 13 | 14 | 15) {
+        return format_numeric_vector(x, n, args);
+    }
+    if x_type_now == SEXPTYPE::STRSXP {
+        return format_character_vector(x, n, args);
+    }
+    for i in 0..n {
+        let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            let v = real_elt_checked(x, (i as usize) as R_xlen_t);
+            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                "NA".to_string()
+            } else if nsmall > 0 {
+                format!("{:.*}", nsmall, v)
+            } else {
+                format!("{}", v)
+            }
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER {
+                "NA".to_string()
+            } else {
+                format!("{}", v)
+            }
+        } else {
+            elt_to_string(x, i)
+        };
+        let cstr = CString::new(s).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    result
 }
 
 /// True when an enclosing function context is the `format` generic or
@@ -1083,7 +1079,7 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                     crate::mainutils::printutils::EncodeReal0(v, w, dr, er, outdec)
                 }
                 _ => {
-                    let v = *crate::sexp::accessors::COMPLEX(x).add(i as usize);
+                    let v = complex_elt_checked(x, i as R_xlen_t);
                     // GNU encodes each part with its own width and then
                     // right-justifies to the total width; fusing that into a
                     // wider real field is equivalent only when w holds the

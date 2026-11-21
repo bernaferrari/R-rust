@@ -16,24 +16,17 @@ pub(super) fn is_already_a_value(expr: SEXP) -> bool {
 }
 
 pub(super) fn callable_expr(fun: SEXP) -> SEXP {
-    unsafe {
-        if fun.is_null() || fun == R_NilValue() {
-            return fun;
+    if fun.is_null() || fun == R_NilValue() {
+        return fun;
+    }
+    if TYPEOF(fun) == SEXPTYPE::STRSXP && XLENGTH(fun) > 0 {
+        let charsxp = STRING_ELT(fun, 0);
+        if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+            return R_NilValue();
         }
-        if TYPEOF(fun) == SEXPTYPE::STRSXP && XLENGTH(fun) > 0 {
-            let charsxp = STRING_ELT(fun, 0);
-            if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
-                return R_NilValue();
-            }
-            let name = CHAR(charsxp);
-            if name.is_null() {
-                R_NilValue()
-            } else {
-                Rf_install(name)
-            }
-        } else {
-            fun
-        }
+        install_cstr(&charsxp_cstring(charsxp))
+    } else {
+        fun
     }
 }
 
@@ -146,60 +139,57 @@ pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
 }
 
 pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::VECSXP {
-            return crate::sexp::accessors::VECTOR_ELT(x, i as i64);
-        }
-        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-            let mut current = x;
-            let mut index = 0;
-            while !current.is_null() && current != R_NilValue() {
-                if index == i {
-                    return CAR(current);
-                }
-                index += 1;
-                current = CDR(current);
-            }
-            return R_NilValue();
-        }
-        // Only allocate a scalar element for atomic vector inputs.
-        // `Rf_allocVector3(TYPEOF(x), 1)` with an arbitrary type would
-        // fabricate a node whose union payload is a vector header
-        // ({length, truelength}) but whose SEXPTYPE is non-vector — the GC
-        // then traces e.g. a PROMSXP-typed node whose value/expr slots hold
-        // the integers 1/1 and whose env slot is uninitialized memory.
-        if t != SEXPTYPE::REALSXP
-            && t != SEXPTYPE::INTSXP
-            && t != SEXPTYPE::LGLSXP
-            && t != SEXPTYPE::CPLXSXP
-            && t != SEXPTYPE::RAWSXP
-            && t != SEXPTYPE::STRSXP
-        {
-            return R_NilValue();
-        }
-        let elem = Rf_allocVector3(t, 1);
-        if elem.is_null() {
-            return R_NilValue();
-        }
-        if t == SEXPTYPE::REALSXP {
-            set_real_checked(elem, 0, real_elt_checked(x, (i as usize) as R_xlen_t));
-        } else if t == SEXPTYPE::INTSXP {
-            set_integer_checked(elem, 0, integer_elt_checked(x, (i as usize) as R_xlen_t));
-        } else if t == SEXPTYPE::LGLSXP {
-            set_logical_checked(elem, 0, logical_elt_checked(x, (i as usize) as R_xlen_t));
-        } else if t == SEXPTYPE::CPLXSXP {
-            *crate::sexp::accessors::COMPLEX(elem) =
-                *crate::sexp::accessors::COMPLEX(x).add(i as usize);
-        } else if t == SEXPTYPE::RAWSXP {
-            *crate::sexp::accessors::RAW(elem) = *crate::sexp::accessors::RAW(x).add(i as usize);
-        } else if t == SEXPTYPE::STRSXP {
-            crate::sexp::accessors::SET_STRING_ELT(
-                elem,
-                0,
-                crate::sexp::accessors::STRING_ELT(x, i as i64),
-            );
-        }
-        elem
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::VECSXP {
+        return crate::sexp::accessors::VECTOR_ELT(x, i as i64);
     }
+    if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+        let mut current = x;
+        let mut index = 0;
+        while !current.is_null() && current != R_NilValue() {
+            if index == i {
+                return CAR(current);
+            }
+            index += 1;
+            current = CDR(current);
+        }
+        return R_NilValue();
+    }
+    // Only allocate a scalar element for atomic vector inputs.
+    // `Rf_allocVector3(TYPEOF(x), 1)` with an arbitrary type would
+    // fabricate a node whose union payload is a vector header
+    // ({length, truelength}) but whose SEXPTYPE is non-vector — the GC
+    // then traces e.g. a PROMSXP-typed node whose value/expr slots hold
+    // the integers 1/1 and whose env slot is uninitialized memory.
+    if t != SEXPTYPE::REALSXP
+        && t != SEXPTYPE::INTSXP
+        && t != SEXPTYPE::LGLSXP
+        && t != SEXPTYPE::CPLXSXP
+        && t != SEXPTYPE::RAWSXP
+        && t != SEXPTYPE::STRSXP
+    {
+        return R_NilValue();
+    }
+    let elem = Rf_allocVector3(t, 1);
+    if elem.is_null() {
+        return R_NilValue();
+    }
+    if t == SEXPTYPE::REALSXP {
+        set_real_checked(elem, 0, real_elt_checked(x, (i as usize) as R_xlen_t));
+    } else if t == SEXPTYPE::INTSXP {
+        set_integer_checked(elem, 0, integer_elt_checked(x, (i as usize) as R_xlen_t));
+    } else if t == SEXPTYPE::LGLSXP {
+        set_logical_checked(elem, 0, logical_elt_checked(x, (i as usize) as R_xlen_t));
+    } else if t == SEXPTYPE::CPLXSXP {
+        set_complex_checked(elem, 0, complex_elt_checked(x, i as R_xlen_t));
+    } else if t == SEXPTYPE::RAWSXP {
+        set_raw_checked(elem, 0, raw_elt_checked(x, i as R_xlen_t));
+    } else if t == SEXPTYPE::STRSXP {
+        crate::sexp::accessors::SET_STRING_ELT(
+            elem,
+            0,
+            crate::sexp::accessors::STRING_ELT(x, i as i64),
+        );
+    }
+    elem
 }

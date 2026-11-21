@@ -99,119 +99,115 @@ fn condition_object(value: SEXP) -> SEXP {
 
 /// R's `warning(...)` — issue warning.
 pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
-            _call,
-            rho,
-            rho,
-            None,
-            R_NilValue(),
-            R_NilValue(),
-        );
-        let first = CAR(args);
-        let passed = condition_object(first);
-        let warning_call = if !passed.is_null() {
-            crate::mainutils::essentials::tables::list_element_by_name(passed, "call")
-                .unwrap_or(R_NilValue())
-        } else if named_call_dot(args) {
-            crate::mainutils::errors::condition_caller_call()
-        } else {
-            R_NilValue()
-        };
-        let _warning_call = protect(warning_call);
-        let warning_text = if !passed.is_null() {
-            condition_message_of(passed).unwrap_or_default()
-        } else {
-            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"])
-        };
-        let condition = if !passed.is_null() {
-            passed
-        } else {
-            simple_warning_condition(&warning_text, warning_call)
-        };
-        let mut cond_classes = vec![
-            "simpleWarning".to_string(),
-            "warning".to_string(),
-            "condition".to_string(),
-        ];
-        let first = CAR(args);
-        if !first.is_null() && first != R_NilValue() {
-            let class = crate::eval::attrib_core::getAttrib(
-                first,
-                crate::eval::attrib_core::R_ClassSymbol(),
-            );
-            if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                cond_classes.clear();
-                let owner = active_owner();
-                let class_owned = owner_sexp(owner, class);
-                for i in 0..XLENGTH(class) {
-                    let elt = class_owned
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    if !elt.as_raw().is_null() {
-                        cond_classes.push(charsxp_utf8_lossy(&elt).unwrap_or_default());
-                    }
+    let _ctx = crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+        _call,
+        rho,
+        rho,
+        None,
+        R_NilValue(),
+        R_NilValue(),
+    );
+    let first = CAR(args);
+    let passed = condition_object(first);
+    let warning_call = if !passed.is_null() {
+        crate::mainutils::essentials::tables::list_element_by_name(passed, "call")
+            .unwrap_or(R_NilValue())
+    } else if named_call_dot(args) {
+        crate::mainutils::errors::condition_caller_call()
+    } else {
+        R_NilValue()
+    };
+    let _warning_call = protect(warning_call);
+    let warning_text = if !passed.is_null() {
+        condition_message_of(passed).unwrap_or_default()
+    } else {
+        condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"])
+    };
+    let condition = if !passed.is_null() {
+        passed
+    } else {
+        simple_warning_condition(&warning_text, warning_call)
+    };
+    let mut cond_classes = vec![
+        "simpleWarning".to_string(),
+        "warning".to_string(),
+        "condition".to_string(),
+    ];
+    let first = CAR(args);
+    if !first.is_null() && first != R_NilValue() {
+        let class =
+            crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_ClassSymbol());
+        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            cond_classes.clear();
+            let owner = active_owner();
+            let class_owned = owner_sexp(owner, class);
+            for i in 0..XLENGTH(class) {
+                let elt = class_owned
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if !elt.as_raw().is_null() {
+                    cond_classes.push(charsxp_utf8_lossy(&elt).unwrap_or_default());
                 }
             }
         }
-        if crate::mainutils::errors::warning_class_suppressed(&cond_classes) {
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
-        }
-        // Muffle-aware calling-handler signal: a handler invoking the
-        // dynamically scoped muffleWarning restart (upstream
-        // invokeRestart inside withCallingHandlers(..., warning =))
-        // suppresses BOTH the default print/collection and the exiting-
-        // handler unwind below.
-        let muffled = {
-            let _cond_guard = protect(condition);
-            signal_calling_warning_condition(condition, rho)
-        };
-        if muffled {
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
-        }
-
-        // Exiting handlers: when an enclosing tryCatch(...) registered a
-        // handler for one of this condition's classes, unwind into it
-        // (upstream vwarningcall signals through R_HandlerStack and the
-        // exiting handler takes over; the warning is then neither
-        // printed nor collected).
-        if try_catch_wants(&["simpleWarning", "warning", "condition"])
-            || (!passed.is_null()
-                && try_catch_wants(
-                    &condition_classes(passed)
-                        .iter()
-                        .map(String::as_str)
-                        .collect::<Vec<_>>(),
-                ))
-        {
-            set_signalled_condition(condition);
-            std::panic::panic_any(crate::sexp::context::RSignal::Warning {
-                message: warning_text,
-            });
-        }
-
-        // Stock defers printing: the warning enters the collection buffer
-        // (errors.c vwarningcall_dflt, warn == 0) and the REPL loop renders
-        // it via PrintWarnings() at the statement boundary — after that
-        // statement's auto-printed value, before the next statement's
-        // output. Routing the builtin through the same warningcall()
-        // collection path as C-internal warning sites keeps one deferral
-        // model: the script loop's boundary flush (and result assembly's
-        // tail flush for the final statement) positions the rendered block
-        // correctly between print() side effects and auto-printed values,
-        // while message() output stays in signal order with it (case 372).
-        let wcall = warning_call;
-        let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
-        crate::mainutils::errors::mark_calling_handlers_signaled();
-        crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        // Stock returns the message string (the R closure wraps it in
-        // invisible()); print(warning("w")) therefore renders `[1] "w"`.
-        mk_string_cstr(&c_msg)
     }
+    if crate::mainutils::errors::warning_class_suppressed(&cond_classes) {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
+    }
+    // Muffle-aware calling-handler signal: a handler invoking the
+    // dynamically scoped muffleWarning restart (upstream
+    // invokeRestart inside withCallingHandlers(..., warning =))
+    // suppresses BOTH the default print/collection and the exiting-
+    // handler unwind below.
+    let muffled = {
+        let _cond_guard = protect(condition);
+        signal_calling_warning_condition(condition, rho)
+    };
+    if muffled {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
+    }
+
+    // Exiting handlers: when an enclosing tryCatch(...) registered a
+    // handler for one of this condition's classes, unwind into it
+    // (upstream vwarningcall signals through R_HandlerStack and the
+    // exiting handler takes over; the warning is then neither
+    // printed nor collected).
+    if try_catch_wants(&["simpleWarning", "warning", "condition"])
+        || (!passed.is_null()
+            && try_catch_wants(
+                &condition_classes(passed)
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+            ))
+    {
+        set_signalled_condition(condition);
+        std::panic::panic_any(crate::sexp::context::RSignal::Warning {
+            message: warning_text,
+        });
+    }
+
+    // Stock defers printing: the warning enters the collection buffer
+    // (errors.c vwarningcall_dflt, warn == 0) and the REPL loop renders
+    // it via PrintWarnings() at the statement boundary — after that
+    // statement's auto-printed value, before the next statement's
+    // output. Routing the builtin through the same warningcall()
+    // collection path as C-internal warning sites keeps one deferral
+    // model: the script loop's boundary flush (and result assembly's
+    // tail flush for the final statement) positions the rendered block
+    // correctly between print() side effects and auto-printed values,
+    // while message() output stays in signal order with it (case 372).
+    let wcall = warning_call;
+    let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
+    crate::mainutils::errors::mark_calling_handlers_signaled();
+    crate::mainutils::errors::warningcall_cstr(wcall, &c_msg);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    // Stock returns the message string (the R closure wraps it in
+    // invisible()); print(warning("w")) therefore renders `[1] "w"`.
+    mk_string_cstr(&c_msg)
 }
 
 /// GNU `warnings()` — return `last.warning` as a `"warnings"` object.

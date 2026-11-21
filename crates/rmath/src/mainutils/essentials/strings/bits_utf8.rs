@@ -441,10 +441,7 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     out,
                     0,
-                    crate::sexp::constructors::Rf_mkCharLen(
-                        s.as_ptr() as *const std::os::raw::c_char,
-                        s.len() as c_int,
-                    ),
+                    mk_char_len(s.as_ref(), s.len() as c_int),
                 );
             }
             out

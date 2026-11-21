@@ -664,77 +664,75 @@ fn valid_object_owned(
 /// print via `print(object, useS4 = FALSE)`: the data part, not slots.
 /// `asS4(matrix())` has no class attribute; the implicit class is basic.
 pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let object = CAR(args);
-        if object.is_null() || object == R_NilValue() {
-            println!("NULL");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return R_NilValue();
-        }
-        let class_sym = install_str("class");
-        let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
-        let class_name = if !class_val.is_null()
-            && class_val != R_NilValue()
-            && TYPEOF(class_val) == SEXPTYPE::STRSXP
-            && XLENGTH(class_val) > 0
-        {
-            owner_sexp(active_owner(), class_val)
-                .try_string_value_elt(0)
-                .ok()
-                .flatten()
-                .or_else(|| Some("unknown".to_string()))
-        } else {
-            None
-        };
-        let is_s4 = crate::mainutils::objects::IS_S4_OBJECT(object) != 0;
-        let basic = class_name
-            .as_deref()
-            .map(is_basic_show_class)
-            .unwrap_or(true);
-        if is_s4 && basic {
-            // GNU showDefault else: print(object, useS4 = FALSE)
-            let copy = crate::mainutils::duplicate::Rf_duplicate(object);
-            let _copy = protect(copy);
-            crate::sexp::accessors::UNSET_S4_OBJECT(copy);
-            if let Some(sexp) = crate::sexp::object::Sexp::from_raw(copy) {
-                crate::sexp::output::print_value(sexp);
-            }
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return object;
-        }
-        if let Some(class_str) = class_name.as_deref() {
-            println!("An object of class \"{}\"", class_str);
-        }
-        if TYPEOF(object) == SEXPTYPE::VECSXP {
-            let n = XLENGTH(object);
-            let names_sym = install_str("names");
-            let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
-            let owner = active_owner();
-            let object_owned = owner_sexp(owner, object);
-            let names_owned = owner_sexp(owner, names_val);
-            for i in 0..n {
-                let slot_val = object_owned
-                    .try_vector_elt(i)
-                    .map(|elt| elt.as_raw())
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let slot_name = if !names_val.is_null() && names_val != R_NilValue() {
-                    names_owned
-                        .try_string_value_elt(i)
-                        .ok()
-                        .flatten()
-                        .filter(|text| !text.is_empty())
-                        .unwrap_or_else(|| format!("Slot{}", i + 1))
-                } else {
-                    format!("Slot{}", i + 1)
-                };
-                let val_str = elt_to_string(slot_val, 0);
-                println!("Slot \"{}\":", slot_name);
-                println!("  {}", val_str);
-            }
+    let object = CAR(args);
+    if object.is_null() || object == R_NilValue() {
+        println!("NULL");
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return R_NilValue();
+    }
+    let class_sym = install_str("class");
+    let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
+    let class_name = if !class_val.is_null()
+        && class_val != R_NilValue()
+        && TYPEOF(class_val) == SEXPTYPE::STRSXP
+        && XLENGTH(class_val) > 0
+    {
+        owner_sexp(active_owner(), class_val)
+            .try_string_value_elt(0)
+            .ok()
+            .flatten()
+            .or_else(|| Some("unknown".to_string()))
+    } else {
+        None
+    };
+    let is_s4 = crate::mainutils::objects::IS_S4_OBJECT(object) != 0;
+    let basic = class_name
+        .as_deref()
+        .map(is_basic_show_class)
+        .unwrap_or(true);
+    if is_s4 && basic {
+        // GNU showDefault else: print(object, useS4 = FALSE)
+        let copy = crate::mainutils::duplicate::Rf_duplicate(object);
+        let _copy = protect(copy);
+        crate::sexp::accessors::UNSET_S4_OBJECT(copy);
+        if let Some(sexp) = active_owner().sexp(copy).ok() {
+            crate::sexp::output::print_value(sexp);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        object
+        return object;
     }
+    if let Some(class_str) = class_name.as_deref() {
+        println!("An object of class \"{}\"", class_str);
+    }
+    if TYPEOF(object) == SEXPTYPE::VECSXP {
+        let n = XLENGTH(object);
+        let names_sym = install_str("names");
+        let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
+        let owner = active_owner();
+        let object_owned = owner_sexp(owner, object);
+        let names_owned = owner_sexp(owner, names_val);
+        for i in 0..n {
+            let slot_val = object_owned
+                .try_vector_elt(i)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let slot_name = if !names_val.is_null() && names_val != R_NilValue() {
+                names_owned
+                    .try_string_value_elt(i)
+                    .ok()
+                    .flatten()
+                    .filter(|text| !text.is_empty())
+                    .unwrap_or_else(|| format!("Slot{}", i + 1))
+            } else {
+                format!("Slot{}", i + 1)
+            };
+            let val_str = elt_to_string(slot_val, 0);
+            println!("Slot \"{}\":", slot_name);
+            println!("  {}", val_str);
+        }
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    object
 }
 
 fn is_basic_show_class(name: &str) -> bool {
@@ -1093,72 +1091,67 @@ fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
 /// `.Data` resolves through the data part, `.S3Class` defaults to the
 /// computed class. Missing slots raise upstream's exact error messages.
 pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe {
-        // R_SLOT_INIT: symbol or non-NA scalar string, else upstream's
-        // "invalid type or length for slot name".
-        let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
-            let chars = charsxp_text_of(PRINTNAME(name));
-            if chars.is_null() {
-                String::new()
-            } else {
-                chars.as_cstr()
-                    .to_string_lossy()
-                    .into_owned()
-            }
-        } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-            owner_sexp(active_owner(), name)
-                .try_string_value_elt(0)
-                .ok()
-                .flatten()
-                .unwrap_or_default()
+    // R_SLOT_INIT: symbol or non-NA scalar string, else upstream's
+    // "invalid type or length for slot name".
+    let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
+        let chars = charsxp_text_of(PRINTNAME(name));
+        if chars.is_null() {
+            String::new()
         } else {
-            let msg = "invalid type or length for slot name".to_string();
-            std::panic::panic_any(RError { message: msg });
-        };
-
-        if name_str == ".Data" {
-            return R_data_part(obj);
+            chars.as_cstr().to_string_lossy().into_owned()
         }
+    } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+        owner_sexp(active_owner(), name)
+            .try_string_value_elt(0)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    } else {
+        let msg = "invalid type or length for slot name".to_string();
+        std::panic::panic_any(RError { message: msg });
+    };
 
-        if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
-            // Port S4: slots live as named vector elements.
-            if let Some(value) = s4_named_slot(obj, &name_str) {
-                return unmap_slot_pseudo_null(value);
-            }
-            // Port VECSXP S4 stores slot names in the names attribute, so
-            // `@names` must not return that directory. GNU-style S4 with a
-            // data part (e.g. class "signature") keeps the `names` slot as
-            // the names attribute — same as attrib.c R_do_slot.
-            if name_str != "names" || TYPEOF(obj) != SEXPTYPE::VECSXP {
-                let name_sym =
-                    install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
-                let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
-                if !value.is_null() && value != R_NilValue() {
-                    return unmap_slot_pseudo_null(value);
-                }
-            }
+    if name_str == ".Data" {
+        return R_data_part(obj);
+    }
 
-            if name_str == ".S3Class" {
-                return crate::eval::attrib_core::R_data_class(obj);
-            }
-            raise_slot_miss(obj, &name_str);
-        }
-
-        // Non-S4: upstream stores everything in attributes.
-        let name_sym = install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
-        let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
-        if !value.is_null() && value != R_NilValue() {
+    if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
+        // Port S4: slots live as named vector elements.
+        if let Some(value) = s4_named_slot(obj, &name_str) {
             return unmap_slot_pseudo_null(value);
         }
-        if name_str == ".S3Class" {
-            return crate::eval::attrib_core::R_data_class(obj);
+        // Port VECSXP S4 stores slot names in the names attribute, so
+        // `@names` must not return that directory. GNU-style S4 with a
+        // data part (e.g. class "signature") keeps the `names` slot as
+        // the names attribute — same as attrib.c R_do_slot.
+        if name_str != "names" || TYPEOF(obj) != SEXPTYPE::VECSXP {
+            let name_sym = install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
+            let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+            if !value.is_null() && value != R_NilValue() {
+                return unmap_slot_pseudo_null(value);
+            }
         }
-        if name_str == "names" && TYPEOF(obj) == SEXPTYPE::VECSXP {
-            // needed for the namedList class
-            return R_NilValue();
+
+        if name_str == ".S3Class" {
+            return data_class(obj);
         }
         raise_slot_miss(obj, &name_str);
     }
+
+    // Non-S4: upstream stores everything in attributes.
+    let name_sym = install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
+    let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+    if !value.is_null() && value != R_NilValue() {
+        return unmap_slot_pseudo_null(value);
+    }
+    if name_str == ".S3Class" {
+        return data_class(obj);
+    }
+    if name_str == "names" && TYPEOF(obj) == SEXPTYPE::VECSXP {
+        // needed for the namedList class
+        return R_NilValue();
+    }
+    raise_slot_miss(obj, &name_str);
 }
 
 /// GNU `R_has_slot` (attrib.c) — attribute presence, including NULL sentinels.
