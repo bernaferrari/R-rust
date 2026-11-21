@@ -144,7 +144,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
 
         let nmerge = n - 1;
-        let merge = crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nmerge, 2);
+        let merge = alloc_matrix(SEXPTYPE::INTSXP.as_c_int(), nmerge, 2);
         let _m = protect(merge);
         for s in 0..nmerge as usize {
             set_integer_checked(merge, (s) as R_xlen_t, iia[s]);

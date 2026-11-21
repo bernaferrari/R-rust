@@ -208,145 +208,143 @@ fn ints_to_char_vector(list: SEXP) -> SEXP {
 
 /// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
 pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::VECSXP {
-            x = ints_to_char_vector(x);
-        }
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
-            return crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), 0, 0);
-        }
-        let nx = XLENGTH(x);
-        let mut y = x;
-        let mut ignore_case = false;
-        let mut counts = false;
-        let mut cell = CDR(args);
-        let mut positional = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if named == "ignore.case" {
-                if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
-                    ignore_case = logical_elt_checked(value, 0) == TRUE;
-                }
-            } else if named == "counts" || (named.is_empty() && positional == 2) {
-                if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
-                    counts = logical_elt_checked(value, 0) == TRUE;
-                }
-            } else if named == "y" || (named.is_empty() && positional == 0) {
-                // First argument after x: the GNU closure passes the
-                // utf8ToInt lists (VECSXP), not character vectors.
-                y = value;
+    let mut x = CAR(args);
+    if TYPEOF(x) == SEXPTYPE::VECSXP {
+        x = ints_to_char_vector(x);
+    }
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+        return alloc_matrix(SEXPTYPE::INTSXP.as_c_int(), 0, 0);
+    }
+    let nx = XLENGTH(x);
+    let mut y = x;
+    let mut ignore_case = false;
+    let mut counts = false;
+    let mut cell = CDR(args);
+    let mut positional = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if named == "ignore.case" {
+            if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
+                ignore_case = logical_elt_checked(value, 0) == TRUE;
             }
-            if named.is_empty() {
-                positional += 1;
+        } else if named == "counts" || (named.is_empty() && positional == 2) {
+            if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
+                counts = logical_elt_checked(value, 0) == TRUE;
             }
-            cell = CDR(cell);
+        } else if named == "y" || (named.is_empty() && positional == 0) {
+            // First argument after x: the GNU closure passes the
+            // utf8ToInt lists (VECSXP), not character vectors.
+            y = value;
         }
-        if TYPEOF(y) == SEXPTYPE::VECSXP {
-            y = ints_to_char_vector(y);
+        if named.is_empty() {
+            positional += 1;
         }
-        if y.is_null() || y == R_NilValue() || TYPEOF(y) != SEXPTYPE::STRSXP {
-            y = x;
+        cell = CDR(cell);
+    }
+    if TYPEOF(y) == SEXPTYPE::VECSXP {
+        y = ints_to_char_vector(y);
+    }
+    if y.is_null() || y == R_NilValue() || TYPEOF(y) != SEXPTYPE::STRSXP {
+        y = x;
+    }
+    let ny = XLENGTH(y);
+    let mat = alloc_matrix(
+        SEXPTYPE::INTSXP.as_c_int(),
+        nx as c_int,
+        ny as c_int,
+    );
+    let _m = protect(mat);
+    let mut paths: Vec<(String, i32, i32, i32)> = Vec::new();
+    for j in 0..ny {
+        let ych = STRING_ELT(y, j);
+        let mut ys = if ych.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ych).unwrap_or_default()
+        };
+        if ignore_case {
+            ys = ys.to_lowercase();
         }
-        let ny = XLENGTH(y);
-        let mat = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::INTSXP.as_c_int(),
-            nx as c_int,
-            ny as c_int,
-        );
-        let _m = protect(mat);
-        let mut paths: Vec<(String, i32, i32, i32)> = Vec::new();
-        for j in 0..ny {
-            let ych = STRING_ELT(y, j);
-            let mut ys = if ych.is_null() {
+        for i in 0..nx {
+            let xch = STRING_ELT(x, i);
+            let mut xs = if xch.is_null() {
                 String::new()
             } else {
-                charsxp_text(ych).unwrap_or_default()
+                charsxp_text(xch).unwrap_or_default()
             };
             if ignore_case {
-                ys = ys.to_lowercase();
+                xs = xs.to_lowercase();
             }
-            for i in 0..nx {
-                let xch = STRING_ELT(x, i);
-                let mut xs = if xch.is_null() {
-                    String::new()
-                } else {
-                    charsxp_text(xch).unwrap_or_default()
-                };
-                if ignore_case {
-                    xs = xs.to_lowercase();
-                }
-                let (dist, trafo, del, ins, sub) = adist_path(&xs, &ys);
-                set_integer_checked(mat, ((i + j * nx) as usize) as R_xlen_t, dist);
-                if counts {
-                    paths.push((trafo, del, ins, sub));
-                }
+            let (dist, trafo, del, ins, sub) = adist_path(&xs, &ys);
+            set_integer_checked(mat, ((i + j * nx) as usize) as R_xlen_t, dist);
+            if counts {
+                paths.push((trafo, del, ins, sub));
             }
         }
-        if counts {
-            let trafos = Rf_allocVector3(SEXPTYPE::STRSXP, nx * ny);
-            let _t = protect(trafos);
-            let cnt = Rf_allocVector3(SEXPTYPE::INTSXP, nx * ny * 3);
-            let _c = protect(cnt);
-            for (k, (trafo, del, ins, sub)) in paths.iter().enumerate() {
-                let cstr = std::ffi::CString::new(trafo.as_str()).unwrap_or_default();
-                SET_STRING_ELT(
-                    trafos,
-                    k as i64,
-                    mk_char_cstr(&cstr),
-                );
-                set_integer_checked(cnt, (k) as R_xlen_t, *del);
-                set_integer_checked(cnt, (k + (nx * ny) as usize) as R_xlen_t, *ins);
-                set_integer_checked(cnt, (k + (2 * nx * ny) as usize) as R_xlen_t, *sub);
-            }
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-            set_integer_checked(dim, (0) as R_xlen_t, nx as i32);
-            set_integer_checked(dim, (1) as R_xlen_t, ny as i32);
-            set_integer_checked(dim, (2) as R_xlen_t, 3);
-            crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimSymbol(), dim);
-            let dnames = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-            let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-            for (i, name) in ["del", "ins", "sub"].iter().enumerate() {
-                let cstr = std::ffi::CString::new(*name).unwrap();
-                SET_STRING_ELT(
-                    layer,
-                    i as i64,
-                    mk_char_cstr(&cstr),
-                );
-            }
-            SET_VECTOR_ELT(dnames, 2, layer);
-            crate::sexp::attrib_core::setAttrib(
-                cnt,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                dnames,
-            );
-            let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            set_integer_checked(tdim, (0) as R_xlen_t, nx as i32);
-            set_integer_checked(tdim, (1) as R_xlen_t, ny as i32);
-            crate::sexp::attrib_core::setAttrib(
-                trafos,
-                crate::sexp::attrib_core::R_DimSymbol(),
-                tdim,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                mat,
-                install_str("trafos"),
-                trafos,
-            );
-            crate::sexp::attrib_core::setAttrib(
-                mat,
-                install_str("counts"),
-                cnt,
-            );
-        }
-        mat
     }
+    if counts {
+        let trafos = Rf_allocVector3(SEXPTYPE::STRSXP, nx * ny);
+        let _t = protect(trafos);
+        let cnt = Rf_allocVector3(SEXPTYPE::INTSXP, nx * ny * 3);
+        let _c = protect(cnt);
+        for (k, (trafo, del, ins, sub)) in paths.iter().enumerate() {
+            let cstr = std::ffi::CString::new(trafo.as_str()).unwrap_or_default();
+            SET_STRING_ELT(
+                trafos,
+                k as i64,
+                mk_char_cstr(&cstr),
+            );
+            set_integer_checked(cnt, (k) as R_xlen_t, *del);
+            set_integer_checked(cnt, (k + (nx * ny) as usize) as R_xlen_t, *ins);
+            set_integer_checked(cnt, (k + (2 * nx * ny) as usize) as R_xlen_t, *sub);
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+        set_integer_checked(dim, (0) as R_xlen_t, nx as i32);
+        set_integer_checked(dim, (1) as R_xlen_t, ny as i32);
+        set_integer_checked(dim, (2) as R_xlen_t, 3);
+        crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let dnames = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        for (i, name) in ["del", "ins", "sub"].iter().enumerate() {
+            let cstr = std::ffi::CString::new(*name).unwrap();
+            SET_STRING_ELT(
+                layer,
+                i as i64,
+                mk_char_cstr(&cstr),
+            );
+        }
+        SET_VECTOR_ELT(dnames, 2, layer);
+        crate::sexp::attrib_core::setAttrib(
+            cnt,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dnames,
+        );
+        let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        set_integer_checked(tdim, (0) as R_xlen_t, nx as i32);
+        set_integer_checked(tdim, (1) as R_xlen_t, ny as i32);
+        crate::sexp::attrib_core::setAttrib(
+            trafos,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            tdim,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            install_str("trafos"),
+            trafos,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            mat,
+            install_str("counts"),
+            cnt,
+        );
+    }
+    mat
 }
 
 fn aregexec_match(pat: &str, text: &str, maxd: i32) -> Option<(i32, i32)> {

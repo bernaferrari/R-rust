@@ -273,83 +273,81 @@ fn series_tsp(x: SEXP) -> (f64, f64, f64) {
 }
 
 fn cbind_ts(args: SEXP, union: bool) -> SEXP {
-    unsafe {
-        let a = CAR(args);
-        let rest = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CDR(args)
-        };
-        let b = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(rest)
-        };
-        if a.is_null() || a == R_NilValue() {
-            return R_NilValue();
-        }
-        if b.is_null() || b == R_NilValue() {
-            return a;
-        }
-        let (sa, ea, fa) = series_tsp(a);
-        let (sb, eb, fb) = series_tsp(b);
-        let freq = if fa > 0.0 { fa } else { 1.0 };
-        let _ = fb;
-        let (start, end) = if union {
-            (sa.min(sb), ea.max(eb))
-        } else {
-            (sa.max(sb), ea.min(eb))
-        };
-        if end < start {
-            return R_NilValue();
-        }
-        let n = ((end - start) * freq + 1.01).floor() as usize;
-        let na = XLENGTH(a) as usize;
-        let nb = XLENGTH(b) as usize;
-        let result =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
-        let _r = protect(result);
-        let off_a = ((sa - start) * freq).round() as isize;
-        let off_b = ((sb - start) * freq).round() as isize;
-        for i in 0..n {
-            let ia = i as isize - off_a;
-            set_real_checked(result, (i) as R_xlen_t, if ia >= 0 && (ia as usize) < na {
-                if TYPEOF(a) == SEXPTYPE::REALSXP {
-                    real_elt_checked(a, (ia as usize) as R_xlen_t)
-                } else {
-                    integer_elt_checked(a, (ia as usize) as R_xlen_t) as f64
-                }
-            } else {
-                NA_REAL
-            });
-            let ib = i as isize - off_b;
-            set_real_checked(result, (n + i) as R_xlen_t, if ib >= 0 && (ib as usize) < nb {
-                if TYPEOF(b) == SEXPTYPE::REALSXP {
-                    real_elt_checked(b, (ib as usize) as R_xlen_t)
-                } else {
-                    integer_elt_checked(b, (ib as usize) as R_xlen_t) as f64
-                }
-            } else {
-                NA_REAL
-            });
-        }
-        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        let _t = protect(tsp);
-        set_real_checked(tsp, 0, start);
-        set_real_checked(tsp, (1) as R_xlen_t, end);
-        set_real_checked(tsp, (2) as R_xlen_t, freq);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _c = protect(class);
-        SET_STRING_ELT(class, 0, mk_char_cstr(c"mts"));
-        SET_STRING_ELT(class, 1, mk_char_cstr(c"ts"));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let a = CAR(args);
+    let rest = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        CDR(args)
+    };
+    let b = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(rest)
+    };
+    if a.is_null() || a == R_NilValue() {
+        return R_NilValue();
     }
+    if b.is_null() || b == R_NilValue() {
+        return a;
+    }
+    let (sa, ea, fa) = series_tsp(a);
+    let (sb, eb, fb) = series_tsp(b);
+    let freq = if fa > 0.0 { fa } else { 1.0 };
+    let _ = fb;
+    let (start, end) = if union {
+        (sa.min(sb), ea.max(eb))
+    } else {
+        (sa.max(sb), ea.min(eb))
+    };
+    if end < start {
+        return R_NilValue();
+    }
+    let n = ((end - start) * freq + 1.01).floor() as usize;
+    let na = XLENGTH(a) as usize;
+    let nb = XLENGTH(b) as usize;
+    let result =
+        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+    let _r = protect(result);
+    let off_a = ((sa - start) * freq).round() as isize;
+    let off_b = ((sb - start) * freq).round() as isize;
+    for i in 0..n {
+        let ia = i as isize - off_a;
+        set_real_checked(result, (i) as R_xlen_t, if ia >= 0 && (ia as usize) < na {
+            if TYPEOF(a) == SEXPTYPE::REALSXP {
+                real_elt_checked(a, (ia as usize) as R_xlen_t)
+            } else {
+                integer_elt_checked(a, (ia as usize) as R_xlen_t) as f64
+            }
+        } else {
+            NA_REAL
+        });
+        let ib = i as isize - off_b;
+        set_real_checked(result, (n + i) as R_xlen_t, if ib >= 0 && (ib as usize) < nb {
+            if TYPEOF(b) == SEXPTYPE::REALSXP {
+                real_elt_checked(b, (ib as usize) as R_xlen_t)
+            } else {
+                integer_elt_checked(b, (ib as usize) as R_xlen_t) as f64
+            }
+        } else {
+            NA_REAL
+        });
+    }
+    let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+    let _t = protect(tsp);
+    set_real_checked(tsp, 0, start);
+    set_real_checked(tsp, (1) as R_xlen_t, end);
+    set_real_checked(tsp, (2) as R_xlen_t, freq);
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _c = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"mts"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"ts"));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `ts.union(a, b)` — align two series on the union of their times.

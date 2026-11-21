@@ -331,7 +331,7 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let multiple = logical_flag(m, "multiple");
         let s_pair = logical_flag(p, "allow_surrogate_pairs");
-        if crate::mainutils::apply::isFactor(x) != 0 {
+        if is_factor(x) != 0 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "argument 'x' must be an integer vector",

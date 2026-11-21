@@ -473,143 +473,141 @@ pub fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `summary(lm)` coefficient table and fit stats.
 pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let coef = list_named_elt(obj, "coefficients");
-        let resid = list_named_elt(obj, "residuals");
-        let fitted = list_named_elt(obj, "fitted.values");
-        let sigma = list_named_elt(obj, "sigma");
-        let dfr = list_named_elt(obj, "df.residual");
-        if coef == R_NilValue() || resid == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(resid) as usize;
-        let df = if dfr != R_NilValue() {
-            elt_real_safe(dfr, 0)
-        } else {
-            (n as f64) - 2.0
-        };
-        let s = if sigma != R_NilValue() {
-            elt_real_safe(sigma, 0)
+    let obj = CAR(args);
+    let coef = list_named_elt(obj, "coefficients");
+    let resid = list_named_elt(obj, "residuals");
+    let fitted = list_named_elt(obj, "fitted.values");
+    let sigma = list_named_elt(obj, "sigma");
+    let dfr = list_named_elt(obj, "df.residual");
+    if coef == R_NilValue() || resid == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(resid) as usize;
+    let df = if dfr != R_NilValue() {
+        elt_real_safe(dfr, 0)
+    } else {
+        (n as f64) - 2.0
+    };
+    let s = if sigma != R_NilValue() {
+        elt_real_safe(sigma, 0)
+    } else {
+        0.0
+    };
+    let b0 = elt_real_safe(coef, 0);
+    let b1 = elt_real_safe(coef, 1);
+    let mut sse = 0.0;
+    let mut sst = 0.0;
+    let mut ysum = 0.0;
+    let mut ys = Vec::with_capacity(n);
+    let mut xs = Vec::with_capacity(n);
+    for i in 0..n {
+        let e = elt_real_safe(resid, i as i64);
+        let f = if fitted != R_NilValue() {
+            elt_real_safe(fitted, i as i64)
         } else {
             0.0
         };
-        let b0 = elt_real_safe(coef, 0);
-        let b1 = elt_real_safe(coef, 1);
-        let mut sse = 0.0;
-        let mut sst = 0.0;
-        let mut ysum = 0.0;
-        let mut ys = Vec::with_capacity(n);
-        let mut xs = Vec::with_capacity(n);
-        for i in 0..n {
-            let e = elt_real_safe(resid, i as i64);
-            let f = if fitted != R_NilValue() {
-                elt_real_safe(fitted, i as i64)
-            } else {
-                0.0
-            };
-            let y = f + e;
-            ys.push(y);
-            ysum += y;
-            sse += e * e;
-            let xi = if b1.abs() > 1e-15 {
-                (f - b0) / b1
-            } else {
-                i as f64
-            };
-            xs.push(xi);
-        }
-        let ybar = ysum / n as f64;
-        for y in &ys {
-            sst += (y - ybar) * (y - ybar);
-        }
-        let meanx = xs.iter().sum::<f64>() / n as f64;
-        let sxx = xs.iter().map(|v| (v - meanx) * (v - meanx)).sum::<f64>();
-        let se1 = if sxx > 0.0 { s / sxx.sqrt() } else { f64::NAN };
-        let se0 = if sxx > 0.0 {
-            s * (1.0 / n as f64 + meanx * meanx / sxx).sqrt()
+        let y = f + e;
+        ys.push(y);
+        ysum += y;
+        sse += e * e;
+        let xi = if b1.abs() > 1e-15 {
+            (f - b0) / b1
         } else {
-            f64::NAN
+            i as f64
         };
-        let t0 = b0 / se0;
-        let t1 = b1 / se1;
-        let p0 = 2.0 * crate::dist::t_dist::pt_inner(-t0.abs(), df, true, false);
-        let p1 = 2.0 * crate::dist::t_dist::pt_inner(-t1.abs(), df, true, false);
-        let r2 = if sst > 0.0 { 1.0 - sse / sst } else { f64::NAN };
-        let adj = if n > 2 {
-            1.0 - (1.0 - r2) * ((n as f64 - 1.0) / df)
-        } else {
-            r2
-        };
-        let fstat = if sse > 0.0 && df > 0.0 {
-            ((sst - sse) / 1.0) / (sse / df)
-        } else {
-            f64::NAN
-        };
-        let ctab = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 4);
-        let _ct = protect(ctab);
-        set_real_checked(ctab, 0, b0);
-        set_real_checked(ctab, (1) as R_xlen_t, b1);
-        set_real_checked(ctab, (2) as R_xlen_t, se0);
-        set_real_checked(ctab, (3) as R_xlen_t, se1);
-        set_real_checked(ctab, (4) as R_xlen_t, t0);
-        set_real_checked(ctab, (5) as R_xlen_t, t1);
-        set_real_checked(ctab, (6) as R_xlen_t, p0);
-        set_real_checked(ctab, (7) as R_xlen_t, p1);
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, mk_char_cstr(c"(Intercept)"));
-        SET_STRING_ELT(rn, 1, mk_char_cstr(c"x"));
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
-        let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, mk_char_cstr(c"Estimate"));
-        SET_STRING_ELT(cn, 1, mk_char_cstr(c"Std. Error"));
-        SET_STRING_ELT(cn, 2, mk_char_cstr(c"t value"));
-        SET_STRING_ELT(cn, 3, mk_char_cstr(c"Pr(>|t|)"));
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dn = protect(dn);
-        SET_VECTOR_ELT(dn, 0, rn);
-        SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(ctab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
-        let fvec = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        let _fv = protect(fvec);
-        set_real_checked(fvec, 0, fstat);
-        set_real_checked(fvec, (1) as R_xlen_t, 1.0);
-        set_real_checked(fvec, (2) as R_xlen_t, df);
-        set_string_names(
-            fvec,
-            &[
-                "value".to_string(),
-                "numdf".to_string(),
-                "dendf".to_string(),
-            ],
-        );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, ctab);
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(s));
-        SET_VECTOR_ELT(result, 2, Rf_ScalarReal(r2));
-        SET_VECTOR_ELT(result, 3, Rf_ScalarReal(adj));
-        SET_VECTOR_ELT(result, 4, fvec);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "coefficients".to_string(),
-                "sigma".to_string(),
-                "r.squared".to_string(),
-                "adj.r.squared".to_string(),
-                "fstatistic".to_string(),
-            ],
-        );
-        let class = mk_string_cstr(c"summary.lm");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        xs.push(xi);
     }
+    let ybar = ysum / n as f64;
+    for y in &ys {
+        sst += (y - ybar) * (y - ybar);
+    }
+    let meanx = xs.iter().sum::<f64>() / n as f64;
+    let sxx = xs.iter().map(|v| (v - meanx) * (v - meanx)).sum::<f64>();
+    let se1 = if sxx > 0.0 { s / sxx.sqrt() } else { f64::NAN };
+    let se0 = if sxx > 0.0 {
+        s * (1.0 / n as f64 + meanx * meanx / sxx).sqrt()
+    } else {
+        f64::NAN
+    };
+    let t0 = b0 / se0;
+    let t1 = b1 / se1;
+    let p0 = 2.0 * crate::dist::t_dist::pt_inner(-t0.abs(), df, true, false);
+    let p1 = 2.0 * crate::dist::t_dist::pt_inner(-t1.abs(), df, true, false);
+    let r2 = if sst > 0.0 { 1.0 - sse / sst } else { f64::NAN };
+    let adj = if n > 2 {
+        1.0 - (1.0 - r2) * ((n as f64 - 1.0) / df)
+    } else {
+        r2
+    };
+    let fstat = if sse > 0.0 && df > 0.0 {
+        ((sst - sse) / 1.0) / (sse / df)
+    } else {
+        f64::NAN
+    };
+    let ctab = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 4);
+    let _ct = protect(ctab);
+    set_real_checked(ctab, 0, b0);
+    set_real_checked(ctab, (1) as R_xlen_t, b1);
+    set_real_checked(ctab, (2) as R_xlen_t, se0);
+    set_real_checked(ctab, (3) as R_xlen_t, se1);
+    set_real_checked(ctab, (4) as R_xlen_t, t0);
+    set_real_checked(ctab, (5) as R_xlen_t, t1);
+    set_real_checked(ctab, (6) as R_xlen_t, p0);
+    set_real_checked(ctab, (7) as R_xlen_t, p1);
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _rn = protect(rn);
+    SET_STRING_ELT(rn, 0, mk_char_cstr(c"(Intercept)"));
+    SET_STRING_ELT(rn, 1, mk_char_cstr(c"x"));
+    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
+    let _cn = protect(cn);
+    SET_STRING_ELT(cn, 0, mk_char_cstr(c"Estimate"));
+    SET_STRING_ELT(cn, 1, mk_char_cstr(c"Std. Error"));
+    SET_STRING_ELT(cn, 2, mk_char_cstr(c"t value"));
+    SET_STRING_ELT(cn, 3, mk_char_cstr(c"Pr(>|t|)"));
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dn = protect(dn);
+    SET_VECTOR_ELT(dn, 0, rn);
+    SET_VECTOR_ELT(dn, 1, cn);
+    crate::sexp::attrib_core::setAttrib(ctab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
+    let fvec = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+    let _fv = protect(fvec);
+    set_real_checked(fvec, 0, fstat);
+    set_real_checked(fvec, (1) as R_xlen_t, 1.0);
+    set_real_checked(fvec, (2) as R_xlen_t, df);
+    set_string_names(
+        fvec,
+        &[
+            "value".to_string(),
+            "numdf".to_string(),
+            "dendf".to_string(),
+        ],
+    );
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, ctab);
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(s));
+    SET_VECTOR_ELT(result, 2, Rf_ScalarReal(r2));
+    SET_VECTOR_ELT(result, 3, Rf_ScalarReal(adj));
+    SET_VECTOR_ELT(result, 4, fvec);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "coefficients".to_string(),
+            "sigma".to_string(),
+            "r.squared".to_string(),
+            "adj.r.squared".to_string(),
+            "fstatistic".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"summary.lm");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `summary.glm` — gaussian coefficient table from `summary.lm`.

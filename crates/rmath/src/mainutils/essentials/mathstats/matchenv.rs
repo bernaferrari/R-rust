@@ -130,7 +130,7 @@ pub fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         if !several_ok {
             // The arg can be the whole of choices as a default argument.
-            if crate::mainutils::identical::R_compute_identical(arg, choices, 0) != 0 {
+            if compute_identical(arg, choices, 0) != 0 {
                 return match_arg_first(choices);
             }
             if XLENGTH(arg) != 1 {

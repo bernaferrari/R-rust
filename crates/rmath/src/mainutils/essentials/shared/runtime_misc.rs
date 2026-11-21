@@ -1198,3 +1198,39 @@ pub(crate) fn charsxp_cstring(x: SEXP) -> std::ffi::CString {
     }
     std::ffi::CString::new(bytes).unwrap_or_default()
 }
+
+/// Allocate a matrix (`allocMatrix`).
+///
+/// `allocMatrix` has no pointer contract: it only takes integer extents,
+/// validates them and allocates through the checked vector constructor.
+pub(crate) fn alloc_matrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
+    // SAFETY: integer-only arguments; allocMatrix validates extents and mode.
+    unsafe { crate::mainutils::array::allocMatrix(mode, nrow, ncol) }
+}
+
+/// Build a closure over live `formals`, `body` and `env` (`mkCLOSXP`).
+pub(crate) fn mk_closure(formals: SEXP, body: SEXP, env: SEXP) -> SEXP {
+    // SAFETY: the three nodes are live SEXPs for the call; mkCLOSXP only
+    // allocates the closure cell that captures them.
+    unsafe { crate::mainutils::dstruct::mkCLOSXP(formals, body, env) }
+}
+
+/// Copy all attributes except names/dim/dimnames (`copyMostAttrib`).
+pub(crate) fn copy_most_attrib(src: SEXP, dest: SEXP) {
+    // SAFETY: both arguments are live SEXPs; the copy only walks `src`'s
+    // attribute pairlist and installs attributes on `dest` through the
+    // checked attribute API.
+    unsafe { crate::mainutils::array::copyMostAttrib(src, dest) }
+}
+
+/// `isFactor(x)` on a live SEXP.
+pub(crate) fn is_factor(x: SEXP) -> c_int {
+    // SAFETY: `x` is a live SEXP; isFactor only reads its class attribute.
+    unsafe { crate::mainutils::apply::isFactor(x) }
+}
+
+/// `R_compute_identical(x, y, flags)` on live SEXPs.
+pub(crate) fn compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
+    // SAFETY: both values are live SEXPs; the comparison only reads them.
+    unsafe { crate::mainutils::identical::R_compute_identical(x, y, flags) }
+}

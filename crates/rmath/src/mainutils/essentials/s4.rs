@@ -364,21 +364,19 @@ pub fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn s4_class_generator(class_name: &str) -> SEXP {
-    unsafe {
-        let dots = crate::sexp::symbol::R_DotsSymbol();
-        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
-        let _formals = protect(formals);
-        SETTAG(formals, dots);
-        let class_str = {
-            let cstr = CString::new(class_name).unwrap_or_default();
-            mk_string_cstr(&cstr)
-        };
-        let _class_str = protect(class_str);
-        let body =
-            crate::sexp::constructors::Rf_lang3(install_str("new"), class_str, dots);
-        let _body = protect(body);
-        crate::mainutils::dstruct::mkCLOSXP(formals, body, crate::sexp::globals::R_BaseEnv())
-    }
+    let dots = crate::sexp::symbol::R_DotsSymbol();
+    let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+    let _formals = protect(formals);
+    SETTAG(formals, dots);
+    let class_str = {
+        let cstr = CString::new(class_name).unwrap_or_default();
+        mk_string_cstr(&cstr)
+    };
+    let _class_str = protect(class_str);
+    let body =
+        crate::sexp::constructors::Rf_lang3(install_str("new"), class_str, dots);
+    let _body = protect(body);
+    mk_closure(formals, body, crate::sexp::globals::R_BaseEnv())
 }
 
 pub fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

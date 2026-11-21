@@ -57,88 +57,82 @@ pub fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 fn handlers_structurally_equal(a: SEXP, b: SEXP) -> bool {
-    unsafe {
-        if a == b {
-            return true;
-        }
-        if TYPEOF(a) != TYPEOF(b) {
-            return false;
-        }
-        if TYPEOF(a) != SEXPTYPE::CLOSXP {
-            return crate::mainutils::identical::R_compute_identical(a, b, 32) != 0;
-        }
-        if crate::sexp::accessors::CLOENV(a) != crate::sexp::accessors::CLOENV(b) {
-            return false;
-        }
-        if crate::mainutils::identical::R_compute_identical(
-            crate::sexp::accessors::FORMALS(a),
-            crate::sexp::accessors::FORMALS(b),
-            0,
-        ) == 0
-        {
-            return false;
-        }
-        if !lang_equal_ignore_srcref(
-            crate::sexp::accessors::BODY(a),
-            crate::sexp::accessors::BODY(b),
-        ) {
-            return false;
-        }
-        attribs_equal_ignore_source(
-            crate::sexp::accessors::ATTRIB(a),
-            crate::sexp::accessors::ATTRIB(b),
-        )
+    if a == b {
+        return true;
     }
+    if TYPEOF(a) != TYPEOF(b) {
+        return false;
+    }
+    if TYPEOF(a) != SEXPTYPE::CLOSXP {
+        return compute_identical(a, b, 32) != 0;
+    }
+    if crate::sexp::accessors::CLOENV(a) != crate::sexp::accessors::CLOENV(b) {
+        return false;
+    }
+    if compute_identical(
+        crate::sexp::accessors::FORMALS(a),
+        crate::sexp::accessors::FORMALS(b),
+        0,
+    ) == 0
+    {
+        return false;
+    }
+    if !lang_equal_ignore_srcref(
+        crate::sexp::accessors::BODY(a),
+        crate::sexp::accessors::BODY(b),
+    ) {
+        return false;
+    }
+    attribs_equal_ignore_source(
+        crate::sexp::accessors::ATTRIB(a),
+        crate::sexp::accessors::ATTRIB(b),
+    )
 }
 
 fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
-    unsafe {
-        if a == b {
-            return true;
-        }
-        if a.is_null() || b.is_null() || a == R_NilValue() || b == R_NilValue() {
-            return a == b || (a == R_NilValue() && b == R_NilValue());
-        }
-        if TYPEOF(a) != TYPEOF(b) {
-            return false;
-        }
-        if TYPEOF(a) == SEXPTYPE::LANGSXP || TYPEOF(a) == SEXPTYPE::LISTSXP {
-            lang_equal_ignore_srcref(CAR(a), CAR(b)) && lang_equal_ignore_srcref(CDR(a), CDR(b))
-        } else {
-            crate::mainutils::identical::R_compute_identical(a, b, 0) != 0
-        }
+    if a == b {
+        return true;
+    }
+    if a.is_null() || b.is_null() || a == R_NilValue() || b == R_NilValue() {
+        return a == b || (a == R_NilValue() && b == R_NilValue());
+    }
+    if TYPEOF(a) != TYPEOF(b) {
+        return false;
+    }
+    if TYPEOF(a) == SEXPTYPE::LANGSXP || TYPEOF(a) == SEXPTYPE::LISTSXP {
+        lang_equal_ignore_srcref(CAR(a), CAR(b)) && lang_equal_ignore_srcref(CDR(a), CDR(b))
+    } else {
+        compute_identical(a, b, 0) != 0
     }
 }
 
 fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
-    unsafe {
-        fn skip_src(mut p: SEXP) -> SEXP {
-            unsafe {
-                while !p.is_null() && p != R_NilValue() {
-                    let tag = TAG(p);
-                    let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                        let c = crate::sexp::accessors::CHAR(PRINTNAME(tag));
-                        if c.is_null() {
-                            ""
-                        } else {
-                            std::ffi::CStr::from_ptr(c).to_str().unwrap_or("")
-                        }
-                    } else {
+    fn skip_src(mut p: SEXP) -> SEXP {
+        unsafe {
+            while !p.is_null() && p != R_NilValue() {
+                let tag = TAG(p);
+                let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                    let c = crate::sexp::accessors::CHAR(PRINTNAME(tag));
+                    if c.is_null() {
                         ""
-                    };
-                    if name == "srcref" || name == "srcfile" || name == "wholeSrcref" {
-                        p = CDR(p);
-                        continue;
+                    } else {
+                        std::ffi::CStr::from_ptr(c).to_str().unwrap_or("")
                     }
-                    break;
+                } else {
+                    ""
+                };
+                if name == "srcref" || name == "srcfile" || name == "wholeSrcref" {
+                    p = CDR(p);
+                    continue;
                 }
-                p
+                break;
             }
+            p
         }
-        a = skip_src(a);
-        b = skip_src(b);
-        crate::mainutils::identical::R_compute_identical(a, b, 0) != 0
     }
+    a = skip_src(a);
+    b = skip_src(b);
+    compute_identical(a, b, 0) != 0
 }
 
 /// GNU `globalCallingHandlers(...)` — register/inspect/clear global calling handlers.

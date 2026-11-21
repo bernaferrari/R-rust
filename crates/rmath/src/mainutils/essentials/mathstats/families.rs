@@ -465,24 +465,22 @@ pub fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `Pair(x, y)` — two-column matrix with class `Pair`.
 pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let n = XLENGTH(x).min(XLENGTH(y)) as usize;
-        let result =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
-        let _r = protect(result);
-        for i in 0..n {
-            set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
-            set_real_checked(result, (i + n) as R_xlen_t, elt_real_safe(y, i as i64));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            mk_string_cstr(c"Pair"),
-        );
-        result
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let n = XLENGTH(x).min(XLENGTH(y)) as usize;
+    let result =
+        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
+    let _r = protect(result);
+    for i in 0..n {
+        set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
+        set_real_checked(result, (i + n) as R_xlen_t, elt_real_safe(y, i as i64));
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(c"Pair"),
+    );
+    result
 }
 
 /// GNU `naprint(x)` — omit/exclude count, else empty string.
@@ -594,10 +592,10 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if n1 <= 0.0 || n2 <= 0.0 {
             return R_NilValue();
         }
-        let coef = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, nc as i32);
+        let coef = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, nc as i32);
         let _c = protect(coef);
         let resid =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
+            alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, nc as i32);
         let _rs = protect(resid);
         for j in 0..nc {
             let m1 = sum1[j] / n1;
@@ -641,126 +639,124 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `summary.manova` — two-response Pillai trace for two groups.
 pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        if obj.is_null() || obj == R_NilValue() || TYPEOF(obj) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let coef = list_named_elt(obj, "coefficients");
-        let resid = list_named_elt(obj, "residuals");
-        let n1 = elt_real_safe(list_named_elt(obj, "n1"), 0);
-        if coef.is_null() || resid.is_null() || coef == R_NilValue() || resid == R_NilValue() {
-            return R_NilValue();
-        }
-        let rdim =
-            crate::sexp::attrib_core::getAttrib(resid, crate::sexp::attrib_core::R_DimSymbol());
-        if rdim.is_null() || rdim == R_NilValue() || XLENGTH(rdim) < 2 {
-            return R_NilValue();
-        }
-        let n = integer_elt_checked(rdim, 0) as usize;
-        let p = integer_elt_checked(rdim, (1) as R_xlen_t) as usize;
-        if p != 2 || n < 3 {
-            return R_NilValue();
-        }
-        let n2 = n as f64 - n1;
-        if n1 <= 0.0 || n2 <= 0.0 {
-            return R_NilValue();
-        }
-        let d0 = real_elt_checked(coef, (1) as R_xlen_t);
-        let d1 = real_elt_checked(coef, (3) as R_xlen_t);
-        let scale = n1 * n2 / (n as f64);
-        let h11 = scale * d0 * d0;
-        let h12 = scale * d0 * d1;
-        let h22 = scale * d1 * d1;
-        let mut e11 = 0.0;
-        let mut e12 = 0.0;
-        let mut e22 = 0.0;
-        for i in 0..n {
-            let r0 = real_elt_checked(resid, (i) as R_xlen_t);
-            let r1 = real_elt_checked(resid, (i + n) as R_xlen_t);
-            e11 += r0 * r0;
-            e12 += r0 * r1;
-            e22 += r1 * r1;
-        }
-        let det = e11 * e22 - e12 * e12;
-        if det.abs() < 1e-15 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "residuals have rank 1 < 2",
-            );
-        }
-        let i11 = e22 / det;
-        let i12 = -e12 / det;
-        let i22 = e11 / det;
-        let a11 = i11 * h11 + i12 * h12;
-        let a12 = i11 * h12 + i12 * h22;
-        let a21 = i12 * h11 + i22 * h12;
-        let a22 = i12 * h12 + i22 * h22;
-        let tr = a11 + a22;
-        let det_a = a11 * a22 - a12 * a21;
-        let disc = (tr * tr - 4.0 * det_a).max(0.0).sqrt();
-        let l1 = 0.5 * (tr + disc);
-        let l2 = 0.5 * (tr - disc);
-        let v = l1 / (1.0 + l1) + l2 / (1.0 + l2);
-        let q: f64 = 1.0;
-        let df_res = n as f64 - 2.0;
-        let s = q.min(p as f64);
-        let nn = 0.5 * (df_res - p as f64 - 1.0);
-        let m = 0.5 * ((p as f64 - q).abs() - 1.0);
-        let tmp1 = 2.0 * m + s + 1.0;
-        let tmp2 = 2.0 * nn + s + 1.0;
-        let fstat = (tmp2 / tmp1 * v) / (s - v);
-        let num_df = s * tmp1;
-        let den_df = s * tmp2;
-        let pval = crate::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
-        let stats = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 6);
-        let _st = protect(stats);
-        set_real_checked(stats, 0, 1.0);
-        set_real_checked(stats, (1) as R_xlen_t, df_res);
-        set_real_checked(stats, (2) as R_xlen_t, v);
-        set_real_checked(stats, (3) as R_xlen_t, f64::NAN);
-        set_real_checked(stats, (4) as R_xlen_t, fstat);
-        set_real_checked(stats, (5) as R_xlen_t, f64::NAN);
-        set_real_checked(stats, (6) as R_xlen_t, num_df);
-        set_real_checked(stats, (7) as R_xlen_t, f64::NAN);
-        set_real_checked(stats, (8) as R_xlen_t, den_df);
-        set_real_checked(stats, (9) as R_xlen_t, f64::NAN);
-        set_real_checked(stats, (10) as R_xlen_t, pval);
-        set_real_checked(stats, (11) as R_xlen_t, f64::NAN);
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _rn = protect(rn);
-        SET_STRING_ELT(rn, 0, mk_char_cstr(c"g"));
-        SET_STRING_ELT(rn, 1, mk_char_cstr(c"Residuals"));
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 6);
-        let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, mk_char_cstr(c"Df"));
-        SET_STRING_ELT(cn, 1, mk_char_cstr(c"Pillai"));
-        SET_STRING_ELT(cn, 2, mk_char_cstr(c"approx F"));
-        SET_STRING_ELT(cn, 3, mk_char_cstr(c"num Df"));
-        SET_STRING_ELT(cn, 4, mk_char_cstr(c"den Df"));
-        SET_STRING_ELT(cn, 5, mk_char_cstr(c"Pr(>F)"));
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dn = protect(dn);
-        SET_VECTOR_ELT(dn, 0, rn);
-        SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(
-            stats,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, stats);
-        crate::mainutils::essentials::set_string_names(result, &["stats".to_string()]);
-        let class = mk_string_cstr(c"summary.manova");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let obj = CAR(args);
+    if obj.is_null() || obj == R_NilValue() || TYPEOF(obj) != SEXPTYPE::VECSXP {
+        return R_NilValue();
     }
+    let coef = list_named_elt(obj, "coefficients");
+    let resid = list_named_elt(obj, "residuals");
+    let n1 = elt_real_safe(list_named_elt(obj, "n1"), 0);
+    if coef.is_null() || resid.is_null() || coef == R_NilValue() || resid == R_NilValue() {
+        return R_NilValue();
+    }
+    let rdim =
+        crate::sexp::attrib_core::getAttrib(resid, crate::sexp::attrib_core::R_DimSymbol());
+    if rdim.is_null() || rdim == R_NilValue() || XLENGTH(rdim) < 2 {
+        return R_NilValue();
+    }
+    let n = integer_elt_checked(rdim, 0) as usize;
+    let p = integer_elt_checked(rdim, (1) as R_xlen_t) as usize;
+    if p != 2 || n < 3 {
+        return R_NilValue();
+    }
+    let n2 = n as f64 - n1;
+    if n1 <= 0.0 || n2 <= 0.0 {
+        return R_NilValue();
+    }
+    let d0 = real_elt_checked(coef, (1) as R_xlen_t);
+    let d1 = real_elt_checked(coef, (3) as R_xlen_t);
+    let scale = n1 * n2 / (n as f64);
+    let h11 = scale * d0 * d0;
+    let h12 = scale * d0 * d1;
+    let h22 = scale * d1 * d1;
+    let mut e11 = 0.0;
+    let mut e12 = 0.0;
+    let mut e22 = 0.0;
+    for i in 0..n {
+        let r0 = real_elt_checked(resid, (i) as R_xlen_t);
+        let r1 = real_elt_checked(resid, (i + n) as R_xlen_t);
+        e11 += r0 * r0;
+        e12 += r0 * r1;
+        e22 += r1 * r1;
+    }
+    let det = e11 * e22 - e12 * e12;
+    if det.abs() < 1e-15 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "residuals have rank 1 < 2",
+        );
+    }
+    let i11 = e22 / det;
+    let i12 = -e12 / det;
+    let i22 = e11 / det;
+    let a11 = i11 * h11 + i12 * h12;
+    let a12 = i11 * h12 + i12 * h22;
+    let a21 = i12 * h11 + i22 * h12;
+    let a22 = i12 * h12 + i22 * h22;
+    let tr = a11 + a22;
+    let det_a = a11 * a22 - a12 * a21;
+    let disc = (tr * tr - 4.0 * det_a).max(0.0).sqrt();
+    let l1 = 0.5 * (tr + disc);
+    let l2 = 0.5 * (tr - disc);
+    let v = l1 / (1.0 + l1) + l2 / (1.0 + l2);
+    let q: f64 = 1.0;
+    let df_res = n as f64 - 2.0;
+    let s = q.min(p as f64);
+    let nn = 0.5 * (df_res - p as f64 - 1.0);
+    let m = 0.5 * ((p as f64 - q).abs() - 1.0);
+    let tmp1 = 2.0 * m + s + 1.0;
+    let tmp2 = 2.0 * nn + s + 1.0;
+    let fstat = (tmp2 / tmp1 * v) / (s - v);
+    let num_df = s * tmp1;
+    let den_df = s * tmp2;
+    let pval = crate::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
+    let stats = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 6);
+    let _st = protect(stats);
+    set_real_checked(stats, 0, 1.0);
+    set_real_checked(stats, (1) as R_xlen_t, df_res);
+    set_real_checked(stats, (2) as R_xlen_t, v);
+    set_real_checked(stats, (3) as R_xlen_t, f64::NAN);
+    set_real_checked(stats, (4) as R_xlen_t, fstat);
+    set_real_checked(stats, (5) as R_xlen_t, f64::NAN);
+    set_real_checked(stats, (6) as R_xlen_t, num_df);
+    set_real_checked(stats, (7) as R_xlen_t, f64::NAN);
+    set_real_checked(stats, (8) as R_xlen_t, den_df);
+    set_real_checked(stats, (9) as R_xlen_t, f64::NAN);
+    set_real_checked(stats, (10) as R_xlen_t, pval);
+    set_real_checked(stats, (11) as R_xlen_t, f64::NAN);
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _rn = protect(rn);
+    SET_STRING_ELT(rn, 0, mk_char_cstr(c"g"));
+    SET_STRING_ELT(rn, 1, mk_char_cstr(c"Residuals"));
+    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 6);
+    let _cn = protect(cn);
+    SET_STRING_ELT(cn, 0, mk_char_cstr(c"Df"));
+    SET_STRING_ELT(cn, 1, mk_char_cstr(c"Pillai"));
+    SET_STRING_ELT(cn, 2, mk_char_cstr(c"approx F"));
+    SET_STRING_ELT(cn, 3, mk_char_cstr(c"num Df"));
+    SET_STRING_ELT(cn, 4, mk_char_cstr(c"den Df"));
+    SET_STRING_ELT(cn, 5, mk_char_cstr(c"Pr(>F)"));
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dn = protect(dn);
+    SET_VECTOR_ELT(dn, 0, rn);
+    SET_VECTOR_ELT(dn, 1, cn);
+    crate::sexp::attrib_core::setAttrib(
+        stats,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dn,
+    );
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, stats);
+    crate::mainutils::essentials::set_string_names(result, &["stats".to_string()]);
+    let class = mk_string_cstr(c"summary.manova");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `TukeyHSD(aov)` — pairwise studentized-range intervals for one grouping factor.
@@ -831,7 +827,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mse = sse / df;
         let npairs = k * (k - 1) / 2;
         let tab =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), npairs as i32, 4);
+            alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), npairs as i32, 4);
         let _t = protect(tab);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, npairs as i64);
         let _rn = protect(rn);
@@ -949,54 +945,52 @@ pub fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `proj(lm)` — intercept mean, centered slope, residuals.
 pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let fitted = list_named_elt(obj, "fitted.values");
-        let resid = list_named_elt(obj, "residuals");
-        let coef = list_named_elt(obj, "coefficients");
-        if fitted == R_NilValue() || resid == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(fitted).min(XLENGTH(resid)) as usize;
-        if n < 2 {
-            return R_NilValue();
-        }
-        let b = if XLENGTH(coef) >= 2 {
-            elt_real_safe(coef, 1)
-        } else {
-            0.0
-        };
-        let nf = n as f64;
-        let mx = (nf + 1.0) / 2.0;
-        let mut ysum = 0.0;
-        for i in 0..n {
-            ysum += elt_real_safe(fitted, i as i64) + elt_real_safe(resid, i as i64);
-        }
-        let my = ysum / nf;
-        let result =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 3);
-        let _r = protect(result);
-        for i in 0..n {
-            let xi = (i + 1) as f64;
-            set_real_checked(result, (i) as R_xlen_t, my);
-            set_real_checked(result, (i + n) as R_xlen_t, b * (xi - mx));
-            set_real_checked(result, (i + 2 * n) as R_xlen_t, elt_real_safe(resid, i as i64));
-        }
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        let _cn = protect(cn);
-        SET_STRING_ELT(cn, 0, mk_char_cstr(c"(Intercept)"));
-        SET_STRING_ELT(cn, 1, mk_char_cstr(c"I(1:5)"));
-        SET_STRING_ELT(cn, 2, mk_char_cstr(c"Residuals"));
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dn = protect(dn);
-        SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
-        result
+    let obj = CAR(args);
+    let fitted = list_named_elt(obj, "fitted.values");
+    let resid = list_named_elt(obj, "residuals");
+    let coef = list_named_elt(obj, "coefficients");
+    if fitted == R_NilValue() || resid == R_NilValue() {
+        return R_NilValue();
     }
+    let n = XLENGTH(fitted).min(XLENGTH(resid)) as usize;
+    if n < 2 {
+        return R_NilValue();
+    }
+    let b = if XLENGTH(coef) >= 2 {
+        elt_real_safe(coef, 1)
+    } else {
+        0.0
+    };
+    let nf = n as f64;
+    let mx = (nf + 1.0) / 2.0;
+    let mut ysum = 0.0;
+    for i in 0..n {
+        ysum += elt_real_safe(fitted, i as i64) + elt_real_safe(resid, i as i64);
+    }
+    let my = ysum / nf;
+    let result =
+        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 3);
+    let _r = protect(result);
+    for i in 0..n {
+        let xi = (i + 1) as f64;
+        set_real_checked(result, (i) as R_xlen_t, my);
+        set_real_checked(result, (i + n) as R_xlen_t, b * (xi - mx));
+        set_real_checked(result, (i + 2 * n) as R_xlen_t, elt_real_safe(resid, i as i64));
+    }
+    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+    let _cn = protect(cn);
+    SET_STRING_ELT(cn, 0, mk_char_cstr(c"(Intercept)"));
+    SET_STRING_ELT(cn, 1, mk_char_cstr(c"I(1:5)"));
+    SET_STRING_ELT(cn, 2, mk_char_cstr(c"Residuals"));
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dn = protect(dn);
+    SET_VECTOR_ELT(dn, 1, cn);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dn,
+    );
+    result
 }
 
 /// GNU `qqplot(x, y, plot.it=FALSE)` — sorted pairs.
@@ -1052,7 +1046,7 @@ pub fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         }
         let nr = n - 1;
         let nc = n - 1;
-        let result = crate::mainutils::array::allocMatrix(
+        let result = alloc_matrix(
             SEXPTYPE::REALSXP.as_c_int(),
             nr as i32,
             nc as i32,

@@ -901,93 +901,91 @@ fn pminmax_factor_result(
     is_min: bool,
     na_rm: bool,
 ) -> Option<SEXP> {
-    unsafe {
-        let owner = arg_vecs
-            .iter()
-            .copied()
-            .find(|arg| crate::mainutils::apply::isFactor(*arg) != 0)?;
-        let levels = crate::sexp::attrib_core::getAttrib(owner, install_str("levels"));
-        if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let nlev = XLENGTH(levels);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, max_len);
-        let _g = protect(result);
-        for i in 0..max_len {
-            let mut best = 0;
-            let mut seen = false;
-            let mut missing = false;
-            for &arg in arg_vecs {
-                let n = XLENGTH(arg);
-                if n == 0 {
-                    continue;
-                }
-                let idx = i % n;
-                let code = if crate::mainutils::apply::isFactor(arg) != 0 {
-                    let c = owner_sexp(active_owner(), arg)
-                        .try_integer_elt(idx)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    if c == NA_INTEGER { None } else { Some(c) }
-                } else {
-                    let v = elt_real_safe(arg, idx);
-                    if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
-                        None
-                    } else {
-                        let label = if v.fract() == 0.0 {
-                            format!("{}", v as i64)
-                        } else {
-                            format!("{v}")
-                        };
-                        let mut found = None;
-                        for j in 0..nlev {
-                            let s = elt_to_string(levels, j);
-                            if s == label {
-                                found = Some((j as c_int) + 1);
-                                break;
-                            }
-                        }
-                        if found.is_none() {
-                            continue;
-                        }
-                        found
-                    }
-                };
-                match code {
-                    None => missing = true,
-                    Some(c) => {
-                        if !seen {
-                            best = c;
-                            seen = true;
-                        } else if (is_min && c < best) || (!is_min && c > best) {
-                            best = c;
-                        }
-                    }
-                }
-            }
-            if let Ok(mut result_mut) = active_owner()
-                .sexp(result)
-                .and_then(SexpMut::try_from_checked)
-            {
-                let _ = result_mut.try_set_integer_elt(
-                    i,
-                    if (missing && !na_rm) || !seen {
-                        NA_INTEGER
-                    } else {
-                        best
-                    },
-                );
-            }
-        }
-        let class =
-            crate::sexp::attrib_core::getAttrib(owner, crate::sexp::attrib_core::R_ClassSymbol());
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        crate::sexp::attrib_core::setAttrib(result, install_str("levels"), levels);
-        Some(result)
+    let owner = arg_vecs
+        .iter()
+        .copied()
+        .find(|arg| is_factor(*arg) != 0)?;
+    let levels = crate::sexp::attrib_core::getAttrib(owner, install_str("levels"));
+    if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+        return None;
     }
+    let nlev = XLENGTH(levels);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, max_len);
+    let _g = protect(result);
+    for i in 0..max_len {
+        let mut best = 0;
+        let mut seen = false;
+        let mut missing = false;
+        for &arg in arg_vecs {
+            let n = XLENGTH(arg);
+            if n == 0 {
+                continue;
+            }
+            let idx = i % n;
+            let code = if is_factor(arg) != 0 {
+                let c = owner_sexp(active_owner(), arg)
+                    .try_integer_elt(idx)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if c == NA_INTEGER { None } else { Some(c) }
+            } else {
+                let v = elt_real_safe(arg, idx);
+                if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
+                    None
+                } else {
+                    let label = if v.fract() == 0.0 {
+                        format!("{}", v as i64)
+                    } else {
+                        format!("{v}")
+                    };
+                    let mut found = None;
+                    for j in 0..nlev {
+                        let s = elt_to_string(levels, j);
+                        if s == label {
+                            found = Some((j as c_int) + 1);
+                            break;
+                        }
+                    }
+                    if found.is_none() {
+                        continue;
+                    }
+                    found
+                }
+            };
+            match code {
+                None => missing = true,
+                Some(c) => {
+                    if !seen {
+                        best = c;
+                        seen = true;
+                    } else if (is_min && c < best) || (!is_min && c > best) {
+                        best = c;
+                    }
+                }
+            }
+        }
+        if let Ok(mut result_mut) = active_owner()
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+        {
+            let _ = result_mut.try_set_integer_elt(
+                i,
+                if (missing && !na_rm) || !seen {
+                    NA_INTEGER
+                } else {
+                    best
+                },
+            );
+        }
+    }
+    let class =
+        crate::sexp::attrib_core::getAttrib(owner, crate::sexp::attrib_core::R_ClassSymbol());
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    crate::sexp::attrib_core::setAttrib(result, install_str("levels"), levels);
+    Some(result)
 }
 /// GNU `pmin`/`pmax` copy the first argument's dimensions onto a result of
 /// the same length (`mostattributes<-`).

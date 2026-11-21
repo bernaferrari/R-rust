@@ -1080,7 +1080,7 @@ pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 };
                 if n < 1 {
                     let mat =
-                        crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 0, 0);
+                        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 0, 0);
                     let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                     if let Ok(mut dims_mut) = owner.sexp(dims).and_then(SexpMut::try_from_checked) {
                         let _ = dims_mut.try_set_integer_elt(0, 0);
@@ -1093,7 +1093,7 @@ pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     );
                     return mat;
                 }
-                let mat = crate::mainutils::array::allocMatrix(
+                let mat = alloc_matrix(
                     SEXPTYPE::REALSXP.as_c_int(),
                     n as i32,
                     n as i32,
@@ -1934,61 +1934,59 @@ pub fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `embed(x, dimension)`.
 pub fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let d_arg = CAR(CDR(args));
-        let owner = active_owner();
-        let d_owned = owner_sexp(owner, d_arg);
-        let dimension = if TYPEOF(d_arg) == SEXPTYPE::INTSXP {
-            d_owned
-                .try_integer_elt(0)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                as isize
-        } else {
-            d_owned
-                .try_real_elt(0)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                as isize
-        };
-        let n = XLENGTH(x) as isize;
-        if dimension < 1 || dimension > n {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "wrong embedding dimension",
-            );
-        }
-        let nrow = n - dimension + 1;
-        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), nrow as i32, dimension as i32);
-        let _a = protect(ans);
-        let x_owned = owner_sexp(owner, x);
-        let mut ans_mut = owner
-            .sexp(ans)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for col in 0..dimension {
-            let src0 = dimension - 1 - col;
-            for row in 0..nrow {
-                let src = (src0 + row) as R_xlen_t;
-                let dst = (row + col * nrow) as R_xlen_t;
-                if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    let v = x_owned
-                        .try_integer_elt(src)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    ans_mut
-                        .try_set_integer_elt(dst, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                } else {
-                    let v = x_owned
-                        .try_real_elt(src)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    ans_mut
-                        .try_set_real_elt(dst, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
+    let x = CAR(args);
+    let d_arg = CAR(CDR(args));
+    let owner = active_owner();
+    let d_owned = owner_sexp(owner, d_arg);
+    let dimension = if TYPEOF(d_arg) == SEXPTYPE::INTSXP {
+        d_owned
+            .try_integer_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            as isize
+    } else {
+        d_owned
+            .try_real_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            as isize
+    };
+    let n = XLENGTH(x) as isize;
+    if dimension < 1 || dimension > n {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "wrong embedding dimension",
+        );
+    }
+    let nrow = n - dimension + 1;
+    let ans = alloc_matrix(TYPEOF(x), nrow as i32, dimension as i32);
+    let _a = protect(ans);
+    let x_owned = owner_sexp(owner, x);
+    let mut ans_mut = owner
+        .sexp(ans)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for col in 0..dimension {
+        let src0 = dimension - 1 - col;
+        for row in 0..nrow {
+            let src = (src0 + row) as R_xlen_t;
+            let dst = (row + col * nrow) as R_xlen_t;
+            if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let v = x_owned
+                    .try_integer_elt(src)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                ans_mut
+                    .try_set_integer_elt(dst, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            } else {
+                let v = x_owned
+                    .try_real_elt(src)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                ans_mut
+                    .try_set_real_elt(dst, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
-        ans
     }
+    ans
 }
 
 /// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
@@ -2016,7 +2014,7 @@ pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::errors::errorcall_str(call, "'x' is not a vector of adequate length");
         }
         if symmetric {
-            let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, n as i32);
+            let ans = alloc_matrix(TYPEOF(x), n as i32, n as i32);
             let _a = protect(ans);
             for col in 0..n {
                 for row in 0..n {
@@ -2035,7 +2033,7 @@ pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal").unwrap_or_default();
             crate::mainutils::errors::warningcall(call, msg.as_ptr());
         }
-        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), n as i32, nc as i32);
+        let ans = alloc_matrix(TYPEOF(x), n as i32, nc as i32);
         let _a = protect(ans);
         for col in 0..nc {
             for row in 0..n {
@@ -2121,66 +2119,64 @@ fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
 
 /// GNU `toeplitz2(x, nrow)` — banded Toeplitz, ncol = length(x)+1-nrow.
 pub fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let nx = XLENGTH(x) as isize;
-        let nrow_cell = CDR(args);
-        let nrow = if nrow_cell.is_null()
-            || nrow_cell == R_NilValue()
-            || CAR(nrow_cell) == crate::sexp::globals::R_MissingArg()
-        {
-            nx
-        } else {
-            let nr = CAR(nrow_cell);
-            let owner = active_owner();
-            let nr_owned = owner_sexp(owner, nr);
-            if TYPEOF(nr) == SEXPTYPE::INTSXP {
-                nr_owned
-                    .try_integer_elt(0)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    as isize
-            } else {
-                nr_owned
-                    .try_real_elt(0)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    as isize
-            }
-        };
-        let ncol = nx + 1 - nrow;
-        if nrow < 1 || ncol < 1 || nrow + ncol - 1 > nx {
-            return R_NilValue();
-        }
-        let ans = crate::mainutils::array::allocMatrix(TYPEOF(x), nrow as i32, ncol as i32);
-        let _a = protect(ans);
+    let x = CAR(args);
+    let nx = XLENGTH(x) as isize;
+    let nrow_cell = CDR(args);
+    let nrow = if nrow_cell.is_null()
+        || nrow_cell == R_NilValue()
+        || CAR(nrow_cell) == crate::sexp::globals::R_MissingArg()
+    {
+        nx
+    } else {
+        let nr = CAR(nrow_cell);
         let owner = active_owner();
-        let x_owned = owner_sexp(owner, x);
-        let mut ans_mut = owner
-            .sexp(ans)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for col in 0..ncol {
-            for row in 0..nrow {
-                let k = (ncol - col + row - 1) as R_xlen_t;
-                let dst = (row + col * nrow) as R_xlen_t;
-                if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    let v = x_owned
-                        .try_integer_elt(k)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    ans_mut
-                        .try_set_integer_elt(dst, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                } else {
-                    let v = x_owned
-                        .try_real_elt(k)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    ans_mut
-                        .try_set_real_elt(dst, v)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
+        let nr_owned = owner_sexp(owner, nr);
+        if TYPEOF(nr) == SEXPTYPE::INTSXP {
+            nr_owned
+                .try_integer_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as isize
+        } else {
+            nr_owned
+                .try_real_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as isize
+        }
+    };
+    let ncol = nx + 1 - nrow;
+    if nrow < 1 || ncol < 1 || nrow + ncol - 1 > nx {
+        return R_NilValue();
+    }
+    let ans = alloc_matrix(TYPEOF(x), nrow as i32, ncol as i32);
+    let _a = protect(ans);
+    let owner = active_owner();
+    let x_owned = owner_sexp(owner, x);
+    let mut ans_mut = owner
+        .sexp(ans)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for col in 0..ncol {
+        for row in 0..nrow {
+            let k = (ncol - col + row - 1) as R_xlen_t;
+            let dst = (row + col * nrow) as R_xlen_t;
+            if TYPEOF(x) == SEXPTYPE::INTSXP {
+                let v = x_owned
+                    .try_integer_elt(k)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                ans_mut
+                    .try_set_integer_elt(dst, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            } else {
+                let v = x_owned
+                    .try_real_elt(k)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                ans_mut
+                    .try_set_real_elt(dst, v)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
-        ans
     }
+    ans
 }
 
 /// GNU `diffinv(x, xi=0)`.

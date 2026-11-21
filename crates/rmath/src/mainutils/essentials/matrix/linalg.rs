@@ -603,31 +603,29 @@ fn coerce_numeric_matrix(x: SEXP) -> SEXP {
 
 /// GNU `svd(x)` — singular values via `La_svd` / `La_svd_cmplx`.
 fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
-    unsafe {
-        let ty = if is_cmplx {
-            SEXPTYPE::CPLXSXP.as_c_int()
-        } else {
-            SEXPTYPE::REALSXP.as_c_int()
-        };
-        let thin = crate::mainutils::array::allocMatrix(ty, rows, cols);
-        let _th = protect(thin);
-        let r = rows as usize;
-        let c = (cols.max(0)) as usize;
-        if is_cmplx {
-            for j in 0..c {
-                for i in 0..r {
-                    set_complex_checked(thin, (j * r + i) as R_xlen_t, complex_elt_checked(src, (j * r + i) as R_xlen_t));
-                }
-            }
-        } else {
-            for j in 0..c {
-                for i in 0..r {
-                    set_real_checked(thin, (j * r + i) as R_xlen_t, real_elt_checked(src, (j * r + i) as R_xlen_t));
-                }
+    let ty = if is_cmplx {
+        SEXPTYPE::CPLXSXP.as_c_int()
+    } else {
+        SEXPTYPE::REALSXP.as_c_int()
+    };
+    let thin = alloc_matrix(ty, rows, cols);
+    let _th = protect(thin);
+    let r = rows as usize;
+    let c = (cols.max(0)) as usize;
+    if is_cmplx {
+        for j in 0..c {
+            for i in 0..r {
+                set_complex_checked(thin, (j * r + i) as R_xlen_t, complex_elt_checked(src, (j * r + i) as R_xlen_t));
             }
         }
-        thin
+    } else {
+        for j in 0..c {
+            for i in 0..r {
+                set_real_checked(thin, (j * r + i) as R_xlen_t, real_elt_checked(src, (j * r + i) as R_xlen_t));
+            }
+        }
     }
+    thin
 }
 
 pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -692,9 +690,9 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _j = protect(jobu);
         let s = Rf_allocVector3(SEXPTYPE::REALSXP, min_np as i64);
         let _s = protect(s);
-        let u = crate::mainutils::array::allocMatrix(u_type, n, n);
+        let u = alloc_matrix(u_type, n, n);
         let _u = protect(u);
-        let vt = crate::mainutils::array::allocMatrix(u_type, p, p);
+        let vt = alloc_matrix(u_type, p, p);
         let _vt = protect(vt);
         if !is_cmplx {
             for i in 0..(n as usize * n as usize) {

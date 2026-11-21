@@ -165,7 +165,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if n < p + 1 {
                 return R_NilValue();
             }
-            let xmat = crate::mainutils::array::allocMatrix(
+            let xmat = alloc_matrix(
                 SEXPTYPE::REALSXP.as_c_int(),
                 n as i32,
                 p as i32,

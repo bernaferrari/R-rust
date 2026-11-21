@@ -413,121 +413,119 @@ pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// GNU `pairwise.t.test(x, g)` with pooled SD.
 pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let g = CAR(CDR(args));
-        let mut method = "holm".to_string();
-        let mut cell = CDR(CDR(args));
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "p.adjust.method" || name.is_empty() {
-                let v = CAR(cell);
-                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                    method = elt_to_string(v, 0);
-                }
-            }
-            cell = CDR(cell);
-        }
-        if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
-            return R_NilValue();
-        }
-        let n0 = XLENGTH(x).min(XLENGTH(g));
-        let mut pairs: Vec<(i32, f64)> = Vec::new();
-        for i in 0..n0 {
-            let gi = elt_real_safe(g, i);
-            let xi = elt_real_safe(x, i);
-            if gi.is_finite() && xi.is_finite() {
-                pairs.push((gi.round() as i32, xi));
-            }
-        }
-        let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
-        levels.sort_unstable();
-        levels.dedup();
-        let k = levels.len();
-        if k < 2 {
-            return R_NilValue();
-        }
-        let mut means = vec![0.0; k];
-        let mut vars = vec![0.0; k];
-        let mut ns = vec![0.0; k];
-        for (li, &lev) in levels.iter().enumerate() {
-            let vs: Vec<f64> = pairs.iter().filter(|p| p.0 == lev).map(|p| p.1).collect();
-            let n = vs.len() as f64;
-            ns[li] = n;
-            let m = vs.iter().sum::<f64>() / n;
-            means[li] = m;
-            vars[li] = vs.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / (n - 1.0);
-        }
-        let total_df: f64 = ns.iter().map(|n| n - 1.0).sum();
-        let pooled = (ns
-            .iter()
-            .zip(vars.iter())
-            .map(|(n, v)| v * (n - 1.0))
-            .sum::<f64>()
-            / total_df)
-            .sqrt();
-        let mut raw = Vec::new();
-        for i in 1..k {
-            for j in 0..i {
-                let se = pooled * (1.0 / ns[i] + 1.0 / ns[j]).sqrt();
-                let t = (means[i] - means[j]) / se;
-                let p = 2.0 * crate::dist::t_dist::pt_inner(-t.abs(), total_df, true, false);
-                raw.push(p);
-            }
-        }
-        let adj = p_adjust_values(&raw, &method);
-        // lower-tri including diag of (k-1) x (k-1), column-major
-        let mdim = k - 1;
-        let pmat = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            mdim as i32,
-            mdim as i32,
-        );
-        let _pm = protect(pmat);
-        for idx in 0..(mdim * mdim) {
-            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
-        }
-        let mut t = 0usize;
-        for j in 0..mdim {
-            for i in 0..mdim {
-                if i >= j {
-                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
-                    t += 1;
-                }
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, mk_string_cstr(c"t tests with pooled SD"));
-        SET_VECTOR_ELT(result, 1, pmat);
-        let meth = if method == "none" {
-            mk_string_cstr(c"none")
+    let x = CAR(args);
+    let g = CAR(CDR(args));
+    let mut method = "holm".to_string();
+    let mut cell = CDR(CDR(args));
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
         } else {
-            mk_string_cstr(c"holm")
+            String::new()
         };
-        SET_VECTOR_ELT(result, 2, meth);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "method".to_string(),
-                "p.value".to_string(),
-                "p.adjust.method".to_string(),
-            ],
-        );
-        let class = mk_string_cstr(c"pairwise.htest");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        if name == "p.adjust.method" || name.is_empty() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                method = elt_to_string(v, 0);
+            }
+        }
+        cell = CDR(cell);
     }
+    if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
+        return R_NilValue();
+    }
+    let n0 = XLENGTH(x).min(XLENGTH(g));
+    let mut pairs: Vec<(i32, f64)> = Vec::new();
+    for i in 0..n0 {
+        let gi = elt_real_safe(g, i);
+        let xi = elt_real_safe(x, i);
+        if gi.is_finite() && xi.is_finite() {
+            pairs.push((gi.round() as i32, xi));
+        }
+    }
+    let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
+    levels.sort_unstable();
+    levels.dedup();
+    let k = levels.len();
+    if k < 2 {
+        return R_NilValue();
+    }
+    let mut means = vec![0.0; k];
+    let mut vars = vec![0.0; k];
+    let mut ns = vec![0.0; k];
+    for (li, &lev) in levels.iter().enumerate() {
+        let vs: Vec<f64> = pairs.iter().filter(|p| p.0 == lev).map(|p| p.1).collect();
+        let n = vs.len() as f64;
+        ns[li] = n;
+        let m = vs.iter().sum::<f64>() / n;
+        means[li] = m;
+        vars[li] = vs.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / (n - 1.0);
+    }
+    let total_df: f64 = ns.iter().map(|n| n - 1.0).sum();
+    let pooled = (ns
+        .iter()
+        .zip(vars.iter())
+        .map(|(n, v)| v * (n - 1.0))
+        .sum::<f64>()
+        / total_df)
+        .sqrt();
+    let mut raw = Vec::new();
+    for i in 1..k {
+        for j in 0..i {
+            let se = pooled * (1.0 / ns[i] + 1.0 / ns[j]).sqrt();
+            let t = (means[i] - means[j]) / se;
+            let p = 2.0 * crate::dist::t_dist::pt_inner(-t.abs(), total_df, true, false);
+            raw.push(p);
+        }
+    }
+    let adj = p_adjust_values(&raw, &method);
+    // lower-tri including diag of (k-1) x (k-1), column-major
+    let mdim = k - 1;
+    let pmat = alloc_matrix(
+        SEXPTYPE::REALSXP.as_c_int(),
+        mdim as i32,
+        mdim as i32,
+    );
+    let _pm = protect(pmat);
+    for idx in 0..(mdim * mdim) {
+        set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
+    }
+    let mut t = 0usize;
+    for j in 0..mdim {
+        for i in 0..mdim {
+            if i >= j {
+                set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
+                t += 1;
+            }
+        }
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, mk_string_cstr(c"t tests with pooled SD"));
+    SET_VECTOR_ELT(result, 1, pmat);
+    let meth = if method == "none" {
+        mk_string_cstr(c"none")
+    } else {
+        mk_string_cstr(c"holm")
+    };
+    SET_VECTOR_ELT(result, 2, meth);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "method".to_string(),
+            "p.value".to_string(),
+            "p.adjust.method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"pairwise.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn prop_test_two(x1: f64, n1: f64, x2: f64, n2: f64) -> f64 {
@@ -548,96 +546,94 @@ fn prop_test_two(x1: f64, n1: f64, x2: f64, n2: f64) -> f64 {
 
 /// GNU `pairwise.prop.test(x, n)` with Holm.
 pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = CAR(CDR(args));
-        let mut method = "holm".to_string();
-        let mut cell = CDR(CDR(args));
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "p.adjust.method" || name.is_empty() {
-                let v = CAR(cell);
-                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                    method = elt_to_string(v, 0);
-                }
-            }
-            cell = CDR(cell);
-        }
-        if x.is_null() || x == R_NilValue() || n.is_null() || n == R_NilValue() {
-            return R_NilValue();
-        }
-        let k = XLENGTH(x).min(XLENGTH(n)) as usize;
-        if k < 2 {
-            return R_NilValue();
-        }
-        let mut xs = Vec::with_capacity(k);
-        let mut ns = Vec::with_capacity(k);
-        for i in 0..k {
-            xs.push(elt_real_safe(x, i as i64));
-            ns.push(elt_real_safe(n, i as i64));
-        }
-        let mut raw = Vec::new();
-        for i in 1..k {
-            for j in 0..i {
-                raw.push(prop_test_two(xs[j], ns[j], xs[i], ns[i]));
-            }
-        }
-        let adj = p_adjust_values(&raw, &method);
-        let mdim = k - 1;
-        let pmat = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            mdim as i32,
-            mdim as i32,
-        );
-        let _pm = protect(pmat);
-        for idx in 0..(mdim * mdim) {
-            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
-        }
-        let mut t = 0usize;
-        for j in 0..mdim {
-            for i in 0..mdim {
-                if i >= j {
-                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
-                    t += 1;
-                }
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _r = protect(result);
-        SET_VECTOR_ELT(
-            result,
-            0,
-            mk_string_cstr(c"Pairwise comparison of proportions"),
-        );
-        SET_VECTOR_ELT(result, 1, pmat);
-        let meth = if method == "none" {
-            mk_string_cstr(c"none")
+    let x = CAR(args);
+    let n = CAR(CDR(args));
+    let mut method = "holm".to_string();
+    let mut cell = CDR(CDR(args));
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
         } else {
-            mk_string_cstr(c"holm")
+            String::new()
         };
-        SET_VECTOR_ELT(result, 2, meth);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "method".to_string(),
-                "p.value".to_string(),
-                "p.adjust.method".to_string(),
-            ],
-        );
-        let class = mk_string_cstr(c"pairwise.htest");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        if name == "p.adjust.method" || name.is_empty() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                method = elt_to_string(v, 0);
+            }
+        }
+        cell = CDR(cell);
     }
+    if x.is_null() || x == R_NilValue() || n.is_null() || n == R_NilValue() {
+        return R_NilValue();
+    }
+    let k = XLENGTH(x).min(XLENGTH(n)) as usize;
+    if k < 2 {
+        return R_NilValue();
+    }
+    let mut xs = Vec::with_capacity(k);
+    let mut ns = Vec::with_capacity(k);
+    for i in 0..k {
+        xs.push(elt_real_safe(x, i as i64));
+        ns.push(elt_real_safe(n, i as i64));
+    }
+    let mut raw = Vec::new();
+    for i in 1..k {
+        for j in 0..i {
+            raw.push(prop_test_two(xs[j], ns[j], xs[i], ns[i]));
+        }
+    }
+    let adj = p_adjust_values(&raw, &method);
+    let mdim = k - 1;
+    let pmat = alloc_matrix(
+        SEXPTYPE::REALSXP.as_c_int(),
+        mdim as i32,
+        mdim as i32,
+    );
+    let _pm = protect(pmat);
+    for idx in 0..(mdim * mdim) {
+        set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
+    }
+    let mut t = 0usize;
+    for j in 0..mdim {
+        for i in 0..mdim {
+            if i >= j {
+                set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
+                t += 1;
+            }
+        }
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _r = protect(result);
+    SET_VECTOR_ELT(
+        result,
+        0,
+        mk_string_cstr(c"Pairwise comparison of proportions"),
+    );
+    SET_VECTOR_ELT(result, 1, pmat);
+    let meth = if method == "none" {
+        mk_string_cstr(c"none")
+    } else {
+        mk_string_cstr(c"holm")
+    };
+    SET_VECTOR_ELT(result, 2, meth);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "method".to_string(),
+            "p.value".to_string(),
+            "p.adjust.method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"pairwise.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn wilcox_two_asymp(x: &[f64], y: &[f64]) -> f64 {
@@ -686,106 +682,104 @@ fn wilcox_two_asymp(x: &[f64], y: &[f64]) -> f64 {
 
 /// GNU `pairwise.wilcox.test(x, g)` asymptotic with continuity.
 pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let g = CAR(CDR(args));
-        let mut method = "holm".to_string();
-        let mut cell = CDR(CDR(args));
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if name == "p.adjust.method" || name.is_empty() {
-                let v = CAR(cell);
-                if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                    method = elt_to_string(v, 0);
-                }
-            }
-            cell = CDR(cell);
-        }
-        if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
-            return R_NilValue();
-        }
-        let n0 = XLENGTH(x).min(XLENGTH(g));
-        let mut pairs: Vec<(i32, f64)> = Vec::new();
-        for i in 0..n0 {
-            let gi = elt_real_safe(g, i);
-            let xi = elt_real_safe(x, i);
-            if gi.is_finite() && xi.is_finite() {
-                pairs.push((gi.round() as i32, xi));
-            }
-        }
-        let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
-        levels.sort_unstable();
-        levels.dedup();
-        let k = levels.len();
-        if k < 2 {
-            return R_NilValue();
-        }
-        let groups: Vec<Vec<f64>> = levels
-            .iter()
-            .map(|lev| pairs.iter().filter(|p| p.0 == *lev).map(|p| p.1).collect())
-            .collect();
-        let mut raw = Vec::new();
-        for i in 1..k {
-            for j in 0..i {
-                raw.push(wilcox_two_asymp(&groups[j], &groups[i]));
-            }
-        }
-        let adj = p_adjust_values(&raw, &method);
-        let mdim = k - 1;
-        let pmat = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            mdim as i32,
-            mdim as i32,
-        );
-        let _pm = protect(pmat);
-        for idx in 0..(mdim * mdim) {
-            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
-        }
-        let mut t = 0usize;
-        for j in 0..mdim {
-            for i in 0..mdim {
-                if i >= j {
-                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
-                    t += 1;
-                }
-            }
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _r = protect(result);
-        SET_VECTOR_ELT(
-            result,
-            0,
-            mk_string_cstr(c"Wilcoxon rank sum test with continuity correction"),
-        );
-        SET_VECTOR_ELT(result, 1, pmat);
-        let meth = if method == "none" {
-            mk_string_cstr(c"none")
+    let x = CAR(args);
+    let g = CAR(CDR(args));
+    let mut method = "holm".to_string();
+    let mut cell = CDR(CDR(args));
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
         } else {
-            mk_string_cstr(c"holm")
+            String::new()
         };
-        SET_VECTOR_ELT(result, 2, meth);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "method".to_string(),
-                "p.value".to_string(),
-                "p.adjust.method".to_string(),
-            ],
-        );
-        let class = mk_string_cstr(c"pairwise.htest");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+        if name == "p.adjust.method" || name.is_empty() {
+            let v = CAR(cell);
+            if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                method = elt_to_string(v, 0);
+            }
+        }
+        cell = CDR(cell);
     }
+    if x.is_null() || x == R_NilValue() || g.is_null() || g == R_NilValue() {
+        return R_NilValue();
+    }
+    let n0 = XLENGTH(x).min(XLENGTH(g));
+    let mut pairs: Vec<(i32, f64)> = Vec::new();
+    for i in 0..n0 {
+        let gi = elt_real_safe(g, i);
+        let xi = elt_real_safe(x, i);
+        if gi.is_finite() && xi.is_finite() {
+            pairs.push((gi.round() as i32, xi));
+        }
+    }
+    let mut levels: Vec<i32> = pairs.iter().map(|p| p.0).collect();
+    levels.sort_unstable();
+    levels.dedup();
+    let k = levels.len();
+    if k < 2 {
+        return R_NilValue();
+    }
+    let groups: Vec<Vec<f64>> = levels
+        .iter()
+        .map(|lev| pairs.iter().filter(|p| p.0 == *lev).map(|p| p.1).collect())
+        .collect();
+    let mut raw = Vec::new();
+    for i in 1..k {
+        for j in 0..i {
+            raw.push(wilcox_two_asymp(&groups[j], &groups[i]));
+        }
+    }
+    let adj = p_adjust_values(&raw, &method);
+    let mdim = k - 1;
+    let pmat = alloc_matrix(
+        SEXPTYPE::REALSXP.as_c_int(),
+        mdim as i32,
+        mdim as i32,
+    );
+    let _pm = protect(pmat);
+    for idx in 0..(mdim * mdim) {
+        set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
+    }
+    let mut t = 0usize;
+    for j in 0..mdim {
+        for i in 0..mdim {
+            if i >= j {
+                set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
+                t += 1;
+            }
+        }
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _r = protect(result);
+    SET_VECTOR_ELT(
+        result,
+        0,
+        mk_string_cstr(c"Wilcoxon rank sum test with continuity correction"),
+    );
+    SET_VECTOR_ELT(result, 1, pmat);
+    let meth = if method == "none" {
+        mk_string_cstr(c"none")
+    } else {
+        mk_string_cstr(c"holm")
+    };
+    SET_VECTOR_ELT(result, 2, meth);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "method".to_string(),
+            "p.value".to_string(),
+            "p.adjust.method".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"pairwise.htest");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 fn invert3(a: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
@@ -1069,58 +1063,56 @@ fn varimax_2col(x: &[f64], p: usize) -> (Vec<f64>, [[f64; 2]; 2]) {
 
 /// GNU 2-column `varimax(x)`.
 pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (p, nc) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
-        } else {
-            return R_NilValue();
-        };
-        if nc != 2 || p < 2 {
-            return R_NilValue();
-        }
-        let mut raw = vec![0.0; p * 2];
-        for i in 0..(p * 2) {
-            raw[i] = elt_real_safe(x, i as i64);
-        }
-        let (z, tt) = varimax_2col(&raw, p);
-        let loadings =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
-        let _ld = protect(loadings);
-        for i in 0..(p * 2) {
-            set_real_checked(loadings, (i) as R_xlen_t, z[i]);
-        }
-        let class = mk_string_cstr(c"loadings");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            loadings,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        let rot = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
-        let _rt = protect(rot);
-        set_real_checked(rot, 0, tt[0][0]);
-        set_real_checked(rot, (1) as R_xlen_t, tt[1][0]);
-        set_real_checked(rot, (2) as R_xlen_t, tt[0][1]);
-        set_real_checked(rot, (3) as R_xlen_t, tt[1][1]);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, loadings);
-        SET_VECTOR_ELT(result, 1, rot);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["loadings".to_string(), "rotmat".to_string()],
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (p, nc) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+    } else {
+        return R_NilValue();
+    };
+    if nc != 2 || p < 2 {
+        return R_NilValue();
+    }
+    let mut raw = vec![0.0; p * 2];
+    for i in 0..(p * 2) {
+        raw[i] = elt_real_safe(x, i as i64);
+    }
+    let (z, tt) = varimax_2col(&raw, p);
+    let loadings =
+        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+    let _ld = protect(loadings);
+    for i in 0..(p * 2) {
+        set_real_checked(loadings, (i) as R_xlen_t, z[i]);
+    }
+    let class = mk_string_cstr(c"loadings");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        loadings,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    let rot = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+    let _rt = protect(rot);
+    set_real_checked(rot, 0, tt[0][0]);
+    set_real_checked(rot, (1) as R_xlen_t, tt[1][0]);
+    set_real_checked(rot, (2) as R_xlen_t, tt[0][1]);
+    set_real_checked(rot, (3) as R_xlen_t, tt[1][1]);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, loadings);
+    SET_VECTOR_ELT(result, 1, rot);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["loadings".to_string(), "rotmat".to_string()],
+    );
+    result
 }
 
 pub(super) fn invert2(a00: f64, a10: f64, a01: f64, a11: f64) -> Option<(f64, f64, f64, f64)> {
@@ -1133,107 +1125,105 @@ pub(super) fn invert2(a00: f64, a10: f64, a01: f64, a11: f64) -> Option<(f64, f6
 
 /// GNU 2-column `promax(x, m=4)`.
 pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (p, nc) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
-        } else {
-            return R_NilValue();
-        };
-        if nc != 2 || p < 2 {
-            return R_NilValue();
-        }
-        let mut raw = vec![0.0; p * 2];
-        for i in 0..(p * 2) {
-            raw[i] = elt_real_safe(x, i as i64);
-        }
-        let (vx, vrot) = varimax_2col(&raw, p);
-        // Q = x * |x|^3  (m=4)
-        let mut q = vec![0.0; p * 2];
-        for i in 0..(p * 2) {
-            q[i] = vx[i] * vx[i].abs().powi(3);
-        }
-        // U = (X'X)^{-1} X'Q
-        let mut xtx = [0.0; 4];
-        let mut xtq = [0.0; 4];
-        for i in 0..p {
-            let x1 = vx[i];
-            let x2 = vx[i + p];
-            let q1 = q[i];
-            let q2 = q[i + p];
-            xtx[0] += x1 * x1;
-            xtx[1] += x2 * x1;
-            xtx[2] += x1 * x2;
-            xtx[3] += x2 * x2;
-            xtq[0] += x1 * q1;
-            xtq[1] += x2 * q1;
-            xtq[2] += x1 * q2;
-            xtq[3] += x2 * q2;
-        }
-        let Some(inv) = invert2(xtx[0], xtx[1], xtx[2], xtx[3]) else {
-            return R_NilValue();
-        };
-        // U column-major
-        let u00 = inv.0 * xtq[0] + inv.2 * xtq[1];
-        let u10 = inv.1 * xtq[0] + inv.3 * xtq[1];
-        let u01 = inv.0 * xtq[2] + inv.2 * xtq[3];
-        let u11 = inv.1 * xtq[2] + inv.3 * xtq[3];
-        // d = diag(solve(t(U) U))
-        let tuu00 = u00 * u00 + u10 * u10;
-        let tuu10 = u00 * u01 + u10 * u11;
-        let tuu01 = tuu10;
-        let tuu11 = u01 * u01 + u11 * u11;
-        let Some(itu) = invert2(tuu00, tuu10, tuu01, tuu11) else {
-            return R_NilValue();
-        };
-        let s0 = itu.0.max(0.0).sqrt();
-        let s1 = itu.3.max(0.0).sqrt();
-        let u00s = u00 * s0;
-        let u10s = u10 * s0;
-        let u01s = u01 * s1;
-        let u11s = u11 * s1;
-        let z = matmul_p2(&vx, [[u00s, u01s], [u10s, u11s]], p);
-        let r00 = vrot[0][0] * u00s + vrot[0][1] * u10s;
-        let r01 = vrot[0][0] * u01s + vrot[0][1] * u11s;
-        let r10 = vrot[1][0] * u00s + vrot[1][1] * u10s;
-        let r11 = vrot[1][0] * u01s + vrot[1][1] * u11s;
-        let loadings =
-            crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
-        let _ld = protect(loadings);
-        for i in 0..(p * 2) {
-            set_real_checked(loadings, (i) as R_xlen_t, z[i]);
-        }
-        let class = mk_string_cstr(c"loadings");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            loadings,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        let rot = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
-        let _rt = protect(rot);
-        set_real_checked(rot, 0, r00);
-        set_real_checked(rot, (1) as R_xlen_t, r10);
-        set_real_checked(rot, (2) as R_xlen_t, r01);
-        set_real_checked(rot, (3) as R_xlen_t, r11);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, loadings);
-        SET_VECTOR_ELT(result, 1, rot);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["loadings".to_string(), "rotmat".to_string()],
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (p, nc) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+    } else {
+        return R_NilValue();
+    };
+    if nc != 2 || p < 2 {
+        return R_NilValue();
+    }
+    let mut raw = vec![0.0; p * 2];
+    for i in 0..(p * 2) {
+        raw[i] = elt_real_safe(x, i as i64);
+    }
+    let (vx, vrot) = varimax_2col(&raw, p);
+    // Q = x * |x|^3  (m=4)
+    let mut q = vec![0.0; p * 2];
+    for i in 0..(p * 2) {
+        q[i] = vx[i] * vx[i].abs().powi(3);
+    }
+    // U = (X'X)^{-1} X'Q
+    let mut xtx = [0.0; 4];
+    let mut xtq = [0.0; 4];
+    for i in 0..p {
+        let x1 = vx[i];
+        let x2 = vx[i + p];
+        let q1 = q[i];
+        let q2 = q[i + p];
+        xtx[0] += x1 * x1;
+        xtx[1] += x2 * x1;
+        xtx[2] += x1 * x2;
+        xtx[3] += x2 * x2;
+        xtq[0] += x1 * q1;
+        xtq[1] += x2 * q1;
+        xtq[2] += x1 * q2;
+        xtq[3] += x2 * q2;
+    }
+    let Some(inv) = invert2(xtx[0], xtx[1], xtx[2], xtx[3]) else {
+        return R_NilValue();
+    };
+    // U column-major
+    let u00 = inv.0 * xtq[0] + inv.2 * xtq[1];
+    let u10 = inv.1 * xtq[0] + inv.3 * xtq[1];
+    let u01 = inv.0 * xtq[2] + inv.2 * xtq[3];
+    let u11 = inv.1 * xtq[2] + inv.3 * xtq[3];
+    // d = diag(solve(t(U) U))
+    let tuu00 = u00 * u00 + u10 * u10;
+    let tuu10 = u00 * u01 + u10 * u11;
+    let tuu01 = tuu10;
+    let tuu11 = u01 * u01 + u11 * u11;
+    let Some(itu) = invert2(tuu00, tuu10, tuu01, tuu11) else {
+        return R_NilValue();
+    };
+    let s0 = itu.0.max(0.0).sqrt();
+    let s1 = itu.3.max(0.0).sqrt();
+    let u00s = u00 * s0;
+    let u10s = u10 * s0;
+    let u01s = u01 * s1;
+    let u11s = u11 * s1;
+    let z = matmul_p2(&vx, [[u00s, u01s], [u10s, u11s]], p);
+    let r00 = vrot[0][0] * u00s + vrot[0][1] * u10s;
+    let r01 = vrot[0][0] * u01s + vrot[0][1] * u11s;
+    let r10 = vrot[1][0] * u00s + vrot[1][1] * u10s;
+    let r11 = vrot[1][0] * u01s + vrot[1][1] * u11s;
+    let loadings =
+        alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
+    let _ld = protect(loadings);
+    for i in 0..(p * 2) {
+        set_real_checked(loadings, (i) as R_xlen_t, z[i]);
+    }
+    let class = mk_string_cstr(c"loadings");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        loadings,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    let rot = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
+    let _rt = protect(rot);
+    set_real_checked(rot, 0, r00);
+    set_real_checked(rot, (1) as R_xlen_t, r10);
+    set_real_checked(rot, (2) as R_xlen_t, r01);
+    set_real_checked(rot, (3) as R_xlen_t, r11);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, loadings);
+    SET_VECTOR_ELT(result, 1, rot);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["loadings".to_string(), "rotmat".to_string()],
+    );
+    result
 }
 
 /// GNU `loadings(x)` — extract `$loadings`.

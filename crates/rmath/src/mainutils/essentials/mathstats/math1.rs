@@ -169,7 +169,7 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if t == SEXPTYPE::CPLXSXP {
             let result = crate::eval::complex_arith::complex_abs_vec(x_arg);
             if !result.is_null() && result != R_NilValue() {
-                crate::mainutils::array::copyMostAttrib(x_arg, result);
+                copy_most_attrib(x_arg, result);
                 math1_copy_dim_and_names(x_arg, result);
             }
             return result;
@@ -193,7 +193,7 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     value.abs()
                 };
             }
-            crate::mainutils::array::copyMostAttrib(x_arg, result);
+            copy_most_attrib(x_arg, result);
             math1_copy_dim_and_names(x_arg, result);
             return result;
         }
@@ -212,7 +212,7 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 v.abs()
             };
         }
-        crate::mainutils::array::copyMostAttrib(x_arg, result);
+        copy_most_attrib(x_arg, result);
         math1_copy_dim_and_names(x_arg, result);
         result
     }

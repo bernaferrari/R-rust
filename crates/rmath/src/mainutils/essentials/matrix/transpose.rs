@@ -125,168 +125,166 @@ pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// (including their names), and all other attributes are copied via
 /// copyMostAttrib.
 pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let t = TYPEOF(x);
-        if !supported_matrix_type(t) {
-            not_matrix();
-        }
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
-        let ldim = if !dim_attr.is_null()
-            && dim_attr != R_NilValue()
-            && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-        {
-            LENGTH(dim_attr) as R_xlen_t
-        } else {
-            0
-        };
-
-        // (nrow, ncol, rnames, cnames, names(dimnames), whether to attach
-        // dimnames at all) as in the C ldim switch.
-        let (nrow, ncol, rnames, cnames, dimnames_names, have_dimnames) = match ldim {
-            0 => {
-                let rnames = crate::sexp::attrib_core::getAttrib(x, R_NamesSymbol());
-                let have = !rnames.is_null() && rnames != R_NilValue();
-                (XLENGTH(x), 1, rnames, R_NilValue(), R_NilValue(), have)
-            }
-            1 | 2 => {
-                let dimnames = crate::sexp::attrib_core::getAttrib(x, R_DimNamesSymbol());
-                let have = !dimnames.is_null() && dimnames != R_NilValue();
-                if !have {
-                    if ldim == 2 {
-                        (
-                            integer_elt_checked(dim_attr, 0) as R_xlen_t,
-                            integer_elt_checked(dim_attr, 1) as R_xlen_t,
-                            R_NilValue(),
-                            R_NilValue(),
-                            R_NilValue(),
-                            false,
-                        )
-                    } else {
-                        (
-                            XLENGTH(x),
-                            1,
-                            R_NilValue(),
-                            R_NilValue(),
-                            R_NilValue(),
-                            false,
-                        )
-                    }
-                } else {
-                    let (nrow, ncol, rnames, cnames) = if ldim == 2 {
-                        (
-                            integer_elt_checked(dim_attr, 0) as R_xlen_t,
-                            integer_elt_checked(dim_attr, 1) as R_xlen_t,
-                            VECTOR_ELT(dimnames, 0),
-                            VECTOR_ELT(dimnames, 1),
-                        )
-                    } else {
-                        (XLENGTH(x), 1, VECTOR_ELT(dimnames, 0), R_NilValue())
-                    };
-                    let names = crate::sexp::attrib_core::getAttrib(dimnames, R_NamesSymbol());
-                    (nrow, ncol, rnames, cnames, names, true)
-                }
-            }
-            _ => not_matrix(),
-        };
-
-        let len = nrow * ncol;
-        let result = Rf_allocVector3(t, len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        crate::mainutils::array::copyMostAttrib(x, result);
-
-        // Source and destination are both column-major:
-        // src(row, col) = row + col * nrow
-        // dst(col, row) = col + row * ncol
-        for row in 0..nrow {
-            for col in 0..ncol {
-                let src = row + col * nrow;
-                let dst = col + row * ncol;
-                copy_matrix_element(result, dst, x, src);
-            }
-        }
-
-        // Set transposed dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            set_integer_checked(dim, 0, ncol as c_int);
-            set_integer_checked(dim, (1) as R_xlen_t, nrow as c_int);
-            crate::sexp::attrib_core::setAttrib(result, R_DimSymbol(), dim);
-        }
-
-        if have_dimnames {
-            let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            if !new_dimnames.is_null() {
-                let _dimnames_guard = protect(new_dimnames);
-                SET_VECTOR_ELT(new_dimnames, 0, cnames);
-                SET_VECTOR_ELT(new_dimnames, 1, rnames);
-                if !dimnames_names.is_null() && dimnames_names != R_NilValue() {
-                    let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-                    if !new_names.is_null() {
-                        let _names_guard = protect(new_names);
-                        SET_STRING_ELT(new_names, 1, STRING_ELT(dimnames_names, 0));
-                        SET_STRING_ELT(
-                            new_names,
-                            0,
-                            if ldim == 2 {
-                                STRING_ELT(dimnames_names, 1)
-                            } else {
-                                // R_BlankString
-                                mk_char_cstr(c"")
-                            },
-                        );
-                        crate::sexp::attrib_core::setAttrib(
-                            new_dimnames,
-                            R_NamesSymbol(),
-                            new_names,
-                        );
-                    }
-                }
-                crate::sexp::attrib_core::setAttrib(result, R_DimNamesSymbol(), new_dimnames);
-            }
-        }
-
-        crate::mainutils::array::copyMostAttrib(x, result);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_TspSymbol(),
-            R_NilValue(),
-        );
-        let class =
-            crate::sexp::attrib_core::getAttrib(result, crate::sexp::attrib_core::R_ClassSymbol());
-        if TYPEOF(class) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(class);
-            let mut ts = false;
-            for i in 0..n {
-                let elt = STRING_ELT(class, i);
-                if elt.is_null() {
-                    continue;
-                }
-                let bytes_cstr = charsxp_cstring(elt);
-                let bytes = bytes_cstr.to_bytes();
-                if bytes == b"ts" || bytes == b"mts" {
-                    ts = true;
-                    break;
-                }
-            }
-            if ts {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_ClassSymbol(),
-                    R_NilValue(),
-                );
-            }
-        }
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+
+    let t = TYPEOF(x);
+    if !supported_matrix_type(t) {
+        not_matrix();
+    }
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
+    let ldim = if !dim_attr.is_null()
+        && dim_attr != R_NilValue()
+        && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
+    {
+        LENGTH(dim_attr) as R_xlen_t
+    } else {
+        0
+    };
+
+    // (nrow, ncol, rnames, cnames, names(dimnames), whether to attach
+    // dimnames at all) as in the C ldim switch.
+    let (nrow, ncol, rnames, cnames, dimnames_names, have_dimnames) = match ldim {
+        0 => {
+            let rnames = crate::sexp::attrib_core::getAttrib(x, R_NamesSymbol());
+            let have = !rnames.is_null() && rnames != R_NilValue();
+            (XLENGTH(x), 1, rnames, R_NilValue(), R_NilValue(), have)
+        }
+        1 | 2 => {
+            let dimnames = crate::sexp::attrib_core::getAttrib(x, R_DimNamesSymbol());
+            let have = !dimnames.is_null() && dimnames != R_NilValue();
+            if !have {
+                if ldim == 2 {
+                    (
+                        integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                        integer_elt_checked(dim_attr, 1) as R_xlen_t,
+                        R_NilValue(),
+                        R_NilValue(),
+                        R_NilValue(),
+                        false,
+                    )
+                } else {
+                    (
+                        XLENGTH(x),
+                        1,
+                        R_NilValue(),
+                        R_NilValue(),
+                        R_NilValue(),
+                        false,
+                    )
+                }
+            } else {
+                let (nrow, ncol, rnames, cnames) = if ldim == 2 {
+                    (
+                        integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                        integer_elt_checked(dim_attr, 1) as R_xlen_t,
+                        VECTOR_ELT(dimnames, 0),
+                        VECTOR_ELT(dimnames, 1),
+                    )
+                } else {
+                    (XLENGTH(x), 1, VECTOR_ELT(dimnames, 0), R_NilValue())
+                };
+                let names = crate::sexp::attrib_core::getAttrib(dimnames, R_NamesSymbol());
+                (nrow, ncol, rnames, cnames, names, true)
+            }
+        }
+        _ => not_matrix(),
+    };
+
+    let len = nrow * ncol;
+    let result = Rf_allocVector3(t, len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    copy_most_attrib(x, result);
+
+    // Source and destination are both column-major:
+    // src(row, col) = row + col * nrow
+    // dst(col, row) = col + row * ncol
+    for row in 0..nrow {
+        for col in 0..ncol {
+            let src = row + col * nrow;
+            let dst = col + row * ncol;
+            copy_matrix_element(result, dst, x, src);
+        }
+    }
+
+    // Set transposed dim attribute
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if !dim.is_null() {
+        set_integer_checked(dim, 0, ncol as c_int);
+        set_integer_checked(dim, (1) as R_xlen_t, nrow as c_int);
+        crate::sexp::attrib_core::setAttrib(result, R_DimSymbol(), dim);
+    }
+
+    if have_dimnames {
+        let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if !new_dimnames.is_null() {
+            let _dimnames_guard = protect(new_dimnames);
+            SET_VECTOR_ELT(new_dimnames, 0, cnames);
+            SET_VECTOR_ELT(new_dimnames, 1, rnames);
+            if !dimnames_names.is_null() && dimnames_names != R_NilValue() {
+                let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                if !new_names.is_null() {
+                    let _names_guard = protect(new_names);
+                    SET_STRING_ELT(new_names, 1, STRING_ELT(dimnames_names, 0));
+                    SET_STRING_ELT(
+                        new_names,
+                        0,
+                        if ldim == 2 {
+                            STRING_ELT(dimnames_names, 1)
+                        } else {
+                            // R_BlankString
+                            mk_char_cstr(c"")
+                        },
+                    );
+                    crate::sexp::attrib_core::setAttrib(
+                        new_dimnames,
+                        R_NamesSymbol(),
+                        new_names,
+                    );
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(result, R_DimNamesSymbol(), new_dimnames);
+        }
+    }
+
+    copy_most_attrib(x, result);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_TspSymbol(),
+        R_NilValue(),
+    );
+    let class =
+        crate::sexp::attrib_core::getAttrib(result, crate::sexp::attrib_core::R_ClassSymbol());
+    if TYPEOF(class) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(class);
+        let mut ts = false;
+        for i in 0..n {
+            let elt = STRING_ELT(class, i);
+            if elt.is_null() {
+                continue;
+            }
+            let bytes_cstr = charsxp_cstring(elt);
+            let bytes = bytes_cstr.to_bytes();
+            if bytes == b"ts" || bytes == b"mts" {
+                ts = true;
+                break;
+            }
+        }
+        if ts {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+        }
+    }
+    result
 }
 
 pub fn not_matrix() -> ! {

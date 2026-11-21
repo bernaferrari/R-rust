@@ -704,119 +704,117 @@ pub fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `medpolish(x)` — additive median polish.
 pub fn do_medpolish(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (nr, nc) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
-        } else {
-            return R_NilValue();
-        };
-        if nr == 0 || nc == 0 {
-            return R_NilValue();
-        }
-        let mut z = vec![0.0; nr * nc];
-        for j in 0..nc {
-            for i in 0..nr {
-                z[i + j * nr] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    real_elt_checked(x, (i + j * nr) as R_xlen_t)
-                } else {
-                    integer_elt_checked(x, (i + j * nr) as R_xlen_t) as f64
-                };
-            }
-        }
-        let mut overall = 0.0;
-        let mut row = vec![0.0; nr];
-        let mut col = vec![0.0; nc];
-        let mut oldsum = 0.0;
-        for _ in 0..10 {
-            for i in 0..nr {
-                let mut vals = Vec::with_capacity(nc);
-                for j in 0..nc {
-                    vals.push(z[i + j * nr]);
-                }
-                let d = median_of(&vals);
-                row[i] += d;
-                for j in 0..nc {
-                    z[i + j * nr] -= d;
-                }
-            }
-            let dc = median_of(&col);
-            for c in col.iter_mut() {
-                *c -= dc;
-            }
-            overall += dc;
-            for j in 0..nc {
-                let mut vals = Vec::with_capacity(nr);
-                for i in 0..nr {
-                    vals.push(z[i + j * nr]);
-                }
-                let d = median_of(&vals);
-                col[j] += d;
-                for i in 0..nr {
-                    z[i + j * nr] -= d;
-                }
-            }
-            let dr = median_of(&row);
-            for r in row.iter_mut() {
-                *r -= dr;
-            }
-            overall += dr;
-            let newsum: f64 = z.iter().map(|v| v.abs()).sum();
-            if newsum == 0.0 || (newsum - oldsum).abs() < 0.01 * newsum {
-                break;
-            }
-            oldsum = newsum;
-        }
-        let ov = Rf_ScalarReal(overall);
-        let _ov = protect(ov);
-        let rv = Rf_allocVector3(SEXPTYPE::REALSXP, nr as i64);
-        let _rv = protect(rv);
-        for i in 0..nr {
-            set_real_checked(rv, (i) as R_xlen_t, row[i]);
-        }
-        let cv = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
-        let _cv = protect(cv);
-        for j in 0..nc {
-            set_real_checked(cv, (j) as R_xlen_t, col[j]);
-        }
-        let resid = crate::mainutils::array::allocMatrix(
-            SEXPTYPE::REALSXP.as_c_int(),
-            nr as i32,
-            nc as i32,
-        );
-        let _rs = protect(resid);
-        for i in 0..(nr * nc) {
-            set_real_checked(resid, (i) as R_xlen_t, z[i]);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, ov);
-        SET_VECTOR_ELT(result, 1, rv);
-        SET_VECTOR_ELT(result, 2, cv);
-        SET_VECTOR_ELT(result, 3, resid);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "overall".to_string(),
-                "row".to_string(),
-                "col".to_string(),
-                "residuals".to_string(),
-            ],
-        );
-        let class = mk_string_cstr(c"medpolish");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let x = CAR(args);
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (nr, nc) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
+    } else {
+        return R_NilValue();
+    };
+    if nr == 0 || nc == 0 {
+        return R_NilValue();
     }
+    let mut z = vec![0.0; nr * nc];
+    for j in 0..nc {
+        for i in 0..nr {
+            z[i + j * nr] = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                real_elt_checked(x, (i + j * nr) as R_xlen_t)
+            } else {
+                integer_elt_checked(x, (i + j * nr) as R_xlen_t) as f64
+            };
+        }
+    }
+    let mut overall = 0.0;
+    let mut row = vec![0.0; nr];
+    let mut col = vec![0.0; nc];
+    let mut oldsum = 0.0;
+    for _ in 0..10 {
+        for i in 0..nr {
+            let mut vals = Vec::with_capacity(nc);
+            for j in 0..nc {
+                vals.push(z[i + j * nr]);
+            }
+            let d = median_of(&vals);
+            row[i] += d;
+            for j in 0..nc {
+                z[i + j * nr] -= d;
+            }
+        }
+        let dc = median_of(&col);
+        for c in col.iter_mut() {
+            *c -= dc;
+        }
+        overall += dc;
+        for j in 0..nc {
+            let mut vals = Vec::with_capacity(nr);
+            for i in 0..nr {
+                vals.push(z[i + j * nr]);
+            }
+            let d = median_of(&vals);
+            col[j] += d;
+            for i in 0..nr {
+                z[i + j * nr] -= d;
+            }
+        }
+        let dr = median_of(&row);
+        for r in row.iter_mut() {
+            *r -= dr;
+        }
+        overall += dr;
+        let newsum: f64 = z.iter().map(|v| v.abs()).sum();
+        if newsum == 0.0 || (newsum - oldsum).abs() < 0.01 * newsum {
+            break;
+        }
+        oldsum = newsum;
+    }
+    let ov = Rf_ScalarReal(overall);
+    let _ov = protect(ov);
+    let rv = Rf_allocVector3(SEXPTYPE::REALSXP, nr as i64);
+    let _rv = protect(rv);
+    for i in 0..nr {
+        set_real_checked(rv, (i) as R_xlen_t, row[i]);
+    }
+    let cv = Rf_allocVector3(SEXPTYPE::REALSXP, nc as i64);
+    let _cv = protect(cv);
+    for j in 0..nc {
+        set_real_checked(cv, (j) as R_xlen_t, col[j]);
+    }
+    let resid = alloc_matrix(
+        SEXPTYPE::REALSXP.as_c_int(),
+        nr as i32,
+        nc as i32,
+    );
+    let _rs = protect(resid);
+    for i in 0..(nr * nc) {
+        set_real_checked(resid, (i) as R_xlen_t, z[i]);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, ov);
+    SET_VECTOR_ELT(result, 1, rv);
+    SET_VECTOR_ELT(result, 2, cv);
+    SET_VECTOR_ELT(result, 3, resid);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "overall".to_string(),
+            "row".to_string(),
+            "col".to_string(),
+            "residuals".to_string(),
+        ],
+    );
+    let class = mk_string_cstr(c"medpolish");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `wilcox.test(x, y)` two-sample rank-sum.

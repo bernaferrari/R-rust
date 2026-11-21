@@ -529,7 +529,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 for i in 0..nrow {
                     copy_vector_element(value, 0, rep, i);
                 }
-                crate::mainutils::array::copyMostAttrib(value, rep);
+                copy_most_attrib(value, rep);
                 rep
             } else {
                 value

@@ -103,7 +103,7 @@ pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let t = TYPEOF(fn_arg);
         if t == SEXPTYPE::CLOSXP {
-            return crate::mainutils::dstruct::mkCLOSXP(
+            return mk_closure(
                 FORMALS(fn_arg),
                 R_NilValue(),
                 crate::sexp::globals::R_GlobalEnv(),
@@ -131,7 +131,7 @@ pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if prototype != crate::sexp::globals::R_UnboundValue()
                 && TYPEOF(prototype) == SEXPTYPE::CLOSXP
             {
-                return crate::mainutils::dstruct::mkCLOSXP(
+                return mk_closure(
                     FORMALS(prototype),
                     R_NilValue(),
                     crate::sexp::globals::R_GlobalEnv(),
@@ -184,55 +184,53 @@ enum ClosurePart {
 }
 
 fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
-    unsafe {
-        let fun = CAR(args);
-        // GNU `body(fun, envir = environment(fun)) <- value` has an optional
-        // envir before value. `body(f, environment(def)) <- body(def)` must
-        // not treat the environment as the new body.
-        let third = CDR(CDR(args));
-        let (env_arg, value) = if !third.is_null() && third != R_NilValue() {
-            (CADR(args), CAR(third))
-        } else {
-            (crate::sexp::accessors::CLOENV(fun), CADR(args))
-        };
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
-        }
-        let _fun_guard = crate::sexp::protect::protect(fun);
-        let formals = match part {
-            ClosurePart::Formals => list_or_pairlist_to_formals(call, value),
-            ClosurePart::Body => crate::sexp::accessors::FORMALS(fun),
-        };
-        let body = match part {
-            ClosurePart::Formals => crate::mainutils::essentials::do_body(
-                call,
-                std::ptr::null_mut(),
-                crate::sexp::constructors::Rf_cons(fun, R_NilValue()),
-                R_NilValue(),
-            ),
-            ClosurePart::Body => {
-                if value.is_null() {
-                    R_NilValue()
-                } else {
-                    value
-                }
-            }
-        };
-        let env = if !env_arg.is_null()
-            && env_arg != R_NilValue()
-            && crate::mainutils::coerce::isEnvironment(env_arg)
-        {
-            env_arg
-        } else {
-            crate::sexp::accessors::CLOENV(fun)
-        };
-        if env.is_null() || env == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
-        }
-        let dup = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        dup
+    let fun = CAR(args);
+    // GNU `body(fun, envir = environment(fun)) <- value` has an optional
+    // envir before value. `body(f, environment(def)) <- body(def)` must
+    // not treat the environment as the new body.
+    let third = CDR(CDR(args));
+    let (env_arg, value) = if !third.is_null() && third != R_NilValue() {
+        (CADR(args), CAR(third))
+    } else {
+        (crate::sexp::accessors::CLOENV(fun), CADR(args))
+    };
+    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
     }
+    let _fun_guard = crate::sexp::protect::protect(fun);
+    let formals = match part {
+        ClosurePart::Formals => list_or_pairlist_to_formals(call, value),
+        ClosurePart::Body => crate::sexp::accessors::FORMALS(fun),
+    };
+    let body = match part {
+        ClosurePart::Formals => crate::mainutils::essentials::do_body(
+            call,
+            std::ptr::null_mut(),
+            crate::sexp::constructors::Rf_cons(fun, R_NilValue()),
+            R_NilValue(),
+        ),
+        ClosurePart::Body => {
+            if value.is_null() {
+                R_NilValue()
+            } else {
+                value
+            }
+        }
+    };
+    let env = if !env_arg.is_null()
+        && env_arg != R_NilValue()
+        && crate::mainutils::coerce::isEnvironment(env_arg)
+    {
+        env_arg
+    } else {
+        crate::sexp::accessors::CLOENV(fun)
+    };
+    if env.is_null() || env == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(call, "use of NULL environment is defunct");
+    }
+    let dup = mk_closure(formals, body, env);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    dup
 }
 
 fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {

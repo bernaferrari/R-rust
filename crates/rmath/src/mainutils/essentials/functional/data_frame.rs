@@ -3,44 +3,42 @@
 use super::*;
 
 pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
-    unsafe {
-        // GNU recycles data.frame columns by *rows*. A 2-D AsIs / model.matrix
-        // column has length nrow*ncol, so XLENGTH is the wrong unit.
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let len = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
-            integer_elt_checked(dim, 0) as R_xlen_t
-        } else {
-            XLENGTH(x)
-        };
-        if len == target_len || target_len == 0 {
-            return x;
-        }
-        if len != 1 {
-            base_error(format!(
-                "arguments imply differing number of rows: {target_len}, {len}"
-            ));
-        }
-        let ty = TYPEOF(x);
-        let out = Rf_allocVector3(ty, target_len);
-        if out.is_null() {
-            return out;
-        }
-        let _out_guard = protect(out);
-        for i in 0..target_len {
-            match ty {
-                t if t == SEXPTYPE::REALSXP => set_real_checked(out, i, real_elt_checked(x, 0)),
-                t if t == SEXPTYPE::INTSXP => set_integer_checked(out, i, integer_elt_checked(x, 0)),
-                t if t == SEXPTYPE::LGLSXP => set_logical_checked(out, i, logical_elt_checked(x, 0)),
-                t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(out, i, STRING_ELT(x, 0)),
-                _ => return x,
-            }
-        }
-        // GNU recycling preserves the column's attributes (class — e.g. the
-        // AsIs marker on I(x) columns — tsp, units, ...)))); only names/dim/
-        // dimnames are dropped, exactly copyMostAttrib semantics.
-        crate::mainutils::array::copyMostAttrib(x, out);
-        out
+    // GNU recycles data.frame columns by *rows*. A 2-D AsIs / model.matrix
+    // column has length nrow*ncol, so XLENGTH is the wrong unit.
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let len = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+        integer_elt_checked(dim, 0) as R_xlen_t
+    } else {
+        XLENGTH(x)
+    };
+    if len == target_len || target_len == 0 {
+        return x;
     }
+    if len != 1 {
+        base_error(format!(
+            "arguments imply differing number of rows: {target_len}, {len}"
+        ));
+    }
+    let ty = TYPEOF(x);
+    let out = Rf_allocVector3(ty, target_len);
+    if out.is_null() {
+        return out;
+    }
+    let _out_guard = protect(out);
+    for i in 0..target_len {
+        match ty {
+            t if t == SEXPTYPE::REALSXP => set_real_checked(out, i, real_elt_checked(x, 0)),
+            t if t == SEXPTYPE::INTSXP => set_integer_checked(out, i, integer_elt_checked(x, 0)),
+            t if t == SEXPTYPE::LGLSXP => set_logical_checked(out, i, logical_elt_checked(x, 0)),
+            t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(out, i, STRING_ELT(x, 0)),
+            _ => return x,
+        }
+    }
+    // GNU recycling preserves the column's attributes (class — e.g. the
+    // AsIs marker on I(x) columns — tsp, units, ...)))); only names/dim/
+    // dimnames are dropped, exactly copyMostAttrib semantics.
+    copy_most_attrib(x, out);
+    out
 }
 
 pub(crate) fn melt_table(value: SEXP) -> SEXP {
