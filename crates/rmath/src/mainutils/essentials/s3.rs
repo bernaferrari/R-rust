@@ -607,7 +607,7 @@ pub fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `file.path(...)` — join path components element-wise with recycling.
 pub fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { crate::mainutils::paste_impl::do_filepath_public(call, op, args, env) }
+    crate::mainutils::paste_impl::do_filepath_public(call, op, args, env)
 }
 
 /// R's `dir.exists(paths)` — check if directories exist.

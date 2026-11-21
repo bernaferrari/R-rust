@@ -860,14 +860,13 @@ impl PrintFormatGuard {
             .expect("print formatting requires a managed runtime")
             .pin()
             .expect("print formatting requires an active runtime");
-        let previous = unsafe {
+        let previous =
             crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
                 digits: data.digits,
                 scipen: data.scipen,
                 na_width: data.na_width,
                 na_width_noquote: data.na_width_noquote,
-            })
-        };
+            });
         Self { owner, previous }
     }
 }

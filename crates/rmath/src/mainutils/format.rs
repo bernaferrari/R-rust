@@ -82,11 +82,11 @@ fn current_R_print() -> RPrint {
     }
 }
 
-pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        let old = (*inst).eval_state.format_print;
-        (*inst).eval_state.format_print = p;
-        old
+pub fn format_set_R_print(p: RPrint) -> RPrint {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        // SAFETY: `inst` is the pinned current instance; this primitive field
+        // swap runs no callbacks.
+        unsafe { std::mem::replace(&mut (*inst).eval_state.format_print, p) }
     })
 }
 

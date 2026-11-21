@@ -457,16 +457,14 @@ pub fn do_print(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if d > 0 {
                     // SAFETY: `format_set_R_print` and `GetOptionScipen` touch
                     // the live session print options; no payload borrow is held.
-                    let old = unsafe {
-                        crate::mainutils::format::format_set_R_print(
+                    let old = crate::mainutils::format::format_set_R_print(
                             crate::mainutils::format::RPrint {
                                 digits: d,
                                 scipen: crate::mainutils::options::GetOptionScipen(),
                                 na_width: 2,
                                 na_width_noquote: 2,
                             },
-                        )
-                    };
+                        );
                     Some(RestorePrint { old })
                 } else {
                     None
@@ -508,9 +506,7 @@ struct RestorePrint {
 
 impl Drop for RestorePrint {
     fn drop(&mut self) {
-        unsafe {
-            crate::mainutils::format::format_set_R_print(self.old);
-        }
+        crate::mainutils::format::format_set_R_print(self.old);
     }
 }
 // ---------------------------------------------------------------------------

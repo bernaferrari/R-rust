@@ -19,7 +19,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT,
+    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
     STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
@@ -92,7 +92,9 @@ fn ENC_KNOWN(s: SEXP) -> c_int {
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
+    // SAFETY: `op` and `args` are the live primitive and argument list of
+    // the current builtin call.
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
@@ -107,23 +109,23 @@ fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize
     crate::mainutils::errors::errorcall(_call, fmt);
 }
 
-unsafe fn asLogical(x: SEXP) -> c_int {
+fn asLogical(x: SEXP) -> c_int {
     crate::mainutils::coerce::asLogical(x)
 }
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     crate::mainutils::coerce::asInteger(x)
 }
 
-unsafe fn asReal(x: SEXP) -> c_double {
+fn asReal(x: SEXP) -> c_double {
     crate::mainutils::coerce::asReal(x)
 }
 
-unsafe fn asBool2(x: SEXP, call: SEXP) -> bool {
+fn asBool2(x: SEXP, call: SEXP) -> bool {
     crate::mainutils::coerce::asRbool(x, call) != 0
 }
 
-unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     crate::mainutils::coerce::coerceVector(s, t)
 }
 
@@ -131,11 +133,7 @@ unsafe fn translateChar(s: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(s) }
 }
 
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateCharUTF8(s) }
-}
-
-unsafe fn PrintDefaults() {
+fn PrintDefaults() {
     crate::mainutils::print::PrintDefaults();
 }
 
@@ -165,149 +163,52 @@ unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
     unsafe { crate::mainutils::printutils::EncodeExtptr(x) }
 }
 
-unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        crate::mainutils::format::formatLogical(x, n, fieldwidth);
-    }
-}
-
-unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        crate::mainutils::format::formatInteger(x, n, fieldwidth);
-    }
-}
-
-unsafe fn formatReal(
-    x: *const c_double,
-    n: R_xlen_t,
-    w: *mut c_int,
-    d: *mut c_int,
-    e: *mut c_int,
-    nsmall: c_int,
-) {
-    unsafe {
-        let mut wr: c_int = 0;
-        let mut dr: c_int = 0;
-        let mut er: c_int = 0;
-        crate::mainutils::format::formatReal(x, n, &mut wr, &mut dr, &mut er, nsmall);
-        if !w.is_null() {
-            *w = wr;
-        }
-        if !d.is_null() {
-            *d = dr;
-        }
-        if !e.is_null() {
-            *e = er;
-        }
-    }
-}
-
-unsafe fn formatComplex(
-    x: *const crate::sexp::ffi::Rcomplex,
-    n: R_xlen_t,
-    wr: *mut c_int,
-    dr: *mut c_int,
-    er: *mut c_int,
-    wi: *mut c_int,
-    di: *mut c_int,
-    ei: *mut c_int,
-    nsmall: c_int,
-) {
-    unsafe {
-        let mut lwr: c_int = 0;
-        let mut ldr: c_int = 0;
-        let mut ler: c_int = 0;
-        let mut lwi: c_int = 0;
-        let mut ldi: c_int = 0;
-        let mut lei: c_int = 0;
-        crate::mainutils::format::formatComplex(
-            x, n, &mut lwr, &mut ldr, &mut ler, &mut lwi, &mut ldi, &mut lei, nsmall,
-        );
-        if !wr.is_null() {
-            *wr = lwr;
-        }
-        if !dr.is_null() {
-            *dr = ldr;
-        }
-        if !er.is_null() {
-            *er = ler;
-        }
-        if !wi.is_null() {
-            *wi = lwi;
-        }
-        if !di.is_null() {
-            *di = ldi;
-        }
-        if !ei.is_null() {
-            *ei = lei;
-        }
-    }
-}
-
-unsafe fn formatRaw(x: *const crate::sexp::ffi::Rbyte, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        crate::mainutils::format::formatRaw(x as *const std::ffi::c_void, n, fieldwidth);
-    }
-}
-
-unsafe fn reconcile_fixed_real_width(
-    x: *const c_double,
-    n: R_xlen_t,
+fn reconcile_fixed_real_width(
+    x: &[c_double],
     width: &mut c_int,
     digits_right: c_int,
     exponent: c_int,
 ) {
-    unsafe {
-        if x.is_null() || n <= 0 || exponent != 0 || digits_right < 0 {
-            return;
-        }
-        let digits = digits_right as usize;
-        for i in 0..n {
-            let value = *x.add(i as usize);
-            let rendered = if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                "NA".to_string()
-            } else if value.is_nan() {
-                "NaN".to_string()
-            } else if value.is_infinite() {
-                if value.is_sign_negative() {
-                    "-Inf".to_string()
-                } else {
-                    "Inf".to_string()
-                }
+    if x.is_empty() || exponent != 0 || digits_right < 0 {
+        return;
+    }
+    let digits = digits_right as usize;
+    for &value in x {
+        let rendered = if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            "NA".to_string()
+        } else if value.is_nan() {
+            "NaN".to_string()
+        } else if value.is_infinite() {
+            if value.is_sign_negative() {
+                "-Inf".to_string()
             } else {
-                format!("{value:.digits$}")
-            };
-            *width = (*width).max(rendered.chars().count() as c_int);
-        }
+                "Inf".to_string()
+            }
+        } else {
+            format!("{value:.digits$}")
+        };
+        *width = (*width).max(rendered.chars().count() as c_int);
     }
 }
 
-unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+    crate::sexp::attrib_core::getAttrib(x, what)
 }
 
-unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, what, value);
-    }
+fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
+    crate::sexp::attrib_core::setAttrib(x, what, value);
 }
 
-unsafe fn eval(x: SEXP, env: SEXP) -> SEXP {
+fn eval(x: SEXP, env: SEXP) -> SEXP {
+    // SAFETY: callers pass a protected call and a live environment.
     unsafe { crate::eval::eval::Rf_eval(x, env) }
 }
 
-unsafe fn R_strlen(s: SEXP, _type: c_int) -> c_int {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let p = CHAR(s);
-        if p.is_null() {
-            return 0;
-        }
-        let len = std::ffi::CStr::from_ptr(p).to_bytes().len();
-        len as c_int
+fn R_strlen(s: SEXP, _type: c_int) -> c_int {
+    if s.is_null() {
+        return 0;
     }
+    crate::mainutils::printutils::charsxp_bytes(s).len() as c_int
 }
 
 fn isVectorList(x: SEXP) -> c_int {
@@ -324,20 +225,20 @@ fn isVectorList(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn R_DimSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_DimSymbol() }
+fn R_DimSymbol() -> SEXP {
+    crate::sexp::attrib_core::R_DimSymbol()
 }
 
-unsafe fn R_DimNamesSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_DimNamesSymbol() }
+fn R_DimNamesSymbol() -> SEXP {
+    crate::sexp::attrib_core::R_DimNamesSymbol()
 }
 
-unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+fn R_NamesSymbol() -> SEXP {
+    crate::sexp::attrib_core::R_NamesSymbol()
 }
 
-unsafe fn R_AsCharacterSymbol() -> SEXP {
-    unsafe { crate::sexp::symbol::Rf_install(b"as.character\x00".as_ptr() as *const c_char) }
+fn R_AsCharacterSymbol() -> SEXP {
+    crate::sexp::symbol::install_str("as.character")
 }
 
 fn NA_STRING() -> SEXP {
@@ -364,7 +265,7 @@ fn isNumeric(x: SEXP) -> c_int {
 }
 
 /// Local wrapper for duplicate.
-unsafe fn duplicate(s: SEXP) -> SEXP {
+fn duplicate(s: SEXP) -> SEXP {
     crate::mainutils::duplicate::duplicate(s)
 }
 
@@ -478,35 +379,16 @@ unsafe fn c_strlen(s: *const c_char) -> i64 {
 // Helper: C strcpy
 // ---------------------------------------------------------------------------
 
-unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
-    unsafe {
-        if dest.is_null() || src.is_null() {
-            return;
-        }
-        let mut d = dest;
-        let mut s = src;
-        loop {
-            let c = *s;
-            *d = c;
-            if c == 0 {
-                break;
-            }
-            d = d.add(1);
-            s = s.add(1);
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // NA_STRING check
 // ---------------------------------------------------------------------------
 
-unsafe fn isNA_STRING(s: SEXP) -> bool {
+fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return true;
     }
-    let gp = unsafe { (*s).sxpinfo.gp() };
-    gp & 1 != 0
+    // GNU checks gp bit 0 of the CHARSXP header.
+    crate::sexp::accessors::LEVELS(s) & 1 != 0
 }
 
 // ---------------------------------------------------------------------------
@@ -529,10 +411,8 @@ impl owned_paste::Native for PasteNative<'_> {
     ) -> crate::sexp::object::SexpResult<bool> {
         self.0.with_native(|original| {
             // Native projections are kept alive by the actual owning operands.
-            unsafe {
-                checkArity(op.as_raw(), args.as_raw());
-                PrintDefaults();
-            }
+            checkArity(op.as_raw(), args.as_raw());
+            PrintDefaults();
             original.require_active()?;
             Ok(PRIMVAL(op.as_raw()) == 0)
         })
@@ -543,7 +423,7 @@ impl owned_paste::Native for PasteNative<'_> {
         call: &owned_paste::Value,
     ) -> crate::sexp::object::SexpResult<bool> {
         self.0.with_native(|original| {
-            let result = unsafe { asBool2(value.as_raw(), call.as_raw()) };
+            let result = asBool2(value.as_raw(), call.as_raw());
             original.require_active()?;
             Ok(result)
         })
@@ -558,14 +438,14 @@ impl owned_paste::Native for PasteNative<'_> {
         let allocator = self.0.allocator(&domain)?;
         if value.header().sxpinfo.obj() {
             let function = self.0.with_native(|original| {
-                let symbol = unsafe { R_AsCharacterSymbol() };
+                let symbol = R_AsCharacterSymbol();
                 original.require_active()?;
                 original.sexp(symbol)?.into_owned()
             })?;
             let arguments = allocator.pairlist_cell(value, &domain.nil(), &domain.nil())?;
             let call = allocator.call(&function, &arguments)?;
             self.0.with_native(|original| {
-                let result = unsafe { eval(call.as_raw(), env.as_raw()) };
+                let result = eval(call.as_raw(), env.as_raw());
                 original.require_active()?;
                 original.sexp(result)?.into_owned()
             })
@@ -580,7 +460,7 @@ impl owned_paste::Native for PasteNative<'_> {
             // This remains the translated coercion boundary. Its selected input
             // and original runtime remain owned through warnings and providers.
             self.0.with_native(|original| {
-                let result = unsafe { coerceVector(value.as_raw(), SEXPTYPE::STRSXP.as_c_int()) };
+                let result = coerceVector(value.as_raw(), SEXPTYPE::STRSXP.as_c_int());
                 original.require_active()?;
                 original.sexp(result)?.into_owned()
             })
@@ -611,13 +491,14 @@ impl owned_paste::Native for PasteNative<'_> {
         crate::sexp::encoding::flags(value)
     }
     fn name(&self, op: &owned_paste::Value) -> String {
-        unsafe { std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op.as_raw())) }
-            .to_string_lossy()
-            .into_owned()
+        match crate::eval::primitive::raw_primitive_entry(op.as_raw()) {
+            Some(_) => crate::eval::primitive::PRIMNAME(op.as_raw()).to_string(),
+            None => String::new(),
+        }
     }
 }
 
-pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     if op.is_null() || args.is_null() {
         return ptr::null_mut();
     }
@@ -661,15 +542,15 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// .Internal(filepath(...))
-pub unsafe fn do_filepath(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { filepath_entry(args, env, false) }
+pub fn do_filepath(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    filepath_entry(args, env, false)
 }
 
-pub(crate) unsafe fn do_filepath_public(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { filepath_entry(args, env, true) }
+pub(crate) fn do_filepath_public(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    filepath_entry(args, env, true)
 }
 
-unsafe fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
+fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
     use crate::sexp::owner::OwnerToken;
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -1071,120 +952,132 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///   e = {0:2}.   0: Fixpoint; 1,2: exponential with 2/3 digit expon.
 ///
 /// for complex: 2 x 3 integers for (Re, Im)
-pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        // Null arglists can appear in direct FFI tests; treat as no-op.
-        if args.is_null() || args == R_NilValue() {
+pub fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    // Null arglists can appear in direct FFI tests; treat as no-op.
+    if args.is_null() || args == R_NilValue() {
+        return ptr::null_mut();
+    }
+
+    checkArity(op, args);
+
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return ptr::null_mut();
+    }
+    let n = XLENGTH(x);
+    PrintDefaults();
+
+    let mut restore_digits = None;
+    if Rf_isNull(CADR(args)) == 0 {
+        let digits = asInteger(CADR(args));
+        if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
             return ptr::null_mut();
         }
+        let old = crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
+            digits,
+            scipen: crate::mainutils::options::GetOptionScipen(),
+            na_width: 2,
+            na_width_noquote: 2,
+        });
+        restore_digits = Some(FormatInfoRestorePrint { old });
+    }
 
-        checkArity(op, args);
+    let nsmall = asInteger(CADDR(args));
+    if nsmall == NA_INTEGER || nsmall < 0 || nsmall > 20 {
+        return ptr::null_mut();
+    }
 
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return ptr::null_mut();
+    let mut w: c_int = 0;
+    let mut d: c_int = 0;
+    let mut e: c_int = 0;
+    let mut wi: c_int = 0;
+    let mut di: c_int = 0;
+    let mut ei: c_int = 0;
+    let mut no: c_int = 1;
+
+    let values = || {
+        crate::mainutils::essentials::owner_sexp(crate::mainutils::essentials::active_owner(), x)
+    };
+    let checked = |error: crate::sexp::object::SexpError| -> ! {
+        crate::sexp::context::r_error(error.to_string())
+    };
+    match TYPEOF(x) {
+        RAWSXP => {
+            // GNU formatRaw: always two hex digits.
+            w = 2;
         }
-        let n = XLENGTH(x);
-        PrintDefaults();
 
-        let mut restore_digits = None;
-        if Rf_isNull(CADR(args)) == 0 {
-            let digits = asInteger(CADR(args));
-            if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
-                return ptr::null_mut();
-            }
-            let old =
-                crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
-                    digits,
-                    scipen: crate::mainutils::options::GetOptionScipen(),
-                    na_width: 2,
-                    na_width_noquote: 2,
-                });
-            restore_digits = Some(FormatInfoRestorePrint { old });
+        LGLSXP => {
+            let src = values();
+            let data: Vec<c_int> = (0..n)
+                .map(|i| src.try_logical_elt(i).unwrap_or_else(|e| checked(e)))
+                .collect();
+            w = if n > 0 {
+                crate::mainutils::format::logical_field_width(&data)
+            } else {
+                1
+            };
         }
 
-        let nsmall = asInteger(CADDR(args));
-        if nsmall == NA_INTEGER || nsmall < 0 || nsmall > 20 {
-            return ptr::null_mut();
+        INTSXP => {
+            let src = values();
+            w = if n > 0 {
+                crate::mainutils::format::integer_field_width(n, |i| {
+                    src.try_integer_elt(i).unwrap_or_else(|e| checked(e))
+                })
+            } else {
+                1
+            };
         }
 
-        let mut w: c_int = 0;
-        let mut d: c_int = 0;
-        let mut e: c_int = 0;
-        let mut wi: c_int = 0;
-        let mut di: c_int = 0;
-        let mut ei: c_int = 0;
-        let mut no: c_int = 1;
-
-        match TYPEOF(x) {
-            RAWSXP => {
-                formatRaw(RAW(x), n, &mut w);
+        REALSXP => {
+            no = 3;
+            let src = values();
+            let data: Vec<c_double> = (0..n)
+                .map(|i| src.try_real_elt(i).unwrap_or_else(|e| checked(e)))
+                .collect();
+            if !data.is_empty() {
+                let f = crate::mainutils::format::real_field(n, nsmall, |i| data[i as usize]);
+                (w, d, e) = (f.w, f.d, f.e);
             }
+            reconcile_fixed_real_width(&data, &mut w, d, e);
+        }
 
-            LGLSXP => {
-                formatLogical(LOGICAL(x), n, &mut w);
-            }
+        CPLXSXP => {
+            no = 6;
+            let src = values();
+            let data: Vec<crate::sexp::ffi::Rcomplex> = (0..n)
+                .map(|i| src.try_complex_elt(i).unwrap_or_else(|e| checked(e)))
+                .collect();
+            let f = crate::mainutils::format::complex_field(&data, nsmall);
+            (w, d, e, wi, di, ei) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
+        }
 
-            INTSXP => {
-                formatInteger(INTEGER(x), n, &mut w);
-            }
-
-            REALSXP => {
-                no = 3;
-                formatReal(REAL(x), n, &mut w, &mut d, &mut e, nsmall);
-                reconcile_fixed_real_width(REAL(x), n, &mut w, d, e);
-            }
-
-            CPLXSXP => {
-                no = 6;
-                formatComplex(
-                    COMPLEX(x),
-                    n,
-                    &mut w,
-                    &mut d,
-                    &mut e,
-                    &mut wi,
-                    &mut di,
-                    &mut ei,
-                    nsmall,
-                );
-            }
-
-            STRSXP => {
-                for i in 0..n {
-                    if !isNA_STRING(STRING_ELT(x, i)) {
-                        let il = R_strlen(STRING_ELT(x, i), 0);
-                        if il > w {
-                            w = il;
-                        }
+        STRSXP => {
+            for i in 0..n {
+                if !isNA_STRING(STRING_ELT(x, i)) {
+                    let il = R_strlen(STRING_ELT(x, i), 0);
+                    if il > w {
+                        w = il;
                     }
                 }
             }
-
-            _ => {
-                return ptr::null_mut();
-            }
         }
 
-        let result = Rf_allocVector(SEXPTYPE::INTSXP, no);
-        if INTEGER(result).is_null() {
+        _ => {
             return ptr::null_mut();
         }
-
-        *INTEGER(result) = w;
-        if no > 1 {
-            *INTEGER(result).add(1) = d;
-            *INTEGER(result).add(2) = e;
-            if no > 3 {
-                *INTEGER(result).add(3) = wi;
-                *INTEGER(result).add(4) = di;
-                *INTEGER(result).add(5) = ei;
-            }
-        }
-
-        let _ = restore_digits;
-        result
     }
+
+    let result = Rf_allocVector(SEXPTYPE::INTSXP, no);
+    let _result_guard = crate::sexp::protect::protect(result);
+    let fields = [w, d, e, wi, di, ei];
+    for (i, &value) in fields.iter().take(no as usize).enumerate() {
+        crate::mainutils::essentials::set_integer_checked(result, i as R_xlen_t, value);
+    }
+
+    let _ = restore_digits;
+    result
 }
 
 struct FormatInfoRestorePrint {
@@ -1193,9 +1086,7 @@ struct FormatInfoRestorePrint {
 
 impl Drop for FormatInfoRestorePrint {
     fn drop(&mut self) {
-        unsafe {
-            crate::mainutils::format::format_set_R_print(self.old);
-        }
+        crate::mainutils::format::format_set_R_print(self.old);
     }
 }
 
