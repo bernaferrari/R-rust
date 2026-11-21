@@ -76,7 +76,6 @@ const PROF_TIMER: core::ffi::c_int = 2; // ITIMER_PROF value on most Unix system
 /// WASM M1: no setitimer; timer fns below are wasm no-op stubs.
 #[cfg(target_arch = "wasm32")]
 const PROF_TIMER: c_int = 2;
-use crate::sexp::symbol::Rf_install;
 use crate::sexp::symbol::{
     R_Bracket2Symbol, R_DollarSymbol, R_DoubleColonSymbol, R_TripleColonSymbol,
 };
@@ -977,7 +976,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         if line == NA_INTEGER {
             return;
         }
-        let srcfile_sym = Rf_install(c"srcfile".as_ptr());
+        let srcfile_sym = crate::sexp::symbol::install_str("srcfile");
         crate::sexp::context::require_context_owner_live(pin.as_ref());
         if !epoch.unchanged() {
             return;
@@ -990,7 +989,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
             return;
         }
         let srcfile = crate::sexp::context::own_control_value(srcfile);
-        let filename_sym = Rf_install(c"filename".as_ptr());
+        let filename_sym = crate::sexp::symbol::install_str("filename");
         crate::sexp::context::require_context_owner_live(pin.as_ref());
         if !epoch.unchanged() {
             return;
@@ -1226,7 +1225,7 @@ fn doprof(_sig: c_int) {
         let instance = with_required_current_instance(|instance| instance);
         let owner_pin = crate::sexp::context::pin_context_owner_in(instance);
         let eval_internal = if with_profiling_state(|state| state.filter_callframes) != 0 {
-            let symbol = Rf_install(c"eval".as_ptr());
+            let symbol = crate::sexp::symbol::install_str("eval");
             crate::sexp::context::require_context_owner_live(owner_pin.as_ref());
             if !epoch.unchanged() {
                 return;
@@ -2327,8 +2326,8 @@ mod tests {
                     crate::sexp::globals::R_GlobalEnv(),
                 ))
                 .unwrap();
-            let filename_symbol = Rf_install(c"filename".as_ptr());
-            let srcfile_symbol = Rf_install(c"srcfile".as_ptr());
+            let filename_symbol = crate::sexp::symbol::install_str("filename");
+            let srcfile_symbol = crate::sexp::symbol::install_str("srcfile");
             crate::sexp::envir::make_active_binding_raw(
                 srcfile.as_raw(),
                 filename_symbol,

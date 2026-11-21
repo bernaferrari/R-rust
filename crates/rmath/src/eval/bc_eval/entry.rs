@@ -382,7 +382,7 @@ pub(crate) fn bc_eval_private(
                     );
                     let src = owned_constant_at(&constants, 0, "CALL source");
                     if TYPEOF(src) == SEXPTYPE::LANGSXP {
-                        let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                        let srcref_symbol = crate::sexp::symbol::install_str("srcref");
                         let srcref = own_operand(crate::attrib_core::getAttrib(src, srcref_symbol));
                         if srcref.as_raw() != R_NilValue() {
                             crate::attrib_core::setAttrib(
@@ -917,7 +917,7 @@ pub(crate) fn bc_eval_private(
                     } else {
                         // Call `[`(obj, i, j, ...)
                         {
-                            let bracket_sym = crate::sexp::symbol::Rf_install(c"[".as_ptr());
+                            let bracket_sym = crate::sexp::symbol::install_str("[");
                             let nil = R_NilValue();
                             let mut arg_list_owned = own_operand(nil);
                             let mut arg_list = arg_list_owned.as_raw();
@@ -963,7 +963,7 @@ pub(crate) fn bc_eval_private(
                     if obj.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        let dbracket_sym = crate::sexp::symbol::Rf_install(c"[[".as_ptr());
+                        let dbracket_sym = crate::sexp::symbol::install_str("[[");
                         let nil = R_NilValue();
                         let args = Rf_cons(obj, Rf_cons(idx, nil));
                         let call = Rf_cons(dbracket_sym, args);

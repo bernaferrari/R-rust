@@ -268,7 +268,7 @@ fn owned_nested_subassignment_rejects_malformed_path_before_callbacks() {
         assert!(error_message(error).contains(message));
         let events = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"events".as_ptr()),
+                crate::sexp::symbol::install_str("events"),
                 environment.as_raw(),
             ))
         };
@@ -388,7 +388,7 @@ fn gnu_nested_subassignment_fixtures_execute_without_source_fallback() {
         let global = session.global_env().unwrap().into_owned().unwrap();
         let function = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+                crate::sexp::symbol::install_str("f"),
                 global.as_raw(),
             ))
         };
@@ -397,7 +397,7 @@ fn gnu_nested_subassignment_fixtures_execute_without_source_fallback() {
         let environment = if *superassign {
             unsafe {
                 own_operand(crate::sexp::envir::R_findVar(
-                    crate::sexp::symbol::Rf_install(c"frame".as_ptr()),
+                    crate::sexp::symbol::install_str("frame"),
                     global.as_raw(),
                 ))
             }
@@ -409,7 +409,7 @@ fn gnu_nested_subassignment_fixtures_execute_without_source_fallback() {
         session.gc();
         let rhs = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"rhsValue".as_ptr()),
+                crate::sexp::symbol::install_str("rhsValue"),
                 global.as_raw(),
             ))
         };

@@ -15,7 +15,6 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 use super::eval::Rf_eval;
 
@@ -219,10 +218,10 @@ fn apply_custom_replacement(
         let (temporary, value_tag) = access.with_native(|owner| {
             Ok((
                 owner
-                    .sexp(unsafe { Rf_install(c"*tmp*".as_ptr()) })?
+                    .sexp(crate::sexp::symbol::install_str("*tmp*"))?
                     .into_owned()?,
                 owner
-                    .sexp(unsafe { Rf_install(c"value".as_ptr()) })?
+                    .sexp(crate::sexp::symbol::install_str("value"))?
                     .into_owned()?,
             ))
         })?;
@@ -460,8 +459,8 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Keep the cached RHS distinct from the expression observed by
             // setter promises. Outward setters receive GNU's *vtmp* code.
             crate::sexp::accessors::SET_NAMED(rhs, 2);
-            let tmp_owned = own(Rf_install(c"*tmp*".as_ptr()));
-            let modified_expression = own(Rf_install(c"*vtmp*".as_ptr()));
+            let tmp_owned = own(crate::sexp::symbol::install_str("*tmp*"));
+            let modified_expression = own(crate::sexp::symbol::install_str("*vtmp*"));
             let tmp_sym = tmp_owned.as_raw();
             let restore_tmp =
                 restore_tmp::RestoreTmp::capture(environment.clone(), tmp_owned.clone())
@@ -719,7 +718,7 @@ fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
 }
 
 fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
-    unsafe {
+    {
         let wrap_lang = |x: SEXP| match TYPEOF(x) {
             t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP => {
                 crate::sexp::memory_ext::R_mkEVPROMISE(R_NilValue(), x)
@@ -729,7 +728,7 @@ fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
         let value = wrap_lang(value);
         let target = wrap_lang(target);
         let mut tail = crate::sexp::constructors::Rf_cons(value, R_NilValue());
-        SETTAG(tail, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        SETTAG(tail, crate::sexp::symbol::install_str("value"));
         let mut guards = vec![protect(tail)];
         let mut sub_args = Vec::new();
 
@@ -940,7 +939,7 @@ fn replace_tmp_call(
         let allocator = access.allocator(&domain)?;
         let value_tag = access.with_native(|owner| {
             owner
-                .sexp(unsafe { Rf_install(c"value".as_ptr()) })?
+                .sexp(crate::sexp::symbol::install_str("value"))?
                 .into_owned()
         })?;
         let value = allocator.evaluated_promise_with_expression(expression, environment, rhs)?;

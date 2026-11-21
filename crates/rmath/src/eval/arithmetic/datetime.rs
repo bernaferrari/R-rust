@@ -52,8 +52,8 @@ pub(crate) fn coerce_difftime_operand(
 }
 
 pub(crate) fn has_class_attribute(source: SEXP) -> bool {
-    unsafe {
-        let class = getAttrib(source, Rf_install(c"class".as_ptr()));
+    {
+        let class = getAttrib(source, crate::sexp::symbol::install_str("class"));
         !class.is_null() && class != R_NilValue()
     }
 }

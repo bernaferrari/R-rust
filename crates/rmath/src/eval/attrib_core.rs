@@ -28,57 +28,57 @@ use crate::sexp::symbol::Rf_install;
 
 /// Get the "class" symbol.
 pub unsafe fn R_ClassSymbol() -> SEXP {
-    unsafe { Rf_install(c"class".as_ptr()) }
+    crate::sexp::symbol::install_str("class")
 }
 
 /// Get the "names" symbol.
 pub unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { Rf_install(c"names".as_ptr()) }
+    crate::sexp::symbol::install_str("names")
 }
 
 /// Get the "dim" symbol.
 pub unsafe fn R_DimSymbol() -> SEXP {
-    unsafe { Rf_install(c"dim".as_ptr()) }
+    crate::sexp::symbol::install_str("dim")
 }
 
 /// Get the "dimnames" symbol.
 pub unsafe fn R_DimNamesSymbol() -> SEXP {
-    unsafe { Rf_install(c"dimnames".as_ptr()) }
+    crate::sexp::symbol::install_str("dimnames")
 }
 
 /// Get the "levels" symbol.
 pub unsafe fn R_LevelsSymbol() -> SEXP {
-    unsafe { Rf_install(c"levels".as_ptr()) }
+    crate::sexp::symbol::install_str("levels")
 }
 
 /// Get the "use.names" symbol.
 pub fn R_UseNamesSymbol() -> SEXP {
-    unsafe { Rf_install(c"use.names".as_ptr()) }
+    crate::sexp::symbol::install_str("use.names")
 }
 
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
-    unsafe { Rf_install(c"tsp".as_ptr()) }
+    crate::sexp::symbol::install_str("tsp")
 }
 
 /// Get the "srcref" symbol.
 pub fn R_SrcRefSymbol() -> SEXP {
-    unsafe { Rf_install(c"srcref".as_ptr()) }
+    crate::sexp::symbol::install_str("srcref")
 }
 
 /// Get the "srcfile" symbol.
 pub fn R_SrcFileSymbol() -> SEXP {
-    unsafe { Rf_install(c"srcfile".as_ptr()) }
+    crate::sexp::symbol::install_str("srcfile")
 }
 
 /// Get the "row.names" symbol.
 pub fn R_RowNamesSymbol() -> SEXP {
-    unsafe { Rf_install(c"row.names".as_ptr()) }
+    crate::sexp::symbol::install_str("row.names")
 }
 
 /// Get the ".Environment" symbol.
 pub fn R_EnvironmentSymbol() -> SEXP {
-    unsafe { Rf_install(c".Environment".as_ptr()) }
+    crate::sexp::symbol::install_str(".Environment")
 }
 
 // ---------------------------------------------------------------------------
@@ -460,7 +460,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 /// Get the length of an object via the "length" attribute.
 pub fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
-        let len_sym = Rf_install(c"length".as_ptr());
+        let len_sym = crate::sexp::symbol::install_str("length");
         let val = getAttrib(x, len_sym);
         if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP {
             let data = crate::sexp::accessors::INTEGER(val);

@@ -80,16 +80,16 @@ fn choose_ops_method(
         });
         let actuals = actuals_owner.as_raw();
         let head = Rf_lang3(
-            Rf_install(c"::".as_ptr()),
-            Rf_install(c"base".as_ptr()),
-            Rf_install(c"chooseOpsMethod".as_ptr()),
+            crate::sexp::symbol::install_str("::"),
+            crate::sexp::symbol::install_str("base"),
+            crate::sexp::symbol::install_str("chooseOpsMethod"),
         );
         let _head_guard = protect(head);
         let expression = Rf_lang2(head, R_NilValue());
         SETCDR(expression, actuals);
         let _expression_guard = protect(expression);
         let fun = R_findVar(
-            Rf_install(c"chooseOpsMethod".as_ptr()),
+            crate::sexp::symbol::install_str("chooseOpsMethod"),
             super::runtime::base_env(),
         );
         let result = crate::eval::closure::applyClosure(
@@ -1586,7 +1586,7 @@ mod owned_argument_tests {
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
         let call_head = factory
-            .wrap(unsafe { Rf_install(c"sum".as_ptr()) })
+            .wrap(crate::sexp::symbol::install_str("sum"))
             .unwrap();
         let value = factory
             .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })

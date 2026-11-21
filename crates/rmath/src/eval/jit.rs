@@ -1086,7 +1086,7 @@ mod tests {
                 ))
                 .unwrap();
             let target_name = factory
-                .wrap(crate::sexp::symbol::Rf_install(c"exec_target".as_ptr()))
+                .wrap(crate::sexp::symbol::install_str("exec_target"))
                 .unwrap();
             crate::sexp::envir::defineVar(
                 expression_name.as_raw(),
@@ -1214,13 +1214,13 @@ mod tests {
             .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(100) })
             .unwrap();
         let seed_symbol = factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"seed".as_ptr()) })
+            .wrap(crate::sexp::symbol::install_str("seed"))
             .unwrap();
         let x_symbol = factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) })
+            .wrap(crate::sexp::symbol::install_str("x"))
             .unwrap();
         let absent_symbol = factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"absent".as_ptr()) })
+            .wrap(crate::sexp::symbol::install_str("absent"))
             .unwrap();
         let forwarded = factory.promise(&seed_symbol, &global).unwrap();
         unsafe {
@@ -1457,12 +1457,12 @@ mod tests {
         let session = RSession::new();
 
         session.with_active(|| unsafe {
-            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let x_sym = crate::sexp::symbol::install_str("x");
             let formals = crate::sexp::constructors::Rf_allocList(1);
             crate::sexp::accessors::SETTAG(formals, x_sym);
             crate::sexp::accessors::SETCAR(formals, R_MissingArg());
             let body = crate::sexp::constructors::Rf_lang3(
-                crate::sexp::symbol::Rf_install(c"+".as_ptr()),
+                crate::sexp::symbol::install_str("+"),
                 x_sym,
                 crate::sexp::constructors::Rf_ScalarInteger(1),
             );
@@ -1486,7 +1486,7 @@ mod tests {
         let session = RSession::new();
 
         session.with_active(|| unsafe {
-            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let x_sym = crate::sexp::symbol::install_str("x");
             let formals = crate::sexp::constructors::Rf_allocList(1);
             crate::sexp::accessors::SETTAG(formals, x_sym);
             crate::sexp::accessors::SETCAR(formals, R_MissingArg());
@@ -1514,13 +1514,13 @@ mod tests {
         let session = RSession::new();
 
         session.with_active(|| unsafe {
-            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let x_sym = crate::sexp::symbol::install_str("x");
             let formals = crate::sexp::constructors::Rf_allocList(1);
             crate::sexp::accessors::SETTAG(formals, x_sym);
             crate::sexp::accessors::SETCAR(formals, R_MissingArg());
 
             let supported_body = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"+".as_ptr()),
+                crate::sexp::symbol::install_str("+"),
                 x_sym,
             );
             let supported = crate::mainutils::dstruct::mkCLOSXP(
@@ -1534,7 +1534,7 @@ mod tests {
             assert_eq!(TYPEOF(BODY(compiled)), SEXPTYPE::BCODESXP);
 
             let unsupported_body = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"user_fun".as_ptr()),
+                crate::sexp::symbol::install_str("user_fun"),
                 x_sym,
             );
             let unsupported = crate::mainutils::dstruct::mkCLOSXP(

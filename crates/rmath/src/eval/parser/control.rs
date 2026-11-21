@@ -64,8 +64,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let alt = self.parse_expr()?;
-            unsafe {
-                let if_sym = Rf_install(c"if".as_ptr());
+            {
+                let if_sym = crate::sexp::symbol::install_str("if");
                 let nil = R_NilValue();
                 let alt_cell = self.cons(alt, nil)?;
                 let body_cell = self.cons(body, alt_cell)?;
@@ -81,8 +81,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             // not postfix call openers: `if (c) f()\n(x)` is two expressions
             // (gram.y), not `f()(x)`.
             self.pos = body_end;
-            unsafe {
-                let if_sym = Rf_install(c"if".as_ptr());
+            {
+                let if_sym = crate::sexp::symbol::install_str("if");
                 self.lang3(if_sym, cond, body)
             }
         }
@@ -108,8 +108,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         self.skip_newlines();
         let body = self.parse_expr()?;
 
-        unsafe {
-            let for_sym = Rf_install(c"for".as_ptr());
+        {
+            let for_sym = crate::sexp::symbol::install_str("for");
             let nil = R_NilValue();
             let body_cell = self.cons(body, nil)?;
             let seq_cell = self.cons(seq, body_cell)?;
@@ -133,8 +133,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         self.skip_newlines();
         let body = self.parse_expr()?;
 
-        unsafe {
-            let while_sym = Rf_install(c"while".as_ptr());
+        {
+            let while_sym = crate::sexp::symbol::install_str("while");
             self.lang3(while_sym, cond, body)
         }
     }
@@ -145,8 +145,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         self.skip_newlines();
         let body = self.parse_expr()?;
 
-        unsafe {
-            let repeat_sym = Rf_install(c"repeat".as_ptr());
+        {
+            let repeat_sym = crate::sexp::symbol::install_str("repeat");
             self.lang2(repeat_sym, body)
         }
     }
@@ -191,7 +191,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             let class_cell = self.cons(cls, R_NilValue())?;
             SETTAG(class_cell, crate::sexp::attrib_core::R_ClassSymbol());
             SET_ATTRIB(srcref, class_cell);
-            let fn_sym = Rf_install(c"function".as_ptr());
+            let fn_sym = crate::sexp::symbol::install_str("function");
             let nil = R_NilValue();
             // GNU gram.y: lang4(function, formals, body, R_NilValue) plus
             // a `srcref` attribute. Putting the integer vector in the 4th
@@ -206,16 +206,16 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 if self.keep_srcrefs {
                     let attr_cell = self.cons(srcref, nil)?;
-                    SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
+                    SETTAG(attr_cell, crate::sexp::symbol::install_str("srcref"));
                     SET_ATTRIB(call, attr_cell);
                 }
                 if self.keep_srcrefs
                     && !body.is_null()
                     && TYPEOF(body) == SEXPTYPE::LANGSXP
-                    && CAR(body) != Rf_install(c"{".as_ptr())
+                    && CAR(body) != crate::sexp::symbol::install_str("{")
                 {
                     let body_attr = self.cons(srcref, nil)?;
-                    SETTAG(body_attr, Rf_install(c"srcref".as_ptr()));
+                    SETTAG(body_attr, crate::sexp::symbol::install_str("srcref"));
                     SET_ATTRIB(body, body_attr);
                 }
             }

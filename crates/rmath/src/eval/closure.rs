@@ -406,7 +406,7 @@ fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
             crate::sexp::accessors::SET_CLOENV(op, methods);
             return methods;
         }
-        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
+        let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
         let tables = crate::sexp::envir::R_findVarInFrame(cloenv, all_mtable);
         let is_generic_snapshot = !tables.is_null()
             && tables != crate::sexp::globals::R_UnboundValue()
@@ -424,7 +424,7 @@ fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
         if !is_generic_snapshot {
             return cloenv;
         }
-        let sg = crate::sexp::symbol::Rf_install(c"standardGeneric".as_ptr());
+        let sg = crate::sexp::symbol::install_str("standardGeneric");
         let snap = crate::sexp::envir::R_findVarInFrame(cloenv, sg);
         let live = crate::sexp::envir::R_findVarInFrame(methods, sg);
         if is_function_sexp(live) && !is_function_sexp(snap) {
@@ -454,7 +454,7 @@ fn reparent_empty_utils_runner(op: SEXP, cloenv: SEXP) -> SEXP {
         let Some(utils) = crate::mainutils::essentials::cached_namespace_by_name("utils") else {
             return cloenv;
         };
-        let symbol = crate::sexp::symbol::Rf_install(c"RweaveLatexRuncode".as_ptr());
+        let symbol = crate::sexp::symbol::install_str("RweaveLatexRuncode");
         let mut bound = crate::sexp::envir::R_findVarInFrame(utils, symbol);
         if crate::sexp::accessors::TYPEOF(bound) == crate::sexp::ffi::SEXPTYPE::PROMSXP {
             bound = crate::sexp::envir::forcePromise(bound);
@@ -947,7 +947,7 @@ mod owned_matcher_tests {
                 .wrap(crate::sexp::constructors::Rf_ScalarInteger(314))
                 .unwrap();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(c"sentinel".as_ptr()),
+                crate::sexp::symbol::install_str("sentinel"),
                 value.as_raw(),
                 global.as_raw(),
             );
@@ -1033,7 +1033,7 @@ mod owned_matcher_tests {
                     .wrap(crate::sexp::constructors::Rf_ScalarInteger(314))
                     .unwrap();
                 crate::sexp::envir::defineVar(
-                    crate::sexp::symbol::Rf_install(c"sentinel".as_ptr()),
+                    crate::sexp::symbol::install_str("sentinel"),
                     value.as_raw(),
                     global.as_raw(),
                 );

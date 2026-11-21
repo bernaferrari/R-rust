@@ -50,7 +50,7 @@ fn gnu_methods_tail_fixtures_execute_vector_calls_and_replacements() {
         assert_eq!(result.unwrap().logical_elt(0), Some(TRUE), "{assertion}");
         unsafe {
             let function = own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+                crate::sexp::symbol::install_str("f"),
                 session.global_env().unwrap().as_raw(),
             ));
             assert!(
@@ -98,7 +98,7 @@ fn gnu_methods_tail_fixtures_execute_vector_calls_and_replacements() {
     let result = result.unwrap().into_owned().unwrap();
     unsafe {
         let function = own_operand(crate::sexp::envir::R_findVar(
-            crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+            crate::sexp::symbol::install_str("f"),
             session.global_env().unwrap().as_raw(),
         ));
         let body = own_operand(crate::sexp::accessors::BODY(function.as_raw()));
@@ -461,7 +461,7 @@ fn test_bc_eval_setvar2_writes_enclosing_frame() {
         crate::sexp::accessors::SET_ENCLOS(child, parent);
     }
 
-    let sym = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
+    let sym = crate::sexp::symbol::install_str("x");
     // Pre-bind in the parent so SETVAR2's setVar updates that frame
     // (mirrors <<- when the symbol already exists in an enclosing env).
     unsafe {
@@ -600,7 +600,7 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
         let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
         crate::sexp::accessors::SET_FORMALS(clos, R_NilValue());
         let body = Rf_cons(
-            crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
+            crate::sexp::symbol::install_str("gc"),
             R_NilValue(),
         );
         crate::sexp::accessors::SET_TYPEOF(body, SEXPTYPE::LANGSXP.as_c_int());
@@ -653,9 +653,9 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
     let mut session = crate::sexp::session::RSession::new_without_default_packages();
     let (symbol, env) = session.with_active(|| unsafe {
         let env = crate::sexp::globals::R_GlobalEnv();
-        let symbol = crate::sexp::symbol::Rf_install(c"lookup_gc_value".as_ptr());
+        let symbol = crate::sexp::symbol::install_str("lookup_gc_value");
         let call = Rf_cons(
-            crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
+            crate::sexp::symbol::install_str("gc"),
             R_NilValue(),
         );
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
@@ -799,7 +799,7 @@ fn owned_gnu_makeclosure_survives_collecting_srcref_and_pool_replacement() {
         assert!(callbacks.get() >= 2);
         assert_eq!(result.typeof_(), SEXPTYPE::CLOSXP);
         assert_eq!(result.try_body().unwrap().integer_elt(0), Some(7));
-        let symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+        let symbol = crate::sexp::symbol::install_str("srcref");
         assert_eq!(
             *INTEGER(crate::attrib_core::getAttrib(result.as_raw(), symbol)),
             91
@@ -815,7 +815,7 @@ fn owned_gnu_colon_keeps_coercions_and_constants_across_collecting_callbacks() {
         let lhs = crate::sexp::constructors::Rf_mkString(c"1".as_ptr());
         let rhs = crate::sexp::constructors::Rf_mkString(c"3".as_ptr());
         let call = Rf_cons(
-            crate::sexp::symbol::Rf_install(c":".as_ptr()),
+            crate::sexp::symbol::install_str(":"),
             Rf_cons(lhs, Rf_cons(rhs, R_NilValue())),
         );
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());

@@ -1395,7 +1395,7 @@ mod tests {
             let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
             let observed = own_operand(crate::attrib_core::getAttrib(
                 result.as_raw(),
-                Rf_install(c"observed".as_ptr()),
+                crate::sexp::symbol::install_str("observed"),
             ));
             let head = observed.try_car().unwrap().into_owned().unwrap();
             let object_cell = observed.try_cdr().unwrap().into_owned().unwrap();
@@ -1461,11 +1461,11 @@ mod tests {
                     own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
                 assert_eq!(crate::sexp::globals::R_Visible(), 0);
                 let rhs = own_operand(crate::sexp::envir::R_findVar(
-                    Rf_install(c"rhs".as_ptr()),
+                    crate::sexp::symbol::install_str("rhs"),
                     env.as_raw(),
                 ));
                 let object = own_operand(crate::sexp::envir::R_findVar(
-                    Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("x"),
                     env.as_raw(),
                 ));
                 assert_eq!(
@@ -1488,7 +1488,7 @@ mod tests {
                 } else {
                     let mark = own_operand(crate::attrib_core::getAttrib(
                         object.as_raw(),
-                        Rf_install(c"modified".as_ptr()),
+                        crate::sexp::symbol::install_str("modified"),
                     ));
                     assert_eq!(mark.logical_elt(0), Some(1));
                 }
@@ -1571,7 +1571,7 @@ mod tests {
                 R_NilValue(),
             );
             let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
-            let symbol = crate::sexp::symbol::Rf_install(c"expression".as_ptr());
+            let symbol = crate::sexp::symbol::install_str("expression");
             let attribute = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
             assert_eq!(attribute.typeof_(), SEXPTYPE::SYMSXP);
             assert_eq!(
@@ -1607,9 +1607,9 @@ mod tests {
                 R_NilValue(),
             );
             let result = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
-            let symbol = crate::sexp::symbol::Rf_install(c"code".as_ptr());
+            let symbol = crate::sexp::symbol::install_str("code");
             let object_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
-            let symbol = crate::sexp::symbol::Rf_install(c"rhs".as_ptr());
+            let symbol = crate::sexp::symbol::install_str("rhs");
             let rhs_expr = own_operand(crate::attrib_core::getAttrib(result.as_raw(), symbol));
             assert_eq!(
                 symbol_name_from_sexp(object_expr.as_raw()).as_deref(),
@@ -1660,11 +1660,11 @@ mod tests {
 
         unsafe {
             defineVar(
-                Rf_install(c"x".as_ptr()),
+                crate::sexp::symbol::install_str("x"),
                 Rf_ScalarInteger(9),
                 env.clone().as_raw(),
             );
-            let sym = Rf_install(c"x".as_ptr());
+            let sym = crate::sexp::symbol::install_str("x");
             let bcode = compile_expr(sym, env.clone().as_raw()).expect("symbol should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 9);
@@ -1678,14 +1678,14 @@ mod tests {
 
         unsafe {
             defineVar(
-                Rf_install(c"x".as_ptr()),
+                crate::sexp::symbol::install_str("x"),
                 Rf_ScalarInteger(5),
                 env.clone().as_raw(),
             );
             let call = Rf_cons(
-                Rf_install(c"+".as_ptr()),
+                crate::sexp::symbol::install_str("+"),
                 Rf_cons(
-                    Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("x"),
                     Rf_cons(Rf_ScalarInteger(1), R_NilValue()),
                 ),
             );
@@ -1706,7 +1706,7 @@ mod tests {
 
         unsafe {
             let call = Rf_cons(
-                Rf_install(c"!".as_ptr()),
+                crate::sexp::symbol::install_str("!"),
                 Rf_cons(
                     crate::sexp::constructors::Rf_ScalarLogical(crate::sexp::ffi::FALSE),
                     R_NilValue(),
@@ -1729,17 +1729,17 @@ mod tests {
 
         unsafe {
             let assign = Rf_cons(
-                Rf_install(c"<-".as_ptr()),
+                crate::sexp::symbol::install_str("<-"),
                 Rf_cons(
-                    Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("x"),
                     Rf_cons(Rf_ScalarInteger(1), R_NilValue()),
                 ),
             );
             crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
 
             let block = Rf_cons(
-                Rf_install(c"{".as_ptr()),
-                Rf_cons(assign, Rf_cons(Rf_install(c"x".as_ptr()), R_NilValue())),
+                crate::sexp::symbol::install_str("{"),
+                Rf_cons(assign, Rf_cons(crate::sexp::symbol::install_str("x"), R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(block, SEXPTYPE::LANGSXP.as_c_int());
 
@@ -1748,7 +1748,7 @@ mod tests {
             assert_eq!(*INTEGER(result), 1);
             assert_eq!(
                 *INTEGER(crate::sexp::envir::R_findVar(
-                    Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("x"),
                     env.as_raw()
                 )),
                 1
@@ -1768,22 +1768,22 @@ mod tests {
             *values.add(1) = 2;
             *values.add(2) = 3;
 
-            let sum = Rf_install(c"sum".as_ptr());
+            let sum = crate::sexp::symbol::install_str("sum");
             defineVar(sum, Rf_ScalarInteger(0), env);
             let add = Rf_cons(
-                Rf_install(c"+".as_ptr()),
-                Rf_cons(sum, Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue())),
+                crate::sexp::symbol::install_str("+"),
+                Rf_cons(sum, Rf_cons(crate::sexp::symbol::install_str("i"), R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(add, SEXPTYPE::LANGSXP.as_c_int());
             let assign = Rf_cons(
-                Rf_install(c"<-".as_ptr()),
+                crate::sexp::symbol::install_str("<-"),
                 Rf_cons(sum, Rf_cons(add, R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
             let for_call = Rf_cons(
-                Rf_install(c"for".as_ptr()),
+                crate::sexp::symbol::install_str("for"),
                 Rf_cons(
-                    Rf_install(c"i".as_ptr()),
+                    crate::sexp::symbol::install_str("i"),
                     Rf_cons(sequence, Rf_cons(assign, R_NilValue())),
                 ),
             );
@@ -1796,9 +1796,9 @@ mod tests {
 
             let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let empty_for = Rf_cons(
-                Rf_install(c"for".as_ptr()),
+                crate::sexp::symbol::install_str("for"),
                 Rf_cons(
-                    Rf_install(c"i".as_ptr()),
+                    crate::sexp::symbol::install_str("i"),
                     Rf_cons(empty, Rf_cons(R_NilValue(), R_NilValue())),
                 ),
             );
@@ -1809,7 +1809,7 @@ mod tests {
                 R_NilValue()
             );
             assert_eq!(
-                crate::sexp::envir::R_findVar(Rf_install(c"i".as_ptr()), env),
+                crate::sexp::envir::R_findVar(crate::sexp::symbol::install_str("i"), env),
                 R_NilValue()
             );
         });
@@ -1821,26 +1821,26 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            let counter = Rf_install(c"counter".as_ptr());
+            let counter = crate::sexp::symbol::install_str("counter");
             defineVar(counter, Rf_ScalarInteger(0), env.clone().as_raw());
 
             let condition = Rf_cons(
-                Rf_install(c"<".as_ptr()),
+                crate::sexp::symbol::install_str("<"),
                 Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1_000), R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(condition, SEXPTYPE::LANGSXP.as_c_int());
             let increment = Rf_cons(
-                Rf_install(c"+".as_ptr()),
+                crate::sexp::symbol::install_str("+"),
                 Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(increment, SEXPTYPE::LANGSXP.as_c_int());
             let assign = Rf_cons(
-                Rf_install(c"<-".as_ptr()),
+                crate::sexp::symbol::install_str("<-"),
                 Rf_cons(counter, Rf_cons(increment, R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(assign, SEXPTYPE::LANGSXP.as_c_int());
             let while_call = Rf_cons(
-                Rf_install(c"while".as_ptr()),
+                crate::sexp::symbol::install_str("while"),
                 Rf_cons(condition, Rf_cons(assign, R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(while_call, SEXPTYPE::LANGSXP.as_c_int());
@@ -1894,13 +1894,13 @@ mod tests {
         let session = RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
             let function = Rf_cons(
-                Rf_install(c"function".as_ptr()),
+                crate::sexp::symbol::install_str("function"),
                 Rf_cons(R_NilValue(), Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(function, SEXPTYPE::LANGSXP.as_c_int());
             let final_value = Rf_ScalarInteger(37);
             let block = Rf_cons(
-                Rf_install(c"{".as_ptr()),
+                crate::sexp::symbol::install_str("{"),
                 Rf_cons(function, Rf_cons(final_value, R_NilValue())),
             );
             crate::sexp::accessors::SET_TYPEOF(block, SEXPTYPE::LANGSXP.as_c_int());

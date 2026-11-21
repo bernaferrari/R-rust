@@ -220,9 +220,7 @@ fn owned_private_bytecode_reuses_nested_loop_origins_after_next_and_break_gc() {
                 let domain = access.domain();
                 let variable = access
                     .with_native(|_| {
-                        domain.wrap(unsafe {
-                            crate::sexp::symbol::Rf_install(c"private_loop_reuse".as_ptr())
-                        })
+                        domain.wrap(crate::sexp::symbol::install_str("private_loop_reuse"))
                     })
                     .unwrap();
                 let sequence = access
@@ -267,9 +265,7 @@ fn owned_private_bytecode_for_break_returns_original_false_after_collecting_call
             let domain = access.domain();
             let variable = access
                 .with_native(|_| {
-                    domain.wrap(unsafe {
-                        crate::sexp::symbol::Rf_install(c"private_for_break".as_ptr())
-                    })
+                    domain.wrap(crate::sexp::symbol::install_str("private_for_break"))
                 })
                 .unwrap();
             (variable, domain.logical(false))

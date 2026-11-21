@@ -120,7 +120,7 @@ pub(crate) fn eval_gnu_vecsubset(
     rho: SEXP,
     subset2: bool,
 ) -> SEXP {
-    unsafe {
+    {
         let args = Rf_cons(x, Rf_cons(index, R_NilValue()));
         let _args = own_operand(args);
         let generic = if subset2 { c"[[" } else { c"[" };
@@ -130,7 +130,7 @@ pub(crate) fn eval_gnu_vecsubset(
         if subset2 {
             crate::mainutils::subset::do_subset2_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                crate::sexp::symbol::install_str("[["),
                 args,
                 rho,
             )
@@ -141,14 +141,14 @@ pub(crate) fn eval_gnu_vecsubset(
             // component recycling, balanced bookkeeping).
             crate::mainutils::subset::do_subset(
                 call,
-                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                crate::sexp::symbol::install_str("["),
                 args,
                 rho,
             )
         } else {
             crate::mainutils::subset::subset_default_after_failed_dispatch(
                 call,
-                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                crate::sexp::symbol::install_str("["),
                 args,
                 rho,
             )
@@ -165,7 +165,7 @@ pub(crate) fn eval_gnu_subset_indices(
     rho: SEXP,
     subset2: bool,
 ) -> SEXP {
-    unsafe {
+    {
         let _x = own_operand(x);
         let _index_roots = indices
             .iter()
@@ -187,14 +187,14 @@ pub(crate) fn eval_gnu_subset_indices(
         if subset2 {
             crate::mainutils::subset::do_subset2_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                crate::sexp::symbol::install_str("[["),
                 args,
                 rho,
             )
         } else {
             crate::mainutils::subset::subset_default_after_failed_dispatch(
                 call,
-                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                crate::sexp::symbol::install_str("["),
                 args,
                 rho,
             )
@@ -220,20 +220,20 @@ pub(crate) fn eval_gnu_vecsubassign(
         let rhs = crate::mainutils::subset::factor_replacement_codes(x, rhs, call);
         let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
         let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
         let args = Rf_cons(x, Rf_cons(index, value));
         let _args = own_operand(args);
         if subset2 {
             crate::mainutils::subassign::do_subassign2_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[[<-"),
                 args,
                 rho,
             )
         } else {
             crate::mainutils::subassign::do_subassign_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[<-"),
                 args,
                 rho,
             )
@@ -262,20 +262,20 @@ pub(crate) fn eval_gnu_matsubassign(
         let _column = own_operand(column);
         let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
         let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
         let args = Rf_cons(x, Rf_cons(row, Rf_cons(column, value)));
         let _args = own_operand(args);
         if subset2 {
             crate::mainutils::subassign::do_subassign2_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[[<-"),
                 args,
                 rho,
             )
         } else {
             crate::mainutils::subassign::do_subassign_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[<-"),
                 args,
                 rho,
             )
@@ -305,7 +305,7 @@ pub(crate) fn eval_gnu_subassign_indices(
             .collect::<Vec<_>>();
         let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
         let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::Rf_install(c"value".as_ptr()));
+        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
         let mut args = value;
         let mut roots = Vec::with_capacity(indices.len() + 1);
         roots.push(own_operand(args));
@@ -319,14 +319,14 @@ pub(crate) fn eval_gnu_subassign_indices(
         if subset2 {
             crate::mainutils::subassign::do_subassign2_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[[<-"),
                 args,
                 rho,
             )
         } else {
             crate::mainutils::subassign::do_subassign_dflt(
                 call,
-                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                crate::sexp::symbol::install_str("[<-"),
                 args,
                 rho,
             )

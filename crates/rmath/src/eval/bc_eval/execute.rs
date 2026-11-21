@@ -372,7 +372,7 @@ pub(crate) fn eval_gnu_adapter(
                         let srcref_owned = own_operand(VECTOR_ELT(fb, 2));
                         let srcref = srcref_owned.as_raw();
                         if srcref != R_NilValue() && !srcref.is_null() {
-                            let srcref_symbol = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+                            let srcref_symbol = crate::sexp::symbol::install_str("srcref");
                             crate::attrib_core::setAttrib(value, srcref_symbol, srcref);
                         }
                     }
@@ -975,7 +975,7 @@ pub(crate) fn eval_gnu_adapter(
                                 let args = Rf_cons(value, R_NilValue());
                                 let _args = own_operand(args);
                                 let op = crate::sexp::envir::findFun(
-                                    crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                                    crate::sexp::symbol::install_str("log"),
                                     super::super::runtime::base_env(),
                                 );
                                 let result = crate::eval::arithmetic::do_math1(call, op, args, rho);
@@ -1000,7 +1000,7 @@ pub(crate) fn eval_gnu_adapter(
                                     let args = Rf_cons(value, tail);
                                     let _args = own_operand(args);
                                     let op = crate::sexp::envir::findFun(
-                                        crate::sexp::symbol::Rf_install(c"log".as_ptr()),
+                                        crate::sexp::symbol::install_str("log"),
                                         super::super::runtime::base_env(),
                                     );
                                     let result =
@@ -1201,7 +1201,7 @@ pub(crate) fn eval_gnu_adapter(
                     let result = with_stack_rooted(&stack, lhs, || {
                         with_stack_rooted(&stack, rhs, || {
                             let op = crate::sexp::envir::findFun(
-                                crate::sexp::symbol::Rf_install(c":".as_ptr()),
+                                crate::sexp::symbol::install_str(":"),
                                 super::super::runtime::base_env(),
                             );
                             // GNU asReal coerces strings ("5", "a"). The seq
@@ -1502,14 +1502,14 @@ pub(crate) fn eval_gnu_adapter(
                         } else if opcode == super::super::bytecode::GNU_OP_DFLTSUBSET2 {
                             crate::mainutils::subset::do_subset2_dflt(
                                 frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[[".as_ptr()),
+                                crate::sexp::symbol::install_str("[["),
                                 args,
                                 rho,
                             )
                         } else {
                             crate::mainutils::subset::subset_default_after_failed_dispatch(
                                 frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[".as_ptr()),
+                                crate::sexp::symbol::install_str("["),
                                 args,
                                 rho,
                             )
@@ -1591,7 +1591,7 @@ pub(crate) fn eval_gnu_adapter(
                         argument_roots.push(own_operand(args));
                         crate::sexp::accessors::SETTAG(
                             args,
-                            crate::sexp::symbol::Rf_install(c"value".as_ptr()),
+                            crate::sexp::symbol::install_str("value"),
                         );
                         for index in (frame.marker + 2..depth).rev() {
                             args = Rf_cons(stack.at(index), args);
@@ -1612,14 +1612,14 @@ pub(crate) fn eval_gnu_adapter(
                         if opcode == super::super::bytecode::GNU_OP_DFLTSUBASSIGN2 {
                             crate::mainutils::subassign::do_subassign2_dflt(
                                 frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[[<-".as_ptr()),
+                                crate::sexp::symbol::install_str("[[<-"),
                                 args,
                                 rho,
                             )
                         } else {
                             crate::mainutils::subassign::do_subassign_dflt(
                                 frame.call.as_raw(),
-                                crate::sexp::symbol::Rf_install(c"[<-".as_ptr()),
+                                crate::sexp::symbol::install_str("[<-"),
                                 args,
                                 rho,
                             )

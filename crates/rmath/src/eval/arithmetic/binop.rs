@@ -423,7 +423,7 @@ pub(crate) fn set_single_string_class(result: SEXP, class_name: &str) {
         let _class_guard = protect(class);
         let cstr = CString::new(class_name).unwrap_or_default();
         SET_STRING_ELT(class, 0, Rf_mkChar(cstr.as_ptr()));
-        setAttrib(result, Rf_install(c"class".as_ptr()), class);
+        setAttrib(result, crate::sexp::symbol::install_str("class"), class);
     }
 }
 
@@ -448,14 +448,14 @@ pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
             let _class_guard = protect(class);
             SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
             SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
-            setAttrib(result, Rf_install(c"class".as_ptr()), class);
+            setAttrib(result, crate::sexp::symbol::install_str("class"), class);
         }
 
-        let tzone = getAttrib(source, Rf_install(c"tzone".as_ptr()));
+        let tzone = getAttrib(source, crate::sexp::symbol::install_str("tzone"));
         if !tzone.is_null() && tzone != R_NilValue() {
             setAttrib(
                 result,
-                Rf_install(c"tzone".as_ptr()),
+                crate::sexp::symbol::install_str("tzone"),
                 crate::mainutils::duplicate::duplicate(tzone),
             );
         }
@@ -463,9 +463,9 @@ pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
 }
 
 pub(crate) fn first_summary_data_arg(args: SEXP) -> SEXP {
-    unsafe {
-        let na_rm_sym = Rf_install(c"na.rm".as_ptr());
-        let finite_sym = Rf_install(c"finite".as_ptr());
+    {
+        let na_rm_sym = crate::sexp::symbol::install_str("na.rm");
+        let finite_sym = crate::sexp::symbol::install_str("finite");
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {
             if TAG(p) != na_rm_sym && TAG(p) != finite_sym {

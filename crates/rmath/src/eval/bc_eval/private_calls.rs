@@ -148,10 +148,10 @@ pub(crate) fn private_target_call_owned(
             let (temporary, value_tag) = access.with_native(|owner| {
                 Ok((
                     owner
-                        .sexp(unsafe { crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr()) })?
+                        .sexp(crate::sexp::symbol::install_str("*tmp*"))?
                         .into_owned()?,
                     owner
-                        .sexp(unsafe { crate::sexp::symbol::Rf_install(c"value".as_ptr()) })?
+                        .sexp(crate::sexp::symbol::install_str("value"))?
                         .into_owned()?,
                 ))
             })?;
@@ -315,19 +315,17 @@ pub(crate) fn private_replacement_path_owned(
                     Ok((
                         Some(
                             owner
-                                .sexp(unsafe { crate::sexp::symbol::Rf_install(c"$".as_ptr()) })?
+                                .sexp(crate::sexp::symbol::install_str("$"))?
                                 .into_owned()?,
                         ),
                         Some(
                             owner
-                                .sexp(unsafe { crate::sexp::symbol::Rf_install(c"$<-".as_ptr()) })?
+                                .sexp(crate::sexp::symbol::install_str("$<-"))?
                                 .into_owned()?,
                         ),
                         Some(
                             owner
-                                .sexp(unsafe {
-                                    crate::sexp::symbol::Rf_install(c"*vtmp*".as_ptr())
-                                })?
+                                .sexp(crate::sexp::symbol::install_str("*vtmp*"))?
                                 .into_owned()?,
                         ),
                     ))
@@ -522,7 +520,7 @@ pub(crate) fn private_replacement_chain_owned(
 
             let modified_expression = access.with_native(|owner| {
                 owner
-                    .sexp(unsafe { crate::sexp::symbol::Rf_install(c"*vtmp*".as_ptr()) })?
+                    .sexp(crate::sexp::symbol::install_str("*vtmp*"))?
                     .into_owned()
             })?;
             let mut targets = Vec::new();

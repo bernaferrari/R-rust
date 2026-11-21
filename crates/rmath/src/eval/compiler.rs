@@ -164,10 +164,10 @@ fn new_compiler_environment() -> SEXP {
         );
         // GNU's compiler namespace reports the engine version.
         {
-            let info_sym = Rf_install(c".__NAMESPACE__.".as_ptr());
+            let info_sym = crate::sexp::symbol::install_str(".__NAMESPACE__.");
             let info = crate::sexp::envir::R_findVarInFrame(env, info_sym);
             if !info.is_null() && info != crate::sexp::globals::R_UnboundValue() {
-                let spec_sym = Rf_install(c"spec".as_ptr());
+                let spec_sym = crate::sexp::symbol::install_str("spec");
                 let spec = crate::sexp::envir::R_findVarInFrame(info, spec_sym);
                 if !spec.is_null()
                     && spec != crate::sexp::globals::R_UnboundValue()
@@ -334,7 +334,7 @@ mod tests {
             let _args = protect(args);
             crate::sexp::accessors::SETTAG(
                 crate::sexp::accessors::CDR(args),
-                Rf_install(c"options".as_ptr()),
+                crate::sexp::symbol::install_str("options"),
             );
             let compiled = do_cmpfun(R_NilValue(), R_NilValue(), args, R_NilValue());
             let _compiled = protect(compiled);

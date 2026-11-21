@@ -35,18 +35,18 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         self.expect(&Token::RBrace)?;
 
         let call = if exprs.is_empty() {
-            unsafe {
-                let brace_sym = Rf_install(c"{".as_ptr());
+            {
+                let brace_sym = crate::sexp::symbol::install_str("{");
                 self.lang2(brace_sym, R_NilValue())?
             }
         } else if exprs.len() == 1 {
-            unsafe {
-                let brace_sym = Rf_install(c"{".as_ptr());
+            {
+                let brace_sym = crate::sexp::symbol::install_str("{");
                 self.lang2(brace_sym, exprs.pop().unwrap_or_else(R_NilValue))?
             }
         } else {
-            unsafe {
-                let brace_sym = Rf_install(c"{".as_ptr());
+            {
+                let brace_sym = crate::sexp::symbol::install_str("{");
                 let nil = R_NilValue();
                 let mut list = self.cons(exprs.pop().unwrap_or(nil), nil)?;
                 while let Some(e) = exprs.pop() {
@@ -89,7 +89,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     crate::sexp::accessors::SET_VECTOR_ELT(srcref_list, i as i64, srcref);
                 }
                 let attr_cell = self.cons(srcref_list, R_NilValue())?;
-                SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
+                SETTAG(attr_cell, crate::sexp::symbol::install_str("srcref"));
                 SET_ATTRIB(call, attr_cell);
             }
         }
@@ -129,8 +129,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             }
             Token::DotDotDot => {
                 self.advance();
-                unsafe {
-                    let sym = Rf_install(c"...".as_ptr());
+                {
+                    let sym = crate::sexp::symbol::install_str("...");
                     Ok(sym)
                 }
             }
@@ -226,8 +226,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             }
             Token::DotDotDot => {
                 self.advance();
-                unsafe {
-                    let sym = Rf_install(c"...".as_ptr());
+                {
+                    let sym = crate::sexp::symbol::install_str("...");
                     Ok((None, sym))
                 }
             }

@@ -16,8 +16,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let operand = self.parse_help_operand()?;
-            unsafe {
-                let op = Rf_install(c"?".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("?");
                 self.lang2(op, operand)?
             }
         } else {
@@ -27,8 +27,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_help_rhs()?;
-            unsafe {
-                let op = Rf_install(c"?".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("?");
                 left = self.lang3(op, left, right)?;
             }
         }
@@ -43,8 +43,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let operand = self.parse_help_operand()?;
-            unsafe {
-                let op = Rf_install(c"?".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("?");
                 return self.lang2(op, operand);
             }
         }
@@ -69,11 +69,11 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 let op = self.advance().clone();
                 self.skip_newlines();
                 let right = self.parse_assignment()?;
-                unsafe {
+                {
                     let op_sym = match op {
-                        Token::Assign => Rf_install(c"=".as_ptr()),
-                        Token::LeftSuper => Rf_install(c"<<-".as_ptr()),
-                        _ => Rf_install(c"<-".as_ptr()),
+                        Token::Assign => crate::sexp::symbol::install_str("="),
+                        Token::LeftSuper => crate::sexp::symbol::install_str("<<-"),
+                        _ => crate::sexp::symbol::install_str("<-"),
                     };
                     self.lang3(op_sym, left, right)
                 }
@@ -87,8 +87,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.skip_newlines();
                     let target = self.parse_tilde()?;
                     // x -> y is equivalent to y <- x
-                    unsafe {
-                        let op_sym = Rf_install(c"<-".as_ptr());
+                    {
+                        let op_sym = crate::sexp::symbol::install_str("<-");
                         value = self.lang3(op_sym, target, value)?;
                     }
                 }
@@ -104,8 +104,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_or()?;
-            unsafe {
-                let op = Rf_install(c"~".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("~");
                 return self.lang2(op, right);
             }
         }
@@ -125,8 +125,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 self.advance();
                 self.skip_newlines();
                 let right = self.parse_or()?;
-                unsafe {
-                    let op = Rf_install(c"~".as_ptr());
+                {
+                    let op = crate::sexp::symbol::install_str("~");
                     left = self.lang3(op, left, right)?;
                 }
             } else {
@@ -153,8 +153,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.advance();
                     self.skip_newlines();
                     let right = self.parse_and()?;
-                    unsafe {
-                        let op = Rf_install(c"||".as_ptr());
+                    {
+                        let op = crate::sexp::symbol::install_str("||");
                         left = self.lang3(op, left, right)?;
                     }
                 }
@@ -162,8 +162,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.advance();
                     self.skip_newlines();
                     let right = self.parse_and()?;
-                    unsafe {
-                        let op = Rf_install(c"|".as_ptr());
+                    {
+                        let op = crate::sexp::symbol::install_str("|");
                         left = self.lang3(op, left, right)?;
                     }
                 }
@@ -189,8 +189,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.advance();
                     self.skip_newlines();
                     let right = self.parse_not()?;
-                    unsafe {
-                        let op = Rf_install(c"&&".as_ptr());
+                    {
+                        let op = crate::sexp::symbol::install_str("&&");
                         left = self.lang3(op, left, right)?;
                     }
                 }
@@ -198,8 +198,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.advance();
                     self.skip_newlines();
                     let right = self.parse_not()?;
-                    unsafe {
-                        let op = Rf_install(c"&".as_ptr());
+                    {
+                        let op = crate::sexp::symbol::install_str("&");
                         left = self.lang3(op, left, right)?;
                     }
                 }
@@ -212,8 +212,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         if self.peek() == &Token::Not {
             self.advance();
             let operand = self.parse_comparison()?;
-            unsafe {
-                let op = Rf_install(c"!".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("!");
                 self.lang2(op, operand)
             }
         } else {
@@ -256,8 +256,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let body = self.parse_addition()?;
-            unsafe {
-                let op = Rf_install(c"~".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("~");
                 return self.lang2(op, body);
             }
         }
@@ -519,12 +519,12 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     /// `findExtractorChainPHCell()`. Returns the cell to overwrite with
     /// the pipe LHS.
     pub(crate) fn find_extractor_placeholder_cell(&self, expr: SEXP) -> Option<SEXP> {
-        unsafe {
+        {
             let fun = CAR(expr);
-            let bracket = Rf_install(c"[".as_ptr());
-            let bracket2 = Rf_install(c"[[".as_ptr());
-            let dollar = Rf_install(c"$".as_ptr());
-            let at = Rf_install(c"@".as_ptr());
+            let bracket = crate::sexp::symbol::install_str("[");
+            let bracket2 = crate::sexp::symbol::install_str("[[");
+            let dollar = crate::sexp::symbol::install_str("$");
+            let at = crate::sexp::symbol::install_str("@");
             if fun != bracket && fun != bracket2 && fun != dollar && fun != at {
                 return None;
             }
@@ -575,8 +575,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let exp = self.parse_unary()?;
-            unsafe {
-                let op = Rf_install(c"^".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str("^");
                 self.lang3(op, base, exp)
             }
         } else {
@@ -604,8 +604,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_unary()?;
-            unsafe {
-                let op = Rf_install(c":".as_ptr());
+            {
+                let op = crate::sexp::symbol::install_str(":");
                 left = self.lang3(op, left, right)?;
             }
         }
@@ -631,26 +631,26 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 // `-x^2` is `-(x^2)`.  parse_power also delegates the
                 // exponent back to parse_unary, so `2^-2` remains valid.
                 let operand = self.parse_unary_operand()?;
-                unsafe {
-                    let op = Rf_install(c"-".as_ptr());
+                {
+                    let op = crate::sexp::symbol::install_str("-");
                     self.lang2(op, operand)
                 }
             }
             Token::Plus => {
                 self.advance();
                 let operand = self.parse_unary_operand()?;
-                unsafe {
+                {
                     // stock R keeps the call: `+"a"` errors at runtime
                     // ("invalid argument to unary operator")
-                    let op = Rf_install(c"+".as_ptr());
+                    let op = crate::sexp::symbol::install_str("+");
                     self.lang2(op, operand)
                 }
             }
             Token::Not => {
                 self.advance();
                 let operand = self.parse_unary_operand()?;
-                unsafe {
-                    let op = Rf_install(c"!".as_ptr());
+                {
+                    let op = crate::sexp::symbol::install_str("!");
                     self.lang2(op, operand)
                 }
             }

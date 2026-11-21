@@ -177,7 +177,7 @@ fn owned_restore_tmp_saved_value_survives_detachment_gc_and_unrelated_insertion(
     let old = unsafe {
         crate::sexp::envir::R_findVarInFrame(
             environment.as_raw(),
-            crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr()),
+            crate::sexp::symbol::install_str("*tmp*"),
         )
     };
     let old_node = crate::sexp::memory::checked_projection(old).unwrap().1;

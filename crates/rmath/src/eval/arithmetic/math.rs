@@ -142,7 +142,7 @@ pub fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if has_class(x, "factor") {
             // stock Math.factor stops, attributed to the method call
-            let f = Rf_install(c"Math.factor".as_ptr());
+            let f = crate::sexp::symbol::install_str("Math.factor");
             let method_call = Rf_lang2(f, CAR(CDR(call)));
             let _method_guard = protect(method_call);
             crate::mainutils::errors::errorcall_str(

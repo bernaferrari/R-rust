@@ -692,7 +692,7 @@ mod tests {
     fn unknown_builtin_reports_error_instead_of_null() {
         let _session = RSession::new();
         unsafe {
-            let sym = Rf_install(c"not_ported_builtin".as_ptr());
+            let sym = crate::sexp::symbol::install_str("not_ported_builtin");
             let prim = crate::eval::primitive::make_primitive_binding(
                 "not_ported_builtin",
                 SEXPTYPE::BUILTINSXP,

@@ -41,8 +41,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     let slots = self.parse_subscript_slots(&Token::RBracket)?;
                     self.expect(&Token::RBracket)?;
 
-                    unsafe {
-                        let bracket_sym = Rf_install(c"[".as_ptr());
+                    {
+                        let bracket_sym = crate::sexp::symbol::install_str("[");
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in slots.into_iter().rev() {
@@ -72,8 +72,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     self.expect(&Token::RBracket)?;
                     self.expect(&Token::RBracket)?;
 
-                    unsafe {
-                        let dbracket_sym = Rf_install(c"[[".as_ptr());
+                    {
+                        let dbracket_sym = crate::sexp::symbol::install_str("[[");
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in slots.into_iter().rev() {
@@ -96,8 +96,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 Token::Dollar => {
                     self.advance();
                     let name = self.parse_member_name()?;
-                    unsafe {
-                        let dollar_sym = Rf_install(c"$".as_ptr());
+                    {
+                        let dollar_sym = crate::sexp::symbol::install_str("$");
                         let nil = R_NilValue();
                         let name_cell = self.cons(name, nil)?;
                         let args = self.cons(expr, name_cell)?;
@@ -112,10 +112,10 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 Token::DoubleColon | Token::TripleColon => {
                     let op_token = self.advance();
                     let name = self.parse_member_name()?;
-                    unsafe {
+                    {
                         let op = match op_token {
-                            Token::TripleColon => Rf_install(c":::".as_ptr()),
-                            _ => Rf_install(c"::".as_ptr()),
+                            Token::TripleColon => crate::sexp::symbol::install_str(":::"),
+                            _ => crate::sexp::symbol::install_str("::"),
                         };
                         expr = self.lang3(op, expr, name)?;
                     }
@@ -124,8 +124,8 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 Token::At => {
                     self.advance();
                     let name = self.parse_member_name()?;
-                    unsafe {
-                        let at_sym = Rf_install(c"@".as_ptr());
+                    {
+                        let at_sym = crate::sexp::symbol::install_str("@");
                         let nil = R_NilValue();
                         let name_cell = self.cons(name, nil)?;
                         let args = self.cons(expr, name_cell)?;

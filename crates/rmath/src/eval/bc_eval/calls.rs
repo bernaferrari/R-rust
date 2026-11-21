@@ -69,8 +69,8 @@ pub(crate) fn eval_gnu_setter_call(
 ) -> SEXP {
     unsafe {
         use crate::sexp::object::Sexp;
-        let value_sym = crate::sexp::symbol::Rf_install(c"value".as_ptr());
-        let tmp_sym = crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr());
+        let value_sym = crate::sexp::symbol::install_str("value");
+        let tmp_sym = crate::sexp::symbol::install_str("*tmp*");
         match TYPEOF(fun) {
             kind if kind == SEXPTYPE::BUILTINSXP => {
                 if frame_args == R_NilValue() {
@@ -159,7 +159,7 @@ pub(crate) fn eval_gnu_getter_call(
 ) -> SEXP {
     unsafe {
         use crate::sexp::object::Sexp;
-        let tmp_sym = crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr());
+        let tmp_sym = crate::sexp::symbol::install_str("*tmp*");
         match TYPEOF(fun) {
             kind if kind == SEXPTYPE::BUILTINSXP => {
                 if frame_args == R_NilValue() {

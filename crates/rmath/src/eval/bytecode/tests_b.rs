@@ -1260,7 +1260,7 @@ fn gnu_cfg_executes_shadowed_stop_switch_without_source_fallback() {
     session.with_active(|| unsafe {
         let function = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_GlobalEnv(),
-            crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+            crate::sexp::symbol::install_str("f"),
         );
         assert!(
             crate::eval::bc_eval::BCODE_IS_GNU(crate::sexp::accessors::BODY(function)),

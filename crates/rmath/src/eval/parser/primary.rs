@@ -15,15 +15,15 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             Token::KwFunction | Token::KwLambda => self.parse_function(),
             Token::KwBreak => {
                 self.advance();
-                unsafe {
-                    let sym = Rf_install(c"break".as_ptr());
+                {
+                    let sym = crate::sexp::symbol::install_str("break");
                     self.lang2(sym, R_NilValue())
                 }
             }
             Token::KwNext => {
                 self.advance();
-                unsafe {
-                    let sym = Rf_install(c"next".as_ptr());
+                {
+                    let sym = crate::sexp::symbol::install_str("next");
                     self.lang2(sym, R_NilValue())
                 }
             }
@@ -41,12 +41,12 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 let expr = self.parse_expr()?;
                 self.skip_newlines();
                 self.expect(&Token::RParen)?;
-                unsafe {
+                {
                     // Parentheses are part of R's language object, not merely
                     // parser grouping.  In particular, evaluating the `(`
                     // primitive makes its value visible, so `(x <- 1)` is
                     // auto-printed even though the inner assignment is not.
-                    let sym = Rf_install(c"(".as_ptr());
+                    let sym = crate::sexp::symbol::install_str("(");
                     self.lang2(sym, expr)
                 }
             }

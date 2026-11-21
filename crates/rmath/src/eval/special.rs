@@ -768,13 +768,13 @@ fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP {
             sr = crate::sexp::attrib_core::getAttrib(
                 call,
-                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                crate::sexp::symbol::install_str("srcref"),
             );
         }
         if !sr.is_null() && sr != R_NilValue() && TYPEOF(sr) == SEXPTYPE::INTSXP {
             crate::sexp::attrib_core::setAttrib(
                 clos,
-                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                crate::sexp::symbol::install_str("srcref"),
                 sr,
             );
         }

@@ -183,11 +183,11 @@ pub(crate) fn expr_contains_pipebind(expr: SEXP) -> bool {
     if expr.is_null() {
         return false;
     }
-    unsafe {
+    {
         if TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return false;
         }
-        let pipebind_sym = Rf_install(c"=>".as_ptr());
+        let pipebind_sym = crate::sexp::symbol::install_str("=>");
         let nil = R_NilValue();
         let mut cur = expr;
         while cur != nil {

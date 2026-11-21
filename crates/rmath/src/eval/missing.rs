@@ -1183,7 +1183,7 @@ pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             let _inner_guard = protect(inner);
             let target_val = CAR(inner);
             // GNU evalseq: `names(*tmp*)` so a quoted call is not re-run.
-            let tmp_sym = crate::sexp::symbol::Rf_install(c"*tmp*".as_ptr());
+            let tmp_sym = crate::sexp::symbol::install_str("*tmp*");
             crate::sexp::envir::defineVar(tmp_sym, target_val, rho);
             let rest = CDDR(expr);
             let new_inner = Rf_cons(tmp_sym, rest);

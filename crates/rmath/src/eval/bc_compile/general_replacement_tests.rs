@@ -259,7 +259,7 @@ fn owned_general_replacement_sole_targets_and_rhs_survive_detached_pool_gc() {
             drop(mutable);
             unsafe {
                 crate::sexp::envir::defineVar(
-                    crate::sexp::symbol::Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("x"),
                     nil.as_raw(),
                     captured.as_raw(),
                 );

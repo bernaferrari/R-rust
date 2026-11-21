@@ -31,10 +31,10 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
         ))
     };
     let expected_visible = crate::sexp::globals::R_Visible();
-    let symbol = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
+    let symbol = crate::sexp::symbol::install_str("x");
     let expected_object =
         unsafe { own_operand(crate::sexp::envir::R_findVar(symbol, environment.as_raw())) };
-    let events_symbol = unsafe { crate::sexp::symbol::Rf_install(c"events".as_ptr()) };
+    let events_symbol = crate::sexp::symbol::install_str("events");
     let expected_events = unsafe {
         own_operand(crate::sexp::envir::R_findVar(
             events_symbol,
@@ -46,7 +46,7 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
     let original_rhs = if setup_code.contains("rhsValue") {
         Some(unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"rhsValue".as_ptr()),
+                crate::sexp::symbol::install_str("rhsValue"),
                 environment.as_raw(),
             ))
         })
@@ -400,7 +400,7 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
         let environment = session.global_env().unwrap().into_owned().unwrap();
         let function = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+                crate::sexp::symbol::install_str("f"),
                 environment.as_raw(),
             ))
         };
@@ -408,7 +408,7 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
         assert!(unsafe { super::super::bc_eval::BCODE_IS_GNU(body.as_raw()) });
         let rhs = unsafe {
             own_operand(crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"rhs".as_ptr()),
+                crate::sexp::symbol::install_str("rhs"),
                 environment.as_raw(),
             ))
         };
@@ -438,7 +438,7 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
     let environment = session.global_env().unwrap().into_owned().unwrap();
     let function = unsafe {
         own_operand(crate::sexp::envir::R_findVar(
-            crate::sexp::symbol::Rf_install(c"f".as_ptr()),
+            crate::sexp::symbol::install_str("f"),
             environment.as_raw(),
         ))
     };
@@ -455,7 +455,7 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
     };
     unsafe {
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c"actual".as_ptr()),
+            crate::sexp::symbol::install_str("actual"),
             result.as_raw(),
             environment.as_raw(),
         );
@@ -498,7 +498,7 @@ fn owned_compiled_subassignment_index_error_keeps_rhs_effects_and_recovers() {
     }))
     .expect_err("index callback must signal an R error");
     let source_message = error_message(source_error);
-    let events_symbol = unsafe { crate::sexp::symbol::Rf_install(c"events".as_ptr()) };
+    let events_symbol = crate::sexp::symbol::install_str("events");
     let expected_events = unsafe {
         own_operand(crate::sexp::envir::R_findVar(
             events_symbol,

@@ -90,7 +90,7 @@ fn source_provider_body(owner: OwnerToken<'_>, body: &str) -> Sexp<'static> {
             .unwrap();
         crate::sexp::envir::make_active_binding_raw(
             environment.as_raw(),
-            Rf_install(c"filename".as_ptr()),
+            crate::sexp::symbol::install_str("filename"),
             function.as_raw(),
         );
         let srcref = factory
@@ -98,7 +98,7 @@ fn source_provider_body(owner: OwnerToken<'_>, body: &str) -> Sexp<'static> {
             .unwrap();
         crate::sexp::attrib_core::setAttrib(
             srcref.as_raw(),
-            Rf_install(c"srcfile".as_ptr()),
+            crate::sexp::symbol::install_str("srcfile"),
             environment.as_raw(),
         );
         let buffer = factory
@@ -959,7 +959,7 @@ inner_fn <- function() {
             ))
             .unwrap();
         crate::sexp::envir::defineVar(
-            Rf_install(c"trigger_sample".as_ptr()),
+            crate::sexp::symbol::install_str("trigger_sample"),
             trigger_fn.as_raw(),
             crate::sexp::globals::R_GlobalEnv(),
         );
@@ -1026,11 +1026,11 @@ inner_fn <- compiler::cmpfun(inner_fn)
         }
         let outer_val = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_GlobalEnv(),
-            Rf_install(c"outer_fn".as_ptr()),
+            crate::sexp::symbol::install_str("outer_fn"),
         );
         let inner_val = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_GlobalEnv(),
-            Rf_install(c"inner_fn".as_ptr()),
+            crate::sexp::symbol::install_str("inner_fn"),
         );
         assert_eq!(
             TYPEOF(crate::sexp::accessors::BODY(outer_val)),
@@ -1116,20 +1116,20 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
             .unwrap();
         crate::sexp::envir::make_active_binding_raw(
             srcfile_env.as_raw(),
-            Rf_install(c"filename".as_ptr()),
+            crate::sexp::symbol::install_str("filename"),
             filename_fn.as_raw(),
         );
 
         let srcref = factory.wrap(Rf_ScalarInteger(42)).unwrap();
         crate::sexp::attrib_core::setAttrib(
             srcref.as_raw(),
-            Rf_install(c"srcfile".as_ptr()),
+            crate::sexp::symbol::install_str("srcfile"),
             srcfile_env.as_raw(),
         );
 
         // Active binding in global env that triggers R_WriteProfile(0) when
         // GNU_OP_GETVAR evaluates it, while R_Srcref == get_R_InBCInterpreter().
-        let trigger_sym = factory.wrap(Rf_install(c"gnu_bc_probe".as_ptr())).unwrap();
+        let trigger_sym = factory.wrap(crate::sexp::symbol::install_str("gnu_bc_probe")).unwrap();
         let sampled = std::rc::Rc::new(std::cell::Cell::new(false));
         let in_bc_seen = std::rc::Rc::new(std::cell::Cell::new(false));
         let sampled_cb = sampled.clone();

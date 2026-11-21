@@ -280,7 +280,7 @@ pub(crate) fn eval_gnu_istype(opcode: c_int, value: SEXP) -> SEXP {
 pub(crate) fn eval_gnu_dollar(call: SEXP, symbol: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if crate::sexp::accessors::OBJECT(x) != 0 {
-            let dollar = crate::sexp::symbol::Rf_install(c"$".as_ptr());
+            let dollar = crate::sexp::symbol::install_str("$");
             let mut op = crate::mainutils::names::R_Primitive(c"$".as_ptr());
             if op.is_null() || op == R_NilValue() {
                 op = crate::sexp::accessors::SYMVALUE(dollar);

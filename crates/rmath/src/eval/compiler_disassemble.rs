@@ -161,7 +161,7 @@ fn expand(code: SEXP, depth: usize) -> SEXP {
         bytecode::validate_gnu_bytecode_stream(words).unwrap_or_else(|e| compiler_error(e));
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _result_root = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_install(c".Code".as_ptr()));
+        SET_VECTOR_ELT(result, 0, crate::sexp::symbol::install_str(".Code"));
         let decoded = Rf_allocVector3(SEXPTYPE::VECSXP, words.len() as _);
         let _decoded_root = protect(decoded);
         SET_VECTOR_ELT(result, 1, decoded);

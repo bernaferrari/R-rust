@@ -65,12 +65,12 @@ pub(crate) fn factor_not_meaningful_warning(
     e1: SEXP,
     e2: SEXP,
 ) {
-    unsafe {
+    {
         // method is a fixed interned name; Rf_install needs a NUL suffix
         let f = if method == "Ops.ordered" {
-            Rf_install(c"Ops.ordered".as_ptr())
+            crate::sexp::symbol::install_str("Ops.ordered")
         } else {
-            Rf_install(c"Ops.factor".as_ptr())
+            crate::sexp::symbol::install_str("Ops.factor")
         };
         let method_call = if e2.is_null() || e2 == R_NilValue() {
             Rf_lang2(f, e1)
@@ -148,7 +148,7 @@ pub(crate) fn factor_as_character(f: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _out_guard = protect(out);
-        let levels = getAttrib(f, Rf_install(c"levels".as_ptr()));
+        let levels = getAttrib(f, crate::sexp::symbol::install_str("levels"));
         let levels_ok =
             !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP;
         let n_levels = if levels_ok { LENGTH(levels) } else { 0 };
@@ -193,8 +193,8 @@ pub(crate) fn na_level_sentinel(levels: SEXP, n_levels: i32) -> String {
 }
 
 pub(crate) fn rewritten_level_labels(f: SEXP) -> Vec<String> {
-    unsafe {
-        let levels = getAttrib(f, Rf_install(c"levels".as_ptr()));
+    {
+        let levels = getAttrib(f, crate::sexp::symbol::install_str("levels"));
         if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
             return Vec::new();
         }
@@ -237,7 +237,7 @@ pub(crate) fn unordered_factor_compare(
     sa: SEXP,
     sb: SEXP,
 ) -> Option<SEXP> {
-    unsafe {
+    {
         let a_factor = is_plain_factor(sa);
         let b_factor = is_plain_factor(sb);
         if !a_factor && !b_factor {
@@ -266,7 +266,7 @@ pub(crate) fn unordered_factor_compare(
                 None
             }
         };
-        let levels_of = |f: SEXP| -> SEXP { getAttrib(f, Rf_install(c"levels".as_ptr())) };
+        let levels_of = |f: SEXP| -> SEXP { getAttrib(f, crate::sexp::symbol::install_str("levels")) };
         let levels_have_no_na = |l: SEXP| -> bool {
             (0..LENGTH(l) as R_xlen_t).all(|i| {
                 let s = STRING_ELT(l, i as i64);

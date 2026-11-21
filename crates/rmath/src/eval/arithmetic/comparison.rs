@@ -538,8 +538,8 @@ pub(crate) fn factor_levels_match(value: SEXP, expected: &[String]) -> bool {
 }
 
 pub(crate) fn factor_levels(value: SEXP) -> Option<Vec<String>> {
-    unsafe {
-        let levels = getAttrib(value, Rf_install(c"levels".as_ptr()));
+    {
+        let levels = getAttrib(value, crate::sexp::symbol::install_str("levels"));
         if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
             return None;
         }
@@ -552,8 +552,8 @@ pub(crate) fn factor_levels(value: SEXP) -> Option<Vec<String>> {
 }
 
 pub(crate) fn has_class(value: SEXP, class_name: &str) -> bool {
-    unsafe {
-        let class = getAttrib(value, Rf_install(c"class".as_ptr()));
+    {
+        let class = getAttrib(value, crate::sexp::symbol::install_str("class"));
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
