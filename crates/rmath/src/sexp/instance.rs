@@ -438,9 +438,6 @@ pub struct RInstance {
     /// Per-instance gettext catalog and domain state.
     #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
-    /// Per-instance GraphApp GUI compatibility runtime state.
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    pub(crate) graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
     /// Per-instance symbol table for session-local interning.
@@ -657,8 +654,6 @@ impl RInstance {
             main_state: crate::mainutils::main::MainRuntimeState::default(),
             #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             intl_state: crate::intl::types::IntlRuntimeState::default(),
-            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-            graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),

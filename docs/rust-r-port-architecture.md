@@ -476,7 +476,7 @@ Intended boundaries when revisited:
 - **`r-translated-core`** — faithful translations that stay close to
   upstream and may speak raw `SEXP` internally: `eval/`, `library/`,
   `mainutils/`, `modules/`, and the C-port leaves (`appl`, `dist`,
-  `dpq`, `special`, `fprec`, `tre`, `trio`, `unix`, `graphapp`, `intl`,
+  `dpq`, `special`, `fprec`, `tre`, `trio`, `unix`, `intl`,
   `xdr`, `tzone*`, `rng`, `constants`, `error`, `utils`).
 - **`r-runtime`** — session-owned state and collection: `sexp/`
   ownership core (`memory`, `memory_ext`, `instance`, `session`,
