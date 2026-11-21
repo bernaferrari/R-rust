@@ -2,7 +2,7 @@ use std::os::raw::{c_double, c_int, c_uint};
 use std::ptr;
 
 use crate::attrib_core::{R_DimSymbol, setAttrib};
-use crate::sexp::accessors::INTEGER;
+use crate::sexp::accessors::SET_INTEGER_ELT;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
@@ -450,11 +450,11 @@ pub(super) fn open_null_pdf() {
 
 #[cfg(feature = "renderplot-device")]
 pub(crate) fn active_target() -> Option<GraphicsTarget> {
-    let capture = with_registry(|registry| unsafe {
-        (*registry.current_ptr())
-            .pdf
-            .as_ref()
-            .map(|pdf| pdf.capture.clone())
+    let capture = with_registry(|registry| {
+        let current = registry.current_ptr();
+        registry
+            .find_device_mut(current)
+            .and_then(|device| device.pdf.as_ref().map(|pdf| pdf.capture.clone()))
     });
     capture.map(GraphicsTarget::pdf).or_else(GraphicsTarget::ui)
 }
@@ -472,7 +472,12 @@ fn target_for_device(device: pGEDevDesc) -> Option<GraphicsTarget> {
     capture.map(GraphicsTarget::pdf).or_else(GraphicsTarget::ui)
 }
 
-fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -> Option<R> {
+/// Access a registered device descriptor through the registry; `None` for
+/// null or foreign pointers that do not name a live registry device.
+pub(crate) fn with_device_mut<R>(
+    gdd: pGEDevDesc,
+    f: impl FnOnce(&mut GEDeviceDesc) -> R,
+) -> Option<R> {
     if gdd.is_null() {
         return None;
     }
@@ -1199,7 +1204,7 @@ pub(crate) fn draw_raster(
     .unwrap_or(false)
 }
 
-unsafe fn open_default_device() {
+fn open_default_device() {
     unsafe {
         let defdev = crate::mainutils::options::GetOption(c"device".as_ptr());
         #[cfg(not(feature = "renderplot-device"))]
@@ -1313,40 +1318,41 @@ fn update_device_names(name: &std::ffi::CStr, device_label: c_int, current_label
     }
 }
 
+/// Exported engine entry point: returns the current device, opening the
+/// configured default device when none exists. `unsafe` because callers lend
+/// the raw descriptor to engine code that dereferences it directly.
 #[unsafe(export_name = "rmath_GEcurrentDevice")]
 pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
-    unsafe {
-        if NoDevices() != 0 {
-            if renderplot_scene_is_device() {
-                // The scene is already the device. options("device") is pdf(),
-                // and evaluating it writes Rplots.pdf into the working directory.
-                let label = with_registry(|registry| registry.open_new_device());
-                remember_device_name(c"renderplot", label);
-            } else {
-                static OPENING: std::sync::atomic::AtomicBool =
-                    std::sync::atomic::AtomicBool::new(false);
-                if OPENING
-                    .compare_exchange(
-                        false,
-                        true,
-                        std::sync::atomic::Ordering::SeqCst,
-                        std::sync::atomic::Ordering::SeqCst,
-                    )
-                    .is_ok()
-                {
-                    struct ClearFlag;
-                    impl Drop for ClearFlag {
-                        fn drop(&mut self) {
-                            OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
-                        }
+    if NoDevices() != 0 {
+        if renderplot_scene_is_device() {
+            // The scene is already the device. options("device") is pdf(),
+            // and evaluating it writes Rplots.pdf into the working directory.
+            let label = with_registry(|registry| registry.open_new_device());
+            remember_device_name(c"renderplot", label);
+        } else {
+            static OPENING: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if OPENING
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                struct ClearFlag;
+                impl Drop for ClearFlag {
+                    fn drop(&mut self) {
+                        OPENING.store(false, std::sync::atomic::Ordering::SeqCst);
                     }
-                    let _clear = ClearFlag;
-                    open_default_device();
                 }
+                let _clear = ClearFlag;
+                open_default_device();
             }
         }
-        with_registry(|registry| registry.current_ptr())
     }
+    with_registry(|registry| registry.current_ptr())
 }
 
 pub extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
@@ -1467,29 +1473,33 @@ pub extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
 
 pub extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
+/// `dev.capture` backend for registry devices. The raw descriptor is an
+/// engine boundary; the body validates it against the registry before any
+/// field access.
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
-    unsafe {
-        if _gdd.is_null() || (*_gdd).is_pdf() {
-            return R_NilValue();
+    let Some((width, height)) = with_device_mut(_gdd, |device| {
+        if device.is_pdf() || device.pixel_width <= 0 || device.pixel_height <= 0 {
+            None
+        } else {
+            Some((device.pixel_width, device.pixel_height))
         }
-        let width = (*_gdd).pixel_width;
-        let height = (*_gdd).pixel_height;
-        if width <= 0 || height <= 0 {
-            return R_NilValue();
+    })
+    .flatten() else {
+        return R_NilValue();
+    };
+    let len = width.saturating_mul(height);
+    let raster = Rf_allocVector(SEXPTYPE::INTSXP, len);
+    with_device_mut(_gdd, |device| {
+        for (index, pixel) in device.canvas.iter().take(len as usize).enumerate() {
+            SET_INTEGER_ELT(raster, index as c_int, *pixel);
         }
-        let len = width.saturating_mul(height);
-        let raster = Rf_allocVector(SEXPTYPE::INTSXP, len);
-        let out = INTEGER(raster);
-        for (index, pixel) in (*_gdd).canvas.iter().take(len as usize).enumerate() {
-            *out.add(index) = *pixel;
-        }
+    });
 
-        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim).add(0) = height;
-        *INTEGER(dim).add(1) = width;
-        setAttrib(raster, R_DimSymbol(), dim);
-        raster
-    }
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    SET_INTEGER_ELT(dim, 0, height);
+    SET_INTEGER_ELT(dim, 1, width);
+    setAttrib(raster, R_DimSymbol(), dim);
+    raster
 }
 
 #[cfg(test)]
@@ -1539,20 +1549,19 @@ mod tests {
     #[test]
     fn starts_on_null_device_only() {
         let _guard = reset_registry();
-        unsafe {
-            assert_eq!(NoDevices(), 1);
-            assert_eq!(NumDevices(), 1);
-            assert_eq!(curDevice(), 0);
-            // GNU devices.c: the null device occupies slot 0
-            // (R_Devices[0] = &nullDevice). GEcurrentDevice() would
-            // evaluate options("device") and open the default device, so
-            // inspect the null device through slot 0.
-            let null_device = GEgetDevice(0);
-            assert!(!null_device.is_null());
-            assert_eq!((*null_device).label, 1);
-            assert_eq!(nextDevice(0), 0);
-            assert_eq!(prevDevice(0), 0);
-        }
+        assert_eq!(NoDevices(), 1);
+        assert_eq!(NumDevices(), 1);
+        assert_eq!(curDevice(), 0);
+        // GNU devices.c: the null device occupies slot 0
+        // (R_Devices[0] = &nullDevice). GEcurrentDevice() would
+        // evaluate options("device") and open the default device, so
+        // inspect the null device through slot 0.
+        let null_device = GEgetDevice(0);
+        assert!(!null_device.is_null());
+        // SAFETY: `GEgetDevice` lends a registry-owned descriptor.
+        assert_eq!(unsafe { (*null_device).label }, 1);
+        assert_eq!(nextDevice(0), 0);
+        assert_eq!(prevDevice(0), 0);
     }
 
     #[test]
@@ -1565,8 +1574,8 @@ mod tests {
                 registry.open_new_device();
                 registry.open_new_device();
             });
-            let first = unsafe { GEgetDevice(1) };
-            let second = unsafe { GEgetDevice(2) };
+            let first = GEgetDevice(1);
+            let second = GEgetDevice(2);
             unsafe {
                 selectDevice(1);
                 crate::library::graphics::graphics::GSetState(1, first.cast());
@@ -1613,33 +1622,29 @@ mod tests {
             assert_eq!(registry.open_new_device(), 4);
         });
 
-        unsafe {
-            assert_eq!(NoDevices(), 0);
-            assert_eq!(NumDevices(), 4);
-            assert_eq!(curDevice(), 3);
-            assert_eq!(nextDevice(0), 1);
-            assert_eq!(nextDevice(1), 2);
-            assert_eq!(nextDevice(2), 3);
-            assert_eq!(nextDevice(3), 1);
-            assert_eq!(nextDevice(98), 1);
-            assert_eq!(prevDevice(0), 3);
-            assert_eq!(prevDevice(1), 3);
-            assert_eq!(prevDevice(2), 1);
-            assert_eq!(prevDevice(3), 2);
-            assert_eq!(prevDevice(98), 3);
-            assert!(!GEgetDevice(0).is_null());
-        }
+        assert_eq!(NoDevices(), 0);
+        assert_eq!(NumDevices(), 4);
+        assert_eq!(curDevice(), 3);
+        assert_eq!(nextDevice(0), 1);
+        assert_eq!(nextDevice(1), 2);
+        assert_eq!(nextDevice(2), 3);
+        assert_eq!(nextDevice(3), 1);
+        assert_eq!(nextDevice(98), 1);
+        assert_eq!(prevDevice(0), 3);
+        assert_eq!(prevDevice(1), 3);
+        assert_eq!(prevDevice(2), 1);
+        assert_eq!(prevDevice(3), 2);
+        assert_eq!(prevDevice(98), 3);
+        assert!(!GEgetDevice(0).is_null());
 
-        unsafe {
-            assert_eq!(selectDevice(0), 0);
-            assert_eq!(curDevice(), 4);
-            assert_eq!(selectDevice(98), 1);
-            assert_eq!(curDevice(), 1);
-            assert_eq!(selectDevice(1), 1);
-            assert_eq!(curDevice(), 1);
-            assert_eq!(selectDevice(0), 0);
-            assert_eq!(curDevice(), 5);
-        }
+        assert_eq!(selectDevice(0), 0);
+        assert_eq!(curDevice(), 4);
+        assert_eq!(selectDevice(98), 1);
+        assert_eq!(curDevice(), 1);
+        assert_eq!(selectDevice(1), 1);
+        assert_eq!(curDevice(), 1);
+        assert_eq!(selectDevice(0), 0);
+        assert_eq!(curDevice(), 5);
     }
 
     #[test]
@@ -1651,24 +1656,22 @@ mod tests {
             assert_eq!(registry.open_new_device(), 4);
         });
 
-        unsafe {
-            assert_eq!(curDevice(), 3);
-            killDevice(3);
-            assert_eq!(curDevice(), 1);
-            assert!(GEgetDevice(3).is_null());
-            assert!(!GEgetDevice(2).is_null());
+        assert_eq!(curDevice(), 3);
+        killDevice(3);
+        assert_eq!(curDevice(), 1);
+        assert!(GEgetDevice(3).is_null());
+        assert!(!GEgetDevice(2).is_null());
 
-            killDevice(1);
-            assert_eq!(curDevice(), 2);
-            assert!(!GEgetDevice(2).is_null());
+        killDevice(1);
+        assert_eq!(curDevice(), 2);
+        assert!(!GEgetDevice(2).is_null());
 
-            killDevice(2);
-            assert_eq!(curDevice(), 0);
-            assert!(GEgetDevice(2).is_null());
+        killDevice(2);
+        assert_eq!(curDevice(), 0);
+        assert!(GEgetDevice(2).is_null());
 
-            killDevice(0);
-            assert_eq!(curDevice(), 0);
-        }
+        killDevice(0);
+        assert_eq!(curDevice(), 0);
     }
 
     #[test]
@@ -1682,20 +1685,18 @@ mod tests {
                 assert_eq!(registry.open_new_device(), 2);
                 assert_eq!(registry.open_new_device(), 3);
             });
-            unsafe {
-                assert_eq!(NoDevices(), 0);
-                assert_eq!(NumDevices(), 3);
-                assert_eq!(curDevice(), 2);
-            }
+            assert_eq!(NoDevices(), 0);
+            assert_eq!(NumDevices(), 3);
+            assert_eq!(curDevice(), 2);
         });
 
-        right.with_protected(|| unsafe {
+        right.with_protected(|| {
             assert_eq!(NoDevices(), 1);
             assert_eq!(NumDevices(), 1);
             assert_eq!(curDevice(), 0);
         });
 
-        left.with_protected(|| unsafe {
+        left.with_protected(|| {
             assert_eq!(NoDevices(), 0);
             assert_eq!(NumDevices(), 3);
             assert_eq!(curDevice(), 2);

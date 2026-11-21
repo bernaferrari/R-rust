@@ -37,36 +37,36 @@ unsafe extern "C-unwind" fn c_dev_ask_new_page(
     unsafe { stubs::devAskNewPage(call, op, args, env) }
 }
 unsafe extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devholdflush(args) }
+    devices::devholdflush(args)
 }
 unsafe extern "C-unwind" fn c_devcur(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devcur(args) }
+    devices::devcur(args)
 }
 unsafe extern "C-unwind" fn c_devoff(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devoff(args) }
+    devices::devoff(args)
 }
 unsafe extern "C-unwind" fn c_devset(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devset(args) }
+    devices::devset(args)
 }
 unsafe extern "C-unwind" fn c_devcontrol(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devcontrol(args) }
+    devices::devcontrol(args)
 }
 unsafe extern "C-unwind" fn c_devdisplaylist(
     args: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devdisplaylist(args) }
+    devices::devdisplaylist(args)
 }
 unsafe extern "C-unwind" fn c_devcap(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devcap(args) }
+    devices::devcap(args)
 }
 unsafe extern "C-unwind" fn c_devsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devsize(args) }
+    devices::devsize(args)
 }
 unsafe extern "C-unwind" fn c_devnext(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devnext(args) }
+    devices::devnext(args)
 }
 unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { devices::devprev(args) }
+    devices::devprev(args)
 }
 unsafe extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { colors::do_palette(args) }
