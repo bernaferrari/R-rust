@@ -44,11 +44,13 @@ pub(crate) fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
             .wrap(rho)
             .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));
         match eval_expr(expr, env) {
-            // SAFETY: `handle_exec_continuation` reads the active runtime's
-            // global context (`(*ctx).sysparent`) through the registered
-            // instance pointer. This runs on the evaluating thread while the
-            // owner is pinned by `with_current`, and `result` stays rooted
-            // until the continuation value has been re-wrapped.
+            // SAFETY: `handle_exec_continuation` pins the context owner from
+            // the registered current-instance pointer (`pin_context_owner_in`)
+            // and reads the active runtime's global context
+            // (`(*ctx).sysparent`). Both pointers come from the instance
+            // registry for this thread, the owner stays pinned by
+            // `with_current` for the whole call, and `result` stays rooted
+            // until the continuation value has been re-wrapped and validated.
             Ok(result) => unsafe { super::super::jit::handle_exec_continuation(result.as_raw()) },
             Err(msg) => {
                 std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
