@@ -339,9 +339,7 @@ pub(crate) fn load_package_data_set(
                 let _scratch = protect(scratch);
                 let base = data_dir.join("Rdata");
                 eager_lazy_load_package_db(&base, scratch, &[])?;
-                let sym = crate::sexp::symbol::Rf_install(
-                    std::ffi::CString::new(topic).unwrap_or_default().as_ptr(),
-                );
+                let sym = install_cstr(&std::ffi::CString::new(topic).unwrap_or_default());
                 let value = find_var_in_frame(scratch, sym);
                 if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
                     define_var(sym, value, target_env);
@@ -388,32 +386,28 @@ pub(crate) fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), Strin
 }
 
 pub(super) fn define_package_name(package: &str, package_env: SEXP) {
-    unsafe {
-        let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
-        if !package_string.is_null() {
-            define_var(package_name_symbol(), package_string, package_env);
-        }
+    let package_string = mk_string_cstr(&CString::new(package).unwrap_or_default());
+    if !package_string.is_null() {
+        define_var(package_name_symbol(), package_string, package_env);
     }
 }
 
 pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
-    unsafe {
-        define_package_name(package, package_env);
-        let search_name = format!("package:{package}");
-        let search_string = Rf_mkString(CString::new(search_name).unwrap_or_default().as_ptr());
-        if !search_string.is_null() {
-            crate::sexp::attrib_core::setAttrib(package_env, name_symbol(), search_string);
-        }
-        let package_path = find_package_path(package);
-        if !package_path.is_empty() {
-            let path_string = Rf_mkString(CString::new(package_path).unwrap_or_default().as_ptr());
-            if !path_string.is_null() {
-                crate::sexp::attrib_core::setAttrib(
-                    package_env,
-                    install_str("path"),
-                    path_string,
-                );
-            }
+    define_package_name(package, package_env);
+    let search_name = format!("package:{package}");
+    let search_string = mk_string_cstr(&CString::new(search_name).unwrap_or_default());
+    if !search_string.is_null() {
+        crate::sexp::attrib_core::setAttrib(package_env, name_symbol(), search_string);
+    }
+    let package_path = find_package_path(package);
+    if !package_path.is_empty() {
+        let path_string = mk_string_cstr(&CString::new(package_path).unwrap_or_default());
+        if !path_string.is_null() {
+            crate::sexp::attrib_core::setAttrib(
+                package_env,
+                install_str("path"),
+                path_string,
+            );
         }
     }
 }
@@ -488,58 +482,56 @@ pub(super) fn ensure_s3methods_slot(info: SEXP) {
 }
 
 pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &NamespaceDirectives) {
-    unsafe {
-        let info_sym = install_str(".__NAMESPACE__.");
-        let info = find_var_in_frame(package_env, info_sym);
-        if info.is_null()
-            || info == crate::sexp::globals::R_UnboundValue()
-            || TYPEOF(info) != SEXPTYPE::ENVSXP
-        {
-            return;
-        }
-        let _info = protect(info);
-        let sym = install_str("S3methods");
-        let rows: Vec<_> = directives
-            .s3_methods
-            .iter()
-            .filter(|method| !method.generic.rsplit("::").next().unwrap_or("").is_empty())
-            .collect();
-        let n = i32::try_from(rows.len())
-            .unwrap_or_else(|_| package_error("too many S3 method declarations".to_owned()));
-        let methods = Rf_allocVector3(SEXPTYPE::STRSXP, i64::from(n) * 4);
-        let _methods = protect(methods);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _dim = protect(dim);
-        set_integer_checked(dim, 0, n);
-        set_integer_checked(dim, (1) as R_xlen_t, 4);
-        crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
-        // GNU metadata describes all declarations, including unavailable
-        // platform-specific methods. Binding registration skips those later.
-        for (row, method) in rows.iter().enumerate() {
-            let (package, generic) = match method.generic.rsplit_once("::") {
-                Some((package, generic)) => (Some(package), generic),
-                None => (None, method.generic.as_str()),
-            };
-            let name = method
-                .method
-                .clone()
-                .unwrap_or_else(|| format!("{generic}.{}", method.class));
-            for (col, text) in [
-                Some(generic),
-                Some(method.class.as_str()),
-                Some(name.as_str()),
-                package,
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let value = match text {
-                    Some(text) => Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr()),
-                    None => crate::sexp::globals::R_NaString(),
-                };
-                SET_STRING_ELT(methods, row as i64 + col as i64 * i64::from(n), value);
-            }
-        }
-        define_var(sym, methods, info);
+    let info_sym = install_str(".__NAMESPACE__.");
+    let info = find_var_in_frame(package_env, info_sym);
+    if info.is_null()
+        || info == crate::sexp::globals::R_UnboundValue()
+        || TYPEOF(info) != SEXPTYPE::ENVSXP
+    {
+        return;
     }
+    let _info = protect(info);
+    let sym = install_str("S3methods");
+    let rows: Vec<_> = directives
+        .s3_methods
+        .iter()
+        .filter(|method| !method.generic.rsplit("::").next().unwrap_or("").is_empty())
+        .collect();
+    let n = i32::try_from(rows.len())
+        .unwrap_or_else(|_| package_error("too many S3 method declarations".to_owned()));
+    let methods = Rf_allocVector3(SEXPTYPE::STRSXP, i64::from(n) * 4);
+    let _methods = protect(methods);
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _dim = protect(dim);
+    set_integer_checked(dim, 0, n);
+    set_integer_checked(dim, (1) as R_xlen_t, 4);
+    crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    // GNU metadata describes all declarations, including unavailable
+    // platform-specific methods. Binding registration skips those later.
+    for (row, method) in rows.iter().enumerate() {
+        let (package, generic) = match method.generic.rsplit_once("::") {
+            Some((package, generic)) => (Some(package), generic),
+            None => (None, method.generic.as_str()),
+        };
+        let name = method
+            .method
+            .clone()
+            .unwrap_or_else(|| format!("{generic}.{}", method.class));
+        for (col, text) in [
+            Some(generic),
+            Some(method.class.as_str()),
+            Some(name.as_str()),
+            package,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let value = match text {
+                Some(text) => mk_char_cstr(&CString::new(text).unwrap_or_default()),
+                None => crate::sexp::globals::R_NaString(),
+            };
+            SET_STRING_ELT(methods, row as i64 + col as i64 * i64::from(n), value);
+        }
+    }
+    define_var(sym, methods, info);
 }

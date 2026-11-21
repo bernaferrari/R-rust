@@ -406,7 +406,7 @@ pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
                 SET_STRING_ELT(
                     names,
                     i as R_xlen_t,
-                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                    mk_char_cstr(&CString::new(*name).unwrap_or_default()),
                 );
             }
             crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);

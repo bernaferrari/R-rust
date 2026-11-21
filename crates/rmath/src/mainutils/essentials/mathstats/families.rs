@@ -430,37 +430,35 @@ pub fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `power(lambda)` — Box-Cox GLM link name.
 pub fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let lambda = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
-            1.0
+    let lambda = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+        1.0
+    } else {
+        elt_real_safe(CAR(args), 0)
+    };
+    let name = if lambda <= 0.0 {
+        "log".to_string()
+    } else if (lambda - 1.0).abs() < 1e-12 {
+        "identity".to_string()
+    } else {
+        let r = (lambda * 1000.0).round() / 1000.0;
+        if (r - r.round()).abs() < 1e-12 {
+            format!("mu^{}", r as i64)
         } else {
-            elt_real_safe(CAR(args), 0)
-        };
-        let name = if lambda <= 0.0 {
-            "log".to_string()
-        } else if (lambda - 1.0).abs() < 1e-12 {
-            "identity".to_string()
-        } else {
-            let r = (lambda * 1000.0).round() / 1000.0;
-            if (r - r.round()).abs() < 1e-12 {
-                format!("mu^{}", r as i64)
-            } else {
-                format!("mu^{r}")
-            }
-        };
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_mkString(CString::new(name).unwrap().as_ptr()));
-        crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
-        let class = mk_string_cstr(c"link-glm");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
-    }
+            format!("mu^{r}")
+        }
+    };
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, mk_string_cstr(&CString::new(name).unwrap()));
+    crate::mainutils::essentials::set_string_names(result, &["name".to_string()]);
+    let class = mk_string_cstr(c"link-glm");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `Pair(x, y)` — two-column matrix with class `Pair`.
@@ -485,31 +483,29 @@ pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `naprint(x)` — omit/exclude count, else empty string.
 pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        let mut omit = false;
-        if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(class) {
-                let s = charsxp_cstring(STRING_ELT(class, i));
-                if s.to_bytes() == b"omit" || s.to_bytes() == b"exclude" {
-                    omit = true;
-                    break;
-                }
+    let x = CAR(args);
+    let class =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    let mut omit = false;
+    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(class) {
+            let s = charsxp_cstring(STRING_ELT(class, i));
+            if s.to_bytes() == b"omit" || s.to_bytes() == b"exclude" {
+                omit = true;
+                break;
             }
         }
-        if !omit {
-            return mk_string_cstr(c"");
-        }
-        let n = XLENGTH(x);
-        let msg = if n == 1 {
-            "1 observation deleted due to missingness".to_string()
-        } else {
-            format!("{n} observations deleted due to missingness")
-        };
-        Rf_mkString(CString::new(msg).unwrap().as_ptr())
     }
+    if !omit {
+        return mk_string_cstr(c"");
+    }
+    let n = XLENGTH(x);
+    let msg = if n == 1 {
+        "1 observation deleted due to missingness".to_string()
+    } else {
+        format!("{n} observations deleted due to missingness")
+    };
+    mk_string_cstr(&CString::new(msg).unwrap())
 }
 
 /// GNU `aov(y ~ x)` — `lm` with class `c("aov","lm")`.

@@ -63,70 +63,68 @@ pub fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `tz <- if(length(unique(tzones)) == 1L) tzones[[1L]] else NULL`;
 /// `.POSIXct(c(unlist(x)), tz)`
 pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let converted = convert_c_args(args, rho, &|v| {
-            if sexp_has_class(v, "POSIXct") {
-                v
-            } else {
-                do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
-            }
-        });
-        let _c = protect(converted);
-
-        // Collect the tzone attribute of every converted element; the result
-        // carries it only when the list is non-empty and all agree.
-        let mut tzones: Vec<Option<String>> = Vec::new();
-        let mut cell = converted;
-        while !cell.is_null() && cell != R_NilValue() {
-            let attr = crate::sexp::attrib_core::getAttrib(
-                CAR(cell),
-                install_str("tzone"),
-            );
-            let this = if !attr.is_null()
-                && attr != R_NilValue()
-                && TYPEOF(attr) == SEXPTYPE::STRSXP
-                && XLENGTH(attr) > 0
-            {
-                let ch = STRING_ELT(attr, 0);
-                if ch.is_null() {
-                    None
-                } else {
-                    Some(charsxp_text(ch).unwrap_or_default())
-                }
-            } else {
-                None
-            };
-            tzones.push(this);
-            cell = CDR(cell);
+    let converted = convert_c_args(args, rho, &|v| {
+        if sexp_has_class(v, "POSIXct") {
+            v
+        } else {
+            do_as_POSIXct(call, op, Rf_cons(v, R_NilValue()), rho)
         }
-        let tz = if let Some(first) = tzones.first()
-            && first.is_some()
-            && tzones.iter().all(|t| t == first)
+    });
+    let _c = protect(converted);
+
+    // Collect the tzone attribute of every converted element; the result
+    // carries it only when the list is non-empty and all agree.
+    let mut tzones: Vec<Option<String>> = Vec::new();
+    let mut cell = converted;
+    while !cell.is_null() && cell != R_NilValue() {
+        let attr = crate::sexp::attrib_core::getAttrib(
+            CAR(cell),
+            install_str("tzone"),
+        );
+        let this = if !attr.is_null()
+            && attr != R_NilValue()
+            && TYPEOF(attr) == SEXPTYPE::STRSXP
+            && XLENGTH(attr) > 0
         {
-            first.clone()
+            let ch = STRING_ELT(attr, 0);
+            if ch.is_null() {
+                None
+            } else {
+                Some(charsxp_text(ch).unwrap_or_default())
+            }
         } else {
             None
         };
-
-        let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
-        let _r = protect(r);
-        drop_empty_names(r);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _class = protect(class);
-        SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
-        SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
-        crate::sexp::attrib_core::setAttrib(r, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        if let Some(tz) = tz {
-            let tzone = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
-            let _t = protect(tzone);
-            crate::sexp::attrib_core::setAttrib(
-                r,
-                install_str("tzone"),
-                tzone,
-            );
-        }
-        r
+        tzones.push(this);
+        cell = CDR(cell);
     }
+    let tz = if let Some(first) = tzones.first()
+        && first.is_some()
+        && tzones.iter().all(|t| t == first)
+    {
+        first.clone()
+    } else {
+        None
+    };
+
+    let r = crate::mainutils::bind::do_c_dflt(call, op, converted, rho);
+    let _r = protect(r);
+    drop_empty_names(r);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _class = protect(class);
+    SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+    SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
+    crate::sexp::attrib_core::setAttrib(r, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    if let Some(tz) = tz {
+        let tzone = mk_string_cstr(&CString::new(tz.as_str()).unwrap_or_default());
+        let _t = protect(tzone);
+        crate::sexp::attrib_core::setAttrib(
+            r,
+            install_str("tzone"),
+            tzone,
+        );
+    }
+    r
 }
 
 fn drop_empty_names(x: SEXP) {

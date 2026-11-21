@@ -1,5 +1,6 @@
 #![allow(unused_imports)] // lib target flags this; the test target chains through it
 use super::*;
+use crate::sexp::symbol::Rf_install;
 
 #[cfg(test)]
 #[path = "simple_owned_tests.rs"]

@@ -129,7 +129,6 @@ pub(crate) fn charsxp_text(x: SEXP) -> Option<String> {
 /// Centralizes the single unsafe `Rf_ScalarLogical` FFI call so callers keep
 /// their bodies on the safe side of the boundary.
 pub(crate) fn scalar_logical(value: c_int) -> SEXP {
-    // SAFETY: allocates a scalar logical through the runtime constructor.
     Rf_ScalarLogical(value)
 }
 
@@ -740,7 +739,6 @@ pub(crate) fn sexp_key(x: SEXP) -> String {
     }
     let t = TYPEOF(x);
     if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::CLOSXP {
-        // SAFETY: x is a live SEXP retained by the caller's argument graph.
         let text = crate::mainutils::deparse::deparse1line(x, false);
         if !text.is_null() && text != crate::sexp::globals::R_NilValue() && XLENGTH(text) > 0 {
             let owner = active_owner();
@@ -776,8 +774,6 @@ pub(crate) fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
     if code <= 0 {
         return None;
     }
-    // SAFETY: x and the levels symbol are live SEXP values retained by the
-    // caller's argument graph; getAttrib performs no allocation callbacks here.
     let levels = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
     if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
         return None;
@@ -997,7 +993,6 @@ pub(crate) fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
     if x.is_null() || x == R_NilValue() {
         return false;
     }
-    // SAFETY: x is a live SEXP retained by the caller's argument graph.
     let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
     if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
         return false;
@@ -1232,4 +1227,9 @@ pub(crate) fn is_factor(x: SEXP) -> c_int {
 pub(crate) fn compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     // SAFETY: both values are live SEXPs; the comparison only reads them.
     unsafe { crate::mainutils::identical::R_compute_identical(x, y, flags) }
+}
+
+/// Unwrap a checked object result, raising the error as an R error.
+pub(crate) fn sexp_ok<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }

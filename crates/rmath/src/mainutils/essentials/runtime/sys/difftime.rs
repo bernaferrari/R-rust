@@ -115,240 +115,234 @@ fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
 
 /// GNU `difftime(time1, time2, units="auto")`.
 pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let time1 = CAR(args);
-        let time2 = CAR(CDR(args));
-        let mut units = "auto".to_string();
-        let mut cell = CDR(CDR(args));
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                let ch = STRING_ELT(value, 0);
-                if !ch.is_null() {
-                    units = charsxp_text(ch).unwrap_or_default();
+    let time1 = CAR(args);
+    let time2 = CAR(CDR(args));
+    let mut units = "auto".to_string();
+    let mut cell = CDR(CDR(args));
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            let ch = STRING_ELT(value, 0);
+            if !ch.is_null() {
+                units = charsxp_text(ch).unwrap_or_default();
+            }
+        }
+        cell = CDR(cell);
+    }
+    let n1 = XLENGTH(time1).max(0);
+    let n2 = XLENGTH(time2).max(0);
+    let n = n1.max(n2);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    let scale = match units.as_str() {
+        "auto" => 0.0,
+        "mins" => 60.0,
+        "hours" => 3600.0,
+        "days" => 86_400.0,
+        "weeks" => 7.0 * 86_400.0,
+        _ => 1.0,
+    };
+    // GNU difftime(units="auto") picks the unit from the SMALLEST
+    // finite |z| (all-NA => secs): zz <- min(abs(z), na.rm = TRUE).
+    let mut min_abs: Option<f64> = None;
+    for i in 0..n {
+        let a = difftime_seconds_at(time1, if n1 == 0 { 0 } else { i % n1 });
+        let b = difftime_seconds_at(time2, if n2 == 0 { 0 } else { i % n2 });
+        let z = a - b;
+        if z.is_finite() {
+            min_abs = Some(match min_abs {
+                Some(current) => current.min(z.abs()),
+                None => z.abs(),
+            });
+        }
+        set_real_checked(result, (i as usize) as R_xlen_t, z);
+    }
+    let units = if units == "auto" {
+        match min_abs {
+            Some(zz) if zz.is_finite() && zz >= 60.0 => {
+                if zz < 3600.0 {
+                    "mins".to_string()
+                } else if zz < 86400.0 {
+                    "hours".to_string()
+                } else {
+                    "days".to_string()
                 }
             }
-            cell = CDR(cell);
+            _ => "secs".to_string(),
         }
-        let n1 = XLENGTH(time1).max(0);
-        let n2 = XLENGTH(time2).max(0);
-        let n = n1.max(n2);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        let scale = match units.as_str() {
-            "auto" => 0.0,
+    } else {
+        units
+    };
+    let div = if scale == 0.0 {
+        match units.as_str() {
             "mins" => 60.0,
             "hours" => 3600.0,
             "days" => 86_400.0,
             "weeks" => 7.0 * 86_400.0,
             _ => 1.0,
-        };
-        // GNU difftime(units="auto") picks the unit from the SMALLEST
-        // finite |z| (all-NA => secs): zz <- min(abs(z), na.rm = TRUE).
-        let mut min_abs: Option<f64> = None;
+        }
+    } else {
+        scale
+    };
+    if div != 1.0 {
         for i in 0..n {
-            let a = difftime_seconds_at(time1, if n1 == 0 { 0 } else { i % n1 });
-            let b = difftime_seconds_at(time2, if n2 == 0 { 0 } else { i % n2 });
-            let z = a - b;
+            set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(result, (i as usize) as R_xlen_t) / div);
+        }
+    }
+
+    set_single_class(result, "difftime");
+    let u = mk_string_cstr(&std::ffi::CString::new(units.as_str())
+            .unwrap_or_default()
+            );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("units"),
+        u,
+    );
+    result
+}
+
+/// GNU `as.difftime(tim, units)`.
+pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let tim = CAR(args);
+    if crate::mainutils::objects::inherits2(tim, c"difftime") != 0 {
+        return tim;
+    }
+    if TYPEOF(tim) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(tim);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _r = protect(result);
+        for i in 0..n {
+            let ch = STRING_ELT(tim, i as i64);
+            let text = if ch.is_null() {
+                String::new()
+            } else {
+                charsxp_text(ch).unwrap_or_default()
+            };
+            let parts: Vec<f64> = text
+                .split(':')
+                .filter_map(|p| p.parse::<f64>().ok())
+                .collect();
+            let secs = match parts.as_slice() {
+                [h, m, s] => h * 3600.0 + m * 60.0 + s,
+                [m, s] => m * 60.0 + s,
+                [s] => *s,
+                _ => NA_REAL,
+            };
+            set_real_checked(result, (i as usize) as R_xlen_t, secs);
+        }
+        // GNU as.difftime(<character>) routes through difftime(...,
+        // units = "auto"): the unit is chosen from the SMALLEST finite
+        // |z| (all-NA => secs), so e.g. c("0:3:20","11:23:15") prints
+        // in mins, not secs.
+        let mut min_abs: Option<f64> = None;
+        for i in 0..n as usize {
+            let z = real_elt_checked(result, (i) as R_xlen_t);
             if z.is_finite() {
                 min_abs = Some(match min_abs {
                     Some(current) => current.min(z.abs()),
                     None => z.abs(),
                 });
             }
-            set_real_checked(result, (i as usize) as R_xlen_t, z);
         }
-        let units = if units == "auto" {
-            match min_abs {
-                Some(zz) if zz.is_finite() && zz >= 60.0 => {
-                    if zz < 3600.0 {
-                        "mins".to_string()
-                    } else if zz < 86400.0 {
-                        "hours".to_string()
-                    } else {
-                        "days".to_string()
-                    }
+        let units = match min_abs {
+            Some(zz) if zz.is_finite() && zz >= 60.0 => {
+                if zz < 3600.0 {
+                    "mins"
+                } else if zz < 86400.0 {
+                    "hours"
+                } else {
+                    "days"
                 }
-                _ => "secs".to_string(),
             }
-        } else {
-            units
+            _ => "secs",
         };
-        let div = if scale == 0.0 {
-            match units.as_str() {
+        if units != "secs" {
+            let div = match units {
                 "mins" => 60.0,
                 "hours" => 3600.0,
                 "days" => 86_400.0,
-                "weeks" => 7.0 * 86_400.0,
                 _ => 1.0,
-            }
-        } else {
-            scale
-        };
-        if div != 1.0 {
-            for i in 0..n {
-                set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(result, (i as usize) as R_xlen_t) / div);
-            }
-        }
-
-        set_single_class(result, "difftime");
-        let u = Rf_mkString(
-            std::ffi::CString::new(units.as_str())
-                .unwrap_or_default()
-                .as_ptr(),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("units"),
-            u,
-        );
-        result
-    }
-}
-
-/// GNU `as.difftime(tim, units)`.
-pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let tim = CAR(args);
-        if crate::mainutils::objects::inherits2(tim, c"difftime") != 0 {
-            return tim;
-        }
-        if TYPEOF(tim) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(tim);
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            let _r = protect(result);
-            for i in 0..n {
-                let ch = STRING_ELT(tim, i as i64);
-                let text = if ch.is_null() {
-                    String::new()
-                } else {
-                    charsxp_text(ch).unwrap_or_default()
-                };
-                let parts: Vec<f64> = text
-                    .split(':')
-                    .filter_map(|p| p.parse::<f64>().ok())
-                    .collect();
-                let secs = match parts.as_slice() {
-                    [h, m, s] => h * 3600.0 + m * 60.0 + s,
-                    [m, s] => m * 60.0 + s,
-                    [s] => *s,
-                    _ => NA_REAL,
-                };
-                set_real_checked(result, (i as usize) as R_xlen_t, secs);
-            }
-            // GNU as.difftime(<character>) routes through difftime(...,
-            // units = "auto"): the unit is chosen from the SMALLEST finite
-            // |z| (all-NA => secs), so e.g. c("0:3:20","11:23:15") prints
-            // in mins, not secs.
-            let mut min_abs: Option<f64> = None;
+            };
             for i in 0..n as usize {
-                let z = real_elt_checked(result, (i) as R_xlen_t);
-                if z.is_finite() {
-                    min_abs = Some(match min_abs {
-                        Some(current) => current.min(z.abs()),
-                        None => z.abs(),
-                    });
-                }
+                set_real_checked(result, (i) as R_xlen_t, real_elt_checked(result, (i) as R_xlen_t) / div);
             }
-            let units = match min_abs {
-                Some(zz) if zz.is_finite() && zz >= 60.0 => {
-                    if zz < 3600.0 {
-                        "mins"
-                    } else if zz < 86400.0 {
-                        "hours"
-                    } else {
-                        "days"
-                    }
-                }
-                _ => "secs",
-            };
-            if units != "secs" {
-                let div = match units {
-                    "mins" => 60.0,
-                    "hours" => 3600.0,
-                    "days" => 86_400.0,
-                    _ => 1.0,
-                };
-                for i in 0..n as usize {
-                    set_real_checked(result, (i) as R_xlen_t, real_elt_checked(result, (i) as R_xlen_t) / div);
-                }
-            }
-            let u = Rf_mkString(std::ffi::CString::new(units).unwrap_or_default().as_ptr());
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                install_str("units"),
-                u,
-            );
-            let class = mk_string_cstr(c"difftime");
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-            return result;
         }
-        let mut units = String::new();
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let named = if !tag.is_null() && tag != R_NilValue() {
-                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-                let ch = STRING_ELT(value, 0);
-                if !ch.is_null() {
-                    units = charsxp_text(ch).unwrap_or_default();
-                }
-            }
-            cell = CDR(cell);
-        }
-        if units.is_empty() || units == "auto" {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "need explicit units for numeric conversion",
-            );
-        }
-        let n = XLENGTH(tim);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _r = protect(result);
-        for i in 0..n {
-            let v = if TYPEOF(tim) == SEXPTYPE::REALSXP {
-                real_elt_checked(tim, (i as usize) as R_xlen_t)
-            } else if TYPEOF(tim) == SEXPTYPE::INTSXP {
-                let iv = integer_elt_checked(tim, (i as usize) as R_xlen_t);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            } else {
-                NA_REAL
-            };
-            set_real_checked(result, (i as usize) as R_xlen_t, v);
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(tim, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-        set_single_class(result, "difftime");
-        let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());
+        let u = mk_string_cstr(&std::ffi::CString::new(units).unwrap_or_default());
         crate::sexp::attrib_core::setAttrib(
             result,
             install_str("units"),
             u,
         );
-        result
+        let class = mk_string_cstr(c"difftime");
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        return result;
     }
+    let mut units = String::new();
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let named = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_text(PRINTNAME(tag)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+            let ch = STRING_ELT(value, 0);
+            if !ch.is_null() {
+                units = charsxp_text(ch).unwrap_or_default();
+            }
+        }
+        cell = CDR(cell);
+    }
+    if units.is_empty() || units == "auto" {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "need explicit units for numeric conversion",
+        );
+    }
+    let n = XLENGTH(tim);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _r = protect(result);
+    for i in 0..n {
+        let v = if TYPEOF(tim) == SEXPTYPE::REALSXP {
+            real_elt_checked(tim, (i as usize) as R_xlen_t)
+        } else if TYPEOF(tim) == SEXPTYPE::INTSXP {
+            let iv = integer_elt_checked(tim, (i as usize) as R_xlen_t);
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+        } else {
+            NA_REAL
+        };
+        set_real_checked(result, (i as usize) as R_xlen_t, v);
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(tim, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+    }
+    set_single_class(result, "difftime");
+    let u = mk_string_cstr(&CString::new(units.as_str()).unwrap_or_default());
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("units"),
+        u,
+    );
+    result
 }
 
 /// GNU `units(x)` is attr(x, "units").

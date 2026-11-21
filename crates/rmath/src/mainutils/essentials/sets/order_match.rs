@@ -727,7 +727,6 @@ pub(crate) fn copy_atomic_element(
             } else {
                 let text = elt_to_string(src, src_index);
                 let cstr = CString::new(text).unwrap_or_default();
-                // SAFETY: cstr is a live NUL-terminated buffer for the call.
                 let charsxp = mk_char_cstr(&cstr);
                 owner
                     .sexp(charsxp)

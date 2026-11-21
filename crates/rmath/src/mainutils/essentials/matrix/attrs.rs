@@ -853,7 +853,7 @@ pub fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let attr_name = elt_to_string(which, 0);
         crate::eval::attrib_core::setAttrib(
             x,
-            Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+            install_cstr(&CString::new(attr_name).unwrap_or_default()),
             value,
         );
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -954,16 +954,14 @@ fn force_namespace_value(value: SEXP) -> SEXP {
 }
 
 fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
-    unsafe {
-        if TYPEOF(value) == SEXPTYPE::SYMSXP {
-            return value;
-        }
-        if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
-            let name = elt_to_string(value, 0);
-            return Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-        }
-        package_error(error.to_owned())
+    if TYPEOF(value) == SEXPTYPE::SYMSXP {
+        return value;
     }
+    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) >= 1 {
+        let name = elt_to_string(value, 0);
+        return install_cstr(&CString::new(name).unwrap_or_default());
+    }
+    package_error(error.to_owned())
 }
 
 /// GNU's original getExportedValue closure uses the same namespace identity
@@ -1245,9 +1243,7 @@ fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP
             scratch,
         )
         .ok()?;
-        let sym = crate::sexp::symbol::Rf_install(
-            std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
-        );
+        let sym = install_cstr(&std::ffi::CString::new(name).unwrap_or_default());
         let value = find_var_in_frame(scratch, sym);
         if value == crate::sexp::globals::R_UnboundValue() || value.is_null() {
             None
@@ -1259,59 +1255,57 @@ fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP
 
 /// R's `attributes(x)` — return attributes as a named list.
 pub fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let attrs = ATTRIB(x);
-        if attrs.is_null() || attrs == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let mut count = 0;
-        let mut current = attrs;
-        while !current.is_null() && current != R_NilValue() {
-            count += 1;
-            current = CDR(current);
-        }
-        if count == 0 {
-            return R_NilValue();
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, count);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
-        if names.is_null() {
-            return R_NilValue();
-        }
-        let _names_guard = protect(names);
-
-        current = attrs;
-        let mut i = 0;
-        while !current.is_null() && current != R_NilValue() {
-            SET_VECTOR_ELT(result, i, CAR(current));
-            let name = tag_name(current).unwrap_or_default();
-            SET_STRING_ELT(
-                names,
-                i,
-                Rf_mkChar(CString::new(name).unwrap_or_default().as_ptr()),
-            );
-            i += 1;
-            current = CDR(current);
-        }
-
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
-        result
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+
+    let attrs = ATTRIB(x);
+    if attrs.is_null() || attrs == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let mut count = 0;
+    let mut current = attrs;
+    while !current.is_null() && current != R_NilValue() {
+        count += 1;
+        current = CDR(current);
+    }
+    if count == 0 {
+        return R_NilValue();
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, count);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
+    if names.is_null() {
+        return R_NilValue();
+    }
+    let _names_guard = protect(names);
+
+    current = attrs;
+    let mut i = 0;
+    while !current.is_null() && current != R_NilValue() {
+        SET_VECTOR_ELT(result, i, CAR(current));
+        let name = tag_name(current).unwrap_or_default();
+        SET_STRING_ELT(
+            names,
+            i,
+            mk_char_cstr(&CString::new(name).unwrap_or_default()),
+        );
+        i += 1;
+        current = CDR(current);
+    }
+
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        names,
+    );
+    result
 }
 
 pub fn structure_attr_name(name: &str) -> &str {
@@ -1384,7 +1378,7 @@ pub fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
                 crate::sexp::attrib_core::setAttrib(
                     x,
-                    Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+                    install_cstr(&CString::new(attr_name).unwrap_or_default()),
                     CAR(current),
                 );
             }
@@ -1543,20 +1537,18 @@ mod tests {
 
 /// R's `attr(x, which) <- value` — set arbitrary attribute by name.
 pub fn do_setattr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let which = CAR(CDR(args));
-        let value = CAR(CDR(CDR(args)));
-        if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
-            return R_NilValue();
-        }
-        let attr_name = elt_to_string(which, 0);
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
-            value,
-        );
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    let which = CAR(CDR(args));
+    let value = CAR(CDR(CDR(args)));
+    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        return R_NilValue();
     }
+    let attr_name = elt_to_string(which, 0);
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        install_cstr(&CString::new(attr_name).unwrap_or_default()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }

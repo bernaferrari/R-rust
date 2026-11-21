@@ -12,7 +12,7 @@ fn try_methods_bind(
     call: SEXP,
     args: SEXP,
     rho: SEXP,
-    generic: &[u8],
+    generic: &std::ffi::CStr,
     deparse_level: i32,
 ) -> Option<SEXP> {
     unsafe {
@@ -33,7 +33,7 @@ fn try_methods_bind(
         let ns = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
         let mut fun = find_var_in_frame(
             ns,
-            crate::sexp::symbol::Rf_install(generic.as_ptr() as *const std::os::raw::c_char),
+            install_cstr(generic),
         );
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return None;
@@ -227,7 +227,7 @@ pub fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if deparse_level >= 0
-            && let Some(ans) = try_methods_bind(call, args, rho, b"cbind\0", deparse_level)
+            && let Some(ans) = try_methods_bind(call, args, rho, c"cbind", deparse_level)
         {
             return ans;
         }
@@ -415,7 +415,7 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Ownership survives all forcing, dispatch and expression-name derivation.
         let args = promised.as_raw();
         if deparse_level >= 0
-            && let Some(ans) = try_methods_bind(call, args, rho, b"rbind\0", deparse_level)
+            && let Some(ans) = try_methods_bind(call, args, rho, c"rbind", deparse_level)
         {
             return ans;
         }

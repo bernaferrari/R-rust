@@ -500,151 +500,149 @@ pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 /// GNU `summary.data.frame` — character table of per-column summaries.
 pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            return do_summary_default(call, op, args, rho);
-        }
-        let ncol = XLENGTH(x);
-        let maxsum = summary_tagged_int(args, "maxsum", 7);
-        let opt_digits = crate::mainutils::options::GetOptionDigits();
-        let digits = summary_tagged_int(args, "digits", (opt_digits - 3).max(3));
-        let col_names_attr =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        return do_summary_default(call, op, args, rho);
+    }
+    let ncol = XLENGTH(x);
+    let maxsum = summary_tagged_int(args, "maxsum", 7);
+    let opt_digits = crate::mainutils::options::GetOptionDigits();
+    let digits = summary_tagged_int(args, "digits", (opt_digits - 3).max(3));
+    let col_names_attr =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
 
-        let mut columns: Vec<Vec<String>> = Vec::with_capacity(ncol as usize);
-        let mut label_widths: Vec<usize> = Vec::with_capacity(ncol as usize);
-        let mut headers: Vec<String> = Vec::with_capacity(ncol as usize);
-        for j in 0..ncol {
-            let header = if !col_names_attr.is_null()
-                && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
-                && j < XLENGTH(col_names_attr)
-            {
-                elt_to_string(col_names_attr, j)
-            } else {
-                format!("[,{}]", j + 1)
-            };
-            headers.push(header);
-            let col = VECTOR_ELT(x, j);
-            let sms = summarize_frame_column(col, maxsum, rho);
-            let _sms = protect(sms);
-            let (cells, lw) = format_summary_column(sms, digits, rho);
+    let mut columns: Vec<Vec<String>> = Vec::with_capacity(ncol as usize);
+    let mut label_widths: Vec<usize> = Vec::with_capacity(ncol as usize);
+    let mut headers: Vec<String> = Vec::with_capacity(ncol as usize);
+    for j in 0..ncol {
+        let header = if !col_names_attr.is_null()
+            && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
+            && j < XLENGTH(col_names_attr)
+        {
+            elt_to_string(col_names_attr, j)
+        } else {
+            format!("[,{}]", j + 1)
+        };
+        headers.push(header);
+        let col = VECTOR_ELT(x, j);
+        let sms = summarize_frame_column(col, maxsum, rho);
+        let _sms = protect(sms);
+        let (cells, lw) = format_summary_column(sms, digits, rho);
 
-            label_widths.push(lw);
-            columns.push(cells);
-        }
-        let nrow = columns.iter().map(Vec::len).max().unwrap_or(0);
-        for col in &mut columns {
-            col.resize(nrow, String::new());
-        }
-        let blanks = " ".repeat(label_widths.iter().copied().max().unwrap_or(0) + 2);
-        for (i, header) in headers.iter_mut().enumerate() {
-            let pad = ((label_widths[i] as f64) - (header.chars().count() as f64) / 2.0)
-                .floor()
-                .max(0.0) as usize;
-            let pad = pad.min(blanks.len());
-            *header = format!("{}{header}", &blanks[..pad]);
-        }
+        label_widths.push(lw);
+        columns.push(cells);
+    }
+    let nrow = columns.iter().map(Vec::len).max().unwrap_or(0);
+    for col in &mut columns {
+        col.resize(nrow, String::new());
+    }
+    let blanks = " ".repeat(label_widths.iter().copied().max().unwrap_or(0) + 2);
+    for (i, header) in headers.iter_mut().enumerate() {
+        let pad = ((label_widths[i] as f64) - (header.chars().count() as f64) / 2.0)
+            .floor()
+            .max(0.0) as usize;
+        let pad = pad.min(blanks.len());
+        *header = format!("{}{header}", &blanks[..pad]);
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol as usize) as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _r = protect(result);
-        for (j, col) in columns.iter().enumerate() {
-            for (i, cell) in col.iter().enumerate() {
-                let cstr = CString::new(cell.as_str()).unwrap_or_default();
-                SET_STRING_ELT(
-                    result,
-                    (j * nrow + i) as R_xlen_t,
-                    mk_char_cstr(&cstr),
-                );
-            }
-        }
-        crate::mainutils::essentials::set_two_dim_attr(result, nrow as R_xlen_t, ncol);
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dn = protect(dn);
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrow as R_xlen_t);
-        let _rn = protect(rn);
-        for i in 0..nrow {
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol as usize) as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _r = protect(result);
+    for (j, col) in columns.iter().enumerate() {
+        for (i, cell) in col.iter().enumerate() {
+            let cstr = CString::new(cell.as_str()).unwrap_or_default();
             SET_STRING_ELT(
-                rn,
-                i as R_xlen_t,
-                mk_char_cstr(c""),
+                result,
+                (j * nrow + i) as R_xlen_t,
+                mk_char_cstr(&cstr),
             );
         }
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
-        for j in 0..ncol {
-            let ch = if !col_names_attr.is_null()
-                && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
-                && j < XLENGTH(col_names_attr)
-            {
-                STRING_ELT(col_names_attr, j)
-            } else {
-                let label = CString::new(format!("[,{}]", j + 1)).unwrap_or_default();
-                mk_char_cstr(&label)
-            };
-            let ch = {
-                let column = VECTOR_ELT(x, j);
-                let dim = crate::sexp::attrib_core::getAttrib(
-                    column,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                );
-                let mc = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
-                    integer_elt_checked(dim, (1) as R_xlen_t)
-                } else {
-                    0
-                };
-                if mc > 1 {
-                    let dn = crate::sexp::attrib_core::getAttrib(
-                        column,
-                        crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    );
-                    let cnames =
-                        if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
-                            VECTOR_ELT(dn, 1)
-                        } else {
-                            R_NilValue()
-                        };
-                    let mut bytes = Vec::new();
-                    let outer_cstr = charsxp_cstring(ch);
-                    let outer = outer_cstr.to_bytes();
-                    for k in 0..mc as i64 {
-                        bytes.extend_from_slice(outer);
-                        bytes.push(b'.');
-                        if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
-                            bytes.extend_from_slice(
-                                charsxp_cstring(STRING_ELT(cnames, k)).to_bytes(),
-                            );
-                        }
-                    }
-                    Rf_mkChar(CString::new(bytes).unwrap_or_default().as_ptr())
-                } else {
-                    ch
-                }
-            };
-            SET_STRING_ELT(cn, j, ch);
-        }
-        SET_VECTOR_ELT(dn, 0, rn);
-        SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
-        let class = mk_string_cstr(c"table");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-        result
     }
+    crate::mainutils::essentials::set_two_dim_attr(result, nrow as R_xlen_t, ncol);
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dn = protect(dn);
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, nrow as R_xlen_t);
+    let _rn = protect(rn);
+    for i in 0..nrow {
+        SET_STRING_ELT(
+            rn,
+            i as R_xlen_t,
+            mk_char_cstr(c""),
+        );
+    }
+    let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol);
+    for j in 0..ncol {
+        let ch = if !col_names_attr.is_null()
+            && TYPEOF(col_names_attr) == SEXPTYPE::STRSXP
+            && j < XLENGTH(col_names_attr)
+        {
+            STRING_ELT(col_names_attr, j)
+        } else {
+            let label = CString::new(format!("[,{}]", j + 1)).unwrap_or_default();
+            mk_char_cstr(&label)
+        };
+        let ch = {
+            let column = VECTOR_ELT(x, j);
+            let dim = crate::sexp::attrib_core::getAttrib(
+                column,
+                crate::sexp::attrib_core::R_DimSymbol(),
+            );
+            let mc = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
+                integer_elt_checked(dim, (1) as R_xlen_t)
+            } else {
+                0
+            };
+            if mc > 1 {
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    column,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                let cnames =
+                    if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                        VECTOR_ELT(dn, 1)
+                    } else {
+                        R_NilValue()
+                    };
+                let mut bytes = Vec::new();
+                let outer_cstr = charsxp_cstring(ch);
+                let outer = outer_cstr.to_bytes();
+                for k in 0..mc as i64 {
+                    bytes.extend_from_slice(outer);
+                    bytes.push(b'.');
+                    if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
+                        bytes.extend_from_slice(
+                            charsxp_cstring(STRING_ELT(cnames, k)).to_bytes(),
+                        );
+                    }
+                }
+                mk_char_cstr(&CString::new(bytes).unwrap_or_default())
+            } else {
+                ch
+            }
+        };
+        SET_STRING_ELT(cn, j, ch);
+    }
+    SET_VECTOR_ELT(dn, 0, rn);
+    SET_VECTOR_ELT(dn, 1, cn);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dn,
+    );
+    let class = mk_string_cstr(c"table");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+    result
 }
 
 fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {

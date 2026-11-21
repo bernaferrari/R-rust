@@ -20,7 +20,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // S3: setOldClass, methods
@@ -1332,62 +1331,58 @@ fn set_selected_names_attribute(x: SEXP, result: SEXP, indices: &[R_xlen_t]) {
 }
 
 fn set_na_action_attribute(source: SEXP, result: SEXP, dropped: &[R_xlen_t], action_class: &str) {
-    unsafe {
-        let action = Rf_allocVector3(SEXPTYPE::INTSXP, dropped.len() as R_xlen_t);
-        if action.is_null() {
-            return;
+    let action = Rf_allocVector3(SEXPTYPE::INTSXP, dropped.len() as R_xlen_t);
+    if action.is_null() {
+        return;
+    }
+    let _action_guard = protect(action);
+    let owner = active_owner();
+    if let Ok(mut action_mut) = owner.sexp(action).and_then(SexpMut::try_from_checked) {
+        for (out, &src) in dropped.iter().enumerate() {
+            let _ = action_mut.try_set_integer_elt(out as R_xlen_t, (src + 1) as c_int);
         }
-        let _action_guard = protect(action);
-        let owner = active_owner();
-        if let Ok(mut action_mut) = owner.sexp(action).and_then(SexpMut::try_from_checked) {
-            for (out, &src) in dropped.iter().enumerate() {
-                let _ = action_mut.try_set_integer_elt(out as R_xlen_t, (src + 1) as c_int);
-            }
-        }
+    }
 
-        let names =
-            crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            let action_names = Rf_allocVector3(SEXPTYPE::STRSXP, dropped.len() as R_xlen_t);
-            if !action_names.is_null() {
-                let _names_guard = protect(action_names);
-                let names_owned = owner_sexp(owner, names);
-                if let Ok(mut action_names_mut) =
-                    owner.sexp(action_names).and_then(SexpMut::try_from_checked)
-                {
-                    for (out, &src) in dropped.iter().enumerate() {
-                        if let Ok(elt) = names_owned.try_string_elt(src) {
-                            let _ = action_names_mut.try_set_string_elt(out as R_xlen_t, elt);
-                        }
+    let names =
+        crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+        let action_names = Rf_allocVector3(SEXPTYPE::STRSXP, dropped.len() as R_xlen_t);
+        if !action_names.is_null() {
+            let _names_guard = protect(action_names);
+            let names_owned = owner_sexp(owner, names);
+            if let Ok(mut action_names_mut) =
+                owner.sexp(action_names).and_then(SexpMut::try_from_checked)
+            {
+                for (out, &src) in dropped.iter().enumerate() {
+                    if let Ok(elt) = names_owned.try_string_elt(src) {
+                        let _ = action_names_mut.try_set_string_elt(out as R_xlen_t, elt);
                     }
                 }
-                crate::sexp::attrib_core::setAttrib(
-                    action,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    action_names,
-                );
-            }
-        }
-
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class.is_null() {
-            let _class_guard = protect(class);
-            if let (Ok(mut class_mut), Ok(charsxp)) = (
-                owner.sexp(class).and_then(SexpMut::try_from_checked),
-                owner.sexp(Rf_mkChar(
-                    CString::new(action_class).unwrap_or_default().as_ptr(),
-                )),
-            ) {
-                let _ = class_mut.try_set_string_elt(0, charsxp);
             }
             crate::sexp::attrib_core::setAttrib(
                 action,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                action_names,
             );
         }
-        crate::sexp::attrib_core::setAttrib(result, install_str("na.action"), action);
     }
+
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if !class.is_null() {
+        let _class_guard = protect(class);
+        if let (Ok(mut class_mut), Ok(charsxp)) = (
+            owner.sexp(class).and_then(SexpMut::try_from_checked),
+            owner.sexp(mk_char_cstr(&CString::new(action_class).unwrap_or_default())),
+        ) {
+            let _ = class_mut.try_set_string_elt(0, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            action,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
+    crate::sexp::attrib_core::setAttrib(result, install_str("na.action"), action);
 }
 
 /// R's `is_complete(x)` — logical vector of complete cases for a single vector.
@@ -2869,7 +2864,7 @@ pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             elt_to_string(signature_arg, 0)
         };
 
-        let method_sym = Rf_install(CString::new(label).unwrap_or_default().as_ptr());
+        let method_sym = install_cstr(&CString::new(label).unwrap_or_default());
         define_var(method_sym, definition, mtable);
 
         definition

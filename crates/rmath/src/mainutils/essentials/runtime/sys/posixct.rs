@@ -173,7 +173,7 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let tz_s = Rf_mkString(CString::new(tz.as_str()).unwrap_or_default().as_ptr());
+            let tz_s = mk_string_cstr(&CString::new(tz.as_str()).unwrap_or_default());
             let _tz = protect(tz_s);
             let lt = crate::mainutils::datetime::do_as_POSIXlt(
                 _call,

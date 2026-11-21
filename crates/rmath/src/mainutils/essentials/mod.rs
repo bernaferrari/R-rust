@@ -22,7 +22,6 @@ use crate::sexp::constructors::{
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 mod conditions;
 mod covratio;
@@ -109,7 +108,7 @@ pub fn register_essentials_builtins(env: SEXP) {
 
             let prim = crate::eval::primitive::make_primitive_binding(name, kind);
             let _p = protect(prim);
-            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let sym = install_cstr(&CString::new(name).unwrap_or_default());
             // GNU baseenv lists only FunTab primitives. Extra rport builtins
             // stay on SYMVALUE so `f(...)` still resolves via findFun, but
             // `as.list(baseenv())` / `is.primitive` match GNU's inventory.
@@ -139,7 +138,7 @@ pub fn register_essentials_builtins(env: SEXP) {
             let name = "difftime";
             let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
             let _p = protect(prim);
-            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let sym = install_cstr(&CString::new(name).unwrap_or_default());
             crate::sexp::accessors::SET_SYMVALUE(sym, prim);
         }
         let pi_sym = install_str("pi");
@@ -217,7 +216,7 @@ pub fn register_essentials_builtins(env: SEXP) {
         );
         let _version_guard = protect(version_value);
         for name in ["R.version", "version"] {
-            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let sym = install_cstr(&CString::new(name).unwrap_or_default());
             let cell = Rf_cons(version_value, chain);
             crate::sexp::accessors::SETTAG(cell, sym);
             chain = cell;

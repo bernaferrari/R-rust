@@ -602,84 +602,82 @@ pub fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `sink(file, append, type, split)` — redirect output to a connection.
 pub fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut file_arg = R_NilValue();
-        let mut append_arg = Rf_ScalarLogical(FALSE);
-        let mut type_arg = mk_string_cstr(c"output");
-        let mut split_arg = Rf_ScalarLogical(FALSE);
-        let mut positional = 0usize;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            match tag_name(current).as_deref() {
-                Some("file") => file_arg = arg,
-                Some("append") => append_arg = arg,
-                Some("type") => type_arg = arg,
-                Some("split") => split_arg = arg,
-                _ => {
-                    match positional {
-                        0 => file_arg = arg,
-                        1 => append_arg = arg,
-                        2 => type_arg = arg,
-                        3 => split_arg = arg,
-                        _ => {}
-                    }
-                    positional += 1;
+    let mut file_arg = R_NilValue();
+    let mut append_arg = Rf_ScalarLogical(FALSE);
+    let mut type_arg = mk_string_cstr(c"output");
+    let mut split_arg = Rf_ScalarLogical(FALSE);
+    let mut positional = 0usize;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        match tag_name(current).as_deref() {
+            Some("file") => file_arg = arg,
+            Some("append") => append_arg = arg,
+            Some("type") => type_arg = arg,
+            Some("split") => split_arg = arg,
+            _ => {
+                match positional {
+                    0 => file_arg = arg,
+                    1 => append_arg = arg,
+                    2 => type_arg = arg,
+                    3 => split_arg = arg,
+                    _ => {}
                 }
+                positional += 1;
             }
-            current = CDR(current);
         }
-
-        let split = logical_scalar_or(split_arg, FALSE);
-        let is_message_sink = !type_arg.is_null()
-            && type_arg != R_NilValue()
-            && TYPEOF(type_arg) == SEXPTYPE::STRSXP
-            && elt_to_string(type_arg, 0) == "message";
-
-        let (target, close_on_exit) = if file_arg.is_null() || file_arg == R_NilValue() {
-            if is_message_sink {
-                (Rf_ScalarInteger(2), FALSE)
-            } else {
-                (Rf_ScalarInteger(-1), FALSE)
-            }
-        } else if inherits_class(file_arg, "connection") {
-            (file_arg, FALSE)
-        } else if TYPEOF(file_arg) == SEXPTYPE::STRSXP {
-            if is_message_sink {
-                base_error("'file' must be NULL or an already open connection");
-            }
-            let append = logical_scalar_or(append_arg, FALSE) != FALSE;
-            let open = if append { "a" } else { "w" };
-            let open_sxp = Rf_mkString(CString::new(open).unwrap_or_default().as_ptr());
-            // GNU sink.R calls file(file, if(append) "a" else "w"): only
-            // description and open are passed positionally, so file()'s
-            // blocking (pos 2) and encoding (pos 3) keep their defaults.
-            let file_args = Rf_cons(file_arg, Rf_cons(open_sxp, R_NilValue()));
-            (
-                crate::mainutils::connections::do_file(_call, _op, file_args, _rho),
-                TRUE,
-            )
-        } else {
-            base_error("'file' must be NULL, a connection or a character string");
-        };
-        if is_message_sink && split != FALSE {
-            base_error("cannot split the message connection");
-        }
-
-        let normalized = Rf_cons(
-            target,
-            Rf_cons(
-                Rf_ScalarLogical(close_on_exit),
-                Rf_cons(
-                    Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
-                    Rf_cons(Rf_ScalarLogical(split), R_NilValue()),
-                ),
-            ),
-        );
-        crate::mainutils::connections::do_sink(_call, _op, normalized, _rho);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
+        current = CDR(current);
     }
+
+    let split = logical_scalar_or(split_arg, FALSE);
+    let is_message_sink = !type_arg.is_null()
+        && type_arg != R_NilValue()
+        && TYPEOF(type_arg) == SEXPTYPE::STRSXP
+        && elt_to_string(type_arg, 0) == "message";
+
+    let (target, close_on_exit) = if file_arg.is_null() || file_arg == R_NilValue() {
+        if is_message_sink {
+            (Rf_ScalarInteger(2), FALSE)
+        } else {
+            (Rf_ScalarInteger(-1), FALSE)
+        }
+    } else if inherits_class(file_arg, "connection") {
+        (file_arg, FALSE)
+    } else if TYPEOF(file_arg) == SEXPTYPE::STRSXP {
+        if is_message_sink {
+            base_error("'file' must be NULL or an already open connection");
+        }
+        let append = logical_scalar_or(append_arg, FALSE) != FALSE;
+        let open = if append { "a" } else { "w" };
+        let open_sxp = mk_string_cstr(&CString::new(open).unwrap_or_default());
+        // GNU sink.R calls file(file, if(append) "a" else "w"): only
+        // description and open are passed positionally, so file()'s
+        // blocking (pos 2) and encoding (pos 3) keep their defaults.
+        let file_args = Rf_cons(file_arg, Rf_cons(open_sxp, R_NilValue()));
+        (
+            crate::mainutils::connections::do_file(_call, _op, file_args, _rho),
+            TRUE,
+        )
+    } else {
+        base_error("'file' must be NULL, a connection or a character string");
+    };
+    if is_message_sink && split != FALSE {
+        base_error("cannot split the message connection");
+    }
+
+    let normalized = Rf_cons(
+        target,
+        Rf_cons(
+            Rf_ScalarLogical(close_on_exit),
+            Rf_cons(
+                Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
+                Rf_cons(Rf_ScalarLogical(split), R_NilValue()),
+            ),
+        ),
+    );
+    crate::mainutils::connections::do_sink(_call, _op, normalized, _rho);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// R's `sink.number(type)` — report output or message sink depth.

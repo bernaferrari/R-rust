@@ -128,11 +128,9 @@ pub fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     SET_STRING_ELT(
                         result,
                         out_idx as R_xlen_t,
-                        Rf_mkChar(
-                            CString::new(elt_to_string(x_arg, *src_idx))
+                        mk_char_cstr(&CString::new(elt_to_string(x_arg, *src_idx))
                                 .unwrap_or_default()
-                                .as_ptr(),
-                        ),
+                                ),
                     );
                 }
             }
@@ -373,7 +371,7 @@ pub fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     names,
                     i as R_xlen_t,
-                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                    mk_char_cstr(&CString::new(*name).unwrap_or_default()),
                 );
             }
             crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);

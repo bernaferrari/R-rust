@@ -21,7 +21,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 mod cluster;
 mod covscale;

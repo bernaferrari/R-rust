@@ -114,9 +114,7 @@ pub(crate) fn ensure_namespace_info(
         crate::sexp::accessors::SET_STRING_ELT(
             spec,
             0,
-            crate::sexp::constructors::Rf_mkChar(
-                CString::new(package).unwrap_or_default().as_ptr(),
-            ),
+            mk_char_cstr(&CString::new(package).unwrap_or_default()),
         );
         let version = read_package_text(&package_dir.join("DESCRIPTION"))
             .ok()
@@ -131,9 +129,7 @@ pub(crate) fn ensure_namespace_info(
         crate::sexp::accessors::SET_STRING_ELT(
             spec,
             1,
-            crate::sexp::constructors::Rf_mkChar(
-                CString::new(version).unwrap_or_default().as_ptr(),
-            ),
+            mk_char_cstr(&CString::new(version).unwrap_or_default()),
         );
         crate::sexp::attrib_core::setAttrib(
             spec,
@@ -143,11 +139,9 @@ pub(crate) fn ensure_namespace_info(
         define_var(install_str("spec"), spec, info);
         ensure_s3methods_slot(info);
 
-        let path = Rf_mkString(
-            CString::new(package_dir.to_string_lossy().as_ref())
+        let path = mk_string_cstr(&CString::new(package_dir.to_string_lossy().as_ref())
                 .unwrap_or_default()
-                .as_ptr(),
-        );
+                );
         define_var(install_str("path"), path, info);
         define_var(info_sym, info, package_env);
         ensure_imports_slot(info, directives);
@@ -360,129 +354,125 @@ pub(crate) fn lazy_lazy_load_package_db(
     envir: SEXP,
     skip: &[&str],
 ) -> Result<(), String> {
-    unsafe {
-        if envir.is_null() || TYPEOF(envir) != SEXPTYPE::ENVSXP {
-            return Err("lazy-load requires a package environment".to_string());
-        }
-
-        let rdx_path = filebase.with_extension("rdx");
-        let rdb_path = filebase.with_extension("rdb");
-        let map = load_rds_file(&rdx_path)?;
-        let _map_guard = protect(map);
-
-        let variables = list_element_by_name(map, "variables").ok_or_else(|| {
-            format!(
-                "lazy-load map '{}' is missing a variables table",
-                rdx_path.display()
-            )
-        })?;
-        if TYPEOF(variables) != SEXPTYPE::VECSXP {
-            return Err(format!(
-                "lazy-load map '{}' has an invalid variables table",
-                rdx_path.display()
-            ));
-        }
-
-        let compressed = list_element_by_name(map, "compressed").unwrap_or(Rf_ScalarInteger(0));
-        let datafile = Rf_mkString(
-            CString::new(rdb_path.to_string_lossy().into_owned())
-                .unwrap_or_default()
-                .as_ptr(),
-        );
-        if datafile.is_null() {
-            return Err(format!(
-                "could not create lazy-load data path for '{}'",
-                rdb_path.display()
-            ));
-        }
-        let _datafile_guard = protect(datafile);
-
-        let hook = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            crate::sexp::globals::R_EmptyEnv(),
-            R_NilValue(),
-        );
-        let _hook_guard = protect(hook);
-        let cache = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            crate::sexp::globals::R_EmptyEnv(),
-            R_NilValue(),
-        );
-        let _cache_guard = protect(cache);
-        define_var(install_str("cache"), cache, hook);
-        define_var(install_str("datafile"), datafile, hook);
-        define_var(install_str("compressed"), compressed, hook);
-        if let Some(refs) = list_element_by_name(map, "references") {
-            let refs_env = crate::sexp::memory_ext::NewEnvironment(
-                R_NilValue(),
-                crate::sexp::globals::R_EmptyEnv(),
-                R_NilValue(),
-            );
-            let _refs_guard = protect(refs_env);
-            if TYPEOF(refs) == SEXPTYPE::VECSXP {
-                let _ = crate::mainutils::essentials::do_list2env(
-                    R_NilValue(),
-                    R_NilValue(),
-                    Rf_cons(refs, Rf_cons(refs_env, R_NilValue())),
-                    R_NilValue(),
-                );
-            }
-            define_var(install_str("refs"), refs_env, hook);
-        }
-
-        let names = crate::sexp::attrib_core::getAttrib(
-            variables,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-
-        let mut lazy_names = Vec::new();
-        let mut lazy_keys = Vec::new();
-        for index in 0..XLENGTH(variables) {
-            let name =
-                if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                    string_at_or_empty(names, index)
-                } else {
-                    String::new()
-                };
-            if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
-                continue;
-            }
-            lazy_names.push(name);
-            lazy_keys.push(VECTOR_ELT(variables, index));
-        }
-
-        if lazy_names.is_empty() {
-            return Ok(());
-        }
-
-        let fetch_sym = install_str("lazyLoadDBfetch");
-        let template = Rf_cons(
-            fetch_sym,
-            Rf_cons(
-                R_NilValue(),
-                Rf_cons(datafile, Rf_cons(compressed, Rf_cons(hook, R_NilValue()))),
-            ),
-        );
-        if !template.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(template, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        let _template_guard = protect(template);
-
-        for (index, name) in lazy_names.iter().enumerate() {
-            let key = lazy_keys[index];
-            let expr0 = crate::mainutils::duplicate::duplicate(template);
-            let _expr0_guard = protect(expr0);
-            SETCAR(CDR(expr0), key);
-            let symbol = Rf_install(CString::new(name.clone()).unwrap_or_default().as_ptr());
-            define_var(
-                symbol,
-                crate::sexp::memory_ext::mkPROMISE(expr0, envir),
-                envir,
-            );
-        }
-
-        Ok(())
+    if envir.is_null() || TYPEOF(envir) != SEXPTYPE::ENVSXP {
+        return Err("lazy-load requires a package environment".to_string());
     }
+
+    let rdx_path = filebase.with_extension("rdx");
+    let rdb_path = filebase.with_extension("rdb");
+    let map = load_rds_file(&rdx_path)?;
+    let _map_guard = protect(map);
+
+    let variables = list_element_by_name(map, "variables").ok_or_else(|| {
+        format!(
+            "lazy-load map '{}' is missing a variables table",
+            rdx_path.display()
+        )
+    })?;
+    if TYPEOF(variables) != SEXPTYPE::VECSXP {
+        return Err(format!(
+            "lazy-load map '{}' has an invalid variables table",
+            rdx_path.display()
+        ));
+    }
+
+    let compressed = list_element_by_name(map, "compressed").unwrap_or(Rf_ScalarInteger(0));
+    let datafile = mk_string_cstr(&CString::new(rdb_path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            );
+    if datafile.is_null() {
+        return Err(format!(
+            "could not create lazy-load data path for '{}'",
+            rdb_path.display()
+        ));
+    }
+    let _datafile_guard = protect(datafile);
+
+    let hook = crate::sexp::memory_ext::NewEnvironment(
+        R_NilValue(),
+        crate::sexp::globals::R_EmptyEnv(),
+        R_NilValue(),
+    );
+    let _hook_guard = protect(hook);
+    let cache = crate::sexp::memory_ext::NewEnvironment(
+        R_NilValue(),
+        crate::sexp::globals::R_EmptyEnv(),
+        R_NilValue(),
+    );
+    let _cache_guard = protect(cache);
+    define_var(install_str("cache"), cache, hook);
+    define_var(install_str("datafile"), datafile, hook);
+    define_var(install_str("compressed"), compressed, hook);
+    if let Some(refs) = list_element_by_name(map, "references") {
+        let refs_env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_EmptyEnv(),
+            R_NilValue(),
+        );
+        let _refs_guard = protect(refs_env);
+        if TYPEOF(refs) == SEXPTYPE::VECSXP {
+            let _ = crate::mainutils::essentials::do_list2env(
+                R_NilValue(),
+                R_NilValue(),
+                Rf_cons(refs, Rf_cons(refs_env, R_NilValue())),
+                R_NilValue(),
+            );
+        }
+        define_var(install_str("refs"), refs_env, hook);
+    }
+
+    let names = crate::sexp::attrib_core::getAttrib(
+        variables,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+    );
+
+    let mut lazy_names = Vec::new();
+    let mut lazy_keys = Vec::new();
+    for index in 0..XLENGTH(variables) {
+        let name =
+            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                string_at_or_empty(names, index)
+            } else {
+                String::new()
+            };
+        if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
+            continue;
+        }
+        lazy_names.push(name);
+        lazy_keys.push(VECTOR_ELT(variables, index));
+    }
+
+    if lazy_names.is_empty() {
+        return Ok(());
+    }
+
+    let fetch_sym = install_str("lazyLoadDBfetch");
+    let template = Rf_cons(
+        fetch_sym,
+        Rf_cons(
+            R_NilValue(),
+            Rf_cons(datafile, Rf_cons(compressed, Rf_cons(hook, R_NilValue()))),
+        ),
+    );
+    if !template.is_null() {
+        crate::sexp::accessors::SET_TYPEOF(template, SEXPTYPE::LANGSXP.as_c_int());
+    }
+    let _template_guard = protect(template);
+
+    for (index, name) in lazy_names.iter().enumerate() {
+        let key = lazy_keys[index];
+        let expr0 = crate::mainutils::duplicate::duplicate(template);
+        let _expr0_guard = protect(expr0);
+        SETCAR(CDR(expr0), key);
+        let symbol = install_cstr(&CString::new(name.clone()).unwrap_or_default());
+        define_var(
+            symbol,
+            crate::sexp::memory_ext::mkPROMISE(expr0, envir),
+            envir,
+        );
+    }
+
+    Ok(())
 }
 
 pub(crate) fn source_package_r_files(

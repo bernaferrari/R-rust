@@ -17,39 +17,37 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
 }
 
 fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
-    unsafe {
-        if !(1.0..=12.0).contains(&month) {
-            let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-            set_real_checked(na, 0, f64::NAN);
-            let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
-            SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
-            crate::sexp::attrib_core::setAttrib(
-                na,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-            let tzone = Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr());
-            crate::sexp::attrib_core::setAttrib(
-                na,
-                install_str("tzone"),
-                tzone,
-            );
-            return na;
-        }
-        let stamp = format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:09.6}",
-            year as i32, month as i32, day as i32, hour as i32, min as i32, sec
+    if !(1.0..=12.0).contains(&month) {
+        let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+        set_real_checked(na, 0, f64::NAN);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(class, 0, mk_char_cstr(c"POSIXct"));
+        SET_STRING_ELT(class, 1, mk_char_cstr(c"POSIXt"));
+        crate::sexp::attrib_core::setAttrib(
+            na,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
         );
-        let text = Rf_mkString(CString::new(stamp.as_str()).unwrap_or_default().as_ptr());
-        let _t = protect(text);
-        let tz_s = Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr());
-        let _z = protect(tz_s);
-        let args = Rf_cons(text, Rf_cons(tz_s, R_NilValue()));
-        let _a = protect(args);
-        SETTAG(CDR(args), install_str("tz"));
-        do_as_POSIXct(R_NilValue(), R_NilValue(), args, R_NilValue())
+        let tzone = mk_string_cstr(&CString::new(tz).unwrap_or_default());
+        crate::sexp::attrib_core::setAttrib(
+            na,
+            install_str("tzone"),
+            tzone,
+        );
+        return na;
     }
+    let stamp = format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:09.6}",
+        year as i32, month as i32, day as i32, hour as i32, min as i32, sec
+    );
+    let text = mk_string_cstr(&CString::new(stamp.as_str()).unwrap_or_default());
+    let _t = protect(text);
+    let tz_s = mk_string_cstr(&CString::new(tz).unwrap_or_default());
+    let _z = protect(tz_s);
+    let args = Rf_cons(text, Rf_cons(tz_s, R_NilValue()));
+    let _a = protect(args);
+    SETTAG(CDR(args), install_str("tz"));
+    do_as_POSIXct(R_NilValue(), R_NilValue(), args, R_NilValue())
 }
 
 /// GNU `ISOdatetime(year, month, day, hour, min, sec, tz)`.

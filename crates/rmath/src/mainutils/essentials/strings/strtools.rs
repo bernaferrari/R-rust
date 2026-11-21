@@ -223,30 +223,28 @@ pub fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R-like `str_interp(string, values)` — interpolate values into string (simplified: sprintf-like).
 pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let string_arg = CAR(args);
-        let values_arg = CAR(CDR(args));
-        if string_arg.is_null() || string_arg == R_NilValue() {
-            return mk_string_cstr(c"");
-        }
-        let fmt = elt_to_string(string_arg, 0);
-        if values_arg.is_null() || values_arg == R_NilValue() {
-            return Rf_mkString(CString::new(fmt).unwrap_or_default().as_ptr());
-        }
-        let n = XLENGTH(values_arg).max(1);
-        let mut vals: Vec<String> = Vec::new();
-        for i in 0..n {
-            vals.push(elt_to_string(values_arg, i));
-        }
-        // Simple %s replacement
-        let mut result = fmt.clone();
-        for v in &vals {
-            if let Some(pos) = result.find("%s") {
-                result.replace_range(pos..pos + 2, v);
-            }
-        }
-        Rf_mkString(CString::new(result).unwrap_or_default().as_ptr())
+    let string_arg = CAR(args);
+    let values_arg = CAR(CDR(args));
+    if string_arg.is_null() || string_arg == R_NilValue() {
+        return mk_string_cstr(c"");
     }
+    let fmt = elt_to_string(string_arg, 0);
+    if values_arg.is_null() || values_arg == R_NilValue() {
+        return mk_string_cstr(&CString::new(fmt).unwrap_or_default());
+    }
+    let n = XLENGTH(values_arg).max(1);
+    let mut vals: Vec<String> = Vec::new();
+    for i in 0..n {
+        vals.push(elt_to_string(values_arg, i));
+    }
+    // Simple %s replacement
+    let mut result = fmt.clone();
+    for v in &vals {
+        if let Some(pos) = result.find("%s") {
+            result.replace_range(pos..pos + 2, v);
+        }
+    }
+    mk_string_cstr(&CString::new(result).unwrap_or_default())
 }
 
 /// GNU `strwrap(...)` — dispatch to the verbatim base closure so wrapping
@@ -349,66 +347,62 @@ pub fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `system.file(..., package)` — find files inside an installed package.
 pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let package_arg = arg_by_name_or_position(args, &["package"], usize::MAX);
-        let package = if package_arg.is_null() || package_arg == R_NilValue() {
-            "base".to_string()
-        } else {
-            let n = XLENGTH(package_arg);
-            if n != 1 {
-                package_error("'package' must be of length 1");
-            }
-            elt_to_string(package_arg, 0)
-        };
-
-        let package_path = find_package_path(&package);
-        let must_work = named_logical_arg(args, "mustWork").unwrap_or(false);
-        if package_path.is_empty() {
-            if must_work {
-                package_error(format!("no file found for package '{}'", package));
-            }
-            return mk_string_cstr(c"");
+    let package_arg = arg_by_name_or_position(args, &["package"], usize::MAX);
+    let package = if package_arg.is_null() || package_arg == R_NilValue() {
+        "base".to_string()
+    } else {
+        let n = XLENGTH(package_arg);
+        if n != 1 {
+            package_error("'package' must be of length 1");
         }
+        elt_to_string(package_arg, 0)
+    };
 
-        let parts = system_file_parts(args);
-        let mut path = PathBuf::from(&package_path);
+    let package_path = find_package_path(&package);
+    let must_work = named_logical_arg(args, "mustWork").unwrap_or(false);
+    if package_path.is_empty() {
+        if must_work {
+            package_error(format!("no file found for package '{}'", package));
+        }
+        return mk_string_cstr(c"");
+    }
+
+    let parts = system_file_parts(args);
+    let mut path = PathBuf::from(&package_path);
+    for part in &parts {
+        if !part.is_empty() {
+            path.push(part);
+        }
+    }
+    // Installation flattens a package's inst/ subtree into its root.
+    // This port loads source-shaped trees directly (the corpus bundles
+    // unpacked tarballs), so a missing path falls back to the inst/
+    // layout: system.file("fortunes", package = "fortunes") must find
+    // inst/fortunes just like an installed tree's fortunes/.
+    if !path.exists() && !parts.is_empty() {
+        let mut inst_path = PathBuf::from(&package_path).join("inst");
         for part in &parts {
             if !part.is_empty() {
-                path.push(part);
+                inst_path.push(part);
             }
         }
-        // Installation flattens a package's inst/ subtree into its root.
-        // This port loads source-shaped trees directly (the corpus bundles
-        // unpacked tarballs), so a missing path falls back to the inst/
-        // layout: system.file("fortunes", package = "fortunes") must find
-        // inst/fortunes just like an installed tree's fortunes/.
-        if !path.exists() && !parts.is_empty() {
-            let mut inst_path = PathBuf::from(&package_path).join("inst");
-            for part in &parts {
-                if !part.is_empty() {
-                    inst_path.push(part);
-                }
-            }
-            if inst_path.exists() {
-                path = inst_path;
-            }
+        if inst_path.exists() {
+            path = inst_path;
         }
+    }
 
-        if path.exists() {
-            Rf_mkString(
-                CString::new(path.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-                    .as_ptr(),
-            )
-        } else {
-            if must_work {
-                package_error(format!(
-                    "no file found for requested path in package '{}'",
-                    package
-                ));
-            }
-            mk_string_cstr(c"")
+    if path.exists() {
+        mk_string_cstr(&CString::new(path.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                )
+    } else {
+        if must_work {
+            package_error(format!(
+                "no file found for requested path in package '{}'",
+                package
+            ));
         }
+        mk_string_cstr(c"")
     }
 }
 

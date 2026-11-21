@@ -77,26 +77,24 @@ pub fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `format.Date(x, format="%Y-%m-%d")`.
 pub fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let mut fmt = "%Y-%m-%d".to_string();
-        let rest = CDR(args);
-        if !rest.is_null() && rest != R_NilValue() {
-            let f = CAR(rest);
-            if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
-                let ch = STRING_ELT(f, 0);
-                if !ch.is_null() {
-                    let s = charsxp_text(ch).unwrap_or_default();
-                    if !s.is_empty() {
-                        fmt = s;
-                    }
+    let x = CAR(args);
+    let mut fmt = "%Y-%m-%d".to_string();
+    let rest = CDR(args);
+    if !rest.is_null() && rest != R_NilValue() {
+        let f = CAR(rest);
+        if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
+            let ch = STRING_ELT(f, 0);
+            if !ch.is_null() {
+                let s = charsxp_text(ch).unwrap_or_default();
+                if !s.is_empty() {
+                    fmt = s;
                 }
             }
         }
-        let fmt_s = Rf_mkString(CString::new(fmt.as_str()).unwrap_or_default().as_ptr());
-        let _f = protect(fmt_s);
-        do_strftime(call, op, Rf_cons(x, Rf_cons(fmt_s, R_NilValue())), rho)
     }
+    let fmt_s = mk_string_cstr(&CString::new(fmt.as_str()).unwrap_or_default());
+    let _f = protect(fmt_s);
+    do_strftime(call, op, Rf_cons(x, Rf_cons(fmt_s, R_NilValue())), rho)
 }
 
 /// GNU `as.character.Date` is `as.character(as.POSIXlt(x))` — no names.

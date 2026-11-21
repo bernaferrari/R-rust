@@ -83,70 +83,68 @@ pub(crate) fn installed_package_rows() -> Vec<InstalledPackageRow> {
 }
 
 pub(crate) fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
-    unsafe {
-        let nrow = packages.len();
-        let ncol = INSTALLED_PACKAGE_COLUMNS.len();
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol) as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for (col_idx, column) in INSTALLED_PACKAGE_COLUMNS.iter().enumerate() {
-            for (row_idx, package) in packages.iter().enumerate() {
-                let value = package.value_for(column);
-                SET_STRING_ELT(
-                    result,
-                    (col_idx * nrow + row_idx) as R_xlen_t,
-                    Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
-                );
-            }
-        }
-
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if dim.is_null() {
-            return R_NilValue();
-        }
-        let _dim_guard = protect(dim);
-        set_integer_checked(dim, (0) as R_xlen_t, nrow as c_int);
-        set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
-
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if dimnames.is_null() {
-            return R_NilValue();
-        }
-        let _dimnames_guard = protect(dimnames);
-        let row_name_values = packages
-            .iter()
-            .map(|package| package.package.clone())
-            .collect::<Vec<_>>();
-        let row_names = string_vector(&row_name_values);
-        if row_names.is_null() {
-            return R_NilValue();
-        }
-        let _row_names_guard = protect(row_names);
-
-        let col_name_values = INSTALLED_PACKAGE_COLUMNS
-            .iter()
-            .map(|column| column.to_string())
-            .collect::<Vec<_>>();
-        let col_names = string_vector(&col_name_values);
-        if col_names.is_null() {
-            return R_NilValue();
-        }
-        let _col_names_guard = protect(col_names);
-
-        SET_VECTOR_ELT(dimnames, 0, row_names);
-        SET_VECTOR_ELT(dimnames, 1, col_names);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dimnames,
-        );
-
-        result
+    let nrow = packages.len();
+    let ncol = INSTALLED_PACKAGE_COLUMNS.len();
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol) as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+
+    for (col_idx, column) in INSTALLED_PACKAGE_COLUMNS.iter().enumerate() {
+        for (row_idx, package) in packages.iter().enumerate() {
+            let value = package.value_for(column);
+            SET_STRING_ELT(
+                result,
+                (col_idx * nrow + row_idx) as R_xlen_t,
+                mk_char_cstr(&CString::new(value).unwrap_or_default()),
+            );
+        }
+    }
+
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    if dim.is_null() {
+        return R_NilValue();
+    }
+    let _dim_guard = protect(dim);
+    set_integer_checked(dim, (0) as R_xlen_t, nrow as c_int);
+    set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+    let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    if dimnames.is_null() {
+        return R_NilValue();
+    }
+    let _dimnames_guard = protect(dimnames);
+    let row_name_values = packages
+        .iter()
+        .map(|package| package.package.clone())
+        .collect::<Vec<_>>();
+    let row_names = string_vector(&row_name_values);
+    if row_names.is_null() {
+        return R_NilValue();
+    }
+    let _row_names_guard = protect(row_names);
+
+    let col_name_values = INSTALLED_PACKAGE_COLUMNS
+        .iter()
+        .map(|column| column.to_string())
+        .collect::<Vec<_>>();
+    let col_names = string_vector(&col_name_values);
+    if col_names.is_null() {
+        return R_NilValue();
+    }
+    let _col_names_guard = protect(col_names);
+
+    SET_VECTOR_ELT(dimnames, 0, row_names);
+    SET_VECTOR_ELT(dimnames, 1, col_names);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dimnames,
+    );
+
+    result
 }
 
 pub(crate) fn package_error(message: impl Into<String>) -> ! {

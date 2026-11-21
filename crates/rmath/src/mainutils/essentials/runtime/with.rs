@@ -61,35 +61,33 @@ pub fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(data) == SEXPTYPE::ENVSXP {
-            return data;
-        }
-        if TYPEOF(data) != SEXPTYPE::VECSXP {
-            return parent;
-        }
-
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
-        if env.is_null() || env == R_NilValue() {
-            return parent;
-        }
-
-        let names =
-            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
-        let n = XLENGTH(data);
-        for i in 0..n {
-            if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-                break;
-            }
-            let name = elt_to_string(names, i);
-            if name.is_empty() {
-                continue;
-            }
-            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            define_var(symbol, VECTOR_ELT(data, i), env);
-        }
-        env
+    if TYPEOF(data) == SEXPTYPE::ENVSXP {
+        return data;
     }
+    if TYPEOF(data) != SEXPTYPE::VECSXP {
+        return parent;
+    }
+
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+    if env.is_null() || env == R_NilValue() {
+        return parent;
+    }
+
+    let names =
+        crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+    let n = XLENGTH(data);
+    for i in 0..n {
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            break;
+        }
+        let name = elt_to_string(names, i);
+        if name.is_empty() {
+            continue;
+        }
+        let symbol = install_cstr(&CString::new(name).unwrap_or_default());
+        define_var(symbol, VECTOR_ELT(data, i), env);
+    }
+    env
 }
 
 /// R's `within(data, expr)` — modify data by evaluating expr (simplified).

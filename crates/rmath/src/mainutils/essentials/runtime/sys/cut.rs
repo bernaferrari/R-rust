@@ -60,7 +60,7 @@ pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     labels,
                     lev,
-                    Rf_mkChar(CString::new(label).unwrap().as_ptr()),
+                    mk_char_cstr(&CString::new(label).unwrap()),
                 );
             }
             crate::sexp::attrib_core::setAttrib(
@@ -270,7 +270,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     labels,
                     lev,
-                    Rf_mkChar(std::ffi::CString::new(label).unwrap().as_ptr()),
+                    mk_char_cstr(&std::ffi::CString::new(label).unwrap()),
                 );
             }
             crate::sexp::attrib_core::setAttrib(
@@ -344,7 +344,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     SET_STRING_ELT(
                         labels,
                         k as i64,
-                        Rf_mkChar(std::ffi::CString::new(label).unwrap().as_ptr()),
+                        mk_char_cstr(&std::ffi::CString::new(label).unwrap()),
                     );
                 }
                 crate::sexp::attrib_core::setAttrib(

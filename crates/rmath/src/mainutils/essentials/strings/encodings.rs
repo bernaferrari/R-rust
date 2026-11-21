@@ -250,49 +250,47 @@ pub fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `localeToCharset(locale)`.
 pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut locale = String::new();
-        let first = CAR(args);
-        if !first.is_null()
-            && first != R_NilValue()
-            && TYPEOF(first) == SEXPTYPE::STRSXP
-            && XLENGTH(first) > 0
-        {
-            let ch = STRING_ELT(first, 0);
+    let mut locale = String::new();
+    let first = CAR(args);
+    if !first.is_null()
+        && first != R_NilValue()
+        && TYPEOF(first) == SEXPTYPE::STRSXP
+        && XLENGTH(first) > 0
+    {
+        let ch = STRING_ELT(first, 0);
+        if !ch.is_null() {
+            locale = charsxp_text(ch).unwrap_or_default();
+        }
+    }
+    if locale.is_empty() {
+        let cat = mk_string_cstr(c"LC_CTYPE");
+        let _c = protect(cat);
+        let got = crate::mainutils::essentials::do_Sys_getlocale(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            Rf_cons(cat, R_NilValue()),
+            std::ptr::null_mut(),
+        );
+        if TYPEOF(got) == SEXPTYPE::STRSXP && XLENGTH(got) > 0 {
+            let ch = STRING_ELT(got, 0);
             if !ch.is_null() {
                 locale = charsxp_text(ch).unwrap_or_default();
             }
         }
         if locale.is_empty() {
-            let cat = mk_string_cstr(c"LC_CTYPE");
-            let _c = protect(cat);
-            let got = crate::mainutils::essentials::do_Sys_getlocale(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                Rf_cons(cat, R_NilValue()),
-                std::ptr::null_mut(),
-            );
-            if TYPEOF(got) == SEXPTYPE::STRSXP && XLENGTH(got) > 0 {
-                let ch = STRING_ELT(got, 0);
-                if !ch.is_null() {
-                    locale = charsxp_text(ch).unwrap_or_default();
-                }
-            }
-            if locale.is_empty() {
-                locale = "C".to_string();
-            }
+            locale = "C".to_string();
         }
-        let charset = if locale == "C" || locale == "POSIX" {
-            "ASCII"
-        } else if locale.to_ascii_lowercase().contains("utf-8")
-            || locale.to_ascii_lowercase().contains("utf8")
-        {
-            "UTF-8"
-        } else {
-            "ASCII"
-        };
-        Rf_mkString(CString::new(charset).unwrap_or_default().as_ptr())
     }
+    let charset = if locale == "C" || locale == "POSIX" {
+        "ASCII"
+    } else if locale.to_ascii_lowercase().contains("utf-8")
+        || locale.to_ascii_lowercase().contains("utf8")
+    {
+        "UTF-8"
+    } else {
+        "ASCII"
+    };
+    mk_string_cstr(&CString::new(charset).unwrap_or_default())
 }
 
 /// Own the original argument graph before any conversion or allocation.

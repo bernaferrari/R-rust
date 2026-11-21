@@ -1013,7 +1013,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let pname = STRING_ELT(names, 0);
-        let psym = Rf_install(CHAR(pname));
+        let psym = install_cstr(&charsxp_cstring(pname));
         let mut b = elt_real_safe(VECTOR_ELT(start, 0), 0);
         let mut ys = vec![0.0; n];
         for i in 0..n {

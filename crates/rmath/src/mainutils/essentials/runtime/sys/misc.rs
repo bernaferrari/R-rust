@@ -98,22 +98,20 @@ pub fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `OlsonNames()` — known IANA timezone names on the current host.
 pub fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let zones = olson_names();
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, zones.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for (i, zone) in zones.iter().enumerate() {
-            SET_STRING_ELT(
-                result,
-                i as R_xlen_t,
-                Rf_mkChar(CString::new(zone.as_str()).unwrap_or_default().as_ptr()),
-            );
-        }
-        result
+    let zones = olson_names();
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, zones.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+    for (i, zone) in zones.iter().enumerate() {
+        SET_STRING_ELT(
+            result,
+            i as R_xlen_t,
+            mk_char_cstr(&CString::new(zone.as_str()).unwrap_or_default()),
+        );
+    }
+    result
 }
 
 #[cfg(target_arch = "wasm32")]

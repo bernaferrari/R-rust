@@ -2,34 +2,32 @@ use super::*;
 
 /// R's `readChar(con, nchars)` — read characters from connection.
 pub fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let con_arg = CAR(args);
-        let nchars_arg = CAR(CDR(args));
-        let nchars = real_or_default(nchars_arg, -1.0) as i64;
+    let con_arg = CAR(args);
+    let nchars_arg = CAR(CDR(args));
+    let nchars = real_or_default(nchars_arg, -1.0) as i64;
 
-        if inherits_class(con_arg, "connection") {
-            let connection = connection_index(con_arg);
-            let text = read_chars_from_connection(connection, nchars);
-            return Rf_mkString(CString::new(text).unwrap_or_default().as_ptr());
-        }
-
-        let path = elt_to_string(con_arg, 0);
-        let bytes =
-            crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
-                base_error(format!("cannot read file '{}': {}", path, e));
-            });
-        let take = if nchars >= 0 {
-            (nchars as usize).min(bytes.len())
-        } else {
-            bytes.len()
-        };
-        if bytes[..take].contains(&0) {
-            crate::mainutils::errors::Rf_warning_cstr(c"truncating string with embedded nuls");
-        }
-        let take = bytes[..take].iter().position(|b| *b == 0).unwrap_or(take);
-        let result = String::from_utf8_lossy(&bytes[..take]).into_owned();
-        Rf_mkString(CString::new(result).unwrap_or_default().as_ptr())
+    if inherits_class(con_arg, "connection") {
+        let connection = connection_index(con_arg);
+        let text = read_chars_from_connection(connection, nchars);
+        return mk_string_cstr(&CString::new(text).unwrap_or_default());
     }
+
+    let path = elt_to_string(con_arg, 0);
+    let bytes =
+        crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
+            base_error(format!("cannot read file '{}': {}", path, e));
+        });
+    let take = if nchars >= 0 {
+        (nchars as usize).min(bytes.len())
+    } else {
+        bytes.len()
+    };
+    if bytes[..take].contains(&0) {
+        crate::mainutils::errors::Rf_warning_cstr(c"truncating string with embedded nuls");
+    }
+    let take = bytes[..take].iter().position(|b| *b == 0).unwrap_or(take);
+    let result = String::from_utf8_lossy(&bytes[..take]).into_owned();
+    mk_string_cstr(&CString::new(result).unwrap_or_default())
 }
 
 fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
@@ -74,7 +72,8 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
             }
             if byte == 0 {
                 crate::mainutils::errors::Rf_warning_cstr(
-                    c"truncating string with embedded nuls");
+                    c"truncating string with embedded nuls",
+                );
                 break;
             }
             bytes.push(byte as u8);

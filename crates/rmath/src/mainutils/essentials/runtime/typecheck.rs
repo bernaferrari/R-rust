@@ -131,7 +131,6 @@ fn is_gnu_vector(t: c_int) -> bool {
 fn is_numeric_mode(x: SEXP) -> bool {
     let t = TYPEOF(x);
     if t == SEXPTYPE::INTSXP {
-        // SAFETY: inherits2 performs a read-only class walk on a live SEXP.
         crate::mainutils::objects::inherits2(x, c"factor") == 0
     } else {
         t == SEXPTYPE::REALSXP
@@ -149,7 +148,6 @@ fn sexptype_mode_name(x: SEXP) -> String {
             "object".to_string()
         };
     }
-    // SAFETY: type2char returns a static NUL-terminated name or null.
     let raw = crate::mainutils::util_main::type2char(t);
     if raw.is_null() {
         return "unknown".to_string();
@@ -161,7 +159,6 @@ fn sexptype_mode_name(x: SEXP) -> String {
 }
 
 fn has_disallowed_vector_attribute(x: SEXP) -> bool {
-    // SAFETY: returns the interned names symbol handle.
     let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
     let nil = R_NilValue();
     let mut a = ATTRIB(x);
@@ -190,7 +187,6 @@ pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if x.is_null() || x == R_NilValue() {
         return scalar_logical(FALSE);
     }
-    // SAFETY: x is a live SEXP retained by the caller's argument graph.
     let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
     let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0;
     scalar_logical(if has_names { TRUE } else { FALSE })
@@ -525,8 +521,8 @@ pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // calls with excess actuals from reaching a method.
         let nargs = LENGTH(args);
         if nargs < 1 || nargs > 2 {
-            crate::mainutils::errors::Rf_error_cstr(
-                c"anyNA takes 1 or 2 arguments"
+            crate::mainutils::errors::Rf_error(
+                b"anyNA takes 1 or 2 arguments\0".as_ptr() as *const c_char
             );
         }
         let mut ans = R_NilValue();

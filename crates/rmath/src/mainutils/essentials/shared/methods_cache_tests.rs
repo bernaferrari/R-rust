@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::symbol::Rf_install;
 use crate::sexp::{object::Sexp, session::RSession};
 
 fn binding(environment: Sexp<'static>, name: &CStr) -> Sexp<'static> {

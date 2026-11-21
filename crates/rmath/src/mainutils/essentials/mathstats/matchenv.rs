@@ -275,49 +275,45 @@ fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
 
 /// R's `char.expand(input, target)` — expand abbreviations.
 pub fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let input = CAR(args);
-        let target = CAR(CDR(args));
-        let nomatch = CAR(CDR(CDR(args)));
-        if input.is_null() || target.is_null() {
-            return input;
+    let input = CAR(args);
+    let target = CAR(CDR(args));
+    let nomatch = CAR(CDR(CDR(args)));
+    if input.is_null() || target.is_null() {
+        return input;
+    }
+    let input_str = elt_to_string(input, 0);
+    let n = if target == R_NilValue() {
+        0
+    } else {
+        XLENGTH(target)
+    };
+    let mut matches: Vec<String> = Vec::new();
+    for i in 0..n {
+        let t = elt_to_string(target, i);
+        if t.starts_with(&input_str) {
+            matches.push(t);
         }
-        let input_str = elt_to_string(input, 0);
-        let n = if target == R_NilValue() {
-            0
-        } else {
-            XLENGTH(target)
+    }
+    if matches.len() == 1 {
+        mk_string_cstr(&CString::new(&matches[0][..]).unwrap_or_default())
+    } else if matches.len() > 1 {
+        Rf_allocVector3(SEXPTYPE::STRSXP, 0)
+    } else if !nomatch.is_null() && nomatch != R_NilValue() && nomatch != R_MissingArg() {
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if out.is_null() {
+            return R_NilValue();
+        }
+        SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+        out
+    } else {
+        // Upstream char.expand ends with `eval(nomatch)` where nomatch
+        // defaults to stop("no match"); stock R attributes the error to
+        // that eval call.
+        let sym = |name: &str| {
+            install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
         };
-        let mut matches: Vec<String> = Vec::new();
-        for i in 0..n {
-            let t = elt_to_string(target, i);
-            if t.starts_with(&input_str) {
-                matches.push(t);
-            }
-        }
-        if matches.len() == 1 {
-            Rf_mkString(CString::new(&matches[0][..]).unwrap_or_default().as_ptr())
-        } else if matches.len() > 1 {
-            Rf_allocVector3(SEXPTYPE::STRSXP, 0)
-        } else if !nomatch.is_null() && nomatch != R_NilValue() && nomatch != R_MissingArg() {
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            if out.is_null() {
-                return R_NilValue();
-            }
-            SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
-            out
-        } else {
-            // Upstream char.expand ends with `eval(nomatch)` where nomatch
-            // defaults to stop("no match"); stock R attributes the error to
-            // that eval call.
-            let sym = |name: &str| {
-                crate::sexp::symbol::Rf_install(
-                    std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
-                )
-            };
-            let eval_call = crate::sexp::constructors::Rf_lang2(sym("eval"), sym("nomatch"));
-            crate::mainutils::errors::errorcall_str(eval_call, "no match");
-        }
+        let eval_call = crate::sexp::constructors::Rf_lang2(sym("eval"), sym("nomatch"));
+        crate::mainutils::errors::errorcall_str(eval_call, "no match");
     }
 }
 
@@ -579,7 +575,7 @@ pub fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     CAR(cell)
                 };
                 let name = elt_to_string(names, i);
-                let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+                let sym = install_cstr(&CString::new(name).unwrap_or_default());
                 define_var(sym, value, env);
             }
             return env;
@@ -685,18 +681,16 @@ fn search_env_label(env: SEXP) -> String {
 
 /// R's `searchpaths()` — filesystem/search labels for entries on the search path.
 pub fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let entries = search_path_entries();
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, entries.len() as R_xlen_t);
-        for (i, (label, _)) in entries.iter().enumerate() {
-            SET_STRING_ELT(
-                result,
-                i as R_xlen_t,
-                Rf_mkChar(CString::new(label.as_str()).unwrap_or_default().as_ptr()),
-            );
-        }
-        result
+    let entries = search_path_entries();
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, entries.len() as R_xlen_t);
+    for (i, (label, _)) in entries.iter().enumerate() {
+        SET_STRING_ELT(
+            result,
+            i as R_xlen_t,
+            mk_char_cstr(&CString::new(label.as_str()).unwrap_or_default()),
+        );
     }
+    result
 }
 
 /// R's `sort.list(x, partial, na.last, decreasing, method)` — indices for sorting.
@@ -794,36 +788,34 @@ pub fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 /// GNU `match.fun(FUN)`: functions pass through; character/symbol names
 /// are looked up as functions (sweep's `FUN = "-"`).
 pub fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = force_promise(x);
-        }
-        if x.is_null() {
-            return R_NilValue();
-        }
-        if TYPEOF(x) == SEXPTYPE::CLOSXP
-            || TYPEOF(x) == SEXPTYPE::BUILTINSXP
-            || TYPEOF(x) == SEXPTYPE::SPECIALSXP
-        {
-            return x;
-        }
-        let sym = if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            x
-        } else if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
-            Rf_install(CHAR(STRING_ELT(x, 0)))
-        } else {
-            return x;
-        };
-        let val = find_fun(sym, rho);
-        if !val.is_null()
-            && val != R_UnboundValue()
-            && (TYPEOF(val) == SEXPTYPE::CLOSXP
-                || TYPEOF(val) == SEXPTYPE::BUILTINSXP
-                || TYPEOF(val) == SEXPTYPE::SPECIALSXP)
-        {
-            return val;
-        }
-        x
+    let mut x = CAR(args);
+    if TYPEOF(x) == SEXPTYPE::PROMSXP {
+        x = force_promise(x);
     }
+    if x.is_null() {
+        return R_NilValue();
+    }
+    if TYPEOF(x) == SEXPTYPE::CLOSXP
+        || TYPEOF(x) == SEXPTYPE::BUILTINSXP
+        || TYPEOF(x) == SEXPTYPE::SPECIALSXP
+    {
+        return x;
+    }
+    let sym = if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        x
+    } else if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
+        install_cstr(&charsxp_cstring(STRING_ELT(x, 0)))
+    } else {
+        return x;
+    };
+    let val = find_fun(sym, rho);
+    if !val.is_null()
+        && val != R_UnboundValue()
+        && (TYPEOF(val) == SEXPTYPE::CLOSXP
+            || TYPEOF(val) == SEXPTYPE::BUILTINSXP
+            || TYPEOF(val) == SEXPTYPE::SPECIALSXP)
+    {
+        return val;
+    }
+    x
 }

@@ -164,11 +164,9 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             d,
             install_str("Labels"),
         );
-        let method_s = Rf_mkString(
-            std::ffi::CString::new(METHODS[i_meth])
+        let method_s = mk_string_cstr(&std::ffi::CString::new(METHODS[i_meth])
                 .unwrap_or_default()
-                .as_ptr(),
-        );
+                );
         let _ms = protect(method_s);
         let dist_method = crate::sexp::attrib_core::getAttrib(
             d,

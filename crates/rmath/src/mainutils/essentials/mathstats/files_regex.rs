@@ -62,189 +62,177 @@ pub fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 string = format!("{}....", string.chars().take(keep).collect::<String>());
             }
         }
-        Rf_mkString(CString::new(string).unwrap_or_default().as_ptr())
+        mk_string_cstr(&CString::new(string).unwrap_or_default())
     }
 }
 
 /// R normalizePath(path)
 pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut path_arg = R_NilValue();
-        let mut must_work_arg = R_NilValue();
-        let mut positional = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
-            match tag_name(current).as_deref() {
-                Some("path") => path_arg = value,
-                Some("mustWork") => must_work_arg = value,
-                Some("winslash") => {}
-                Some(_) => {}
-                None => {
-                    match positional {
-                        0 => path_arg = value,
-                        1 => {}
-                        2 => must_work_arg = value,
-                        _ => {}
-                    }
-                    positional += 1;
+    let mut path_arg = R_NilValue();
+    let mut must_work_arg = R_NilValue();
+    let mut positional = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let value = CAR(current);
+        match tag_name(current).as_deref() {
+            Some("path") => path_arg = value,
+            Some("mustWork") => must_work_arg = value,
+            Some("winslash") => {}
+            Some(_) => {}
+            None => {
+                match positional {
+                    0 => path_arg = value,
+                    1 => {}
+                    2 => must_work_arg = value,
+                    _ => {}
                 }
+                positional += 1;
             }
-            current = CDR(current);
+        }
+        current = CDR(current);
+    }
+
+    if path_arg.is_null() || path_arg == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let must_work = if must_work_arg.is_null()
+        || must_work_arg == R_NilValue()
+        || XLENGTH(must_work_arg) == 0
+    {
+        NA_INTEGER
+    } else {
+        logical_elt_checked(must_work_arg, 0)
+    };
+
+    let n = XLENGTH(path_arg);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _result_guard = protect(result);
+    for i in 0..n {
+        let elt = STRING_ELT(path_arg, i);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            if must_work == TRUE {
+                base_error(format!(
+                    "path[{}]=\"{}\": No such file or directory",
+                    i + 1,
+                    "NA"
+                ));
+            }
+            if must_work == NA_INTEGER {
+                let msg = std::ffi::CString::new(format!(
+                    "path[{}]=\"NA\": No such file or directory",
+                    i + 1
+                ))
+                .unwrap_or_default();
+                crate::mainutils::errors::Rf_warning_cstr(&msg);
+            }
+            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            continue;
         }
 
-        if path_arg.is_null() || path_arg == R_NilValue() {
-            return R_NilValue();
+        let path = charsxp_cstring(elt).to_str().unwrap_or("").to_string();
+        if crate::library::datasets::path_exists(&path) {
+            SET_STRING_ELT(result, i, elt);
+            continue;
         }
-
-        let must_work = if must_work_arg.is_null()
-            || must_work_arg == R_NilValue()
-            || XLENGTH(must_work_arg) == 0
-        {
-            NA_INTEGER
-        } else {
-            logical_elt_checked(must_work_arg, 0)
-        };
-
-        let n = XLENGTH(path_arg);
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _result_guard = protect(result);
-        for i in 0..n {
-            let elt = STRING_ELT(path_arg, i);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+        match std::fs::canonicalize(&path) {
+            Ok(p) => SET_STRING_ELT(
+                result,
+                i,
+                mk_char_cstr(&CString::new(p.to_string_lossy().as_ref())
+                        .unwrap_or_default()
+                        ),
+            ),
+            Err(err) => {
                 if must_work == TRUE {
-                    base_error(format!(
-                        "path[{}]=\"{}\": No such file or directory",
-                        i + 1,
-                        "NA"
-                    ));
+                    base_error(format!("path[{}]=\"{}\": {}", i + 1, path, err));
                 }
-                if must_work == NA_INTEGER {
-                    let msg = std::ffi::CString::new(format!(
-                        "path[{}]=\"NA\": No such file or directory",
-                        i + 1
-                    ))
-                    .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning_cstr(&msg);
-                }
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-
-            let path = charsxp_cstring(elt).to_str().unwrap_or("").to_string();
-            if crate::library::datasets::path_exists(&path) {
-                SET_STRING_ELT(result, i, elt);
-                continue;
-            }
-            match std::fs::canonicalize(&path) {
-                Ok(p) => SET_STRING_ELT(
+                SET_STRING_ELT(
                     result,
                     i,
-                    crate::sexp::constructors::Rf_mkChar(
-                        CString::new(p.to_string_lossy().as_ref())
-                            .unwrap_or_default()
-                            .as_ptr(),
-                    ),
-                ),
-                Err(err) => {
-                    if must_work == TRUE {
-                        base_error(format!("path[{}]=\"{}\": {}", i + 1, path, err));
-                    }
-                    SET_STRING_ELT(
-                        result,
-                        i,
-                        crate::sexp::constructors::Rf_mkChar(
-                            CString::new(path).unwrap_or_default().as_ptr(),
-                        ),
-                    );
-                }
+                    mk_char_cstr(&CString::new(path).unwrap_or_default()),
+                );
             }
         }
-        result
     }
+    result
 }
 
 /// R tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
 pub fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut pattern: Option<SEXP> = None;
-        let mut tmpdir: Option<SEXP> = None;
-        let mut fileext: Option<SEXP> = None;
-        let mut positional: Vec<SEXP> = Vec::new();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let value = CAR(cell);
-            let tagged = !tag.is_null() && tag != R_NilValue();
-            if tagged {
-                let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
-                .to_string_lossy()
-                .into_owned();
-                let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;
-                match name.as_str() {
-                    "pattern" if nonempty => pattern = Some(value),
-                    "tmpdir" if nonempty => tmpdir = Some(value),
-                    "fileext" if nonempty => fileext = Some(value),
-                    _ => {}
-                }
-            } else {
-                positional.push(value);
-            }
-            cell = CDR(cell);
-        }
-        for (i, value) in positional.iter().copied().enumerate() {
-            if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
-                continue;
-            }
-            match i {
-                0 if pattern.is_none() => pattern = Some(value),
-                1 if tmpdir.is_none() => tmpdir = Some(value),
-                2 if fileext.is_none() => fileext = Some(value),
+    let mut pattern: Option<SEXP> = None;
+    let mut tmpdir: Option<SEXP> = None;
+    let mut fileext: Option<SEXP> = None;
+    let mut positional: Vec<SEXP> = Vec::new();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let value = CAR(cell);
+        let tagged = !tag.is_null() && tag != R_NilValue();
+        if tagged {
+            let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
+            .to_string_lossy()
+            .into_owned();
+            let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;
+            match name.as_str() {
+                "pattern" if nonempty => pattern = Some(value),
+                "tmpdir" if nonempty => tmpdir = Some(value),
+                "fileext" if nonempty => fileext = Some(value),
                 _ => {}
             }
+        } else {
+            positional.push(value);
         }
-        let n1 = pattern.map(XLENGTH).unwrap_or(1).max(1);
-        let n2 = tmpdir.map(XLENGTH).unwrap_or(1).max(1);
-        let n3 = fileext.map(XLENGTH).unwrap_or(1).max(1);
-        let n = n1.max(n2).max(n3);
-        let default_tmp = session_temp_dir();
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _ans = protect(ans);
-        for i in 0..n {
-            let pat = pattern
-                .map(|sx| elt_to_string(sx, i % n1))
-                .unwrap_or_else(|| "file".to_string());
-            let dir = tmpdir
-                .map(|sx| PathBuf::from(elt_to_string(sx, i % n2)))
-                .unwrap_or_else(|| default_tmp.clone());
-            let ext = fileext
-                .map(|sx| elt_to_string(sx, i % n3))
-                .unwrap_or_default();
-            let path = crate::mainutils::sysutils::R_tmpnam2(&pat, &dir.to_string_lossy(), &ext)
-                .unwrap_or_else(|| base_error("cannot find an unused temporary filename"));
-            SET_STRING_ELT(
-                ans,
-                i,
-                Rf_mkChar(CString::new(path.as_str()).unwrap_or_default().as_ptr()),
-            );
-        }
-        ans
+        cell = CDR(cell);
     }
+    for (i, value) in positional.iter().copied().enumerate() {
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+            continue;
+        }
+        match i {
+            0 if pattern.is_none() => pattern = Some(value),
+            1 if tmpdir.is_none() => tmpdir = Some(value),
+            2 if fileext.is_none() => fileext = Some(value),
+            _ => {}
+        }
+    }
+    let n1 = pattern.map(XLENGTH).unwrap_or(1).max(1);
+    let n2 = tmpdir.map(XLENGTH).unwrap_or(1).max(1);
+    let n3 = fileext.map(XLENGTH).unwrap_or(1).max(1);
+    let n = n1.max(n2).max(n3);
+    let default_tmp = session_temp_dir();
+    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _ans = protect(ans);
+    for i in 0..n {
+        let pat = pattern
+            .map(|sx| elt_to_string(sx, i % n1))
+            .unwrap_or_else(|| "file".to_string());
+        let dir = tmpdir
+            .map(|sx| PathBuf::from(elt_to_string(sx, i % n2)))
+            .unwrap_or_else(|| default_tmp.clone());
+        let ext = fileext
+            .map(|sx| elt_to_string(sx, i % n3))
+            .unwrap_or_default();
+        let path = crate::mainutils::sysutils::R_tmpnam2(&pat, &dir.to_string_lossy(), &ext)
+            .unwrap_or_else(|| base_error("cannot find an unused temporary filename"));
+        SET_STRING_ELT(
+            ans,
+            i,
+            mk_char_cstr(&CString::new(path.as_str()).unwrap_or_default()),
+        );
+    }
+    ans
 }
 
 /// R tempdir()
 pub fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let temp_dir = session_temp_dir();
-        if !crate::mainutils::browser_files::enabled() {
-            let _ = std::fs::create_dir_all(&temp_dir);
-        }
-        Rf_mkString(
-            CString::new(temp_dir.to_string_lossy().as_ref())
-                .unwrap_or_default()
-                .as_ptr(),
-        )
+    let temp_dir = session_temp_dir();
+    if !crate::mainutils::browser_files::enabled() {
+        let _ = std::fs::create_dir_all(&temp_dir);
     }
+    mk_string_cstr(&CString::new(temp_dir.to_string_lossy().as_ref())
+            .unwrap_or_default()
+            )
 }
 
 fn session_temp_dir() -> PathBuf {

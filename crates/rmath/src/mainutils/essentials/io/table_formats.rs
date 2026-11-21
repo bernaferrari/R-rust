@@ -294,9 +294,7 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // rep_len(sep, length(first) - 1L); stock R attributes this
             // error to that call.
             let sym = |name: &str| {
-                crate::sexp::symbol::Rf_install(
-                    std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
-                )
+                install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
             };
             let one_l = crate::sexp::constructors::Rf_ScalarInteger(1);
             let length_first = crate::sexp::constructors::Rf_lang2(sym("length"), sym("first"));

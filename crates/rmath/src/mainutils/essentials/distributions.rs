@@ -280,8 +280,6 @@ fn dpq_copy_attrib(owner: OwnerToken<'_>, dst: &Sexp<'_>, src: &Sexp<'_>) {
                 Some(checked_dpq(attr.try_car()))
             };
             let pointer = value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw);
-            // SAFETY: current cell, next cell, tag and value stay rooted
-            // through setter reentry, as do the source and destination.
             crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), pointer);
         }
         attr = next;
@@ -316,8 +314,6 @@ fn dpq_evaluate(
     } else {
         sources.iter().map(length).max().unwrap_or(0)
     };
-    // SAFETY: preserve the translated allocator's admission and retry behavior
-    // with all operands rooted and no loan across allocation.
     let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
     checked_dpq(owner.require_active());
     if result.is_null() {
@@ -373,8 +369,6 @@ fn dpq_evaluate(
     }
     let result = result.freeze();
     if produced_nan {
-        // SAFETY: the result and all arguments remain rooted through warning
-        // dispatch, and the warning format is static.
         crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         checked_dpq(owner.require_active());
     }
@@ -579,8 +573,7 @@ fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
         let rate = real_or_default(slots[2], 1.0);
         let scale = real_or_default(slots[3], 1.0);
         if (rate * scale - 1.0).abs() < 1e-15 {
-            crate::mainutils::errors::Rf_warning1(
-                c"specify 'rate' or 'scale' but not both");
+            crate::mainutils::errors::Rf_warning1(c"specify 'rate' or 'scale' but not both");
         } else {
             base_error("specify 'rate' or 'scale' but not both");
         }
@@ -1462,7 +1455,6 @@ mod safety_tests {
         assert!(source.try_attrib().unwrap().is_nil());
         session.with_active(|| {
             for (tag, expected) in [(first, 7), (second, 9)] {
-                // SAFETY: the checked target and tag remain live.
                 let value =
                     crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw());
                 assert_eq!(owner.sexp(value).unwrap().try_integer_elt(0), Ok(expected));

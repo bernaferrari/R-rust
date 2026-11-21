@@ -18,7 +18,6 @@ use crate::sexp::constructors::{
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 mod condition_objects;
 mod env_lookup;

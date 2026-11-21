@@ -21,7 +21,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Complete S3/S4: class, isS4, is
@@ -1144,7 +1143,7 @@ pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
             // the names attribute — same as attrib.c R_do_slot.
             if name_str != "names" || TYPEOF(obj) != SEXPTYPE::VECSXP {
                 let name_sym =
-                    Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
+                    install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
                 let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
                 if !value.is_null() && value != R_NilValue() {
                     return unmap_slot_pseudo_null(value);
@@ -1158,7 +1157,7 @@ pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
         }
 
         // Non-S4: upstream stores everything in attributes.
-        let name_sym = Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
+        let name_sym = install_cstr(&CString::new(name_str.as_str()).unwrap_or_default());
         let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
         if !value.is_null() && value != R_NilValue() {
             return unmap_slot_pseudo_null(value);
@@ -1176,36 +1175,34 @@ pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
 
 /// GNU `R_has_slot` (attrib.c) — attribute presence, including NULL sentinels.
 pub fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe {
-        let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
-            name
-        } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-            let chars = owner_sexp(active_owner(), name)
-                .try_string_elt(0)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if chars.is_null() {
-                std::panic::panic_any(RError {
-                    message: "invalid type or length for slot name".to_string(),
-                });
-            }
-            Rf_install(crate::sexp::accessors::CHAR(chars))
-        } else {
+    let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
+        name
+    } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+        let chars = owner_sexp(active_owner(), name)
+            .try_string_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if chars.is_null() {
             std::panic::panic_any(RError {
                 message: "invalid type or length for slot name".to_string(),
             });
-        };
-        let name_str = elt_to_string(name_sym, 0);
-        if name_str == ".Data" && TYPEOF(obj) != SEXPTYPE::OBJSXP {
-            return Rf_ScalarLogical(TRUE);
         }
-        let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
-        Rf_ScalarLogical(if !value.is_null() && value != R_NilValue() {
-            TRUE
-        } else {
-            FALSE
-        })
+        install_cstr(&charsxp_cstring(chars))
+    } else {
+        std::panic::panic_any(RError {
+            message: "invalid type or length for slot name".to_string(),
+        });
+    };
+    let name_str = elt_to_string(name_sym, 0);
+    if name_str == ".Data" && TYPEOF(obj) != SEXPTYPE::OBJSXP {
+        return Rf_ScalarLogical(TRUE);
     }
+    let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+    Rf_ScalarLogical(if !value.is_null() && value != R_NilValue() {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// GNU `R_do_slot_assign` — store a slot as an attribute.
@@ -1231,7 +1228,7 @@ pub fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
                     message: "invalid type or length for slot name".to_string(),
                 });
             }
-            Rf_install(crate::sexp::accessors::CHAR(chars))
+            install_cstr(&charsxp_cstring(chars))
         } else {
             std::panic::panic_any(RError {
                 message: "invalid type or length for slot name".to_string(),
@@ -1538,197 +1535,193 @@ pub fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
-    unsafe {
-        let fail = |message: &str| -> ! {
-            std::panic::panic_any(RError {
-                message: message.into(),
-            })
-        };
-        let f = arg_by_name_or_position(args, &["f"], 0);
-        let signature = arg_by_name_or_position(args, &["signature"], 1);
-        let where_arg = arg_by_name_or_position(args, &["where"], 2);
-        let env = if where_arg.is_null() || where_arg == R_NilValue() {
-            rho
-        } else {
-            where_arg
-        };
-        if TYPEOF(env) != SEXPTYPE::ENVSXP {
-            fail("'where' must be an environment")
-        }
-        let mut generic = if TYPEOF(f) == SEXPTYPE::CLOSXP {
-            f
-        } else if !inherit && TYPEOF(f) == SEXPTYPE::SYMSXP {
-            find_var(f, env)
-        } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
-            let chars = owner_sexp(active_owner(), f)
-                .try_string_elt(0)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            find_var(Rf_install(CHAR(chars)), env)
-        } else {
-            fail("invalid generic function specification")
-        };
-        if generic == crate::sexp::globals::R_UnboundValue() || generic == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        if TYPEOF(generic) == SEXPTYPE::PROMSXP {
-            generic = force_promise(generic);
-        }
-        if TYPEOF(generic) != SEXPTYPE::CLOSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let _generic_root = protect(generic);
-        let generic_env = crate::sexp::accessors::CLOENV(generic);
-        let table =
-            find_var_in_frame(generic_env, install_str(".AllMTable"));
-        let sigargs =
-            find_var_in_frame(generic_env, install_str(".SigArgs"));
-        if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        if signature != R_NilValue()
-            && !signature.is_null()
-            && TYPEOF(signature) != SEXPTYPE::STRSXP
-        {
-            fail("invalid signature argument")
-        }
-        let mut targets = string_vector_values(signature);
-        let n = LENGTH(sigargs) as usize;
-        if targets.len() > n {
-            fail("more elements in the method signature than in the generic signature")
-        }
-        if !inherit && signature != R_NilValue() {
-            let names =
-                crate::sexp::attrib_core::getAttrib(signature, install_str("names"));
-            if TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) == targets.len() as i32 {
-                let mut reordered = vec!["ANY".to_string(); n];
-                let mut seen = vec![false; n];
-                let sigargs_owned = owner_sexp(active_owner(), sigargs);
-                for (i, value) in targets.into_iter().enumerate() {
-                    let name = elt_to_string(names, i as R_xlen_t);
-                    let index = (0..n)
-                        .find(|j| {
-                            let elt = sigargs_owned
-                                .try_vector_elt(*j as R_xlen_t)
-                                .map(|elt| elt.as_raw())
-                                .unwrap_or_else(|error| {
-                                    crate::sexp::context::r_error(error.to_string())
-                                });
-                            elt_to_string(elt, 0) == name
-                        })
-                        .unwrap_or_else(|| {
-                            fail("named signature does not match generic arguments")
-                        });
-                    if seen[index] {
-                        fail("duplicate names in signature")
-                    }
-                    seen[index] = true;
-                    reordered[index] = value;
-                }
-                targets = reordered;
-            }
-        }
-        targets.resize(n, "ANY".to_string());
-        let exists = crate::library::methods::methods_list_dispatch::select_method_by_signature(
-            table,
-            &targets,
-            &vec![inherit; n],
-        )
-        .is_some();
-        Rf_ScalarLogical(i32::from(exists))
+    let fail = |message: &str| -> ! {
+        std::panic::panic_any(RError {
+            message: message.into(),
+        })
+    };
+    let f = arg_by_name_or_position(args, &["f"], 0);
+    let signature = arg_by_name_or_position(args, &["signature"], 1);
+    let where_arg = arg_by_name_or_position(args, &["where"], 2);
+    let env = if where_arg.is_null() || where_arg == R_NilValue() {
+        rho
+    } else {
+        where_arg
+    };
+    if TYPEOF(env) != SEXPTYPE::ENVSXP {
+        fail("'where' must be an environment")
     }
+    let mut generic = if TYPEOF(f) == SEXPTYPE::CLOSXP {
+        f
+    } else if !inherit && TYPEOF(f) == SEXPTYPE::SYMSXP {
+        find_var(f, env)
+    } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
+        let chars = owner_sexp(active_owner(), f)
+            .try_string_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        find_var(install_cstr(&charsxp_cstring(chars)), env)
+    } else {
+        fail("invalid generic function specification")
+    };
+    if generic == crate::sexp::globals::R_UnboundValue() || generic == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    if TYPEOF(generic) == SEXPTYPE::PROMSXP {
+        generic = force_promise(generic);
+    }
+    if TYPEOF(generic) != SEXPTYPE::CLOSXP {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let _generic_root = protect(generic);
+    let generic_env = crate::sexp::accessors::CLOENV(generic);
+    let table =
+        find_var_in_frame(generic_env, install_str(".AllMTable"));
+    let sigargs =
+        find_var_in_frame(generic_env, install_str(".SigArgs"));
+    if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+        return Rf_ScalarLogical(FALSE);
+    }
+    if signature != R_NilValue()
+        && !signature.is_null()
+        && TYPEOF(signature) != SEXPTYPE::STRSXP
+    {
+        fail("invalid signature argument")
+    }
+    let mut targets = string_vector_values(signature);
+    let n = LENGTH(sigargs) as usize;
+    if targets.len() > n {
+        fail("more elements in the method signature than in the generic signature")
+    }
+    if !inherit && signature != R_NilValue() {
+        let names =
+            crate::sexp::attrib_core::getAttrib(signature, install_str("names"));
+        if TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) == targets.len() as i32 {
+            let mut reordered = vec!["ANY".to_string(); n];
+            let mut seen = vec![false; n];
+            let sigargs_owned = owner_sexp(active_owner(), sigargs);
+            for (i, value) in targets.into_iter().enumerate() {
+                let name = elt_to_string(names, i as R_xlen_t);
+                let index = (0..n)
+                    .find(|j| {
+                        let elt = sigargs_owned
+                            .try_vector_elt(*j as R_xlen_t)
+                            .map(|elt| elt.as_raw())
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                        elt_to_string(elt, 0) == name
+                    })
+                    .unwrap_or_else(|| {
+                        fail("named signature does not match generic arguments")
+                    });
+                if seen[index] {
+                    fail("duplicate names in signature")
+                }
+                seen[index] = true;
+                reordered[index] = value;
+            }
+            targets = reordered;
+        }
+    }
+    targets.resize(n, "ANY".to_string());
+    let exists = crate::library::methods::methods_list_dispatch::select_method_by_signature(
+        table,
+        &targets,
+        &vec![inherit; n],
+    )
+    .is_some();
+    Rf_ScalarLogical(i32::from(exists))
 }
 
 /// R's `selectMethod(f, signature)` — select method for generic.
 pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let fail = |message: &str| -> ! {
-            std::panic::panic_any(RError {
-                message: message.into(),
-            })
-        };
-        let f = arg_by_name_or_position(args, &["f"], 0);
-        let signature = arg_by_name_or_position(args, &["signature"], 1);
-        let optional = arg_by_name_or_position(args, &["optional"], 2);
-        let inherited = arg_by_name_or_position(args, &["useInherited"], 3);
-        let fdef = arg_by_name_or_position(args, &["fdef"], 5);
-        let generic = if fdef != R_NilValue() && !fdef.is_null() {
-            fdef
-        } else if TYPEOF(f) == SEXPTYPE::CLOSXP {
-            f
-        } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
-            let chars = owner_sexp(active_owner(), f)
-                .try_string_elt(0)
-                .map(|elt| elt.as_raw())
+    let fail = |message: &str| -> ! {
+        std::panic::panic_any(RError {
+            message: message.into(),
+        })
+    };
+    let f = arg_by_name_or_position(args, &["f"], 0);
+    let signature = arg_by_name_or_position(args, &["signature"], 1);
+    let optional = arg_by_name_or_position(args, &["optional"], 2);
+    let inherited = arg_by_name_or_position(args, &["useInherited"], 3);
+    let fdef = arg_by_name_or_position(args, &["fdef"], 5);
+    let generic = if fdef != R_NilValue() && !fdef.is_null() {
+        fdef
+    } else if TYPEOF(f) == SEXPTYPE::CLOSXP {
+        f
+    } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
+        let chars = owner_sexp(active_owner(), f)
+            .try_string_elt(0)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        find_fun(install_cstr(&charsxp_cstring(chars)), rho)
+    } else {
+        fail("invalid generic function specification")
+    };
+    if TYPEOF(generic) != SEXPTYPE::CLOSXP {
+        fail("no generic function found")
+    }
+    let _generic_root = protect(generic);
+    let env = crate::sexp::accessors::CLOENV(generic);
+    let table = find_var_in_frame(env, install_str(".AllMTable"));
+    let sigargs = find_var_in_frame(env, install_str(".SigArgs"));
+    if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+        fail("no generic function found")
+    }
+    if TYPEOF(signature) != SEXPTYPE::STRSXP {
+        fail("invalid signature argument")
+    }
+    let n = LENGTH(sigargs) as usize;
+    let supplied = string_vector_values(signature);
+    if supplied.len() > n {
+        fail("more elements in the method signature than in the generic signature")
+    }
+    // GNU selectMethod consumes signatures in generic order, even if named.
+    let mut targets = supplied;
+    targets.resize(n, "ANY".to_string());
+    let mut inherit = vec![true; n];
+    if inherited != R_NilValue() && !inherited.is_null() {
+        if TYPEOF(inherited) != SEXPTYPE::LGLSXP
+            || ![1, n].contains(&(LENGTH(inherited) as usize))
+        {
+            fail("invalid useInherited argument")
+        }
+        let inherited_owned = owner_sexp(active_owner(), inherited);
+        for (i, value) in inherit.iter_mut().enumerate() {
+            let logical = inherited_owned
+                .try_logical_elt((i % LENGTH(inherited) as usize) as R_xlen_t)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            find_fun(Rf_install(CHAR(chars)), rho)
-        } else {
-            fail("invalid generic function specification")
-        };
-        if TYPEOF(generic) != SEXPTYPE::CLOSXP {
-            fail("no generic function found")
-        }
-        let _generic_root = protect(generic);
-        let env = crate::sexp::accessors::CLOENV(generic);
-        let table = find_var_in_frame(env, install_str(".AllMTable"));
-        let sigargs = find_var_in_frame(env, install_str(".SigArgs"));
-        if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
-            fail("no generic function found")
-        }
-        if TYPEOF(signature) != SEXPTYPE::STRSXP {
-            fail("invalid signature argument")
-        }
-        let n = LENGTH(sigargs) as usize;
-        let supplied = string_vector_values(signature);
-        if supplied.len() > n {
-            fail("more elements in the method signature than in the generic signature")
-        }
-        // GNU selectMethod consumes signatures in generic order, even if named.
-        let mut targets = supplied;
-        targets.resize(n, "ANY".to_string());
-        let mut inherit = vec![true; n];
-        if inherited != R_NilValue() && !inherited.is_null() {
-            if TYPEOF(inherited) != SEXPTYPE::LGLSXP
-                || ![1, n].contains(&(LENGTH(inherited) as usize))
-            {
+            if logical == i32::MIN {
                 fail("invalid useInherited argument")
             }
-            let inherited_owned = owner_sexp(active_owner(), inherited);
-            for (i, value) in inherit.iter_mut().enumerate() {
-                let logical = inherited_owned
-                    .try_logical_elt((i % LENGTH(inherited) as usize) as R_xlen_t)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                if logical == i32::MIN {
-                    fail("invalid useInherited argument")
-                }
-                *value = logical != 0;
-            }
+            *value = logical != 0;
         }
-        let selected = crate::library::methods::methods_list_dispatch::select_method_by_signature(
-            table, &targets, &inherit,
-        );
-        let Some((method, defined)) = selected else {
-            if optional != R_NilValue() && crate::mainutils::coerce::asLogical(optional) == TRUE {
-                return R_NilValue();
-            }
-            fail("no method found for this signature")
-        };
-        let result = crate::mainutils::duplicate::Rf_duplicate(method);
-        let _result_root = protect(result);
-        for (name, values) in [("target", targets), ("defined", defined)] {
-            let value = string_vector_from_values(&values);
-            let _value_root = protect(value);
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new(name).unwrap().as_ptr()),
-                value,
-            );
-        }
-        let class = mk_string_cstr(c"MethodDefinition");
-        let _class_root = protect(class);
-        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
-        crate::sexp::attrib_core::setAttrib(result, install_str(".Data"), method);
-        crate::sexp::accessors::SET_S4_OBJECT(result);
-        result
     }
+    let selected = crate::library::methods::methods_list_dispatch::select_method_by_signature(
+        table, &targets, &inherit,
+    );
+    let Some((method, defined)) = selected else {
+        if optional != R_NilValue() && crate::mainutils::coerce::asLogical(optional) == TRUE {
+            return R_NilValue();
+        }
+        fail("no method found for this signature")
+    };
+    let result = crate::mainutils::duplicate::Rf_duplicate(method);
+    let _result_root = protect(result);
+    for (name, values) in [("target", targets), ("defined", defined)] {
+        let value = string_vector_from_values(&values);
+        let _value_root = protect(value);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            install_cstr(&CString::new(name).unwrap()),
+            value,
+        );
+    }
+    let class = mk_string_cstr(c"MethodDefinition");
+    let _class_root = protect(class);
+    crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
+    crate::sexp::attrib_core::setAttrib(result, install_str(".Data"), method);
+    crate::sexp::accessors::SET_S4_OBJECT(result);
+    result
 }

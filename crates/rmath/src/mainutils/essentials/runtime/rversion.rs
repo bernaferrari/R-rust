@@ -95,52 +95,50 @@ pub fn do_R_Version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `args(fn)` — returns the formal arguments of a function as a pairlist.
 /// With the body set to NULL.
 pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let fn_arg = CAR(args);
-        if fn_arg.is_null() || fn_arg == R_NilValue() {
-            return R_NilValue();
-        }
+    let fn_arg = CAR(args);
+    if fn_arg.is_null() || fn_arg == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let t = TYPEOF(fn_arg);
-        if t == SEXPTYPE::CLOSXP {
+    let t = TYPEOF(fn_arg);
+    if t == SEXPTYPE::CLOSXP {
+        return mk_closure(
+            FORMALS(fn_arg),
+            R_NilValue(),
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+    }
+
+    if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+        return R_NilValue();
+    }
+
+    let primitive_name = crate::eval::primitive::PRIMNAME(fn_arg);
+    let primitive_symbol =
+        install_cstr(&CString::new(primitive_name).unwrap_or_default());
+
+    for registry in [".ArgsEnv", ".GenericArgsEnv"] {
+        let registry_symbol = install_cstr(&CString::new(registry).unwrap_or_default());
+        let registry_env = find_var_in_frame(
+            crate::sexp::globals::R_BaseEnv(),
+            registry_symbol,
+        );
+        if registry_env == crate::sexp::globals::R_UnboundValue() {
+            continue;
+        }
+        let prototype = find_var_in_frame(registry_env, primitive_symbol);
+        if prototype != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(prototype) == SEXPTYPE::CLOSXP
+        {
             return mk_closure(
-                FORMALS(fn_arg),
+                FORMALS(prototype),
                 R_NilValue(),
                 crate::sexp::globals::R_GlobalEnv(),
             );
         }
-
-        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
-            return R_NilValue();
-        }
-
-        let primitive_name = crate::eval::primitive::PRIMNAME(fn_arg);
-        let primitive_symbol =
-            Rf_install(CString::new(primitive_name).unwrap_or_default().as_ptr());
-
-        for registry in [".ArgsEnv", ".GenericArgsEnv"] {
-            let registry_symbol = Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
-            let registry_env = find_var_in_frame(
-                crate::sexp::globals::R_BaseEnv(),
-                registry_symbol,
-            );
-            if registry_env == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            let prototype = find_var_in_frame(registry_env, primitive_symbol);
-            if prototype != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(prototype) == SEXPTYPE::CLOSXP
-            {
-                return mk_closure(
-                    FORMALS(prototype),
-                    R_NilValue(),
-                    crate::sexp::globals::R_GlobalEnv(),
-                );
-            }
-        }
-
-        R_NilValue()
     }
+
+    R_NilValue()
 }
 
 /// R's `formals(fn)` — get the formal arguments (parameter list) of a function.

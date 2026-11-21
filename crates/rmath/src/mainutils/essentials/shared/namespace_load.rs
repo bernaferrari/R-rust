@@ -368,7 +368,7 @@ pub(crate) fn bind_methods_base_primitives(ns: SEXP) {
             "list2env",
             "as.environment",
         ] {
-            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let symbol = install_cstr(&CString::new(name).unwrap_or_default());
             let value = find_var_in_frame(ns, symbol);
             let kind = TYPEOF(value);
             if kind == SEXPTYPE::CLOSXP
@@ -1006,40 +1006,38 @@ pub(super) fn purge_missing_arg_placeholders(env: SEXP) {
 }
 
 pub(super) fn retarget_methods_generics(ns: SEXP) {
-    unsafe {
-        let methods_ns_sym = install_str(".methodsNamespace");
-        let old_ns = find_var_in_frame(ns, methods_ns_sym);
-        // `.InitRefClasses` captured this stub as envRefClass@refMethods$.objectParent.
-        if !old_ns.is_null()
-            && old_ns != crate::sexp::globals::R_UnboundValue()
-            && TYPEOF(old_ns) == SEXPTYPE::ENVSXP
-            && old_ns != ns
-            && !env_chain_contains(ns, old_ns)
-        {
-            SET_ENCLOS(old_ns, ns);
-        }
+    let methods_ns_sym = install_str(".methodsNamespace");
+    let old_ns = find_var_in_frame(ns, methods_ns_sym);
+    // `.InitRefClasses` captured this stub as envRefClass@refMethods$.objectParent.
+    if !old_ns.is_null()
+        && old_ns != crate::sexp::globals::R_UnboundValue()
+        && TYPEOF(old_ns) == SEXPTYPE::ENVSXP
+        && old_ns != ns
+        && !env_chain_contains(ns, old_ns)
+    {
+        SET_ENCLOS(old_ns, ns);
+    }
 
-        define_var(methods_ns_sym, ns, ns);
-        for name in ["initialize", "new", "setClass", "getClass", "getClassDef"] {
-            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            let mut value = find_var_in_frame(ns, symbol);
-            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            if TYPEOF(value) == SEXPTYPE::PROMSXP {
-                value = crate::sexp::accessors::PRVALUE(value);
-            }
-            if TYPEOF(value) != SEXPTYPE::CLOSXP {
-                continue;
-            }
-            let cloenv = crate::sexp::accessors::CLOENV(value);
-            if cloenv.is_null() || cloenv == ns {
-                continue;
-            }
-            // Do not steal a generic's table environment; only enclose it.
-            if crate::sexp::accessors::ENCLOS(cloenv) != ns {
-                crate::sexp::accessors::SET_ENCLOS(cloenv, ns);
-            }
+    define_var(methods_ns_sym, ns, ns);
+    for name in ["initialize", "new", "setClass", "getClass", "getClassDef"] {
+        let symbol = install_cstr(&CString::new(name).unwrap_or_default());
+        let mut value = find_var_in_frame(ns, symbol);
+        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+            continue;
+        }
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            value = crate::sexp::accessors::PRVALUE(value);
+        }
+        if TYPEOF(value) != SEXPTYPE::CLOSXP {
+            continue;
+        }
+        let cloenv = crate::sexp::accessors::CLOENV(value);
+        if cloenv.is_null() || cloenv == ns {
+            continue;
+        }
+        // Do not steal a generic's table environment; only enclose it.
+        if crate::sexp::accessors::ENCLOS(cloenv) != ns {
+            crate::sexp::accessors::SET_ENCLOS(cloenv, ns);
         }
     }
 }

@@ -40,7 +40,7 @@ pub fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
-        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
+        let sym = install_cstr(&CString::new(name.as_str()).unwrap_or_default());
         let env = coerce_search_envir(
             arg_by_name_or_position(args, &["envir", "where", "frame"], 1),
             rho,
@@ -81,91 +81,83 @@ pub fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `find(what, mode = "any")` — locate a name on the search path.
 pub fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let what_arg = arg_by_name_or_position(args, &["what"], 0);
-        if what_arg.is_null() || what_arg == R_NilValue() || XLENGTH(what_arg) == 0 {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-
-        let name = elt_to_string(what_arg, 0);
-        if name.is_empty() || crate::eval::builtin::is_hidden_builtin_name(&name) {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-
-        let mode_arg = arg_by_name_or_position(args, &["mode"], 1);
-        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
-            "any".to_string()
-        } else {
-            elt_to_string(mode_arg, 0)
-        };
-        let want_function = mode == "function";
-        let numeric = logical_arg_by_name_or_position(args, "numeric", 2).unwrap_or(false);
-
-        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        let mut matches = Vec::new();
-        for (label, env) in search_path_entries() {
-            if find_matches_mode(env, sym, &name, want_function) {
-                matches.push(label);
-            }
-        }
-
-        if numeric {
-            return find_numeric_result(&matches);
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, value) in matches.iter().enumerate() {
-            let charsxp = owner
-                .sexp(Rf_mkChar(
-                    CString::new(value.as_str()).unwrap_or_default().as_ptr(),
-                ))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_string_elt(i as R_xlen_t, charsxp)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        result
+    let what_arg = arg_by_name_or_position(args, &["what"], 0);
+    if what_arg.is_null() || what_arg == R_NilValue() || XLENGTH(what_arg) == 0 {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
+
+    let name = elt_to_string(what_arg, 0);
+    if name.is_empty() || crate::eval::builtin::is_hidden_builtin_name(&name) {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+
+    let mode_arg = arg_by_name_or_position(args, &["mode"], 1);
+    let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
+        "any".to_string()
+    } else {
+        elt_to_string(mode_arg, 0)
+    };
+    let want_function = mode == "function";
+    let numeric = logical_arg_by_name_or_position(args, "numeric", 2).unwrap_or(false);
+
+    let sym = install_cstr(&CString::new(name.as_str()).unwrap_or_default());
+    let mut matches = Vec::new();
+    for (label, env) in search_path_entries() {
+        if find_matches_mode(env, sym, &name, want_function) {
+            matches.push(label);
+        }
+    }
+
+    if numeric {
+        return find_numeric_result(&matches);
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, value) in matches.iter().enumerate() {
+        let charsxp = owner
+            .sexp(mk_char_cstr(&CString::new(value.as_str()).unwrap_or_default()))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_string_elt(i as R_xlen_t, charsxp)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    result
 }
 
 fn find_numeric_result(matches: &[String]) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut names_mut = owner
+        .sexp(names)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, value) in matches.iter().enumerate() {
+        result_mut
+            .try_set_integer_elt(i as R_xlen_t, (i + 1) as c_int)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut names_mut = owner
-            .sexp(names)
-            .and_then(SexpMut::try_from_checked)
+        let charsxp = owner
+            .sexp(mk_char_cstr(&CString::new(value.as_str()).unwrap_or_default()))
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, value) in matches.iter().enumerate() {
-            result_mut
-                .try_set_integer_elt(i as R_xlen_t, (i + 1) as c_int)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let charsxp = owner
-                .sexp(Rf_mkChar(
-                    CString::new(value.as_str()).unwrap_or_default().as_ptr(),
-                ))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            names_mut
-                .try_set_string_elt(i as R_xlen_t, charsxp)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            names,
-        );
-        result
+        names_mut
+            .try_set_string_elt(i as R_xlen_t, charsxp)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        names,
+    );
+    result
 }
 
 fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -> bool {
@@ -187,91 +179,75 @@ fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -
 
 /// R's `get(x, envir)` — get value.
 pub fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let name_arg = arg_by_name_or_position(args, &["x"], 0);
-        if name_arg.is_null()
-            || name_arg == R_NilValue()
-            || name_arg == crate::sexp::globals::R_MissingArg()
-        {
-            crate::mainutils::errors::R_MissingArgError_c(
-                Some(c"x"),
-                _call,
-                Some(c"getvarError"));
-        }
-        let name = elt_to_string(name_arg, 0);
-        let env = lookup_get_environment(args, rho, _call, _op, true);
-        let _env_root = crate::sexp::protect::protect(env);
-        let mode =
-            lookup_mode_argument(args, 3).unwrap_or_else(|| base_error("invalid 'mode' argument"));
-        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        let inherits = lookup_inherits_argument(args, 4, true)
-            .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
-        let selected = mget::lookup_one(sym, env, &mode, inherits)
-            .unwrap_or_else(|error| base_error(error.to_string()));
-        let Some(selected) = selected else {
-            crate::mainutils::errors::R_ObjectNotFoundError(
-                sym,
-                _call,
-                (mode != "any").then_some(mode.as_str()),
-            );
-        };
-        let value = selected.as_raw();
-        if value == crate::sexp::globals::R_MissingArg() {
-            let c_name = CString::new(name.as_str()).unwrap_or_default();
-            crate::mainutils::errors::R_MissingArgError_c(
-                Some(&c_name),
-                _call,
-                Some(c"getMissingError"));
-        }
-        ensure_get_value_named(value)
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    if name_arg.is_null()
+        || name_arg == R_NilValue()
+        || name_arg == crate::sexp::globals::R_MissingArg()
+    {
+        crate::mainutils::errors::R_MissingArgError_c(Some(c"x"), _call, Some(c"getvarError"));
     }
+    let name = elt_to_string(name_arg, 0);
+    let env = lookup_get_environment(args, rho, _call, _op, true);
+    let _env_root = crate::sexp::protect::protect(env);
+    let mode =
+        lookup_mode_argument(args, 3).unwrap_or_else(|| base_error("invalid 'mode' argument"));
+    let sym = install_cstr(&CString::new(name.as_str()).unwrap_or_default());
+    let inherits = lookup_inherits_argument(args, 4, true)
+        .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
+    let selected = mget::lookup_one(sym, env, &mode, inherits)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    let Some(selected) = selected else {
+        crate::mainutils::errors::R_ObjectNotFoundError(
+            sym,
+            _call,
+            (mode != "any").then_some(mode.as_str()),
+        );
+    };
+    let value = selected.as_raw();
+    if value == crate::sexp::globals::R_MissingArg() {
+        let c_name = CString::new(name.as_str()).unwrap_or_default();
+        crate::mainutils::errors::R_MissingArgError_c(Some(&c_name), _call, Some(c"getMissingError"));
+    }
+    ensure_get_value_named(value)
 }
 
 /// R's `get0(x, envir, mode = "any", inherits = TRUE, ifnotfound = NULL)`.
 /// Returns the original fallback value unchanged when no matching binding is
 /// found; function fallbacks are data here and must not be invoked.
 pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let name_arg = arg_by_name_or_position(args, &["x"], 0);
-        if name_arg.is_null()
-            || name_arg == R_NilValue()
-            || name_arg == crate::sexp::globals::R_MissingArg()
-        {
-            crate::mainutils::errors::R_MissingArgError_c(
-                Some(c"x"),
-                _call,
-                Some(c"getvarError"));
-        }
-        let name = elt_to_string(name_arg, 0);
-        let env = lookup_get_environment(args, rho, _call, _op, false);
-        let _env_root = crate::sexp::protect::protect(env);
-        let mode =
-            lookup_mode_argument(args, 2).unwrap_or_else(|| base_error("invalid 'mode' argument"));
-        let inherits = lookup_inherits_argument(args, 3, true)
-            .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
-        let ifnotfound = arg_by_name_or_position(args, &["ifnotfound"], 4);
-        let fallback = if ifnotfound.is_null() {
-            R_NilValue()
-        } else {
-            ifnotfound
-        };
-        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-        match mget::lookup_one(sym, env, &mode, inherits)
-            .unwrap_or_else(|error| base_error(error.to_string()))
-        {
-            Some(value) => {
-                let value = value.as_raw();
-                if value == crate::sexp::globals::R_MissingArg() {
-                    let c_name = CString::new(name).unwrap_or_default();
-                    crate::mainutils::errors::R_MissingArgError_c(
-                        Some(&c_name),
-                        _call,
-                        Some(c"getMissingError"));
-                }
-                ensure_get_value_named(value)
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    if name_arg.is_null()
+        || name_arg == R_NilValue()
+        || name_arg == crate::sexp::globals::R_MissingArg()
+    {
+        crate::mainutils::errors::R_MissingArgError_c(Some(c"x"), _call, Some(c"getvarError"));
+    }
+    let name = elt_to_string(name_arg, 0);
+    let env = lookup_get_environment(args, rho, _call, _op, false);
+    let _env_root = crate::sexp::protect::protect(env);
+    let mode =
+        lookup_mode_argument(args, 2).unwrap_or_else(|| base_error("invalid 'mode' argument"));
+    let inherits = lookup_inherits_argument(args, 3, true)
+        .unwrap_or_else(|| base_error("invalid 'inherits' argument"));
+    let ifnotfound = arg_by_name_or_position(args, &["ifnotfound"], 4);
+    let fallback = if ifnotfound.is_null() {
+        R_NilValue()
+    } else {
+        ifnotfound
+    };
+    let sym = install_cstr(&CString::new(name.as_str()).unwrap_or_default());
+    match mget::lookup_one(sym, env, &mode, inherits)
+        .unwrap_or_else(|error| base_error(error.to_string()))
+    {
+        Some(value) => {
+            let value = value.as_raw();
+            if value == crate::sexp::globals::R_MissingArg() {
+                let c_name = CString::new(name).unwrap_or_default();
+                crate::mainutils::errors::R_MissingArgError_c(Some(&c_name), _call, Some(c"getMissingError"));
             }
-            None => fallback,
+            ensure_get_value_named(value)
         }
+        None => fallback,
     }
 }
 
@@ -408,22 +384,20 @@ pub fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `assign(x, value, envir)` — assign value.
 pub fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let name_arg = arg_by_name_or_position(args, &["x"], 0);
-        let name = elt_to_string(name_arg, 0);
-        let val = arg_by_name_or_position(args, &["value"], 1);
-        if val.is_null() {
-            return R_NilValue();
-        }
-        let env = environment_arg_or_default(args, &["envir", "pos"], 2, rho);
-        define_var(
-            Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
-            val,
-            env,
-        );
-        crate::sexp::globals::set_R_Visible(FALSE);
-        val
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    let name = elt_to_string(name_arg, 0);
+    let val = arg_by_name_or_position(args, &["value"], 1);
+    if val.is_null() {
+        return R_NilValue();
     }
+    let env = environment_arg_or_default(args, &["envir", "pos"], 2, rho);
+    define_var(
+        install_cstr(&CString::new(name).unwrap_or_default()),
+        val,
+        env,
+    );
+    crate::sexp::globals::set_R_Visible(FALSE);
+    val
 }
 
 pub(crate) fn symbol_name(sym: SEXP) -> Option<String> {
@@ -513,35 +487,33 @@ pub fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// `ls.str(envir)` — list names and `str` each value without forcing symbols.
 pub fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let names = do_ls(call, op, args, rho);
-        let _n = protect(names);
-        let mut env = rho;
-        let first = CAR(args);
-        if !first.is_null() && TYPEOF(first) == SEXPTYPE::ENVSXP {
-            env = first;
-        }
-        let owner = active_owner();
-        let names_owned = owner_sexp(owner, names);
-        for i in 0..XLENGTH(names) {
-            let ch = names_owned
-                .try_string_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if ch.as_raw().is_null() {
-                continue;
-            }
-            let Some(text) = charsxp_utf8_lossy(&ch) else {
-                continue;
-            };
-            let sym = Rf_install(CString::new(text).unwrap_or_default().as_ptr());
-            let val = find_var_in_frame(env, sym);
-            if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
-                continue;
-            }
-            let _ = super::print::do_str(call, op, Rf_cons(val, R_NilValue()), rho);
-        }
-        names
+    let names = do_ls(call, op, args, rho);
+    let _n = protect(names);
+    let mut env = rho;
+    let first = CAR(args);
+    if !first.is_null() && TYPEOF(first) == SEXPTYPE::ENVSXP {
+        env = first;
     }
+    let owner = active_owner();
+    let names_owned = owner_sexp(owner, names);
+    for i in 0..XLENGTH(names) {
+        let ch = names_owned
+            .try_string_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if ch.as_raw().is_null() {
+            continue;
+        }
+        let Some(text) = charsxp_utf8_lossy(&ch) else {
+            continue;
+        };
+        let sym = install_cstr(&CString::new(text).unwrap_or_default());
+        let val = find_var_in_frame(env, sym);
+        if val.is_null() || val == crate::sexp::globals::R_UnboundValue() {
+            continue;
+        }
+        let _ = super::print::do_str(call, op, Rf_cons(val, R_NilValue()), rho);
+    }
+    names
 }
 
 /// R's `rm(list, envir)` — remove objects.
@@ -662,7 +634,7 @@ pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             rho
         };
         for name in names {
-            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let sym = install_cstr(&CString::new(name).unwrap_or_default());
             crate::sexp::envir::remove_binding_raw(env, sym);
         }
         crate::sexp::globals::set_R_Visible(FALSE);

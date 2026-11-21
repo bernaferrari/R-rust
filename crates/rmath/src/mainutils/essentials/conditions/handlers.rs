@@ -359,108 +359,104 @@ fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
 }
 
 fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
-    unsafe {
-        let n = XLENGTH(list);
-        if n <= 1 {
-            return list;
+    let n = XLENGTH(list);
+    if n <= 1 {
+        return list;
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut keep = vec![true; n as usize];
+    let owner = active_owner();
+    let names_owned = owner_sexp(owner, names);
+    let list_owned = owner_sexp(owner, list);
+    for i in 0..n {
+        if !keep[i as usize] {
+            continue;
         }
-        let names =
-            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut keep = vec![true; n as usize];
-        let owner = active_owner();
-        let names_owned = owner_sexp(owner, names);
-        let list_owned = owner_sexp(owner, list);
-        for i in 0..n {
-            if !keep[i as usize] {
+        let mut dropped = false;
+        for j in (i + 1)..n {
+            if !keep[j as usize] {
                 continue;
             }
-            let mut dropped = false;
-            for j in (i + 1)..n {
-                if !keep[j as usize] {
-                    continue;
-                }
-                let name_i = names_owned
-                    .try_string_elt(i)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    .as_raw();
-                let name_j = names_owned
-                    .try_string_elt(j)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    .as_raw();
-                if !chars_equal(name_i, name_j) {
-                    continue;
-                }
-                let handler_i = list_owned
-                    .try_vector_elt(i)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    .as_raw();
-                let handler_j = list_owned
-                    .try_vector_elt(j)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    .as_raw();
-                if handlers_structurally_equal(handler_i, handler_j) {
-                    keep[j as usize] = false;
-                    dropped = true;
-                }
+            let name_i = names_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
+            let name_j = names_owned
+                .try_string_elt(j)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
+            if !chars_equal(name_i, name_j) {
+                continue;
             }
-            if dropped {
-                let class_name = elt_to_string(names, i);
-                let msg = crate::sexp::constructors::Rf_mkString(
-                    std::ffi::CString::new(format!(
-                        "pushing duplicate `{class_name}` handler on top of the stack"
-                    ))
-                    .unwrap_or_default()
-                    .as_ptr(),
+            let handler_i = list_owned
+                .try_vector_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
+            let handler_j = list_owned
+                .try_vector_elt(j)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
+            if handlers_structurally_equal(handler_i, handler_j) {
+                keep[j as usize] = false;
+                dropped = true;
+            }
+        }
+        if dropped {
+            let class_name = elt_to_string(names, i);
+            let msg = mk_string_cstr(&std::ffi::CString::new(format!(
+                    "pushing duplicate `{class_name}` handler on top of the stack"
+                ))
+                .unwrap_or_default()
                 );
-                crate::mainutils::essentials::do_message(
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    crate::sexp::constructors::Rf_cons(msg, R_NilValue()),
-                    R_NilValue(),
-                );
-            }
+            crate::mainutils::essentials::do_message(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                crate::sexp::constructors::Rf_cons(msg, R_NilValue()),
+                R_NilValue(),
+            );
         }
-        let kept = keep.iter().filter(|k| **k).count() as i64;
-        if kept == n {
-            return list;
-        }
-        let out = Rf_allocVector3(SEXPTYPE::VECSXP, kept);
-        let _out = protect(out);
-        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept);
-        let _on = protect(out_names);
-        let mut k = 0i64;
-        let mut out_mut = owner
-            .sexp(out)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut out_names_mut = owner
-            .sexp(out_names)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for i in 0..n {
-            if keep[i as usize] {
-                let elt = list_owned
-                    .try_vector_elt(i)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                out_mut
-                    .try_set_vector_elt(k, elt)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                let name = names_owned
-                    .try_string_elt(i)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                out_names_mut
-                    .try_set_string_elt(k, name)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                k += 1;
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            out,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            out_names,
-        );
-        out
     }
+    let kept = keep.iter().filter(|k| **k).count() as i64;
+    if kept == n {
+        return list;
+    }
+    let out = Rf_allocVector3(SEXPTYPE::VECSXP, kept);
+    let _out = protect(out);
+    let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, kept);
+    let _on = protect(out_names);
+    let mut k = 0i64;
+    let mut out_mut = owner
+        .sexp(out)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut out_names_mut = owner
+        .sexp(out_names)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for i in 0..n {
+        if keep[i as usize] {
+            let elt = list_owned
+                .try_vector_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            out_mut
+                .try_set_vector_elt(k, elt)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let name = names_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            out_names_mut
+                .try_set_string_elt(k, name)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            k += 1;
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(
+        out,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        out_names,
+    );
+    out
 }
 
 fn chars_equal(a: SEXP, b: SEXP) -> bool {

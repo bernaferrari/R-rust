@@ -245,39 +245,37 @@ pub fn do_installed_packages(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 pub fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let pkg_arg = CAR(args);
-        if pkg_arg.is_null()
-            || pkg_arg == R_NilValue()
-            || pkg_arg == crate::sexp::globals::R_MissingArg()
-        {
-            return attached_package_paths();
-        }
-        let n = XLENGTH(pkg_arg);
-        if n <= 0 {
-            return attached_package_paths();
-        }
-        if n == 1 {
-            let package_name = elt_to_string(pkg_arg, 0);
-            if package_name.is_empty() {
-                return attached_package_paths();
-            }
-            let path = public_package_path(&package_name);
-            if path.is_empty() {
-                return R_NilValue();
-            }
-            return Rf_mkString(CString::new(path).unwrap_or_default().as_ptr());
-        }
-        let mut paths = Vec::new();
-        for i in 0..n {
-            let package_name = elt_to_string(pkg_arg, i);
-            let path = public_package_path(&package_name);
-            if !path.is_empty() {
-                paths.push(path);
-            }
-        }
-        string_vector(&paths)
+    let pkg_arg = CAR(args);
+    if pkg_arg.is_null()
+        || pkg_arg == R_NilValue()
+        || pkg_arg == crate::sexp::globals::R_MissingArg()
+    {
+        return attached_package_paths();
     }
+    let n = XLENGTH(pkg_arg);
+    if n <= 0 {
+        return attached_package_paths();
+    }
+    if n == 1 {
+        let package_name = elt_to_string(pkg_arg, 0);
+        if package_name.is_empty() {
+            return attached_package_paths();
+        }
+        let path = public_package_path(&package_name);
+        if path.is_empty() {
+            return R_NilValue();
+        }
+        return mk_string_cstr(&CString::new(path).unwrap_or_default());
+    }
+    let mut paths = Vec::new();
+    for i in 0..n {
+        let package_name = elt_to_string(pkg_arg, i);
+        let path = public_package_path(&package_name);
+        if !path.is_empty() {
+            paths.push(path);
+        }
+    }
+    string_vector(&paths)
 }
 
 fn attached_package_paths() -> SEXP {
@@ -607,7 +605,7 @@ pub fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         crate::mainutils::essentials::shared::uncache_package_namespace(&package);
         let label = format!("package:{package}");
-        let label_sexp = Rf_mkString(std::ffi::CString::new(label).unwrap_or_default().as_ptr());
+        let label_sexp = mk_string_cstr(&std::ffi::CString::new(label).unwrap_or_default());
         let _label_guard = protect(label_sexp);
         let cell = Rf_cons(label_sexp, R_NilValue());
         let _cell_guard = protect(cell);

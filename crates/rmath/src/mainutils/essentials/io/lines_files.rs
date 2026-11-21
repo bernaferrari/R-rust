@@ -31,79 +31,77 @@ pub(crate) fn resolve_package_relative_path(file_path: String) -> String {
 
 /// R's `writeLines(text, con = stdout(), sep = "\n", useBytes = FALSE)`.
 pub fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let text = CAR(args);
-        if text.is_null() || text == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let mut con = R_NilValue();
-        let mut sep = "\n".to_string();
-        let mut positional = 0;
-        let mut current = CDR(args);
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            match tag_name(current).as_deref() {
-                Some("con") => con = arg,
-                Some("sep") => sep = elt_to_string(arg, 0),
-                Some("useBytes") => {}
-                _ => {
-                    match positional {
-                        0 => con = arg,
-                        1 => sep = elt_to_string(arg, 0),
-                        _ => {}
-                    }
-                    positional += 1;
-                }
-            }
-            current = CDR(current);
-        }
-
-        let path = if con.is_null() || con == R_NilValue() {
-            "/dev/stdout".to_string()
-        } else if TYPEOF(con) == SEXPTYPE::INTSXP {
-            let sep_sxp = Rf_mkString(CString::new(sep).unwrap_or_default().as_ptr());
-            let normalized = Rf_cons(
-                text,
-                Rf_cons(
-                    con,
-                    Rf_cons(sep_sxp, Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue())),
-                ),
-            );
-            return crate::mainutils::connections::do_writeLines(_call, _op, normalized, _rho);
-        } else {
-            elt_to_string(con, 0)
-        };
-
-        let n = if TYPEOF(text) == SEXPTYPE::STRSXP {
-            XLENGTH(text)
-        } else {
-            1
-        };
-        if path == "/dev/stdout" {
-            let mut output = String::new();
-            for i in 0..n {
-                output.push_str(&elt_to_string(text, i));
-                output.push_str(&sep);
-            }
-            if crate::sexp::output::is_capturing() {
-                crate::sexp::output::capture_stdout(&output);
-            } else {
-                print!("{}", output);
-            }
-        } else {
-            let mut bytes = Vec::new();
-            for i in 0..n {
-                bytes.extend_from_slice(elt_to_string(text, i).as_bytes());
-                bytes.extend_from_slice(sep.as_bytes());
-            }
-            if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&path, &bytes) {
-                base_error(error.to_string());
-            }
-        }
-        crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+    let text = CAR(args);
+    if text.is_null() || text == R_NilValue() {
+        return R_NilValue();
     }
+
+    let mut con = R_NilValue();
+    let mut sep = "\n".to_string();
+    let mut positional = 0;
+    let mut current = CDR(args);
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        match tag_name(current).as_deref() {
+            Some("con") => con = arg,
+            Some("sep") => sep = elt_to_string(arg, 0),
+            Some("useBytes") => {}
+            _ => {
+                match positional {
+                    0 => con = arg,
+                    1 => sep = elt_to_string(arg, 0),
+                    _ => {}
+                }
+                positional += 1;
+            }
+        }
+        current = CDR(current);
+    }
+
+    let path = if con.is_null() || con == R_NilValue() {
+        "/dev/stdout".to_string()
+    } else if TYPEOF(con) == SEXPTYPE::INTSXP {
+        let sep_sxp = mk_string_cstr(&CString::new(sep).unwrap_or_default());
+        let normalized = Rf_cons(
+            text,
+            Rf_cons(
+                con,
+                Rf_cons(sep_sxp, Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue())),
+            ),
+        );
+        return crate::mainutils::connections::do_writeLines(_call, _op, normalized, _rho);
+    } else {
+        elt_to_string(con, 0)
+    };
+
+    let n = if TYPEOF(text) == SEXPTYPE::STRSXP {
+        XLENGTH(text)
+    } else {
+        1
+    };
+    if path == "/dev/stdout" {
+        let mut output = String::new();
+        for i in 0..n {
+            output.push_str(&elt_to_string(text, i));
+            output.push_str(&sep);
+        }
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&output);
+        } else {
+            print!("{}", output);
+        }
+    } else {
+        let mut bytes = Vec::new();
+        for i in 0..n {
+            bytes.extend_from_slice(elt_to_string(text, i).as_bytes());
+            bytes.extend_from_slice(sep.as_bytes());
+        }
+        if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&path, &bytes) {
+            base_error(error.to_string());
+        }
+    }
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
 }
 
 /// R's `readLines(con)` — read lines from file.

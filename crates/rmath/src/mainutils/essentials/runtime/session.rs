@@ -148,17 +148,15 @@ pub fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `deparse1(expr, collapse, width.cutoff)` — deparse to a single string.
 pub fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let expr = CAR(args);
-        let collapse_arg = CAR(CDR(args));
-        let sep = if collapse_arg.is_null() || collapse_arg == R_NilValue() {
-            " ".to_string()
-        } else {
-            elt_to_string(collapse_arg, 0)
-        };
-        let lines = deparse_lines(expr);
-        Rf_mkString(CString::new(lines.join(&sep)).unwrap_or_default().as_ptr())
-    }
+    let expr = CAR(args);
+    let collapse_arg = CAR(CDR(args));
+    let sep = if collapse_arg.is_null() || collapse_arg == R_NilValue() {
+        " ".to_string()
+    } else {
+        elt_to_string(collapse_arg, 0)
+    };
+    let lines = deparse_lines(expr);
+    mk_string_cstr(&CString::new(lines.join(&sep)).unwrap_or_default())
 }
 
 /// R's `dput(x, file, control)` — dump using the requested deparse options.

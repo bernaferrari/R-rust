@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::symbol::Rf_install;
 use crate::sexp::session::RSession;
 
 #[test]

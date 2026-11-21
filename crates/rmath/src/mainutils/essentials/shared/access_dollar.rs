@@ -498,14 +498,14 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // GNU default `$<-` implementation. The object and replacement value
         // remain protected across slot access and any runtime allocation.
         if TYPEOF(object) == SEXPTYPE::OBJSXP {
-            let name = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            let name = install_cstr(&CString::new(field.as_str()).unwrap_or_default());
             return crate::mainutils::subassign::R_subassign3_dflt(_call, object, name, value);
         }
         if TYPEOF(object) == SEXPTYPE::LISTSXP
             || TYPEOF(object) == SEXPTYPE::LANGSXP
             || TYPEOF(object) == SEXPTYPE::ENVSXP
         {
-            let nlist = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            let nlist = install_cstr(&CString::new(field.as_str()).unwrap_or_default());
             return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
         }
         if TYPEOF(object) != SEXPTYPE::VECSXP {
@@ -513,7 +513,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         // GNU `$<-` on a list: `x$foo <- NULL` deletes the component.
         if value.is_null() || value == R_NilValue() {
-            let nlist = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
+            let nlist = install_cstr(&CString::new(field.as_str()).unwrap_or_default());
             return crate::mainutils::subassign::R_subassign3_dflt(_call, object, nlist, value);
         }
 
@@ -610,7 +610,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             owner.sexp(out).and_then(SexpMut::try_from_checked),
             owner.sexp(out_names).and_then(SexpMut::try_from_checked),
             owner.sexp(value),
-            owner.sexp(Rf_mkChar(CString::new(field).unwrap_or_default().as_ptr())),
+            owner.sexp(mk_char_cstr(&CString::new(field).unwrap_or_default())),
         ) {
             let _ = out_mut.try_set_vector_elt(n, value_owned);
             let _ = out_names_mut.try_set_string_elt(n, field_chars);

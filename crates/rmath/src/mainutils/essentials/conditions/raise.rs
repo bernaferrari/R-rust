@@ -157,7 +157,7 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if crate::mainutils::errors::warning_class_suppressed(&cond_classes) {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_mkString(CString::new(warning_text).unwrap_or_default().as_ptr());
+            return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
         }
         // Muffle-aware calling-handler signal: a handler invoking the
         // dynamically scoped muffleWarning restart (upstream
@@ -170,7 +170,7 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         if muffled {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_mkString(CString::new(warning_text).unwrap_or_default().as_ptr());
+            return mk_string_cstr(&CString::new(warning_text).unwrap_or_default());
         }
 
         // Exiting handlers: when an enclosing tryCatch(...) registered a
@@ -206,7 +206,7 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let wcall = warning_call;
         let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
         crate::mainutils::errors::mark_calling_handlers_signaled();
-        crate::mainutils::errors::warningcall_cstr(wcall, &c_msg);
+        crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         // Stock returns the message string (the R closure wraps it in
         // invisible()); print(warning("w")) therefore renders `[1] "w"`.
@@ -337,46 +337,45 @@ pub(crate) fn simple_error_condition(message: &str) -> SEXP {
 }
 
 pub(crate) fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
-    unsafe {
-        // GNU stop() inside tryCatch attributes to doTryCatch because that
-        // is getCurrentCall(). Unused-arg / Math1 pass the applied call to
-        // errorcall; call. = FALSE is a NULL call.
-        let mut _call_guard = None;
-        let call = match call {
-            Some(call) => call,
-            None => {
-                let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-                let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
-                let call = crate::sexp::constructors::Rf_lang5(
-                    s("doTryCatch"),
-                    inner,
-                    s("name"),
-                    s("parentenv"),
-                    s("handler"),
-                );
-                _call_guard = Some(protect(call));
-                call
-            }
-        };
-        let which = if message.starts_with("subscript out of bounds") {
-            crate::mainutils::subset::take_oob_subscript()
-        } else {
-            0
-        };
-        let c_msg = CString::new(message).unwrap_or_default();
-        let cond = crate::mainutils::errors::R_makeErrorCondition(
-            call,
-            Some(c"simpleError"),
-            None,
-            if which > 0 { 1 } else { 0 },
-            Some(&c_msg));
-        if which > 0 {
-            let scalar = Rf_ScalarInteger(which);
-            let _g = protect(scalar);
-            crate::mainutils::errors::R_setConditionField(cond, 2, c"subscript", scalar);
+    // GNU stop() inside tryCatch attributes to doTryCatch because that
+    // is getCurrentCall(). Unused-arg / Math1 pass the applied call to
+    // errorcall; call. = FALSE is a NULL call.
+    let mut _call_guard = None;
+    let call = match call {
+        Some(call) => call,
+        None => {
+            let s = |name: &str| install_cstr(&CString::new(name).unwrap_or_default());
+            let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
+            let call = crate::sexp::constructors::Rf_lang5(
+                s("doTryCatch"),
+                inner,
+                s("name"),
+                s("parentenv"),
+                s("handler"),
+            );
+            _call_guard = Some(protect(call));
+            call
         }
-        cond
+    };
+    let which = if message.starts_with("subscript out of bounds") {
+        crate::mainutils::subset::take_oob_subscript()
+    } else {
+        0
+    };
+    let c_msg = CString::new(message).unwrap_or_default();
+    let cond = crate::mainutils::errors::R_makeErrorCondition(
+        call,
+        Some(c"simpleError"),
+        None,
+        if which > 0 { 1 } else { 0 },
+        Some(&c_msg),
+    );
+    if which > 0 {
+        let scalar = Rf_ScalarInteger(which);
+        let _g = protect(scalar);
+        crate::mainutils::errors::R_setConditionField(cond, 2, c"subscript", scalar);
     }
+    cond
 }
 
 pub(crate) fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
@@ -392,72 +391,71 @@ pub(crate) fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
         Some(c"simpleWarning"),
         None,
         0,
-        Some(&c_msg))
+        Some(&c_msg),
+    )
 }
 pub(crate) fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     simple_condition_at(message, classes, R_NilValue())
 }
 
 pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -> SEXP {
-    unsafe {
-        // GNU simpleWarning/simpleMessage/simpleCondition all carry both a
-        // `message` and a `call` field (GNU conditions.R / message.R).
-        let call = if call.is_null() { R_NilValue() } else { call };
-        let _call_guard = protect(call);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let msg = Rf_mkString(CString::new(message).unwrap_or_default().as_ptr());
-        let _msg_guard = protect(msg);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (i, value) in [msg, call].into_iter().enumerate() {
-            let value = owner
-                .sexp(value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_vector_elt(i as R_xlen_t, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !names.is_null() {
-            let _np = protect(names);
-            if let Ok(mut names_mut) = owner.sexp(names).and_then(SexpMut::try_from_checked) {
-                for (i, text) in [c"message", c"call"].into_iter().enumerate() {
-                    let charsxp = owner
-                        .sexp(mk_char_cstr(&text))
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
-
-        if !class.is_null() {
-            let _cp = protect(class);
-            if let Ok(mut class_mut) = owner.sexp(class).and_then(SexpMut::try_from_checked) {
-                for (i, name) in classes.iter().enumerate() {
-                    let charsxp = owner
-                        .sexp(Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()))
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let _ = class_mut.try_set_string_elt(i as R_xlen_t, charsxp);
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
-        }
-
-        result
+    // GNU simpleWarning/simpleMessage/simpleCondition all carry both a
+    // `message` and a `call` field (GNU conditions.R / message.R).
+    let call = if call.is_null() { R_NilValue() } else { call };
+    let _call_guard = protect(call);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+    let msg = mk_string_cstr(&CString::new(message).unwrap_or_default());
+    let _msg_guard = protect(msg);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (i, value) in [msg, call].into_iter().enumerate() {
+        let value = owner
+            .sexp(value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(i as R_xlen_t, value)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if !names.is_null() {
+        let _np = protect(names);
+        if let Ok(mut names_mut) = owner.sexp(names).and_then(SexpMut::try_from_checked) {
+            for (i, text) in [c"message", c"call"].into_iter().enumerate() {
+                let charsxp = owner
+                    .sexp(mk_char_cstr(&text))
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+    }
+
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
+
+    if !class.is_null() {
+        let _cp = protect(class);
+        if let Ok(mut class_mut) = owner.sexp(class).and_then(SexpMut::try_from_checked) {
+            for (i, name) in classes.iter().enumerate() {
+                let charsxp = owner
+                    .sexp(mk_char_cstr(&CString::new(*name).unwrap_or_default()))
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let _ = class_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class);
+    }
+
+    result
 }

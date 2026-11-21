@@ -193,7 +193,6 @@ pub(crate) fn str_elt_or_na(x: SEXP, i: R_xlen_t) -> SEXP {
     }
     let s = elt_to_string(x, i % n);
     let cstr = CString::new(s).unwrap_or_default();
-    // SAFETY: cstr is a live NUL-terminated buffer for the call duration.
     let charsxp = mk_char_cstr(&cstr);
     if charsxp.is_null() {
         crate::sexp::globals::R_NaString()
@@ -277,7 +276,6 @@ pub fn set_matrix_zero(x: SEXP, i: R_xlen_t) {
             let _ = x.try_set_raw_elt(i, 0 as Rbyte);
         }
         SEXPTYPE::STRSXP => {
-            // SAFETY: the empty string literal outlives this call.
             let empty = mk_char_cstr(c"");
             if let Ok(empty) = owner.sexp(empty) {
                 let _ = x.try_set_string_elt(i, empty);
@@ -358,7 +356,6 @@ pub fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
 }
 
 pub fn is_data_frame_object(x: SEXP) -> bool {
-    // SAFETY: x is a live SEXP retained by the caller's argument graph.
     let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
     string_vector_contains_value(class, "data.frame")
 }
