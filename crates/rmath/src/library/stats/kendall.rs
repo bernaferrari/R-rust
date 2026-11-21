@@ -92,7 +92,7 @@ fn pkendall(len: c_int, q: &[c_double], p: &mut [c_double], n: c_int) {
 // pKendall: SEXP interface
 // ---------------------------------------------------------------------------
 
-pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
+pub fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
     let q = coerceVector(q, SEXPTYPE::REALSXP.as_c_int());
     let _q_guard = protect_sexp(q);
     let len = LENGTH(q);
@@ -108,5 +108,5 @@ pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
 }
 
 pub unsafe extern "C-unwind" fn c_pKendall(q: SEXP, sn: SEXP) -> SEXP {
-    unsafe { pKendall(q, sn) }
+    pKendall(q, sn)
 }

@@ -2,6 +2,7 @@
 //! Port of r-source/src/library/stats/src/swilk.c
 //! Based on Applied Statistics algorithms AS181, R94
 
+use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, SET_REAL_ELT};
 use std::os::raw::{c_double, c_int};
 
 use crate::nmath::dist::normal::pnorm5_inner;
@@ -13,7 +14,7 @@ use crate::sexp::protect::protect;
 
 // `crate::main::coerce::coerceVector` still takes `c_int`; keep the conversion
 // local so this module can use `SEXPTYPE` at the call site.
-unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
+fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
     crate::main::coerce::coerceVector(x, sexptype.into())
 }
 
@@ -193,67 +194,67 @@ unsafe fn swilk(
     }
 }
 
-pub unsafe fn SWilk(x: SEXP) -> SEXP {
-    unsafe {
-        let mut ifault: c_int = 0;
-        let mut W: c_double = 0.0;
-        let mut pw: c_double = 0.0;
+pub fn SWilk(x: SEXP) -> SEXP {
+    let mut ifault: c_int = 0;
+    let mut W: c_double = 0.0;
+    let mut pw: c_double = 0.0;
 
-        let x = coerceVector(x, SEXPTYPE::REALSXP);
-        let _x_guard = protect(x);
-        let n = LENGTH(x);
+    let x = coerceVector(x, SEXPTYPE::REALSXP);
+    let _x_guard = protect(x);
+    let n = LENGTH(x);
+    // SAFETY: `x` is a protected REALSXP of `n` cells and the outputs are
+    // live locals.
+    unsafe {
         swilk(REAL(x), n, &mut W, &mut pw, &mut ifault);
-        if ifault > 0 && ifault != 7 {
-            eprintln!("ifault={}. This should not happen", ifault);
-        }
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        let _ans_guard = protect(ans);
-        *REAL(ans) = W;
-        *REAL(ans).add(1) = pw;
-        ans
     }
+    if ifault > 0 && ifault != 7 {
+        eprintln!("ifault={}. This should not happen", ifault);
+    }
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+    let _ans_guard = protect(ans);
+    SET_REAL_ELT(ans, 0, W);
+    SET_REAL_ELT(ans, 1, pw);
+    ans
 }
 
-pub unsafe fn do_shapiro_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, INTEGER, SET_VECTOR_ELT, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector, Rf_mkString};
-        let x0 = CAR(args);
-        let n = XLENGTH(x0);
-        let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
-                *REAL(x0).add(i as usize)
-            } else {
-                *INTEGER(x0).add(i as usize) as f64
-            };
-            if v.is_finite() {
-                vals.push(v);
-            }
+pub fn do_shapiro_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, INTEGER, SET_VECTOR_ELT, XLENGTH};
+    use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector, Rf_mkString};
+    let x0 = CAR(args);
+    let n = XLENGTH(x0);
+    let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+            REAL_ELT(x0, i as i32)
+        } else {
+            INTEGER_ELT(x0, i as i32) as f64
+        };
+        if v.is_finite() {
+            vals.push(v);
         }
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let xs = Rf_allocVector(SEXPTYPE::REALSXP, vals.len() as c_int);
-        let _xs = protect(xs);
-        for (i, v) in vals.iter().enumerate() {
-            *REAL(xs).add(i) = *v;
-        }
-        let wp = SWilk(xs);
-        let _wp = protect(wp);
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, Rf_ScalarReal(*REAL(wp)));
-        SET_VECTOR_ELT(result, 1, Rf_ScalarReal(*REAL(wp).add(1)));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["statistic".to_string(), "p.value".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"htest".as_ptr()),
-        );
-        result
     }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let xs = Rf_allocVector(SEXPTYPE::REALSXP, vals.len() as c_int);
+    let _xs = protect(xs);
+    for (i, v) in vals.iter().enumerate() {
+        SET_REAL_ELT(xs, i as i32, *v);
+    }
+    let wp = SWilk(xs);
+    let _wp = protect(wp);
+    let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, Rf_ScalarReal(REAL_ELT(wp, 0)));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarReal(REAL_ELT(wp, 1)));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["statistic".to_string(), "p.value".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("htest"),
+    );
+    result
 }
 
 #[cfg(test)]

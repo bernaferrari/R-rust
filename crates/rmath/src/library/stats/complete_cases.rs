@@ -27,17 +27,15 @@ fn isMatrix(x: SEXP) -> bool {
 }
 
 fn isVector(x: SEXP) -> bool {
-    {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP
-            || t == SEXPTYPE::VECSXP
-            || t == SEXPTYPE::EXPRSXP
-    }
+    let t = TYPEOF(x);
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::RAWSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
 }
 
 fn isNewList(x: SEXP) -> bool {
@@ -45,27 +43,27 @@ fn isNewList(x: SEXP) -> bool {
 }
 
 fn length_sexp(x: SEXP) -> c_int {
-    {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::NILSXP {
-            return 0;
-        }
-        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-            let mut count = 0i32;
-            let mut cur = x;
-            while !cur.is_null() {
-                count += 1;
-                cur = CDR(cur);
-            }
-            return count;
-        }
-        LENGTH(x)
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::NILSXP {
+        return 0;
     }
+    if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+        let mut count = 0i32;
+        let mut cur = x;
+        while !cur.is_null() {
+            count += 1;
+            cur = CDR(cur);
+        }
+        return count;
+    }
+    LENGTH(x)
 }
 
 /// First integer payload element of a checked dimension attribute.
 fn dim_nrow(owner: crate::sexp::owner::OwnerToken<'_>, dim: SEXP) -> c_int {
-    checked(owner.sexp(dim)).integer_elt(0).unwrap_or(NA_INTEGER)
+    checked(owner.sexp(dim))
+        .integer_elt(0)
+        .unwrap_or(NA_INTEGER)
 }
 
 fn check_vector_na(

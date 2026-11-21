@@ -33,7 +33,7 @@ fn active(owner: OwnerToken<'_>) {
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
 }
-unsafe fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP {
+fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP {
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     let m = crate::main::coerce::asInteger(sm);
@@ -79,11 +79,11 @@ unsafe fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP 
     active(owner);
     output
 }
-pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
-    unsafe { distribution(q, sm, sn, false) }
+pub fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
+    distribution(q, sm, sn, false)
 }
-pub unsafe fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
-    unsafe { distribution(p, sm, sn, true) }
+pub fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
+    distribution(p, sm, sn, true)
 }
 
 #[cfg(test)]

@@ -283,29 +283,25 @@ fn as_real(x: SEXP) -> c_double {
 }
 
 fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() {
-            return LENGTH(x);
-        }
-        *INTEGER(d)
+    let d = getAttrib(x, R_DimSymbol());
+    if d.is_null() {
+        return LENGTH(x);
     }
+    INTEGER_ELT(d, 0)
 }
 
 fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        let d = getAttrib(x, R_DimSymbol());
-        if d.is_null() {
-            return 1;
-        }
-        if LENGTH(d) >= 2 {
-            return *INTEGER(d).add(1);
-        }
-        1
+    let d = getAttrib(x, R_DimSymbol());
+    if d.is_null() {
+        return 1;
     }
+    if LENGTH(d) >= 2 {
+        return INTEGER_ELT(d, 1);
+    }
+    1
 }
 
-pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
+pub fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let nr = nrows(x);
     let nc = ncols(x);
     let method = as_integer(smethod);

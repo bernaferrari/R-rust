@@ -78,16 +78,16 @@ call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
 call_trampoline!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
 call_trampoline_raw!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
 call_trampoline_raw!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
-call_trampoline_raw!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
+call_trampoline!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
 call_trampoline!(c_nextn, (n, f) => super::fourier::nextn(n, f));
-call_trampoline_raw!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
+call_trampoline!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
 call_trampoline!(c_do_d, (args) => super::deriv::do_d(args));
 call_trampoline!(c_deriv, (args) => super::deriv::do_deriv(args));
 call_trampoline!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
 call_trampoline!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
 call_trampoline!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
 call_trampoline!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
-call_trampoline_raw!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
+call_trampoline!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
 call_trampoline_raw!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
 call_trampoline_raw!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
@@ -249,17 +249,17 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_pkolmogorov_two_exact",
 ];
 
-call_trampoline_raw!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
+call_trampoline!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
 
 call_trampoline_raw!(c_isoreg, (y) => super::isoreg::isoreg(y));
 
-call_trampoline_raw!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
+call_trampoline!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
 
-call_trampoline_raw!(c_qansari, (p, m, n) => super::ansari::qAnsari(p, m, n));
+call_trampoline!(c_qansari, (p, m, n) => super::ansari::qAnsari(p, m, n));
 
-call_trampoline_raw!(c_intgrt_vec, (x, xi, lag) => super::ppsum::intgrt_vec(x, xi, lag));
+call_trampoline!(c_intgrt_vec, (x, xi, lag) => super::ppsum::intgrt_vec(x, xi, lag));
 
-call_trampoline_raw!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
+call_trampoline!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
 
 call_trampoline!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma, lag_max));
 
@@ -272,13 +272,13 @@ call_trampoline!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv
 #[allow(clippy::too_many_arguments)]
 call_trampoline!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
 
-call_trampoline_raw!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
+call_trampoline!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
 
-call_trampoline_raw!(c_pkolmogorov_two_limit, (sq, lower, tol) => super::ks::pkolmogorov_two_limit(sq, lower, tol));
+call_trampoline!(c_pkolmogorov_two_limit, (sq, lower, tol) => super::ks::pkolmogorov_two_limit(sq, lower, tol));
 
-call_trampoline_raw!(c_pkolmogorov_two_exact, (sq, sn) => super::ks::pkolmogorov_two_exact(sq, sn));
+call_trampoline!(c_pkolmogorov_two_exact, (sq, sn) => super::ks::pkolmogorov_two_exact(sq, sn));
 
-call_trampoline_raw!(c_swilk, (x) => super::swilk::SWilk(x));
+call_trampoline!(c_swilk, (x) => super::swilk::SWilk(x));
 
 /// Routines whose real signature is `.External2` `(call, op, args, env)`.
 /// `.External` must not transmute a `.Call` pointer from `lookup_call`.

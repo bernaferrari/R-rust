@@ -22,7 +22,7 @@
 
 use std::os::raw::{c_double, c_int};
 
-use crate::main::duplicate::duplicate;
+use crate::library::stats::checked::duplicate;
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
@@ -34,15 +34,15 @@ use crate::sexp::protect::protect;
 // Local helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn isInteger(x: SEXP) -> bool {
+fn isInteger(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
-unsafe fn isReal(x: SEXP) -> bool {
+fn isReal(x: SEXP) -> bool {
     crate::main::coerce::isReal(x) != 0
 }
 
-unsafe fn error(msg: &str) {
+fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
     Rf_error(c_msg.as_ptr());
 }
@@ -93,40 +93,42 @@ pub unsafe fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int) {
 // monoFC_m: SEXP interface
 // ---------------------------------------------------------------------------
 
-pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
-    unsafe {
-        let n = LENGTH(m);
+pub fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
+    let n = LENGTH(m);
 
-        let val = if isInteger(m) {
-            // Coerce integer to real
-            let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
-            for i in 0..n as usize {
-                let iv = *INTEGER(m).add(i);
-                *REAL(coerced).add(i) = iv as c_double;
-            }
-            coerced
-        } else {
-            if !isReal(m) {
-                error("Argument m must be numeric");
-                return R_NilValue();
-            }
-            duplicate(m)
-        };
-
-        let _val_guard = protect(val);
-
-        if n < 2 {
-            error("length(m) must be at least two");
+    let val = if isInteger(m) {
+        // Coerce integer to real
+        let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        for i in 0..n as usize {
+            let iv = INTEGER_ELT(m, i as i32);
+            SET_REAL_ELT(coerced, i as i32, iv as c_double);
+        }
+        coerced
+    } else {
+        if !isReal(m) {
+            error("Argument m must be numeric");
             return R_NilValue();
         }
-        if !isReal(sx) || LENGTH(sx) != n - 1 {
-            error("Argument Sx must be numeric vector one shorter than m[]");
-            return R_NilValue();
-        }
+        duplicate(m)
+    };
 
-        // Fix up the slopes m[] := val[]:
-        monoFC_mod(REAL(val), REAL(sx), n);
+    let _val_guard = protect(val);
 
-        val
+    if n < 2 {
+        error("length(m) must be at least two");
+        return R_NilValue();
     }
+    if !isReal(sx) || LENGTH(sx) != n - 1 {
+        error("Argument Sx must be numeric vector one shorter than m[]");
+        return R_NilValue();
+    }
+
+    // Fix up the slopes m[] := val[]:
+    // SAFETY: `val` is a protected private REALSXP of `n` slopes and `sx` a
+    // live REALSXP of `n - 1` secants, as the Fritsch-Carlson kernel expects.
+    unsafe {
+        monoFC_mod(REAL(val), REAL(sx), n);
+    }
+
+    val
 }

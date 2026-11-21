@@ -2,6 +2,7 @@
 //! routines registered by `useDynLib(stats)`: `C_pkolmogorov_two_limit`,
 //! `C_pkolmogorov_two_exact` and `C_Smirnov_sim`.
 
+use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, SET_REAL_ELT};
 use std::os::raw::{c_double, c_int};
 
 use crate::nmath::special::mlutils::R_pow_di as pow_di;
@@ -62,17 +63,15 @@ fn k2l(x: c_double, lower: bool, tol: c_double) -> c_double {
 }
 
 /// `C_pkolmogorov_two_limit(q, lower.tail, tol)` — vectorised in `q`.
-pub unsafe fn pkolmogorov_two_limit(sq: SEXP, slower: SEXP, stol: SEXP) -> SEXP {
-    unsafe {
-        let lower = crate::mainutils::coerce::asInteger(slower) != 0;
-        let tol = crate::mainutils::coerce::asReal(stol);
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
-        let _guard = protect(ans);
-        for i in 0..LENGTH(sq) as usize {
-            *REAL(ans).add(i) = k2l(*REAL(sq).add(i), lower, tol);
-        }
-        ans
+pub fn pkolmogorov_two_limit(sq: SEXP, slower: SEXP, stol: SEXP) -> SEXP {
+    let lower = crate::mainutils::coerce::asInteger(slower) != 0;
+    let tol = crate::mainutils::coerce::asReal(stol);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
+    let _guard = protect(ans);
+    for i in 0..LENGTH(sq) as usize {
+        SET_REAL_ELT(ans, i as i32, k2l(REAL_ELT(sq, i as i32), lower, tol));
     }
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +166,7 @@ fn k2x(owner: OwnerToken<'_>, n: i32, d: c_double) -> Result<c_double, String> {
 }
 
 /// `C_pkolmogorov_two_exact(q, n)` — vectorised in `q`.
-pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
+pub fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     let n = crate::mainutils::coerce::asInteger(sn);
@@ -217,81 +216,76 @@ pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
 
 /// `C_Smirnov_sim(r, sizes, B, two.sided)` — `B` simulated statistics from
 /// random contingency tables with the given row/col totals (AS 159).
-pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
-    unsafe {
-        let sr =
-            crate::main::coerce::coerceVector(sr, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
-        let _sr = protect(sr);
-        let sc =
-            crate::main::coerce::coerceVector(sc, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
-        let _sc = protect(sc);
-        let nr = LENGTH(sr);
-        let nc = LENGTH(sc);
-        let b = crate::mainutils::coerce::asInteger(sb);
-        if nc != 2 {
-            crate::main::errors::Rf_error(
-                b"Smirnov statistic only defined for two groups\0".as_ptr()
-                    as *const std::os::raw::c_char,
-            );
-        }
-        let isr = INTEGER(sr);
-        let mut n = 0 as c_int;
-        for i in 0..nr as usize {
-            match n.checked_add(*isr.add(i)) {
-                Some(total) => n = total,
-                None => {
-                    crate::main::errors::Rf_error(
-                        b"Sample size too large\0".as_ptr() as *const std::os::raw::c_char
-                    );
-                    unreachable!("Rf_error raises an R error");
-                }
-            }
-        }
-        let mut observed = vec![0 as c_int; (nr * nc) as usize];
-        let mut fact = vec![0.0 as c_double; (n + 1) as usize];
-        let mut jwork = vec![0 as c_int; nc as usize];
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, b);
-        let _ans = protect(ans);
-        // Smirnov_sim_wrk inlined: log-factorials, then B rcont2 draws.
-        fact[0] = 0.0;
-        if n >= 1 {
-            fact[1] = 0.0;
-        }
-        for i in 2..=(n as usize) {
-            fact[i] = fact[i - 1] + (i as c_double).ln();
-        }
-        crate::main::random::GetRNGstate();
-        for iter in 0..b as usize {
-            crate::library::stats::rcont::rcont2(
-                nr,
-                nc,
-                isr,
-                INTEGER(sc),
-                n,
-                fact.as_ptr(),
-                jwork.as_mut_ptr(),
-                observed.as_mut_ptr(),
-            );
-            let mut s = 0.0;
-            let mut cs0 = 0;
-            let mut cs1 = 0;
-            for j in 0..nr as usize {
-                cs0 += observed[j];
-                cs1 += observed[nr as usize + j];
-                let mut diff = cs0 as c_double / *INTEGER(sc).add(0) as c_double
-                    - cs1 as c_double / *INTEGER(sc).add(1) as c_double;
-                if *INTEGER(twosided).add(0) != 0 {
-                    diff = diff.abs();
-                }
-                if diff > s {
-                    s = diff;
-                }
-            }
-            *REAL(ans).add(iter) = s;
-        }
-        crate::main::random::PutRNGstate();
-        ans
+pub fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
+    let sr = crate::main::coerce::coerceVector(sr, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
+    let _sr = protect(sr);
+    let sc = crate::main::coerce::coerceVector(sc, crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int());
+    let _sc = protect(sc);
+    let nr = LENGTH(sr);
+    let nc = LENGTH(sc);
+    let b = crate::mainutils::coerce::asInteger(sb);
+    if nc != 2 {
+        crate::main::errors::Rf_error(b"Smirnov statistic only defined for two groups\0".as_ptr()
+            as *const std::os::raw::c_char);
     }
+    let isr = crate::library::stats::checked::int_vec(sr);
+    let isc = crate::library::stats::checked::int_vec(sc);
+    let mut n = 0 as c_int;
+    for i in 0..nr as usize {
+        match n.checked_add(isr[i]) {
+            Some(total) => n = total,
+            None => {
+                crate::main::errors::Rf_error(
+                    b"Sample size too large\0".as_ptr() as *const std::os::raw::c_char
+                );
+                unreachable!("Rf_error raises an R error");
+            }
+        }
+    }
+    let mut observed = vec![0 as c_int; (nr * nc) as usize];
+    let mut fact = vec![0.0 as c_double; (n + 1) as usize];
+    let mut jwork = vec![0 as c_int; nc as usize];
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, b);
+    let _ans = protect(ans);
+    // Smirnov_sim_wrk inlined: log-factorials, then B rcont2 draws.
+    fact[0] = 0.0;
+    if n >= 1 {
+        fact[1] = 0.0;
+    }
+    for i in 2..=(n as usize) {
+        fact[i] = fact[i - 1] + (i as c_double).ln();
+    }
+    crate::main::random::GetRNGstate();
+    for iter in 0..b as usize {
+        let _ = crate::library::stats::rcont::rcont2_slices(
+            nr,
+            nc,
+            &isr[..nr as usize],
+            &isc[..nc as usize],
+            n,
+            &fact[..(n + 1) as usize],
+            &mut jwork[..(nc - 1) as usize],
+            &mut observed[..(nr * nc) as usize],
+        );
+        let mut s = 0.0;
+        let mut cs0 = 0;
+        let mut cs1 = 0;
+        for j in 0..nr as usize {
+            cs0 += observed[j];
+            cs1 += observed[nr as usize + j];
+            let mut diff = cs0 as c_double / INTEGER_ELT(sc, 0) as c_double
+                - cs1 as c_double / INTEGER_ELT(sc, 1) as c_double;
+            if INTEGER_ELT(twosided, 0) != 0 {
+                diff = diff.abs();
+            }
+            if diff > s {
+                s = diff;
+            }
+        }
+        SET_REAL_ELT(ans, iter as i32, s);
+    }
+    crate::main::random::PutRNGstate();
+    ans
 }
 
 #[cfg(test)]

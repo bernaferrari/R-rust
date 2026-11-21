@@ -92,23 +92,25 @@ unsafe fn int_d2x2xk(
 ///
 /// # Safety
 /// sK, m, n, t, srn must be valid SEXP pointers.
-pub unsafe fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
+pub fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
+    let K = asInteger(sK);
+    let rn = asInteger(srn);
+
+    let m = coerceVector(m, SEXPTYPE::REALSXP.as_c_int());
+    let _m_guard = protect(m);
+    let n = coerceVector(n, SEXPTYPE::REALSXP.as_c_int());
+    let _n_guard = protect(n);
+    let t = coerceVector(t, SEXPTYPE::REALSXP.as_c_int());
+    let _t_guard = protect(t);
+
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, rn as i32);
+    let _ans_guard = protect(ans);
+
+    // SAFETY: `m`/`n`/`t` are protected REALSXPs of K cells and the protected
+    // `ans` holds the `rn` cells the convolution writes.
     unsafe {
-        let K = asInteger(sK);
-        let rn = asInteger(srn);
-
-        let m = coerceVector(m, SEXPTYPE::REALSXP.as_c_int());
-        let _m_guard = protect(m);
-        let n = coerceVector(n, SEXPTYPE::REALSXP.as_c_int());
-        let _n_guard = protect(n);
-        let t = coerceVector(t, SEXPTYPE::REALSXP.as_c_int());
-        let _t_guard = protect(t);
-
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, rn as i32);
-        let _ans_guard = protect(ans);
-
         int_d2x2xk(K, REAL(m), REAL(n), REAL(t), REAL(ans));
-
-        ans
     }
+
+    ans
 }

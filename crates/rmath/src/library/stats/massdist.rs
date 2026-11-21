@@ -6,6 +6,7 @@
 //! represents the left and right bin densities. Only the lower half (indices
 //! 0..n) is populated; the upper half (indices n..2*n) remains zero-padded.
 
+use crate::sexp::accessors::{REAL_ELT, SET_REAL_ELT};
 use std::os::raw::{c_double, c_int};
 
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, XLENGTH};
@@ -18,7 +19,7 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 /// GNU `asInteger`: doubles such as `max(n, 512)` are valid bin counts.
-unsafe fn as_integer(s: SEXP) -> c_int {
+fn as_integer(s: SEXP) -> c_int {
     crate::mainutils::coerce::asInteger(s)
 }
 
@@ -48,75 +49,73 @@ unsafe fn as_integer(s: SEXP) -> c_int {
 /// # Safety
 /// All SEXP arguments must be valid, non-null pointers to properly
 /// allocated R objects of the expected types.
-pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
-    unsafe {
-        let n = as_integer(sn);
-        if n == NA_INTEGER || n <= 0 {
-            crate::main::errors::Rf_error(
-                b"invalid 'n' argument\0".as_ptr() as *const std::os::raw::c_char
-            );
-        }
+pub fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
+    let n = as_integer(sn);
+    if n == NA_INTEGER || n <= 0 {
+        crate::main::errors::Rf_error(
+            b"invalid 'n' argument\0".as_ptr() as *const std::os::raw::c_char
+        );
+    }
 
-        // GNU: PROTECT(sx = coerceVector(sx, REALSXP)); same for sw — the
-        // wrapper may hand integer observations or weights.
-        let sx = if crate::sexp::accessors::TYPEOF(sx) == crate::sexp::ffi::SEXPTYPE::REALSXP {
-            sx
-        } else {
-            crate::main::coerce::coerceVector(sx, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
-        };
-        let _sx_guard = protect(sx);
-        let sw = if crate::sexp::accessors::TYPEOF(sw) == crate::sexp::ffi::SEXPTYPE::REALSXP {
-            sw
-        } else {
-            crate::main::coerce::coerceVector(sw, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
-        };
-        let _sw_guard = protect(sw);
+    // GNU: PROTECT(sx = coerceVector(sx, REALSXP)); same for sw — the
+    // wrapper may hand integer observations or weights.
+    let sx = if crate::sexp::accessors::TYPEOF(sx) == crate::sexp::ffi::SEXPTYPE::REALSXP {
+        sx
+    } else {
+        crate::main::coerce::coerceVector(sx, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
+    };
+    let _sx_guard = protect(sx);
+    let sw = if crate::sexp::accessors::TYPEOF(sw) == crate::sexp::ffi::SEXPTYPE::REALSXP {
+        sw
+    } else {
+        crate::main::coerce::coerceVector(sw, crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int())
+    };
+    let _sw_guard = protect(sw);
 
-        let n_xlen = n as R_xlen_t;
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
-        let _ans_guard = protect(ans);
-        let xlo = crate::mainutils::coerce::asReal(slo);
-        let xhi = crate::mainutils::coerce::asReal(shi);
+    let n_xlen = n as R_xlen_t;
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
+    let _ans_guard = protect(ans);
+    let xlo = crate::mainutils::coerce::asReal(slo);
+    let xhi = crate::mainutils::coerce::asReal(shi);
 
-        let x = REAL(sx);
-        let w = REAL(sw);
-        let y = REAL(ans);
+    let ixmin: c_int = 0;
+    let ixmax: c_int = n - 2;
+    let xdelta: c_double = (xhi - xlo) / (n - 1) as c_double;
 
-        let ixmin: c_int = 0;
-        let ixmax: c_int = n - 2;
-        let xdelta: c_double = (xhi - xlo) / (n - 1) as c_double;
+    let len = XLENGTH(sx);
 
-        let len = XLENGTH(sx);
+    // Zero-initialize the output (the upper half is always zero-padded).
+    // Rf_allocVector already zeroes memory in our arena, but we do it
+    // explicitly to match the C code's behavior exactly.
+    for i in 0..(2 * n_xlen) {
+        SET_REAL_ELT(ans, i as i32, 0.0);
+    }
 
-        // Zero-initialize the output (the upper half is always zero-padded).
-        // Rf_allocVector already zeroes memory in our arena, but we do it
-        // explicitly to match the C code's behavior exactly.
-        for i in 0..(2 * n_xlen) {
-            *y.add(i as usize) = 0.0;
-        }
-
-        for i in 0..len {
-            let xi = *x.add(i as usize);
-            if R_FINITE(xi) {
-                let xpos = (xi - xlo) / xdelta;
-                // Avoid integer overflows for ix.
-                if xpos > c_int::MAX as c_double || xpos < c_int::MIN as c_double {
-                    continue;
-                }
-                let ix = xpos.floor() as c_int;
-                let fx = xpos - ix as c_double;
-                let wi = *w.add(i as usize);
-                if ixmin <= ix && ix <= ixmax {
-                    *y.add(ix as usize) += (1.0 - fx) * wi;
-                    *y.add((ix + 1) as usize) += fx * wi;
-                } else if ix == -1 {
-                    *y.add(0) += fx * wi;
-                } else if ix == ixmax + 1 {
-                    *y.add(ix as usize) += (1.0 - fx) * wi;
-                }
+    for i in 0..len {
+        let xi = REAL_ELT(sx, i as i32);
+        if R_FINITE(xi) {
+            let xpos = (xi - xlo) / xdelta;
+            // Avoid integer overflows for ix.
+            if xpos > c_int::MAX as c_double || xpos < c_int::MIN as c_double {
+                continue;
+            }
+            let ix = xpos.floor() as c_int;
+            let fx = xpos - ix as c_double;
+            let wi = REAL_ELT(sw, i as i32);
+            if ixmin <= ix && ix <= ixmax {
+                SET_REAL_ELT(ans, ix as i32, REAL_ELT(ans, ix as i32) + ((1.0 - fx) * wi));
+                SET_REAL_ELT(
+                    ans,
+                    ((ix + 1) as usize) as i32,
+                    REAL_ELT(ans, ((ix + 1) as usize) as i32) + (fx * wi),
+                );
+            } else if ix == -1 {
+                SET_REAL_ELT(ans, 0, REAL_ELT(ans, 0) + (fx * wi));
+            } else if ix == ixmax + 1 {
+                SET_REAL_ELT(ans, ix as i32, REAL_ELT(ans, ix as i32) + ((1.0 - fx) * wi));
             }
         }
-
-        ans
     }
+
+    ans
 }

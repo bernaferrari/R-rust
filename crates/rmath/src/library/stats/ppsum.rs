@@ -13,7 +13,7 @@ use crate::sexp::protect::protect;
 
 // `crate::main::coerce::coerceVector` still takes `c_int`; keep that conversion
 // local so the rest of this file uses `SEXPTYPE` directly.
-unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
+fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
     crate::main::coerce::coerceVector(x, sexptype.into())
 }
 
@@ -57,43 +57,43 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
     value as usize
 }
 
-pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
-    unsafe {
-        let u = coerceVector(u, SEXPTYPE::REALSXP);
-        let _u_guard = protect(u);
-        let n = LENGTH(u);
-        let l = asInteger(sl);
-        let values = slice::from_raw_parts(REAL(u), n as usize);
-        let trm = r_pp_sum(values, l);
-        Rf_ScalarReal(trm)
-    }
+pub fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
+    let u = coerceVector(u, SEXPTYPE::REALSXP);
+    let _u_guard = protect(u);
+    let n = LENGTH(u);
+    let l = asInteger(sl);
+    let values_values = crate::library::stats::checked::real_vec(u);
+    let values = values_values.as_slice();
+    let trm = r_pp_sum(values, l);
+    Rf_ScalarReal(trm)
 }
 
-pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
-    unsafe {
-        let x = coerceVector(x, SEXPTYPE::REALSXP);
-        let _x_guard = protect(x);
-        let xi = coerceVector(xi, SEXPTYPE::REALSXP);
-        let _xi_guard = protect(xi);
+pub fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
+    let x = coerceVector(x, SEXPTYPE::REALSXP);
+    let _x_guard = protect(x);
+    let xi = coerceVector(xi, SEXPTYPE::REALSXP);
+    let _xi_guard = protect(xi);
 
-        let n = LENGTH(x);
-        let xi_len = LENGTH(xi);
-        let lag = asInteger(slag);
-        let lag_usize = non_negative_usize(lag, b"'lag' must be non-negative\0");
-        if xi_len < lag {
-            error(b"'xi' is shorter than 'lag'\0");
-        }
-        let output_len = n
-            .checked_add(lag)
-            .unwrap_or_else(|| error(b"result length is too large\0"));
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, output_len);
-        let _ans_guard = protect(ans);
-
-        let x_values = slice::from_raw_parts(REAL(x), n as usize);
-        let xi_values = slice::from_raw_parts(REAL(xi), xi_len as usize);
-        let y = slice::from_raw_parts_mut(REAL(ans), n as usize + lag_usize);
-        integrate_values(x_values, xi_values, lag_usize, y);
-
-        ans
+    let n = LENGTH(x);
+    let xi_len = LENGTH(xi);
+    let lag = asInteger(slag);
+    let lag_usize = non_negative_usize(lag, b"'lag' must be non-negative\0");
+    if xi_len < lag {
+        error(b"'xi' is shorter than 'lag'\0");
     }
+    let output_len = n
+        .checked_add(lag)
+        .unwrap_or_else(|| error(b"result length is too large\0"));
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, output_len);
+    let _ans_guard = protect(ans);
+
+    let x_values_values = crate::library::stats::checked::real_vec(x);
+    let x_values = x_values_values.as_slice();
+    let xi_values_values = crate::library::stats::checked::real_vec(xi);
+    let xi_values = xi_values_values.as_slice();
+    let mut y = vec![0.0; n as usize + lag_usize];
+    integrate_values(x_values, xi_values, lag_usize, &mut y);
+    crate::library::stats::checked::set_reals(ans, &y);
+
+    ans
 }

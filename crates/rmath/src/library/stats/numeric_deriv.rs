@@ -4,6 +4,7 @@
 //! caller's bindings are not mutated (PR#15849).
 
 use crate::sexp::accessors::{CHAR, REAL, STRING_ELT, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{REAL_ELT, SET_REAL_ELT};
 use crate::sexp::envir::{R_findVar, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
@@ -47,34 +48,32 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
         let mut copies = Vec::with_capacity(ntheta as usize);
         let mut total = 0i64;
         for i in 0..ntheta {
-            let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(theta, i)))
-                .to_string_lossy()
-                .into_owned();
+            let name = crate::library::stats::checked::char_string(STRING_ELT(theta, i));
             let cname = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+            let sym = crate::sexp::symbol::install_str(cname.to_str().unwrap_or_default());
             let found = R_findVar(sym, rho);
             if found == R_UnboundValue() || TYPEOF(found) != SEXPTYPE::REALSXP {
                 crate::main::errors::Rf_error(
                     b"variable is not numeric\0".as_ptr() as *const std::os::raw::c_char
                 );
             }
-            let copy = crate::mainutils::duplicate::duplicate(found);
+            let copy = crate::mainutils::seq::Rf_duplicate(found);
             let _c = protect(copy);
             defineVar(sym, copy, rho1);
             total += XLENGTH(copy);
             copies.push(copy);
         }
-        let ans0 = crate::eval::eval::Rf_eval(expr, rho1);
+        let ans0 = crate::eval::eval::eval_inner(expr, rho1);
         let _a0 = protect(ans0);
         let ans = if TYPEOF(ans0) == SEXPTYPE::REALSXP {
-            crate::mainutils::duplicate::duplicate(ans0)
+            crate::mainutils::seq::Rf_duplicate(ans0)
         } else {
             crate::main::coerce::coerceVector(ans0, SEXPTYPE::REALSXP.as_c_int())
         };
         let _ans = protect(ans);
         let nans = XLENGTH(ans);
         let eps = crate::mainutils::coerce::asReal(eps_);
-        let gradient = crate::mainutils::array::allocMatrix(
+        let gradient = crate::library::stats::checked::alloc_matrix(
             SEXPTYPE::REALSXP.as_c_int(),
             nans as i32,
             total as i32,
@@ -84,49 +83,54 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
         for i in 0..ntheta {
             let pars = copies[i as usize];
             let npar = XLENGTH(pars);
-            let direction = *REAL(dir).add(i as usize);
+            let direction = REAL_ELT(dir, i as i32);
             for j in 0..npar {
-                let orig = *REAL(pars).add(j as usize);
+                let orig = REAL_ELT(pars, j as i32);
                 let xx = orig.abs();
                 let delta = if xx == 0.0 { eps } else { xx * eps };
-                *REAL(pars).add(j as usize) = orig + direction * delta;
+                SET_REAL_ELT(pars, j as i32, orig + direction * delta);
                 let forward = evaluated_real(expr, rho1);
                 if central {
-                    *REAL(pars).add(j as usize) = orig - direction * delta;
+                    SET_REAL_ELT(pars, j as i32, orig - direction * delta);
                     let backward = evaluated_real(expr, rho1);
                     for k in 0..nans {
-                        *REAL(gradient).add((start + k) as usize) = direction
-                            * (*REAL(forward).add(k as usize) - *REAL(backward).add(k as usize))
-                            / (2.0 * delta);
+                        SET_REAL_ELT(
+                            gradient,
+                            ((start + k) as usize) as i32,
+                            direction
+                                * (REAL_ELT(forward, k as i32) - REAL_ELT(backward, k as i32))
+                                / (2.0 * delta),
+                        );
                     }
                 } else {
                     for k in 0..nans {
-                        *REAL(gradient).add((start + k) as usize) = direction
-                            * (*REAL(forward).add(k as usize) - *REAL(ans).add(k as usize))
-                            / delta;
+                        SET_REAL_ELT(
+                            gradient,
+                            ((start + k) as usize) as i32,
+                            direction * (REAL_ELT(forward, k as i32) - REAL_ELT(ans, k as i32))
+                                / delta,
+                        );
                     }
                 }
-                *REAL(pars).add(j as usize) = orig;
+                SET_REAL_ELT(pars, j as i32, orig);
                 start += nans;
             }
         }
         crate::sexp::attrib_core::setAttrib(
             ans,
-            crate::sexp::symbol::Rf_install(c"gradient".as_ptr()),
+            crate::sexp::symbol::install_str("gradient"),
             gradient,
         );
         ans
     }
 }
 
-unsafe fn evaluated_real(expr: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let value = crate::eval::eval::Rf_eval(expr, rho);
-        let _v = protect(value);
-        if TYPEOF(value) == SEXPTYPE::REALSXP {
-            value
-        } else {
-            crate::main::coerce::coerceVector(value, SEXPTYPE::REALSXP.as_c_int())
-        }
+fn evaluated_real(expr: SEXP, rho: SEXP) -> SEXP {
+    let value = crate::eval::eval::eval_inner(expr, rho);
+    let _v = protect(value);
+    if TYPEOF(value) == SEXPTYPE::REALSXP {
+        value
+    } else {
+        crate::main::coerce::coerceVector(value, SEXPTYPE::REALSXP.as_c_int())
     }
 }
