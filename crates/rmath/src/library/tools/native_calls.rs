@@ -281,12 +281,12 @@ pub(crate) fn lookup_buffer(
                 buffers::kmns,
                 VoidKernel::Args17(crate::library::stats::kmeans::c_kmns),
             ),
-            "eureka" => BufferRoutine::void(
+            "eureka" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[Integer, Real, Real, Real, Real, Real],
                 buffers::eureka,
-                VoidKernel::Args6(crate::library::stats::burg::c_eureka),
+                crate::library::stats::burg::eureka_owned,
             ),
             "multi_yw" => BufferRoutine::void(
                 "stats",

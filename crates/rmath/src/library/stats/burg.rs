@@ -3,6 +3,8 @@
 
 use std::os::raw::{c_double, c_int};
 
+use crate::mainutils::native_routines::buffers::{BufferError, NativeBuffer};
+
 use crate::main::coerce::{asInteger, coerceVector};
 use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{LENGTH, SET_VECTOR_ELT};
@@ -139,69 +141,82 @@ pub fn Burg(x: SEXP, order: SEXP) -> SEXP {
     }))
 }
 
-// SAFETY: registered .Fortran routine; the dispatch passes live workspaces
-// whose extents follow the scalar `lr` argument per the eureka.f contract.
-// The Fortran workspace layout keeps its raw-pointer arithmetic in this
-// narrow boundary block.
-pub unsafe extern "C-unwind" fn c_eureka(
-    lr: *mut std::ffi::c_void,
-    r: *mut std::ffi::c_void,
-    g: *mut std::ffi::c_void,
-    f: *mut std::ffi::c_void,
-    var: *mut std::ffi::c_void,
-    a: *mut std::ffi::c_void,
-) {
-    unsafe {
-        let lr = *(lr as *mut i32) as usize;
-        if lr == 0 {
+/// `.Fortran(C_eureka, lr, r, g, f, var, a)` over admitted buffers.
+pub(crate) fn eureka_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    use NativeBuffer::{Integer, Real};
+    let [Integer(lr), Real(r), Real(g), Real(f), Real(var), Real(a)] = buffers else {
+        return Err(BufferError::new("invalid eureka buffers"));
+    };
+    let lr = lr[0] as usize;
+    if lr != 0 {
+        eureka(lr, r, g, f, var, a);
+    }
+    Ok(())
+}
+
+fn eureka(lr: usize, r: &[f64], g: &[f64], f: &mut [f64], varp: &mut [f64], a: &mut [f64]) {
+    let at = |row: usize, col: usize| (col - 1) * lr + (row - 1);
+    let mut v = r[0];
+    let mut d = r[1];
+    a[0] = 1.0;
+    f[0] = g[1] / v;
+    let mut q = f[0] * r[1];
+    varp[0] = (1.0 - f[0] * f[0]) * r[0];
+    if lr == 1 {
+        return;
+    }
+    for l in 2..=lr {
+        a[l - 1] = -d / v;
+        if l > 2 {
+            let l1 = (l - 2) / 2;
+            let l2 = l1 + 1;
+            for j in 2..=l2 {
+                let hold = a[j - 1];
+                let k = l - j + 1;
+                a[j - 1] = a[j - 1] + a[l - 1] * a[k - 1];
+                a[k - 1] = a[k - 1] + a[l - 1] * hold;
+            }
+            if 2 * l1 != l - 2 {
+                a[l2] *= 1.0 + a[l - 1];
+            }
+        }
+        v += a[l - 1] * d;
+        f[at(l, l)] = (g[l] - q) / v;
+        for j in 1..l {
+            f[at(l, j)] = f[at(l - 1, j)] + f[at(l, l)] * a[l - j];
+        }
+        varp[l - 1] = varp[l - 2] * (1.0 - f[at(l, l)] * f[at(l, l)]);
+        if l == lr {
             return;
         }
-        let r = r as *mut f64;
-        let g = g as *mut f64;
-        let f = f as *mut f64;
-        let varp = var as *mut f64;
-        let a = a as *mut f64;
-        let at = |row: usize, col: usize| (col - 1) * lr + (row - 1);
-        let mut v = *r;
-        let mut d = *r.add(1);
-        *a = 1.0;
-        *f = *g.add(1) / v;
-        let mut q = *f * *r.add(1);
-        *varp = (1.0 - *f * *f) * *r;
-        if lr == 1 {
-            return;
+        d = 0.0;
+        q = 0.0;
+        for i in 1..=l {
+            let k = l - i + 2;
+            d += a[i - 1] * r[k - 1];
+            q += f[at(l, i)] * r[k - 1];
         }
-        for l in 2..=lr {
-            *a.add(l - 1) = -d / v;
-            if l > 2 {
-                let l1 = (l - 2) / 2;
-                let l2 = l1 + 1;
-                for j in 2..=l2 {
-                    let hold = *a.add(j - 1);
-                    let k = l - j + 1;
-                    *a.add(j - 1) = *a.add(j - 1) + *a.add(l - 1) * *a.add(k - 1);
-                    *a.add(k - 1) = *a.add(k - 1) + *a.add(l - 1) * hold;
-                }
-                if 2 * l1 != l - 2 {
-                    *a.add(l2) *= 1.0 + *a.add(l - 1);
-                }
-            }
-            v += *a.add(l - 1) * d;
-            *f.add(at(l, l)) = (*g.add(l) - q) / v;
-            for j in 1..l {
-                *f.add(at(l, j)) = *f.add(at(l - 1, j)) + *f.add(at(l, l)) * *a.add(l - j);
-            }
-            *varp.add(l - 1) = *varp.add(l - 2) * (1.0 - *f.add(at(l, l)) * *f.add(at(l, l)));
-            if l == lr {
-                return;
-            }
-            d = 0.0;
-            q = 0.0;
-            for i in 1..=l {
-                let k = l - i + 2;
-                d += *a.add(i - 1) * *r.add(k - 1);
-                q += *f.add(at(l, i)) * *r.add(k - 1);
-            }
-        }
+    }
+}
+
+#[cfg(test)]
+mod eureka_tests {
+    use super::eureka;
+
+    #[test]
+    fn eureka_second_order_preserves_column_major_output() {
+        let mut coefficients = [-1.0; 4];
+        let mut variance = [0.0; 2];
+        let mut work = [0.0; 2];
+        eureka(
+            2,
+            &[4.0, 2.0, 1.0],
+            &[0.0, 2.0, 1.0],
+            &mut coefficients,
+            &mut variance,
+            &mut work,
+        );
+        assert_eq!(coefficients, [0.5, 0.5, -1.0, 0.0]);
+        assert_eq!(variance, [3.0, 3.0]);
     }
 }
