@@ -6,7 +6,7 @@ use super::*;
 
 /// R's `summary.numeric(x)` — summary for numeric (double) vector.
 pub fn do_summary_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -14,7 +14,7 @@ pub fn do_summary_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let n = XLENGTH(x);
         let mut vals: Vec<f64> = Vec::new();
         for i in 0..n {
-            let v = *REAL(x).add(i as usize);
+            let v = real_elt_checked(x, (i as usize) as R_xlen_t);
             if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
                 vals.push(v);
             }
@@ -57,12 +57,12 @@ pub fn do_summary_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
-    }
+    
 }
 
 /// R's `summary.integer(x)` — summary for integer vector.
 pub fn do_summary_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -70,7 +70,7 @@ pub fn do_summary_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let n = XLENGTH(x);
         let mut vals: Vec<f64> = Vec::new();
         for i in 0..n {
-            let v = *INTEGER(x).add(i as usize);
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
             if v != NA_INTEGER {
                 vals.push(v as f64);
             }
@@ -113,12 +113,12 @@ pub fn do_summary_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
-    }
+    
 }
 
 /// R's `summary.logical(x)` — summary for logical vector (TRUE/FALSE/NA counts).
 pub fn do_summary_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -128,7 +128,7 @@ pub fn do_summary_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let mut false_count = 0;
         let mut na_count = 0;
         for i in 0..n {
-            let v = *LOGICAL(x).add(i as usize);
+            let v = logical_elt_checked(x, (i as usize) as R_xlen_t);
             if v == NA_INTEGER {
                 na_count += 1;
             } else if v == TRUE {
@@ -144,7 +144,7 @@ pub fn do_summary_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         );
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
-    }
+    
 }
 
 /// R's `summary.character(x)` — summary for character vector (class/length/NA).

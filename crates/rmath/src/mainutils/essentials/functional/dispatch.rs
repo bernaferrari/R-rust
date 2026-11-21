@@ -96,7 +96,7 @@ pub(super) fn simplify_scalar_list(list: SEXP) -> SEXP {
 }
 
 pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
-    unsafe {
+    
         if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return list;
         }
@@ -119,11 +119,11 @@ pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
                 return list;
             }
             if elem_type == SEXPTYPE::REALSXP {
-                *REAL(result).add(i as usize) = *REAL(elem);
+                set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(elem, 0));
             } else if elem_type == SEXPTYPE::INTSXP {
-                *INTEGER(result).add(i as usize) = *INTEGER(elem);
+                set_integer_checked(result, (i as usize) as R_xlen_t, integer_elt_checked(elem, 0));
             } else if elem_type == SEXPTYPE::LGLSXP {
-                *LOGICAL(result).add(i as usize) = *LOGICAL(elem);
+                set_logical_checked(result, (i as usize) as R_xlen_t, logical_elt_checked(elem, 0));
             } else if elem_type == SEXPTYPE::STRSXP {
                 SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
             }
@@ -142,7 +142,7 @@ pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
             );
         }
         result
-    }
+    
 }
 
 pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
@@ -183,11 +183,11 @@ pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
             return R_NilValue();
         }
         if t == SEXPTYPE::REALSXP {
-            *REAL(elem) = *REAL(x).add(i as usize);
+            set_real_checked(elem, 0, real_elt_checked(x, (i as usize) as R_xlen_t));
         } else if t == SEXPTYPE::INTSXP {
-            *INTEGER(elem) = *INTEGER(x).add(i as usize);
+            set_integer_checked(elem, 0, integer_elt_checked(x, (i as usize) as R_xlen_t));
         } else if t == SEXPTYPE::LGLSXP {
-            *LOGICAL(elem) = *LOGICAL(x).add(i as usize);
+            set_logical_checked(elem, 0, logical_elt_checked(x, (i as usize) as R_xlen_t));
         } else if t == SEXPTYPE::CPLXSXP {
             *crate::sexp::accessors::COMPLEX(elem) =
                 *crate::sexp::accessors::COMPLEX(x).add(i as usize);

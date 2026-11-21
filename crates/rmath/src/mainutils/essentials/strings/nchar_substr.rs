@@ -183,16 +183,16 @@ pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `casefold(x, upper=FALSE)`.
 pub fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    
         let mut upper = false;
         let rest = CDR(args);
         if !rest.is_null() && rest != R_NilValue() {
             let u = CAR(rest);
             if !u.is_null() && u != R_NilValue() {
                 if TYPEOF(u) == SEXPTYPE::LGLSXP && XLENGTH(u) > 0 {
-                    upper = *LOGICAL(u) == TRUE;
+                    upper = logical_elt_checked(u, 0) == TRUE;
                 } else if TYPEOF(u) == SEXPTYPE::INTSXP && XLENGTH(u) > 0 {
-                    upper = *INTEGER(u) != 0 && *INTEGER(u) != NA_INTEGER;
+                    upper = integer_elt_checked(u, 0) != 0 && integer_elt_checked(u, 0) != NA_INTEGER;
                 }
             }
         }
@@ -201,7 +201,7 @@ pub fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             do_tolower(call, op, args, rho)
         }
-    }
+    
 }
 
 fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
@@ -209,20 +209,20 @@ fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
 }
 
 pub(crate) fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
-    unsafe {
+    
         if x.is_null() || x == R_NilValue() {
             return false;
         }
         match TYPEOF(x) {
             t if t == SEXPTYPE::STRSXP => STRING_ELT(x, i) == crate::sexp::globals::R_NaString(),
-            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) == NA_LOGICAL,
+            t if t == SEXPTYPE::LGLSXP => logical_elt_checked(x, (i as usize) as R_xlen_t) == NA_LOGICAL,
             t if t == SEXPTYPE::INTSXP => INTEGER_ELT(x, i as c_int) == NA_INTEGER,
             t if t == SEXPTYPE::REALSXP => {
                 REAL_ELT(x, i as c_int).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
             }
             _ => false,
         }
-    }
+    
 }
 
 // ---------------------------------------------------------------------------

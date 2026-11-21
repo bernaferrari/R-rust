@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU `unstack` for a stacked values/ind data.frame.
 pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
@@ -50,7 +50,7 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut buckets: Vec<Vec<i64>> = vec![Vec::new(); nlev as usize];
         for i in 0..n {
             let code = if TYPEOF(ind) == SEXPTYPE::INTSXP {
-                *INTEGER(ind).add(i as usize)
+                integer_elt_checked(ind, (i as usize) as R_xlen_t)
             } else {
                 0
             };
@@ -74,7 +74,7 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_compact_row_names(result, nrow);
         set_data_frame_class(result);
         result
-    }
+    
 }
 
 pub(super) fn merge_named_true(args: SEXP, name: &str) -> bool {
@@ -93,7 +93,7 @@ pub(super) fn merge_named_true(args: SEXP, name: &str) -> bool {
             let tag = crate::sexp::accessors::TAG(cell);
             let is_true = (TYPEOF(v) == SEXPTYPE::LGLSXP || TYPEOF(v) == SEXPTYPE::INTSXP)
                 && !v.is_null()
-                && *INTEGER(v) == 1;
+                && integer_elt_checked(v, 0) == 1;
             if tag == sym {
                 if is_true {
                     return true;
@@ -135,16 +135,16 @@ pub(super) fn merge_named_value(args: SEXP, name: &str) -> SEXP {
 }
 
 pub(super) fn store_na(out: SEXP, i: i64) {
-    unsafe {
+    
         let t = TYPEOF(out);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            *INTEGER(out).add(i as usize) = crate::sexp::ffi::NA_INTEGER;
+            set_integer_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_INTEGER);
         } else if t == SEXPTYPE::REALSXP {
-            *REAL(out).add(i as usize) = crate::sexp::ffi::NA_REAL;
+            set_real_checked(out, (i as usize) as R_xlen_t, crate::sexp::ffi::NA_REAL);
         } else if t == SEXPTYPE::STRSXP {
             SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
         }
-    }
+    
 }
 
 /// GNU `merge` inner join on intersecting column names.
@@ -166,16 +166,16 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let all_x = !all.is_null()
                 && TYPEOF(all) == SEXPTYPE::LGLSXP
                 && XLENGTH(all) > 0
-                && *INTEGER(all) == TRUE;
+                && integer_elt_checked(all, 0) == TRUE;
             let all_y = !ally.is_null()
                 && TYPEOF(ally) == SEXPTYPE::LGLSXP
                 && XLENGTH(ally) > 0
-                && *INTEGER(ally) == TRUE;
+                && integer_elt_checked(ally, 0) == TRUE;
             let mut ix: Vec<(i32, i32)> = (0..nx)
-                .map(|i| (*INTEGER(x).add(i), (i as i32) + 1))
+                .map(|i| (integer_elt_checked(x, (i) as R_xlen_t), (i as i32) + 1))
                 .collect();
             let mut iy: Vec<(i32, i32)> = (0..ny)
-                .map(|i| (*INTEGER(y).add(i), (i as i32) + 1))
+                .map(|i| (integer_elt_checked(y, (i) as R_xlen_t), (i as i32) + 1))
                 .collect();
             ix.sort_by_key(|p| p.0);
             iy.sort_by_key(|p| p.0);
@@ -209,22 +209,22 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let ansx = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
             let ansy = Rf_allocVector3(SEXPTYPE::INTSXP, pairs.len() as R_xlen_t);
             for (k, (xv, yv)) in pairs.iter().enumerate() {
-                *INTEGER(ansx).add(k) = *xv;
-                *INTEGER(ansy).add(k) = *yv;
+                set_integer_checked(ansx, (k) as R_xlen_t, *xv);
+                set_integer_checked(ansy, (k) as R_xlen_t, *yv);
             }
             SET_VECTOR_ELT(ans, 0, ansx);
             SET_VECTOR_ELT(ans, 1, ansy);
             if all_x {
                 let lone = Rf_allocVector3(SEXPTYPE::INTSXP, nx_lone as R_xlen_t);
                 for k in 0..nx_lone {
-                    *INTEGER(lone).add(k) = ix[k].1;
+                    set_integer_checked(lone, (k) as R_xlen_t, ix[k].1);
                 }
                 SET_VECTOR_ELT(ans, 2, lone);
             }
             if all_y {
                 let lone = Rf_allocVector3(SEXPTYPE::INTSXP, ny_lone as R_xlen_t);
                 for k in 0..ny_lone {
-                    *INTEGER(lone).add(k) = iy[k].1;
+                    set_integer_checked(lone, (k) as R_xlen_t, iy[k].1);
                 }
                 SET_VECTOR_ELT(ans, 3, lone);
             }
@@ -458,32 +458,32 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
-    unsafe {
+    
         if TYPEOF(a) != TYPEOF(b) {
             return format_grid_elt(a, i) == format_grid_elt(b, j);
         }
         match TYPEOF(a) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                *INTEGER(a).add(i as usize) == *INTEGER(b).add(j as usize)
+                integer_elt_checked(a, (i as usize) as R_xlen_t) == integer_elt_checked(b, (j as usize) as R_xlen_t)
             }
-            t if t == SEXPTYPE::REALSXP => *REAL(a).add(i as usize) == *REAL(b).add(j as usize),
+            t if t == SEXPTYPE::REALSXP => real_elt_checked(a, (i as usize) as R_xlen_t) == real_elt_checked(b, (j as usize) as R_xlen_t),
             t if t == SEXPTYPE::STRSXP => elt_to_string(a, i) == elt_to_string(b, j),
             _ => format_grid_elt(a, i) == format_grid_elt(b, j),
         }
-    }
+    
 }
 
 pub(crate) fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
-    unsafe {
+    
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if rn.is_null() {
             return;
         }
         let _row_names_guard = protect(rn);
-        *INTEGER(rn) = NA_INTEGER;
-        *INTEGER(rn).add(1) = -(nrow as i32);
+        set_integer_checked(rn, 0, NA_INTEGER);
+        set_integer_checked(rn, (1) as R_xlen_t, -(nrow as i32));
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
-    }
+    
 }
 
 pub(crate) fn set_data_frame_class(x: SEXP) {

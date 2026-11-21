@@ -392,9 +392,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             && _call != R_NilValue()
             && TYPEOF(CAR(_call)) == SEXPTYPE::SYMSXP
         {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(_call))))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(PRINTNAME(CAR(_call))).unwrap_or_default()
         } else {
             String::new()
         };

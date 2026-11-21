@@ -103,7 +103,7 @@ pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         {
             NA_INTEGER
         } else {
-            *LOGICAL(must_work_arg)
+            logical_elt_checked(must_work_arg, 0)
         };
 
         let n = XLENGTH(path_arg);
@@ -286,11 +286,11 @@ pub fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         crate::unix::sys_unix::R_getProcTime(times.as_mut_ptr());
         let tick = crate::unix::sys_unix::R_getClockIncrement();
         let ticks = |secs: f64| (secs / tick).floor() * tick;
-        *REAL(result).add(0) = ticks(times[0]);
-        *REAL(result).add(1) = ticks(times[1]);
-        *REAL(result).add(2) = 1e-3 * (1000.0 * elapsed).round();
-        *REAL(result).add(3) = ticks(times[3]);
-        *REAL(result).add(4) = ticks(times[4]);
+        set_real_checked(result, (0) as R_xlen_t, ticks(times[0]));
+        set_real_checked(result, (1) as R_xlen_t, ticks(times[1]));
+        set_real_checked(result, (2) as R_xlen_t, 1e-3 * (1000.0 * elapsed).round());
+        set_real_checked(result, (3) as R_xlen_t, ticks(times[3]));
+        set_real_checked(result, (4) as R_xlen_t, ticks(times[4]));
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         if !names.is_null() {
             let _np = protect(names);
@@ -329,7 +329,7 @@ pub fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let after = do_proc_time(_call, _op, R_NilValue(), rho);
         let _after_guard = protect(after);
         for i in 0..XLENGTH(after) {
-            *REAL(after).add(i as usize) -= *REAL(before).add(i as usize);
+            set_real_checked(after, (i as usize) as R_xlen_t, real_elt_checked(after, (i as usize) as R_xlen_t) - real_elt_checked(before, (i as usize) as R_xlen_t));
         }
         after
     }
@@ -503,8 +503,8 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
             let total = (n as usize) * capture_count;
             for j in 0..total {
-                *INTEGER(capture_start).add(j) = NA_INTEGER;
-                *INTEGER(capture_len).add(j) = NA_INTEGER;
+                set_integer_checked(capture_start, (j) as R_xlen_t, NA_INTEGER);
+                set_integer_checked(capture_len, (j) as R_xlen_t, NA_INTEGER);
             }
         }
 
@@ -513,8 +513,8 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(text) == SEXPTYPE::STRSXP
                 && STRING_ELT(text, i) == crate::sexp::globals::R_NaString()
             {
-                *INTEGER(result).add(i as usize) = NA_INTEGER;
-                *INTEGER(match_len).add(i as usize) = NA_INTEGER;
+                set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
+                set_integer_checked(match_len, (i as usize) as R_xlen_t, NA_INTEGER);
                 continue;
             }
 
@@ -522,14 +522,12 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if fixed {
                 match fixed_find(&txt, &pat, ignore_case) {
                     Some(m) => {
-                        *INTEGER(result).add(i as usize) =
-                            regex_span(&txt, m.start, m.end, byte_mode).0;
-                        *INTEGER(match_len).add(i as usize) =
-                            regex_span(&txt, m.start, m.end, byte_mode).1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).0);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).1);
                     }
                     None => {
-                        *INTEGER(result).add(i as usize) = -1;
-                        *INTEGER(match_len).add(i as usize) = -1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, -1);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, -1);
                     }
                 }
             } else if capture_count > 0 {
@@ -548,10 +546,8 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .and_then(|c| c.as_ref())
                 {
                     Some(whole) => {
-                        *INTEGER(result).add(i as usize) =
-                            regex_span(&txt, whole.start, whole.end, byte_mode).0;
-                        *INTEGER(match_len).add(i as usize) =
-                            regex_span(&txt, whole.start, whole.end, byte_mode).1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, regex_span(&txt, whole.start, whole.end, byte_mode).0);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, regex_span(&txt, whole.start, whole.end, byte_mode).1);
                         for g in 0..capture_count {
                             let ind = i as usize + g * n as usize;
                             match caps
@@ -560,24 +556,22 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 .and_then(|c| c.as_ref())
                             {
                                 Some(cm) => {
-                                    *INTEGER(capture_start).add(ind) =
-                                        regex_span(&txt, cm.start, cm.end, byte_mode).0;
-                                    *INTEGER(capture_len).add(ind) =
-                                        regex_span(&txt, cm.start, cm.end, byte_mode).1;
+                                    set_integer_checked(capture_start, (ind) as R_xlen_t, regex_span(&txt, cm.start, cm.end, byte_mode).0);
+                                    set_integer_checked(capture_len, (ind) as R_xlen_t, regex_span(&txt, cm.start, cm.end, byte_mode).1);
                                 }
                                 None => {
                                     // grep.c's ovector_extract_start_length on
                                     // a PCRE2_UNSET group computes
                                     // start = -1 + 1 = 0 and length = 0.
-                                    *INTEGER(capture_start).add(ind) = 0;
-                                    *INTEGER(capture_len).add(ind) = 0;
+                                    set_integer_checked(capture_start, (ind) as R_xlen_t, 0);
+                                    set_integer_checked(capture_len, (ind) as R_xlen_t, 0);
                                 }
                             }
                         }
                     }
                     None => {
-                        *INTEGER(result).add(i as usize) = -1;
-                        *INTEGER(match_len).add(i as usize) = -1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, -1);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, -1);
                         fill_capture_no_match(
                             capture_start,
                             capture_len,
@@ -602,14 +596,12 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 };
                 match found {
                     Some(m) => {
-                        *INTEGER(result).add(i as usize) =
-                            regex_span(&txt, m.start, m.end, byte_mode).0;
-                        *INTEGER(match_len).add(i as usize) =
-                            regex_span(&txt, m.start, m.end, byte_mode).1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).0);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).1);
                     }
                     None => {
-                        *INTEGER(result).add(i as usize) = -1;
-                        *INTEGER(match_len).add(i as usize) = -1;
+                        set_integer_checked(result, (i as usize) as R_xlen_t, -1);
+                        set_integer_checked(match_len, (i as usize) as R_xlen_t, -1);
                     }
                 }
             }
@@ -622,7 +614,7 @@ pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Column-major integer matrix with dim c(nrow, ncol) — the shape grep.c's
 /// do_regexpr uses for capture.start / capture.length.
 fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
-    unsafe {
+    
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol as R_xlen_t);
         if ans.is_null() {
             return ans;
@@ -633,11 +625,11 @@ fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
             return R_NilValue();
         }
         let _dim_guard = protect(dim);
-        *INTEGER(dim) = nrow as c_int;
-        *INTEGER(dim).add(1) = ncol as c_int;
+        set_integer_checked(dim, 0, nrow as c_int);
+        set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
         crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
         ans
-    }
+    
 }
 
 /// Mark every capture entry of a non-matching text element as -1
@@ -649,16 +641,16 @@ fn fill_capture_no_match(
     n: R_xlen_t,
     capture_count: usize,
 ) {
-    unsafe {
+    
         if capture_start == R_NilValue() {
             return;
         }
         for g in 0..capture_count {
             let ind = i + g * n as usize;
-            *INTEGER(capture_start).add(ind) = -1;
-            *INTEGER(capture_len).add(ind) = -1;
+            set_integer_checked(capture_start, (ind) as R_xlen_t, -1);
+            set_integer_checked(capture_len, (ind) as R_xlen_t, -1);
         }
-    }
+    
 }
 
 /// R gregexpr(pattern, text) for repeated non-overlapping matches. With
@@ -809,8 +801,8 @@ pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 let _elt_guard = protect(elt);
                 let _ml_guard = protect(match_lengths);
-                *INTEGER(elt) = if missing { NA_INTEGER } else { -1 };
-                *INTEGER(match_lengths) = if missing { NA_INTEGER } else { -1 };
+                set_integer_checked(elt, 0, if missing { NA_INTEGER } else { -1 });
+                set_integer_checked(match_lengths, 0, if missing { NA_INTEGER } else { -1 });
                 (elt, match_lengths)
             } else {
                 let elt = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
@@ -821,8 +813,8 @@ pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _elt_guard = protect(elt);
                 let _ml_guard = protect(match_lengths);
                 for (idx, start) in starts.iter().enumerate() {
-                    *INTEGER(elt).add(idx) = *start as c_int;
-                    *INTEGER(match_lengths).add(idx) = lengths[idx] as c_int;
+                    set_integer_checked(elt, (idx) as R_xlen_t, *start as c_int);
+                    set_integer_checked(match_lengths, (idx) as R_xlen_t, lengths[idx] as c_int);
                 }
                 (elt, match_lengths)
             };
@@ -900,7 +892,7 @@ pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let mut parts: Vec<String> = Vec::new();
                 for j in 0..ns {
                     let so = if TYPEOF(starts) == SEXPTYPE::INTSXP {
-                        *INTEGER(starts).add(j as usize)
+                        integer_elt_checked(starts, (j as usize) as R_xlen_t)
                     } else {
                         -1
                     };
@@ -912,7 +904,7 @@ pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         && TYPEOF(lengths) == SEXPTYPE::INTSXP
                         && XLENGTH(lengths) > j
                     {
-                        *INTEGER(lengths).add(j as usize)
+                        integer_elt_checked(lengths, (j as usize) as R_xlen_t)
                     } else {
                         0
                     };
@@ -933,7 +925,7 @@ pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut parts: Vec<String> = Vec::new();
             for i in 0..n {
                 let so = if TYPEOF(m) == SEXPTYPE::INTSXP {
-                    *INTEGER(m).add(i as usize)
+                    integer_elt_checked(m, (i as usize) as R_xlen_t)
                 } else {
                     -1
                 };
@@ -945,7 +937,7 @@ pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     && TYPEOF(lengths) == SEXPTYPE::INTSXP
                     && XLENGTH(lengths) > i
                 {
-                    *INTEGER(lengths).add(i as usize)
+                    integer_elt_checked(lengths, (i as usize) as R_xlen_t)
                 } else {
                     0
                 };
@@ -1000,8 +992,8 @@ fn set_gregexpr_capture_attrs(
             for g in 0..capture_count {
                 let (start, len) = span(k, g);
                 let ind = k + g * n_match;
-                *INTEGER(capture_start).add(ind) = start;
-                *INTEGER(capture_len).add(ind) = len;
+                set_integer_checked(capture_start, (ind) as R_xlen_t, start);
+                set_integer_checked(capture_len, (ind) as R_xlen_t, len);
             }
         }
 
@@ -1107,12 +1099,11 @@ pub fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if let Some(captures) = &captures {
                 for (idx, capture) in captures.iter().enumerate() {
                     if let Some(m) = capture {
-                        *INTEGER(elt).add(idx) = regex_span(&txt, m.start, m.end, byte_mode).0;
-                        *INTEGER(match_lengths).add(idx) =
-                            regex_span(&txt, m.start, m.end, byte_mode).1;
+                        set_integer_checked(elt, (idx) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).0);
+                        set_integer_checked(match_lengths, (idx) as R_xlen_t, regex_span(&txt, m.start, m.end, byte_mode).1);
                     } else {
-                        *INTEGER(elt).add(idx) = if perl { 0 } else { -1 };
-                        *INTEGER(match_lengths).add(idx) = if perl { 0 } else { -1 };
+                        set_integer_checked(elt, (idx) as R_xlen_t, if perl { 0 } else { -1 });
+                        set_integer_checked(match_lengths, (idx) as R_xlen_t, if perl { 0 } else { -1 });
                     }
                 }
                 if named_groups {
@@ -1135,8 +1126,8 @@ pub fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     );
                 }
             } else {
-                *INTEGER(elt) = if missing { NA_INTEGER } else { -1 };
-                *INTEGER(match_lengths) = if missing { NA_INTEGER } else { -1 };
+                set_integer_checked(elt, 0, if missing { NA_INTEGER } else { -1 });
+                set_integer_checked(match_lengths, 0, if missing { NA_INTEGER } else { -1 });
             }
 
             crate::sexp::attrib_core::setAttrib(

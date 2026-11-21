@@ -1,8 +1,10 @@
 //! Misc runtime scalar/arg/string/date helpers.
 
 use super::*;
+use crate::sexp::ffi::{Rbyte, Rcomplex};
 use crate::sexp::object::{Sexp, SexpMut};
 use crate::sexp::owner::OwnerToken;
+use std::os::raw::c_double;
 
 /// Capture the active original owner for checked element access.
 ///
@@ -19,6 +21,105 @@ pub(crate) fn owner_sexp<'s>(owner: OwnerToken<'s>, value: SEXP) -> Sexp<'s> {
     owner
         .sexp(value)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Root a raw SEXP in the active owner for checked element writes.
+pub(crate) fn owner_sexp_mut(value: SEXP) -> SexpMut<'static> {
+    active_owner()
+        .sexp(value)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked REALSXP element read of a raw SEXP through the active owner.
+pub(crate) fn real_elt_checked(x: SEXP, i: R_xlen_t) -> c_double {
+    owner_sexp(active_owner(), x)
+        .try_real_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked LGLSXP element read of a raw SEXP through the active owner.
+pub(crate) fn logical_elt_checked(x: SEXP, i: R_xlen_t) -> c_int {
+    owner_sexp(active_owner(), x)
+        .try_logical_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked CPLXSXP element read of a raw SEXP through the active owner.
+pub(crate) fn complex_elt_checked(x: SEXP, i: R_xlen_t) -> Rcomplex {
+    owner_sexp(active_owner(), x)
+        .try_complex_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked RAWSXP element read of a raw SEXP through the active owner.
+pub(crate) fn raw_elt_checked(x: SEXP, i: R_xlen_t) -> Rbyte {
+    owner_sexp(active_owner(), x)
+        .try_raw_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked INTSXP element read of a raw SEXP through the active owner.
+pub(crate) fn integer_elt_checked(x: SEXP, i: R_xlen_t) -> c_int {
+    owner_sexp(active_owner(), x)
+        .try_integer_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked STRSXP element read of a raw SEXP through the active owner.
+pub(crate) fn string_elt_checked(x: SEXP, i: R_xlen_t) -> SEXP {
+    owner_sexp(active_owner(), x)
+        .try_string_elt(i)
+        .map(|s| s.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked VECSXP element read of a raw SEXP through the active owner.
+pub(crate) fn vector_elt_checked(x: SEXP, i: R_xlen_t) -> SEXP {
+    owner_sexp(active_owner(), x)
+        .try_vector_elt(i)
+        .map(|s| s.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked REALSXP element write of a raw SEXP through the active owner.
+pub(crate) fn set_real_checked(x: SEXP, i: R_xlen_t, v: c_double) {
+    owner_sexp_mut(x)
+        .try_set_real_elt(i, v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked INTSXP element write of a raw SEXP through the active owner.
+pub(crate) fn set_integer_checked(x: SEXP, i: R_xlen_t, v: c_int) {
+    owner_sexp_mut(x)
+        .try_set_integer_elt(i, v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked LGLSXP element write of a raw SEXP through the active owner.
+pub(crate) fn set_logical_checked(x: SEXP, i: R_xlen_t, v: c_int) {
+    owner_sexp_mut(x)
+        .try_set_logical_elt(i, v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked CPLXSXP element write of a raw SEXP through the active owner.
+pub(crate) fn set_complex_checked(x: SEXP, i: R_xlen_t, v: Rcomplex) {
+    owner_sexp_mut(x)
+        .try_set_complex_elt(i, v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked RAWSXP element write of a raw SEXP through the active owner.
+pub(crate) fn set_raw_checked(x: SEXP, i: R_xlen_t, v: Rbyte) {
+    owner_sexp_mut(x)
+        .try_set_raw_elt(i, v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Lossy text of a CHARSXP reached through the active owner.
+pub(crate) fn charsxp_text(x: SEXP) -> Option<String> {
+    charsxp_utf8_lossy(&owner_sexp(active_owner(), x))
 }
 
 /// Allocate a scalar logical through the runtime constructor.

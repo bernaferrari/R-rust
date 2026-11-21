@@ -28,9 +28,7 @@ pub fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let pname = PRINTNAME(tag);
                 if !pname.is_null() {
                     Some(
-                        std::ffi::CStr::from_ptr(CHAR(pname))
-                            .to_string_lossy()
-                            .into_owned(),
+                        charsxp_text(pname).unwrap_or_default(),
                     )
                 } else {
                     None
@@ -266,9 +264,7 @@ pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         {
             let ch = STRING_ELT(first, 0);
             if !ch.is_null() {
-                locale = std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned();
+                locale = charsxp_text(ch).unwrap_or_default();
             }
         }
         if locale.is_empty() {
@@ -283,9 +279,7 @@ pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             if TYPEOF(got) == SEXPTYPE::STRSXP && XLENGTH(got) > 0 {
                 let ch = STRING_ELT(got, 0);
                 if !ch.is_null() {
-                    locale = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    locale = charsxp_text(ch).unwrap_or_default();
                 }
             }
             if locale.is_empty() {

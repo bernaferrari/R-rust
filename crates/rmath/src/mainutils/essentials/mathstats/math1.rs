@@ -188,7 +188,7 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _result_guard = protect(result);
             let dst = INTEGER(result);
             for i in 0..n {
-                let value = *INTEGER(x_arg).add(i as usize);
+                let value = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 *dst.add(i as usize) = if value == NA_INTEGER || value == c_int::MIN {
                     NA_INTEGER
                 } else {
@@ -207,7 +207,7 @@ pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _p = protect(result);
         let dst = REAL(result);
         for i in 0..n {
-            let v = *REAL(x_arg).add(i as usize);
+            let v = real_elt_checked(x_arg, (i as usize) as R_xlen_t);
             *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 v
             } else {
@@ -270,9 +270,9 @@ pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dst = REAL(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
+                real_elt_checked(x_arg, (i as usize) as R_xlen_t)
             } else {
-                let iv = *INTEGER(x_arg).add(i as usize);
+                let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             };
             *dst.add(i as usize) = if v.is_nan() {
@@ -331,9 +331,9 @@ fn apply_unary_scalar_fn(
         let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -393,17 +393,17 @@ fn apply_binary_scalar_fn(
             let xi = if x_len > 0 { i % x_len } else { 0 };
             let yi = if y_len > 0 { i % y_len } else { 0 };
             let val_x = if tx == SEXPTYPE::REALSXP {
-                *REAL(x).add(xi as usize)
+                real_elt_checked(x, (xi as usize) as R_xlen_t)
             } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(xi as usize);
+                let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };
             let val_y = if ty == SEXPTYPE::REALSXP {
-                *REAL(y).add(yi as usize)
+                real_elt_checked(y, (yi as usize) as R_xlen_t)
             } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(y).add(yi as usize);
+                let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL

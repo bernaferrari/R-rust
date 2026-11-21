@@ -84,9 +84,9 @@ pub fn real_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, f: impl Fn(f64) -
         let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -325,9 +325,9 @@ pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -371,9 +371,9 @@ pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -417,9 +417,9 @@ pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -464,9 +464,9 @@ pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -512,9 +512,9 @@ pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -560,9 +560,9 @@ pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
@@ -633,18 +633,18 @@ pub fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let xi = if x_len > 0 { i % x_len } else { 0 };
 
             let val_y = if ty == SEXPTYPE::REALSXP {
-                *REAL(y).add(yi as usize)
+                real_elt_checked(y, (yi as usize) as R_xlen_t)
             } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(y).add(yi as usize);
+                let v = integer_elt_checked(y, (yi as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };
 
             let val_x = if tx == SEXPTYPE::REALSXP {
-                *REAL(x).add(xi as usize)
+                real_elt_checked(x, (xi as usize) as R_xlen_t)
             } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(xi as usize);
+                let v = integer_elt_checked(x, (xi as usize) as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL

@@ -15,7 +15,7 @@ pub fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 fn nclass_numeric_copy(x: SEXP) -> Vec<f64> {
-    unsafe {
+    
         let n = if x.is_null() || x == R_NilValue() {
             0
         } else {
@@ -24,9 +24,9 @@ fn nclass_numeric_copy(x: SEXP) -> Vec<f64> {
         let mut v = Vec::with_capacity(n as usize);
         for i in 0..n {
             let val = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER {
                     f64::NAN
                 } else {
@@ -40,7 +40,7 @@ fn nclass_numeric_copy(x: SEXP) -> Vec<f64> {
             }
         }
         v
-    }
+    
 }
 
 fn nclass_sample_var(x: &[f64]) -> f64 {

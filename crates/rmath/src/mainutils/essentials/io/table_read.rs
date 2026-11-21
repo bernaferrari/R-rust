@@ -517,7 +517,7 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::browser_files::admit_text(text)
                 .unwrap_or_else(|error| scan_error(error.to_string()))
         } else if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) >= 1 {
-            let con = *INTEGER(file_arg);
+            let con = integer_elt_checked(file_arg, 0);
             let mut bytes = Vec::new();
             loop {
                 let c = crate::mainutils::connections::connection_fgetc(con);
@@ -690,7 +690,7 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         } else {
                             parse_table_logical(&field.text).unwrap_or(NA_INTEGER)
                         };
-                        *LOGICAL(col).add(i) = value;
+                        set_logical_checked(col, (i) as R_xlen_t, value);
                     }
                     col
                 }
@@ -705,7 +705,7 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         } else {
                             field.text.trim().parse::<i32>().unwrap_or(NA_INTEGER)
                         };
-                        *INTEGER(col).add(i) = value;
+                        set_integer_checked(col, (i) as R_xlen_t, value);
                     }
                     col
                 }
@@ -720,7 +720,7 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         } else {
                             parse_table_double(&field.text).unwrap_or(NA_REAL)
                         };
-                        *REAL(col).add(i) = value;
+                        set_real_checked(col, (i) as R_xlen_t, value);
                     }
                     col
                 }
@@ -776,11 +776,11 @@ pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for i in 0..n {
                     let ch = STRING_ELT(*col, i);
                     if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                        *INTEGER(coded).add(i as usize) = NA_INTEGER;
+                        set_integer_checked(coded, (i as usize) as R_xlen_t, NA_INTEGER);
                     } else {
                         let s = elt_to_string(*col, i);
                         let code = levels.iter().position(|level| level == &s).unwrap_or(0);
-                        *INTEGER(coded).add(i as usize) = code as i32 + 1;
+                        set_integer_checked(coded, (i as usize) as R_xlen_t, code as i32 + 1);
                     }
                 }
                 crate::mainutils::essentials::tables::set_factor_attrs(coded, &levels);

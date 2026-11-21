@@ -54,8 +54,8 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
                 (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
+                    integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                    integer_elt_checked(dim_attr, (1) as R_xlen_t) as R_xlen_t,
                 )
             } else {
                 (n, 1)
@@ -108,9 +108,9 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         (i as usize) % (stats_len as usize)
                     };
                     let src_val = if t == SEXPTYPE::REALSXP {
-                        *REAL(x).add(src_idx)
+                        real_elt_checked(x, (src_idx) as R_xlen_t)
                     } else if t == SEXPTYPE::INTSXP {
-                        let v = *INTEGER(x).add(src_idx);
+                        let v = integer_elt_checked(x, (src_idx) as R_xlen_t);
                         if v == NA_INTEGER { NA_REAL } else { v as f64 }
                     } else {
                         NA_REAL
@@ -122,13 +122,13 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     };
                     let res = apply_binary(src_val, stat_val);
                     if result_t == SEXPTYPE::REALSXP {
-                        *REAL(result).add(src_idx) = res;
+                        set_real_checked(result, (src_idx) as R_xlen_t, res);
                     } else if result_t == SEXPTYPE::INTSXP {
-                        *INTEGER(result).add(src_idx) = if res.is_nan() || res == NA_REAL {
+                        set_integer_checked(result, (src_idx) as R_xlen_t, if res.is_nan() || res == NA_REAL {
                             NA_INTEGER
                         } else {
                             res as c_int
-                        };
+                        });
                     }
                 }
             }
@@ -148,9 +148,9 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         (j as usize) % (stats_len as usize)
                     };
                     let src_val = if t == SEXPTYPE::REALSXP {
-                        *REAL(x).add(src_idx)
+                        real_elt_checked(x, (src_idx) as R_xlen_t)
                     } else if t == SEXPTYPE::INTSXP {
-                        let v = *INTEGER(x).add(src_idx);
+                        let v = integer_elt_checked(x, (src_idx) as R_xlen_t);
                         if v == NA_INTEGER { NA_REAL } else { v as f64 }
                     } else {
                         NA_REAL
@@ -162,13 +162,13 @@ pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     };
                     let res = apply_binary(src_val, stat_val);
                     if result_t == SEXPTYPE::REALSXP {
-                        *REAL(result).add(src_idx) = res;
+                        set_real_checked(result, (src_idx) as R_xlen_t, res);
                     } else if result_t == SEXPTYPE::INTSXP {
-                        *INTEGER(result).add(src_idx) = if res.is_nan() || res == NA_REAL {
+                        set_integer_checked(result, (src_idx) as R_xlen_t, if res.is_nan() || res == NA_REAL {
                             NA_INTEGER
                         } else {
                             res as c_int
-                        };
+                        });
                     }
                 }
             }

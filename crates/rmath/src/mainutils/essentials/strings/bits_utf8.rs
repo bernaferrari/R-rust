@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU `intToBits(x)`: 32 LSB-first raw bits per integer.
 pub fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
             0
@@ -15,25 +15,25 @@ pub fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _o = protect(out);
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add(i as usize) as u32
+                integer_elt_checked(x, (i as usize) as R_xlen_t) as u32
             } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize) as i32 as u32
+                real_elt_checked(x, (i as usize) as R_xlen_t) as i32 as u32
             } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
-                *LOGICAL(x).add(i as usize) as u32
+                logical_elt_checked(x, (i as usize) as R_xlen_t) as u32
             } else {
                 0
             };
             for b in 0..32 {
-                *RAW(out).add((i as usize) * 32 + b) = ((v >> b) & 1) as u8;
+                set_raw_checked(out, ((i as usize) as R_xlen_t) * 32 + b, ((v >> b) & 1) as u8);
             }
         }
         out
-    }
+    
 }
 
 /// GNU `rawToBits(x)`: 8 LSB-first raw bits per byte.
 pub fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
             0
@@ -43,18 +43,18 @@ pub fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n * 8);
         let _o = protect(out);
         for i in 0..n {
-            let v = *RAW(x).add(i as usize);
+            let v = raw_elt_checked(x, (i as usize) as R_xlen_t);
             for b in 0..8 {
-                *RAW(out).add((i as usize) * 8 + b) = (v >> b) & 1;
+                set_raw_checked(out, ((i as usize) as R_xlen_t) * 8 + b, (v >> b) & 1);
             }
         }
         out
-    }
+    
 }
 
 /// GNU `rawShift(x, n)`.
 pub fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
             crate::mainutils::errors::errorcall_str(
@@ -67,9 +67,9 @@ pub fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !rest.is_null() && rest != R_NilValue() {
             let n = CAR(rest);
             if TYPEOF(n) == SEXPTYPE::INTSXP && XLENGTH(n) > 0 {
-                shift = *INTEGER(n);
+                shift = integer_elt_checked(n, 0);
             } else if TYPEOF(n) == SEXPTYPE::REALSXP && XLENGTH(n) > 0 {
-                shift = *REAL(n) as i32;
+                shift = real_elt_checked(n, 0) as i32;
             }
         }
         if shift < -8 || shift > 8 {
@@ -82,17 +82,17 @@ pub fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let out = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
         let _o = protect(out);
         for i in 0..n as usize {
-            let v = *RAW(x).add(i) as u32;
-            *RAW(out).add(i) = if shift > 0 {
+            let v = raw_elt_checked(x, (i) as R_xlen_t) as u32;
+            set_raw_checked(out, (i) as R_xlen_t, if shift > 0 {
                 (v << shift) as u8
             } else if shift < 0 {
                 (v >> (-shift)) as u8
             } else {
                 v as u8
-            };
+            });
         }
         out
-    }
+    
 }
 
 /// GNU `packBits(x, type)`.
@@ -146,7 +146,7 @@ pub fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let bit = packbits_bit(x, 8 * i + k);
                     btmp |= bit;
                 }
-                *RAW(out).add(i as usize) = btmp;
+                set_raw_checked(out, (i as usize) as R_xlen_t, btmp);
             }
             out
         } else if type_int {
@@ -158,7 +158,7 @@ pub fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     itmp <<= 1;
                     itmp |= packbits_bit(x, 32 * i + k) as u32;
                 }
-                *INTEGER(out).add(i as usize) = itmp as i32;
+                set_integer_checked(out, (i as usize) as R_xlen_t, itmp as i32);
             }
             out
         } else {
@@ -169,7 +169,7 @@ pub fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for b in 0..64 {
                     bits |= (packbits_bit(x, 64 * i + b) as u64) << b;
                 }
-                *REAL(out).add(i as usize) = f64::from_bits(bits);
+                set_real_checked(out, (i as usize) as R_xlen_t, f64::from_bits(bits));
             }
             out
         }
@@ -177,19 +177,19 @@ pub fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn packbits_bit(x: SEXP, idx: i64) -> u8 {
-    unsafe {
+    
         match TYPEOF(x) {
-            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(idx as usize) & 1,
-            t if t == SEXPTYPE::LGLSXP => (*LOGICAL(x).add(idx as usize) & 1) as u8,
-            t if t == SEXPTYPE::INTSXP => (*INTEGER(x).add(idx as usize) & 1) as u8,
+            t if t == SEXPTYPE::RAWSXP => raw_elt_checked(x, (idx as usize) as R_xlen_t) & 1,
+            t if t == SEXPTYPE::LGLSXP => (logical_elt_checked(x, (idx as usize) as R_xlen_t) & 1) as u8,
+            t if t == SEXPTYPE::INTSXP => (integer_elt_checked(x, (idx as usize) as R_xlen_t) & 1) as u8,
             _ => 0,
         }
-    }
+    
 }
 
 /// GNU `numToInts(x)`: two little-endian ints per double.
 pub fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
             0
@@ -200,24 +200,24 @@ pub fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _o = protect(out);
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 0.0
             };
             let bits = v.to_bits();
-            *INTEGER(out).add((i as usize) * 2) = bits as u32 as i32;
-            *INTEGER(out).add((i as usize) * 2 + 1) = (bits >> 32) as u32 as i32;
+            set_integer_checked(out, ((i as usize) * 2) as R_xlen_t, bits as u32 as i32);
+            set_integer_checked(out, ((i as usize) * 2 + 1) as R_xlen_t, (bits >> 32) as u32 as i32);
         }
         out
-    }
+    
 }
 
 /// GNU `numToBits(x)`: 64 LSB-first raw bits per double.
 pub fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
             0
@@ -228,21 +228,21 @@ pub fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _o = protect(out);
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 0.0
             };
             let mut bits = v.to_bits();
             for b in 0..64 {
-                *RAW(out).add((i as usize) * 64 + b) = (bits & 1) as u8;
+                set_raw_checked(out, ((i as usize) as R_xlen_t) * 64 + b, (bits & 1) as u8);
                 bits >>= 1;
             }
         }
         out
-    }
+    
 }
 
 /// GNU `utf8ToInt(x)`: UTF-8 code points of a length-1 string.
@@ -280,7 +280,7 @@ pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let out = Rf_allocVector3(SEXPTYPE::INTSXP, cps.len() as i64);
         let _o = protect(out);
         for (i, cp) in cps.iter().enumerate() {
-            *INTEGER(out).add(i) = *cp;
+            set_integer_checked(out, (i) as R_xlen_t, *cp);
         }
         out
     }
@@ -351,7 +351,7 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let code = |i: i64| -> i32 {
             if TYPEOF(int_x) == SEXPTYPE::INTSXP {
-                *INTEGER(int_x).add(i as usize)
+                integer_elt_checked(int_x, (i as usize) as R_xlen_t)
             } else {
                 NA_INTEGER
             }
@@ -473,7 +473,7 @@ fn utf8_bytes_valid(s: SEXP) -> bool {
 
 /// GNU `validUTF8(x)`.
 pub fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             crate::mainutils::errors::errorcall_str(
@@ -485,19 +485,19 @@ pub fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let out = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         let _o = protect(out);
         for i in 0..n {
-            *LOGICAL(out).add(i as usize) = if utf8_bytes_valid(STRING_ELT(x, i)) {
+            set_logical_checked(out, (i as usize) as R_xlen_t, if utf8_bytes_valid(STRING_ELT(x, i)) {
                 TRUE
             } else {
                 FALSE
-            };
+            });
         }
         out
-    }
+    
 }
 
 /// GNU `validEnc(x)`.
 pub fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             crate::mainutils::errors::errorcall_str(
@@ -517,8 +517,8 @@ pub fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 utf8_bytes_valid(p)
             };
-            *LOGICAL(out).add(i as usize) = if ok { TRUE } else { FALSE };
+            set_logical_checked(out, (i as usize) as R_xlen_t, if ok { TRUE } else { FALSE });
         }
         out
-    }
+    
 }

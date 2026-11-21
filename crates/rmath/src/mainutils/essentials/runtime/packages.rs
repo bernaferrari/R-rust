@@ -714,8 +714,8 @@ fn package_data_index(packages: &[String], items: &[String]) -> SEXP {
             SET_STRING_ELT(matrix, (3 * n + i) as R_xlen_t, Rf_mkChar(empty.as_ptr()));
         }
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = n as i32;
-        *INTEGER(dim).add(1) = 4;
+        set_integer_checked(dim, 0, n as i32);
+        set_integer_checked(dim, (1) as R_xlen_t, 4);
         crate::sexp::attrib_core::setAttrib(matrix, crate::sexp::attrib_core::R_DimSymbol(), dim);
         let colnames = string_vector(&[
             "Package".to_string(),

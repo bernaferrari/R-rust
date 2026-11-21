@@ -108,8 +108,8 @@ pub(crate) fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEX
             return R_NilValue();
         }
         let _dim_guard = protect(dim);
-        *INTEGER(dim).add(0) = nrow as c_int;
-        *INTEGER(dim).add(1) = ncol as c_int;
+        set_integer_checked(dim, (0) as R_xlen_t, nrow as c_int);
+        set_integer_checked(dim, (1) as R_xlen_t, ncol as c_int);
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);

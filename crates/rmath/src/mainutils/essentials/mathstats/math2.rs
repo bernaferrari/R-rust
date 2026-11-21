@@ -58,9 +58,9 @@ pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let log_base = base.ln();
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
+                real_elt_checked(x_arg, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x_arg).add(i as usize);
+                let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
@@ -102,10 +102,10 @@ fn math2_complex(
             if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
                 // do_Math2 fills the digits default upstream.
                 let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-                *COMPLEX(s) = Rcomplex {
+                set_complex_checked(s, 0, Rcomplex {
                     r: dflt_digits,
                     i: 0.0,
-                };
+                });
                 s
             } else {
                 crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
@@ -233,7 +233,7 @@ pub(super) fn copy_all_attribs(dst: SEXP, src: SEXP) {
 /// Exact names, then a unique partial name, then leftover positionals.
 /// `round(d = 2, x = pi)` binds `x` exactly and `d` to `digits`.
 fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
-    unsafe {
+    
         let formals = ["x", "digits"];
         let mut bound = [R_NilValue(), R_NilValue()];
         let mut seen = [false, false];
@@ -244,9 +244,7 @@ fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
             if tag.is_null() || tag == R_NilValue() {
                 untagged.push(CAR(cell));
             } else {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned();
+                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
                 if let Some(i) = formals.iter().position(|f| *f == name) {
                     bound[i] = CAR(cell);
                     seen[i] = true;
@@ -258,9 +256,7 @@ fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned();
+                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
                 if !formals.iter().any(|f| *f == name) {
                     let hits: Vec<usize> = formals
                         .iter()
@@ -291,7 +287,7 @@ fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
             );
         }
         (bound[0], bound[1])
-    }
+    
 }
 
 /// R's `round(x, digits=0)` — round to specified decimal digits.
@@ -346,9 +342,9 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dst = REAL(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
+                real_elt_checked(x_arg, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x_arg).add(i as usize);
+                let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
@@ -439,16 +435,16 @@ pub fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let t = TYPEOF(x);
         for i in 0..n {
             let missing = if t == SEXPTYPE::CPLXSXP {
-                let z = *COMPLEX(x).add(i as usize);
+                let z = complex_elt_checked(x, (i as usize) as R_xlen_t);
                 z.r.is_nan() || z.i.is_nan()
             } else if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).is_nan()
+                (real_elt_checked(x, (i as usize) as R_xlen_t)).is_nan()
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) == NA_INTEGER
+                integer_elt_checked(x, (i as usize) as R_xlen_t) == NA_INTEGER
             } else {
                 false
             };
-            *INTEGER(ina).add(i as usize) = if missing { 1 } else { 0 };
+            set_integer_checked(ina, (i as usize) as R_xlen_t, if missing { 1 } else { 0 });
             if !missing {
                 any_observed = true;
             }
@@ -464,16 +460,16 @@ pub fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             let mut mx = 0.0f64;
             for i in 0..n {
-                if *INTEGER(ina).add(i as usize) != 0 {
+                if integer_elt_checked(ina, (i as usize) as R_xlen_t) != 0 {
                     continue;
                 }
                 let mag = if t == SEXPTYPE::CPLXSXP {
-                    let z = *COMPLEX(x).add(i as usize);
+                    let z = complex_elt_checked(x, (i as usize) as R_xlen_t);
                     (z.r * z.r + z.i * z.i).sqrt()
                 } else if t == SEXPTYPE::REALSXP {
-                    (*REAL(x).add(i as usize)).abs()
+                    (real_elt_checked(x, (i as usize) as R_xlen_t)).abs()
                 } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    (*INTEGER(x).add(i as usize) as f64).abs()
+                    (integer_elt_checked(x, (i as usize) as R_xlen_t) as f64).abs()
                 } else {
                     0.0
                 };
@@ -683,9 +679,9 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for i in 0..n {
             let xi = if nx == 0 { 0 } else { i % nx };
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(xi as usize)
+                real_elt_checked(x_arg, (xi as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x_arg).add(xi as usize);
+                let iv = integer_elt_checked(x_arg, (xi as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
@@ -698,7 +694,7 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // GNU coerces the digits argument with asReal: integer or
                 // logical NA becomes NA_real_, which propagates as NA —
                 // not the numeric default.
-                let iv = *INTEGER(digits_arg).add((i % nd) as usize);
+                let iv = integer_elt_checked(digits_arg, (i % nd) as R_xlen_t);
                 if iv == crate::sexp::ffi::NA_INTEGER {
                     NA_REAL
                 } else {
@@ -760,9 +756,9 @@ pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dst = REAL(result);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
+                real_elt_checked(x_arg, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x_arg).add(i as usize);
+                let iv = integer_elt_checked(x_arg, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL

@@ -1,26 +1,26 @@
 use super::*;
 
 fn iso_arg_num(x: SEXP, default: f64) -> f64 {
-    unsafe {
+    
         if x.is_null() || x == R_NilValue() {
             return default;
         }
         if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
-            *REAL(x)
+            real_elt_checked(x, 0)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
-            let v = *INTEGER(x);
+            let v = integer_elt_checked(x, 0);
             if v == NA_INTEGER { default } else { v as f64 }
         } else {
             default
         }
-    }
+    
 }
 
 fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
     unsafe {
         if !(1.0..=12.0).contains(&month) {
             let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-            *REAL(na) = f64::NAN;
+            set_real_checked(na, 0, f64::NAN);
             let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
             SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
@@ -54,7 +54,7 @@ fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, t
 
 /// GNU `ISOdatetime(year, month, day, hour, min, sec, tz)`.
 pub fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let year = iso_arg_num(CAR(args), 1970.0);
         let month = iso_arg_num(CAR(CDR(args)), 1.0);
         let day = iso_arg_num(CAR(CDR(CDR(args))), 1.0);
@@ -68,19 +68,17 @@ pub fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
                 let ch = STRING_ELT(t, 0);
                 if !ch.is_null() {
-                    tz = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    tz = charsxp_text(ch).unwrap_or_default();
                 }
             }
         }
         iso_posixct(year, month, day, hour, min, sec, &tz)
-    }
+    
 }
 
 /// GNU `ISOdate(year, month, day)` is noon GMT.
 pub fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let year = iso_arg_num(CAR(args), 1970.0);
         let month = iso_arg_num(CAR(CDR(args)), 1.0);
         let day = iso_arg_num(CAR(CDR(CDR(args))), 1.0);
@@ -94,9 +92,7 @@ pub fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -110,9 +106,7 @@ pub fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                     let ch = STRING_ELT(value, 0);
                     if !ch.is_null() {
-                        tz = std::ffi::CStr::from_ptr(CHAR(ch))
-                            .to_string_lossy()
-                            .into_owned();
+                        tz = charsxp_text(ch).unwrap_or_default();
                     }
                 }
             }
@@ -122,5 +116,5 @@ pub fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
         iso_posixct(year, month, day, hour, min, sec, &tz)
-    }
+    
 }

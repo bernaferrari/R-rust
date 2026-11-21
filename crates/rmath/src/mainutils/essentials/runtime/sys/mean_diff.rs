@@ -23,9 +23,7 @@ pub fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             let ch = STRING_ELT(tz, 0);
             if !ch.is_null() {
-                tz_s = std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned();
+                tz_s = charsxp_text(ch).unwrap_or_default();
             }
         }
         let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
@@ -101,7 +99,7 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let seconds_at = |x: SEXP, i: usize| -> f64 {
             if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
                 let v = *crate::sexp::accessors::INTEGER(x).add(i);
                 if v == crate::sexp::ffi::NA_INTEGER {
@@ -152,7 +150,7 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, z.len() as i64);
         let _r = protect(result);
         for (i, v) in z.iter().enumerate() {
-            *REAL(result).add(i) = *v;
+            set_real_checked(result, (i) as R_xlen_t, *v);
         }
         set_single_class(result, "difftime");
         crate::sexp::attrib_core::setAttrib(
@@ -166,7 +164,7 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `trunc.POSIXt(x, units)`.
 pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return x;
@@ -184,9 +182,7 @@ pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(u) == SEXPTYPE::STRSXP && XLENGTH(u) > 0 {
                 let ch = STRING_ELT(u, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
             }
         }
@@ -195,7 +191,7 @@ pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let secs = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else {
                 0.0
             };
@@ -214,11 +210,11 @@ pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 secs.floor()
             };
-            *REAL(result).add(i as usize) = out;
+            set_real_checked(result, (i as usize) as R_xlen_t, out);
         }
         set_posixct_class(result, "GMT");
         result
-    }
+    
 }
 
 /// GNU `round.POSIXt(x, units)`.
@@ -235,9 +231,7 @@ pub fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(u) == SEXPTYPE::STRSXP && XLENGTH(u) > 0 {
                 let ch = STRING_ELT(u, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
             }
         }
@@ -263,11 +257,11 @@ pub fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _s = protect(shifted);
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else {
                 0.0
             };
-            *REAL(shifted).add(i as usize) = v + half;
+            set_real_checked(shifted, (i as usize) as R_xlen_t, v + half);
         }
         set_posixct_class(shifted, "GMT");
         let u = Rf_mkString(CString::new(units.as_str()).unwrap_or_default().as_ptr());

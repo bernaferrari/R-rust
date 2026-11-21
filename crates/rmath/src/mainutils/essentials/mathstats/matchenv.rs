@@ -334,7 +334,7 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                     let pname = PRINTNAME(tag);
                     if !pname.is_null() {
-                        let label = std::ffi::CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                        let label = charsxp_text(pname).unwrap_or_default();
                         if label == name {
                             return CAR(cell);
                         }
@@ -401,7 +401,7 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
             let _p = protect(result);
             for (i, v) in values.iter().enumerate() {
-                *INTEGER(result).add(i) = *v as c_int;
+                set_integer_checked(result, (i) as R_xlen_t, *v as c_int);
             }
             return result;
         }
@@ -417,7 +417,7 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             let _p = protect(result);
             for (i, v) in values.iter().enumerate() {
-                *REAL(result).add(i) = *v;
+                set_real_checked(result, (i) as R_xlen_t, *v);
             }
             return result;
         }
@@ -470,11 +470,11 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(result);
         for i in 0..n {
             if is_na[i as usize] {
-                *INTEGER(result).add(i as usize) = NA_INTEGER;
+                set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
             } else {
                 let s = elt_to_string(x, i);
                 let code = levels_v.iter().position(|l| l == &s).unwrap_or(0) as c_int + 1;
-                *INTEGER(result).add(i as usize) = code;
+                set_integer_checked(result, (i as usize) as R_xlen_t, code);
             }
         }
         let levels = Rf_allocVector3(SEXPTYPE::STRSXP, levels_v.len() as i64);
@@ -528,9 +528,9 @@ pub fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
             let pos = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x)
+                integer_elt_checked(x, 0)
             } else {
-                *REAL(x) as c_int
+                real_elt_checked(x, 0) as c_int
             };
             return search_env_from_position(pos);
         }
@@ -679,7 +679,7 @@ fn search_env_label(env: SEXP) -> String {
         if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
             let value = STRING_ELT(name, 0);
             if !value.is_null() && value != R_NilValue() {
-                return CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned();
+                return charsxp_text(value).unwrap_or_default();
             }
         }
         "(unknown)".to_string()
@@ -704,7 +704,7 @@ pub fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `sort.list(x, partial, na.last, decreasing, method)` — indices for sorting.
 pub fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
@@ -725,14 +725,14 @@ pub fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _p = protect(result);
         for (i, idx) in indices.iter().enumerate() {
-            *INTEGER(result).add(i) = (*idx + 1) as c_int; // 1-indexed
+            set_integer_checked(result, (i) as R_xlen_t, (*idx + 1) as c_int); // 1-indexed
         }
         result
-    }
+    
 }
 
 fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
-    unsafe {
+    
         let n = XLENGTH(x);
         let mut positions = vec![0; n as usize];
         let mut next = 0;
@@ -740,9 +740,9 @@ fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
             let missing = match TYPEOF(x) {
                 t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(x, i)),
                 t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                    *INTEGER(x).add(i as usize) == NA_INTEGER
+                    integer_elt_checked(x, (i as usize) as R_xlen_t) == NA_INTEGER
                 }
-                t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(x).add(i as usize)),
+                t if t == SEXPTYPE::REALSXP => ISNAN(real_elt_checked(x, (i as usize) as R_xlen_t)),
                 _ => ISNAN(elt_real_safe(x, i)),
             };
             if !missing {
@@ -751,7 +751,7 @@ fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
             }
         }
         positions
-    }
+    
 }
 
 /// R's `outer(X, Y, FUN)` — outer product (enhanced).
@@ -786,8 +786,8 @@ pub fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         // Set dim attribute
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            *INTEGER(dim) = nx as c_int;
-            *INTEGER(dim).add(1) = ny as c_int;
+            set_integer_checked(dim, 0, nx as c_int);
+            set_integer_checked(dim, (1) as R_xlen_t, ny as c_int);
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
         }
         result

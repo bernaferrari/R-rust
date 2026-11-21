@@ -17,8 +17,8 @@ pub fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
                 (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
+                    integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                    integer_elt_checked(dim_attr, (1) as R_xlen_t) as R_xlen_t,
                 )
             } else {
                 let n = XLENGTH(x).max(1);

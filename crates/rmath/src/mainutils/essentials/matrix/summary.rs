@@ -17,7 +17,7 @@ pub fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
-            Rf_ScalarInteger(*INTEGER(dim_attr))
+            Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
         } else {
             Rf_ScalarInteger(XLENGTH(x) as i32)
         }
@@ -36,7 +36,7 @@ pub fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-            Rf_ScalarInteger(*INTEGER(dim_attr).add(1))
+            Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
         } else {
             Rf_ScalarInteger(1)
         }
@@ -169,7 +169,7 @@ fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
 }
 
 pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
-    unsafe {
+    
         if XLENGTH(x) == new_len {
             return x;
         }
@@ -183,34 +183,34 @@ pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
 
         if kind == SEXPTYPE::LGLSXP.as_c_int() {
             for i in 0..copy_len {
-                *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, i as c_int);
+                set_logical_checked(result, (i as usize) as R_xlen_t, LOGICAL_ELT(x, i as c_int));
             }
             for i in copy_len..new_len {
-                *LOGICAL(result).add(i as usize) = NA_INTEGER;
+                set_logical_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
             }
         } else if kind == SEXPTYPE::INTSXP.as_c_int() {
             for i in 0..copy_len {
-                *INTEGER(result).add(i as usize) = INTEGER_ELT(x, i as c_int);
+                set_integer_checked(result, (i as usize) as R_xlen_t, INTEGER_ELT(x, i as c_int));
             }
             for i in copy_len..new_len {
-                *INTEGER(result).add(i as usize) = NA_INTEGER;
+                set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
             }
         } else if kind == SEXPTYPE::REALSXP.as_c_int() {
             for i in 0..copy_len {
-                *REAL(result).add(i as usize) = REAL_ELT(x, i as c_int);
+                set_real_checked(result, (i as usize) as R_xlen_t, REAL_ELT(x, i as c_int));
             }
             for i in copy_len..new_len {
-                *REAL(result).add(i as usize) = NA_REAL;
+                set_real_checked(result, (i as usize) as R_xlen_t, NA_REAL);
             }
         } else if kind == SEXPTYPE::CPLXSXP.as_c_int() {
             for i in 0..copy_len {
-                *COMPLEX(result).add(i as usize) = *COMPLEX(x).add(i as usize);
+                set_complex_checked(result, (i as usize) as R_xlen_t, complex_elt_checked(x, (i as usize) as R_xlen_t));
             }
             for i in copy_len..new_len {
-                *COMPLEX(result).add(i as usize) = Rcomplex {
+                set_complex_checked(result, (i as usize) as R_xlen_t, Rcomplex {
                     r: NA_REAL,
                     i: NA_REAL,
-                };
+                });
             }
         } else if kind == SEXPTYPE::STRSXP.as_c_int() {
             for i in 0..copy_len {
@@ -221,7 +221,7 @@ pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
             }
         } else if kind == SEXPTYPE::RAWSXP.as_c_int() {
             for i in 0..copy_len {
-                *RAW(result).add(i as usize) = *RAW(x).add(i as usize);
+                set_raw_checked(result, (i as usize) as R_xlen_t, raw_elt_checked(x, (i as usize) as R_xlen_t));
             }
         } else if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() {
             for i in 0..copy_len {
@@ -236,7 +236,7 @@ pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
             });
         }
         result
-    }
+    
 }
 
 pub fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
@@ -313,7 +313,7 @@ pub fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
-    unsafe {
+    
         let mut x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -357,7 +357,7 @@ pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
             leading = XLENGTH(x);
         } else {
             for axis in 0..dim_len {
-                let extent = *INTEGER(dim_attr).add(axis as usize) as R_xlen_t;
+                let extent = integer_elt_checked(dim_attr, (axis as usize) as R_xlen_t) as R_xlen_t;
                 if axis < dims {
                     leading = leading.saturating_mul(extent);
                 } else {
@@ -395,18 +395,18 @@ pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
         if rows {
             for row in 0..leading {
                 let value = summarize_margin_cells(x, row, leading, trailing, na_rm, mean);
-                *REAL(result).add(row as usize) = value;
+                set_real_checked(result, (row as usize) as R_xlen_t, value);
             }
         } else {
             for col in 0..trailing {
                 let value = summarize_contiguous_cells(x, col * leading, leading, na_rm, mean);
-                *REAL(result).add(col as usize) = value;
+                set_real_checked(result, (col as usize) as R_xlen_t, value);
             }
         }
 
         set_margin_summary_attrs(result, dim_attr, &result_axes, x);
         result
-    }
+    
 }
 
 fn complex_margin_summary(
@@ -420,7 +420,7 @@ fn complex_margin_summary(
     result_axes: &[R_xlen_t],
     dim_attr: SEXP,
 ) -> SEXP {
-    unsafe {
+    
         let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
         if result.is_null() {
             return R_NilValue();
@@ -441,7 +441,7 @@ fn complex_margin_summary(
                 } else {
                     index * leading + k
                 };
-                let z = *COMPLEX(x).add(cell as usize);
+                let z = complex_elt_checked(x, (cell as usize) as R_xlen_t);
                 let bad = part_na(z.r) || part_na(z.i);
                 if na_rm && bad {
                     continue;
@@ -483,16 +483,16 @@ fn complex_margin_summary(
         };
         if rows {
             for row in 0..leading {
-                *COMPLEX(result).add(row as usize) = one(row);
+                set_complex_checked(result, (row as usize) as R_xlen_t, one(row));
             }
         } else {
             for col in 0..trailing {
-                *COMPLEX(result).add(col as usize) = one(col);
+                set_complex_checked(result, (col as usize) as R_xlen_t, one(col));
             }
         }
         set_margin_summary_attrs(result, dim_attr, result_axes, x);
         result
-    }
+    
 }
 
 pub fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
@@ -582,12 +582,12 @@ pub fn summarize_margin_cells(
 }
 
 pub fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
-    unsafe {
+    
         let x_type = TYPEOF(x);
         let value = if x_type == SEXPTYPE::REALSXP {
-            *REAL(x).add(index as usize)
+            real_elt_checked(x, (index as usize) as R_xlen_t)
         } else if x_type == SEXPTYPE::INTSXP || x_type == SEXPTYPE::LGLSXP {
-            let value = *INTEGER(x).add(index as usize);
+            let value = integer_elt_checked(x, (index as usize) as R_xlen_t);
             if value == NA_INTEGER {
                 return None;
             }
@@ -600,11 +600,11 @@ pub fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
         } else {
             Some(value)
         }
-    }
+    
 }
 
 pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], source: SEXP) {
-    unsafe {
+    
         if dim.is_null() || dim == R_NilValue() || axes.is_empty() {
             return;
         }
@@ -627,7 +627,7 @@ pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], sour
         }
         let _dim_guard = protect(out_dim);
         for (out_i, axis) in axes.iter().enumerate() {
-            *INTEGER(out_dim).add(out_i) = *INTEGER(dim).add(*axis as usize);
+            set_integer_checked(out_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -639,7 +639,7 @@ pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], sour
             crate::sexp::attrib_core::R_DimNamesSymbol(),
             retained_dimnames(dimnames, axes),
         );
-    }
+    
 }
 
 /// R's `col(x)` — column indices for a matrix.

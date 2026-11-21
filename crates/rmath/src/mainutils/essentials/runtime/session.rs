@@ -272,7 +272,7 @@ pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) >= 1 {
             crate::mainutils::connections::connection_write_bytes(
-                *INTEGER(file_arg),
+                integer_elt_checked(file_arg, 0),
                 output.as_bytes(),
             );
         } else if file.is_empty() {
@@ -353,7 +353,7 @@ pub fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     && symbol_name(tag).as_deref() == Some("splice");
                 if named || (tag.is_null() || tag == R_NilValue()) {
                     let v = crate::eval::eval::Rf_eval(CAR(cell), rho);
-                    if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 && *LOGICAL(v) != 0 {
+                    if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 && logical_elt_checked(v, 0) != 0 {
                         on = true;
                     }
                     if named {

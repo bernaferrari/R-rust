@@ -74,25 +74,25 @@ pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
                 t if t == SEXPTYPE::CPLXSXP => {
-                    *COMPLEX(result).add(idx) = entry.value.as_complex();
+                    set_complex_checked(result, (idx) as R_xlen_t, entry.value.as_complex());
                 }
                 t if t == SEXPTYPE::REALSXP => {
-                    *REAL(result).add(idx) = entry.value.as_real();
+                    set_real_checked(result, (idx) as R_xlen_t, entry.value.as_real());
                 }
                 t if t == SEXPTYPE::VECSXP => {
                     SET_VECTOR_ELT(result, idx as R_xlen_t, entry.value.as_sexp());
                 }
                 t if t == SEXPTYPE::LGLSXP => {
-                    *LOGICAL(result).add(idx) = entry.value.as_logical();
+                    set_logical_checked(result, (idx) as R_xlen_t, entry.value.as_logical());
                 }
                 t if t == SEXPTYPE::RAWSXP => {
-                    *RAW(result).add(idx) = match &entry.value {
+                    set_raw_checked(result, (idx) as R_xlen_t, match &entry.value {
                         UnlistValue::Raw(byte) => *byte,
                         other => other.as_integer() as u8,
-                    };
+                    });
                 }
                 _ => {
-                    *INTEGER(result).add(idx) = entry.value.as_integer();
+                    set_integer_checked(result, (idx) as R_xlen_t, entry.value.as_integer());
                 }
             }
         }
@@ -129,7 +129,7 @@ pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> {
-    unsafe {
+    
         let mut current = args;
         for _ in 0..position {
             if current.is_null() || current == R_NilValue() {
@@ -145,9 +145,9 @@ pub(super) fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> 
             return None;
         }
         let raw = if TYPEOF(value) == SEXPTYPE::LGLSXP || TYPEOF(value) == SEXPTYPE::INTSXP {
-            *INTEGER(value)
+            integer_elt_checked(value, 0)
         } else if TYPEOF(value) == SEXPTYPE::REALSXP {
-            let value = *REAL(value);
+            let value = real_elt_checked(value, 0);
             if ISNAN(value) {
                 NA_LOGICAL
             } else {
@@ -157,7 +157,7 @@ pub(super) fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> 
             return None;
         };
         (raw != NA_INTEGER).then_some(raw != 0)
-    }
+    
 }
 
 pub(super) struct UnlistEntry {
@@ -368,13 +368,13 @@ pub(super) fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
 }
 
 pub(super) fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
-    unsafe {
+    
         match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(x).add(index as usize)),
-            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(x).add(index as usize)),
-            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(x).add(index as usize)),
+            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(logical_elt_checked(x, (index as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(integer_elt_checked(x, (index as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(real_elt_checked(x, (index as usize) as R_xlen_t)),
             t if t == SEXPTYPE::CPLXSXP => {
-                let value = *COMPLEX(x).add(index as usize);
+                let value = complex_elt_checked(x, (index as usize) as R_xlen_t);
                 crate::sexp::constructors::Rf_ScalarComplex(value)
             }
             t if t == SEXPTYPE::STRSXP => {
@@ -385,7 +385,7 @@ pub(super) fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => VECTOR_ELT(x, index),
             _ => x,
         }
-    }
+    
 }
 
 pub(super) fn collect_unlist_entries(
@@ -491,11 +491,11 @@ pub(super) fn collect_unlist_entries(
             };
 
             let value = match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(*LOGICAL(x).add(i as usize)),
-                t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(*INTEGER(x).add(i as usize)),
-                t if t == SEXPTYPE::REALSXP => UnlistValue::Real(*REAL(x).add(i as usize)),
-                t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(*COMPLEX(x).add(i as usize)),
-                t if t == SEXPTYPE::RAWSXP => UnlistValue::Raw(*RAW(x).add(i as usize)),
+                t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(logical_elt_checked(x, (i as usize) as R_xlen_t)),
+                t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(integer_elt_checked(x, (i as usize) as R_xlen_t)),
+                t if t == SEXPTYPE::REALSXP => UnlistValue::Real(real_elt_checked(x, (i as usize) as R_xlen_t)),
+                t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(complex_elt_checked(x, (i as usize) as R_xlen_t)),
+                t if t == SEXPTYPE::RAWSXP => UnlistValue::Raw(raw_elt_checked(x, (i as usize) as R_xlen_t)),
                 t if t == SEXPTYPE::STRSXP => {
                     let string = STRING_ELT(x, i);
                     if string.is_null() || string == crate::sexp::globals::R_NaString() {

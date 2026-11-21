@@ -121,10 +121,10 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         {
             for i in 0..n {
                 let seconds = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    let v = *INTEGER(x).add(i as usize);
+                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     if v == NA_INTEGER { NA_REAL } else { v as f64 }
                 } else {
-                    *REAL(x).add(i as usize)
+                    real_elt_checked(x, (i as usize) as R_xlen_t)
                 };
                 // GNU as.Date.POSIXct (UTC fast path): floor(x/86400);
                 // NaN stays NaN, only the NA bit pattern maps to NA.
@@ -166,14 +166,14 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
             for i in 0..n {
                 let days = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    let v = *REAL(x).add(i as usize);
+                    let v = real_elt_checked(x, (i as usize) as R_xlen_t);
                     if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                         NA_REAL
                     } else {
                         origin_days + v.floor()
                     }
                 } else {
-                    let v = *INTEGER(x).add(i as usize);
+                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     if v == NA_INTEGER {
                         NA_REAL
                     } else {
@@ -185,7 +185,7 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else if TYPEOF(x) == SEXPTYPE::LGLSXP {
             let mut all_na = true;
             for i in 0..n {
-                if *INTEGER(x).add(i as usize) != NA_INTEGER {
+                if integer_elt_checked(x, (i as usize) as R_xlen_t) != NA_INTEGER {
                     all_na = false;
                     break;
                 }
@@ -215,7 +215,7 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `trunc.Date(x, units)`.
 pub fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -235,16 +235,16 @@ pub fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 days.floor()
             };
-            *REAL(result).add(i as usize) = out;
+            set_real_checked(result, (i as usize) as R_xlen_t, out);
         }
         set_single_class(result, "Date");
         result
-    }
+    
 }
 
 /// GNU `round.Date(x, units)`.
 pub fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -268,9 +268,9 @@ pub fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 days.round()
             };
-            *REAL(result).add(i as usize) = out;
+            set_real_checked(result, (i as usize) as R_xlen_t, out);
         }
         set_single_class(result, "Date");
         result
-    }
+    
 }

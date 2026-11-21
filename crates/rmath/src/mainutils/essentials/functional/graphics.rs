@@ -802,7 +802,7 @@ pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return crate::mainutils::portable_plot::draw_builtin("axis", args);
     }
     #[cfg(not(feature = "renderplot-device"))]
-    unsafe {
+    
         // GNU C_axis opens with GCheckState: a plot frame must exist.
         no_device_require_plot_frame();
         let mut side = 1.0;
@@ -811,9 +811,9 @@ pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             if !value.is_null() && XLENGTH(value) == 1 {
                 let v = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
-                    *INTEGER(value) as f64
+                    integer_elt_checked(value, 0) as f64
                 } else if TYPEOF(value) == SEXPTYPE::REALSXP {
-                    *REAL(value)
+                    real_elt_checked(value, 0)
                 } else {
                     f64::NAN
                 };
@@ -866,17 +866,17 @@ pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let n = (hi - lo + 1) as R_xlen_t;
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                 for i in 0..n {
-                    *REAL(result).add(i as usize) = 10f64.powi(lo + i as i32);
+                    set_real_checked(result, (i as usize) as R_xlen_t, 10f64.powi(lo + i as i32));
                 }
                 return result;
             }
         }
         for i in 0..=steps {
             let t = i as f64 / steps as f64;
-            *REAL(result).add(i) = a[0] * (1.0 - t) + a[1] * t;
+            set_real_checked(result, (i) as R_xlen_t, a[0] * (1.0 - t) + a[1] * t);
         }
         result
-    }
+    
 }
 
 pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

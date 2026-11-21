@@ -130,7 +130,7 @@ pub fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 fn locale_category_from_arg(category: SEXP) -> c_int {
-    unsafe {
+    
         if category.is_null() || category == R_NilValue() {
             return LC_ALL;
         }
@@ -140,7 +140,7 @@ fn locale_category_from_arg(category: SEXP) -> c_int {
                 let name = elt_to_string(category, 0);
                 locale_category_from_name(&name)
             }
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => match *INTEGER(category) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => match integer_elt_checked(category, 0) {
                 1 => LC_ALL,
                 2 => LC_COLLATE,
                 3 => LC_CTYPE,
@@ -152,7 +152,7 @@ fn locale_category_from_arg(category: SEXP) -> c_int {
             },
             _ => base_error("invalid 'category' argument"),
         }
-    }
+    
 }
 
 fn locale_category_from_name(name: &str) -> c_int {

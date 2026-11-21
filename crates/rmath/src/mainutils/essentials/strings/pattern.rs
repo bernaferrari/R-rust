@@ -65,9 +65,7 @@ pub fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -75,19 +73,19 @@ pub fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && value != R_NilValue()
                 && ((TYPEOF(value) == SEXPTYPE::LGLSXP
                     && XLENGTH(value) > 0
-                    && *LOGICAL(value) == TRUE)
+                    && logical_elt_checked(value, 0) == TRUE)
                     || (TYPEOF(value) == SEXPTYPE::INTSXP
                         && XLENGTH(value) > 0
-                        && *INTEGER(value) != 0
-                        && *INTEGER(value) != NA_INTEGER));
+                        && integer_elt_checked(value, 0) != 0
+                        && integer_elt_checked(value, 0) != NA_INTEGER));
             let is_false = !value.is_null()
                 && value != R_NilValue()
                 && ((TYPEOF(value) == SEXPTYPE::LGLSXP
                     && XLENGTH(value) > 0
-                    && *LOGICAL(value) == FALSE)
+                    && logical_elt_checked(value, 0) == FALSE)
                     || (TYPEOF(value) == SEXPTYPE::INTSXP
                         && XLENGTH(value) > 0
-                        && *INTEGER(value) == 0));
+                        && integer_elt_checked(value, 0) == 0));
             if named == "trim.head" || (named.is_empty() && positional == 0) {
                 trim_head = is_true;
             } else if named == "trim.tail" || (named.is_empty() && positional == 1) {
@@ -105,9 +103,7 @@ pub fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let raw = if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             let converted = glob2rx_one(&raw, trim_head, trim_tail);
             let c = CString::new(converted).unwrap_or_else(|_| CString::new("").unwrap());
@@ -197,7 +193,7 @@ fn ints_to_char_vector(list: SEXP) -> SEXP {
             let text = if TYPEOF(elt) == SEXPTYPE::INTSXP {
                 let mut s = String::new();
                 for k in 0..XLENGTH(elt) {
-                    let cp = *INTEGER(elt).add(k as usize);
+                    let cp = integer_elt_checked(elt, (k as usize) as R_xlen_t);
                     if let Some(ch) = char::from_u32(cp as u32) {
                         s.push(ch);
                     }
@@ -234,19 +230,17 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             if named == "ignore.case" {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
-                    ignore_case = *LOGICAL(value) == TRUE;
+                    ignore_case = logical_elt_checked(value, 0) == TRUE;
                 }
             } else if named == "counts" || (named.is_empty() && positional == 2) {
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) > 0 {
-                    counts = *LOGICAL(value) == TRUE;
+                    counts = logical_elt_checked(value, 0) == TRUE;
                 }
             } else if named == "y" || (named.is_empty() && positional == 0) {
                 // First argument after x: the GNU closure passes the
@@ -277,9 +271,7 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut ys = if ych.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ych))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ych).unwrap_or_default()
             };
             if ignore_case {
                 ys = ys.to_lowercase();
@@ -289,15 +281,13 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let mut xs = if xch.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(xch))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(xch).unwrap_or_default()
                 };
                 if ignore_case {
                     xs = xs.to_lowercase();
                 }
                 let (dist, trafo, del, ins, sub) = adist_path(&xs, &ys);
-                *INTEGER(mat).add((i + j * nx) as usize) = dist;
+                set_integer_checked(mat, ((i + j * nx) as usize) as R_xlen_t, dist);
                 if counts {
                     paths.push((trafo, del, ins, sub));
                 }
@@ -315,14 +305,14 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     k as i64,
                     crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
                 );
-                *INTEGER(cnt).add(k) = *del;
-                *INTEGER(cnt).add(k + (nx * ny) as usize) = *ins;
-                *INTEGER(cnt).add(k + (2 * nx * ny) as usize) = *sub;
+                set_integer_checked(cnt, (k) as R_xlen_t, *del);
+                set_integer_checked(cnt, (k + (nx * ny) as usize) as R_xlen_t, *ins);
+                set_integer_checked(cnt, (k + (2 * nx * ny) as usize) as R_xlen_t, *sub);
             }
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-            *INTEGER(dim).add(0) = nx as i32;
-            *INTEGER(dim).add(1) = ny as i32;
-            *INTEGER(dim).add(2) = 3;
+            set_integer_checked(dim, (0) as R_xlen_t, nx as i32);
+            set_integer_checked(dim, (1) as R_xlen_t, ny as i32);
+            set_integer_checked(dim, (2) as R_xlen_t, 3);
             crate::sexp::attrib_core::setAttrib(cnt, crate::sexp::attrib_core::R_DimSymbol(), dim);
             let dnames = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
             let layer = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
@@ -341,8 +331,8 @@ pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 dnames,
             );
             let tdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            *INTEGER(tdim).add(0) = nx as i32;
-            *INTEGER(tdim).add(1) = ny as i32;
+            set_integer_checked(tdim, (0) as R_xlen_t, nx as i32);
+            set_integer_checked(tdim, (1) as R_xlen_t, ny as i32);
             crate::sexp::attrib_core::setAttrib(
                 trafos,
                 crate::sexp::attrib_core::R_DimSymbol(),
@@ -402,9 +392,7 @@ pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -412,9 +400,9 @@ pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let v = CAR(cell);
                 if !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
                     let candidate = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                        *REAL(v)
+                        real_elt_checked(v, 0)
                     } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                        let iv = *INTEGER(v);
+                        let iv = integer_elt_checked(v, 0);
                         if iv == crate::sexp::ffi::NA_INTEGER {
                             f64::NAN
                         } else {
@@ -430,9 +418,9 @@ pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         maxd = candidate;
                     } else if XLENGTH(v) > 4
                         && TYPEOF(v) == SEXPTYPE::REALSXP
-                        && !(*REAL(v).add(4)).is_nan()
+                        && !(real_elt_checked(v, (4) as R_xlen_t)).is_nan()
                     {
-                        maxd = *REAL(v).add(4);
+                        maxd = real_elt_checked(v, (4) as R_xlen_t);
                     }
                 }
             }
@@ -449,9 +437,7 @@ pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             }
         } else {
             String::new()
@@ -474,20 +460,18 @@ pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let txt = if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
             let _e = protect(elt);
             let ml = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
             let _m = protect(ml);
             if let Some((start, len)) = aregexec_match(&pstr, &txt, max_int) {
-                *INTEGER(elt) = start;
-                *INTEGER(ml) = len;
+                set_integer_checked(elt, 0, start);
+                set_integer_checked(ml, 0, len);
             } else {
-                *INTEGER(elt) = -1;
-                *INTEGER(ml) = -1;
+                set_integer_checked(elt, 0, -1);
+                set_integer_checked(ml, 0, -1);
             }
             crate::sexp::attrib_core::setAttrib(elt, ml_sym, ml);
             SET_VECTOR_ELT(result, i, elt);
@@ -645,9 +629,9 @@ pub fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !rest.is_null() && rest != R_NilValue() {
             let m = CAR(rest);
             if TYPEOF(m) == SEXPTYPE::INTSXP && XLENGTH(m) > 0 {
-                minlength = *INTEGER(m);
+                minlength = integer_elt_checked(m, 0);
             } else if TYPEOF(m) == SEXPTYPE::REALSXP && XLENGTH(m) > 0 {
-                minlength = *REAL(m) as i32;
+                minlength = real_elt_checked(m, 0) as i32;
             }
         }
         let mut old = Vec::with_capacity(n as usize);
@@ -657,9 +641,7 @@ pub fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 old.push(String::new());
                 continue;
             }
-            let raw = std::ffi::CStr::from_ptr(CHAR(ch))
-                .to_string_lossy()
-                .into_owned();
+            let raw = charsxp_text(ch).unwrap_or_default();
             old.push(raw.trim().to_string());
         }
         let mut unique_names = Vec::new();

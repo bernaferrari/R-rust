@@ -27,9 +27,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let tag = TAG(p);
                 let name =
                     if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                            .to_string_lossy()
-                            .into_owned()
+                        charsxp_text(PRINTNAME(tag)).unwrap_or_default()
                     } else {
                         String::new()
                     };
@@ -77,16 +75,14 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             .unwrap_or_else(|e| crate::sexp::context::r_error(e));
 
             fn collect_plus(expr: SEXP, out: &mut Vec<SEXP>) {
-                unsafe {
+                
                     if expr.is_null() || expr == R_NilValue() {
                         return;
                     }
                     if TYPEOF(expr) == SEXPTYPE::LANGSXP {
                         let op = CAR(expr);
                         let name = if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
-                            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
-                                .to_string_lossy()
-                                .into_owned()
+                            charsxp_text(PRINTNAME(op)).unwrap_or_default()
                         } else {
                             String::new()
                         };
@@ -97,7 +93,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         }
                     }
                     out.push(expr);
-                }
+                
             }
             let mut terms = Vec::new();
             collect_plus(rhs, &mut terms);
@@ -106,9 +102,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let op_name = if TYPEOF(term) == SEXPTYPE::LANGSXP {
                     let op = CAR(term);
                     if !op.is_null() && TYPEOF(op) == SEXPTYPE::SYMSXP {
-                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(op)))
-                            .to_string_lossy()
-                            .into_owned()
+                        charsxp_text(PRINTNAME(op)).unwrap_or_default()
                     } else {
                         String::new()
                     }
@@ -123,9 +117,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     continue;
                 }
                 let name = if TYPEOF(term) == SEXPTYPE::SYMSXP {
-                    std::ffi::CStr::from_ptr(CHAR(PRINTNAME(term)))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(PRINTNAME(term)).unwrap_or_default()
                 } else {
                     "x".to_string()
                 };
@@ -142,7 +134,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let ov = crate::eval::eval::Rf_eval(*off, eval_rho);
                         v -= elt_real_safe(ov, i as i64);
                     }
-                    *REAL(adjusted).add(i) = v;
+                    set_real_checked(adjusted, (i) as R_xlen_t, v);
                 }
                 y = adjusted;
                 response_roots.push(
@@ -180,11 +172,11 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
             let _x = protect(xmat);
             for i in 0..n {
-                *REAL(xmat).add(i) = 1.0;
+                set_real_checked(xmat, (i) as R_xlen_t, 1.0);
             }
             for (j, (_, xv)) in preds.iter().enumerate() {
                 for i in 0..n {
-                    *REAL(xmat).add(i + (j + 1) * n) = elt_real_safe(*xv, i as i64);
+                    set_real_checked(xmat, (i + (j + 1) * n) as R_xlen_t, elt_real_safe(*xv, i as i64));
                 }
             }
             let qr_args = Rf_cons(xmat, R_NilValue());
@@ -222,14 +214,14 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::getAttrib(qmat, crate::sexp::attrib_core::R_DimSymbol());
             let qncol = if !qdim.is_null() && TYPEOF(qdim) == SEXPTYPE::INTSXP && XLENGTH(qdim) >= 2
             {
-                *INTEGER(qdim).add(1) as usize
+                integer_elt_checked(qdim, (1) as R_xlen_t) as usize
             } else {
                 0
             };
             let mut sse = 0.0;
             for i in 0..n {
                 let e = if !resid.is_null() && TYPEOF(resid) == SEXPTYPE::REALSXP {
-                    *REAL(resid).add(i)
+                    real_elt_checked(resid, (i) as R_xlen_t)
                 } else {
                     0.0
                 };
@@ -237,11 +229,11 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let mut hii = 0.0;
                 if TYPEOF(qmat) == SEXPTYPE::REALSXP && qncol > 0 {
                     for k in 0..qncol {
-                        let qik = *REAL(qmat).add(i + k * n);
+                        let qik = real_elt_checked(qmat, (i + k * n) as R_xlen_t);
                         hii += qik * qik;
                     }
                 }
-                *REAL(hats).add(i) = hii;
+                set_real_checked(hats, (i) as R_xlen_t, hii);
             }
             let rank = p as i32;
             let df = (n as i64) - p as i64;
@@ -311,7 +303,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
-                if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i))).to_bytes() == b"factor" {
+                if charsxp_text(STRING_ELT(class, i)).as_deref() == Some("factor") {
                     x_is_factor = true;
                     break;
                 }
@@ -343,8 +335,8 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let b1 = inv.1 * sy + inv.3 * sxy;
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
-        *REAL(coef) = b0;
-        *REAL(coef).add(1) = b1;
+        set_real_checked(coef, 0, b0);
+        set_real_checked(coef, (1) as R_xlen_t, b1);
         set_string_names(coef, &["(Intercept)".to_string(), xname.clone()]);
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _f = protect(fitted);
@@ -354,8 +346,8 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for i in 0..n {
             let fit = b0 + b1 * xs[i];
             let e = ys[i] - fit;
-            *REAL(fitted).add(i) = fit;
-            *REAL(resid).add(i) = e;
+            set_real_checked(fitted, (i) as R_xlen_t, fit);
+            set_real_checked(resid, (i) as R_xlen_t, e);
             sse += e * e;
         }
         let df = (n as i64) - 2;
@@ -374,7 +366,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 1.0 / nf
             };
-            *REAL(hats).add(i) = h;
+            set_real_checked(hats, (i) as R_xlen_t, h);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 8);
         let _r = protect(result);
@@ -450,7 +442,7 @@ fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
         let mut y_values = Vec::with_capacity(n);
         for i in 0..n {
             y_values.push(if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y).add(i)
+                real_elt_checked(y, (i) as R_xlen_t)
             } else {
                 elt_real_safe(y, i as i64)
             });
@@ -479,18 +471,18 @@ fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
         if XLENGTH(raw_resid) != n as i64 || XLENGTH(pivot) != p as i64 || p == 0 {
             return R_NilValue();
         }
-        let rank = (*INTEGER(rank_s)).max(0) as usize;
+        let rank = (integer_elt_checked(rank_s, 0)).max(0) as usize;
         let mut ordered = vec![0.0; p];
         for i in 0..p {
             ordered[i] = if i < rank {
-                *REAL(raw_coef).add(i)
+                real_elt_checked(raw_coef, (i) as R_xlen_t)
             } else {
                 crate::sexp::ffi::NA_REAL
             };
         }
         let mut pivoted = false;
         for i in 0..p {
-            if *INTEGER(pivot).add(i) != (i as i32) + 1 {
+            if integer_elt_checked(pivot, (i) as R_xlen_t) != (i as i32) + 1 {
                 pivoted = true;
                 break;
             }
@@ -498,7 +490,7 @@ fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
         if pivoted {
             let old = ordered.clone();
             for i in 0..p {
-                let dest = *INTEGER(pivot).add(i) - 1;
+                let dest = integer_elt_checked(pivot, (i) as R_xlen_t) - 1;
                 if dest >= 0 && (dest as usize) < p {
                     ordered[dest as usize] = old[i];
                 }
@@ -507,16 +499,16 @@ fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, p as i64);
         let _c = protect(coef);
         for (i, value) in ordered.iter().enumerate() {
-            *REAL(coef).add(i) = *value;
+            set_real_checked(coef, (i) as R_xlen_t, *value);
         }
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _e = protect(resid);
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _f = protect(fitted);
         for i in 0..n {
-            let ri = *REAL(raw_resid).add(i);
-            *REAL(resid).add(i) = ri;
-            *REAL(fitted).add(i) = y_values[i] - ri;
+            let ri = real_elt_checked(raw_resid, (i) as R_xlen_t);
+            set_real_checked(resid, (i) as R_xlen_t, ri);
+            set_real_checked(fitted, (i) as R_xlen_t, y_values[i] - ri);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _r = protect(result);
@@ -539,7 +531,7 @@ fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
 
 /// GNU `lm.fit(x, y)` — two-column normal equations, or LINPACK QR otherwise.
 pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -548,7 +540,7 @@ pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -568,14 +560,14 @@ pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut ys = vec![0.0; n];
         for i in 0..n {
             let x0 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i) as f64
+                integer_elt_checked(x, (i) as R_xlen_t) as f64
             };
             let x1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             };
             let yi = elt_real_safe(y, i as i64);
             // fold intercept column into the normal equations via x0
@@ -590,9 +582,9 @@ pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut a00 = 0.0;
         for i in 0..n {
             let x0 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i) as f64
+                integer_elt_checked(x, (i) as R_xlen_t) as f64
             };
             a00 += x0 * x0;
         }
@@ -603,21 +595,21 @@ pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let b1 = inv.1 * sy + inv.3 * sxy;
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
-        *REAL(coef) = b0;
-        *REAL(coef).add(1) = b1;
+        set_real_checked(coef, 0, b0);
+        set_real_checked(coef, (1) as R_xlen_t, b1);
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _e = protect(resid);
         let fitted = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _f = protect(fitted);
         for i in 0..n {
             let x0 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i) as f64
+                integer_elt_checked(x, (i) as R_xlen_t) as f64
             };
             let fit = b0 * x0 + b1 * xs[i];
-            *REAL(fitted).add(i) = fit;
-            *REAL(resid).add(i) = ys[i] - fit;
+            set_real_checked(fitted, (i) as R_xlen_t, fit);
+            set_real_checked(resid, (i) as R_xlen_t, ys[i] - fit);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _r = protect(result);
@@ -635,12 +627,12 @@ pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ],
         );
         result
-    }
+    
 }
 
 /// GNU `lm.wfit(x, y, w)` — weighted OLS on a two-column design.
 pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         let w = CAR(CDR(CDR(args)));
@@ -650,7 +642,7 @@ pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -704,14 +696,14 @@ pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut x0s = vec![0.0; n];
         for i in 0..n {
             let x0 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i) as f64
+                integer_elt_checked(x, (i) as R_xlen_t) as f64
             };
             let x1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             };
             let yi = elt_real_safe(y, i as i64);
             let wi = weights[i];
@@ -731,12 +723,12 @@ pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let b1 = inv.1 * sy + inv.3 * sxy;
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
-        *REAL(coef) = b0;
-        *REAL(coef).add(1) = b1;
+        set_real_checked(coef, 0, b0);
+        set_real_checked(coef, (1) as R_xlen_t, b1);
         let resid = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _e = protect(resid);
         for i in 0..n {
-            *REAL(resid).add(i) = ys[i] - (b0 * x0s[i] + b1 * xs[i]);
+            set_real_checked(resid, (i) as R_xlen_t, ys[i] - (b0 * x0s[i] + b1 * xs[i]));
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -747,12 +739,12 @@ pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &["coefficients".to_string(), "residuals".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `glm.fit(x, y, family=poisson())` — IRLS log-link Poisson.
 pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -761,7 +753,7 @@ pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -774,14 +766,14 @@ pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut ys = vec![0.0; n];
         for i in 0..n {
             x0s[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                real_elt_checked(x, (i) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i) as f64
+                integer_elt_checked(x, (i) as R_xlen_t) as f64
             };
             x1s[i] = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             };
             ys[i] = elt_real_safe(y, i as i64);
         }
@@ -832,8 +824,8 @@ pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         dev *= 2.0;
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
-        *REAL(coef) = b0;
-        *REAL(coef).add(1) = b1;
+        set_real_checked(coef, 0, b0);
+        set_real_checked(coef, (1) as R_xlen_t, b1);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, coef);
@@ -848,12 +840,12 @@ pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ],
         );
         result
-    }
+    
 }
 
 /// GNU `glm.control(epsilon=1e-8, maxit=25, trace=FALSE)`.
 pub fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let mut epsilon = 1e-8;
         let mut maxit = 25.0;
         let mut trace = 0;
@@ -865,9 +857,7 @@ pub fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -882,7 +872,7 @@ pub fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             } else if name == "trace" || (name.is_empty() && pos == 2) {
                 if TYPEOF(v) == SEXPTYPE::LGLSXP {
-                    trace = *LOGICAL(v);
+                    trace = logical_elt_checked(v, 0);
                 }
             } else if name == "tol" || (name.is_empty() && pos == 3) {
                 if !v.is_null() && v != R_NilValue() {
@@ -932,12 +922,12 @@ pub fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ],
         );
         result
-    }
+    
 }
 
 /// GNU `nls.control(maxiter=50, tol=1e-5, minFactor=1/1024)`.
 pub fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let mut maxiter = 50.0;
         let mut tol = 1e-5;
         let mut min_factor = 1.0 / 1024.0;
@@ -946,9 +936,7 @@ pub fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -983,7 +971,7 @@ pub fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ],
         );
         result
-    }
+    
 }
 
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
@@ -1006,9 +994,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -1062,9 +1048,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::sexp::envir::defineVar(psym, Rf_ScalarReal(b), rho);
         let coef = Rf_ScalarReal(b);
         let _c = protect(coef);
-        let pname_str = std::ffi::CStr::from_ptr(CHAR(pname))
-            .to_string_lossy()
-            .into_owned();
+        let pname_str = charsxp_text(pname).unwrap_or_default();
         crate::mainutils::essentials::set_string_names(coef, &[pname_str]);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         let _r = protect(result);
@@ -1083,7 +1067,7 @@ pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `SSlogis(input, Asym, xmid, scal)` — logistic curve.
 pub fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let xmid = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1096,15 +1080,15 @@ pub fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym / (1.0 + ((xmid - x) / scal).exp());
+            set_real_checked(result, (i as usize) as R_xlen_t, asym / (1.0 + ((xmid - x) / scal).exp()));
         }
         result
-    }
+    
 }
 
 /// GNU `SSasymp(input, Asym, R0, lrc)` — asymptotic exponential.
 pub fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let r0 = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1115,15 +1099,15 @@ pub fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym + (r0 - asym) * (-rc * x).exp();
+            set_real_checked(result, (i as usize) as R_xlen_t, asym + (r0 - asym) * (-rc * x).exp());
         }
         result
-    }
+    
 }
 
 /// GNU `SSmicmen(input, Vm, K)` — Michaelis–Menten.
 pub fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let vm = elt_real_safe(CAR(CDR(args)), 0);
         let k = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1132,15 +1116,15 @@ pub fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = vm * x / (k + x);
+            set_real_checked(result, (i as usize) as R_xlen_t, vm * x / (k + x));
         }
         result
-    }
+    
 }
 
 /// GNU `SSgompertz(input, Asym, b2, b3)` — Gompertz growth.
 pub fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let b2 = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1150,15 +1134,15 @@ pub fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym * (-b2 * b3.powf(x)).exp();
+            set_real_checked(result, (i as usize) as R_xlen_t, asym * (-b2 * b3.powf(x)).exp());
         }
         result
-    }
+    
 }
 
 /// GNU `SSbiexp(input, A1, lrc1, A2, lrc2)` — biexponential decay.
 pub fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let a1 = elt_real_safe(CAR(CDR(args)), 0);
         let lrc1 = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1169,16 +1153,15 @@ pub fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) =
-                a1 * (-lrc1.exp() * x).exp() + a2 * (-lrc2.exp() * x).exp();
+            set_real_checked(result, (i as usize) as R_xlen_t, a1 * (-lrc1.exp() * x).exp() + a2 * (-lrc2.exp() * x).exp());
         }
         result
-    }
+    
 }
 
 /// GNU `SSasympOff(input, Asym, lrc, c0)` — asymptotic with offset.
 pub fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let lrc = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1189,15 +1172,15 @@ pub fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym * (1.0 - (-rc * (x - c0)).exp());
+            set_real_checked(result, (i as usize) as R_xlen_t, asym * (1.0 - (-rc * (x - c0)).exp()));
         }
         result
-    }
+    
 }
 
 /// GNU `SSasympOrig(input, Asym, lrc)` — asymptotic through the origin.
 pub fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let lrc = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1207,15 +1190,15 @@ pub fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym * (1.0 - (-rc * x).exp());
+            set_real_checked(result, (i as usize) as R_xlen_t, asym * (1.0 - (-rc * x).exp()));
         }
         result
-    }
+    
 }
 
 /// GNU `SSfol(Dose, input, lKe, lKa, lCl)` — first-order compartment.
 pub fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let dose = elt_real_safe(CAR(args), 0);
         let input = CAR(CDR(args));
         let lke = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1229,15 +1212,15 @@ pub fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let t = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = scale * ((-ke * t).exp() - (-ka * t).exp());
+            set_real_checked(result, (i as usize) as R_xlen_t, scale * ((-ke * t).exp() - (-ka * t).exp()));
         }
         result
-    }
+    
 }
 
 /// GNU `SSweibull(x, Asym, Drop, lrc, pwr)` — Weibull growth.
 pub fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
         let drop = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1249,15 +1232,15 @@ pub fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = asym - drop * (-rc * x.powf(pwr)).exp();
+            set_real_checked(result, (i as usize) as R_xlen_t, asym - drop * (-rc * x.powf(pwr)).exp());
         }
         result
-    }
+    
 }
 
 /// GNU `SSfpl(input, A, B, xmid, scal)` — four-parameter logistic.
 pub fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let input = CAR(args);
         let a = elt_real_safe(CAR(CDR(args)), 0);
         let b = elt_real_safe(CAR(CDR(CDR(args))), 0);
@@ -1271,8 +1254,8 @@ pub fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let x = elt_real_safe(input, i);
-            *REAL(result).add(i as usize) = a + (b - a) / (1.0 + ((xmid - x) / scal).exp());
+            set_real_checked(result, (i as usize) as R_xlen_t, a + (b - a) / (1.0 + ((xmid - x) / scal).exp()));
         }
         result
-    }
+    
 }

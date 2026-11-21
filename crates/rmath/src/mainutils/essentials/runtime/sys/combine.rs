@@ -12,7 +12,7 @@ fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "recursive"
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default() == "recursive"
             } else {
                 false
             };
@@ -91,11 +91,7 @@ pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if ch.is_null() {
                     None
                 } else {
-                    Some(
-                        std::ffi::CStr::from_ptr(CHAR(ch))
-                            .to_string_lossy()
-                            .into_owned(),
-                    )
+                    Some(charsxp_text(ch).unwrap_or_default())
                 }
             } else {
                 None
@@ -232,9 +228,9 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let s = if nsec == 0 {
                             0.0
                         } else if TYPEOF(sec) == SEXPTYPE::REALSXP {
-                            *REAL(sec).add((i % nsec) as usize)
+                            real_elt_checked(sec, (i % nsec) as R_xlen_t)
                         } else if TYPEOF(sec) == SEXPTYPE::INTSXP {
-                            let iv = *INTEGER(sec).add((i % nsec) as usize);
+                            let iv = integer_elt_checked(sec, (i % nsec) as R_xlen_t);
                             if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
                         } else {
                             0.0
@@ -247,9 +243,9 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let dsec = VECTOR_ELT(dup, 0);
                         if TYPEOF(dsec) == SEXPTYPE::REALSXP {
                             for i in 0..XLENGTH(dsec) {
-                                let s = *REAL(dsec).add(i as usize);
+                                let s = real_elt_checked(dsec, (i as usize) as R_xlen_t);
                                 if s.is_finite() {
-                                    *REAL(dsec).add(i as usize) = s.floor();
+                                    set_real_checked(dsec, (i as usize) as R_xlen_t, s.floor());
                                 }
                             }
                         }
@@ -351,10 +347,10 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(sec) == SEXPTYPE::REALSXP {
                 let n = XLENGTH(sec).min(fracs.len() as i64);
                 for i in 0..n {
-                    let s = *REAL(sec).add(i as usize);
+                    let s = real_elt_checked(sec, (i as usize) as R_xlen_t);
                     let frac = fracs[i as usize];
                     if s.is_finite() && frac != 0.0 {
-                        *REAL(sec).add(i as usize) = s + frac;
+                        set_real_checked(sec, (i as usize) as R_xlen_t, s + frac);
                     }
                 }
             }
@@ -371,7 +367,7 @@ pub fn do_is_numeric_Date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
 
 /// GNU `xtfrm.Date(x)` is `as.numeric(x)`.
 pub fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
@@ -387,17 +383,17 @@ pub fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i as usize) = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+            set_real_checked(result, i as usize as R_xlen_t, if TYPEOF(x) == SEXPTYPE::REALSXP {
+                real_elt_checked(x, i as usize as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, i as usize as R_xlen_t);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
-            };
+            });
         }
         result
-    }
+    
 }
 
 /// GNU `diff.Date(x)`.
@@ -431,20 +427,20 @@ pub fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..(n - 1) {
             let a = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add(i as usize) as f64
+                integer_elt_checked(x, (i as usize) as R_xlen_t) as f64
             } else {
                 0.0
             };
             let b = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add((i + 1) as usize)
+                real_elt_checked(x, (i + 1) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add((i + 1) as usize) as f64
+                integer_elt_checked(x, (i + 1) as R_xlen_t) as f64
             } else {
                 0.0
             };
-            *REAL(result).add(i as usize) = b - a;
+            set_real_checked(result, (i as usize) as R_xlen_t, b - a);
         }
         set_single_class(result, "difftime");
         crate::sexp::attrib_core::setAttrib(

@@ -94,7 +94,7 @@ fn nls_asymp_ols(xs: &[f64], ys: &[f64], lrc: f64) -> (f64, f64, f64) {
 
 /// GNU `NLSstAsymptotic(xy)` — `b0 + b1*(1-exp(-exp(lrc)*x))`.
 pub fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let xy = CAR(args);
         let xs = nls_xy_x(xy);
         let (ys, ok) = nls_xy_y(xy);
@@ -157,15 +157,15 @@ pub fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _r = protect(result);
-        *REAL(result) = best.0;
-        *REAL(result).add(1) = best.1;
-        *REAL(result).add(2) = best_lrc;
+        set_real_checked(result, 0, best.0);
+        set_real_checked(result, (1) as R_xlen_t, best.1);
+        set_real_checked(result, (2) as R_xlen_t, best_lrc);
         crate::mainutils::essentials::set_string_names(
             result,
             &["b0".to_string(), "b1".to_string(), "lrc".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `NLSstClosestX(xy, yval)` — interpolate x at a target y.
@@ -343,15 +343,13 @@ pub fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// GNU `quasi()` family object.
 pub fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let mut link = "identity".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -365,7 +363,7 @@ pub fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
         family_object("quasi", &link)
-    }
+    
 }
 
 /// GNU `quasibinomial()` family object.
@@ -479,8 +477,8 @@ pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i) = elt_real_safe(x, i as i64);
-            *REAL(result).add(i + n) = elt_real_safe(y, i as i64);
+            set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
+            set_real_checked(result, (i + n) as R_xlen_t, elt_real_safe(y, i as i64));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -563,7 +561,7 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             (XLENGTH(y) as usize, 1)
         };
@@ -578,12 +576,12 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut n1 = 0.0;
         let mut n2 = 0.0;
         for i in 0..n {
-            let code = *INTEGER(g).add(i);
+            let code = integer_elt_checked(g, (i) as R_xlen_t);
             for j in 0..nc {
                 let v = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                    *REAL(y).add(i + j * nr)
+                    real_elt_checked(y, (i + j * nr) as R_xlen_t)
                 } else {
-                    *INTEGER(y).add(i + j * nr) as f64
+                    integer_elt_checked(y, (i + j * nr) as R_xlen_t) as f64
                 };
                 ys[i + j * n] = v;
                 if code <= 1 {
@@ -610,12 +608,12 @@ pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for j in 0..nc {
             let m1 = sum1[j] / n1;
             let m2 = sum2[j] / n2;
-            *REAL(coef).add(j * 2) = m1;
-            *REAL(coef).add(1 + j * 2) = m2 - m1;
+            set_real_checked(coef, (j * 2) as R_xlen_t, m1);
+            set_real_checked(coef, (1 + j * 2) as R_xlen_t, m2 - m1);
             for i in 0..n {
-                let code = *INTEGER(g).add(i);
+                let code = integer_elt_checked(g, (i) as R_xlen_t);
                 let m = if code <= 1 { m1 } else { m2 };
-                *REAL(resid).add(i + j * n) = ys[i + j * n] - m;
+                set_real_checked(resid, (i + j * n) as R_xlen_t, ys[i + j * n] - m);
             }
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
@@ -665,8 +663,8 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if rdim.is_null() || rdim == R_NilValue() || XLENGTH(rdim) < 2 {
             return R_NilValue();
         }
-        let n = *INTEGER(rdim) as usize;
-        let p = *INTEGER(rdim).add(1) as usize;
+        let n = integer_elt_checked(rdim, 0) as usize;
+        let p = integer_elt_checked(rdim, (1) as R_xlen_t) as usize;
         if p != 2 || n < 3 {
             return R_NilValue();
         }
@@ -674,8 +672,8 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if n1 <= 0.0 || n2 <= 0.0 {
             return R_NilValue();
         }
-        let d0 = *REAL(coef).add(1);
-        let d1 = *REAL(coef).add(3);
+        let d0 = real_elt_checked(coef, (1) as R_xlen_t);
+        let d1 = real_elt_checked(coef, (3) as R_xlen_t);
         let scale = n1 * n2 / (n as f64);
         let h11 = scale * d0 * d0;
         let h12 = scale * d0 * d1;
@@ -684,8 +682,8 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let mut e12 = 0.0;
         let mut e22 = 0.0;
         for i in 0..n {
-            let r0 = *REAL(resid).add(i);
-            let r1 = *REAL(resid).add(i + n);
+            let r0 = real_elt_checked(resid, (i) as R_xlen_t);
+            let r1 = real_elt_checked(resid, (i + n) as R_xlen_t);
             e11 += r0 * r0;
             e12 += r0 * r1;
             e22 += r1 * r1;
@@ -723,18 +721,18 @@ pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pval = crate::dist::f_dist::pf_inner(fstat, num_df, den_df, false, false);
         let stats = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 6);
         let _st = protect(stats);
-        *REAL(stats) = 1.0;
-        *REAL(stats).add(1) = df_res;
-        *REAL(stats).add(2) = v;
-        *REAL(stats).add(3) = f64::NAN;
-        *REAL(stats).add(4) = fstat;
-        *REAL(stats).add(5) = f64::NAN;
-        *REAL(stats).add(6) = num_df;
-        *REAL(stats).add(7) = f64::NAN;
-        *REAL(stats).add(8) = den_df;
-        *REAL(stats).add(9) = f64::NAN;
-        *REAL(stats).add(10) = pval;
-        *REAL(stats).add(11) = f64::NAN;
+        set_real_checked(stats, 0, 1.0);
+        set_real_checked(stats, (1) as R_xlen_t, df_res);
+        set_real_checked(stats, (2) as R_xlen_t, v);
+        set_real_checked(stats, (3) as R_xlen_t, f64::NAN);
+        set_real_checked(stats, (4) as R_xlen_t, fstat);
+        set_real_checked(stats, (5) as R_xlen_t, f64::NAN);
+        set_real_checked(stats, (6) as R_xlen_t, num_df);
+        set_real_checked(stats, (7) as R_xlen_t, f64::NAN);
+        set_real_checked(stats, (8) as R_xlen_t, den_df);
+        set_real_checked(stats, (9) as R_xlen_t, f64::NAN);
+        set_real_checked(stats, (10) as R_xlen_t, pval);
+        set_real_checked(stats, (11) as R_xlen_t, f64::NAN);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _rn = protect(rn);
         SET_STRING_ELT(rn, 0, Rf_mkChar(c"g".as_ptr()));
@@ -810,7 +808,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut ys = vec![0.0; n];
         let mut gs = vec![0usize; n];
         for i in 0..n {
-            let code = *INTEGER(g).add(i);
+            let code = integer_elt_checked(g, (i) as R_xlen_t);
             if code < 1 || (code as usize) > k {
                 continue;
             }
@@ -861,10 +859,10 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 };
                 let padj =
                     1.0 - crate::dist::tukey::ptukey_inner(qobs, 1.0, k as f64, df, true, false);
-                *REAL(tab).add(row) = diff;
-                *REAL(tab).add(row + npairs) = diff - crit;
-                *REAL(tab).add(row + 2 * npairs) = diff + crit;
-                *REAL(tab).add(row + 3 * npairs) = padj;
+                set_real_checked(tab, (row) as R_xlen_t, diff);
+                set_real_checked(tab, (row + npairs) as R_xlen_t, diff - crit);
+                set_real_checked(tab, (row + 2 * npairs) as R_xlen_t, diff + crit);
+                set_real_checked(tab, (row + 3 * npairs) as R_xlen_t, padj);
                 let li = STRING_ELT(levels, i as i64);
                 let lj = STRING_ELT(levels, j as i64);
                 let si = std::ffi::CStr::from_ptr(CHAR(li)).to_string_lossy();
@@ -886,9 +884,7 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(dn, 1, cn);
         crate::sexp::attrib_core::setAttrib(tab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
         let term = if TYPEOF(g_expr) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(g_expr)))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(PRINTNAME(g_expr)).unwrap_or_default()
         } else {
             "g".to_string()
         };
@@ -988,9 +984,9 @@ pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let xi = (i + 1) as f64;
-            *REAL(result).add(i) = my;
-            *REAL(result).add(i + n) = b * (xi - mx);
-            *REAL(result).add(i + 2 * n) = elt_real_safe(resid, i as i64);
+            set_real_checked(result, (i) as R_xlen_t, my);
+            set_real_checked(result, (i + n) as R_xlen_t, b * (xi - mx));
+            set_real_checked(result, (i + 2 * n) as R_xlen_t, elt_real_safe(resid, i as i64));
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _cn = protect(cn);
@@ -1011,7 +1007,7 @@ pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `qqplot(x, y, plot.it=FALSE)` — sorted pairs.
 pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
@@ -1032,8 +1028,8 @@ pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let yo = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _y = protect(yo);
         for i in 0..n {
-            *REAL(xo).add(i) = xs[i];
-            *REAL(yo).add(i) = ys[i];
+            set_real_checked(xo, (i) as R_xlen_t, xs[i]);
+            set_real_checked(yo, (i) as R_xlen_t, ys[i]);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -1041,7 +1037,7 @@ pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 1, yo);
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
-    }
+    
 }
 
 /// GNU `pairwise.table(compare.levels, level.names, p.adjust.method)`.
@@ -1081,9 +1077,9 @@ pub fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                     );
                     let _c = protect(call);
                     let val = crate::eval::eval::Rf_eval(call, rho);
-                    *REAL(result).add(idx) = elt_real_safe(val, 0);
+                    set_real_checked(result, (idx) as R_xlen_t, elt_real_safe(val, 0));
                 } else {
-                    *REAL(result).add(idx) = NA_REAL;
+                    set_real_checked(result, (idx) as R_xlen_t, NA_REAL);
                 }
             }
         }

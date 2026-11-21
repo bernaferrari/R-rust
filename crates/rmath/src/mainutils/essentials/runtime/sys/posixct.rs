@@ -222,7 +222,7 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if TYPEOF(x) == SEXPTYPE::LGLSXP {
             // GNU as.POSIXct.default: logical all-NA -> numeric POSIXct.
             for i in 0..n {
-                if *INTEGER(x).add(i as usize) != NA_INTEGER {
+                if integer_elt_checked(x, (i as usize) as R_xlen_t) != NA_INTEGER {
                     base_error("do not know how to convert 'x' to class \"POSIXct\"");
                 }
                 *out.add(i as usize) = NA_REAL;
@@ -231,7 +231,7 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let origin_seconds = if origin_missing {
                 0.0
             } else if sexp_has_class(origin, "POSIXct") && TYPEOF(origin) == SEXPTYPE::REALSXP {
-                let v = *REAL(origin);
+                let v = real_elt_checked(origin, 0);
                 if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     NA_REAL
                 } else {
@@ -247,14 +247,14 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
             for i in 0..n {
                 let seconds = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    let v = *REAL(x).add(i as usize);
+                    let v = real_elt_checked(x, (i as usize) as R_xlen_t);
                     if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                         NA_REAL
                     } else {
                         origin_seconds + v
                     }
                 } else {
-                    let v = *INTEGER(x).add(i as usize);
+                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     if v == NA_INTEGER {
                         NA_REAL
                     } else {

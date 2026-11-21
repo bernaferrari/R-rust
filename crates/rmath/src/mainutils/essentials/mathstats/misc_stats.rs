@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU `ppoints(n, a=)` — probability points.
 pub fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let n_s = CAR(args);
         let n = if XLENGTH(n_s) > 1 {
             XLENGTH(n_s) as f64
@@ -20,15 +20,15 @@ pub fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, ni);
         let _r = protect(result);
         for i in 0..ni {
-            *REAL(result).add(i as usize) = ((i as f64 + 1.0) - a) / den;
+            set_real_checked(result, (i as usize) as R_xlen_t, ((i as f64 + 1.0) - a) / den);
         }
         result
-    }
+    
 }
 
 /// GNU `qqnorm(y, plot.it=FALSE)` — normal theoretical quantiles vs sorted y.
 pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let y = CAR(args);
         let n = XLENGTH(y) as usize;
         if n == 0 {
@@ -44,8 +44,8 @@ pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _y = protect(yv);
         for i in 0..n {
             let p = ((i as f64 + 1.0) - a) / den;
-            *REAL(xv).add(i) = crate::dist::normal::qnorm5_inner(p, 0.0, 1.0, true, false);
-            *REAL(yv).add(i) = ys[i];
+            set_real_checked(xv, (i) as R_xlen_t, crate::dist::normal::qnorm5_inner(p, 0.0, 1.0, true, false));
+            set_real_checked(yv, (i) as R_xlen_t, ys[i]);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -53,7 +53,7 @@ pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 1, yv);
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
-    }
+    
 }
 
 /// GNU `qqline(y)` — type-7 quartile line then `abline`.
@@ -92,7 +92,7 @@ pub fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `mahalanobis(x, center, cov)` — squared Mahalanobis, 2 columns.
 pub fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let center = CAR(CDR(args));
         let cov = CAR(CDR(CDR(args)));
@@ -102,7 +102,7 @@ pub fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -131,16 +131,16 @@ pub fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..n {
             let d0 = elt_real_safe(x, i as i64) - c0;
             let d1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             } - c1;
             let t0 = inv.0 * d0 + inv.2 * d1;
             let t1 = inv.1 * d0 + inv.3 * d1;
-            *REAL(result).add(i) = d0 * t0 + d1 * t1;
+            set_real_checked(result, (i) as R_xlen_t, d0 * t0 + d1 * t1);
         }
         result
-    }
+    
 }
 
 /// GNU `cov.wt(x)` — unbiased 2-column covariance and center.
@@ -153,7 +153,7 @@ pub fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -165,9 +165,9 @@ pub fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..n {
             m0 += elt_real_safe(x, i as i64);
             m1 += if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             };
         }
         let nf = n as f64;
@@ -179,9 +179,9 @@ pub fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..n {
             let d0 = elt_real_safe(x, i as i64) - m0;
             let d1 = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i + n)
+                real_elt_checked(x, (i + n) as R_xlen_t)
             } else {
-                *INTEGER(x).add(i + n) as f64
+                integer_elt_checked(x, (i + n) as R_xlen_t) as f64
             } - m1;
             s00 += d0 * d0;
             s01 += d0 * d1;
@@ -193,14 +193,14 @@ pub fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         s11 /= den;
         let cov = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _c = protect(cov);
-        *REAL(cov) = s00;
-        *REAL(cov).add(1) = s01;
-        *REAL(cov).add(2) = s01;
-        *REAL(cov).add(3) = s11;
+        set_real_checked(cov, 0, s00);
+        set_real_checked(cov, (1) as R_xlen_t, s01);
+        set_real_checked(cov, (2) as R_xlen_t, s01);
+        set_real_checked(cov, (3) as R_xlen_t, s11);
         let center = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _ce = protect(center);
-        *REAL(center) = m0;
-        *REAL(center).add(1) = m1;
+        set_real_checked(center, 0, m0);
+        set_real_checked(center, (1) as R_xlen_t, m1);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, cov);
@@ -229,7 +229,7 @@ pub fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let s1 = a11.max(0.0).sqrt();
         let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _r = protect(result);
-        *REAL(result) = 1.0;
+        set_real_checked(result, 0, 1.0);
         let c01 = if s0 > 0.0 && s1 > 0.0 {
             a01 / (s0 * s1)
         } else {
@@ -240,19 +240,19 @@ pub fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             0.0
         };
-        *REAL(result).add(1) = c10;
-        *REAL(result).add(2) = c01;
-        *REAL(result).add(3) = 1.0;
+        set_real_checked(result, (1) as R_xlen_t, c10);
+        set_real_checked(result, (2) as R_xlen_t, c01);
+        set_real_checked(result, (3) as R_xlen_t, 1.0);
         result
     }
 }
 
 /// GNU `pbirthday(n, classes=365, coincident=2)` — collision probability.
 pub fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let n_arg = CAR(args);
         let n = if TYPEOF(n_arg) == SEXPTYPE::INTSXP {
-            *INTEGER(n_arg) as i64
+            integer_elt_checked(n_arg, 0) as i64
         } else {
             elt_real_safe(n_arg, 0) as i64
         };
@@ -276,7 +276,7 @@ pub fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             prod *= (classes - i as f64) / classes;
         }
         Rf_ScalarReal(1.0 - prod)
-    }
+    
 }
 
 fn pbirthday_k2(n: i64, classes: f64) -> f64 {
@@ -326,7 +326,7 @@ pub fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `lsfit(x, y)` — intercept + slope for a single predictor.
 pub fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         let n = XLENGTH(x).min(XLENGTH(y)) as usize;
@@ -354,8 +354,8 @@ pub fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let a = my - b * mx;
         let coef = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _c = protect(coef);
-        *REAL(coef) = a;
-        *REAL(coef).add(1) = b;
+        set_real_checked(coef, 0, a);
+        set_real_checked(coef, (1) as R_xlen_t, b);
         crate::mainutils::essentials::set_string_names(
             coef,
             &["Intercept".to_string(), "X".to_string()],
@@ -368,12 +368,12 @@ pub fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for i in 0..n {
             let xi = elt_real_safe(x, i as i64);
             let yi = elt_real_safe(y, i as i64);
-            *REAL(resid).add(i) = yi - (a + b * xi);
-            *REAL(hat).add(i) = if den > 0.0 {
+            set_real_checked(resid, (i) as R_xlen_t, yi - (a + b * xi));
+            set_real_checked(hat, (i) as R_xlen_t, if den > 0.0 {
                 invn + (xi - mx) * (xi - mx) / den
             } else {
                 invn
-            };
+            });
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
@@ -389,12 +389,12 @@ pub fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ],
         );
         result
-    }
+    
 }
 
 /// GNU `ppr(x, y, nterms=1)` — one-term linear projection.
 pub fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let y = CAR(CDR(args));
         let n = XLENGTH(x).min(XLENGTH(y)) as usize;
@@ -425,7 +425,7 @@ pub fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut sse = 0.0;
         for i in 0..n {
             let fi = a + b * elt_real_safe(x, i as i64);
-            *REAL(fitted).add(i) = fi;
+            set_real_checked(fitted, (i) as R_xlen_t, fi);
             let e = elt_real_safe(y, i as i64) - fi;
             sse += e * e;
         }
@@ -438,7 +438,7 @@ pub fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &["fitted.values".to_string(), "gofn".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `ls.diag(ls.out)` — leverages from `$hat` or intercept + `X`.
@@ -467,7 +467,7 @@ pub fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mat = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 1);
         let _m = protect(mat);
         for i in 0..p as usize {
-            *REAL(mat).add(i) = elt_real_safe(coef, i as i64);
+            set_real_checked(mat, (i) as R_xlen_t, elt_real_safe(coef, i as i64));
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _cn = protect(cn);
@@ -511,7 +511,7 @@ pub fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
 pub fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let n = XLENGTH(x) as usize;
         if n < 2 {
@@ -527,17 +527,17 @@ pub fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut ss = 0.0;
         for i in 0..n {
             let v = elt_real_safe(x, i as i64) - mean;
-            *REAL(result).add(i) = v;
+            set_real_checked(result, (i) as R_xlen_t, v);
             ss += v * v;
         }
         let s = ss.sqrt();
         if s > 0.0 {
             for i in 0..n {
-                *REAL(result).add(i) /= s;
+                set_real_checked(result, (i) as R_xlen_t, real_elt_checked(result, (i) as R_xlen_t) / s);
             }
         }
         result
-    }
+    
 }
 
 /// GNU `loglin(table, margin, start, fit, eps, iter, param, print)` — port of
@@ -703,7 +703,7 @@ pub fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let s = Rf_allocVector3(SEXPTYPE::REALSXP, ntab as i64);
             let _s_g = protect(s);
             for i in 0..ntab {
-                *REAL(s).add(i as usize) = 1.0;
+                set_real_checked(s, (i as usize) as R_xlen_t, 1.0);
             }
             s
         } else {
@@ -955,27 +955,27 @@ pub unsafe extern "C-unwind" fn c_psmirnov_exact(
     stwo: SEXP,
     slower: SEXP,
 ) -> SEXP {
-    unsafe {
+    
         let _ = sz;
         let m = if TYPEOF(sm) == SEXPTYPE::REALSXP {
-            *REAL(sm) as i32
+            real_elt_checked(sm, 0) as i32
         } else {
-            *INTEGER(sm)
+            integer_elt_checked(sm, 0)
         };
         let n = if TYPEOF(sn) == SEXPTYPE::REALSXP {
-            *REAL(sn) as i32
+            real_elt_checked(sn, 0) as i32
         } else {
-            *INTEGER(sn)
+            integer_elt_checked(sn, 0)
         };
         let two = if TYPEOF(stwo) == SEXPTYPE::REALSXP {
-            *REAL(stwo) as i32
+            real_elt_checked(stwo, 0) as i32
         } else {
-            *INTEGER(stwo)
+            integer_elt_checked(stwo, 0)
         } != 0;
         let lower = if TYPEOF(slower) == SEXPTYPE::REALSXP {
-            *REAL(slower) as i32
+            real_elt_checked(slower, 0) as i32
         } else {
-            *INTEGER(slower)
+            integer_elt_checked(slower, 0)
         } != 0;
         let nq = XLENGTH(sq).max(0);
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, nq);
@@ -984,15 +984,15 @@ pub unsafe extern "C-unwind" fn c_psmirnov_exact(
         let nd = n as f64;
         for i in 0..nq as usize {
             let raw = if TYPEOF(sq) == SEXPTYPE::REALSXP {
-                *REAL(sq).add(i)
+                real_elt_checked(sq, (i) as R_xlen_t)
             } else {
-                *INTEGER(sq).add(i) as f64
+                integer_elt_checked(sq, (i) as R_xlen_t) as f64
             };
             let q = (0.5 + (raw * md * nd - 1e-7).floor()) / (md * nd);
-            *REAL(ans).add(i) = psmirnov_uniq(q, m, n, two, lower);
+            set_real_checked(ans, (i) as R_xlen_t, psmirnov_uniq(q, m, n, two, lower));
         }
         ans
-    }
+    
 }
 
 /// GNU `qsmirnov(p, sizes, exact=FALSE)` — smallest D with psmirnov >= p.
@@ -1145,7 +1145,7 @@ pub fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     s = diff;
                 }
             }
-            *REAL(result).add(iter as usize) = s;
+            set_real_checked(result, (iter as usize) as R_xlen_t, s);
         }
         crate::main::random::PutRNGstate();
         result
@@ -1208,8 +1208,8 @@ pub fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), n as i32, 2);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i) = elt_real_safe(x, i as i64);
-            *REAL(result).add(i + n) = elt_real_safe(y, i as i64);
+            set_real_checked(result, (i) as R_xlen_t, elt_real_safe(x, i as i64));
+            set_real_checked(result, (i + n) as R_xlen_t, elt_real_safe(y, i as i64));
         }
         result
     }
@@ -1229,7 +1229,7 @@ fn med3(a: f64, b: f64, c: f64) -> f64 {
 
 /// GNU `smoothEnds(y, k=3)` — Tukey's end-point smoother.
 pub fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let y = CAR(args);
         let n = XLENGTH(y) as usize;
         if n < 3 {
@@ -1238,18 +1238,18 @@ pub fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i) = elt_real_safe(y, i as i64);
+            set_real_checked(result, (i) as R_xlen_t, elt_real_safe(y, i as i64));
         }
-        let y1 = *REAL(result);
-        let sm2 = *REAL(result).add(1);
-        let sm3 = *REAL(result).add(2);
-        *REAL(result) = med3(y1, sm2, sm2 - 2.0 * (sm3 - sm2));
-        let yn = *REAL(result).add(n - 1);
-        let sm_n1 = *REAL(result).add(n - 2);
-        let sm_n2 = *REAL(result).add(n - 3);
-        *REAL(result).add(n - 1) = med3(yn, sm_n1, sm_n1 - 2.0 * (sm_n2 - sm_n1));
+        let y1 = real_elt_checked(result, 0);
+        let sm2 = real_elt_checked(result, (1) as R_xlen_t);
+        let sm3 = real_elt_checked(result, (2) as R_xlen_t);
+        set_real_checked(result, 0, med3(y1, sm2, sm2 - 2.0 * (sm3 - sm2)));
+        let yn = real_elt_checked(result, (n - 1) as R_xlen_t);
+        let sm_n1 = real_elt_checked(result, (n - 2) as R_xlen_t);
+        let sm_n2 = real_elt_checked(result, (n - 3) as R_xlen_t);
+        set_real_checked(result, (n - 1) as R_xlen_t, med3(yn, sm_n1, sm_n1 - 2.0 * (sm_n2 - sm_n1)));
         result
-    }
+    
 }
 
 /// GNU `symnum` default cuts for a 2×2 correlation.
@@ -1292,7 +1292,7 @@ pub fn do_symnum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `sortedXyData(x, y)` — unique x sorted, paired y.
 pub fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let xv = CAR(args);
         let yv = CAR(CDR(args));
         let n = XLENGTH(xv).min(XLENGTH(yv)) as usize;
@@ -1305,8 +1305,8 @@ pub fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let yout = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _y = protect(yout);
         for (i, (x, y)) in pairs.iter().enumerate() {
-            *REAL(xout).add(i) = *x;
-            *REAL(yout).add(i) = *y;
+            set_real_checked(xout, (i) as R_xlen_t, *x);
+            set_real_checked(yout, (i) as R_xlen_t, *y);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -1314,5 +1314,5 @@ pub fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         SET_VECTOR_ELT(result, 1, yout);
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
-    }
+    
 }

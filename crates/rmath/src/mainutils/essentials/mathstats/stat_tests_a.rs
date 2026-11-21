@@ -14,9 +14,9 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut vals = Vec::new();
         for i in 0..n0 {
             let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
@@ -57,8 +57,8 @@ pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(null_value, &["mean".to_string()]);
         let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _cf = protect(conf);
-        *REAL(conf) = lo;
-        *REAL(conf).add(1) = hi;
+        set_real_checked(conf, 0, lo);
+        set_real_checked(conf, (1) as R_xlen_t, hi);
         crate::sexp::attrib_core::setAttrib(
             conf,
             crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
@@ -160,8 +160,8 @@ pub fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(null_value, &["probability of success".to_string()]);
         let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _cf = protect(conf);
-        *REAL(conf) = lo;
-        *REAL(conf).add(1) = hi;
+        set_real_checked(conf, 0, lo);
+        set_real_checked(conf, (1) as R_xlen_t, hi);
         crate::sexp::attrib_core::setAttrib(
             conf,
             crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
@@ -215,9 +215,7 @@ pub fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let v = CAR(cell);
             if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
-                    .to_string_lossy()
-                    .into_owned();
+                let s = charsxp_text(STRING_ELT(v, 0)).unwrap_or_default();
                 if s == "less" || s == "greater" || s == "two.sided" {
                     alt = if s == "less" {
                         "less"
@@ -397,7 +395,7 @@ pub fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let expected = Rf_allocVector3(SEXPTYPE::REALSXP, k);
         let _ex = protect(expected);
         for i in 0..k {
-            *REAL(expected).add(i as usize) = e;
+            set_real_checked(expected, (i as usize) as R_xlen_t, e);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         let _r = protect(result);
@@ -484,8 +482,8 @@ pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(null_value, &["p".to_string()]);
         let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _cf = protect(conf);
-        *REAL(conf) = p_l.max(0.0);
-        *REAL(conf).add(1) = p_u.min(1.0);
+        set_real_checked(conf, 0, p_l.max(0.0));
+        set_real_checked(conf, (1) as R_xlen_t, p_u.min(1.0));
         crate::sexp::attrib_core::setAttrib(
             conf,
             crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
@@ -587,8 +585,8 @@ pub fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(null_value, &["correlation".to_string()]);
         let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _cf = protect(conf);
-        *REAL(conf) = lo;
-        *REAL(conf).add(1) = hi;
+        set_real_checked(conf, 0, lo);
+        set_real_checked(conf, (1) as R_xlen_t, hi);
         crate::sexp::attrib_core::setAttrib(
             conf,
             crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
@@ -674,8 +672,8 @@ pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(statistic, &["F".to_string()]);
         let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _pa = protect(parameter);
-        *REAL(parameter) = dfx;
-        *REAL(parameter).add(1) = dfy;
+        set_real_checked(parameter, 0, dfx);
+        set_real_checked(parameter, (1) as R_xlen_t, dfy);
         set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
         let estimate = Rf_ScalarReal(est);
         let _es = protect(estimate);
@@ -685,8 +683,8 @@ pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(null_value, &["ratio of variances".to_string()]);
         let conf = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _cf = protect(conf);
-        *REAL(conf) = lo;
-        *REAL(conf).add(1) = hi;
+        set_real_checked(conf, 0, lo);
+        set_real_checked(conf, (1) as R_xlen_t, hi);
         crate::sexp::attrib_core::setAttrib(
             conf,
             crate::sexp::symbol::Rf_install(c"conf.level".as_ptr()),
@@ -748,9 +746,9 @@ pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let gi = if g.is_null() || g == R_NilValue() {
                 1
             } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
-                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+                integer_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t)
             } else if TYPEOF(g) == SEXPTYPE::REALSXP {
-                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+                real_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t) as i32
             } else {
                 1
             };
@@ -851,9 +849,9 @@ pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let gi = if g.is_null() || g == R_NilValue() {
                 1
             } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
-                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+                integer_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t)
             } else if TYPEOF(g) == SEXPTYPE::REALSXP {
-                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+                real_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t) as i32
             } else {
                 1
             };
@@ -951,9 +949,9 @@ pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let gi = if g.is_null() || g == R_NilValue() {
                 1
             } else if TYPEOF(g) == SEXPTYPE::INTSXP || TYPEOF(g) == SEXPTYPE::LGLSXP {
-                *INTEGER(g).add((i as usize) % XLENGTH(g) as usize)
+                integer_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t)
             } else if TYPEOF(g) == SEXPTYPE::REALSXP {
-                *REAL(g).add((i as usize) % XLENGTH(g) as usize) as i32
+                real_elt_checked(g, ((i as usize) % XLENGTH(g) as usize) as R_xlen_t) as i32
             } else {
                 1
             };

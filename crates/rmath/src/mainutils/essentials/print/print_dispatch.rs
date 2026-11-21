@@ -28,9 +28,9 @@ pub fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let v = CAR(p);
                 if !v.is_null() && v != R_NilValue() {
                     if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                        max = Some(*INTEGER(v) as i64);
+                        max = Some(integer_elt_checked(v, 0) as i64);
                     } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                        max = Some(*REAL(v) as i64);
+                        max = Some(real_elt_checked(v, 0) as i64);
                     }
                 }
                 break;
@@ -83,9 +83,9 @@ pub fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let v = CAR(p);
                 if !v.is_null() && v != R_NilValue() {
                     if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                        max = Some(*INTEGER(v) as i64);
+                        max = Some(integer_elt_checked(v, 0) as i64);
                     } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                        max = Some(*REAL(v) as i64);
+                        max = Some(real_elt_checked(v, 0) as i64);
                     }
                 }
             } else if TAG(p) == digits_sym {
@@ -93,14 +93,14 @@ pub fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else if TAG(p) == usetz_sym {
                 let v = CAR(p);
                 if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
-                    usetz_val = *INTEGER(v);
+                    usetz_val = integer_elt_checked(v, 0);
                 }
             } else if TAG(p) == width_sym {
                 let v = CAR(p);
                 if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                    width = Some(*INTEGER(v));
+                    width = Some(integer_elt_checked(v, 0));
                 } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                    width = Some(*REAL(v) as i32);
+                    width = Some(real_elt_checked(v, 0) as i32);
                 }
             }
             p = CDR(p);

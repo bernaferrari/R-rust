@@ -183,7 +183,7 @@ pub fn do_keep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         if t == SEXPTYPE::VECSXP {
             for j in 0..n_i {
-                let idx = (*INTEGER(i_arg).add(j as usize) - 1) as R_xlen_t; // 1-based to 0-based
+                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t; // 1-based to 0-based
                 if idx >= 0 {
                     let elem = VECTOR_ELT(x, idx);
                     SET_VECTOR_ELT(result, j as i64, elem);
@@ -192,9 +192,9 @@ pub fn do_keep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else if t == SEXPTYPE::REALSXP {
             let dst = REAL(result);
             for j in 0..n_i {
-                let idx = (*INTEGER(i_arg).add(j as usize) - 1) as R_xlen_t;
+                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
                 if idx >= 0 {
-                    *dst.add(j as usize) = *REAL(x).add(idx as usize);
+                    *dst.add(j as usize) = real_elt_checked(x, (idx as usize) as R_xlen_t);
                 } else {
                     *dst.add(j as usize) = NA_REAL;
                 }
@@ -202,9 +202,9 @@ pub fn do_keep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let dst = INTEGER(result);
             for j in 0..n_i {
-                let idx = (*INTEGER(i_arg).add(j as usize) - 1) as R_xlen_t;
+                let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
                 if idx >= 0 {
-                    *dst.add(j as usize) = *INTEGER(x).add(idx as usize);
+                    *dst.add(j as usize) = integer_elt_checked(x, (idx as usize) as R_xlen_t);
                 } else {
                     *dst.add(j as usize) = NA_INTEGER;
                 }
@@ -229,7 +229,7 @@ pub fn do_discard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Collect which indices to discard (0-based)
         let mut discard_set: std::collections::HashSet<R_xlen_t> = std::collections::HashSet::new();
         for j in 0..n_i {
-            let idx = (*INTEGER(i_arg).add(j as usize) - 1) as R_xlen_t;
+            let idx = (integer_elt_checked(i_arg, (j as usize) as R_xlen_t) - 1) as R_xlen_t;
             if idx >= 0 && idx < n {
                 discard_set.insert(idx);
             }
@@ -255,7 +255,7 @@ pub fn do_discard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let dst = REAL(result);
             for i in 0..n {
                 if !discard_set.contains(&i) {
-                    *dst.add(out_idx as usize) = *REAL(x).add(i as usize);
+                    *dst.add(out_idx as usize) = real_elt_checked(x, (i as usize) as R_xlen_t);
                     out_idx += 1;
                 }
             }
@@ -263,7 +263,7 @@ pub fn do_discard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let dst = INTEGER(result);
             for i in 0..n {
                 if !discard_set.contains(&i) {
-                    *dst.add(out_idx as usize) = *INTEGER(x).add(i as usize);
+                    *dst.add(out_idx as usize) = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     out_idx += 1;
                 }
             }

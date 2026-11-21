@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU `lm.influence(model, do.coef=FALSE)` — hat, deletion sigma, wt.res.
 pub fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
         let hat = list_named_elt(obj, "hat");
@@ -36,11 +36,11 @@ pub fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 f64::NAN
             };
-            *REAL(sigs).add(i as usize) = if infl_s2 > 0.0 {
+            set_real_checked(sigs, (i as usize) as R_xlen_t, if infl_s2 > 0.0 {
                 infl_s2.sqrt()
             } else {
                 f64::NAN
-            };
+            });
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
         let _r = protect(result);
@@ -52,7 +52,7 @@ pub fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &["hat".to_string(), "sigma".to_string(), "wt.res".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `influence(model)` — same as `lm.influence` for lm.
@@ -62,7 +62,7 @@ pub fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `qr.influence(qr, res)` — hat and deletion sigma for intercept + `1:n`.
 pub fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let res = CAR(CDR(args));
         if res.is_null() || res == R_NilValue() {
             return R_NilValue();
@@ -84,7 +84,7 @@ pub fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut sse = 0.0;
         for i in 0..n {
             let d = (i + 1) as f64 - mx;
-            *REAL(hat).add(i) = if sxx > 0.0 { invn + d * d / sxx } else { invn };
+            set_real_checked(hat, (i) as R_xlen_t, if sxx > 0.0 { invn + d * d / sxx } else { invn });
             let e = elt_real_safe(res, i as i64);
             sse += e * e;
         }
@@ -93,18 +93,18 @@ pub fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _s = protect(sigs);
         for i in 0..n {
             let e = elt_real_safe(res, i as i64);
-            let h = *REAL(hat).add(i);
+            let h = real_elt_checked(hat, (i) as R_xlen_t);
             let omh = 1.0 - h;
             let infl_s2 = if omh > 0.0 && nf - p - 1.0 > 0.0 {
                 (sse - e * e / omh) / (nf - p - 1.0)
             } else {
                 f64::NAN
             };
-            *REAL(sigs).add(i) = if infl_s2 > 0.0 {
+            set_real_checked(sigs, (i) as R_xlen_t, if infl_s2 > 0.0 {
                 infl_s2.sqrt()
             } else {
                 f64::NAN
-            };
+            });
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -115,12 +115,12 @@ pub fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &["hat".to_string(), "sigma".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `se.contrast(aov, list(g1, g2))` — two-group `sqrt(MSE*(1/n1+1/n2))`.
 pub fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let contr = CAR(CDR(args));
         let resid = list_named_elt(obj, "residuals");
@@ -154,12 +154,12 @@ pub fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut n2 = 0.0;
         for i in 0..n {
             let a = if TYPEOF(g1) == SEXPTYPE::LGLSXP {
-                *LOGICAL(g1).add(i.min(XLENGTH(g1) as usize - 1))
+                logical_elt_checked(g1, (i.min(XLENGTH(g1) as usize) - 1) as R_xlen_t)
             } else {
                 elt_real_safe(g1, i as i64) as i32
             };
             let b = if TYPEOF(g2) == SEXPTYPE::LGLSXP {
-                *LOGICAL(g2).add(i.min(XLENGTH(g2) as usize - 1))
+                logical_elt_checked(g2, (i.min(XLENGTH(g2) as usize) - 1) as R_xlen_t)
             } else {
                 elt_real_safe(g2, i as i64) as i32
             };
@@ -174,7 +174,7 @@ pub fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         Rf_ScalarReal((mse * (1.0 / n1 + 1.0 / n2)).sqrt())
-    }
+    
 }
 
 /// Checked native boundary for GNU `covratio(model, infl, res)`.
@@ -227,7 +227,7 @@ pub fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `predict(lm)` and `predict(lm, newdata, se.fit)`.
 pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
         if coef == R_NilValue() || XLENGTH(coef) < 2 {
@@ -241,9 +241,7 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -253,9 +251,9 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if name == "se.fit" {
                 let v = CAR(cell);
                 if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
-                    se_fit = *LOGICAL(v) != 0;
+                    se_fit = logical_elt_checked(v, 0) != 0;
                 } else if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                    se_fit = *INTEGER(v) != 0;
+                    se_fit = integer_elt_checked(v, 0) != 0;
                 }
             }
             cell = CDR(cell);
@@ -281,7 +279,7 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     0.0
                 };
-                *REAL(se).add(i as usize) = s * h.max(0.0).sqrt();
+                set_real_checked(se, (i as usize) as R_xlen_t, s * h.max(0.0).sqrt());
             }
             let out = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
             let _o = protect(out);
@@ -318,16 +316,12 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
             let n1 = if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) >= 3 {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(STRING_ELT(names, 1)).unwrap_or_default()
             } else {
                 "x1".to_string()
             };
             let n2 = if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) >= 3 {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 2)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(STRING_ELT(names, 2)).unwrap_or_default()
             } else {
                 "x2".to_string()
             };
@@ -339,8 +333,7 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                 let _r = protect(result);
                 for i in 0..n {
-                    *REAL(result).add(i as usize) =
-                        b0 + b1 * elt_real_safe(x1, i) + b2 * elt_real_safe(x2, i);
+                    set_real_checked(result, (i as usize) as R_xlen_t, b0 + b1 * elt_real_safe(x1, i) + b2 * elt_real_safe(x2, i));
                 }
                 return wrap_se(result);
             }
@@ -351,9 +344,7 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
             if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) >= 2 {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(STRING_ELT(names, 1)).unwrap_or_default()
             } else {
                 "x".to_string()
             }
@@ -382,10 +373,10 @@ pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i as usize) = b0 + b1 * elt_real_safe(x, i);
+            set_real_checked(result, (i as usize) as R_xlen_t, b0 + b1 * elt_real_safe(x, i));
         }
         wrap_se(result)
-    }
+    
 }
 
 /// GNU `termplot(lm, plot=FALSE)` — one-term centered effects.
@@ -418,8 +409,8 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let yv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _y = protect(yv);
         for i in 0..n {
-            *REAL(xv).add(i) = xs[i];
-            *REAL(yv).add(i) = b1 * (xs[i] - meanx);
+            set_real_checked(xv, (i) as R_xlen_t, xs[i]);
+            set_real_checked(yv, (i) as R_xlen_t, b1 * (xs[i] - meanx));
         }
         crate::mainutils::essentials::set_string_names(xv, &[]);
         let df = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -429,8 +420,8 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         crate::mainutils::essentials::set_string_names(df, &["x".to_string(), "y".to_string()]);
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _rn = protect(rn);
-        *INTEGER(rn) = NA_INTEGER;
-        *INTEGER(rn).add(1) = -(n as i32);
+        set_integer_checked(rn, 0, NA_INTEGER);
+        set_integer_checked(rn, (1) as R_xlen_t, -(n as i32));
         crate::sexp::attrib_core::setAttrib(
             df,
             crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
@@ -445,9 +436,7 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let cnames =
             crate::sexp::attrib_core::getAttrib(coef, crate::sexp::attrib_core::R_NamesSymbol());
         let tname = if TYPEOF(cnames) == SEXPTYPE::STRSXP && XLENGTH(cnames) >= 2 {
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(cnames, 1)))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(STRING_ELT(cnames, 1)).unwrap_or_default()
         } else {
             "x".to_string()
         };
@@ -463,14 +452,14 @@ pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `cpgram(ts)` — univariate only; plots the cumulative periodogram.
 pub fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null()
             && dim != R_NilValue()
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
-            && *INTEGER(dim).add(1) > 1
+            && integer_elt_checked(dim, (1) as R_xlen_t) > 1
         {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
@@ -479,7 +468,7 @@ pub fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
-    }
+    
 }
 
 /// GNU `summary(lm)` coefficient table and fit stats.
@@ -559,14 +548,14 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let ctab = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 4);
         let _ct = protect(ctab);
-        *REAL(ctab) = b0;
-        *REAL(ctab).add(1) = b1;
-        *REAL(ctab).add(2) = se0;
-        *REAL(ctab).add(3) = se1;
-        *REAL(ctab).add(4) = t0;
-        *REAL(ctab).add(5) = t1;
-        *REAL(ctab).add(6) = p0;
-        *REAL(ctab).add(7) = p1;
+        set_real_checked(ctab, 0, b0);
+        set_real_checked(ctab, (1) as R_xlen_t, b1);
+        set_real_checked(ctab, (2) as R_xlen_t, se0);
+        set_real_checked(ctab, (3) as R_xlen_t, se1);
+        set_real_checked(ctab, (4) as R_xlen_t, t0);
+        set_real_checked(ctab, (5) as R_xlen_t, t1);
+        set_real_checked(ctab, (6) as R_xlen_t, p0);
+        set_real_checked(ctab, (7) as R_xlen_t, p1);
         let rn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _rn = protect(rn);
         SET_STRING_ELT(rn, 0, Rf_mkChar(c"(Intercept)".as_ptr()));
@@ -584,9 +573,9 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(ctab, crate::sexp::attrib_core::R_DimNamesSymbol(), dn);
         let fvec = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _fv = protect(fvec);
-        *REAL(fvec) = fstat;
-        *REAL(fvec).add(1) = 1.0;
-        *REAL(fvec).add(2) = df;
+        set_real_checked(fvec, 0, fstat);
+        set_real_checked(fvec, (1) as R_xlen_t, 1.0);
+        set_real_checked(fvec, (2) as R_xlen_t, df);
         set_string_names(
             fvec,
             &[
@@ -676,12 +665,12 @@ pub fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _t = protect(tab);
         let dfcol = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _df = protect(dfcol);
-        *INTEGER(dfcol) = df_mod as i32;
-        *INTEGER(dfcol).add(1) = df_res as i32;
+        set_integer_checked(dfcol, 0, df_mod as i32);
+        set_integer_checked(dfcol, (1) as R_xlen_t, df_res as i32);
         let col = |vals: [f64; 2]| {
             let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            *REAL(v) = vals[0];
-            *REAL(v).add(1) = vals[1];
+            set_real_checked(v, 0, vals[0]);
+            set_real_checked(v, (1) as R_xlen_t, vals[1]);
             v
         };
         SET_VECTOR_ELT(tab, 0, dfcol);
@@ -816,8 +805,8 @@ fn add1_drop1_table(
     unsafe {
         let col = |a: f64, b: f64| {
             let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            *REAL(v) = a;
-            *REAL(v).add(1) = b;
+            set_real_checked(v, 0, a);
+            set_real_checked(v, (1) as R_xlen_t, b);
             v
         };
         let dfv = col(f64::NAN, df);
@@ -864,7 +853,7 @@ fn add1_drop1_table(
 
 /// GNU `drop1(lm)` — intercept-only vs fitted model.
 pub fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let Some((n, p, rss)) = lm_n_p_rss(obj) else {
             return R_NilValue();
@@ -887,9 +876,7 @@ pub fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_NamesSymbol(),
             );
             if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) >= 2 {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(STRING_ELT(names, 1)).unwrap_or_default()
             } else {
                 "x".to_string()
             }
@@ -903,7 +890,7 @@ pub fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             rss0,
             lm_aic(n, 1.0, rss0),
         )
-    }
+    
 }
 
 /// GNU `add1(lm, scope)` — add one extra numeric term.
@@ -925,9 +912,7 @@ pub fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
         let _e = protect(extra);
         let term = if TYPEOF(extra) == SEXPTYPE::STRSXP && XLENGTH(extra) > 0 {
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(extra, 0)))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(STRING_ELT(extra, 0)).unwrap_or_default()
         } else {
             return R_NilValue();
         };
@@ -979,20 +964,20 @@ pub fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `step(lm, trace=0)` — keep the fit when dropping raises AIC.
 pub fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let dropped = do_drop1(call, op, Rf_cons(obj, R_NilValue()), rho);
         let _d = protect(dropped);
         let aic = list_named_elt(dropped, "AIC");
         if TYPEOF(aic) == SEXPTYPE::REALSXP && XLENGTH(aic) >= 2 {
-            let none_aic = *REAL(aic);
-            let drop_aic = *REAL(aic).add(1);
+            let none_aic = real_elt_checked(aic, 0);
+            let drop_aic = real_elt_checked(aic, (1) as R_xlen_t);
             if drop_aic.is_finite() && drop_aic < none_aic {
                 // A cheaper model exists; this pin's y~x does not take it.
             }
         }
         obj
-    }
+    
 }
 
 /// GNU two-sample `power.t.test(n, delta)`.
@@ -1008,9 +993,7 @@ pub fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let v = CAR(cell);
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -1095,9 +1078,7 @@ pub fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let v = CAR(cell);
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -1178,9 +1159,7 @@ pub fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             let v = CAR(cell);
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };

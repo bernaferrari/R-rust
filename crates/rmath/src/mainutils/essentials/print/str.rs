@@ -102,7 +102,7 @@ fn str_format_real(x: f64) -> String {
             return x.to_string();
         }
         let _tmp = protect(tmp);
-        *REAL(tmp) = x;
+        set_real_checked(tmp, 0, x);
         let old = crate::mainutils::format::format_get_R_print();
         crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
             digits: str_digits_d(),
@@ -259,8 +259,8 @@ fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
             let (start, end) =
                 if !tsp.is_null() && TYPEOF(tsp) == SEXPTYPE::REALSXP && XLENGTH(tsp) >= 2 {
                     (
-                        str_format_real(*REAL(tsp)),
-                        str_format_real(*REAL(tsp).add(1)),
+                        str_format_real(real_elt_checked(tsp, 0)),
+                        str_format_real(real_elt_checked(tsp, (1) as R_xlen_t)),
                     )
                 } else {
                     ("1".to_string(), n.to_string())
@@ -269,7 +269,7 @@ fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
             let lestr = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
                 let dims: Vec<String> = (0..XLENGTH(dim))
-                    .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
+                    .map(|i| format!("1:{}", integer_elt_checked(dim, (i as usize) as R_xlen_t)))
                     .collect();
                 format!("[{}]", dims.join(", "))
             } else {
@@ -309,7 +309,7 @@ fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
         let class_prefix = str_class_mod_prefix(class_name.as_deref(), type_name);
         if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
             let dims: Vec<String> = (0..XLENGTH(dim))
-                .map(|i| format!("1:{}", *INTEGER(dim).add(i as usize)))
+                .map(|i| format!("1:{}", integer_elt_checked(dim, (i as usize) as R_xlen_t)))
                 .collect();
             let preview = str_preview_reals_or_ints(x, 6);
             return format!(
@@ -627,7 +627,7 @@ fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
         }
         let _tmp = protect(tmp);
         for i in 0..show {
-            *REAL(tmp).add(i) = REAL_ELT(x, i as std::os::raw::c_int);
+            set_real_checked(tmp, (i) as R_xlen_t, REAL_ELT(x, i as std::os::raw::c_int));
         }
         let old = crate::mainutils::format::format_get_R_print();
         crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
@@ -742,9 +742,9 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let v = CAR(p);
                     if !v.is_null() && v != R_NilValue() {
                         if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                            str_digits_arg = Some(*INTEGER(v));
+                            str_digits_arg = Some(integer_elt_checked(v, 0));
                         } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                            str_digits_arg = Some(*REAL(v) as i32);
+                            str_digits_arg = Some(real_elt_checked(v, 0) as i32);
                         }
                     }
                     break;
@@ -847,8 +847,8 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let prefix = if t == SEXPTYPE::LANGSXP {
                 let mode_chars = crate::eval::attrib_core::language_implicit_class_chars(x);
-                let mode = std::ffi::CStr::from_ptr(CHAR(mode_chars)).to_string_lossy();
-                if mode.as_ref() == "(" {
+                let mode = charsxp_text(mode_chars).unwrap_or_default();
+                if mode.as_str() == "(" {
                     " language, mode \"(\":".to_string()
                 } else {
                     " language".to_string()
@@ -924,9 +924,9 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         if name == "list.len" {
                             let v = CAR(p);
                             if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                                list_len = (*INTEGER(v) as R_xlen_t).max(0);
+                                list_len = (integer_elt_checked(v, 0) as R_xlen_t).max(0);
                             } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                                list_len = (*REAL(v) as R_xlen_t).max(0);
+                                list_len = (real_elt_checked(v, 0) as R_xlen_t).max(0);
                             }
                         }
                     }
@@ -961,16 +961,13 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 while !p.is_null() && p != R_NilValue() {
                     let tag = TAG(p);
                     if !tag.is_null() && tag != R_NilValue() {
-                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                            crate::sexp::accessors::PRINTNAME(tag),
-                        ))
-                        .to_string_lossy()
-                        .into_owned();
+                        let name = charsxp_text(crate::sexp::accessors::PRINTNAME(tag))
+                            .unwrap_or_default();
                         let v = CAR(p);
                         let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                            *INTEGER(v) as i64
+                            integer_elt_checked(v, 0) as i64
                         } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                            *REAL(v) as i64
+                            real_elt_checked(v, 0) as i64
                         } else {
                             i64::MIN
                         };
@@ -1004,9 +1001,9 @@ pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     );
                     let dispatched =
                         if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
-                            *INTEGER(len_sexp) as i64
+                            integer_elt_checked(len_sexp, 0) as i64
                         } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
-                            *REAL(len_sexp) as i64
+                            real_elt_checked(len_sexp, 0) as i64
                         } else {
                             n as i64
                         };

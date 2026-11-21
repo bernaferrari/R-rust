@@ -85,7 +85,7 @@ pub fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let idx = Rf_allocVector3(SEXPTYPE::INTSXP, indices.len() as R_xlen_t);
                 let _idx = protect(idx);
                 for (dst, &src) in indices.iter().enumerate() {
-                    *INTEGER(idx).add(dst) = (src + 1) as c_int;
+                    set_integer_checked(idx, (dst) as R_xlen_t, (src + 1) as c_int);
                 }
                 let sub_args = Rf_cons(x, Rf_cons(idx, R_NilValue()));
                 let _sa = protect(sub_args);
@@ -131,7 +131,7 @@ pub fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `unsplit(value, f)` inverse of `split`.
 pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let value = CAR(args);
         let f = CAR(CDR(args));
         if value.is_null()
@@ -151,7 +151,7 @@ pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut cursor = vec![0i64; ng];
         for i in 0..n {
             let g = if TYPEOF(f) == SEXPTYPE::INTSXP {
-                (*INTEGER(f).add(i as usize) as i64) - 1
+                (integer_elt_checked(f, (i as usize) as R_xlen_t) as i64) - 1
             } else {
                 elt_real_safe(f, i).round() as i64 - 1
             };
@@ -166,7 +166,7 @@ pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         result
-    }
+    
 }
 
 pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
@@ -182,12 +182,12 @@ pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
 }
 
 pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
-    unsafe {
+    
         if let Some(levels) = split_factor_levels(f) {
             if TYPEOF(f) != SEXPTYPE::INTSXP {
                 return None;
             }
-            let raw = *INTEGER(f).add(index as usize);
+            let raw = integer_elt_checked(f, (index as usize) as R_xlen_t);
             if raw == NA_INTEGER || raw < 1 || raw as usize > levels.len() {
                 return None;
             }
@@ -196,11 +196,11 @@ pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
 
         match TYPEOF(f) {
             t if t == SEXPTYPE::INTSXP => {
-                let value = *INTEGER(f).add(index as usize);
+                let value = integer_elt_checked(f, (index as usize) as R_xlen_t);
                 (value != NA_INTEGER).then(|| value.to_string())
             }
             t if t == SEXPTYPE::LGLSXP => {
-                let value = *LOGICAL(f).add(index as usize);
+                let value = logical_elt_checked(f, (index as usize) as R_xlen_t);
                 match value {
                     TRUE => Some("TRUE".to_string()),
                     FALSE => Some("FALSE".to_string()),
@@ -208,7 +208,7 @@ pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
                 }
             }
             t if t == SEXPTYPE::REALSXP => {
-                let value = *REAL(f).add(index as usize);
+                let value = real_elt_checked(f, (index as usize) as R_xlen_t);
                 if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
                     None
                 } else {
@@ -225,7 +225,7 @@ pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
             }
             _ => Some(elt_to_string(f, index)),
         }
-    }
+    
 }
 
 pub(super) fn split_label_cmp(t: c_int, left: &str, right: &str) -> std::cmp::Ordering {

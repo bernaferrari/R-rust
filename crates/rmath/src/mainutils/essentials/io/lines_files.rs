@@ -331,7 +331,7 @@ pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             let n = LENGTH(value);
             for i in 0..n {
-                if *LOGICAL(value).add(i as usize) == 0 {
+                if logical_elt_checked(value, (i as usize) as R_xlen_t) == 0 {
                     crate::mainutils::errors::errorcall_str(
                         crate::sexp::globals::R_NilValue(),
                         "FALSE is not TRUE",

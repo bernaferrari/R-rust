@@ -103,9 +103,7 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let name = if tag.is_null() || tag == R_NilValue() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             };
             if name == "class" {
                 class_arg = CAR(cell);
@@ -170,9 +168,7 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if TYPEOF(expr) == SEXPTYPE::SYMSXP {
                         let pname = PRINTNAME(expr);
                         if !pname.is_null() {
-                            generic = std::ffi::CStr::from_ptr(CHAR(pname))
-                                .to_string_lossy()
-                                .into_owned();
+                            generic = charsxp_text(pname).unwrap_or_default();
                         }
                     }
                     break;

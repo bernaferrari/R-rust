@@ -199,7 +199,7 @@ pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP
             } else if is_use_names {
                 let value = crate::eval::eval::Rf_eval(CAR(current), rho);
                 if TYPEOF(value) == SEXPTYPE::LGLSXP && XLENGTH(value) == 1 {
-                    use_names = *LOGICAL(value) != FALSE && *LOGICAL(value) != NA_LOGICAL;
+                    use_names = logical_elt_checked(value, 0) != FALSE && logical_elt_checked(value, 0) != NA_LOGICAL;
                 }
             } else {
                 let value = if is_x {
@@ -232,7 +232,7 @@ pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP
 }
 
 pub(super) fn sapply_is_false(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 && *LOGICAL(x) == FALSE }
+     TYPEOF(x) == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 && logical_elt_checked(x, 0) == FALSE 
 }
 
 pub(super) fn sapply_is_array(x: SEXP) -> bool {
@@ -254,7 +254,7 @@ pub(super) fn sapply_is_array(x: SEXP) -> bool {
 /// (or X itself when X is character) onto the result; the template's (or
 /// first result's) names/dimnames become the row names.
 pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let _x_guard = protect(x);
         let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
@@ -431,27 +431,27 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             match common_type {
                 t if t == SEXPTYPE::CPLXSXP => {
                     for j in 0..common_len {
-                        *COMPLEX(ans).add((dst + j) as usize) = *COMPLEX(val).add(j as usize);
+                        set_complex_checked(ans, (dst + j) as R_xlen_t, complex_elt_checked(val, (j as usize) as R_xlen_t));
                     }
                 }
                 t if t == SEXPTYPE::REALSXP => {
                     for j in 0..common_len {
-                        *REAL(ans).add((dst + j) as usize) = *REAL(val).add(j as usize);
+                        set_real_checked(ans, ((dst + j) as usize) as R_xlen_t, real_elt_checked(val, (j as usize) as R_xlen_t));
                     }
                 }
                 t if t == SEXPTYPE::INTSXP => {
                     for j in 0..common_len {
-                        *INTEGER(ans).add((dst + j) as usize) = *INTEGER(val).add(j as usize);
+                        set_integer_checked(ans, ((dst + j) as usize) as R_xlen_t, integer_elt_checked(val, (j as usize) as R_xlen_t));
                     }
                 }
                 t if t == SEXPTYPE::LGLSXP => {
                     for j in 0..common_len {
-                        *LOGICAL(ans).add((dst + j) as usize) = *LOGICAL(val).add(j as usize);
+                        set_logical_checked(ans, ((dst + j) as usize) as R_xlen_t, logical_elt_checked(val, (j as usize) as R_xlen_t));
                     }
                 }
                 t if t == SEXPTYPE::RAWSXP => {
                     for j in 0..common_len {
-                        *RAW(ans).add((dst + j) as usize) = *RAW(val).add(j as usize);
+                        set_raw_checked(ans, (dst + j) as R_xlen_t, raw_elt_checked(val, (j as usize) as R_xlen_t));
                     }
                 }
                 t if t == SEXPTYPE::STRSXP => {
@@ -477,12 +477,12 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _dim_guard = protect(dim);
             if array_value {
                 for j in 0..rnk_v {
-                    *INTEGER(dim).add(j as usize) = *INTEGER(dim_v).add(j as usize);
+                    set_integer_checked(dim, (j as usize) as R_xlen_t, integer_elt_checked(dim_v, (j as usize) as R_xlen_t));
                 }
             } else {
-                *INTEGER(dim) = common_len as c_int;
+                set_integer_checked(dim, 0, common_len as c_int);
             }
-            *INTEGER(dim).add(rnk_v as usize) = n as c_int;
+            set_integer_checked(dim, (rnk_v as usize) as R_xlen_t, n as c_int);
             crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
             if use_names && (!vapply_is_nil(names) || !vapply_is_nil(row_names)) {
@@ -522,7 +522,7 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
         ans
-    }
+    
 }
 
 /// vapply's predicate for FUN.VALUE: C-level isVector (one of R's vector
@@ -568,9 +568,9 @@ pub(super) fn vapply_use_names(args: SEXP, rho: SEXP) -> bool {
                 }
                 let t = TYPEOF(raw);
                 let logical: c_int = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-                    *INTEGER(raw)
+                    integer_elt_checked(raw, 0)
                 } else if t == SEXPTYPE::REALSXP {
-                    let d = *REAL(raw);
+                    let d = real_elt_checked(raw, 0);
                     if ISNAN(d) { NA_LOGICAL } else { d as c_int }
                 } else {
                     return true;

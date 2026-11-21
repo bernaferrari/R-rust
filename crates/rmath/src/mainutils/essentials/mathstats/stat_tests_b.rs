@@ -14,7 +14,7 @@ pub fn do_mcnemar_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !rest.is_null() && rest != R_NilValue() {
             let c = CAR(rest);
             if TYPEOF(c) == SEXPTYPE::LGLSXP && XLENGTH(c) > 0 {
-                correct = *INTEGER(c) != 0;
+                correct = integer_elt_checked(c, 0) != 0;
             }
         }
         let a12 = elt_real_safe(x, 2);
@@ -144,7 +144,7 @@ pub fn do_friedman_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -234,7 +234,7 @@ pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -290,8 +290,8 @@ pub fn do_quade_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_string_names(statistic, &["Quade F".to_string()]);
         let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _pa = protect(parameter);
-        *REAL(parameter) = df1;
-        *REAL(parameter).add(1) = df2;
+        set_real_checked(parameter, 0, df1);
+        set_real_checked(parameter, (1) as R_xlen_t, df2);
         set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
         let _r = protect(result);
@@ -336,9 +336,9 @@ pub fn do_mantelhaen_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         {
             return R_NilValue();
         }
-        let i = *INTEGER(dim) as usize;
-        let j = *INTEGER(dim).add(1) as usize;
-        let k = *INTEGER(dim).add(2) as usize;
+        let i = integer_elt_checked(dim, 0) as usize;
+        let j = integer_elt_checked(dim, (1) as R_xlen_t) as usize;
+        let k = integer_elt_checked(dim, (2) as R_xlen_t) as usize;
         if i != 2 || j != 2 || k < 1 {
             return R_NilValue();
         }
@@ -431,9 +431,7 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -502,13 +500,13 @@ pub fn do_pairwise_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         );
         let _pm = protect(pmat);
         for idx in 0..(mdim * mdim) {
-            *REAL(pmat).add(idx) = NA_REAL;
+            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
         }
         let mut t = 0usize;
         for j in 0..mdim {
             for i in 0..mdim {
                 if i >= j {
-                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
                     t += 1;
                 }
             }
@@ -568,9 +566,7 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -610,13 +606,13 @@ pub fn do_pairwise_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         );
         let _pm = protect(pmat);
         for idx in 0..(mdim * mdim) {
-            *REAL(pmat).add(idx) = NA_REAL;
+            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
         }
         let mut t = 0usize;
         for j in 0..mdim {
             for i in 0..mdim {
                 if i >= j {
-                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
                     t += 1;
                 }
             }
@@ -708,9 +704,7 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -760,13 +754,13 @@ pub fn do_pairwise_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         );
         let _pm = protect(pmat);
         for idx in 0..(mdim * mdim) {
-            *REAL(pmat).add(idx) = NA_REAL;
+            set_real_checked(pmat, (idx) as R_xlen_t, NA_REAL);
         }
         let mut t = 0usize;
         for j in 0..mdim {
             for i in 0..mdim {
                 if i >= j {
-                    *REAL(pmat).add(i + j * mdim) = adj[t];
+                    set_real_checked(pmat, (i + j * mdim) as R_xlen_t, adj[t]);
                     t += 1;
                 }
             }
@@ -1098,7 +1092,7 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -1114,7 +1108,7 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
         let _ld = protect(loadings);
         for i in 0..(p * 2) {
-            *REAL(loadings).add(i) = z[i];
+            set_real_checked(loadings, (i) as R_xlen_t, z[i]);
         }
         let class = Rf_mkString(c"loadings".as_ptr());
         let _cl = protect(class);
@@ -1125,10 +1119,10 @@ pub fn do_varimax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         let rot = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _rt = protect(rot);
-        *REAL(rot) = tt[0][0];
-        *REAL(rot).add(1) = tt[1][0];
-        *REAL(rot).add(2) = tt[0][1];
-        *REAL(rot).add(3) = tt[1][1];
+        set_real_checked(rot, 0, tt[0][0]);
+        set_real_checked(rot, (1) as R_xlen_t, tt[1][0]);
+        set_real_checked(rot, (2) as R_xlen_t, tt[0][1]);
+        set_real_checked(rot, (3) as R_xlen_t, tt[1][1]);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, loadings);
@@ -1162,7 +1156,7 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && XLENGTH(dim) >= 2
         {
-            (*INTEGER(dim) as usize, *INTEGER(dim).add(1) as usize)
+            (integer_elt_checked(dim, 0) as usize, integer_elt_checked(dim, (1) as R_xlen_t) as usize)
         } else {
             return R_NilValue();
         };
@@ -1227,7 +1221,7 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), p as i32, 2);
         let _ld = protect(loadings);
         for i in 0..(p * 2) {
-            *REAL(loadings).add(i) = z[i];
+            set_real_checked(loadings, (i) as R_xlen_t, z[i]);
         }
         let class = Rf_mkString(c"loadings".as_ptr());
         let _cl = protect(class);
@@ -1238,10 +1232,10 @@ pub fn do_promax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         let rot = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _rt = protect(rot);
-        *REAL(rot) = r00;
-        *REAL(rot).add(1) = r10;
-        *REAL(rot).add(2) = r01;
-        *REAL(rot).add(3) = r11;
+        set_real_checked(rot, 0, r00);
+        set_real_checked(rot, (1) as R_xlen_t, r10);
+        set_real_checked(rot, (2) as R_xlen_t, r01);
+        set_real_checked(rot, (3) as R_xlen_t, r11);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, loadings);

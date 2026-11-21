@@ -30,8 +30,8 @@ pub fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
             return Rf_ScalarReal(NA_REAL);
         }
-        let n = *INTEGER(dim_attr) as usize;
-        let m = *INTEGER(dim_attr).add(1) as usize;
+        let n = integer_elt_checked(dim_attr, 0) as usize;
+        let m = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
         if n != m || n == 0 {
             return Rf_ScalarReal(NA_REAL);
         }
@@ -198,9 +198,11 @@ pub fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let v = Rf_allocVector3(ty, n as i64 * n as i64);
             for i in 0..n as usize {
                 if complex {
-                    (*COMPLEX(v).add(i + i * n as usize)).r = 1.0;
+                    let mut elt = complex_elt_checked(v, (i + i * n as usize) as R_xlen_t);
+                    elt.r = 1.0;
+                    set_complex_checked(v, (i + i * n as usize) as R_xlen_t, elt);
                 } else {
-                    *REAL(v).add(i + i * n as usize) = 1.0;
+                    set_real_checked(v, (i + i * n as usize) as R_xlen_t, 1.0);
                 }
             }
             v
@@ -218,8 +220,8 @@ pub fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _bb = protect(bb);
         let out_dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _dims = protect(out_dims);
-        *INTEGER(out_dims) = n;
-        *INTEGER(out_dims).add(1) = nrhs;
+        set_integer_checked(out_dims, 0, n);
+        set_integer_checked(out_dims, (1) as R_xlen_t, nrhs);
         crate::sexp::attrib_core::setAttrib(bb, dim_sym, out_dims);
         let tol = if tol_arg == R_NilValue() {
             Rf_ScalarReal(f64::EPSILON)
@@ -281,8 +283,8 @@ pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _xd = protect(x);
             let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _d = protect(d);
-            *INTEGER(d) = n;
-            *INTEGER(d).add(1) = 1;
+            set_integer_checked(d, 0, n);
+            set_integer_checked(d, (1) as R_xlen_t, 1);
             crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
         }
         let mut pivot = FALSE;
@@ -291,16 +293,14 @@ pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             let val = CAR(cell);
             if named == "pivot" || (named.is_empty() && pos == 0) {
                 if TYPEOF(val) == SEXPTYPE::LGLSXP && XLENGTH(val) > 0 {
-                    pivot = *LOGICAL(val);
+                    pivot = logical_elt_checked(val, 0);
                 }
             }
             if named.is_empty() {
@@ -376,7 +376,7 @@ pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let ordered = Rf_allocVector3(SEXPTYPE::STRSXP, n);
                 let _ord = protect(ordered);
                 for j in 0..n {
-                    let source = *INTEGER(piv).add(j as usize);
+                    let source = integer_elt_checked(piv, (j as usize) as R_xlen_t);
                     if source >= 1 && source as i64 <= n {
                         SET_STRING_ELT(ordered, j, STRING_ELT(cols, (source - 1) as i64));
                     }
@@ -406,8 +406,8 @@ pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _xd = protect(x);
             let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _d = protect(d);
-            *INTEGER(d) = 1;
-            *INTEGER(d).add(1) = 1;
+            set_integer_checked(d, 0, 1);
+            set_integer_checked(d, (1) as R_xlen_t, 1);
             crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
         }
         let size_arg = CADR(args);
@@ -419,7 +419,7 @@ pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && TYPEOF(dim) == SEXPTYPE::INTSXP
                 && XLENGTH(dim) >= 2
             {
-                *INTEGER(dim).add(1)
+                integer_elt_checked(dim, (1) as R_xlen_t)
             } else {
                 1
             };
@@ -539,16 +539,14 @@ pub fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             let v = CAR(cell);
             if name == "exact" || (name.is_empty() && TYPEOF(v) == SEXPTYPE::LGLSXP) {
                 if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
-                    exact = *LOGICAL(v) != 0;
+                    exact = logical_elt_checked(v, 0) != 0;
                 }
             }
             cell = CDR(cell);
@@ -569,8 +567,8 @@ pub fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
             if TYPEOF(dvec) == SEXPTYPE::REALSXP && XLENGTH(dvec) > 0 {
-                let first = *REAL(dvec);
-                let last = *REAL(dvec).add((XLENGTH(dvec) as usize) - 1);
+                let first = real_elt_checked(dvec, 0);
+                let last = real_elt_checked(dvec, XLENGTH(dvec) - 1);
                 return Rf_ScalarReal(if last == 0.0 {
                     f64::INFINITY
                 } else {
@@ -582,7 +580,7 @@ pub fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if rc.is_null() || rc == R_NilValue() || TYPEOF(rc) != SEXPTYPE::REALSXP {
             return R_NilValue();
         }
-        let v = *REAL(rc);
+        let v = real_elt_checked(rc, 0);
         Rf_ScalarReal(if v == 0.0 { f64::INFINITY } else { 1.0 / v })
     }
 }
@@ -630,13 +628,13 @@ fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
         if is_cmplx {
             for j in 0..c {
                 for i in 0..r {
-                    *COMPLEX(thin).add(j * r + i) = *COMPLEX(src).add(j * r + i);
+                    set_complex_checked(thin, (j * r + i) as R_xlen_t, complex_elt_checked(src, (j * r + i) as R_xlen_t));
                 }
             }
         } else {
             for j in 0..c {
                 for i in 0..r {
-                    *REAL(thin).add(j * r + i) = *REAL(src).add(j * r + i);
+                    set_real_checked(thin, (j * r + i) as R_xlen_t, real_elt_checked(src, (j * r + i) as R_xlen_t));
                 }
             }
         }
@@ -656,8 +654,8 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return R_NilValue();
         }
-        let n = *INTEGER(dim) as i32;
-        let p = *INTEGER(dim).add(1) as i32;
+        let n = integer_elt_checked(dim, 0) as i32;
+        let p = integer_elt_checked(dim, (1) as R_xlen_t) as i32;
         if n <= 0 || p <= 0 {
             return R_NilValue();
         }
@@ -669,17 +667,15 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             let val = CAR(cell);
             let iv = if TYPEOF(val) == SEXPTYPE::INTSXP && XLENGTH(val) > 0 {
-                *INTEGER(val)
+                integer_elt_checked(val, 0)
             } else if TYPEOF(val) == SEXPTYPE::REALSXP && XLENGTH(val) > 0 {
-                *REAL(val) as i32
+                real_elt_checked(val, 0) as i32
             } else {
                 -1
             };
@@ -714,10 +710,10 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _vt = protect(vt);
         if !is_cmplx {
             for i in 0..(n as usize * n as usize) {
-                *REAL(u).add(i) = 0.0;
+                set_real_checked(u, (i) as R_xlen_t, 0.0);
             }
             for i in 0..(p as usize * p as usize) {
-                *REAL(vt).add(i) = 0.0;
+                set_real_checked(vt, (i) as R_xlen_t, 0.0);
             }
         }
         let la = if is_cmplx {
@@ -732,8 +728,8 @@ pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // GNU svd(): V = Conj(t(VT)).
             let nelt = XLENGTH(v) as usize;
             for i in 0..nelt {
-                let z = *COMPLEX(v).add(i);
-                *COMPLEX(v).add(i) = Rcomplex { r: z.r, i: -z.i };
+                let z = complex_elt_checked(v, (i) as R_xlen_t);
+                set_complex_checked(v, (i) as R_xlen_t, Rcomplex { r: z.r, i: -z.i });
             }
         }
         // GNU svd() defaults nu=nv=min(n,p).

@@ -45,12 +45,12 @@ pub(crate) fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
 }
 
 pub(crate) fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
-    unsafe {
+    
         let mut counts = vec![0_i32; levels.len()];
         let mut na_count = 0_i32;
 
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
+            let code = integer_elt_checked(x, (i as usize) as R_xlen_t);
             if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
                 na_count += 1;
             } else {
@@ -81,12 +81,12 @@ pub(crate) fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -
         let _result_guard = protect(result);
         let mut names = Vec::with_capacity(pairs.len());
         for (i, (name, count)) in pairs.iter().enumerate() {
-            *INTEGER(result).add(i) = *count;
+            set_integer_checked(result, (i) as R_xlen_t, *count);
             names.push(name.clone());
         }
         set_string_names(result, &names);
         result
-    }
+    
 }
 
 pub fn format_summary_warnings(x: SEXP) -> String {
@@ -108,7 +108,7 @@ pub fn format_summary_warnings(x: SEXP) -> String {
                 && TYPEOF(counts) == SEXPTYPE::INTSXP
                 && i < XLENGTH(counts)
             {
-                *INTEGER(counts).add(i as usize) as i64
+                integer_elt_checked(counts, (i as usize) as R_xlen_t) as i64
             } else {
                 1
             }
@@ -125,9 +125,7 @@ pub fn format_summary_warnings(x: SEXP) -> String {
                 if s.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(s))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(s).unwrap_or_default()
                 }
             } else {
                 String::new()
@@ -199,9 +197,7 @@ fn summary_warnings(x: SEXP) -> SEXP {
                 if s.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(s))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(s).unwrap_or_default()
                 }
             } else {
                 String::new()
@@ -237,7 +233,7 @@ fn summary_warnings(x: SEXP) -> SEXP {
             {
                 SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, i));
             }
-            *INTEGER(out_counts).add(j) = counts[j];
+            set_integer_checked(out_counts, (j) as R_xlen_t, counts[j]);
         }
         crate::sexp::attrib_core::setAttrib(
             out,
@@ -277,7 +273,7 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 if s.is_null() {
                     continue;
                 }
-                let name = std::ffi::CStr::from_ptr(CHAR(s)).to_string_lossy();
+                let name = charsxp_text(s).unwrap_or_default();
                 if name == "warnings" || name == "summary.warnings" {
                     return summary_warnings(x);
                 }
@@ -306,9 +302,9 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let mut na_count = 0_i32;
             for i in 0..n {
                 let v = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(i as usize)
+                    real_elt_checked(x, (i as usize) as R_xlen_t)
                 } else {
-                    let iv = *INTEGER(x).add(i as usize);
+                    let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
                 };
                 if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
@@ -373,10 +369,10 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 values
             };
             for (i, value) in values.iter().enumerate() {
-                *REAL(result).add(i) = *value;
+                set_real_checked(result, (i) as R_xlen_t, *value);
             }
             if na_count > 0 {
-                *REAL(result).add(6) = na_count as f64;
+                set_real_checked(result, (6) as R_xlen_t, na_count as f64);
             }
             return result;
         }
@@ -386,7 +382,7 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let mut true_count = 0_i32;
             let mut na_count = 0_i32;
             for i in 0..n {
-                match *LOGICAL(x).add(i as usize) {
+                match logical_elt_checked(x, (i as usize) as R_xlen_t) {
                     TRUE => true_count += 1,
                     FALSE => false_count += 1,
                     _ => na_count += 1,
@@ -439,7 +435,7 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     na_count += 1;
                     continue;
                 }
-                let text = CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned();
+                let text = charsxp_text(value).unwrap_or_default();
                 if text.is_empty() {
                     blank_count += 1;
                 }
@@ -465,13 +461,13 @@ pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 return result;
             }
             let _result_guard = protect(result);
-            *INTEGER(result) = n as i32;
-            *INTEGER(result).add(1) = unique.len() as i32;
-            *INTEGER(result).add(2) = blank_count;
-            *INTEGER(result).add(3) = min_chars.map(|v| v as i32).unwrap_or(NA_INTEGER);
-            *INTEGER(result).add(4) = max_chars.map(|v| v as i32).unwrap_or(NA_INTEGER);
+            set_integer_checked(result, 0, n as i32);
+            set_integer_checked(result, (1) as R_xlen_t, unique.len() as i32);
+            set_integer_checked(result, (2) as R_xlen_t, blank_count);
+            set_integer_checked(result, (3) as R_xlen_t, min_chars.map(|v| v as i32).unwrap_or(NA_INTEGER));
+            set_integer_checked(result, (4) as R_xlen_t, max_chars.map(|v| v as i32).unwrap_or(NA_INTEGER));
             if na_count > 0 {
-                *INTEGER(result).add(5) = na_count;
+                set_integer_checked(result, (5) as R_xlen_t, na_count);
             }
             return result;
         }

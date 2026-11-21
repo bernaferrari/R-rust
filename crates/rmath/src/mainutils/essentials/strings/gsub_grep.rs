@@ -42,7 +42,7 @@ pub fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn string_arg_is_na(arg: SEXP) -> bool {
-    unsafe {
+    
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             return false;
         }
@@ -50,23 +50,23 @@ fn string_arg_is_na(arg: SEXP) -> bool {
             return STRING_ELT(arg, 0) == crate::sexp::globals::R_NaString();
         }
         if TYPEOF(arg) == SEXPTYPE::LGLSXP {
-            return *LOGICAL(arg) == crate::sexp::ffi::NA_LOGICAL;
+            return logical_elt_checked(arg, 0) == crate::sexp::ffi::NA_LOGICAL;
         }
         false
-    }
+    
 }
 
 fn na_integer_vector(n: R_xlen_t) -> SEXP {
-    unsafe {
+    
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         for i in 0..n {
-            *INTEGER(result).add(i as usize) = NA_INTEGER;
+            set_integer_checked(result, (i as usize) as R_xlen_t, NA_INTEGER);
         }
         result
-    }
+    
 }
 
 /// R's `grep(pattern, x, ..., value = FALSE)` for fixed and ERE matching.

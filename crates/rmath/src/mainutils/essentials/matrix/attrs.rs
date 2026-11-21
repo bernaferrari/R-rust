@@ -544,9 +544,7 @@ pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let name = if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             let clear_if_same = |matches: bool| -> Option<SEXP> {
                 if !matches {
@@ -640,7 +638,7 @@ pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let n = XLENGTH(value);
             let eq = |i: i64, s: &[u8]| {
                 let ch = STRING_ELT(value, i);
-                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == s
+                !ch.is_null() && charsxp_text(ch).unwrap_or_default().as_bytes() == s
             };
             if (n == 1 && eq(0, b"matrix")) || (n == 2 && eq(0, b"matrix") && eq(1, b"array")) {
                 let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
@@ -706,9 +704,7 @@ pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if pname.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(pname))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(pname).unwrap_or_default()
                 }
             } else {
                 String::new()
@@ -740,9 +736,7 @@ pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
                 return R_NilValue();
             }
-            std::ffi::CStr::from_ptr(CHAR(elt))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(elt).unwrap_or_default()
         } else {
             elt_to_string(which, 0)
         };
@@ -753,9 +747,9 @@ pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             false
         } else {
             let v = if TYPEOF(exact_arg) == SEXPTYPE::LGLSXP && XLENGTH(exact_arg) >= 1 {
-                *LOGICAL(exact_arg)
+                logical_elt_checked(exact_arg, 0)
             } else if TYPEOF(exact_arg) == SEXPTYPE::INTSXP && XLENGTH(exact_arg) >= 1 {
-                *INTEGER(exact_arg)
+                integer_elt_checked(exact_arg, 0)
             } else {
                 0
             };
@@ -776,7 +770,7 @@ pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !name_sym.is_null() && name_sym != R_NilValue() {
                 let pname = PRINTNAME(name_sym);
                 if !pname.is_null() {
-                    let name = std::ffi::CStr::from_ptr(CHAR(pname)).to_bytes();
+                    let name = charsxp_text(pname).unwrap_or_default().into_bytes();
                     let q = query.as_bytes();
                     if name.starts_with(q) {
                         if name.len() == q.len() {
@@ -840,9 +834,7 @@ pub fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if pname.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(crate::sexp::accessors::PRINTNAME(tag)).unwrap_or_default()
                 }
             } else {
                 String::new()

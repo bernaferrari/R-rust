@@ -484,8 +484,8 @@ pub(super) fn ensure_s3methods_slot(info: SEXP) {
         }
         let methods = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = 0;
-        *INTEGER(dim).add(1) = 4;
+        set_integer_checked(dim, 0, 0);
+        set_integer_checked(dim, (1) as R_xlen_t, 4);
         crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
         crate::sexp::envir::defineVar(sym, methods, info);
     }
@@ -514,8 +514,8 @@ pub(super) fn record_namespace_s3_metadata(package_env: SEXP, directives: &Names
         let _methods = protect(methods);
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _dim = protect(dim);
-        *INTEGER(dim) = n;
-        *INTEGER(dim).add(1) = 4;
+        set_integer_checked(dim, 0, n);
+        set_integer_checked(dim, (1) as R_xlen_t, 4);
         crate::sexp::attrib_core::setAttrib(methods, crate::sexp::attrib_core::R_DimSymbol(), dim);
         // GNU metadata describes all declarations, including unavailable
         // platform-specific methods. Binding registration skips those later.

@@ -3,7 +3,7 @@
 use super::*;
 
 fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
-    unsafe {
+    
         if TYPEOF(x) == SEXPTYPE::INTSXP {
             return Some(x);
         }
@@ -12,11 +12,11 @@ fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
             let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
             let _o = protect(out);
             for i in 0..n {
-                let v = *REAL(x).add(i as usize);
+                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
                 if v.is_nan() {
-                    *INTEGER(out).add(i as usize) = NA_INTEGER;
+                    set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
                 } else if v == v.trunc() && v >= i32::MIN as f64 && v <= i32::MAX as f64 {
-                    *INTEGER(out).add(i as usize) = v as i32;
+                    set_integer_checked(out, (i as usize) as R_xlen_t, v as i32);
                 } else {
                     return None;
                 }
@@ -30,19 +30,19 @@ fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
             for i in 0..n {
                 let ch = STRING_ELT(x, i);
                 if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                    *INTEGER(out).add(i as usize) = NA_INTEGER;
+                    set_integer_checked(out, (i as usize) as R_xlen_t, NA_INTEGER);
                     continue;
                 }
-                let s = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                let s = charsxp_text(ch).unwrap_or_default();
                 match i32::from_str_radix(s.trim(), base as u32) {
-                    Ok(v) if v >= 0 => *INTEGER(out).add(i as usize) = v,
+                    Ok(v) if v >= 0 => set_integer_checked(out, i as usize as R_xlen_t, v),
                     _ => return None,
                 }
             }
             return Some(out);
         }
         None
-    }
+    
 }
 
 fn set_mode_class(x: SEXP, class: &str) -> SEXP {
@@ -98,7 +98,7 @@ fn format_mode_ints(x: SEXP, hex: bool) -> SEXP {
         };
         let mut texts: Vec<Option<String>> = Vec::with_capacity(n as usize);
         for i in 0..n {
-            let v = *INTEGER(x).add(i as usize);
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
             if v == NA_INTEGER {
                 texts.push(None);
             } else if hex {
@@ -157,7 +157,7 @@ pub(crate) fn as_character_mode(x: SEXP, hex: bool, keep_str: bool) -> SEXP {
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _o = protect(out);
         for i in 0..n {
-            let v = *INTEGER(x).add(i as usize);
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
             let ch = if v == NA_INTEGER {
                 crate::sexp::globals::R_NaString()
             } else {
@@ -487,17 +487,15 @@ pub fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Read element 0 of a string argument with a fallback.
 fn string_elt_or(x: &SEXP, fallback: &str) -> String {
-    unsafe {
+    
         if !x.is_null() && *x != R_NilValue() && TYPEOF(*x) == SEXPTYPE::STRSXP && XLENGTH(*x) > 0 {
             let ch = STRING_ELT(*x, 0);
             if !ch.is_null() {
-                return std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned();
+                return charsxp_text(ch).unwrap_or_default();
             }
         }
         fallback.to_string()
-    }
+    
 }
 
 /// `asInteger` for the internal numeric arguments.
@@ -570,7 +568,7 @@ fn prettynum_group(int_part: &str, mark: &str, interval: usize) -> String {
 }
 
 fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
-    unsafe {
+    
         let mut x = R_NilValue();
         let mut found = false;
         let mut head = R_NilValue();
@@ -579,9 +577,7 @@ fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -601,7 +597,7 @@ fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
             cell = CDR(cell);
         }
         (x, head)
-    }
+    
 }
 
 /// GNU `prettyNum(x, big.mark, decimal.mark)`.
@@ -617,7 +613,7 @@ pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !scan.is_null() && scan != R_NilValue() {
             let tag = TAG(scan);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
                 if name == "drop0trailing" {
                     drop0 = crate::main::coerce::asLogical(CAR(scan)) != 0;
                 }
@@ -637,9 +633,9 @@ pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         for i in 0..n {
             let elt = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                Rf_ScalarInteger(*INTEGER(x).add(i as usize))
+                Rf_ScalarInteger(integer_elt_checked(x, (i as usize) as R_xlen_t))
             } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-                Rf_ScalarReal(*REAL(x).add(i as usize))
+                Rf_ScalarReal(real_elt_checked(x, (i as usize) as R_xlen_t))
             } else if TYPEOF(x) == SEXPTYPE::STRSXP {
                 let one = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
                 SET_STRING_ELT(one, 0, STRING_ELT(x, i));
@@ -773,7 +769,7 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
+                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
                 if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     "NA".to_string()
                 } else if nsmall > 0 {
@@ -782,7 +778,7 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     format!("{}", v)
                 }
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == NA_INTEGER {
                     "NA".to_string()
                 } else {
@@ -819,9 +815,7 @@ fn called_from_format_generic_or_default() -> bool {
                 {
                     let pname = PRINTNAME(CAR(call));
                     if !pname.is_null() {
-                        let name = std::ffi::CStr::from_ptr(CHAR(pname))
-                            .to_string_lossy()
-                            .into_owned();
+                        let name = charsxp_text(pname).unwrap_or_default();
                         if name == "format" || name == "format.default" {
                             return true;
                         }
@@ -1576,11 +1570,11 @@ enum CalendarLabel {
 }
 
 fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
-    unsafe {
+    
         if TYPEOF(x) != SEXPTYPE::REALSXP {
             return None;
         }
-        let value = *REAL(x).add(i as usize);
+        let value = real_elt_checked(x, (i as usize) as R_xlen_t);
         if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !value.is_finite() {
             return None;
         }
@@ -1591,7 +1585,7 @@ fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
         } else {
             None
         }
-    }
+    
 }
 
 fn calendar_label(days: f64, kind: CalendarLabel) -> Option<String> {

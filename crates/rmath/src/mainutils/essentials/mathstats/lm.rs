@@ -38,7 +38,7 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut codes = vec![0i32; n];
         for i in 0..n {
             codes[i] = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(x).add(i)
+                integer_elt_checked(x, (i) as R_xlen_t)
             } else {
                 elt_real_safe(x, i as i64).round() as i32
             };
@@ -74,11 +74,11 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let g = codes[i];
-            *INTEGER(result).add(i) = if g >= 1 && (g as usize) <= nlev {
+            set_integer_checked(result, (i) as R_xlen_t, if g >= 1 && (g as usize) <= nlev {
                 new_code[(g as usize) - 1]
             } else {
                 NA_INTEGER
-            };
+            });
         }
         let new_levels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
         let _nl = protect(new_levels);
@@ -100,7 +100,7 @@ pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let sc = Rf_allocVector3(SEXPTYPE::REALSXP, nlev as i64);
         let _sc = protect(sc);
         for i in 0..nlev {
-            *REAL(sc).add(i) = scores[i];
+            set_real_checked(sc, (i) as R_xlen_t, scores[i]);
         }
         crate::sexp::attrib_core::setAttrib(sc, crate::sexp::attrib_core::R_NamesSymbol(), levels);
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"scores".as_ptr()), sc);
@@ -129,18 +129,16 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             if name == "var.equal" {
                 let v = CAR(cell);
                 if TYPEOF(v) == SEXPTYPE::LGLSXP && XLENGTH(v) > 0 {
-                    var_equal = *LOGICAL(v) == TRUE;
+                    var_equal = logical_elt_checked(v, 0) == TRUE;
                 } else if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                    var_equal = *INTEGER(v) != 0;
+                    var_equal = integer_elt_checked(v, 0) != 0;
                 }
             }
             cell = CDR(cell);
@@ -233,8 +231,8 @@ pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_string_names(statistic, &["F".to_string()]);
         let parameter = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _pa = protect(parameter);
-        *REAL(parameter) = df1;
-        *REAL(parameter).add(1) = df2;
+        set_real_checked(parameter, 0, df1);
+        set_real_checked(parameter, (1) as R_xlen_t, df2);
         set_string_names(parameter, &["num df".to_string(), "denom df".to_string()]);
         let method_s = if var_equal {
             Rf_mkString(c"One-way analysis of means".as_ptr())
@@ -298,16 +296,13 @@ fn loglik_nobs(x: SEXP) -> f64 {
 
 /// GNU `AIC(object, k=2)` for a `logLik`.
 pub fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let x = CAR(args);
         let mut k = 2.0;
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -323,7 +318,6 @@ pub fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
         Rf_ScalarReal(-2.0 * loglik_numeric(x) + k * loglik_df(x))
-    }
 }
 
 /// GNU `BIC(object)` for a `logLik`.
@@ -339,7 +333,6 @@ pub fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn list_named_elt(list: SEXP, name: &str) -> SEXP {
-    unsafe {
         if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
@@ -349,20 +342,15 @@ pub(super) fn list_named_elt(list: SEXP, name: &str) -> SEXP {
             return R_NilValue();
         }
         for i in 0..XLENGTH(names) {
-            let s = STRING_ELT(names, i);
+            let s = string_elt_checked(names, i);
             if s.is_null() {
                 continue;
             }
-            let raw = CHAR(s);
-            if raw.is_null() {
-                continue;
-            }
-            if std::ffi::CStr::from_ptr(raw).to_string_lossy() == name {
+            if charsxp_text(s).as_deref() == Some(name) {
                 return VECTOR_ELT(list, i);
             }
         }
         R_NilValue()
-    }
 }
 
 /// GNU `sigma(object)` for a list with deviance, nobs, coefficients.
@@ -390,16 +378,13 @@ pub fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `extractAIC(fit, k)` glm-style: `c(edf, aic + (k-2)*edf)`.
 pub fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let fit = CAR(args);
         let mut k = 2.0;
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -422,10 +407,9 @@ pub fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let a = elt_real_safe(aic, 0);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
         let _r = protect(result);
-        *REAL(result) = edf;
-        *REAL(result).add(1) = a + (k - 2.0) * edf;
+        set_real_checked(result, 0, edf);
+        set_real_checked(result, (1) as R_xlen_t, a + (k - 2.0) * edf);
         result
-    }
 }
 
 /// GNU `case.names(object)` — `names(residuals)` or `1:n`.
@@ -479,9 +463,7 @@ pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -512,8 +494,8 @@ pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let est = elt_real_safe(cf, i as i64);
             let var = elt_real_safe(vcov, (i + i * p) as i64);
             let se = var.max(0.0).sqrt();
-            *REAL(result).add(i) = est + se * zlo;
-            *REAL(result).add(i + p) = est + se * zhi;
+            set_real_checked(result, (i) as R_xlen_t, est + se * zlo);
+            set_real_checked(result, (i + p) as R_xlen_t, est + se * zhi);
         }
         let rn = crate::sexp::attrib_core::getAttrib(cf, crate::sexp::attrib_core::R_NamesSymbol());
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
@@ -572,9 +554,7 @@ pub fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(names) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(names) {
                 nms.push(
-                    std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)))
-                        .to_string_lossy()
-                        .into_owned(),
+                    charsxp_text(STRING_ELT(names, i)).unwrap_or_default(),
                 );
             }
         }
@@ -624,10 +604,10 @@ pub fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let tcrit = crate::dist::t_dist::qt_inner(0.025, df, true, false);
         let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _r = protect(result);
-        *REAL(result) = a + se_a * tcrit;
-        *REAL(result).add(1) = b + se_b * tcrit;
-        *REAL(result).add(2) = a - se_a * tcrit;
-        *REAL(result).add(3) = b - se_b * tcrit;
+        set_real_checked(result, 0, a + se_a * tcrit);
+        set_real_checked(result, (1) as R_xlen_t, b + se_b * tcrit);
+        set_real_checked(result, (2) as R_xlen_t, a - se_a * tcrit);
+        set_real_checked(result, (3) as R_xlen_t, b - se_b * tcrit);
         result
     }
 }
@@ -658,10 +638,10 @@ pub fn do_vcov_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let vab = -mx * vbb;
         let result = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 2, 2);
         let _r = protect(result);
-        *REAL(result) = vaa;
-        *REAL(result).add(1) = vab;
-        *REAL(result).add(2) = vab;
-        *REAL(result).add(3) = vbb;
+        set_real_checked(result, 0, vaa);
+        set_real_checked(result, (1) as R_xlen_t, vab);
+        set_real_checked(result, (2) as R_xlen_t, vab);
+        set_real_checked(result, (3) as R_xlen_t, vbb);
         result
     }
 }
@@ -701,9 +681,9 @@ pub fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(lev) == SEXPTYPE::STRSXP && nlev >= 2 {
                 let fac = Rf_allocVector3(SEXPTYPE::REALSXP, nlev);
                 let _f = protect(fac);
-                *REAL(fac) = 0.0;
+                set_real_checked(fac, 0, 0.0);
                 for i in 1..nlev as usize {
-                    *REAL(fac).add(i) = elt_real_safe(cf, i as i64);
+                    set_real_checked(fac, (i) as R_xlen_t, elt_real_safe(cf, i as i64));
                 }
                 crate::sexp::attrib_core::setAttrib(
                     fac,
@@ -756,7 +736,6 @@ pub fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `hat(x)` leverages for intercept + x.
 pub fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -780,10 +759,9 @@ pub fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 invn
             };
-            *REAL(result).add(i) = h;
+            set_real_checked(result, (i) as R_xlen_t, h);
         }
         result
-    }
 }
 
 /// GNU `hatvalues(model)` — extract `$hat` or compute `hat(residuals)`.
@@ -836,7 +814,7 @@ pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             && TYPEOF(db_dim) == SEXPTYPE::INTSXP
             && XLENGTH(db_dim) >= 2
         {
-            *INTEGER(db_dim).add(1) as usize
+            integer_elt_checked(db_dim, (1) as R_xlen_t) as usize
         } else if db != R_NilValue() {
             1
         } else {
@@ -851,18 +829,18 @@ pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let _m = protect(mat);
         for j in 0..p {
             for i in 0..n {
-                *REAL(mat).add(i + j * n) = if db != R_NilValue() {
-                    *REAL(db).add(i + j * n)
+                set_real_checked(mat, (i + j * n) as R_xlen_t, if db != R_NilValue() {
+                    real_elt_checked(db, (i + j * n) as R_xlen_t)
                 } else {
                     f64::NAN
-                };
+                });
             }
         }
         for i in 0..n {
-            *REAL(mat).add(i + p * n) = elt_real_safe(dff, i as i64);
-            *REAL(mat).add(i + (p + 1) * n) = elt_real_safe(cr, i as i64);
-            *REAL(mat).add(i + (p + 2) * n) = elt_real_safe(ck, i as i64);
-            *REAL(mat).add(i + (p + 3) * n) = elt_real_safe(hat, i as i64);
+            set_real_checked(mat, (i + p * n) as R_xlen_t, elt_real_safe(dff, i as i64));
+            set_real_checked(mat, (i + (p + 1) * n) as R_xlen_t, elt_real_safe(cr, i as i64));
+            set_real_checked(mat, (i + (p + 2) * n) as R_xlen_t, elt_real_safe(ck, i as i64));
+            set_real_checked(mat, (i + (p + 3) * n) as R_xlen_t, elt_real_safe(hat, i as i64));
         }
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, ncol as i64);
         let _cn = protect(cn);
@@ -898,7 +876,6 @@ pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
 /// GNU `effects(lm)` — first two QR effects for intercept + `1:n`.
 pub fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
         let resid = list_named_elt(obj, "residuals");
@@ -935,12 +912,11 @@ pub fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _r = protect(result);
         for i in 0..n {
-            *REAL(result).add(i) = 0.0;
+            set_real_checked(result, (i) as R_xlen_t, 0.0);
         }
-        *REAL(result) = -ysum / nf.sqrt();
-        *REAL(result).add(1) = if sxxc > 0.0 { sxy / sxxc.sqrt() } else { 0.0 };
+        set_real_checked(result, 0, -ysum / nf.sqrt());
+        set_real_checked(result, (1) as R_xlen_t, if sxxc > 0.0 { sxy / sxxc.sqrt() } else { 0.0 });
         result
-    }
 }
 
 /// GNU `numericDeriv(expr, theta)` — one-parameter forward difference.
@@ -952,13 +928,9 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let name = if TYPEOF(theta) == SEXPTYPE::STRSXP && XLENGTH(theta) >= 1 {
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(theta, 0)))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(STRING_ELT(theta, 0)).unwrap_or_default()
         } else if TYPEOF(theta) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(theta)))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(PRINTNAME(theta)).unwrap_or_default()
         } else {
             return R_NilValue();
         };
@@ -977,7 +949,7 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let g = (elt_real_safe(val2, 0) - elt_real_safe(val, 0)) / eps;
         let grad = crate::mainutils::array::allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 1, 1);
         let _g = protect(grad);
-        *REAL(grad) = g;
+        set_real_checked(grad, 0, g);
         crate::sexp::attrib_core::setAttrib(
             val,
             crate::sexp::symbol::Rf_install(c"gradient".as_ptr()),
@@ -989,7 +961,6 @@ pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
 pub fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
         let hat = list_named_elt(obj, "hat");
@@ -1005,19 +976,17 @@ pub fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let e = elt_real_safe(resid, i);
             let h = elt_real_safe(hat, i);
             let den = s * (1.0 - h).max(0.0).sqrt();
-            *REAL(result).add(i as usize) = if den > 0.0 && den.is_finite() {
+            set_real_checked(result, (i as usize) as R_xlen_t, if den > 0.0 && den.is_finite() {
                 e / den
             } else {
                 f64::NAN
-            };
+            });
         }
         result
-    }
 }
 
 /// GNU `cooks.distance` as `((e/((1-h)*sd))^2 * h) / p`.
 pub fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
         let hat = list_named_elt(obj, "hat");
@@ -1045,15 +1014,13 @@ pub fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 f64::NAN
             };
-            *REAL(result).add(i as usize) = d;
+            set_real_checked(result, (i as usize) as R_xlen_t, d);
         }
         result
-    }
 }
 
 /// GNU `dffits` as `e * sqrt(h) / (sigma * (1-h))`.
 pub fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
         let hat = list_named_elt(obj, "hat");
@@ -1073,19 +1040,17 @@ pub fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 elt_real_safe(sigma, 0)
             };
             let den = s * (1.0 - h);
-            *REAL(result).add(i as usize) = if den != 0.0 && den.is_finite() && h >= 0.0 {
+            set_real_checked(result, (i as usize) as R_xlen_t, if den != 0.0 && den.is_finite() && h >= 0.0 {
                 e * h.sqrt() / den
             } else {
                 f64::NAN
-            };
+            });
         }
         result
-    }
 }
 
 /// GNU `rstudent` as `e / (sigma_i * sqrt(1-hat))`.
 pub fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
         let hat = list_named_elt(obj, "hat");
@@ -1105,14 +1070,13 @@ pub fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 elt_real_safe(sigma, 0)
             };
             let den = s * (1.0 - h).max(0.0).sqrt();
-            *REAL(result).add(i as usize) = if den > 0.0 && den.is_finite() {
+            set_real_checked(result, (i as usize) as R_xlen_t, if den > 0.0 && den.is_finite() {
                 e / den
             } else {
                 f64::NAN
-            };
+            });
         }
         result
-    }
 }
 
 fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {
@@ -1183,9 +1147,9 @@ fn dfbetas_from_design(
         let mut xtx = vec![0.0; p * p];
         for i in 0..n {
             for a in 0..p {
-                let xa = *REAL(xmat).add(i + a * n);
+                let xa = real_elt_checked(xmat, (i + a * n) as R_xlen_t);
                 for b in 0..p {
-                    xtx[a * p + b] += xa * *REAL(xmat).add(i + b * n);
+                    xtx[a * p + b] += xa * real_elt_checked(xmat, (i + b * n) as R_xlen_t);
                 }
             }
         }
@@ -1216,15 +1180,15 @@ fn dfbetas_from_design(
             for j in 0..p {
                 let mut vj = 0.0;
                 for k in 0..p {
-                    vj += inv[j * p + k] * *REAL(xmat).add(i + k * n);
+                    vj += inv[j * p + k] * real_elt_checked(xmat, (i + k * n) as R_xlen_t);
                 }
                 let db = if den != 0.0 { vj * e / den } else { f64::NAN };
                 let cjj = inv[j * p + j];
-                *REAL(result).add(i + j * n) = if si > 0.0 && cjj > 0.0 {
+                set_real_checked(result, (i + j * n) as R_xlen_t, if si > 0.0 && cjj > 0.0 {
                     db / (si * cjj.sqrt())
                 } else {
                     f64::NAN
-                };
+                });
             }
         }
         Some(result)
@@ -1264,8 +1228,8 @@ pub fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 && TYPEOF(dim) == SEXPTYPE::INTSXP
                 && XLENGTH(dim) >= 2
             {
-                let n = *INTEGER(dim) as usize;
-                let p = *INTEGER(dim).add(1) as usize;
+                let n = integer_elt_checked(dim, 0) as usize;
+                let p = integer_elt_checked(dim, (1) as R_xlen_t) as usize;
                 if n >= 3 && p >= 2 && n == XLENGTH(resid) as usize {
                     if let Some(out) = dfbetas_from_design(xmat, n, p, resid, hat, sigma, dfres) {
                         return out;
@@ -1330,16 +1294,16 @@ pub fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 f64::NAN
             };
             let si = s2i.sqrt();
-            *REAL(result).add(i) = if si > 0.0 && c00 > 0.0 {
+            set_real_checked(result, (i) as R_xlen_t, if si > 0.0 && c00 > 0.0 {
                 db0 / (si * c00.sqrt())
             } else {
                 f64::NAN
-            };
-            *REAL(result).add(n + i) = if si > 0.0 && c11 > 0.0 {
+            });
+            set_real_checked(result, (n + i) as R_xlen_t, if si > 0.0 && c11 > 0.0 {
                 db1 / (si * c11.sqrt())
             } else {
                 f64::NAN
-            };
+            });
         }
         result
     }
@@ -1404,8 +1368,8 @@ pub fn do_dfbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 f64::NAN
             };
-            *REAL(result).add(i) = if db0.abs() < 1e-12 { 0.0 } else { db0 };
-            *REAL(result).add(n + i) = if db1.abs() < 1e-12 { 0.0 } else { db1 };
+            set_real_checked(result, (i) as R_xlen_t, if db0.abs() < 1e-12 { 0.0 } else { db0 });
+            set_real_checked(result, (n + i) as R_xlen_t, if db1.abs() < 1e-12 { 0.0 } else { db1 });
         }
         result
     }

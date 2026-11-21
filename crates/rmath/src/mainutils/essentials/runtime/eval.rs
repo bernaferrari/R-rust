@@ -1112,15 +1112,15 @@ fn d_symbol_name(sym: SEXP) -> String {
 }
 
 fn d_numeric(x: SEXP) -> Option<f64> {
-    unsafe {
+    
         if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
-            Some(*REAL(x))
+            Some(real_elt_checked(x, 0))
         } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) == 1 {
-            Some(*INTEGER(x) as f64)
+            Some(integer_elt_checked(x, 0) as f64)
         } else {
             None
         }
-    }
+    
 }
 
 fn d_diff(expr: SEXP, var: &str) -> SEXP {

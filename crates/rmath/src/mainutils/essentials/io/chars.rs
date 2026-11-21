@@ -133,7 +133,7 @@ pub fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn connection_index(con: SEXP) -> c_int {
-    unsafe {
+    
         if con.is_null()
             || con == R_NilValue()
             || TYPEOF(con) != SEXPTYPE::INTSXP
@@ -141,6 +141,6 @@ pub(crate) fn connection_index(con: SEXP) -> c_int {
         {
             base_error("invalid connection");
         }
-        *INTEGER(con)
-    }
+        integer_elt_checked(con, 0)
+    
 }

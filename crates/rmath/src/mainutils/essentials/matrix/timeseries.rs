@@ -243,9 +243,9 @@ pub fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _tsp_guard = protect(tsp);
-        *REAL(tsp) = start;
-        *REAL(tsp).add(1) = end;
-        *REAL(tsp).add(2) = frequency;
+        set_real_checked(tsp, 0, start);
+        set_real_checked(tsp, (1) as R_xlen_t, end);
+        set_real_checked(tsp, (2) as R_xlen_t, frequency);
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
 
         let class_arg = supplied_arg(args, "class", 6);
@@ -266,18 +266,18 @@ pub fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn series_tsp(x: SEXP) -> (f64, f64, f64) {
-    unsafe {
+    
         let tsp = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol());
         if !tsp.is_null()
             && tsp != R_NilValue()
             && TYPEOF(tsp) == SEXPTYPE::REALSXP
             && XLENGTH(tsp) >= 3
         {
-            return (*REAL(tsp), *REAL(tsp).add(1), *REAL(tsp).add(2));
+            return (real_elt_checked(tsp, 0), real_elt_checked(tsp, (1) as R_xlen_t), real_elt_checked(tsp, (2) as R_xlen_t));
         }
         let n = XLENGTH(x) as f64;
         (1.0, n.max(1.0), 1.0)
-    }
+    
 }
 
 fn cbind_ts(args: SEXP, union: bool) -> SEXP {
@@ -321,31 +321,31 @@ fn cbind_ts(args: SEXP, union: bool) -> SEXP {
         let off_b = ((sb - start) * freq).round() as isize;
         for i in 0..n {
             let ia = i as isize - off_a;
-            *REAL(result).add(i) = if ia >= 0 && (ia as usize) < na {
+            set_real_checked(result, (i) as R_xlen_t, if ia >= 0 && (ia as usize) < na {
                 if TYPEOF(a) == SEXPTYPE::REALSXP {
-                    *REAL(a).add(ia as usize)
+                    real_elt_checked(a, (ia as usize) as R_xlen_t)
                 } else {
-                    *INTEGER(a).add(ia as usize) as f64
+                    integer_elt_checked(a, (ia as usize) as R_xlen_t) as f64
                 }
             } else {
                 NA_REAL
-            };
+            });
             let ib = i as isize - off_b;
-            *REAL(result).add(n + i) = if ib >= 0 && (ib as usize) < nb {
+            set_real_checked(result, (n + i) as R_xlen_t, if ib >= 0 && (ib as usize) < nb {
                 if TYPEOF(b) == SEXPTYPE::REALSXP {
-                    *REAL(b).add(ib as usize)
+                    real_elt_checked(b, (ib as usize) as R_xlen_t)
                 } else {
-                    *INTEGER(b).add(ib as usize) as f64
+                    integer_elt_checked(b, (ib as usize) as R_xlen_t) as f64
                 }
             } else {
                 NA_REAL
-            };
+            });
         }
         let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _t = protect(tsp);
-        *REAL(tsp) = start;
-        *REAL(tsp).add(1) = end;
-        *REAL(tsp).add(2) = freq;
+        set_real_checked(tsp, 0, start);
+        set_real_checked(tsp, (1) as R_xlen_t, end);
+        set_real_checked(tsp, (2) as R_xlen_t, freq);
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _c = protect(class);

@@ -139,10 +139,10 @@ pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
         if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
             return None;
         }
-        let first = *INTEGER(sr) as i64;
-        let first_col = *INTEGER(sr).add(1) as i64;
-        let last = *INTEGER(sr).add(2) as i64;
-        let last_col = *INTEGER(sr).add(3) as i64;
+        let first = integer_elt_checked(sr, 0) as i64;
+        let first_col = integer_elt_checked(sr, (1) as R_xlen_t) as i64;
+        let last = integer_elt_checked(sr, (2) as R_xlen_t) as i64;
+        let last_col = integer_elt_checked(sr, (3) as R_xlen_t) as i64;
         if first < 1 || last < first || last > XLENGTH(lines) {
             return None;
         }

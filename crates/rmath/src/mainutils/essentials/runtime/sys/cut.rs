@@ -81,9 +81,7 @@ pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(b) == SEXPTYPE::STRSXP && XLENGTH(b) > 0 {
                 let ch = STRING_ELT(b, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
             }
         }
@@ -166,7 +164,7 @@ pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 c
             };
-            *INTEGER(result).add(i) = code;
+            set_integer_checked(result, (i) as R_xlen_t, code);
         }
         let levels_vec = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
         let _l = protect(levels_vec);
@@ -221,7 +219,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             while !cell.is_null() && cell != R_NilValue() {
                 let tag = TAG(cell);
                 if !tag.is_null() && tag != R_NilValue() {
-                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                    let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
                     if name == "right" {
                         right = crate::mainutils::coerce::asLogical(CAR(cell)) == 1;
                     }
@@ -258,10 +256,10 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 for i in 0..n {
                     if *codes.add(i as usize) == (lev as i32) + 1 {
                         let secs = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                            let v = *INTEGER(x).add(i as usize);
+                            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                             if v == NA_INTEGER { NA_REAL } else { v as f64 }
                         } else {
-                            *REAL(x).add(i as usize)
+                            real_elt_checked(x, (i as usize) as R_xlen_t)
                         };
                         let day = (secs / 86_400.0).floor();
                         label = crate::mainutils::essentials::shared::date_days_to_iso(day)
@@ -287,9 +285,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let text = if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             let mut parts = text.split_whitespace();
             let first = parts.next().unwrap_or("");
@@ -312,10 +308,10 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let mut secs = Vec::with_capacity(n as usize);
                 for i in 0..n {
                     secs.push(if TYPEOF(x) == SEXPTYPE::INTSXP {
-                        let v = *INTEGER(x).add(i as usize);
+                        let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                         if v == NA_INTEGER { NA_REAL } else { v as f64 }
                     } else {
-                        *REAL(x).add(i as usize)
+                        real_elt_checked(x, (i as usize) as R_xlen_t)
                     });
                 }
                 let min = secs
@@ -340,7 +336,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         }
                         c
                     };
-                    *INTEGER(result).add(i) = code;
+                    set_integer_checked(result, (i) as R_xlen_t, code);
                 }
                 let labels = Rf_allocVector3(SEXPTYPE::STRSXP, nlev as i64);
                 for k in 0..nlev {
@@ -369,11 +365,11 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _d = protect(days);
         for i in 0..n {
             let secs = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else {
                 0.0
             };
-            *REAL(days).add(i as usize) = (secs / 86_400.0).floor();
+            set_real_checked(days, (i as usize) as R_xlen_t, (secs / 86_400.0).floor());
         }
         set_single_class(days, "Date");
         do_cut_Date(call, op, Rf_cons(days, CDR(args)), rho)
@@ -381,16 +377,14 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn date_units_arg(args: SEXP) -> String {
-    unsafe {
+    
         let mut units = "days".to_string();
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -400,29 +394,27 @@ pub(crate) fn date_units_arg(args: SEXP) -> String {
             {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
                 break;
             }
             cell = CDR(cell);
         }
         units
-    }
+    
 }
 
 pub(crate) fn date_days_elt(x: SEXP, i: i64) -> f64 {
-    unsafe {
+    
         if TYPEOF(x) == SEXPTYPE::REALSXP {
-            *REAL(x).add(i as usize)
+            real_elt_checked(x, (i as usize) as R_xlen_t)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-            let v = *INTEGER(x).add(i as usize);
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
             if v == NA_INTEGER { NA_REAL } else { v as f64 }
         } else {
             NA_REAL
         }
-    }
+    
 }
 
 fn date_from_ymd(year: i32, month: i32, day: i32) -> f64 {

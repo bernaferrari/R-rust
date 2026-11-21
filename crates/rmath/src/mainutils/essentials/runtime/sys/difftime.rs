@@ -23,7 +23,7 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && TYPEOF(origin) == SEXPTYPE::REALSXP
                 && XLENGTH(origin) > 0
             {
-                origin_val = *REAL(origin);
+                origin_val = real_elt_checked(origin, 0);
             }
         }
         let n = XLENGTH(x);
@@ -31,22 +31,22 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+                real_elt_checked(x, (i as usize) as R_xlen_t)
             } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                let iv = *INTEGER(x).add(i as usize);
+                let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
             };
-            *REAL(result).add(i as usize) = if posix {
+            set_real_checked(result, (i as usize) as R_xlen_t, if posix {
                 (v - origin_val) / 86_400.0
             } else {
                 v - origin_val
-            };
+            });
         }
         let origin = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
         let _o = protect(origin);
-        *REAL(origin) = origin_val;
+        set_real_checked(origin, 0, origin_val);
         if posix {
             set_posixct_class(origin, "GMT");
             set_single_class(result, "difftime");
@@ -68,14 +68,14 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn difftime_seconds(x: SEXP) -> f64 {
-    unsafe {
+    
         if x.is_null() || x == R_NilValue() {
             return f64::NAN;
         }
         let v = if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > 0 {
-            *REAL(x)
+            real_elt_checked(x, 0)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > 0 {
-            let iv = *INTEGER(x);
+            let iv = integer_elt_checked(x, 0);
             if iv == NA_INTEGER {
                 return f64::NAN;
             }
@@ -88,18 +88,18 @@ fn difftime_seconds(x: SEXP) -> f64 {
         } else {
             v
         }
-    }
+    
 }
 
 fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
-    unsafe {
+    
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
             return f64::NAN;
         }
         let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-            *REAL(x).add(i as usize)
+            real_elt_checked(x, (i as usize) as R_xlen_t)
         } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-            let iv = *INTEGER(x).add(i as usize);
+            let iv = integer_elt_checked(x, (i as usize) as R_xlen_t);
             if iv == NA_INTEGER {
                 return f64::NAN;
             }
@@ -112,7 +112,7 @@ fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
         } else {
             v
         }
-    }
+    
 }
 
 /// GNU `difftime(time1, time2, units="auto")`.
@@ -126,18 +126,14 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
             }
             cell = CDR(cell);
@@ -168,7 +164,7 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     None => z.abs(),
                 });
             }
-            *REAL(result).add(i as usize) = z;
+            set_real_checked(result, (i as usize) as R_xlen_t, z);
         }
         let units = if units == "auto" {
             match min_abs {
@@ -199,7 +195,7 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if div != 1.0 {
             for i in 0..n {
-                *REAL(result).add(i as usize) /= div;
+                set_real_checked(result, (i as usize) as R_xlen_t, real_elt_checked(result, (i as usize) as R_xlen_t) / div);
             }
         }
 
@@ -234,9 +230,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let text = if ch.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(ch).unwrap_or_default()
                 };
                 let parts: Vec<f64> = text
                     .split(':')
@@ -248,7 +242,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     [s] => *s,
                     _ => NA_REAL,
                 };
-                *REAL(result).add(i as usize) = secs;
+                set_real_checked(result, (i as usize) as R_xlen_t, secs);
             }
             // GNU as.difftime(<character>) routes through difftime(...,
             // units = "auto"): the unit is chosen from the SMALLEST finite
@@ -256,7 +250,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // in mins, not secs.
             let mut min_abs: Option<f64> = None;
             for i in 0..n as usize {
-                let z = *REAL(result).add(i);
+                let z = real_elt_checked(result, (i) as R_xlen_t);
                 if z.is_finite() {
                     min_abs = Some(match min_abs {
                         Some(current) => current.min(z.abs()),
@@ -284,7 +278,7 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     _ => 1.0,
                 };
                 for i in 0..n as usize {
-                    *REAL(result).add(i) /= div;
+                    set_real_checked(result, (i) as R_xlen_t, real_elt_checked(result, (i) as R_xlen_t) / div);
                 }
             }
             let u = Rf_mkString(std::ffi::CString::new(units).unwrap_or_default().as_ptr());
@@ -307,18 +301,14 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
             if named == "units" && TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
                 let ch = STRING_ELT(value, 0);
                 if !ch.is_null() {
-                    units = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    units = charsxp_text(ch).unwrap_or_default();
                 }
             }
             cell = CDR(cell);
@@ -334,14 +324,14 @@ pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _r = protect(result);
         for i in 0..n {
             let v = if TYPEOF(tim) == SEXPTYPE::REALSXP {
-                *REAL(tim).add(i as usize)
+                real_elt_checked(tim, (i as usize) as R_xlen_t)
             } else if TYPEOF(tim) == SEXPTYPE::INTSXP {
-                let iv = *INTEGER(tim).add(i as usize);
+                let iv = integer_elt_checked(tim, (i as usize) as R_xlen_t);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {
                 NA_REAL
             };
-            *REAL(result).add(i as usize) = v;
+            set_real_checked(result, (i as usize) as R_xlen_t, v);
         }
         let names =
             crate::sexp::attrib_core::getAttrib(tim, crate::sexp::attrib_core::R_NamesSymbol());

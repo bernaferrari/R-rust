@@ -17,9 +17,7 @@ pub fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if TYPEOF(s) == SEXPTYPE::STRSXP && XLENGTH(s) > 0 {
                 let ch = STRING_ELT(s, 0);
                 if !ch.is_null() {
-                    sep = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    sep = charsxp_text(ch).unwrap_or_default();
                 }
             }
         }
@@ -36,9 +34,7 @@ pub fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let base = if ch.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             seen.insert(base.clone());
             bases.push(base);
@@ -155,9 +151,7 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tag = TAG(cell);
             let named = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -165,11 +159,11 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && value != R_NilValue()
                 && ((TYPEOF(value) == SEXPTYPE::LGLSXP
                     && XLENGTH(value) > 0
-                    && *LOGICAL(value) == TRUE)
+                    && logical_elt_checked(value, 0) == TRUE)
                     || (TYPEOF(value) == SEXPTYPE::INTSXP
                         && XLENGTH(value) > 0
-                        && *INTEGER(value) != 0
-                        && *INTEGER(value) != NA_INTEGER));
+                        && integer_elt_checked(value, 0) != 0
+                        && integer_elt_checked(value, 0) != NA_INTEGER));
             if named == "unique" || (named.is_empty() && positional == 0) {
                 unique = is_true;
             } else if named == "allow_" || (named.is_empty() && positional == 1) {
@@ -193,9 +187,7 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else if is_na {
                 "NA".to_string()
             } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(ch).unwrap_or_default()
             };
             originals.push(raw.clone());
             from_na.push(is_na);
@@ -258,9 +250,7 @@ pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let _uq = protect(uniq);
             for (j, &i) in order.iter().enumerate() {
                 let ch = STRING_ELT(uniq, j as i64);
-                results[i] = std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned();
+                results[i] = charsxp_text(ch).unwrap_or_default();
             }
         }
         for (i, s) in results.iter().enumerate() {

@@ -23,7 +23,7 @@ pub fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                let name = charsxp_text(PRINTNAME(tag)).unwrap_or_default();
                 name == "domain" || name == "trim"
             } else {
                 false
@@ -50,9 +50,9 @@ pub fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_s = CAR(args);
         let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP && XLENGTH(n_s) > 0 {
-            *INTEGER(n_s)
+            integer_elt_checked(n_s, 0)
         } else if TYPEOF(n_s) == SEXPTYPE::REALSXP && XLENGTH(n_s) > 0 {
-            *REAL(n_s) as i32
+            real_elt_checked(n_s, 0) as i32
         } else {
             0
         };
@@ -105,9 +105,7 @@ pub fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let dname = if dch.is_null() {
             String::new()
         } else {
-            std::ffi::CStr::from_ptr(CHAR(dch))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(dch).unwrap_or_default()
         };
         if dirname.is_null() || dirname == R_NilValue() {
             let path = bindtextdomain_map()
@@ -128,9 +126,7 @@ pub fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let path = if pch.is_null() {
             String::new()
         } else {
-            std::ffi::CStr::from_ptr(CHAR(pch))
-                .to_string_lossy()
-                .into_owned()
+            charsxp_text(pch).unwrap_or_default()
         };
         if let Ok(mut map) = bindtextdomain_map().lock() {
             map.insert(dname, path.clone());

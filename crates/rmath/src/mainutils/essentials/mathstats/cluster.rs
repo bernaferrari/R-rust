@@ -43,9 +43,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -54,9 +52,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
                     let ch = STRING_ELT(val, 0);
                     if !ch.is_null() {
-                        method = std::ffi::CStr::from_ptr(CHAR(ch))
-                            .to_string_lossy()
-                            .into_owned();
+                        method = charsxp_text(ch).unwrap_or_default();
                     }
                 }
             } else if name == "members" || (name.is_empty() && pos == 1) {
@@ -86,7 +82,7 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(size_attr) == SEXPTYPE::INTSXP
             && XLENGTH(size_attr) > 0
         {
-            *INTEGER(size_attr) as i32
+            integer_elt_checked(size_attr, 0) as i32
         } else {
             let len = XLENGTH(d) as usize;
             (((1.0 + (1.0 + 8.0 * len as f64).sqrt()) / 2.0).round()) as i32
@@ -151,18 +147,18 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let merge = crate::mainutils::array::allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nmerge, 2);
         let _m = protect(merge);
         for s in 0..nmerge as usize {
-            *INTEGER(merge).add(s) = iia[s];
-            *INTEGER(merge).add(s + nmerge as usize) = iib[s];
+            set_integer_checked(merge, (s) as R_xlen_t, iia[s]);
+            set_integer_checked(merge, (s + nmerge as usize) as R_xlen_t, iib[s]);
         }
         let height = Rf_allocVector3(SEXPTYPE::REALSXP, nmerge as i64);
         let _h = protect(height);
         for s in 0..nmerge as usize {
-            *REAL(height).add(s) = crit[s];
+            set_real_checked(height, (s) as R_xlen_t, crit[s]);
         }
         let order = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
         let _o = protect(order);
         for s in 0..nu {
-            *INTEGER(order).add(s) = iorder[s];
+            set_integer_checked(order, (s) as R_xlen_t, iorder[s]);
         }
         let labels = crate::sexp::attrib_core::getAttrib(
             d,
@@ -240,7 +236,7 @@ pub(super) fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val:
 
 /// GNU `mauchly.test(SSD)` — default T=I, Sigma=I sphericity.
 pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let obj = CAR(args);
         let ssd = list_named_elt(obj, "SSD");
         let dfr = list_named_elt(obj, "df");
@@ -249,7 +245,7 @@ pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let dim = crate::sexp::attrib_core::getAttrib(ssd, crate::sexp::attrib_core::R_DimSymbol());
         let p = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
-            *INTEGER(dim).add(1) as usize
+            integer_elt_checked(dim, (1) as R_xlen_t) as usize
         } else {
             let n = XLENGTH(ssd) as usize;
             (n as f64).sqrt().round() as usize
@@ -329,7 +325,7 @@ pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             &["statistic".to_string(), "p.value".to_string()],
         );
         result
-    }
+    
 }
 
 /// GNU `as.hclust(x)` — identity for `hclust` objects.
@@ -338,20 +334,20 @@ pub fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(super) fn class_contains(x: SEXP, name: &str) -> bool {
-    unsafe {
+    
         let class =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
         for i in 0..XLENGTH(class) {
-            let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i))).to_string_lossy();
+            let s = charsxp_text(STRING_ELT(class, i)).unwrap_or_default();
             if s == name {
                 return true;
             }
         }
         false
-    }
+    
 }
 
 /// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
@@ -370,7 +366,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dim =
             crate::sexp::attrib_core::getAttrib(merge, crate::sexp::attrib_core::R_DimSymbol());
         let n_merge = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 1 {
-            *INTEGER(dim) as usize
+            integer_elt_checked(dim, 0) as usize
         } else {
             0
         };
@@ -410,7 +406,7 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let make_leaf = |id: i32, h0: f64| -> SEXP {
             let leaf = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            *INTEGER(leaf) = id;
+            set_integer_checked(leaf, 0, id);
             let _leaf = protect(leaf);
             let members_v = Rf_ScalarInteger(1);
             let height_v = Rf_ScalarReal(h0);
@@ -476,8 +472,8 @@ pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         for k in 0..n_merge {
-            let x0 = *INTEGER(merge).add(k);
-            let x1 = *INTEGER(merge).add(k + n_merge);
+            let x0 = integer_elt_checked(merge, (k) as R_xlen_t);
+            let x1 = integer_elt_checked(merge, (k + n_merge) as R_xlen_t);
             let hk = elt_real_safe(height, k as i64);
             let h0 = if hang < 0.0 {
                 0.0
@@ -538,7 +534,7 @@ fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
             && attr != R_NilValue()
             && TYPEOF(attr) == SEXPTYPE::LGLSXP
             && XLENGTH(attr) >= 1
-            && *LOGICAL(attr) == crate::sexp::ffi::TRUE
+            && logical_elt_checked(attr, 0) == crate::sexp::ffi::TRUE
     }
 }
 
@@ -628,7 +624,7 @@ fn reorder_dendrogram_sum(
     unsafe {
         if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
             let id = if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
-                *INTEGER(node)
+                integer_elt_checked(node, 0)
             } else if XLENGTH(node) >= 1 {
                 elt_real_safe(node, 0) as i32
             } else {
@@ -722,7 +718,7 @@ pub fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// GNU `order.dendrogram(x)` — leaf order as a vector.
 pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         let x = CAR(args);
         if !class_contains(x, "dendrogram") {
             crate::mainutils::errors::errorcall_str(
@@ -732,14 +728,14 @@ pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         let mut ids = Vec::new();
         fn walk(node: SEXP, ids: &mut Vec<f64>, integer: &mut bool) {
-            unsafe {
+            
                 if TYPEOF(node) == SEXPTYPE::VECSXP {
                     let n = XLENGTH(node);
                     for i in 0..n {
                         walk(VECTOR_ELT(node, i), ids, integer);
                     }
                 } else if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
-                    let v = *INTEGER(node);
+                    let v = integer_elt_checked(node, 0);
                     ids.push(if v == crate::sexp::ffi::NA_INTEGER {
                         *integer = false;
                         crate::sexp::ffi::NA_REAL
@@ -750,25 +746,25 @@ pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     *integer = false;
                     ids.push(elt_real_safe(node, 0));
                 }
-            }
+            
         }
         let mut integer = TYPEOF(x) != SEXPTYPE::REALSXP;
         walk(x, &mut ids, &mut integer);
         let result = if integer {
             let out = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as i64);
             for (i, v) in ids.iter().enumerate() {
-                *INTEGER(out).add(i) = *v as i32;
+                set_integer_checked(out, (i) as R_xlen_t, *v as i32);
             }
             out
         } else {
             let out = Rf_allocVector3(SEXPTYPE::REALSXP, ids.len() as i64);
             for (i, v) in ids.iter().enumerate() {
-                *REAL(out).add(i) = *v;
+                set_real_checked(out, (i) as R_xlen_t, *v);
             }
             out
         };
         result
-    }
+    
 }
 
 /// GNU `heatmap(x)` — row/column leaf order from `hclust(dist())`.
@@ -786,8 +782,8 @@ pub fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 "'x' must be a numeric matrix",
             );
         }
-        let nr = *INTEGER(dim) as i32;
-        let nc = *INTEGER(dim).add(1) as i32;
+        let nr = integer_elt_checked(dim, 0) as i32;
+        let nc = integer_elt_checked(dim, (1) as R_xlen_t) as i32;
         if nr <= 1 || nc <= 1 {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
@@ -849,9 +845,7 @@ pub fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };

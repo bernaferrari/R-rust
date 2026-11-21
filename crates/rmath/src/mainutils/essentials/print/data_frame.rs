@@ -84,9 +84,9 @@ fn data_frame_print_digits(args: SEXP) -> Option<i32> {
                     return None;
                 }
                 let digits = if TYPEOF(value) == SEXPTYPE::INTSXP && XLENGTH(value) > 0 {
-                    *INTEGER(value)
+                    integer_elt_checked(value, 0)
                 } else if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
-                    let number = *REAL(value);
+                    let number = real_elt_checked(value, 0);
                     if number.is_finite() {
                         number as i32
                     } else {
@@ -407,9 +407,9 @@ pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 && rn != R_NilValue()
                 && TYPEOF(rn) == SEXPTYPE::INTSXP
                 && XLENGTH(rn) == 2
-                && *INTEGER(rn) == NA_INTEGER
+                && integer_elt_checked(rn, 0) == NA_INTEGER
             {
-                (*INTEGER(rn).add(1) as i64).unsigned_abs() as i64
+                (integer_elt_checked(rn, (1) as R_xlen_t) as i64).unsigned_abs() as i64
             } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
                 XLENGTH(rn)
             } else if ncol > 0 {
@@ -604,7 +604,7 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     crate::sexp::attrib_core::R_DimSymbol(),
                 );
                 let mc = if !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) >= 2 {
-                    *INTEGER(dim).add(1)
+                    integer_elt_checked(dim, (1) as R_xlen_t)
                 } else {
                     0
                 };

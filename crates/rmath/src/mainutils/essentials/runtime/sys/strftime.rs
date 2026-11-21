@@ -43,9 +43,7 @@ pub fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                charsxp_text(PRINTNAME(tag)).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -90,9 +88,7 @@ pub fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(f) == SEXPTYPE::STRSXP && XLENGTH(f) > 0 {
                 let ch = STRING_ELT(f, 0);
                 if !ch.is_null() {
-                    let s = std::ffi::CStr::from_ptr(CHAR(ch))
-                        .to_string_lossy()
-                        .into_owned();
+                    let s = charsxp_text(ch).unwrap_or_default();
                     if !s.is_empty() {
                         fmt = s;
                     }

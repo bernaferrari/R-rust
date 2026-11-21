@@ -113,7 +113,7 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let (filename, from_conn) =
                 if TYPEOF(file_arg) == SEXPTYPE::INTSXP && XLENGTH(file_arg) == 1 {
-                    let idx = *INTEGER(file_arg);
+                    let idx = integer_elt_checked(file_arg, 0);
                     let quote_chars = {
                         let quote_arg = by_slot(&["quote"], 5);
                         if quote_arg.is_null() || quote_arg == R_NilValue() {
@@ -306,7 +306,7 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let n = values.len() as R_xlen_t;
         let quiet = match named_arg(args, "quiet") {
             Some(q) if !q.is_null() && q != R_NilValue() && XLENGTH(q) > 0 => {
-                TYPEOF(q) != SEXPTYPE::LGLSXP || *LOGICAL(q) != 0
+                TYPEOF(q) != SEXPTYPE::LGLSXP || logical_elt_checked(q, 0) != 0
             }
             _ => false,
         };
@@ -428,20 +428,19 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         };
                         SET_STRING_ELT(col, r, charsxp);
                     } else if ty == SEXPTYPE::REALSXP {
-                        *REAL(col).add(r as usize) = if text == "NA" || text.is_empty() {
+                        set_real_checked(col, (r as usize) as R_xlen_t, if text == "NA" || text.is_empty() {
                             NA_REAL
                         } else {
                             crate::mainutils::coerce::parse_double_str(text).unwrap_or(NA_REAL)
-                        };
+                        });
                     } else if ty == SEXPTYPE::INTSXP {
-                        *INTEGER(col).add(r as usize) = if text == "NA" || text.is_empty() {
+                        set_integer_checked(col, (r as usize) as R_xlen_t, if text == "NA" || text.is_empty() {
                             NA_INTEGER
                         } else {
                             text.parse::<c_int>().unwrap_or(NA_INTEGER)
-                        };
+                        });
                     } else {
-                        *LOGICAL(col).add(r as usize) =
-                            parse_scan_logical(text).unwrap_or(NA_INTEGER);
+                        set_logical_checked(col, (r as usize) as R_xlen_t, parse_scan_logical(text).unwrap_or(NA_INTEGER));
                     }
                 }
             }
@@ -480,7 +479,7 @@ pub fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 Some("file") => file_arg = arg,
                 Some("sep") => sep = elt_to_string(arg, 0),
                 Some("row.names") => {
-                    row_names = !(TYPEOF(arg) == SEXPTYPE::LGLSXP && *LOGICAL(arg) == 0)
+                    row_names = !(TYPEOF(arg) == SEXPTYPE::LGLSXP && logical_elt_checked(arg, 0) == 0)
                 }
                 _ => {
                     match positional {
@@ -705,14 +704,14 @@ pub fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
-    unsafe {
+    
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return default;
         }
         if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
-            *INTEGER(arg)
+            integer_elt_checked(arg, 0)
         } else {
             default
         }
-    }
+    
 }

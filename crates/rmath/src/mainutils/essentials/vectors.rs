@@ -608,7 +608,7 @@ fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP
         };
         match (tag_chars, own) {
             (Some(t), Some(o)) => {
-                let tb = std::ffi::CStr::from_ptr(CHAR(t)).to_string_lossy();
+                let tb = charsxp_text(t).unwrap_or_default();
                 let ob = std::ffi::CStr::from_ptr(CHAR(o)).to_string_lossy();
                 let combined = format!("{tb}.{ob}");
                 let cstr = CString::new(combined).unwrap_or_default();
@@ -1898,7 +1898,7 @@ mod head_tail_n_tests {
                 if elt.is_null() || elt == R_NaString() {
                     parts.push("NA".to_string());
                 } else {
-                    parts.push(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned());
+                    parts.push(charsxp_text(elt).unwrap_or_default());
                 }
             }
             format!("len={n}:{}", parts.join(","))

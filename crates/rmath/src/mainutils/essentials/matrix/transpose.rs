@@ -17,7 +17,7 @@ pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dim_count = XLENGTH(dim);
         let mut kept_axes = Vec::new();
         for i in 0..dim_count {
-            if *INTEGER(dim).add(i as usize) != 1 {
+            if integer_elt_checked(dim, (i as usize) as R_xlen_t) != 1 {
                 kept_axes.push(i);
             }
         }
@@ -94,7 +94,7 @@ pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 let _dim_guard = protect(new_dim);
                 for (out_i, axis) in kept_axes.iter().enumerate() {
-                    *INTEGER(new_dim).add(out_i) = *INTEGER(dim).add(*axis as usize);
+                    set_integer_checked(new_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
@@ -162,8 +162,8 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !have {
                     if ldim == 2 {
                         (
-                            *INTEGER(dim_attr) as R_xlen_t,
-                            *INTEGER(dim_attr).add(1) as R_xlen_t,
+                            integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                            integer_elt_checked(dim_attr, 1) as R_xlen_t,
                             R_NilValue(),
                             R_NilValue(),
                             R_NilValue(),
@@ -182,8 +182,8 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     let (nrow, ncol, rnames, cnames) = if ldim == 2 {
                         (
-                            *INTEGER(dim_attr) as R_xlen_t,
-                            *INTEGER(dim_attr).add(1) as R_xlen_t,
+                            integer_elt_checked(dim_attr, 0) as R_xlen_t,
+                            integer_elt_checked(dim_attr, 1) as R_xlen_t,
                             VECTOR_ELT(dimnames, 0),
                             VECTOR_ELT(dimnames, 1),
                         )
@@ -219,8 +219,8 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Set transposed dim attribute
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            *INTEGER(dim) = ncol as c_int;
-            *INTEGER(dim).add(1) = nrow as c_int;
+            set_integer_checked(dim, 0, ncol as c_int);
+            set_integer_checked(dim, (1) as R_xlen_t, nrow as c_int);
             crate::sexp::attrib_core::setAttrib(result, R_DimSymbol(), dim);
         }
 
@@ -308,7 +308,7 @@ pub fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
-            Rf_ScalarInteger(*INTEGER(dim_attr))
+            Rf_ScalarInteger(integer_elt_checked(dim_attr, 0))
         } else {
             Rf_ScalarInteger(XLENGTH(x) as c_int)
         }
@@ -327,7 +327,7 @@ pub fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-            Rf_ScalarInteger(*INTEGER(dim_attr).add(1))
+            Rf_ScalarInteger(integer_elt_checked(dim_attr, (1) as R_xlen_t))
         } else {
             Rf_ScalarInteger(1)
         }
@@ -361,8 +361,8 @@ pub fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if dim.is_null() {
                 return R_NilValue();
             }
-            *INTEGER(dim) = data_frame_row_count(x) as c_int;
-            *INTEGER(dim).add(1) = XLENGTH(x) as c_int;
+            set_integer_checked(dim, 0, data_frame_row_count(x) as c_int);
+            set_integer_checked(dim, (1) as R_xlen_t, XLENGTH(x) as c_int);
             return dim;
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
@@ -514,7 +514,7 @@ pub fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, St
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(value));
         let _dim_guard = protect(dim);
         for i in 0..XLENGTH(value) {
-            *INTEGER(dim).add(i as usize) = dimension_component(value, i);
+            set_integer_checked(dim, (i as usize) as R_xlen_t, dimension_component(value, i));
         }
 
         // dimgets(): dims are validated and totaled by array.c's dim2total()

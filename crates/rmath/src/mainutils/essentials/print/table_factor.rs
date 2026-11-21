@@ -14,8 +14,8 @@ pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2 {
             // 2D table: print as matrix
-            let nrow = *INTEGER(dim_attr) as usize;
-            let ncol = *INTEGER(dim_attr).add(1) as usize;
+            let nrow = integer_elt_checked(dim_attr, 0) as usize;
+            let ncol = integer_elt_checked(dim_attr, (1) as R_xlen_t) as usize;
 
             // Get dimnames
             let dn = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
@@ -32,9 +32,9 @@ pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 for j in 0..ncol {
                     let idx = i * ncol + j;
                     let val = if t == SEXPTYPE::REALSXP {
-                        format!("{:>6}", *REAL(x).add(idx))
+                        format!("{:>6}", real_elt_checked(x, (idx) as R_xlen_t))
                     } else if t == SEXPTYPE::INTSXP {
-                        format!("{:>6}", *INTEGER(x).add(idx))
+                        format!("{:>6}", integer_elt_checked(x, (idx) as R_xlen_t))
                     } else {
                         format!("{:>6}", elt_to_string(x, idx as R_xlen_t))
                     };
@@ -66,9 +66,9 @@ pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let values: Vec<String> = (0..n)
                     .map(|i| {
                         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                            (*INTEGER(x).add(i as usize)).to_string()
+                            (integer_elt_checked(x, (i as usize) as R_xlen_t)).to_string()
                         } else if t == SEXPTYPE::REALSXP {
-                            format!("{}", *REAL(x).add(i as usize))
+                            format!("{}", real_elt_checked(x, (i as usize) as R_xlen_t))
                         } else {
                             elt_to_string(x, i)
                         }
@@ -146,7 +146,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     max_levels_on = true;
                 } else if TYPEOF(v) == SEXPTYPE::LGLSXP {
                     let l = if XLENGTH(v) > 0 && !LOGICAL(v).is_null() {
-                        *LOGICAL(v)
+                        logical_elt_checked(v, 0)
                     } else {
                         0
                     };
@@ -163,9 +163,9 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             } else if tag == width_sym && !v.is_null() && v != R_NilValue() {
                 if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                    width_opt = Some(*INTEGER(v) as i64);
+                    width_opt = Some(integer_elt_checked(v, 0) as i64);
                 } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                    width_opt = Some(*REAL(v) as i64);
+                    width_opt = Some(real_elt_checked(v, 0) as i64);
                 }
             }
             p = CDR(p);
@@ -181,7 +181,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let t = TYPEOF(x);
             for i in 0..n {
                 let ch = if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP) && has_levels {
-                    let v = *INTEGER(x).add(i as usize);
+                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     if v == NA_INTEGER {
                         crate::sexp::globals::R_NaString()
                     } else if v > 0 && (v as R_xlen_t) <= XLENGTH(levels) {
@@ -193,7 +193,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         Rf_mkChar(text.as_ptr())
                     }
                 } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(i as usize);
+                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                     let text = CString::new(format!("{v}")).unwrap_or_default();
                     Rf_mkChar(text.as_ptr())
                 } else {
@@ -464,7 +464,7 @@ pub fn do_print_proc_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let out = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _out_guard = protect(out);
         for (i, v) in vals.iter().enumerate() {
-            *REAL(out).add(i) = *v;
+            set_real_checked(out, (i) as R_xlen_t, *v);
         }
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names_guard = protect(names);

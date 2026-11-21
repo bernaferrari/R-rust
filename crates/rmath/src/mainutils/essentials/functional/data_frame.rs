@@ -8,7 +8,7 @@ pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
         // column has length nrow*ncol, so XLENGTH is the wrong unit.
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let len = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
-            *INTEGER(dim) as R_xlen_t
+            integer_elt_checked(dim, 0) as R_xlen_t
         } else {
             XLENGTH(x)
         };
@@ -28,15 +28,15 @@ pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
         let _out_guard = protect(out);
         for i in 0..target_len {
             match ty {
-                t if t == SEXPTYPE::REALSXP => *REAL(out).add(i as usize) = *REAL(x),
-                t if t == SEXPTYPE::INTSXP => *INTEGER(out).add(i as usize) = *INTEGER(x),
-                t if t == SEXPTYPE::LGLSXP => *LOGICAL(out).add(i as usize) = *LOGICAL(x),
+                t if t == SEXPTYPE::REALSXP => set_real_checked(out, i, real_elt_checked(x, 0)),
+                t if t == SEXPTYPE::INTSXP => set_integer_checked(out, i, integer_elt_checked(x, 0)),
+                t if t == SEXPTYPE::LGLSXP => set_logical_checked(out, i, logical_elt_checked(x, 0)),
                 t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(out, i, STRING_ELT(x, 0)),
                 _ => return x,
             }
         }
         // GNU recycling preserves the column's attributes (class — e.g. the
-        // AsIs marker on I(x) columns — tsp, units, ...); only names/dim/
+        // AsIs marker on I(x) columns — tsp, units, ...)))); only names/dim/
         // dimnames are dropped, exactly copyMostAttrib semantics.
         crate::mainutils::array::copyMostAttrib(x, out);
         out
@@ -51,7 +51,7 @@ pub(crate) fn melt_table(value: SEXP) -> SEXP {
         let mut sizes = Vec::with_capacity(nd);
         let mut total: i64 = 1;
         for i in 0..nd {
-            let n = *INTEGER(dim).add(i) as i64;
+            let n = integer_elt_checked(dim, (i) as R_xlen_t) as i64;
             sizes.push(n);
             total = total.saturating_mul(n.max(0));
         }
@@ -113,13 +113,13 @@ pub(crate) fn melt_table(value: SEXP) -> SEXP {
         SET_VECTOR_ELT(frame, nd as i64, freq);
         for idx in 0..total {
             let v = if TYPEOF(value) == SEXPTYPE::INTSXP {
-                *INTEGER(value).add(idx as usize)
+                integer_elt_checked(value, (idx as usize) as R_xlen_t)
             } else if TYPEOF(value) == SEXPTYPE::REALSXP {
-                *REAL(value).add(idx as usize) as i32
+                real_elt_checked(value, (idx as usize) as R_xlen_t) as i32
             } else {
                 0
             };
-            *INTEGER(freq).add(idx as usize) = v;
+            set_integer_checked(freq, (idx as usize) as R_xlen_t, v);
         }
         names.push("Freq".to_string());
         set_string_names(frame, &names);
@@ -131,7 +131,7 @@ pub(crate) fn melt_table(value: SEXP) -> SEXP {
 
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
 pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         // `...` are the columns; the remaining formals (row.names,
         // check.rows, check.names, fix.empty.names, stringsAsFactors) are
         // options, never columns. Drop option cells before list-building so
@@ -229,8 +229,8 @@ pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     value,
                     crate::sexp::attrib_core::R_DimSymbol(),
                 );
-                let nr = *INTEGER(dim) as R_xlen_t;
-                let nc = *INTEGER(dim).add(1) as R_xlen_t;
+                let nr = integer_elt_checked(dim, 0) as R_xlen_t;
+                let nc = integer_elt_checked(dim, (1) as R_xlen_t) as R_xlen_t;
                 match nrow {
                     Some(existing) if nr != existing && nr != 0 && existing != 0 => base_error(
                         format!("arguments imply differing number of rows: {existing}, {nr}"),
@@ -304,7 +304,7 @@ pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         set_data_frame_class(result);
 
         result
-    }
+    
 }
 
 // ---------------------------------------------------------------------------

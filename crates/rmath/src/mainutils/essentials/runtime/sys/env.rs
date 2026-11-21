@@ -137,7 +137,7 @@ fn environment_mutation_allowed() -> bool {
 }
 
 fn denied_setenv_result(args: SEXP) -> SEXP {
-    unsafe {
+    
         let mut n = 0;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -146,10 +146,10 @@ fn denied_setenv_result(args: SEXP) -> SEXP {
         }
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         for i in 0..n {
-            *LOGICAL(result).add(i as usize) = FALSE;
+            set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
         }
         result
-    }
+    
 }
 
 /// Unset a variable live via std::env::remove_var; false on invalid input.
@@ -174,7 +174,7 @@ static mut environ: *mut *mut c_char = std::ptr::null_mut();
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         if !environment_mutation_allowed() {
             return denied_setenv_result(args);
         }
@@ -223,15 +223,15 @@ pub fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         let _ans_guard = protect(ans);
         for (i, ok) in results.iter().enumerate() {
-            *LOGICAL(ans).add(i) = *ok;
+            set_logical_checked(ans, (i) as R_xlen_t, *ok);
         }
         ans
-    }
+    
 }
 
 /// R's `Sys.unsetenv(x)` — unset environment variables.
 pub fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    
         if !environment_mutation_allowed() {
             let x = arg_by_name_or_position(args, &["x"], 0);
             if x.is_null() || x == R_NilValue() {
@@ -239,7 +239,7 @@ pub fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let result = Rf_allocVector3(SEXPTYPE::LGLSXP, XLENGTH(x));
             for i in 0..XLENGTH(x) {
-                *LOGICAL(result).add(i as usize) = FALSE;
+                set_logical_checked(result, (i as usize) as R_xlen_t, FALSE);
             }
             return result;
         }
@@ -257,10 +257,10 @@ pub fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 libc_unsetenv(&name)
             };
-            *LOGICAL(ans).add(i as usize) = if ok { TRUE } else { FALSE };
+            set_logical_checked(ans, (i as usize) as R_xlen_t, if ok { TRUE } else { FALSE });
         }
         ans
-    }
+    
 }
 
 /// R's `Sys.which(names)` — resolve command names against PATH.

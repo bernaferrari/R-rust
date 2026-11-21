@@ -112,9 +112,7 @@ pub fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if p.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(p))
-                        .to_string_lossy()
-                        .into_owned()
+                    charsxp_text(p).unwrap_or_default()
                 }
             } else {
                 String::new()
@@ -218,7 +216,7 @@ pub fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if keep_out {
             let dimv = Rf_allocVector3(SEXPTYPE::INTSXP, nargs as i64);
             for (i, n) in lens.iter().enumerate() {
-                *INTEGER(dimv).add(i) = *n as c_int;
+                set_integer_checked(dimv, (i) as R_xlen_t, *n as c_int);
             }
             let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, nargs as i64);
             let _dn = protect(dimnames);
@@ -263,11 +261,11 @@ pub(super) fn expand_grid_column(x: SEXP, nx: i64, rep_fac: i64, orep: i64, tota
 }
 
 pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {
-    unsafe {
+    
         match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP => format!("{}", *INTEGER(x).add(i as usize)),
+            t if t == SEXPTYPE::INTSXP => format!("{}", integer_elt_checked(x, (i as usize) as R_xlen_t)),
             t if t == SEXPTYPE::REALSXP => {
-                let v = *REAL(x).add(i as usize);
+                let v = real_elt_checked(x, (i as usize) as R_xlen_t);
                 if v.fract() == 0.0 {
                     format!("{}", v as i64)
                 } else {
@@ -276,7 +274,7 @@ pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {
             }
             t if t == SEXPTYPE::STRSXP => elt_to_string(x, i),
             t if t == SEXPTYPE::LGLSXP => {
-                let v = *INTEGER(x).add(i as usize);
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
                 if v == 0 {
                     "FALSE".into()
                 } else {
@@ -285,7 +283,7 @@ pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {
             }
             _ => elt_to_string(x, i),
         }
-    }
+    
 }
 
 /// GNU `stack.default` — list/data.frame columns to values+ind.
@@ -346,7 +344,7 @@ pub fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for (i, col) in cols.iter().enumerate() {
             for j in 0..lens[i] {
                 copy_elt(*col, j, values, dst);
-                *INTEGER(ind).add(dst as usize) = (i as c_int) + 1;
+                set_integer_checked(ind, (dst as usize) as R_xlen_t, (i as c_int) + 1);
                 dst += 1;
             }
         }
