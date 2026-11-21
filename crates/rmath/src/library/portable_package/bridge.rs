@@ -22,13 +22,14 @@ pub(super) fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>
 }
 
 pub(super) fn symbol(access: &RuntimeAccess, name: &str) -> SexpResult<Sexp<'static>> {
-    let name =
-        std::ffi::CString::new(name).map_err(|_| crate::sexp::SexpError::EvaluationFailed {
+    if name.contains('\0') {
+        return Err(crate::sexp::SexpError::EvaluationFailed {
             message: "portable package symbol contains NUL".into(),
-        })?;
-    access.with_native(|owner| unsafe {
+        });
+    }
+    access.with_native(|owner| {
         owner
-            .sexp(crate::sexp::symbol::Rf_install(name.as_ptr()))?
+            .sexp(crate::sexp::symbol::install_str(name))?
             .into_owned()
     })
 }
@@ -42,8 +43,12 @@ pub(super) fn bind(
     access.domain().link(environment)?;
     access.domain().link(value)?;
     let symbol = symbol(access, name)?;
-    access.with_native(|_| unsafe {
-        crate::sexp::envir::defineVar(symbol.as_raw(), value.as_raw(), environment.as_raw());
+    access.with_native(|_| {
+        // SAFETY: all three handles are linked, live values owned by this
+        // runtime for the duration of the strictly-local env write.
+        unsafe {
+            crate::sexp::envir::defineVar(symbol.as_raw(), value.as_raw(), environment.as_raw());
+        }
         Ok(())
     })
 }
@@ -55,13 +60,12 @@ pub(super) fn lookup(
 ) -> SexpResult<Sexp<'static>> {
     access.domain().link(environment)?;
     let symbol = symbol(access, name)?;
-    access.with_native(|owner| unsafe {
-        owner
-            .sexp(crate::sexp::envir::R_findVarInFrame(
-                environment.as_raw(),
-                symbol.as_raw(),
-            ))?
-            .into_owned()
+    access.with_native(|owner| {
+        // SAFETY: both handles are linked, live values owned by this
+        // runtime for the duration of the frame lookup.
+        let raw =
+            unsafe { crate::sexp::envir::R_findVarInFrame(environment.as_raw(), symbol.as_raw()) };
+        owner.sexp(raw)?.into_owned()
     })
 }
 
@@ -87,13 +91,11 @@ pub(super) fn lookup_inherited(
 ) -> SexpResult<Sexp<'static>> {
     access.domain().link(environment)?;
     let symbol = symbol(access, name)?;
-    access.with_native(|owner| unsafe {
-        owner
-            .sexp(crate::sexp::envir::R_findVar(
-                symbol.as_raw(),
-                environment.as_raw(),
-            ))?
-            .into_owned()
+    access.with_native(|owner| {
+        // SAFETY: both handles are linked, live values owned by this
+        // runtime for the duration of the inherited lookup.
+        let raw = unsafe { crate::sexp::envir::R_findVar(symbol.as_raw(), environment.as_raw()) };
+        owner.sexp(raw)?.into_owned()
     })
 }
 
@@ -139,9 +141,11 @@ pub(super) fn decode_owned_bytes(
 
 pub(super) fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<Sexp<'static>> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         let result = if value.typeof_() == crate::sexp::SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(value.as_raw())
+            // SAFETY: `value` is a linked, live PROMSXP owned by this
+            // runtime; forcing it returns the promise value.
+            unsafe { crate::sexp::envir::forcePromise(value.as_raw()) }
         } else {
             value.as_raw()
         };
@@ -196,13 +200,13 @@ pub(super) fn evaluate(
     let mut result = domain.nil();
     for expression in expressions {
         result = access
-            .with_native(|owner| unsafe {
-                owner
-                    .sexp(crate::eval::eval::Rf_eval(
-                        expression.as_raw(),
-                        environment.as_raw(),
-                    ))?
-                    .into_owned()
+            .with_native(|owner| {
+                // SAFETY: both handles are live values owned by this runtime;
+                // evaluation runs inside the ambient active owner.
+                let value = unsafe {
+                    crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw())
+                };
+                owner.sexp(value)?.into_owned()
             })
             .map_err(|e| e.to_string())?;
     }
@@ -223,6 +227,9 @@ pub(super) fn install_native(
     namespace: &Sexp<'static>,
 ) -> SexpResult<()> {
     access.domain().link(namespace)?;
+    // SAFETY: the graphics/grDevices/stats symbol installers keep unsafe fn
+    // signatures; `namespace` is a linked, live ENVSXP owned by this runtime
+    // for the duration of each strictly-local symbol-table update.
     access.with_native(|_| unsafe {
         match image.name {
             "methods" => crate::library::methods::native_calls::install_methods_call_symbols(
@@ -317,8 +324,12 @@ pub(super) fn finalize(
         .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })?;
     #[cfg(feature = "renderplot-device")]
     if image.name == "grDevices" {
-        access.with_native(|_| unsafe {
-            crate::mainutils::graphics_recording::install_namespace_replay(namespace.as_raw());
+        access.with_native(|_| {
+            // SAFETY: `namespace` is a linked, live ENVSXP owned by this
+            // runtime for this strictly-local replay install.
+            unsafe {
+                crate::mainutils::graphics_recording::install_namespace_replay(namespace.as_raw());
+            }
             Ok(())
         })?;
     }
@@ -352,20 +363,24 @@ impl Publication {
         let pin = access
             .with_native(|owner| owner.pin())?
             .ok_or(crate::sexp::SexpError::RootUnavailable)?;
-        access.with_native(|owner| unsafe {
-            let cache = &mut (*owner.as_ptr()).package_namespace_cache;
-            cache
-                .try_reserve(1)
-                .map_err(|_| crate::sexp::SexpError::AllocationFailed {
-                    object: "portable package namespace cache",
-                })?;
-            cache.insert(
-                image.name.into(),
-                (
-                    std::path::PathBuf::from(image.directory),
-                    namespace.as_raw(),
-                ),
-            );
+        access.with_native(|owner| {
+            // SAFETY: `owner` is the live active runtime for this
+            // strictly-local cache update; the pin above retains it.
+            unsafe {
+                let cache = &mut (*owner.as_ptr()).package_namespace_cache;
+                cache
+                    .try_reserve(1)
+                    .map_err(|_| crate::sexp::SexpError::AllocationFailed {
+                        object: "portable package namespace cache",
+                    })?;
+                cache.insert(
+                    image.name.into(),
+                    (
+                        std::path::PathBuf::from(image.directory),
+                        namespace.as_raw(),
+                    ),
+                );
+            }
             Ok(())
         })?;
         Ok(Self {

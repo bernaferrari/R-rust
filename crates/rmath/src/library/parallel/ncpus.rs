@@ -20,9 +20,8 @@
  */
 
 use std::os::raw::c_int;
-use std::slice;
 
-use crate::sexp::accessors::INTEGER;
+use crate::sexp::accessors::SET_INTEGER_ELT;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
@@ -35,11 +34,13 @@ fn detect_cpu_counts() -> [c_int; 2] {
 
     #[cfg(unix)]
     {
+        // SAFETY: sysconf with a fixed _SC_* selector has no preconditions.
         let logical = unsafe { sysconf(_SC_NPROCESSORS_ONLN) };
         if logical > 0 {
             counts[1] = logical as c_int;
         }
 
+        // SAFETY: sysconf with a fixed _SC_* selector has no preconditions.
         let configured = unsafe { sysconf(_SC_NPROCESSORS_CONF) };
         if configured > 0 {
             counts[0] = configured as c_int;
@@ -67,7 +68,8 @@ fn detect_cpu_counts() -> [c_int; 2] {
 pub fn ncpus(_virtual: SEXP) -> SEXP {
     let res = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     let _res_guard = protect(res);
-    let output = unsafe { slice::from_raw_parts_mut(INTEGER(res), 2) };
-    output.copy_from_slice(&detect_cpu_counts());
+    let counts = detect_cpu_counts();
+    SET_INTEGER_ELT(res, 0, counts[0]);
+    SET_INTEGER_ELT(res, 1, counts[1]);
     res
 }

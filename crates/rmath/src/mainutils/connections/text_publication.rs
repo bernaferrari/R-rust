@@ -139,9 +139,7 @@ pub(super) fn publish(
         return;
     }
     let factory = owner.node_factory();
-    let symbol = call(owner, connection, || {
-        crate::sexp::symbol::install_str(name)
-    });
+    let symbol = call(owner, connection, || crate::sexp::symbol::install_str(name));
     let old = call(owner, connection, || unsafe {
         // SAFETY: `environment` is a checked owning handle and `symbol` is a
         // live SYMSXP for the duration of this lookup.

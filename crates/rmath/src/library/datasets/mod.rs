@@ -120,10 +120,9 @@ fn lock(access: &RuntimeAccess, environment: &Sexp<'static>) -> SexpResult<()> {
 }
 
 fn symbol(access: &RuntimeAccess, name: &str) -> SexpResult<Sexp<'static>> {
-    let name = std::ffi::CString::new(name).expect("literal datasets symbol contains no NUL");
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
-            .sexp(crate::sexp::symbol::Rf_install(name.as_ptr()))?
+            .sexp(crate::sexp::symbol::install_str(name))?
             .into_owned()
     })
 }
@@ -144,8 +143,12 @@ fn bind(
     }
     domain.link(value)?;
     let name = symbol(access, name)?;
-    access.with_native(|_| unsafe {
-        crate::sexp::envir::defineVar(name.as_raw(), value.as_raw(), environment.as_raw());
+    access.with_native(|_| {
+        // SAFETY: all three handles are linked, live values owned by this
+        // runtime for the duration of the strictly-local env write.
+        unsafe {
+            crate::sexp::envir::defineVar(name.as_raw(), value.as_raw(), environment.as_raw());
+        }
         Ok(())
     })
 }
@@ -163,13 +166,12 @@ fn lookup(
         });
     }
     let name = symbol(access, name)?;
-    access.with_native(|owner| unsafe {
-        owner
-            .sexp(crate::sexp::envir::R_findVarInFrame(
-                environment.as_raw(),
-                name.as_raw(),
-            ))?
-            .into_owned()
+    access.with_native(|owner| {
+        // SAFETY: both handles are linked, live values owned by this
+        // runtime for the duration of the frame lookup.
+        let raw =
+            unsafe { crate::sexp::envir::R_findVarInFrame(environment.as_raw(), name.as_raw()) };
+        owner.sexp(raw)?.into_owned()
     })
 }
 
@@ -230,9 +232,11 @@ fn set_attribute(
 
 fn force(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<Sexp<'static>> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         let result = if value.typeof_() == crate::sexp::SEXPTYPE::PROMSXP {
-            crate::sexp::envir::forcePromise(value.as_raw())
+            // SAFETY: `value` is a linked, live PROMSXP owned by this
+            // runtime; forcing it returns the promise value.
+            unsafe { crate::sexp::envir::forcePromise(value.as_raw()) }
         } else {
             value.as_raw()
         };

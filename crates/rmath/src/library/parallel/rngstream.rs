@@ -20,7 +20,6 @@
  */
 
 use std::os::raw::c_int;
-use std::slice;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -53,72 +52,41 @@ const A2P127: [[Uint64; 3]; 3] = [
     [2824425944, 32183930, 2093834863],
 ];
 
-pub fn nextStream(x: SEXP) -> SEXP {
-    unsafe {
-        let x_int = INTEGER(x);
-        let x_vals = slice::from_raw_parts(x_int, 7);
-        let seed = &x_vals[1..];
-        let mut nseed: [Uint64; 6] = [0; 6];
+fn advance_stream(x: SEXP, a1: &[[Uint64; 3]; 3], a2: &[[Uint64; 3]; 3]) -> SEXP {
+    let x_vals: Vec<c_int> = (0..7).map(|i| INTEGER_ELT(x, i)).collect();
+    let seed = &x_vals[1..];
+    let mut nseed: [Uint64; 6] = [0; 6];
 
-        for i in 0..3 {
-            let mut tmp: Uint64 = 0;
-            for j in 0..3 {
-                tmp += A1P127[i][j] * seed[j] as Uint64;
-                tmp %= 4294967087;
-            }
-            nseed[i] = tmp;
+    for i in 0..3 {
+        let mut tmp: Uint64 = 0;
+        for j in 0..3 {
+            tmp += a1[i][j] * seed[j] as Uint64;
+            tmp %= 4294967087;
         }
-
-        for i in 0..3 {
-            let mut tmp: Uint64 = 0;
-            for j in 0..3 {
-                tmp += A2P127[i][j] * seed[j + 3] as Uint64;
-                tmp %= 4294944443;
-            }
-            nseed[i + 3] = tmp;
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
-        let ans_int = slice::from_raw_parts_mut(INTEGER(ans), 7);
-        ans_int[0] = x_vals[0];
-        for i in 0..6 {
-            ans_int[i + 1] = nseed[i] as c_int;
-        }
-        ans
+        nseed[i] = tmp;
     }
+
+    for i in 0..3 {
+        let mut tmp: Uint64 = 0;
+        for j in 0..3 {
+            tmp += a2[i][j] * seed[j + 3] as Uint64;
+            tmp %= 4294944443;
+        }
+        nseed[i + 3] = tmp;
+    }
+
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
+    SET_INTEGER_ELT(ans, 0, x_vals[0]);
+    for (i, value) in nseed.iter().enumerate() {
+        SET_INTEGER_ELT(ans, (i + 1) as c_int, *value as c_int);
+    }
+    ans
+}
+
+pub fn nextStream(x: SEXP) -> SEXP {
+    advance_stream(x, &A1P127, &A2P127)
 }
 
 pub fn nextSubStream(x: SEXP) -> SEXP {
-    unsafe {
-        let x_int = INTEGER(x);
-        let x_vals = slice::from_raw_parts(x_int, 7);
-        let seed = &x_vals[1..];
-        let mut nseed: [Uint64; 6] = [0; 6];
-
-        for i in 0..3 {
-            let mut tmp: Uint64 = 0;
-            for j in 0..3 {
-                tmp += A1P76[i][j] * seed[j] as Uint64;
-                tmp %= 4294967087;
-            }
-            nseed[i] = tmp;
-        }
-
-        for i in 0..3 {
-            let mut tmp: Uint64 = 0;
-            for j in 0..3 {
-                tmp += A2P76[i][j] * seed[j + 3] as Uint64;
-                tmp %= 4294944443;
-            }
-            nseed[i + 3] = tmp;
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
-        let ans_int = slice::from_raw_parts_mut(INTEGER(ans), 7);
-        ans_int[0] = x_vals[0];
-        for i in 0..6 {
-            ans_int[i + 1] = nseed[i] as c_int;
-        }
-        ans
-    }
+    advance_stream(x, &A1P76, &A2P76)
 }
