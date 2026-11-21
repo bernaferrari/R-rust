@@ -11,6 +11,8 @@
 
 use core::ffi::c_int;
 
+use crate::mainutils::native_routines::buffers::{Args, BufferError, NativeBuffer};
+
 // ----- CRIT macro equivalent -----
 // "Correct" ./sslvrg.f (line 129):   crit = 3 + (dofoff-df)**2
 #[inline(always)]
@@ -29,42 +31,43 @@ const c_Gold: f64 = 0.381966011250105151795413165634;
 // Computes lspar from spar (or uses spar directly if spar_is_lambda),
 // then calls sslvrg to evaluate the spline criterion.
 #[inline(always)]
-unsafe fn SSPLINE_COMP(
+#[allow(clippy::too_many_arguments)]
+fn SSPLINE_COMP(
     spar: f64,
     spar_is_lambda: bool,
     ratio: f64,
-    penalt: *mut f64,
-    dofoff: *mut f64,
-    xs: *mut f64,
-    ys: *mut f64,
-    ws: *mut f64,
-    ssw: *mut f64,
-    n: *mut c_int,
-    knot: *mut f64,
-    nk: *mut c_int,
-    coef: *mut f64,
-    sz: *mut f64,
-    lev: *mut f64,
-    crit: *mut f64,
-    icrit: *mut c_int,
-    lspar: *mut f64,
-    xwy: *mut f64,
-    hs0: *mut f64,
-    hs1: *mut f64,
-    hs2: *mut f64,
-    hs3: *mut f64,
-    sg0: *mut f64,
-    sg1: *mut f64,
-    sg2: *mut f64,
-    sg3: *mut f64,
-    abd: *mut f64,
-    p1ip: *mut f64,
-    p2ip: *mut f64,
-    ld4: *mut c_int,
-    ldnk: *mut c_int,
-    ier: *mut c_int,
+    penalt: &f64,
+    dofoff: &f64,
+    xs: &[f64],
+    ys: &[f64],
+    ws: &[f64],
+    ssw: &f64,
+    n: &c_int,
+    knot: &[f64],
+    nk: &c_int,
+    coef: &mut [f64],
+    sz: &mut [f64],
+    lev: &mut [f64],
+    crit: &mut f64,
+    icrit: &c_int,
+    lspar: &mut f64,
+    xwy: &[f64],
+    hs0: &[f64],
+    hs1: &[f64],
+    hs2: &[f64],
+    hs3: &[f64],
+    sg0: &[f64],
+    sg1: &[f64],
+    sg2: &[f64],
+    sg3: &[f64],
+    abd: &mut [f64],
+    p1ip: &mut [f64],
+    p2ip: &mut [f64],
+    ld4: &c_int,
+    ldnk: &c_int,
+    ier: &mut c_int,
 ) {
-    unsafe {
+    {
         if spar_is_lambda {
             *lspar = spar;
         } else {
@@ -88,15 +91,15 @@ unsafe fn SSPLINE_COMP(
 ///
 /// Ported from R's Fortran sgram.f.
 /// All arrays use 1-based Fortran indexing internally.
-unsafe fn sgram(
-    sg0: *mut f64,
-    sg1: *mut f64,
-    sg2: *mut f64,
-    sg3: *mut f64,
-    knot: *mut f64,
-    nk: *mut c_int,
+fn sgram(
+    sg0: &mut [f64],
+    sg1: &mut [f64],
+    sg2: &mut [f64],
+    sg3: &mut [f64],
+    knot: &[f64],
+    nk: &c_int,
 ) {
-    unsafe {
+    {
         let nk = *nk as usize;
         let lentb = nk + 4;
         let mut work = [0.0f64; 16];
@@ -106,18 +109,18 @@ unsafe fn sgram(
 
         // Initialize sigma vectors
         for i in 0..nk {
-            *sg0.add(i) = 0.0;
-            *sg1.add(i) = 0.0;
-            *sg2.add(i) = 0.0;
-            *sg3.add(i) = 0.0;
+            sg0[i] = 0.0;
+            sg1[i] = 0.0;
+            sg2[i] = 0.0;
+            sg3[i] = 0.0;
         }
 
         let mut ileft: c_int = 0;
 
         for i in 1..=nk {
             let (raw, _mflag) = crate::appl::interv::findInterval2(
-                std::slice::from_raw_parts(knot, nk + 1),
-                *knot.add(i - 1),
+                &knot[..nk + 1],
+                knot[i - 1],
                 false,
                 false,
                 false,
@@ -129,9 +132,9 @@ unsafe fn sgram(
             // Left end second derivatives: bsplvd(knot, lentb, 4, tb(i), ileft, work, vnikx, 3)
             // vnikx(4,3) column-major: vnikx[(row-1) + (col-1)*4]
             super::bspline::bsplvd(
-                std::slice::from_raw_parts(knot, lentb),
+                &knot[..lentb],
                 4,
-                *knot.add(i - 1),
+                knot[i - 1],
                 left,
                 &mut work,
                 &mut vnikx,
@@ -143,9 +146,9 @@ unsafe fn sgram(
 
             // Right end second derivatives
             super::bspline::bsplvd(
-                std::slice::from_raw_parts(knot, lentb),
+                &knot[..lentb],
                 4,
-                *knot.add(i),
+                knot[i],
                 left,
                 &mut work,
                 &mut vnikx,
@@ -155,7 +158,7 @@ unsafe fn sgram(
                 yw2[ii] = vnikx[ii + 2 * 4] - yw1[ii]; // slope * interval length
             }
 
-            let wpt = *knot.add(i) - *knot.add(i - 1);
+            let wpt = knot[i] - knot[i - 1];
             let ileft_u = left as usize;
 
             if ileft_u >= 4 {
@@ -167,7 +170,7 @@ unsafe fn sgram(
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
                                 + yw2[ii] * yw2[jj] * 0.3330);
-                        *sg0.add(idx) += contrib;
+                        sg0[idx] += contrib;
                     }
                     if jj < 3 {
                         let idx = ileft_u - 4 + ii;
@@ -176,7 +179,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 1] * 0.3330);
-                            *sg1.add(idx) += contrib;
+                            sg1[idx] += contrib;
                         }
                     }
                     if jj + 2 <= 3 {
@@ -186,7 +189,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 2]
                                     + (yw2[ii] * yw1[jj + 2] + yw2[jj + 2] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 2] * 0.3330);
-                            *sg2.add(idx) += contrib;
+                            sg2[idx] += contrib;
                         }
                     }
                     if jj + 3 <= 3 {
@@ -196,7 +199,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 3]
                                     + (yw2[ii] * yw1[jj + 3] + yw2[jj + 3] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 3] * 0.3330);
-                            *sg3.add(idx) += contrib;
+                            sg3[idx] += contrib;
                         }
                     }
                 }
@@ -209,7 +212,7 @@ unsafe fn sgram(
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
                                 + yw2[ii] * yw2[jj] * 0.3330);
-                        *sg0.add(idx) += contrib;
+                        sg0[idx] += contrib;
                     }
                     if jj < 2 {
                         let idx = ileft_u - 3 + ii;
@@ -218,7 +221,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 1] * 0.3330);
-                            *sg1.add(idx) += contrib;
+                            sg1[idx] += contrib;
                         }
                     }
                     if jj + 2 <= 2 {
@@ -228,7 +231,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 2]
                                     + (yw2[ii] * yw1[jj + 2] + yw2[jj + 2] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 2] * 0.3330);
-                            *sg2.add(idx) += contrib;
+                            sg2[idx] += contrib;
                         }
                     }
                 }
@@ -241,7 +244,7 @@ unsafe fn sgram(
                             * (yw1[ii] * yw1[jj]
                                 + (yw2[ii] * yw1[jj] + yw2[jj] * yw1[ii]) * 0.5
                                 + yw2[ii] * yw2[jj] * 0.3330);
-                        *sg0.add(idx) += contrib;
+                        sg0[idx] += contrib;
                     }
                     if jj < 1 {
                         let idx = ileft_u - 2 + ii;
@@ -250,7 +253,7 @@ unsafe fn sgram(
                                 * (yw1[ii] * yw1[jj + 1]
                                     + (yw2[ii] * yw1[jj + 1] + yw2[jj + 1] * yw1[ii]) * 0.5
                                     + yw2[ii] * yw2[jj + 1] * 0.3330);
-                            *sg1.add(idx) += contrib;
+                            sg1[idx] += contrib;
                         }
                     }
                 }
@@ -260,7 +263,7 @@ unsafe fn sgram(
                     * (yw1[0] * yw1[0]
                         + (yw2[0] * yw1[0] + yw2[0] * yw1[0]) * 0.5
                         + yw2[0] * yw2[0] * 0.3330);
-                *sg0.add(idx) += contrib;
+                sg0[idx] += contrib;
             }
         }
     }
@@ -272,20 +275,21 @@ unsafe fn sgram(
 ///
 /// Ported from R's Fortran stxwx.f.
 /// All arrays use 1-based Fortran indexing internally.
-unsafe fn stxwx(
-    xs: *mut f64,
-    ys: *mut f64,
-    ws: *mut f64,
-    n: *mut c_int,
-    knot: *mut f64,
-    nk: *mut c_int,
-    xwy: *mut f64,
-    hs0: *mut f64,
-    hs1: *mut f64,
-    hs2: *mut f64,
-    hs3: *mut f64,
+#[allow(clippy::too_many_arguments)]
+fn stxwx(
+    xs: &[f64],
+    ys: &[f64],
+    ws: &[f64],
+    n: &c_int,
+    knot: &[f64],
+    nk: &c_int,
+    xwy: &mut [f64],
+    hs0: &mut [f64],
+    hs1: &mut [f64],
+    hs2: &mut [f64],
+    hs3: &mut [f64],
 ) {
-    unsafe {
+    {
         let n = *n as usize;
         let nk = *nk as usize;
         let lenxk = nk + 4;
@@ -295,11 +299,11 @@ unsafe fn stxwx(
 
         // Initialize output vectors
         for i in 0..nk {
-            *xwy.add(i) = 0.0;
-            *hs0.add(i) = 0.0;
-            *hs1.add(i) = 0.0;
-            *hs2.add(i) = 0.0;
-            *hs3.add(i) = 0.0;
+            xwy[i] = 0.0;
+            hs0[i] = 0.0;
+            hs1[i] = 0.0;
+            hs2[i] = 0.0;
+            hs3[i] = 0.0;
         }
 
         let mut ileft: c_int = 1; // 1-based
@@ -307,8 +311,8 @@ unsafe fn stxwx(
         for i in 0..n {
             // Find interval
             let (ret, mflag) = crate::appl::interv::findInterval(
-                std::slice::from_raw_parts(knot, nk + 1),
-                *xs.add(i),
+                &knot[..nk + 1],
+                xs[i],
                 false,
                 false,
                 ileft,
@@ -323,7 +327,7 @@ unsafe fn stxwx(
             };
 
             if mflag == 1 {
-                if *xs.add(i) <= *knot.add(nk) + eps {
+                if xs[i] <= knot[nk] + eps {
                     ileft -= 1;
                 } else {
                     return;
@@ -332,9 +336,9 @@ unsafe fn stxwx(
 
             // Evaluate B-splines at x(i)
             super::bspline::bsplvd(
-                std::slice::from_raw_parts(knot, lenxk),
+                &knot[..lenxk],
                 4,
-                *xs.add(i),
+                xs[i],
                 ileft,
                 &mut work,
                 &mut vnikx,
@@ -342,7 +346,7 @@ unsafe fn stxwx(
             );
 
             let j_base = ileft as usize - 4; // 0-based index into output arrays
-            let w2 = *ws.add(i) * *ws.add(i);
+            let w2 = ws[i] * ws[i];
 
             // Accumulate contributions from the 4 B-splines
             for b in 0..4 {
@@ -351,8 +355,8 @@ unsafe fn stxwx(
                     break;
                 }
                 let v = vnikx[b]; // vnikx(b+1, 1) = B-spline value
-                *xwy.add(j) += w2 * *ys.add(i) * v;
-                *hs0.add(j) += w2 * v * v;
+                xwy[j] += w2 * ys[i] * v;
+                hs0[j] += w2 * v * v;
                 for bb in (b + 1)..4 {
                     let jb = j_base + bb;
                     if jb >= nk {
@@ -362,13 +366,13 @@ unsafe fn stxwx(
                     let prod = w2 * v * vb;
                     match bb - b {
                         1 => {
-                            *hs1.add(j) += prod;
+                            hs1[j] += prod;
                         }
                         2 => {
-                            *hs2.add(j) += prod;
+                            hs2[j] += prod;
                         }
                         3 => {
-                            *hs3.add(j) += prod;
+                            hs3[j] += prod;
                         }
                         _ => {} // intentionally unhandled: derivative order not requested
                     }
@@ -385,39 +389,40 @@ unsafe fn stxwx(
 ///
 /// Ported from R's Fortran sslvrg.f.
 /// All arrays use 1-based Fortran indexing internally.
-unsafe fn sslvrg(
-    penalt: *mut f64,
-    dofoff: *mut f64,
-    xs: *mut f64,
-    ys: *mut f64,
-    ws: *mut f64,
-    ssw: *mut f64,
-    n: *mut c_int,
-    knot: *mut f64,
-    nk: *mut c_int,
-    coef: *mut f64,
-    sz: *mut f64,
-    lev: *mut f64,
-    crit: *mut f64,
-    icrit: *mut c_int,
-    lambda: *mut f64,
-    xwy: *mut f64,
-    hs0: *mut f64,
-    hs1: *mut f64,
-    hs2: *mut f64,
-    hs3: *mut f64,
-    sg0: *mut f64,
-    sg1: *mut f64,
-    sg2: *mut f64,
-    sg3: *mut f64,
-    abd: *mut f64,
-    p1ip: *mut f64,
-    p2ip: *mut f64,
-    ld4: *mut c_int,
-    ldnk: *mut c_int,
-    info: *mut c_int,
+#[allow(clippy::too_many_arguments)]
+fn sslvrg(
+    penalt: &f64,
+    dofoff: &f64,
+    xs: &[f64],
+    ys: &[f64],
+    ws: &[f64],
+    ssw: &f64,
+    n: &c_int,
+    knot: &[f64],
+    nk: &c_int,
+    coef: &mut [f64],
+    sz: &mut [f64],
+    lev: &mut [f64],
+    crit: &mut f64,
+    icrit: &c_int,
+    lambda: &f64,
+    xwy: &[f64],
+    hs0: &[f64],
+    hs1: &[f64],
+    hs2: &[f64],
+    hs3: &[f64],
+    sg0: &[f64],
+    sg1: &[f64],
+    sg2: &[f64],
+    sg3: &[f64],
+    abd: &mut [f64],
+    p1ip: &mut [f64],
+    p2ip: &mut [f64],
+    ld4: &c_int,
+    ldnk: &c_int,
+    info: &mut c_int,
 ) {
-    unsafe {
+    {
         let n = *n as usize;
         let nk = *nk as usize;
         let ld4 = *ld4 as usize;
@@ -430,26 +435,26 @@ unsafe fn sslvrg(
 
         // Compute coefficients: coef = xwy, abd diagonal = hs + lambda*sg
         for i in 0..nk {
-            *coef.add(i) = *xwy.add(i);
+            coef[i] = xwy[i];
             // abd(4, j) = hs0(j) + lambda * sg0(j)  [1-based: row 4 = 0-based row 3]
-            *abd.add(3 + i * ld4) = *hs0.add(i) + *lambda * *sg0.add(i);
+            abd[3 + i * ld4] = hs0[i] + *lambda * sg0[i];
         }
         for i in 0..(nk - 1) {
             // abd(3, j+1) = hs1(j) + lambda * sg1(j)  [0-based row 2]
-            *abd.add(2 + (i + 1) * ld4) = *hs1.add(i) + *lambda * *sg1.add(i);
+            abd[2 + (i + 1) * ld4] = hs1[i] + *lambda * sg1[i];
         }
         for i in 0..(nk - 2) {
             // abd(2, j+2) = hs2(j) + lambda * sg2(j)  [0-based row 1]
-            *abd.add(1 + (i + 2) * ld4) = *hs2.add(i) + *lambda * *sg2.add(i);
+            abd[1 + (i + 2) * ld4] = hs2[i] + *lambda * sg2[i];
         }
         for i in 0..(nk - 3) {
             // abd(1, j+3) = hs3(j) + lambda * sg3(j)  [0-based row 0]
-            *abd.add(0 + (i + 3) * ld4) = *hs3.add(i) + *lambda * *sg3.add(i);
+            abd[0 + (i + 3) * ld4] = hs3[i] + *lambda * sg3[i];
         }
 
         // Factorize banded matrix abd
         let info_val: c_int = crate::appl::linpack_band::dpbfa(
-            std::slice::from_raw_parts_mut(abd, ld4 * nk),
+            &mut abd[..ld4 * nk],
             ld4 as c_int,
             nk as c_int,
             3,
@@ -461,19 +466,19 @@ unsafe fn sslvrg(
 
         // Solve linear system
         crate::appl::linpack_band::dpbsl(
-            std::slice::from_raw_parts(abd, ld4 * nk),
+            &abd[..ld4 * nk],
             ld4 as c_int,
             nk as c_int,
             3,
-            std::slice::from_raw_parts_mut(coef, nk),
+            &mut coef[..nk],
         );
 
         // Value of smooth at data points
         for i in 0..n {
-            let xv = *xs.add(i);
-            *sz.add(i) = super::bspline::bvalue(
-                std::slice::from_raw_parts(knot, nk + 4),
-                std::slice::from_raw_parts(coef, nk),
+            let xv = xs[i];
+            sz[i] = super::bspline::bvalue(
+                &knot[..nk + 4],
+                &coef[..nk],
                 4,
                 xv,
                 0,
@@ -484,19 +489,19 @@ unsafe fn sslvrg(
         if *icrit >= 1 {
             // Get leverages
             super::bspline::sinerp(
-                std::slice::from_raw_parts(abd, ld4 * nk),
+                &abd[..ld4 * nk],
                 ld4 as c_int,
                 nk as c_int,
-                std::slice::from_raw_parts_mut(p1ip, ld4 * nk),
-                std::slice::from_raw_parts_mut(p2ip, ldnk * nk),
+                &mut p1ip[..ld4 * nk],
+                &mut p2ip[..ldnk * nk],
                 ldnk as c_int,
                 0,
             );
 
             for i in 0..n {
-                let mut xv = *xs.add(i);
+                let mut xv = xs[i];
                 let (i_ret, mflag) = crate::appl::interv::findInterval(
-                    std::slice::from_raw_parts(knot, nk + 1),
+                    &knot[..nk + 1],
                     xv,
                     false,
                     false,
@@ -507,16 +512,16 @@ unsafe fn sslvrg(
 
                 if mflag == -1 {
                     ileft = 4;
-                    xv = *knot.add(3) + eps;
+                    xv = knot[3] + eps;
                 } else if mflag == 1 {
                     ileft = nk as c_int;
-                    xv = *knot.add(nk) - eps;
+                    xv = knot[nk] - eps;
                 }
 
                 let j = ileft as usize - 4;
 
                 super::bspline::bsplvd(
-                    std::slice::from_raw_parts(knot, lenkno),
+                    &knot[..lenkno],
                     4,
                     xv,
                     ileft,
@@ -530,18 +535,18 @@ unsafe fn sslvrg(
                 let b3 = vnikx[3];
 
                 // p1ip uses column-major: p1ip(row-1, col-1) = p1ip[(row-1) + (col-1)*ld4]
-                *lev.add(i) = (*p1ip.add(3 + j * ld4) * b0 * b0
-                    + 2.0 * *p1ip.add(2 + j * ld4) * b0 * b1
-                    + 2.0 * *p1ip.add(1 + j * ld4) * b0 * b2
-                    + 2.0 * *p1ip.add(0 + j * ld4) * b0 * b3
-                    + *p1ip.add(3 + (j + 1) * ld4) * b1 * b1
-                    + 2.0 * *p1ip.add(2 + (j + 1) * ld4) * b1 * b2
-                    + 2.0 * *p1ip.add(1 + (j + 1) * ld4) * b1 * b3
-                    + *p1ip.add(3 + (j + 2) * ld4) * b2 * b2
-                    + 2.0 * *p1ip.add(2 + (j + 2) * ld4) * b2 * b3
-                    + *p1ip.add(3 + (j + 3) * ld4) * b3 * b3)
-                    * *ws.add(i)
-                    * *ws.add(i);
+                lev[i] = (p1ip[3 + j * ld4] * b0 * b0
+                    + 2.0 * p1ip[2 + j * ld4] * b0 * b1
+                    + 2.0 * p1ip[1 + j * ld4] * b0 * b2
+                    + 2.0 * p1ip[0 + j * ld4] * b0 * b3
+                    + p1ip[3 + (j + 1) * ld4] * b1 * b1
+                    + 2.0 * p1ip[2 + (j + 1) * ld4] * b1 * b2
+                    + 2.0 * p1ip[1 + (j + 1) * ld4] * b1 * b3
+                    + p1ip[3 + (j + 2) * ld4] * b2 * b2
+                    + 2.0 * p1ip[2 + (j + 2) * ld4] * b2 * b3
+                    + p1ip[3 + (j + 3) * ld4] * b3 * b3)
+                    * ws[i]
+                    * ws[i];
             }
             // Evaluate criterion
             let mut df = 0.0;
@@ -550,22 +555,22 @@ unsafe fn sslvrg(
                 let mut rss = *ssw;
                 let mut sumw = 0.0;
                 for i in 0..n {
-                    rss += ((*ys.add(i) - *sz.add(i)) * *ws.add(i)).powi(2);
-                    df += *lev.add(i);
-                    sumw += *ws.add(i) * *ws.add(i);
+                    rss += ((ys[i] - sz[i]) * ws[i]).powi(2);
+                    df += lev[i];
+                    sumw += ws[i] * ws[i];
                 }
                 *crit = (rss / sumw) / ((1.0 - (*dofoff + *penalt * df) / sumw).powi(2));
             } else if *icrit == 2 {
                 // Ordinary CV
                 let mut c = 0.0;
                 for i in 0..n {
-                    c += (((*ys.add(i) - *sz.add(i)) * *ws.add(i)) / (1.0 - *lev.add(i))).powi(2);
+                    c += (((ys[i] - sz[i]) * ws[i]) / (1.0 - lev[i])).powi(2);
                 }
                 *crit = c / n as f64;
             } else {
                 // df matching (icrit == 3) or df - dofoff (icrit == 4)
                 for i in 0..n {
-                    df += *lev.add(i);
+                    df += lev[i];
                 }
                 if *icrit == 3 {
                     *crit = 3.0 + (*dofoff - df).powi(2);
@@ -593,47 +598,48 @@ unsafe fn sslvrg(
 ///
 /// # Safety
 /// All pointer arguments must be valid and point to appropriately sized arrays.
-pub unsafe fn sbart_(
-    penalt: *mut f64,
-    dofoff: *mut f64,
-    xs: *mut f64,
-    ys: *mut f64,
-    ws: *mut f64,
-    ssw: *mut f64,
-    n: *mut c_int,
-    knot: *mut f64,
-    nk: *mut c_int,
-    coef: *mut f64,
-    sz: *mut f64,
-    lev: *mut f64,
-    crit: *mut f64,
-    icrit: *mut c_int,
-    spar: *mut f64,
-    ispar: *mut c_int,
-    iter: *mut c_int,
-    lspar: *mut f64,
-    uspar: *mut f64,
-    tol: *mut f64,
-    eps: *mut f64,
-    Ratio: *mut f64,
-    isetup: *mut c_int,
-    xwy: *mut f64,
-    hs0: *mut f64,
-    hs1: *mut f64,
-    hs2: *mut f64,
-    hs3: *mut f64,
-    sg0: *mut f64,
-    sg1: *mut f64,
-    sg2: *mut f64,
-    sg3: *mut f64,
-    abd: *mut f64,
-    p1ip: *mut f64,
-    p2ip: *mut f64,
-    ld4: *mut c_int,
-    ldnk: *mut c_int,
-    ier: *mut c_int,
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sbart_(
+    penalt: &f64,
+    dofoff: &f64,
+    xs: &[f64],
+    ys: &[f64],
+    ws: &mut [f64],
+    ssw: &f64,
+    n: &c_int,
+    knot: &[f64],
+    nk: &c_int,
+    coef: &mut [f64],
+    sz: &mut [f64],
+    lev: &mut [f64],
+    crit: &mut f64,
+    icrit: &c_int,
+    spar: &mut f64,
+    ispar: &c_int,
+    iter: &mut c_int,
+    lspar: &mut f64,
+    uspar: &f64,
+    tol: &f64,
+    eps: &f64,
+    Ratio: &mut f64,
+    isetup: &mut c_int,
+    xwy: &mut [f64],
+    hs0: &mut [f64],
+    hs1: &mut [f64],
+    hs2: &mut [f64],
+    hs3: &mut [f64],
+    sg0: &mut [f64],
+    sg1: &mut [f64],
+    sg2: &mut [f64],
+    sg3: &mut [f64],
+    abd: &mut [f64],
+    p1ip: &mut [f64],
+    p2ip: &mut [f64],
+    ld4: &c_int,
+    ldnk: &c_int,
+    ier: &mut c_int,
 ) {
-    unsafe {
+    {
         // Local variables
         let mut ratio: f64 = 1.0; // static in C; not needed in R
         let mut a: f64;
@@ -668,8 +674,8 @@ pub unsafe fn sbart_(
         // the square of the weights; the following rectifies that
         // -----------------------------------------------------------------------
         for i in 0..*n {
-            if *ws.add(i as usize) > 0.0 {
-                *ws.add(i as usize) = (*ws.add(i as usize)).sqrt();
+            if ws[i as usize] > 0.0 {
+                ws[i as usize] = (ws[i as usize]).sqrt();
             }
         }
 
@@ -685,8 +691,8 @@ pub unsafe fn sbart_(
                 let mut t1: f64 = 0.0;
                 let mut t2: f64 = 0.0;
                 for i in 2..*nk - 3 {
-                    t1 += *hs0.add(i as usize);
-                    t2 += *sg0.add(i as usize);
+                    t1 += hs0[i as usize];
+                    t2 += sg0[i as usize];
                 }
                 ratio = t1 / t2;
             }
@@ -1023,107 +1029,108 @@ pub unsafe fn sbart_(
     }
 }
 
-/// `.Fortran(C_rbart)` — `qsbart.f` scratch layout into `sbart_`.
-pub unsafe extern "C-unwind" fn c_rbart(
-    penalt: *mut std::ffi::c_void,
-    dofoff: *mut std::ffi::c_void,
-    xs: *mut std::ffi::c_void,
-    ys: *mut std::ffi::c_void,
-    ws: *mut std::ffi::c_void,
-    ssw: *mut std::ffi::c_void,
-    n: *mut std::ffi::c_void,
-    knot: *mut std::ffi::c_void,
-    nk: *mut std::ffi::c_void,
-    coef: *mut std::ffi::c_void,
-    sz: *mut std::ffi::c_void,
-    lev: *mut std::ffi::c_void,
-    crit: *mut std::ffi::c_void,
-    iparms: *mut std::ffi::c_void,
-    spar: *mut std::ffi::c_void,
-    parms: *mut std::ffi::c_void,
-    scratch: *mut std::ffi::c_void,
-    ld4: *mut std::ffi::c_void,
-    ldnk: *mut std::ffi::c_void,
-    ier: *mut std::ffi::c_void,
-) {
-    unsafe {
-        let nk_i = *(nk as *const c_int);
-        let ld4_i = *(ld4 as *const c_int);
-        let ip = iparms as *mut c_int;
-        let parms = parms as *mut f64;
-        let sc = scratch as *mut f64;
-        let nk_us = nk_i as usize;
-        let ld4_us = ld4_i as usize;
-        let mut isetup: c_int = if *ip.add(3) == 1 { 2 } else { 0 };
-        sbart_(
-            penalt as *mut f64,
-            dofoff as *mut f64,
-            xs as *mut f64,
-            ys as *mut f64,
-            ws as *mut f64,
-            ssw as *mut f64,
-            n as *mut c_int,
-            knot as *mut f64,
-            nk as *mut c_int,
-            coef as *mut f64,
-            sz as *mut f64,
-            lev as *mut f64,
-            crit as *mut f64,
-            ip,
-            spar as *mut f64,
-            ip.add(1),
-            ip.add(2),
-            parms,
-            parms.add(1),
-            parms.add(2),
-            parms.add(3),
-            parms.add(4),
-            &mut isetup,
-            sc,
-            sc.add(nk_us),
-            sc.add(2 * nk_us),
-            sc.add(3 * nk_us),
-            sc.add(4 * nk_us),
-            sc.add(5 * nk_us),
-            sc.add(6 * nk_us),
-            sc.add(7 * nk_us),
-            sc.add(8 * nk_us),
-            sc.add(9 * nk_us),
-            sc.add(9 * nk_us + ld4_us * nk_us),
-            sc.add(9 * nk_us + 2 * ld4_us * nk_us),
-            ld4 as *mut c_int,
-            ldnk as *mut c_int,
-            ier as *mut c_int,
-        );
-    }
+/// `.Fortran(C_rbart, penalt, dofoff, xs, ys, ws, ssw, n, knot, nk, coef, sz,
+/// lev, crit, iparms, spar, parms, scratch, ld4, ldnk, ier)` — `qsbart.f`
+/// scratch layout into `sbart_`.
+pub(crate) fn rbart_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut a = Args::new(b);
+    let penalt = a.real()[0];
+    let dofoff = a.real()[0];
+    let xs = &*a.real();
+    let ys = &*a.real();
+    let ws = a.real();
+    let ssw = a.real()[0];
+    let n = a.int()[0];
+    let knot = &*a.real();
+    let nk = a.int()[0];
+    let coef = a.real();
+    let sz = a.real();
+    let lev = a.real();
+    let crit = &mut a.real()[0];
+    let iparms = a.int();
+    let spar = &mut a.real()[0];
+    let parms = a.real();
+    let scratch = a.real();
+    let ld4 = a.int()[0];
+    let ldnk = a.int()[0];
+    let ier = &mut a.int()[0];
+    rbart(
+        penalt, dofoff, xs, ys, ws, ssw, n, knot, nk, coef, sz, lev, crit, iparms, spar, parms,
+        scratch, ld4, ldnk, ier,
+    );
+    Ok(())
 }
 
-/// `.Fortran(C_bvalus)` — evaluate the cubic spline at each x.
-pub unsafe extern "C-unwind" fn c_bvalus(
-    n: *mut std::ffi::c_void,
-    knot: *mut std::ffi::c_void,
-    coef: *mut std::ffi::c_void,
-    nk: *mut std::ffi::c_void,
-    x: *mut std::ffi::c_void,
-    s: *mut std::ffi::c_void,
-    order: *mut std::ffi::c_void,
+/// The `qsbart.f` driver: unpack `iparms`/`parms` and carve `scratch` into
+/// the `sbart_` work vectors (9 of length `nk`, `abd` and `p1ip` of
+/// `ld4 * nk`, then `p2ip` of `ldnk * nk`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rbart(
+    penalt: f64,
+    dofoff: f64,
+    xs: &[f64],
+    ys: &[f64],
+    ws: &mut [f64],
+    ssw: f64,
+    n: c_int,
+    knot: &[f64],
+    nk: c_int,
+    coef: &mut [f64],
+    sz: &mut [f64],
+    lev: &mut [f64],
+    crit: &mut f64,
+    iparms: &mut [c_int],
+    spar: &mut f64,
+    parms: &mut [f64],
+    scratch: &mut [f64],
+    ld4: c_int,
+    ldnk: c_int,
+    ier: &mut c_int,
 ) {
-    unsafe {
-        let n = *(n as *const c_int);
-        let nk = *(nk as *const c_int);
-        let deriv = *(order as *const c_int);
-        let knot = knot as *const f64;
-        let coef = coef as *const f64;
-        let x = x as *const f64;
-        let s = s as *mut f64;
-        for i in 0..n as usize {
-            *s.add(i) = super::bspline::bvalue(
-                std::slice::from_raw_parts(knot, (nk + 4) as usize),
-                std::slice::from_raw_parts(coef, nk as usize),
-                4,
-                *x.add(i),
-                deriv,
-            );
-        }
+    let nk_us = nk as usize;
+    let ld4_us = ld4 as usize;
+    let ldnk_us = ldnk as usize;
+    let [icrit, ispar, iter, setup, ..] = iparms else {
+        panic!("rbart needs four integer parameters");
+    };
+    let [lspar, uspar, tol, eps, ratio, ..] = parms else {
+        panic!("rbart needs five real parameters");
+    };
+    let mut isetup: c_int = if *setup == 1 { 2 } else { 0 };
+    let (vectors, rest) = scratch.split_at_mut(9 * nk_us);
+    let (abd, rest) = rest.split_at_mut(ld4_us * nk_us);
+    let (p1ip, rest) = rest.split_at_mut(ld4_us * nk_us);
+    let p2ip = &mut rest[..ldnk_us * nk_us];
+    let mut v = vectors.chunks_exact_mut(nk_us.max(1));
+    let mut next = || v.next().unwrap_or_default();
+    let (xwy, hs0, hs1, hs2, hs3) = (next(), next(), next(), next(), next());
+    let (sg0, sg1, sg2, sg3) = (next(), next(), next(), next());
+    sbart_(
+        &penalt, &dofoff, xs, ys, ws, &ssw, &n, knot, &nk, coef, sz, lev, crit, icrit, spar, ispar,
+        iter, lspar, uspar, tol, eps, ratio, &mut isetup, xwy, hs0, hs1, hs2, hs3, sg0, sg1, sg2,
+        sg3, abd, p1ip, p2ip, &ld4, &ldnk, ier,
+    );
+}
+
+/// `.Fortran(C_bvalus, n, knot, coef, nk, x, s, order)` — evaluate the cubic
+/// spline at each x.
+pub(crate) fn bvalus_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut a = Args::new(b);
+    let n = a.int()[0];
+    let knot = &*a.real();
+    let coef = &*a.real();
+    let nk = a.int()[0];
+    let x = &*a.real();
+    let s = a.real();
+    let deriv = a.int()[0];
+    for i in 0..n as usize {
+        s[i] = super::bspline::bvalue(
+            &knot[..(nk + 4) as usize],
+            &coef[..nk as usize],
+            4,
+            x[i],
+            deriv,
+        );
     }
+    Ok(())
 }

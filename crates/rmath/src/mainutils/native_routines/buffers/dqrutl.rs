@@ -6,35 +6,22 @@
 //! `.Fortran(.F_dqrrsd, ...)`; these kernels provide the same contracts over
 //! the ported `appl::linpack_qr` routines.
 
-use std::os::raw::{c_int, c_void};
-
-use super::{BufferError, NativeBuffer, dimension, finite, minimum, product};
+use super::{Args, BufferError, NativeBuffer, dimension, finite, minimum, product};
 
 /// `dqrdc2(x, ldx, n, p, tol, k, qraux, jpvt, work)` — pivoted Householder QR.
-pub(crate) unsafe extern "C-unwind" fn dqrdc2(
-    x: *mut c_void,
-    ldx: *mut c_void,
-    n: *mut c_void,
-    p: *mut c_void,
-    tol: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    jpvt: *mut c_void,
-    work: *mut c_void,
-) {
-    unsafe {
-        crate::appl::linpack_qr::dqrdc2(
-            x.cast(),
-            *ldx.cast::<c_int>(),
-            *n.cast::<c_int>(),
-            *p.cast::<c_int>(),
-            *tol.cast::<f64>(),
-            k.cast(),
-            qraux.cast(),
-            jpvt.cast(),
-            work.cast(),
-        );
-    }
+pub(crate) fn dqrdc2(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut a = Args::new(b);
+    let x = a.real();
+    let ldx = a.int()[0];
+    let n = a.int()[0];
+    let p = a.int()[0];
+    let tol = a.real()[0];
+    let k = &mut a.int()[0];
+    let qraux = a.real();
+    let jpvt = a.int();
+    let work = a.real();
+    crate::appl::linpack_qr::dqrdc2_impl(x, ldx as usize, n as usize, p as usize, tol, k, qraux, jpvt, work);
+    Ok(())
 }
 
 /// Shared shape admission for the `dqrsl` column loops:
@@ -95,204 +82,90 @@ pub(crate) fn dqrcf_shape(b: &[NativeBuffer]) -> Result<(), BufferError> {
     dqrsl_shape(b, 6, &[product(&[k, ny])?, 1])
 }
 
-/// One `dqrsl` call per column, mirroring dqrutl.f exactly: `y` doubles as
-/// the `qty` slot except for dqrqty itself, which writes `qty(1,j)`.
-unsafe fn dqrsl_columns(
-    x: *const f64,
-    n: c_int,
-    k: c_int,
-    qraux: *const f64,
-    y: *mut f64,
-    ny: c_int,
-    qy: *mut f64,
-    qty: *mut f64,
-    b: *mut f64,
-    rsd: *mut f64,
-    xb: *mut f64,
-    job: c_int,
-) {
-    unsafe {
-        let mut column_info: c_int = 0;
-        for j in 0..ny as isize {
-            let column = y.offset(j * n as isize);
-            let offset = |out: *mut f64, stride: isize| {
-                if out.is_null() {
-                    std::ptr::null_mut()
-                } else {
-                    out.offset(j * stride)
-                }
-            };
-            crate::appl::linpack_qr::dqrsl(
-                x.cast_mut(),
-                n,
-                n,
-                k,
-                qraux,
-                column,
-                offset(qy, n as isize),
-                if qty.is_null() {
-                    column
-                } else {
-                    offset(qty, n as isize)
-                },
-                offset(b, k as isize),
-                offset(rsd, n as isize),
-                offset(xb, n as isize),
-                job,
-                &mut column_info,
-            );
-        }
+/// Which `dqrsl` output a column loop publishes.
+#[derive(Clone, Copy, PartialEq)]
+enum Output {
+    Qy,
+    Qty,
+    Rsd,
+    Xb,
+}
+
+/// Run the selected QR operation per column. The residual and fitted-value
+/// routines use each input column as the in-place qty workspace.
+fn dqrsl_columns(b: &mut [NativeBuffer], output: Output) -> Result<(), BufferError> {
+    use crate::appl::linpack_qr::dqrsl_impl;
+    let mut a = Args::new(b);
+    let x = a.real();
+    let n = a.int()[0] as usize;
+    let k = a.int()[0] as usize;
+    let qraux = a.real();
+    let y = a.real();
+    let ny = a.int()[0] as usize;
+    let out = a.real();
+    if n == 0 {
+        return Ok(());
     }
+    let mut info = 0;
+    for j in 0..ny {
+        let range = j * n..(j + 1) * n;
+        let y = &mut y[range.clone()];
+        let out = &mut out[range];
+        let (y, qy, qty, rsd, xb, flags): (_, &mut [f64], &mut [f64], &mut [f64], &mut [f64], _) = match output {
+            Output::Qy => (Some(&*y), out, &mut [], &mut [], &mut [], [true, false, false, false, false]),
+            Output::Qty => (Some(&*y), &mut [], out, &mut [], &mut [], [false, true, false, false, false]),
+            Output::Rsd => (None, &mut [], y, out, &mut [], [false, true, false, true, false]),
+            Output::Xb => (None, &mut [], y, &mut [], out, [false, true, false, false, true]),
+        };
+        dqrsl_impl(x, n, n, k, qraux, y, qy, qty, &mut [], rsd, xb, flags, &mut info);
+    }
+    Ok(())
 }
 
 /// `dqrqty(x, n, k, qraux, y, ny, qty)` — job 1000.
-pub(crate) unsafe extern "C-unwind" fn dqrqty(
-    x: *mut c_void,
-    n: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    y: *mut c_void,
-    ny: *mut c_void,
-    qty: *mut c_void,
-) {
-    unsafe {
-        dqrsl_columns(
-            x.cast(),
-            *n.cast::<c_int>(),
-            *k.cast::<c_int>(),
-            qraux.cast(),
-            y.cast(),
-            *ny.cast::<c_int>(),
-            std::ptr::null_mut(),
-            qty.cast(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            1000,
-        );
-    }
+pub(crate) fn dqrqty(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    dqrsl_columns(b, Output::Qty)
 }
 
 /// `dqrqy(x, n, k, qraux, y, ny, qy)` — job 10000 (qty slot unused).
-pub(crate) unsafe extern "C-unwind" fn dqrqy(
-    x: *mut c_void,
-    n: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    y: *mut c_void,
-    ny: *mut c_void,
-    qy: *mut c_void,
-) {
-    unsafe {
-        dqrsl_columns(
-            x.cast(),
-            *n.cast::<c_int>(),
-            *k.cast::<c_int>(),
-            qraux.cast(),
-            y.cast(),
-            *ny.cast::<c_int>(),
-            qy.cast(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            10000,
-        );
-    }
+pub(crate) fn dqrqy(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    dqrsl_columns(b, Output::Qy)
 }
 
 /// `dqrrsd(x, n, k, qraux, y, ny, rsd)` — job 10.
-pub(crate) unsafe extern "C-unwind" fn dqrrsd(
-    x: *mut c_void,
-    n: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    y: *mut c_void,
-    ny: *mut c_void,
-    rsd: *mut c_void,
-) {
-    unsafe {
-        dqrsl_columns(
-            x.cast(),
-            *n.cast::<c_int>(),
-            *k.cast::<c_int>(),
-            qraux.cast(),
-            y.cast(),
-            *ny.cast::<c_int>(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            rsd.cast(),
-            std::ptr::null_mut(),
-            10,
-        );
-    }
+pub(crate) fn dqrrsd(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    dqrsl_columns(b, Output::Rsd)
 }
 
 /// `dqrxb(x, n, k, qraux, y, ny, xb)` — job 1.
-pub(crate) unsafe extern "C-unwind" fn dqrxb(
-    x: *mut c_void,
-    n: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    y: *mut c_void,
-    ny: *mut c_void,
-    xb: *mut c_void,
-) {
-    unsafe {
-        dqrsl_columns(
-            x.cast(),
-            *n.cast::<c_int>(),
-            *k.cast::<c_int>(),
-            qraux.cast(),
-            y.cast(),
-            *ny.cast::<c_int>(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            xb.cast(),
-            1,
-        );
-    }
+pub(crate) fn dqrxb(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    dqrsl_columns(b, Output::Xb)
 }
 
-/// `dqrcf(x, n, k, qraux, y, ny, b, info)` — job 100 per column.
-pub(crate) unsafe extern "C-unwind" fn dqrcf(
-    x: *mut c_void,
-    n: *mut c_void,
-    k: *mut c_void,
-    qraux: *mut c_void,
-    y: *mut c_void,
-    ny: *mut c_void,
-    b: *mut c_void,
-    info: *mut c_void,
-) {
-    unsafe {
-        let mut column_info = 0 as c_int;
-        let n_val = *n.cast::<c_int>();
-        let k_val = *k.cast::<c_int>();
-        let ny_val = *ny.cast::<c_int>();
-        for j in 0..ny_val as isize {
-            let column = (y as *mut f64).offset(j * n_val as isize);
-            crate::appl::linpack_qr::dqrsl(
-                x.cast(),
-                n_val,
-                n_val,
-                k_val,
-                qraux.cast(),
-                column,
-                std::ptr::null_mut(),
-                column,
-                (b as *mut f64).offset(j * k_val as isize),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                100,
-                &mut column_info,
+/// `dqrcf(x, n, k, qraux, y, ny, b, info)` — job 100 per column, with the
+/// column doubling as the `qty` slot as in dqrutl.f.
+pub(crate) fn dqrcf(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut a = Args::new(buffers);
+    let x = a.real();
+    let n = a.int()[0];
+    let k = a.int()[0];
+    let qraux = &*a.real();
+    let y = a.real();
+    let ny = a.int()[0];
+    let b = a.real();
+    let info = a.int();
+    let (nu, ku) = (n as usize, k as usize);
+    let mut column_info = 0;
+    if nu != 0 {
+        for j in 0..ny as usize {
+            crate::appl::linpack_qr::dqrsl_impl(
+                x, nu, nu, ku, qraux, None, &mut [],
+                &mut y[j * nu..(j + 1) * nu],
+                &mut b[j * ku..(j + 1) * ku],
+                &mut [], &mut [], [false, true, true, false, false], &mut column_info,
             );
         }
-        if !info.is_null() {
-            *(info as *mut c_int) = column_info;
-        }
     }
+    info[0] = column_info;
+    Ok(())
 }

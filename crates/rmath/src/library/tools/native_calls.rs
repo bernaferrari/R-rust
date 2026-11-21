@@ -192,7 +192,7 @@ pub(crate) fn lookup_buffer(
     use crate::mainutils::native_routines::buffers::{
         self, BufferInterface, BufferRoutine,
         BufferType::{Character, Integer, Real},
-        LoessKernel, VoidKernel,
+        VoidKernel,
     };
     let bare = name.strip_prefix("C_").unwrap_or(name);
     // SAFETY: each adjacent type list and shape predicate describes the exact
@@ -213,49 +213,49 @@ pub(crate) fn lookup_buffer(
             "pppred" => buffers::ppr_predict::ROUTINE,
             "setppr" => buffers::smart::SETPPR_ROUTINE,
             "smart" => buffers::smart::SMART_ROUTINE,
-            "dqrdc2" => BufferRoutine::void(
+            "dqrdc2" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[
                     Real, Integer, Integer, Integer, Real, Integer, Real, Integer, Real,
                 ],
                 buffers::dqrutl::dqrdc2_shape,
-                VoidKernel::Args9(buffers::dqrutl::dqrdc2),
+                buffers::dqrutl::dqrdc2,
             ),
-            "dqrcf" => BufferRoutine::void(
+            "dqrcf" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[Real, Integer, Integer, Real, Real, Integer, Real, Integer],
                 buffers::dqrutl::dqrcf_shape,
-                VoidKernel::Args8(buffers::dqrutl::dqrcf),
+                buffers::dqrutl::dqrcf,
             ),
-            "dqrqy" => BufferRoutine::void(
+            "dqrqy" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[Real, Integer, Integer, Real, Real, Integer, Real],
                 buffers::dqrutl::dqrqy_shape,
-                VoidKernel::Args7(buffers::dqrutl::dqrqy),
+                buffers::dqrutl::dqrqy,
             ),
-            "dqrqty" => BufferRoutine::void(
+            "dqrqty" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[Real, Integer, Integer, Real, Real, Integer, Real],
                 buffers::dqrutl::dqrqty_shape,
-                VoidKernel::Args7(buffers::dqrutl::dqrqty),
+                buffers::dqrutl::dqrqty,
             ),
-            "dqrrsd" => BufferRoutine::void(
+            "dqrrsd" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[Real, Integer, Integer, Real, Real, Integer, Real],
                 buffers::dqrutl::dqrrsd_shape,
-                VoidKernel::Args7(buffers::dqrutl::dqrrsd),
+                buffers::dqrutl::dqrrsd,
             ),
-            "dqrxb" => BufferRoutine::void(
+            "dqrxb" => BufferRoutine::owned(
                 "base",
                 BufferInterface::Fortran,
                 &[Real, Integer, Integer, Real, Real, Integer, Real],
                 buffers::dqrutl::dqrxb_shape,
-                VoidKernel::Args7(buffers::dqrutl::dqrxb),
+                buffers::dqrutl::dqrxb,
             ),
             "dtrco" => BufferRoutine::owned(
                 "base",
@@ -271,7 +271,7 @@ pub(crate) fn lookup_buffer(
                 buffers::renctest,
                 VoidKernel::Args1(c_renctest),
             ),
-            "kmns" => BufferRoutine::void(
+            "kmns" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[
@@ -279,7 +279,7 @@ pub(crate) fn lookup_buffer(
                     Integer, Real, Integer, Integer, Integer, Real, Integer,
                 ],
                 buffers::kmns,
-                VoidKernel::Args17(crate::library::stats::kmeans::c_kmns),
+                crate::library::stats::kmeans::kmns_owned,
             ),
             "eureka" => BufferRoutine::owned(
                 "stats",
@@ -297,23 +297,23 @@ pub(crate) fn lookup_buffer(
                 buffers::multi_yw,
                 VoidKernel::Args10(crate::library::stats::mar::c_multi_yw),
             ),
-            "kmeans_Lloyd" => BufferRoutine::void(
+            "kmeans_Lloyd" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
                 &[
                     Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
                 ],
                 buffers::kmeans,
-                VoidKernel::Args9(crate::library::stats::kmeans::c_kmeans_lloyd),
+                crate::library::stats::kmeans::kmeans_lloyd_owned,
             ),
-            "kmeans_MacQueen" => BufferRoutine::void(
+            "kmeans_MacQueen" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
                 &[
                     Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
                 ],
                 buffers::kmeans,
-                VoidKernel::Args9(crate::library::stats::kmeans::c_kmeans_macqueen),
+                crate::library::stats::kmeans::kmeans_macqueen_owned,
             ),
             "hclust" => BufferRoutine::owned(
                 "stats",
@@ -324,7 +324,7 @@ pub(crate) fn lookup_buffer(
                 buffers::hclust,
                 crate::library::stats::hclust_f::hclust_owned,
             ),
-            "rbart" => BufferRoutine::void(
+            "rbart" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[
@@ -332,14 +332,14 @@ pub(crate) fn lookup_buffer(
                     Real, Integer, Real, Real, Real, Integer, Integer, Integer,
                 ],
                 buffers::rbart,
-                VoidKernel::Args20(crate::library::stats::sbart::c_rbart),
+                crate::library::stats::sbart::rbart_owned,
             ),
-            "bvalus" => BufferRoutine::void(
+            "bvalus" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[Integer, Real, Real, Integer, Real, Real, Integer],
                 buffers::bvalus,
-                VoidKernel::Args7(crate::library::stats::sbart::c_bvalus),
+                crate::library::stats::sbart::bvalus_owned,
             ),
             "hcass2" => BufferRoutine::owned(
                 "stats",
@@ -348,44 +348,48 @@ pub(crate) fn lookup_buffer(
                 buffers::hcass2,
                 crate::library::stats::hclust_f::hcass2_owned,
             ),
-            "loess_raw" => BufferRoutine::numeric(
+            "loess_raw" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
+                &[Real, Real, Real, Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Character, Real, Integer, Integer, Real, Real, Real, Real, Real, Real, Real, Integer],
                 buffers::loess_raw,
-                LoessKernel::Raw(crate::library::stats::loessc::loess_raw),
+                crate::library::stats::loessc::loess_raw,
             ),
-            "loess_dfit" => BufferRoutine::numeric(
+            "loess_dfit" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
+                &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real],
                 buffers::loess_dfit,
-                LoessKernel::Dfit(crate::library::stats::loessc::loess_dfit),
+                crate::library::stats::loessc::loess_dfit,
             ),
             "loess_ifit" => buffers::loess_ifit::ROUTINE,
-            "loess_ise" => BufferRoutine::numeric(
+            "loess_ise" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
+                &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Real, Integer, Integer, Integer, Real, Real],
                 buffers::loess_ise,
-                LoessKernel::Ise(crate::library::stats::loessc::c_loess_ise),
+                crate::library::stats::loessc::loess_ise,
             ),
-            "loess_dfitse" => BufferRoutine::numeric(
+            "loess_dfitse" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::C,
+                &[Real, Real, Real, Real, Real, Integer, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real, Real],
                 buffers::loess_dfitse,
-                LoessKernel::Dfitse(crate::library::stats::loessc::c_loess_dfitse),
+                crate::library::stats::loessc::loess_dfitse,
             ),
-            "lowesw" => BufferRoutine::void(
+            "lowesw" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[Real, Integer, Real, Integer],
                 buffers::lowesw,
-                VoidKernel::Args4(crate::library::stats::loessc::c_lowesw),
+                crate::library::stats::loessc::lowesw,
             ),
-            "lowesp" => BufferRoutine::void(
+            "lowesp" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[Integer, Real, Real, Real, Real, Integer, Real],
                 buffers::lowesp,
-                VoidKernel::Args7(crate::library::stats::loessc::c_lowesp),
+                crate::library::stats::loessc::lowesp,
             ),
             _ => return None,
         })

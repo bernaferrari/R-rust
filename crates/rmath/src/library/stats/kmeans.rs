@@ -1,5 +1,5 @@
 use core::ffi::c_int;
-use std::slice;
+use crate::mainutils::native_routines::buffers::{Args, BufferError, NativeBuffer};
 
 use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::ffi::SEXP;
@@ -175,119 +175,43 @@ fn kmeans_macqueen_impl(
     }
 }
 
-pub unsafe fn kmeans_Lloyd(
-    x: *mut f64,
-    pn: *const c_int,
-    pp: *const c_int,
-    cen: *mut f64,
-    pk: *const c_int,
-    cl: *mut c_int,
-    pmaxiter: *mut c_int,
-    nc: *mut c_int,
-    wss: *mut f64,
-) {
-    // SAFETY: the caller passes the `.C` argument buffers: readable scalars
-    // `n`, `p`, `k`, an `n * p` data matrix, a `k * p` centre matrix, `n`
-    // cluster codes, `k` counts and sums of squares, and a writable
-    // iteration count, all distinct, live and unaliased for this call.
-    let (n, p, k, x, cen, cl, maxiter, nc, wss) = unsafe {
-        let (n, k, p) = (*pn, *pk, *pp);
-        (
-            n,
-            p,
-            k,
-            slice::from_raw_parts(x, (n * p) as usize),
-            slice::from_raw_parts_mut(cen, (k * p) as usize),
-            slice::from_raw_parts_mut(cl, n as usize),
-            &mut *pmaxiter,
-            slice::from_raw_parts_mut(nc, k as usize),
-            slice::from_raw_parts_mut(wss, k as usize),
-        )
-    };
-    kmeans_lloyd_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
+type KmeansKernel =
+    fn(&[f64], c_int, c_int, c_int, &mut [f64], &mut [c_int], &mut c_int, &mut [c_int], &mut [f64]);
+
+/// `.C(C_kmeans_*)` over admitted buffers: `x` (n*p), `n`, `p`, `cen` (k*p),
+/// `k`, `cl` (n), `maxiter`, `nc` (k), `wss` (k).
+fn kmeans_owned(b: &mut [NativeBuffer], kernel: KmeansKernel) -> Result<(), BufferError> {
+    let mut a = Args::new(b);
+    let x = a.real();
+    let n = a.int()[0];
+    let p = a.int()[0];
+    let cen = a.real();
+    let k = a.int()[0];
+    let cl = a.int();
+    let maxiter = &mut a.int()[0];
+    let nc = a.int();
+    let wss = a.real();
+    let (nu, pu, ku) = (n as usize, p as usize, k as usize);
+    kernel(
+        &x[..nu * pu],
+        n,
+        p,
+        k,
+        &mut cen[..ku * pu],
+        &mut cl[..nu],
+        maxiter,
+        &mut nc[..ku],
+        &mut wss[..ku],
+    );
+    Ok(())
 }
 
-pub unsafe fn kmeans_MacQueen(
-    x: *mut f64,
-    pn: *const c_int,
-    pp: *const c_int,
-    cen: *mut f64,
-    pk: *const c_int,
-    cl: *mut c_int,
-    pmaxiter: *mut c_int,
-    nc: *mut c_int,
-    wss: *mut f64,
-) {
-    // SAFETY: the caller passes the `.C` argument buffers: readable scalars
-    // `n`, `p`, `k`, an `n * p` data matrix, a `k * p` centre matrix, `n`
-    // cluster codes, `k` counts and sums of squares, and a writable
-    // iteration count, all distinct, live and unaliased for this call.
-    let (n, p, k, x, cen, cl, maxiter, nc, wss) = unsafe {
-        let (n, k, p) = (*pn, *pk, *pp);
-        (
-            n,
-            p,
-            k,
-            slice::from_raw_parts(x, (n * p) as usize),
-            slice::from_raw_parts_mut(cen, (k * p) as usize),
-            slice::from_raw_parts_mut(cl, n as usize),
-            &mut *pmaxiter,
-            slice::from_raw_parts_mut(nc, k as usize),
-            slice::from_raw_parts_mut(wss, k as usize),
-        )
-    };
-    kmeans_macqueen_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
-}
-pub unsafe extern "C-unwind" fn c_kmeans_lloyd(
-    x: *mut std::ffi::c_void,
-    m: *mut std::ffi::c_void,
-    p: *mut std::ffi::c_void,
-    centers: *mut std::ffi::c_void,
-    k: *mut std::ffi::c_void,
-    c1: *mut std::ffi::c_void,
-    iter: *mut std::ffi::c_void,
-    nc: *mut std::ffi::c_void,
-    wss: *mut std::ffi::c_void,
-) {
-    unsafe {
-        kmeans_Lloyd(
-            x as *mut f64,
-            m as *const c_int,
-            p as *const c_int,
-            centers as *mut f64,
-            k as *const c_int,
-            c1 as *mut c_int,
-            iter as *mut c_int,
-            nc as *mut c_int,
-            wss as *mut f64,
-        );
-    }
+pub(crate) fn kmeans_lloyd_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    kmeans_owned(b, kmeans_lloyd_impl)
 }
 
-pub unsafe extern "C-unwind" fn c_kmeans_macqueen(
-    x: *mut std::ffi::c_void,
-    m: *mut std::ffi::c_void,
-    p: *mut std::ffi::c_void,
-    centers: *mut std::ffi::c_void,
-    k: *mut std::ffi::c_void,
-    c1: *mut std::ffi::c_void,
-    iter: *mut std::ffi::c_void,
-    nc: *mut std::ffi::c_void,
-    wss: *mut std::ffi::c_void,
-) {
-    unsafe {
-        kmeans_MacQueen(
-            x as *mut f64,
-            m as *const c_int,
-            p as *const c_int,
-            centers as *mut f64,
-            k as *const c_int,
-            c1 as *mut c_int,
-            iter as *mut c_int,
-            nc as *mut c_int,
-            wss as *mut f64,
-        );
-    }
+pub(crate) fn kmeans_macqueen_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    kmeans_owned(b, kmeans_macqueen_impl)
 }
 
 // Fortran tracing stubs (F77_SUB name mangling: lowercase + underscore suffix)
@@ -403,48 +327,44 @@ pub fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// `.Fortran(C_kmns, ...)`: Hartigan-Wong (AS 136).
-pub unsafe extern "C-unwind" fn c_kmns(
-    x: *mut std::ffi::c_void,
-    m: *mut std::ffi::c_void,
-    p: *mut std::ffi::c_void,
-    centers: *mut std::ffi::c_void,
-    k: *mut std::ffi::c_void,
-    c1: *mut std::ffi::c_void,
-    c2: *mut std::ffi::c_void,
-    nc: *mut std::ffi::c_void,
-    an1: *mut std::ffi::c_void,
-    an2: *mut std::ffi::c_void,
-    ncp: *mut std::ffi::c_void,
-    d: *mut std::ffi::c_void,
-    itran: *mut std::ffi::c_void,
-    live: *mut std::ffi::c_void,
-    iter: *mut std::ffi::c_void,
-    wss: *mut std::ffi::c_void,
-    ifault: *mut std::ffi::c_void,
-) {
-    use std::os::raw::c_int;
-    unsafe {
-        let mm = *(m as *const c_int);
-        let nn = *(p as *const c_int);
-        let kk = *(k as *const c_int);
-        super::kmns::kmns(
-            std::slice::from_raw_parts_mut(x as *mut f64, (mm * nn) as usize),
-            mm,
-            nn,
-            std::slice::from_raw_parts_mut(centers as *mut f64, (kk * nn) as usize),
-            kk,
-            std::slice::from_raw_parts_mut(c1 as *mut c_int, mm as usize),
-            std::slice::from_raw_parts_mut(c2 as *mut c_int, mm as usize),
-            std::slice::from_raw_parts_mut(nc as *mut c_int, kk as usize),
-            std::slice::from_raw_parts_mut(an1 as *mut f64, kk as usize),
-            std::slice::from_raw_parts_mut(an2 as *mut f64, kk as usize),
-            std::slice::from_raw_parts_mut(ncp as *mut c_int, kk as usize),
-            std::slice::from_raw_parts_mut(d as *mut f64, mm as usize),
-            std::slice::from_raw_parts_mut(itran as *mut c_int, (kk + 1) as usize),
-            std::slice::from_raw_parts_mut(live as *mut c_int, kk as usize),
-            &mut *(iter as *mut c_int),
-            std::slice::from_raw_parts_mut(wss as *mut f64, kk as usize),
-            &mut *(ifault as *mut c_int),
-        );
-    }
+pub(crate) fn kmns_owned(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut a = Args::new(b);
+    let x = a.real();
+    let mm = a.int()[0];
+    let nn = a.int()[0];
+    let centers = a.real();
+    let kk = a.int()[0];
+    let (m, n, k) = (mm as usize, nn as usize, kk as usize);
+    let c1 = a.int();
+    let c2 = a.int();
+    let nc = a.int();
+    let an1 = a.real();
+    let an2 = a.real();
+    let ncp = a.int();
+    let d = a.real();
+    let itran = a.int();
+    let live = a.int();
+    let iter = &mut a.int()[0];
+    let wss = a.real();
+    let ifault = &mut a.int()[0];
+    super::kmns::kmns(
+        &mut x[..m * n],
+        mm,
+        nn,
+        &mut centers[..k * n],
+        kk,
+        &mut c1[..m],
+        &mut c2[..m],
+        &mut nc[..k],
+        &mut an1[..k],
+        &mut an2[..k],
+        &mut ncp[..k],
+        &mut d[..m],
+        &mut itran[..k + 1],
+        &mut live[..k],
+        iter,
+        &mut wss[..k],
+        ifault,
+    );
+    Ok(())
 }

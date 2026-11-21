@@ -118,39 +118,9 @@ void_kernels! {
     Args20(20; a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t),
 }
 
-macro_rules! numeric_kernels {
-    ($($variant:ident($($arg:ident:$kind:ident),*)),* $(,)?) => {
-        #[derive(Clone, Copy)]
-        pub(crate) enum LoessKernel {
-            $($variant(unsafe extern "C-unwind" fn($(numeric_kernels!(@type $kind)),*))),*
-        }
-        impl LoessKernel {
-            fn types(self) -> &'static [BufferType] {
-                match self { $(Self::$variant(_) => &[$(numeric_kernels!(@kind $kind)),*]),* }
-            }
-            unsafe fn invoke(self, pointers: &[*mut c_void]) {
-                match self { $(Self::$variant(function) => {
-                    let [$($arg),*] = pointers else { unreachable!("admitted exact kernel arity") };
-                    unsafe { function($((*$arg).cast()),*) };
-                }),* }
-            }
-        }
-    };
-    (@type I) => { *mut i32 }; (@kind I) => { BufferType::Integer };
-    (@type R) => { *mut f64 }; (@kind R) => { BufferType::Real };
-    (@type C) => { *mut *mut c_char }; (@kind C) => { BufferType::Character };
-}
-numeric_kernels! {
-    Raw(a:R,b:R,c:R,d:R,e:I,f:I,g:R,h:I,i:I,j:I,k:I,l:R,m:C,n:R,o:I,p:I,q:R,r:R,s:R,t:R,u:R,v:R,w:R,x:I),
-    Dfit(a:R,b:R,c:R,d:R,e:R,f:I,g:I,h:I,i:I,j:I,k:I,l:I,m:R),
-    Ise(a:R,b:R,c:R,d:R,e:R,f:I,g:I,h:I,i:I,j:R,k:I,l:I,m:I,n:R,o:R),
-    Dfitse(a:R,b:R,c:R,d:R,e:R,f:I,g:R,h:I,i:I,j:I,k:I,l:I,m:I,n:I,o:R,p:R),
-}
-
 #[derive(Clone, Copy)]
 enum Kernel {
     Void(VoidKernel),
-    Numeric(LoessKernel),
     Owned(fn(&mut [NativeBuffer]) -> Result<(), BufferError>),
 }
 
@@ -182,23 +152,6 @@ impl BufferRoutine {
             kernel: Kernel::Void(kernel),
         }
     }
-    /// # Safety
-    /// `shape` proves every scalar/array/workspace precondition of the actual
-    /// typed kernel. Element types and pointer count are derived from its ABI.
-    pub(crate) unsafe fn numeric(
-        package: &'static str,
-        interface: BufferInterface,
-        shape: fn(&[NativeBuffer]) -> Result<(), BufferError>,
-        kernel: LoessKernel,
-    ) -> Self {
-        Self {
-            package,
-            interface,
-            types: kernel.types(),
-            shape,
-            kernel: Kernel::Numeric(kernel),
-        }
-    }
     pub(crate) const fn owned(
         package: &'static str,
         interface: BufferInterface,
@@ -227,7 +180,6 @@ impl BufferRoutine {
     pub(crate) fn arity(self) -> usize {
         match self.kernel {
             Kernel::Void(k) => k.arity(),
-            Kernel::Numeric(k) => k.types().len(),
             Kernel::Owned(_) => self.types.len(),
         }
     }
@@ -298,7 +250,6 @@ impl BufferRoutine {
         unsafe {
             match self.kernel {
                 Kernel::Void(k) => k.invoke(&pointers),
-                Kernel::Numeric(k) => k.invoke(&pointers),
                 Kernel::Owned(_) => unreachable!("owned kernels dispatched without pointers"),
             }
         }
@@ -340,6 +291,35 @@ fn product(values: &[usize]) -> Result<usize, BufferError> {
 fn scalar_real(buffers: &[NativeBuffer], index: usize) -> Result<f64, BufferError> {
     minimum(buffers, index, 1)?;
     Ok(buffers[index].reals()?[0])
+}
+
+/// Disjoint typed views of admitted buffers, taken in argument order.
+///
+/// Owned kernels run only after `validate_buffers` has checked every element
+/// type against the routine descriptor, so a mismatch here is a descriptor bug.
+pub(crate) struct Args<'a>(std::slice::IterMut<'a, NativeBuffer>);
+impl<'a> Args<'a> {
+    pub(crate) fn new(buffers: &'a mut [NativeBuffer]) -> Self {
+        Self(buffers.iter_mut())
+    }
+    pub(crate) fn real(&mut self) -> &'a mut [f64] {
+        match self.0.next() {
+            Some(NativeBuffer::Real(x)) => x,
+            _ => unreachable!("admitted double buffer"),
+        }
+    }
+    pub(crate) fn int(&mut self) -> &'a mut [i32] {
+        match self.0.next() {
+            Some(NativeBuffer::Integer(x)) => x,
+            _ => unreachable!("admitted integer buffer"),
+        }
+    }
+    pub(crate) fn chars(&mut self) -> &'a mut [Vec<u8>] {
+        match self.0.next() {
+            Some(NativeBuffer::Character(x)) => x,
+            _ => unreachable!("admitted character buffer"),
+        }
+    }
 }
 
 #[cfg(test)]

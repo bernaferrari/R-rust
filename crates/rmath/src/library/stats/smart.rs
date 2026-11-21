@@ -1306,30 +1306,28 @@ fn splineAA(
     let mut nki = nk as i32;
     let mut ld4 = 4i32;
     let mut ldnk = 1i32;
-    unsafe {
-        crate::library::stats::sbart::c_rbart(
-            &mut penalt as *mut f64 as *mut std::ffi::c_void,
-            &mut dofoff as *mut f64 as *mut std::ffi::c_void,
-            dx.as_mut_ptr() as *mut std::ffi::c_void,
-            dy.as_mut_ptr() as *mut std::ffi::c_void,
-            dw.as_mut_ptr() as *mut std::ffi::c_void,
-            &mut ssw as *mut f64 as *mut std::ffi::c_void,
-            &mut ni as *mut i32 as *mut std::ffi::c_void,
-            knot.as_mut_ptr() as *mut std::ffi::c_void,
-            &mut nki as *mut i32 as *mut std::ffi::c_void,
-            coef.as_mut_ptr() as *mut std::ffi::c_void,
-            dsmo.as_mut_ptr() as *mut std::ffi::c_void,
-            lev.as_mut_ptr() as *mut std::ffi::c_void,
-            &mut crit as *mut f64 as *mut std::ffi::c_void,
-            iparms.as_mut_ptr() as *mut std::ffi::c_void,
-            &mut lambda as *mut f64 as *mut std::ffi::c_void,
-            param.as_mut_ptr() as *mut std::ffi::c_void,
-            work.as_mut_ptr() as *mut std::ffi::c_void,
-            &mut ld4 as *mut i32 as *mut std::ffi::c_void,
-            &mut ldnk as *mut i32 as *mut std::ffi::c_void,
-            &mut ier as *mut i32 as *mut std::ffi::c_void,
-        );
-    }
+    crate::library::stats::sbart::rbart(
+        penalt,
+        dofoff,
+        dx,
+        dy,
+        dw,
+        ssw,
+        ni,
+        &knot,
+        nki,
+        &mut coef,
+        dsmo,
+        lev,
+        &mut crit,
+        &mut iparms,
+        &mut lambda,
+        &mut param,
+        &mut work,
+        ld4,
+        ldnk,
+        &mut ier,
+    );
     if ier > 0 {
         let msg = format!("spline(.) TROUBLE: {}\n", ier);
         if let Ok(c) = std::ffi::CString::new(msg) {

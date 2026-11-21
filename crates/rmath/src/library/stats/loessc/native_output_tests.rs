@@ -1,4 +1,5 @@
 use super::*;
+use NativeBuffer::{Integer as I, Real as R};
 
 fn oracle() -> serde_json::Value {
     serde_json::from_str(include_str!(concat!(
@@ -37,49 +38,40 @@ fn native_raw_diagonals_and_unused_outputs_follow_gnu() {
         (c"interpolate/1.approx", Some("interpolate_diagonal")),
         (c"direct/none", None),
     ] {
-        let mut x = values(&oracle, "x");
-        let mut y = values(&oracle, "y");
-        let mut weights = values(&oracle, "weights");
-        let mut robust = values(&oracle, "robust");
-        let (mut d, mut n, mut span, mut degree, mut np, mut drop_square, mut sum, mut cell) =
-            (1, 8, 0.9, 1, 1, 2, 0, 0.18);
-        let mut surface_name = surface.as_ptr().cast_mut();
-        let mut fitted = vec![-11.; 8];
-        let mut parameter = [0; 7];
-        let mut a = vec![0; 200];
-        let mut xi = vec![0.; 200];
-        let mut vert = [0.; 2];
-        let mut vval = vec![0.; 400];
-        let mut diagonal = vec![-31.; 8];
-        let (mut trace, mut delta1, mut delta2, mut lf) = (-37., -41., -43., 0);
-        unsafe {
-            loess_raw(
-                y.as_mut_ptr(),
-                x.as_mut_ptr(),
-                weights.as_mut_ptr(),
-                robust.as_mut_ptr(),
-                &mut d,
-                &mut n,
-                &mut span,
-                &mut degree,
-                &mut np,
-                &mut drop_square,
-                &mut sum,
-                &mut cell,
-                &mut surface_name,
-                fitted.as_mut_ptr(),
-                parameter.as_mut_ptr(),
-                a.as_mut_ptr(),
-                xi.as_mut_ptr(),
-                vert.as_mut_ptr(),
-                vval.as_mut_ptr(),
-                diagonal.as_mut_ptr(),
-                &mut trace,
-                &mut delta1,
-                &mut delta2,
-                &mut lf,
-            );
-        }
+        let surface_name = surface.to_bytes_with_nul().to_vec();
+        let mut b = vec![
+            R(values(&oracle, "y")),
+            R(values(&oracle, "x")),
+            R(values(&oracle, "weights")),
+            R(values(&oracle, "robust")),
+            I(vec![1]),
+            I(vec![8]),
+            R(vec![0.9]),
+            I(vec![1]),
+            I(vec![1]),
+            I(vec![2]),
+            I(vec![0]),
+            R(vec![0.18]),
+            NativeBuffer::Character(vec![surface_name]),
+            R(vec![-11.; 8]),
+            I(vec![0; 7]),
+            I(vec![0; 200]),
+            R(vec![0.; 200]),
+            R(vec![0.; 2]),
+            R(vec![0.; 400]),
+            R(vec![-31.; 8]),
+            R(vec![-37.]),
+            R(vec![-41.]),
+            R(vec![-43.]),
+            I(vec![0]),
+        ];
+        loess_raw(&mut b).unwrap();
+        let diagonal = b[19].reals().unwrap().to_vec();
+        let (trace, delta1, delta2) = (
+            b[20].reals().unwrap()[0],
+            b[21].reals().unwrap()[0],
+            b[22].reals().unwrap()[0],
+        );
         if let Some(name) = expected {
             matches(&diagonal, &oracle, name);
         } else {
@@ -93,70 +85,57 @@ fn native_raw_diagonals_and_unused_outputs_follow_gnu() {
 fn native_standard_error_outputs_publish_genuine_full_influence() {
     let _session = crate::sexp::RSession::new_for_gc_tests();
     let oracle = oracle();
-    for (mut family, prefix) in [(1, "direct"), (0, "symmetric")] {
-        let mut x = values(&oracle, "x");
-        let mut y = values(&oracle, "y");
-        let mut robust = values(&oracle, "robust");
-        let mut weights: Vec<f64> = values(&oracle, "weights")
+    for (family, prefix) in [(1, "direct"), (0, "symmetric")] {
+        let robust = values(&oracle, "robust");
+        let weights: Vec<f64> = values(&oracle, "weights")
             .iter()
             .zip(&robust)
             .map(|(w, r)| w * r)
             .collect();
-        let mut queries = values(&oracle, "queries");
-        let (mut span, mut degree, mut np, mut drop_square, mut sum, mut d, mut n, mut m) =
-            (0.9, 1, 1, 2, 0, 1, 8, 2);
-        let mut fit = vec![-47.; 2];
-        let mut influence = vec![-53.; 16];
-        unsafe {
-            c_loess_dfitse(
-                y.as_mut_ptr(),
-                x.as_mut_ptr(),
-                queries.as_mut_ptr(),
-                weights.as_mut_ptr(),
-                robust.as_mut_ptr(),
-                &mut family,
-                &mut span,
-                &mut degree,
-                &mut np,
-                &mut drop_square,
-                &mut sum,
-                &mut d,
-                &mut n,
-                &mut m,
-                fit.as_mut_ptr(),
-                influence.as_mut_ptr(),
-            );
-        }
+        let mut b = vec![
+            R(values(&oracle, "y")),
+            R(values(&oracle, "x")),
+            R(values(&oracle, "queries")),
+            R(weights),
+            R(robust),
+            I(vec![family]),
+            R(vec![0.9]),
+            I(vec![1]),
+            I(vec![1]),
+            I(vec![2]),
+            I(vec![0]),
+            I(vec![1]),
+            I(vec![8]),
+            I(vec![2]),
+            R(vec![-47.; 2]),
+            R(vec![-53.; 16]),
+        ];
+        loess_dfitse(&mut b).unwrap();
+        let fit = b[14].reals().unwrap().to_vec();
+        let influence = b[15].reals().unwrap().to_vec();
         matches(&fit, &oracle, &format!("{prefix}_fit"));
         matches(&influence, &oracle, &format!("{prefix}_L"));
     }
-    let mut x = values(&oracle, "x");
-    let mut y = values(&oracle, "y");
-    let mut weights = values(&oracle, "weights");
-    let mut queries = values(&oracle, "queries");
-    let (mut span, mut degree, mut np, mut drop_square, mut sum, mut cell, mut d, mut n, mut m) =
-        (0.9, 1, 1, 2, 0, 0.18, 1, 8, 2);
-    let mut fit = vec![-59.; 2];
-    let mut influence = vec![-61.; 16];
-    unsafe {
-        c_loess_ise(
-            y.as_mut_ptr(),
-            x.as_mut_ptr(),
-            queries.as_mut_ptr(),
-            weights.as_mut_ptr(),
-            &mut span,
-            &mut degree,
-            &mut np,
-            &mut drop_square,
-            &mut sum,
-            &mut cell,
-            &mut d,
-            &mut n,
-            &mut m,
-            fit.as_mut_ptr(),
-            influence.as_mut_ptr(),
-        );
-    }
+    let mut b = vec![
+        R(values(&oracle, "y")),
+        R(values(&oracle, "x")),
+        R(values(&oracle, "queries")),
+        R(values(&oracle, "weights")),
+        R(vec![0.9]),
+        I(vec![1]),
+        I(vec![1]),
+        I(vec![2]),
+        I(vec![0]),
+        R(vec![0.18]),
+        I(vec![1]),
+        I(vec![8]),
+        I(vec![2]),
+        R(vec![-59.; 2]),
+        R(vec![-61.; 16]),
+    ];
+    loess_ise(&mut b).unwrap();
+    let fit = b[13].reals().unwrap().to_vec();
+    let influence = b[14].reals().unwrap().to_vec();
     matches(&fit, &oracle, "interpolate_fit");
     matches(&influence, &oracle, "interpolate_L");
 }

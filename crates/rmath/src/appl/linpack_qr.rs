@@ -136,7 +136,7 @@ pub unsafe fn dqrdc2(
     }
 }
 
-fn dqrdc2_impl(
+pub(crate) fn dqrdc2_impl(
     x: &mut [f64],
     ldx: usize,
     n: usize,
@@ -334,7 +334,7 @@ pub unsafe fn dqrsl(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn dqrsl_impl(
+pub(crate) fn dqrsl_impl(
     x: &mut [f64],
     ldx: usize,
     n: usize,
