@@ -73,7 +73,7 @@ call_trampoline!(c_call_dqags, (args) => super::integrate::call_dqags(args));
 call_trampoline!(c_call_dqagi, (args) => super::integrate::call_dqagi(args));
 call_trampoline!(c_modelframe, (call, op, args, env) => super::filter::modelframe(call, op, args, env));
 call_trampoline!(c_modelmatrix, (call, op, args, env) => super::filter::modelmatrix(call, op, args, env));
-call_trampoline_raw!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
+call_trampoline!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
 call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
 call_trampoline!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
 call_trampoline_raw!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
@@ -85,8 +85,8 @@ call_trampoline!(c_do_d, (args) => super::deriv::do_d(args));
 call_trampoline!(c_deriv, (args) => super::deriv::do_deriv(args));
 call_trampoline!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
 call_trampoline!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
-call_trampoline_raw!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
-call_trampoline_raw!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
+call_trampoline!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
+call_trampoline!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
 call_trampoline_raw!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
 call_trampoline_raw!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
 call_trampoline_raw!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
@@ -265,12 +265,12 @@ call_trampoline!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma
 
 call_trampoline!(c_burg, (x, order) => super::burg::Burg(x, order));
 
-call_trampoline_raw!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
+call_trampoline!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
 
-call_trampoline_raw!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv, v));
+call_trampoline!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv, v));
 
 #[allow(clippy::too_many_arguments)]
-call_trampoline_raw!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
+call_trampoline!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
 
 call_trampoline_raw!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
 

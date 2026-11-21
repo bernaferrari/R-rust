@@ -23,11 +23,11 @@ use crate::sexp::protect::*;
 // External declarations
 // ---------------------------------------------------------------------------
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
 
-unsafe fn duplicate(x: SEXP) -> SEXP {
+fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::duplicate(x)
 }
 
@@ -37,7 +37,7 @@ use crate::mainutils::util_main::ncols;
 // Helper: asReal
 // ---------------------------------------------------------------------------
 
-unsafe fn as_real(x: SEXP) -> c_double {
+fn as_real(x: SEXP) -> c_double {
     crate::mainutils::coerce::asReal(x)
 }
 
@@ -45,7 +45,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
 // Helper: asInteger
 // ---------------------------------------------------------------------------
 
-unsafe fn as_integer(x: SEXP) -> c_int {
+fn as_integer(x: SEXP) -> c_int {
     crate::mainutils::coerce::asInteger(x)
 }
 
@@ -395,7 +395,7 @@ unsafe fn loglin(
 // LogLin -- R interface
 // ---------------------------------------------------------------------------
 
-pub unsafe fn LogLin(
+pub fn LogLin(
     dtab: SEXP,
     conf: SEXP,
     table: SEXP,
@@ -404,38 +404,41 @@ pub unsafe fn LogLin(
     eps: SEXP,
     iter: SEXP,
 ) -> SEXP {
+    let nvar = LENGTH(dtab);
+    let ncon = crate::library::stats::checked::ncols(conf);
+    let ntab = LENGTH(table);
+    let nmar = as_integer(snmar);
+    let maxit = as_integer(iter);
+    let maxdev = as_real(eps);
+
+    let fit = if TYPEOF(start) == SEXPTYPE::REALSXP {
+        duplicate(start)
+    } else {
+        coerceVector(start, SEXPTYPE::REALSXP.as_c_int())
+    };
+    let _fit_guard = protect(fit);
+    let locmar = Rf_allocVector(SEXPTYPE::INTSXP, ncon);
+    let _locmar_guard = protect(locmar);
+    let marg = Rf_allocVector(SEXPTYPE::REALSXP, nmar);
+    let _marg_guard = protect(marg);
+    let u = Rf_allocVector(SEXPTYPE::REALSXP, ntab);
+    let _u_guard = protect(u);
+    let dev = Rf_allocVector(SEXPTYPE::REALSXP, maxit);
+    let _dev_guard = protect(dev);
+    let dtab = coerceVector(dtab, SEXPTYPE::INTSXP.as_c_int());
+    let _dtab_guard = protect(dtab);
+    let conf = coerceVector(conf, SEXPTYPE::INTSXP.as_c_int());
+    let _conf_guard = protect(conf);
+    let table = coerceVector(table, SEXPTYPE::REALSXP.as_c_int());
+    let _table_guard = protect(table);
+
+    let mut nlast: c_int = 0;
+    let mut ifault: c_int = 0;
+
+    // SAFETY: `dtab`/`conf`/`table` are the protected coerced inputs and
+    // `fit`/`locmar`/`marg`/`u`/`dev` the protected outputs, each sized as
+    // the AS 51 kernel expects from `nvar`, `ncon`, `ntab`, `nmar` and `maxit`.
     unsafe {
-        let nvar = LENGTH(dtab);
-        let ncon = ncols(conf as *const _);
-        let ntab = LENGTH(table);
-        let nmar = as_integer(snmar);
-        let maxit = as_integer(iter);
-        let maxdev = as_real(eps);
-
-        let fit = if TYPEOF(start) == SEXPTYPE::REALSXP {
-            duplicate(start)
-        } else {
-            coerceVector(start, SEXPTYPE::REALSXP.as_c_int())
-        };
-        let _fit_guard = protect(fit);
-        let locmar = Rf_allocVector(SEXPTYPE::INTSXP, ncon);
-        let _locmar_guard = protect(locmar);
-        let marg = Rf_allocVector(SEXPTYPE::REALSXP, nmar);
-        let _marg_guard = protect(marg);
-        let u = Rf_allocVector(SEXPTYPE::REALSXP, ntab);
-        let _u_guard = protect(u);
-        let dev = Rf_allocVector(SEXPTYPE::REALSXP, maxit);
-        let _dev_guard = protect(dev);
-        let dtab = coerceVector(dtab, SEXPTYPE::INTSXP.as_c_int());
-        let _dtab_guard = protect(dtab);
-        let conf = coerceVector(conf, SEXPTYPE::INTSXP.as_c_int());
-        let _conf_guard = protect(conf);
-        let table = coerceVector(table, SEXPTYPE::REALSXP.as_c_int());
-        let _table_guard = protect(table);
-
-        let mut nlast: c_int = 0;
-        let mut ifault: c_int = 0;
-
         loglin(
             nvar,
             INTEGER(dtab),
@@ -455,31 +458,31 @@ pub unsafe fn LogLin(
             &mut nlast,
             &mut ifault,
         );
-
-        match ifault {
-            1 | 2 => {
-                Rf_error(b"this should not happen\0".as_ptr() as *const _);
-            }
-            3 => {
-                Rf_warning(b"algorithm did not converge\0".as_ptr() as *const _);
-            }
-            4 => {
-                Rf_error(b"incorrect specification of 'table' or 'start'\0".as_ptr() as *const _);
-            }
-            _ => {} // intentionally unhandled: unknown convergence error code
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-        let _ans_guard = protect(ans);
-        SET_VECTOR_ELT(ans, 0, fit);
-        SET_VECTOR_ELT(ans, 1, dev);
-        SET_VECTOR_ELT(ans, 2, Rf_ScalarInteger(nlast));
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 3);
-        let _nm_guard = protect(nm);
-        setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"fit\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"dev\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 2, Rf_mkChar(b"nlast\0".as_ptr() as *const c_char));
-        ans
     }
+
+    match ifault {
+        1 | 2 => {
+            Rf_error(b"this should not happen\0".as_ptr() as *const _);
+        }
+        3 => {
+            Rf_warning(b"algorithm did not converge\0".as_ptr() as *const _);
+        }
+        4 => {
+            Rf_error(b"incorrect specification of 'table' or 'start'\0".as_ptr() as *const _);
+        }
+        _ => {} // intentionally unhandled: unknown convergence error code
+    }
+
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+    let _ans_guard = protect(ans);
+    SET_VECTOR_ELT(ans, 0, fit);
+    SET_VECTOR_ELT(ans, 1, dev);
+    SET_VECTOR_ELT(ans, 2, Rf_ScalarInteger(nlast));
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+    let _nm_guard = protect(nm);
+    setAttrib(ans, R_NamesSymbol(), nm);
+    SET_STRING_ELT(nm, 0, crate::library::stats::checked::mk_char("fit"));
+    SET_STRING_ELT(nm, 1, crate::library::stats::checked::mk_char("dev"));
+    SET_STRING_ELT(nm, 2, crate::library::stats::checked::mk_char("nlast"));
+    ans
 }

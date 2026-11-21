@@ -3,6 +3,7 @@
 
 use crate::main::coerce::R_FINITE;
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
+use crate::sexp::accessors::REAL_ELT;
 use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -174,7 +175,7 @@ fn R_approxtest(
     }
     Ok(())
 }
-pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
+pub fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     let x = x_input(owner, x);
@@ -194,7 +195,7 @@ pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -
     active(owner);
     R_NilValue()
 }
-pub unsafe fn Approx(
+pub fn Approx(
     x: SEXP,
     y: SEXP,
     v: SEXP,
@@ -256,88 +257,82 @@ pub unsafe fn Approx(
 }
 
 /// GNU `approx(x, y, xout)`.
-pub unsafe fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
-        use crate::sexp::protect::protect;
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let xout = CAR(CDR(CDR(args)));
-        let xc = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-        let _xc = protect(xc);
-        let yc = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
-        let _yc = protect(yc);
-        let n = XLENGTH(xc);
-        let yleft = Rf_ScalarReal(*REAL(yc));
-        let _yl = protect(yleft);
-        let yright = Rf_ScalarReal(*REAL(yc).add((n - 1) as usize));
-        let _yr = protect(yright);
-        let method = Rf_ScalarInteger(1);
-        let _m = protect(method);
-        let f = Rf_ScalarReal(0.0);
-        let _f = protect(f);
-        let na_rm = Rf_ScalarInteger(1);
-        let _na = protect(na_rm);
-        let yout = Approx(xc, yc, xout, method, yleft, yright, f, na_rm);
-        let _yo = protect(yout);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, xout);
-        SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
-        let _ = INTEGER;
-        result
-    }
+pub fn do_approx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
+    use crate::sexp::protect::protect;
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let xout = CAR(CDR(CDR(args)));
+    let xc = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+    let _xc = protect(xc);
+    let yc = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
+    let _yc = protect(yc);
+    let n = XLENGTH(xc);
+    let yleft = Rf_ScalarReal(REAL_ELT(yc, 0));
+    let _yl = protect(yleft);
+    let yright = Rf_ScalarReal(REAL_ELT(yc, ((n - 1) as usize) as i32));
+    let _yr = protect(yright);
+    let method = Rf_ScalarInteger(1);
+    let _m = protect(method);
+    let f = Rf_ScalarReal(0.0);
+    let _f = protect(f);
+    let na_rm = Rf_ScalarInteger(1);
+    let _na = protect(na_rm);
+    let yout = Approx(xc, yc, xout, method, yleft, yright, f, na_rm);
+    let _yo = protect(yout);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, xout);
+    SET_VECTOR_ELT(result, 1, yout);
+    crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
+    let _ = INTEGER;
+    result
 }
 
 /// GNU `approxfun(x, y)` linear interpolator.
-pub unsafe fn do_approxfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, SETTAG};
-        use crate::sexp::constructors::{Rf_cons, Rf_lang2};
-        use crate::sexp::protect::protect;
-        use crate::sexp::symbol::Rf_install;
-        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _x = protect(x);
-        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
-        let _y = protect(y);
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
-        let _env = protect(env);
-        crate::sexp::envir::defineVar(Rf_install(c"x".as_ptr()), x, env);
-        crate::sexp::envir::defineVar(Rf_install(c"y".as_ptr()), y, env);
-        let vsym = Rf_install(c"v".as_ptr());
-        let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
-        SETTAG(formals, vsym);
-        let body = Rf_lang2(Rf_install(c".approx_apply".as_ptr()), vsym);
-        crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
-    }
+pub fn do_approxfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, SETTAG};
+    use crate::sexp::constructors::{Rf_cons, Rf_lang2};
+    use crate::sexp::protect::protect;
+    use crate::sexp::symbol::install_str;
+    let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+    let _x = protect(x);
+    let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+    let _y = protect(y);
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+    let _env = protect(env);
+    crate::library::stats::checked::define_var(install_str("x"), x, env);
+    crate::library::stats::checked::define_var(install_str("y"), y, env);
+    let vsym = install_str("v");
+    let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
+    SETTAG(formals, vsym);
+    let body = Rf_lang2(install_str(".approx_apply"), vsym);
+    crate::library::stats::checked::mk_closure(formals, body, env)
 }
 
 /// Evaluate an `approxfun` closure at `v`.
-pub unsafe fn do_approx_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, ENCLOS};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal};
-        use crate::sexp::protect::protect;
-        use crate::sexp::symbol::Rf_install;
-        let v = CAR(args);
-        let env = ENCLOS(rho);
-        let x = crate::sexp::envir::R_findVar(Rf_install(c"x".as_ptr()), env);
-        let y = crate::sexp::envir::R_findVar(Rf_install(c"y".as_ptr()), env);
-        let n = XLENGTH(x);
-        let yleft = Rf_ScalarReal(*REAL(y));
-        let _yl = protect(yleft);
-        let yright = Rf_ScalarReal(*REAL(y).add((n - 1) as usize));
-        let _yr = protect(yright);
-        let method = Rf_ScalarInteger(1);
-        let _m = protect(method);
-        let f = Rf_ScalarReal(0.0);
-        let _f = protect(f);
-        let na_rm = Rf_ScalarInteger(1);
-        let _na = protect(na_rm);
-        Approx(x, y, v, method, yleft, yright, f, na_rm)
-    }
+pub fn do_approx_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, ENCLOS};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal};
+    use crate::sexp::protect::protect;
+    use crate::sexp::symbol::install_str;
+    let v = CAR(args);
+    let env = ENCLOS(rho);
+    let x = crate::library::stats::checked::find_var(install_str("x"), env);
+    let y = crate::library::stats::checked::find_var(install_str("y"), env);
+    let n = XLENGTH(x);
+    let yleft = Rf_ScalarReal(REAL_ELT(y, 0));
+    let _yl = protect(yleft);
+    let yright = Rf_ScalarReal(REAL_ELT(y, ((n - 1) as usize) as i32));
+    let _yr = protect(yright);
+    let method = Rf_ScalarInteger(1);
+    let _m = protect(method);
+    let f = Rf_ScalarReal(0.0);
+    let _f = protect(f);
+    let na_rm = Rf_ScalarInteger(1);
+    let _na = protect(na_rm);
+    Approx(x, y, v, method, yleft, yright, f, na_rm)
 }
 
 #[cfg(test)]

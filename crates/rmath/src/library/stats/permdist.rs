@@ -131,7 +131,7 @@ fn permutation_error(message: &str) -> ! {
     })
 }
 
-unsafe fn scores(x: SEXP) -> Vec<usize> {
+fn scores(x: SEXP) -> Vec<usize> {
     if x.is_null() || TYPEOF(x) != SEXPTYPE::INTSXP {
         permutation_error("permutation scores must be integer");
     }
@@ -150,48 +150,42 @@ unsafe fn scores(x: SEXP) -> Vec<usize> {
     scores
 }
 
-unsafe fn publish(values: Vec<f64>) -> SEXP {
-    unsafe {
-        let length = i64::try_from(values.len())
-            .unwrap_or_else(|_| permutation_error("permutation distribution is too large"));
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, length);
-        if !values.is_empty() {
-            std::ptr::copy_nonoverlapping(values.as_ptr(), REAL(result), values.len());
-        }
-        result
+fn publish(values: Vec<f64>) -> SEXP {
+    let length = i64::try_from(values.len())
+        .unwrap_or_else(|_| permutation_error("permutation distribution is too large"));
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, length);
+    if !values.is_empty() {
+        crate::library::stats::checked::set_reals(result, &values);
     }
+    result
 }
 
-pub unsafe fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
-    unsafe {
-        let _x = protect(x);
-        let _m = protect(m);
-        let scores = scores(x);
-        if m.is_null() || TYPEOF(m) != SEXPTYPE::INTSXP || XLENGTH(m) != 1 {
-            permutation_error("invalid permutation sample size");
-        }
-        let m = usize::try_from(INTEGER_ELT(m, 0))
-            .unwrap_or_else(|_| permutation_error("invalid permutation sample size"));
-        let values = two_sample(&scores, m, || crate::main::errors::R_CheckUserInterrupt())
-            .unwrap_or_else(|message| permutation_error(message));
-        publish(values)
+pub fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
+    let _x = protect(x);
+    let _m = protect(m);
+    let scores = scores(x);
+    if m.is_null() || TYPEOF(m) != SEXPTYPE::INTSXP || XLENGTH(m) != 1 {
+        permutation_error("invalid permutation sample size");
     }
+    let m = usize::try_from(INTEGER_ELT(m, 0))
+        .unwrap_or_else(|_| permutation_error("invalid permutation sample size"));
+    let values = two_sample(&scores, m, || crate::main::errors::R_CheckUserInterrupt())
+        .unwrap_or_else(|message| permutation_error(message));
+    publish(values)
 }
 
-pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
-    unsafe {
-        let _x = protect(x);
-        let values = one_sample(&scores(x), || crate::main::errors::R_CheckUserInterrupt())
-            .unwrap_or_else(|message| permutation_error(message));
-        publish(values)
-    }
+pub fn dpermdist1(x: SEXP) -> SEXP {
+    let _x = protect(x);
+    let values = one_sample(&scores(x), || crate::main::errors::R_CheckUserInterrupt())
+        .unwrap_or_else(|message| permutation_error(message));
+    publish(values)
 }
 
 pub unsafe extern "C-unwind" fn c_dpermdist1(x: SEXP) -> SEXP {
-    unsafe { dpermdist1(x) }
+    dpermdist1(x)
 }
 pub unsafe extern "C-unwind" fn c_dpermdist2(x: SEXP, m: SEXP) -> SEXP {
-    unsafe { dpermdist2(x, m) }
+    dpermdist2(x, m)
 }
 
 #[cfg(test)]

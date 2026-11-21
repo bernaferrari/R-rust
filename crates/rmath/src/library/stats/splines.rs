@@ -540,9 +540,7 @@ pub fn do_splinefun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let formals = Rf_cons(R_MissingArg(), R_NilValue());
     SETTAG(formals, vsym);
     let body = Rf_lang2(crate::sexp::symbol::install_str(".spline_apply"), vsym);
-    // SAFETY: `formals`, `body` and `env` are live nodes; mkCLOSXP
-    // only allocates the closure that captures them.
-    unsafe { crate::mainutils::dstruct::mkCLOSXP(formals, body, env) }
+    crate::library::stats::checked::mk_closure(formals, body, env)
 }
 
 /// Evaluate a `splinefun` closure at `v`.

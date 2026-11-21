@@ -148,52 +148,47 @@ pub unsafe fn tukeyline0(
     }
 }
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     crate::main::coerce::asInteger(x)
 }
 
-pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
+pub fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
+    use crate::main::errors::Rf_error;
+
+    let n = LENGTH(x);
+    if n < 2 {
+        Rf_error(b"insufficient observations\0".as_ptr() as *const core::ffi::c_char);
+    }
+
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
+    let _ans_guard = protect(ans);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
+    setAttrib(ans, R_NamesSymbol(), nm);
+    SET_STRING_ELT(nm, 0, crate::library::stats::checked::mk_char("call"));
+    SET_STRING_ELT(
+        nm,
+        1,
+        crate::library::stats::checked::mk_char("coefficients"),
+    );
+    SET_STRING_ELT(nm, 2, crate::library::stats::checked::mk_char("residuals"));
+    SET_STRING_ELT(
+        nm,
+        3,
+        crate::library::stats::checked::mk_char("fitted.values"),
+    );
+    SET_VECTOR_ELT(ans, 0, call);
+
+    let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+    SET_VECTOR_ELT(ans, 1, coef);
+    let res = Rf_allocVector(SEXPTYPE::REALSXP, n);
+    SET_VECTOR_ELT(ans, 2, res);
+    let fit = Rf_allocVector(SEXPTYPE::REALSXP, n);
+    SET_VECTOR_ELT(ans, 3, fit);
+
+    // SAFETY: `x`/`y` are live REALSXPs of length `n` and the fresh
+    // `res`/`fit`/`coef` outputs (held by the protected `ans`) have
+    // `n`/`n`/2 cells; the kernel never reenters R.
     unsafe {
-        use crate::main::errors::Rf_error;
-
-        let n = LENGTH(x);
-        if n < 2 {
-            Rf_error(b"insufficient observations\0".as_ptr() as *const core::ffi::c_char);
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
-        let _ans_guard = protect(ans);
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
-        setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(
-            nm,
-            0,
-            Rf_mkChar(b"call\0".as_ptr() as *const core::ffi::c_char),
-        );
-        SET_STRING_ELT(
-            nm,
-            1,
-            Rf_mkChar(b"coefficients\0".as_ptr() as *const core::ffi::c_char),
-        );
-        SET_STRING_ELT(
-            nm,
-            2,
-            Rf_mkChar(b"residuals\0".as_ptr() as *const core::ffi::c_char),
-        );
-        SET_STRING_ELT(
-            nm,
-            3,
-            Rf_mkChar(b"fitted.values\0".as_ptr() as *const core::ffi::c_char),
-        );
-        SET_VECTOR_ELT(ans, 0, call);
-
-        let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        SET_VECTOR_ELT(ans, 1, coef);
-        let res = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        SET_VECTOR_ELT(ans, 2, res);
-        let fit = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        SET_VECTOR_ELT(ans, 3, fit);
-
         line(
             REAL(x),
             REAL(y),
@@ -203,48 +198,54 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
             asInteger(iter),
             REAL(coef),
         );
-
-        ans
     }
+
+    ans
 }
 pub unsafe extern "C-unwind" fn c_tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
-    unsafe { tukeyline(x, y, iter, call) }
+    tukeyline(x, y, iter, call)
 }
 
 /// GNU `line(x, y)` Tukey resistant line.
-pub unsafe fn do_line(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
-        use crate::sexp::globals::R_NilValue;
-        let x0 = CAR(args);
-        let y0 = CAR(CDR(args));
-        let n = XLENGTH(x0);
-        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _xd = protect(xd);
-        let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _yd = protect(yd);
-        for i in 0..n {
-            *REAL(xd).add(i as usize) = if TYPEOF(x0) == SEXPTYPE::REALSXP {
-                *REAL(x0).add(i as usize)
+pub fn do_line(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, INTEGER, TYPEOF, XLENGTH};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
+    use crate::sexp::globals::R_NilValue;
+    let x0 = CAR(args);
+    let y0 = CAR(CDR(args));
+    let n = XLENGTH(x0);
+    let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _xd = protect(xd);
+    let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _yd = protect(yd);
+    for i in 0..n {
+        SET_REAL_ELT(
+            xd,
+            i as i32,
+            if TYPEOF(x0) == SEXPTYPE::REALSXP {
+                REAL_ELT(x0, i as i32)
             } else {
-                *INTEGER(x0).add(i as usize) as f64
-            };
-            *REAL(yd).add(i as usize) = if TYPEOF(y0) == SEXPTYPE::REALSXP {
-                *REAL(y0).add(i as usize)
-            } else {
-                *INTEGER(y0).add(i as usize) as f64
-            };
-        }
-        let iter = Rf_ScalarInteger(1);
-        let _it = protect(iter);
-        let ans = tukeyline(xd, yd, iter, R_NilValue());
-        let _ans = protect(ans);
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"tukeyline".as_ptr()),
+                INTEGER_ELT(x0, i as i32) as f64
+            },
         );
-        ans
+        SET_REAL_ELT(
+            yd,
+            i as i32,
+            if TYPEOF(y0) == SEXPTYPE::REALSXP {
+                REAL_ELT(y0, i as i32)
+            } else {
+                INTEGER_ELT(y0, i as i32) as f64
+            },
+        );
     }
+    let iter = Rf_ScalarInteger(1);
+    let _it = protect(iter);
+    let ans = tukeyline(xd, yd, iter, R_NilValue());
+    let _ans = protect(ans);
+    crate::sexp::attrib_core::setAttrib(
+        ans,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("tukeyline"),
+    );
+    ans
 }

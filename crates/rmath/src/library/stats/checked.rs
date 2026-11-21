@@ -172,3 +172,44 @@ fn lookup(
         _ => unbound,
     }
 }
+
+/// Build a closure over live `formals`, `body` and `env` (GNU `mkCLOSXP`).
+pub(crate) fn mk_closure(formals: SEXP, body: SEXP, env: SEXP) -> SEXP {
+    // SAFETY: the three nodes are live for the call; mkCLOSXP only allocates
+    // the closure cell that captures them.
+    unsafe { crate::mainutils::dstruct::mkCLOSXP(formals, body, env) }
+}
+
+/// Number of rows of a matrix-like object (GNU `nrows`).
+pub(crate) fn nrows(x: SEXP) -> c_int {
+    use crate::sexp::accessors::{INTEGER_ELT, LENGTH};
+    if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+        return -1;
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if dim.is_null() || dim == crate::sexp::globals::R_NilValue() {
+        return LENGTH(x);
+    }
+    if LENGTH(dim) >= 1 {
+        INTEGER_ELT(dim, 0)
+    } else {
+        -1
+    }
+}
+
+/// Number of columns of a matrix-like object (GNU `ncols`).
+pub(crate) fn ncols(x: SEXP) -> c_int {
+    use crate::sexp::accessors::{INTEGER_ELT, LENGTH};
+    if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+        return -1;
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if dim.is_null() || dim == crate::sexp::globals::R_NilValue() {
+        return 1;
+    }
+    if LENGTH(dim) >= 2 {
+        INTEGER_ELT(dim, 1)
+    } else {
+        1
+    }
+}

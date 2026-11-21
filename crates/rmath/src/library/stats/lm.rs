@@ -26,34 +26,32 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::protect::*;
 
-unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
+fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
     crate::main::coerce::coerceVector(x, type_.into())
 }
 
-unsafe fn asReal(x: SEXP) -> c_double {
+fn asReal(x: SEXP) -> c_double {
     crate::main::coerce::asReal(x)
 }
 
-unsafe fn asBool(x: SEXP) -> bool {
+fn asBool(x: SEXP) -> bool {
     let v = crate::main::coerce::asLogical(x);
     v != 0 && v != NA_INTEGER
 }
 
-unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
+fn shallow_duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::shallow_duplicate(x)
 }
 
-unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(sexptype, nrow * ncol);
-        let _ans_guard = protect(ans);
-        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        let _dim_guard = protect(dim);
-        *INTEGER(dim) = nrow;
-        *INTEGER(dim).add(1) = ncol;
-        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        ans
-    }
+fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
+    let ans = Rf_allocVector(sexptype, nrow * ncol);
+    let _ans_guard = protect(ans);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    let _dim_guard = protect(dim);
+    SET_INTEGER_ELT(dim, 0, nrow);
+    SET_INTEGER_ELT(dim, 1, ncol);
+    crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
+    ans
 }
 
 use crate::sexp::memory_ext::R_alloc;
@@ -141,125 +139,116 @@ unsafe fn dqrls_rust(
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 
-unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
-    unsafe {
-        let nn = names.len() as c_int;
-        let ans = Rf_allocVector(sexptype, nn);
-        let _ans_guard = protect(ans);
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
-        let _nm_guard = protect(nm);
-        setAttrib(ans, R_NamesSymbol(), nm);
-        for i in 0..(nn as usize) {
-            let name = names[i];
-            SET_STRING_ELT(
-                nm,
-                i as R_xlen_t,
-                Rf_mkCharLen(
-                    name.as_ptr() as *const core::ffi::c_char,
-                    name.len() as c_int,
-                ),
-            );
-        }
-        ans
+fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
+    let nn = names.len() as c_int;
+    let ans = Rf_allocVector(sexptype, nn);
+    let _ans_guard = protect(ans);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
+    let _nm_guard = protect(nm);
+    setAttrib(ans, R_NamesSymbol(), nm);
+    for i in 0..(nn as usize) {
+        let name = names[i];
+        SET_STRING_ELT(
+            nm,
+            i as R_xlen_t,
+            crate::library::stats::checked::mk_char(name),
+        );
     }
+    ans
 }
 
-pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
+pub fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
+    use crate::main::errors::Rf_error;
+
+    let mut x = x;
+    let mut y = y;
+    let mut guards = Vec::with_capacity(6);
+
+    let ans_dim = getAttrib(x, R_DimSymbol());
+    if asBool(chk) && LENGTH(ans_dim) != 2 {
+        Rf_error(b"'x' is not a matrix\0".as_ptr() as *const core::ffi::c_char);
+    }
+    let n = INTEGER_ELT(ans_dim, 0);
+    let p = INTEGER_ELT(ans_dim, 1);
+    let mut ny: c_int = 0;
+    if n != 0 {
+        ny = (XLENGTH(y) as i64 / n as i64) as c_int;
+    }
+    if asBool(chk) && n * ny != XLENGTH(y) as c_int {
+        Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char);
+    }
+
+    /* These lose attributes, so do after we have extracted dims */
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
+        x = coerceVector(x, SEXPTYPE::REALSXP);
+        guards.push(protect(x));
+    }
+    if TYPEOF(y) != SEXPTYPE::REALSXP {
+        y = coerceVector(y, SEXPTYPE::REALSXP);
+        guards.push(protect(y));
+    }
+
+    for i in 0..(XLENGTH(x) as usize) {
+        if !R_FINITE(REAL_ELT(x, i as i32)) {
+            Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const core::ffi::c_char);
+        }
+    }
+
+    for i in 0..(XLENGTH(y) as usize) {
+        if !R_FINITE(REAL_ELT(y, i as i32)) {
+            Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const core::ffi::c_char);
+        }
+    }
+
+    let ansNms = [
+        "qr",
+        "coefficients",
+        "residuals",
+        "effects",
+        "rank",
+        "pivot",
+        "qraux",
+        "tol",
+        "pivoted",
+    ];
+    let ans = mkNamed(SEXPTYPE::VECSXP, &ansNms);
+    guards.push(protect(ans));
+    let qr = shallow_duplicate(x);
+    SET_VECTOR_ELT(ans, 0, qr);
+
+    let coefficients = if ny > 1 {
+        allocMatrix(SEXPTYPE::REALSXP, p, ny)
+    } else {
+        Rf_allocVector(SEXPTYPE::REALSXP, p)
+    };
+    guards.push(protect(coefficients));
+    SET_VECTOR_ELT(ans, 1, coefficients);
+
+    let residuals = shallow_duplicate(y);
+    SET_VECTOR_ELT(ans, 2, residuals);
+    let effects = shallow_duplicate(y);
+    SET_VECTOR_ELT(ans, 3, effects);
+
+    let pivot = Rf_allocVector(SEXPTYPE::INTSXP, p);
+    guards.push(protect(pivot));
+    for i in 0..(p as usize) {
+        SET_INTEGER_ELT(pivot, i as i32, (i + 1) as c_int);
+    }
+    SET_VECTOR_ELT(ans, 5, pivot);
+
+    let qraux = Rf_allocVector(SEXPTYPE::REALSXP, p);
+    guards.push(protect(qraux));
+    SET_VECTOR_ELT(ans, 6, qraux);
+    SET_VECTOR_ELT(ans, 7, tol);
+
+    let mut rank: c_int = 0;
+    let rtol = asReal(tol);
+
+    // SAFETY: `qr`/`residuals`/`effects` are fresh duplicates of the n x p
+    // and n x ny inputs, `y` is the protected n x ny response, and
+    // `coefficients`/`pivot`/`qraux` are protected p (x ny) outputs; all are
+    // live, distinct REALSXP/INTSXP payloads of the sizes dqrls expects.
     unsafe {
-        use crate::main::errors::Rf_error;
-
-        let mut x = x;
-        let mut y = y;
-        let mut guards = Vec::with_capacity(6);
-
-        let ans_dim = getAttrib(x, R_DimSymbol());
-        if asBool(chk) && LENGTH(ans_dim) != 2 {
-            Rf_error(b"'x' is not a matrix\0".as_ptr() as *const core::ffi::c_char);
-        }
-        let dims = INTEGER(ans_dim);
-        let n = *dims.add(0);
-        let p = *dims.add(1);
-        let mut ny: c_int = 0;
-        if n != 0 {
-            ny = (XLENGTH(y) as i64 / n as i64) as c_int;
-        }
-        if asBool(chk) && n * ny != XLENGTH(y) as c_int {
-            Rf_error(
-                b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char
-            );
-        }
-
-        /* These lose attributes, so do after we have extracted dims */
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
-            x = coerceVector(x, SEXPTYPE::REALSXP);
-            guards.push(protect(x));
-        }
-        if TYPEOF(y) != SEXPTYPE::REALSXP {
-            y = coerceVector(y, SEXPTYPE::REALSXP);
-            guards.push(protect(y));
-        }
-
-        let rptr = REAL(x);
-        for i in 0..(XLENGTH(x) as usize) {
-            if !R_FINITE(*rptr.add(i)) {
-                Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const core::ffi::c_char);
-            }
-        }
-
-        let rptr = REAL(y);
-        for i in 0..(XLENGTH(y) as usize) {
-            if !R_FINITE(*rptr.add(i)) {
-                Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const core::ffi::c_char);
-            }
-        }
-
-        let ansNms = [
-            "qr",
-            "coefficients",
-            "residuals",
-            "effects",
-            "rank",
-            "pivot",
-            "qraux",
-            "tol",
-            "pivoted",
-        ];
-        let ans = mkNamed(SEXPTYPE::VECSXP, &ansNms);
-        guards.push(protect(ans));
-        let qr = shallow_duplicate(x);
-        SET_VECTOR_ELT(ans, 0, qr);
-
-        let coefficients = if ny > 1 {
-            allocMatrix(SEXPTYPE::REALSXP, p, ny)
-        } else {
-            Rf_allocVector(SEXPTYPE::REALSXP, p)
-        };
-        guards.push(protect(coefficients));
-        SET_VECTOR_ELT(ans, 1, coefficients);
-
-        let residuals = shallow_duplicate(y);
-        SET_VECTOR_ELT(ans, 2, residuals);
-        let effects = shallow_duplicate(y);
-        SET_VECTOR_ELT(ans, 3, effects);
-
-        let pivot = Rf_allocVector(SEXPTYPE::INTSXP, p);
-        guards.push(protect(pivot));
-        let ip = INTEGER(pivot);
-        for i in 0..(p as usize) {
-            *ip.add(i) = (i + 1) as c_int;
-        }
-        SET_VECTOR_ELT(ans, 5, pivot);
-
-        let qraux = Rf_allocVector(SEXPTYPE::REALSXP, p);
-        guards.push(protect(qraux));
-        SET_VECTOR_ELT(ans, 6, qraux);
-        SET_VECTOR_ELT(ans, 7, tol);
-
-        let _work = R_alloc(2 * p as usize, std::mem::size_of::<c_double>()) as *mut c_double;
-
-        let mut rank: c_int = 0;
-        let rtol = asReal(tol);
-
         dqrls_rust(
             REAL(qr),
             n,
@@ -274,17 +263,17 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
             INTEGER(pivot),
             REAL(qraux),
         );
-
-        SET_VECTOR_ELT(ans, 4, Rf_ScalarInteger(rank));
-        let mut pivoted: c_int = 0;
-        for i in 0..(p as usize) {
-            if *ip.add(i) != (i + 1) as c_int {
-                pivoted = 1;
-                break;
-            }
-        }
-        SET_VECTOR_ELT(ans, 8, Rf_ScalarLogical(pivoted));
-
-        ans
     }
+
+    SET_VECTOR_ELT(ans, 4, Rf_ScalarInteger(rank));
+    let mut pivoted: c_int = 0;
+    for i in 0..(p as usize) {
+        if INTEGER_ELT(pivot, i as i32) != (i + 1) as c_int {
+            pivoted = 1;
+            break;
+        }
+    }
+    SET_VECTOR_ELT(ans, 8, Rf_ScalarLogical(pivoted));
+
+    ans
 }

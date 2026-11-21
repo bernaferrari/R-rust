@@ -435,7 +435,7 @@ pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// the way `stats::lm.fit` does (`coef[pivot] <- coef` after NA-filling the
 /// rank-deficient tail).
 fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
-    unsafe {
+    {
         if XLENGTH(y) != n as i64 {
             return R_NilValue();
         }
