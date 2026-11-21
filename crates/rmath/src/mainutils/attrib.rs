@@ -246,17 +246,15 @@ pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 
 /// Set the class attribute (internal).
 pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        let mut x = CAR(args);
-        let val = CADR(args);
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        crate::eval::attrib_core::R_classgets(x, val)
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    let mut x = CAR(args);
+    let val = CADR(args);
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    crate::eval::attrib_core::R_classgets(x, val)
 }
 
 /// Set the names attribute (internal).

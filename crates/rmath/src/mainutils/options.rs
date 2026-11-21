@@ -286,7 +286,7 @@ fn duplicate_sexp(x: SEXP) -> SEXP {
     // same pointer as the C code would have used Rf_duplicate.
     // The real Rf_duplicate is in mainutils/duplicate.rs.
     // SAFETY: `x` is a live option value or argument.
-    unsafe { crate::mainutils::duplicate::Rf_duplicate(x) }
+    crate::mainutils::duplicate::Rf_duplicate(x)
 }
 
 /// installTrChar -- install a symbol from a CHARSXP.

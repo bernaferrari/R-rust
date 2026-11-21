@@ -829,7 +829,7 @@ pub fn do_unname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
-        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
+        let result = crate::mainutils::duplicate::duplicate(x);
         if result.is_null() || result == R_NilValue() {
             return result;
         }
@@ -855,7 +855,7 @@ pub fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
-        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
+        let result = crate::mainutils::duplicate::duplicate(x);
         if result.is_null() || result == R_NilValue() {
             return result;
         }
@@ -2220,7 +2220,7 @@ pub fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 fn duplicate_without_attributes(x: SEXP) -> SEXP {
     {
         // SAFETY: `x` is a live SEXP rooted by the caller's argument graph.
-        let result = unsafe { crate::mainutils::duplicate::duplicate(x) };
+        let result = crate::mainutils::duplicate::duplicate(x);
         if !result.is_null() && result != R_NilValue() {
             SET_ATTRIB(result, R_NilValue());
             SET_OBJECT(result, 0);
@@ -2259,9 +2259,7 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !attrs.is_null() && attrs != R_NilValue() {
                 // SAFETY: `attrs` is the live attribute chain of `x`, rooted by
                 // the caller's argument graph.
-                crate::sexp::accessors::SET_ATTRIB(result, unsafe {
-                    crate::mainutils::duplicate::duplicate(attrs)
-                });
+                crate::sexp::accessors::SET_ATTRIB(result, crate::mainutils::duplicate::duplicate(attrs));
             }
             return result;
         }
@@ -2348,7 +2346,7 @@ pub fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && XLENGTH(names) == n
         {
             // SAFETY: `names` is a live STRSXP rooted by `x`'s attribute graph.
-            let names = unsafe { crate::mainutils::duplicate::duplicate(names) };
+            let names = crate::mainutils::duplicate::duplicate(names);
             if !names.is_null() {
                 crate::sexp::attrib_core::setAttrib(
                     result,

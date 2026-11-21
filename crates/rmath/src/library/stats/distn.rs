@@ -113,7 +113,7 @@ fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, fro
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     // SAFETY: the owner is active; the checked attribute root keeps the source
     // graph live across duplication and protection.
-    let copied = unsafe { crate::main::duplicate::shallow_duplicate(attributes.as_raw()) };
+    let copied = crate::main::duplicate::shallow_duplicate(attributes.as_raw());
     let _copied = protect(copied);
     owner
         .require_active()

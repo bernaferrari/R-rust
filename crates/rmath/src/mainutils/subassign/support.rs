@@ -617,12 +617,10 @@ pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
 
 /// shallow_duplicate: create a shallow copy.
 pub(crate) fn shallow_duplicate(x: SEXP) -> SEXP {
-    unsafe {
-        if isNull(x) {
-            return R_NilValue();
-        }
-        crate::mainutils::duplicate::shallow_duplicate(x)
+    if isNull(x) {
+        return R_NilValue();
     }
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
 /// copyMostAttrib: copy most attributes from src to dest.

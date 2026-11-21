@@ -209,24 +209,22 @@ fn z_prec_r(re: f64, im: f64, digits: f64) -> (f64, f64) {
 
 /// `setAttrib` rechecks `tsp` before `dim` is installed and rejects a valid mts.
 pub(super) fn copy_all_attribs(dst: SEXP, src: SEXP) {
-    unsafe {
-        if dst.is_null() || dst == R_NilValue() || src.is_null() || src == R_NilValue() {
-            return;
-        }
-        let attrs = ATTRIB(src);
-        let copied = if attrs.is_null() || attrs == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::mainutils::duplicate::shallow_duplicate(attrs)
-        };
-        let _copied = protect(copied);
-        SET_ATTRIB(dst, copied);
-        SET_OBJECT(dst, OBJECT(src));
-        if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
-            SET_S4_OBJECT(dst);
-        } else {
-            UNSET_S4_OBJECT(dst);
-        }
+    if dst.is_null() || dst == R_NilValue() || src.is_null() || src == R_NilValue() {
+        return;
+    }
+    let attrs = ATTRIB(src);
+    let copied = if attrs.is_null() || attrs == R_NilValue() {
+        R_NilValue()
+    } else {
+        crate::mainutils::duplicate::shallow_duplicate(attrs)
+    };
+    let _copied = protect(copied);
+    SET_ATTRIB(dst, copied);
+    SET_OBJECT(dst, OBJECT(src));
+    if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
+        SET_S4_OBJECT(dst);
+    } else {
+        UNSET_S4_OBJECT(dst);
     }
 }
 

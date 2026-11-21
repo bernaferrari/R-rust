@@ -199,25 +199,23 @@ fn publish_error_traceback(trace: SEXP) {
 }
 
 pub fn save_error_traceback() {
-    unsafe {
-        let trace = R_GetTracebackOnly(0);
-        if trace.is_null()
-            || trace == globals::R_NilValue()
-            || crate::sexp::accessors::LENGTH(trace) == 0
-        {
-            return;
-        }
-        let _g = crate::sexp::protect::protect(trace);
-        let mut cell = trace;
-        while !cell.is_null() && cell != globals::R_NilValue() {
-            let call = CAR(cell);
-            if !call.is_null() && call != globals::R_NilValue() {
-                SETCAR(cell, crate::mainutils::duplicate::duplicate(call));
-            }
-            cell = CDR(cell);
-        }
-        publish_error_traceback(trace);
+    let trace = R_GetTracebackOnly(0);
+    if trace.is_null()
+        || trace == globals::R_NilValue()
+        || crate::sexp::accessors::LENGTH(trace) == 0
+    {
+        return;
     }
+    let _g = crate::sexp::protect::protect(trace);
+    let mut cell = trace;
+    while !cell.is_null() && cell != globals::R_NilValue() {
+        let call = CAR(cell);
+        if !call.is_null() && call != globals::R_NilValue() {
+            SETCAR(cell, crate::mainutils::duplicate::duplicate(call));
+        }
+        cell = CDR(cell);
+    }
+    publish_error_traceback(trace);
 }
 
 /// R_ConciseTraceback — return a concise call chain as a string.

@@ -170,26 +170,24 @@ impl BytecodeCompiler {
 
     /// Lower a function expression to a closure constant.  GNU's compiler
     fn compile_closure_expr(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            let closure = crate::mainutils::duplicate::duplicate(expr);
-            if closure.is_null() || TYPEOF(closure) != SEXPTYPE::CLOSXP {
-                return false;
-            }
-            let _closure_guard = own_operand(closure);
-            if TYPEOF(BODY(closure)) != SEXPTYPE::BCODESXP && !compile_closure(closure) {
-                return false;
-            }
-            let fb = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            if fb.is_null() {
-                return false;
-            }
-            let _fb_guard = own_operand(fb);
-            crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(closure));
-            crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(closure));
-            let idx = self.add_const(fb);
-            self.emit_operand(opcodes::OP_MAKECLOSURE, idx);
-            true
+        let closure = crate::mainutils::duplicate::duplicate(expr);
+        if closure.is_null() || TYPEOF(closure) != SEXPTYPE::CLOSXP {
+            return false;
         }
+        let _closure_guard = own_operand(closure);
+        if TYPEOF(BODY(closure)) != SEXPTYPE::BCODESXP && !compile_closure(closure) {
+            return false;
+        }
+        let fb = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        if fb.is_null() {
+            return false;
+        }
+        let _fb_guard = own_operand(fb);
+        crate::sexp::accessors::SET_VECTOR_ELT(fb, 0, crate::sexp::accessors::FORMALS(closure));
+        crate::sexp::accessors::SET_VECTOR_ELT(fb, 1, crate::sexp::accessors::BODY(closure));
+        let idx = self.add_const(fb);
+        self.emit_operand(opcodes::OP_MAKECLOSURE, idx);
+        true
     }
 
     fn compile_call(&mut self, expr: SEXP) -> bool {

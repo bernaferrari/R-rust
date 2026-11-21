@@ -120,155 +120,153 @@ pub fn do_det_ge_real(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Solve through the selected LAPACK adapter using R's column-major layout.
 pub fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Exact/partial names bind before positional arguments; NULL is an
-        // actual value, distinct from an omitted right-hand side.
-        let mut matched = [None; 3];
-        let formals = ["a", "b", "tol"];
-        let mut positional = Vec::new();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            if let Some(name) = crate::mainutils::essentials::tag_name(cell) {
-                if let Some(index) = formals.iter().position(|formal| formal.starts_with(&name)) {
-                    if matched[index].replace(CAR(cell)).is_some() {
-                        base_error(format!(
-                            "formal argument '{}' matched by multiple actual arguments",
-                            formals[index]
-                        ));
-                    }
+    // Exact/partial names bind before positional arguments; NULL is an
+    // actual value, distinct from an omitted right-hand side.
+    let mut matched = [None; 3];
+    let formals = ["a", "b", "tol"];
+    let mut positional = Vec::new();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        if let Some(name) = crate::mainutils::essentials::tag_name(cell) {
+            if let Some(index) = formals.iter().position(|formal| formal.starts_with(&name)) {
+                if matched[index].replace(CAR(cell)).is_some() {
+                    base_error(format!(
+                        "formal argument '{}' matched by multiple actual arguments",
+                        formals[index]
+                    ));
                 }
+            }
+        } else {
+            positional.push(CAR(cell));
+        }
+        cell = CDR(cell);
+    }
+    for value in positional {
+        if let Some(slot) = matched.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some(value);
+        }
+    }
+    let a = matched[0]
+        .unwrap_or_else(|| base_error("argument 'a' is missing, with no default".to_owned()));
+    let b = matched[1].unwrap_or_else(R_NilValue);
+    let tol_arg = matched[2].unwrap_or_else(R_NilValue);
+    let dim_sym = crate::sexp::attrib_core::R_DimSymbol();
+    let dims = crate::sexp::attrib_core::getAttrib(a, dim_sym);
+    if dims == R_NilValue() || XLENGTH(dims) != 2 {
+        base_error("'a' must be a numeric matrix".to_owned());
+    }
+    let n = INTEGER_ELT(dims, 0);
+    if n == 0 {
+        base_error("'a' is 0-diml".to_owned());
+    }
+    if n != INTEGER_ELT(dims, 1) {
+        base_error("'a' must be a square matrix".to_owned());
+    }
+    if !matches!(
+        SEXPTYPE(TYPEOF(a)),
+        SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+    ) {
+        base_error("'a' must be a numeric matrix".to_owned());
+    }
+    let inverse = matched[1].is_none() || b == crate::sexp::globals::R_MissingArg();
+    let bdims = crate::sexp::attrib_core::getAttrib(b, dim_sym);
+    let matrix_result = inverse || bdims != R_NilValue();
+    let nrhs = if inverse {
+        n
+    } else if bdims != R_NilValue() {
+        if XLENGTH(bdims) != 2 || INTEGER_ELT(bdims, 0) != n {
+            base_error("'b' must have same row dimension as 'a'".to_owned());
+        }
+        INTEGER_ELT(bdims, 1)
+    } else {
+        if XLENGTH(b) != n as i64 {
+            base_error("'b' must be compatible with 'a'".to_owned());
+        }
+        1
+    };
+    let complex = TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP;
+    let ty = if complex {
+        SEXPTYPE::CPLXSXP
+    } else {
+        SEXPTYPE::REALSXP
+    };
+    let aa = crate::mainutils::coerce::coerceVector(a, ty.as_c_int());
+    let _aa = protect(aa);
+    crate::sexp::attrib_core::setAttrib(aa, dim_sym, dims);
+    let bb = if inverse {
+        let v = Rf_allocVector3(ty, n as i64 * n as i64);
+        for i in 0..n as usize {
+            if complex {
+                let mut elt = complex_elt_checked(v, (i + i * n as usize) as R_xlen_t);
+                elt.r = 1.0;
+                set_complex_checked(v, (i + i * n as usize) as R_xlen_t, elt);
             } else {
-                positional.push(CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        for value in positional {
-            if let Some(slot) = matched.iter_mut().find(|slot| slot.is_none()) {
-                *slot = Some(value);
+                set_real_checked(v, (i + i * n as usize) as R_xlen_t, 1.0);
             }
         }
-        let a = matched[0]
-            .unwrap_or_else(|| base_error("argument 'a' is missing, with no default".to_owned()));
-        let b = matched[1].unwrap_or_else(R_NilValue);
-        let tol_arg = matched[2].unwrap_or_else(R_NilValue);
-        let dim_sym = crate::sexp::attrib_core::R_DimSymbol();
-        let dims = crate::sexp::attrib_core::getAttrib(a, dim_sym);
-        if dims == R_NilValue() || XLENGTH(dims) != 2 {
-            base_error("'a' must be a numeric matrix".to_owned());
-        }
-        let n = INTEGER_ELT(dims, 0);
-        if n == 0 {
-            base_error("'a' is 0-diml".to_owned());
-        }
-        if n != INTEGER_ELT(dims, 1) {
-            base_error("'a' must be a square matrix".to_owned());
-        }
+        v
+    } else {
         if !matches!(
-            SEXPTYPE(TYPEOF(a)),
+            SEXPTYPE(TYPEOF(b)),
             SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
         ) {
-            base_error("'a' must be a numeric matrix".to_owned());
+            base_error("'b' must be numeric".to_owned());
         }
-        let inverse = matched[1].is_none() || b == crate::sexp::globals::R_MissingArg();
-        let bdims = crate::sexp::attrib_core::getAttrib(b, dim_sym);
-        let matrix_result = inverse || bdims != R_NilValue();
-        let nrhs = if inverse {
-            n
-        } else if bdims != R_NilValue() {
-            if XLENGTH(bdims) != 2 || INTEGER_ELT(bdims, 0) != n {
-                base_error("'b' must have same row dimension as 'a'".to_owned());
-            }
-            INTEGER_ELT(bdims, 1)
-        } else {
-            if XLENGTH(b) != n as i64 {
-                base_error("'b' must be compatible with 'a'".to_owned());
-            }
-            1
-        };
-        let complex = TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP;
-        let ty = if complex {
-            SEXPTYPE::CPLXSXP
-        } else {
-            SEXPTYPE::REALSXP
-        };
-        let aa = crate::mainutils::coerce::coerceVector(a, ty.as_c_int());
-        let _aa = protect(aa);
-        crate::sexp::attrib_core::setAttrib(aa, dim_sym, dims);
-        let bb = if inverse {
-            let v = Rf_allocVector3(ty, n as i64 * n as i64);
-            for i in 0..n as usize {
-                if complex {
-                    let mut elt = complex_elt_checked(v, (i + i * n as usize) as R_xlen_t);
-                    elt.r = 1.0;
-                    set_complex_checked(v, (i + i * n as usize) as R_xlen_t, elt);
-                } else {
-                    set_real_checked(v, (i + i * n as usize) as R_xlen_t, 1.0);
-                }
-            }
-            v
-        } else {
-            if !matches!(
-                SEXPTYPE(TYPEOF(b)),
-                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
-            ) {
-                base_error("'b' must be numeric".to_owned());
-            }
-            let converted = crate::mainutils::coerce::coerceVector(b, ty.as_c_int());
-            let _converted = protect(converted);
-            crate::mainutils::duplicate::duplicate(converted)
-        };
-        let _bb = protect(bb);
-        let out_dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _dims = protect(out_dims);
-        set_integer_checked(out_dims, 0, n);
-        set_integer_checked(out_dims, (1) as R_xlen_t, nrhs);
-        crate::sexp::attrib_core::setAttrib(bb, dim_sym, out_dims);
-        let tol = if tol_arg == R_NilValue() {
-            Rf_ScalarReal(f64::EPSILON)
-        } else {
-            tol_arg
-        };
-        let _tol = protect(tol);
-        let result = if complex {
-            crate::modules::lapack::lapack_impl::La_solve_cmplx(aa, bb, tol)
-        } else {
-            crate::modules::lapack::lapack_impl::La_solve(aa, bb, tol)
-        };
-        let _result = protect(result);
-        if matrix_result {
-            crate::sexp::attrib_core::setAttrib(result, dim_sym, out_dims);
-        }
-        // Row labels of the solution correspond to columns of A.
-        let dn = crate::sexp::attrib_core::R_DimNamesSymbol();
-        let adn = crate::sexp::attrib_core::getAttrib(a, dn);
-        let bdn = crate::sexp::attrib_core::getAttrib(b, dn);
-        let rows = if adn != R_NilValue() {
-            VECTOR_ELT(adn, 1)
-        } else {
-            R_NilValue()
-        };
-        let cols = if inverse && adn != R_NilValue() {
-            VECTOR_ELT(adn, 0)
-        } else if bdn != R_NilValue() {
-            VECTOR_ELT(bdn, 1)
-        } else {
-            R_NilValue()
-        };
-        if matrix_result && (rows != R_NilValue() || cols != R_NilValue()) {
-            let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-            let _names = protect(names);
-            SET_VECTOR_ELT(names, 0, rows);
-            SET_VECTOR_ELT(names, 1, cols);
-            crate::sexp::attrib_core::setAttrib(result, dn, names);
-        } else if !matrix_result && rows != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                rows,
-            );
-        }
-        result
+        let converted = crate::mainutils::coerce::coerceVector(b, ty.as_c_int());
+        let _converted = protect(converted);
+        crate::mainutils::duplicate::duplicate(converted)
+    };
+    let _bb = protect(bb);
+    let out_dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _dims = protect(out_dims);
+    set_integer_checked(out_dims, 0, n);
+    set_integer_checked(out_dims, (1) as R_xlen_t, nrhs);
+    crate::sexp::attrib_core::setAttrib(bb, dim_sym, out_dims);
+    let tol = if tol_arg == R_NilValue() {
+        Rf_ScalarReal(f64::EPSILON)
+    } else {
+        tol_arg
+    };
+    let _tol = protect(tol);
+    let result = if complex {
+        crate::modules::lapack::lapack_impl::La_solve_cmplx(aa, bb, tol)
+    } else {
+        crate::modules::lapack::lapack_impl::La_solve(aa, bb, tol)
+    };
+    let _result = protect(result);
+    if matrix_result {
+        crate::sexp::attrib_core::setAttrib(result, dim_sym, out_dims);
     }
+    // Row labels of the solution correspond to columns of A.
+    let dn = crate::sexp::attrib_core::R_DimNamesSymbol();
+    let adn = crate::sexp::attrib_core::getAttrib(a, dn);
+    let bdn = crate::sexp::attrib_core::getAttrib(b, dn);
+    let rows = if adn != R_NilValue() {
+        VECTOR_ELT(adn, 1)
+    } else {
+        R_NilValue()
+    };
+    let cols = if inverse && adn != R_NilValue() {
+        VECTOR_ELT(adn, 0)
+    } else if bdn != R_NilValue() {
+        VECTOR_ELT(bdn, 1)
+    } else {
+        R_NilValue()
+    };
+    if matrix_result && (rows != R_NilValue() || cols != R_NilValue()) {
+        let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _names = protect(names);
+        SET_VECTOR_ELT(names, 0, rows);
+        SET_VECTOR_ELT(names, 1, cols);
+        crate::sexp::attrib_core::setAttrib(result, dn, names);
+    } else if !matrix_result && rows != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            rows,
+        );
+    }
+    result
 }
 
 /// GNU `chol(x)` — upper Cholesky factor.

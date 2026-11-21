@@ -8,7 +8,6 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 #[cfg(test)]
 use std::ptr;
@@ -79,35 +78,8 @@ fn IS_S4_OBJECT(x: SEXP) -> c_int {
     crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
-/// Set the S4 object flag.
-#[inline]
-unsafe fn SET_S4_OBJECT(x: SEXP) {
-    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if !x.is_null() {
-            let gp = (*x).sxpinfo.gp() | S4_OBJECT_MASK;
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
-}
-
-/// Unset the S4 object flag.
-#[inline]
-unsafe fn UNSET_S4_OBJECT(x: SEXP) {
-    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if !x.is_null() {
-            let gp = (*x).sxpinfo.gp() & !S4_OBJECT_MASK;
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
-}
-
 /// Check the NOJIT gp bit.
+#[cfg(test)]
 #[inline]
 unsafe fn NOJIT(x: SEXP) -> c_int {
     unsafe {
@@ -119,6 +91,7 @@ unsafe fn NOJIT(x: SEXP) -> c_int {
 }
 
 /// Check the MAYBEJIT gp bit.
+#[cfg(test)]
 #[inline]
 unsafe fn MAYBEJIT(x: SEXP) -> c_int {
     unsafe {
@@ -130,6 +103,7 @@ unsafe fn MAYBEJIT(x: SEXP) -> c_int {
 }
 
 /// Set the NOJIT gp bit.
+#[cfg(test)]
 #[inline]
 unsafe fn SET_NOJIT(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
@@ -144,6 +118,7 @@ unsafe fn SET_NOJIT(x: SEXP) {
 }
 
 /// Set the MAYBEJIT gp bit.
+#[cfg(test)]
 #[inline]
 unsafe fn SET_MAYBEJIT(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
@@ -158,6 +133,7 @@ unsafe fn SET_MAYBEJIT(x: SEXP) {
 }
 
 /// Check the RTRACE bit.
+#[cfg(test)]
 #[inline]
 unsafe fn RTRACE(x: SEXP) -> c_int {
     unsafe {
@@ -183,53 +159,44 @@ unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
 
 /// Set NAMED to maximum (2).
 #[inline]
-unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
+fn ENSURE_NAMEDMAX(x: SEXP) {
     if NAMED(x) < 2 {
         SET_NAMED(x, 2);
     }
 }
 
-/// Check if the GROWABLE_BIT is set.
-#[inline]
-unsafe fn GROWABLE_BIT_SET(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (((*x).sxpinfo.gp() & GROWABLE_BIT_MASK) != 0) as c_int
-    }
-}
-
 /// Raise a typed error for SEXPTYPEs this port cannot duplicate/copy yet.
-unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
-    unsafe {
-        let routine = if routine.is_null() {
-            "duplicate"
-        } else {
-            CStr::from_ptr(routine).to_str().unwrap_or("duplicate")
-        };
-        let sexptype = if s.is_null() { -1 } else { TYPEOF(s) };
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
-        });
-    }
+fn UNIMPLEMENTED_TYPE(routine: &str, s: SEXP) -> ! {
+    let sexptype = if s.is_null() { -1 } else { TYPEOF(s) };
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
+    });
 }
 
-/// Set the DDVAL flag on a symbol.
-#[inline]
-unsafe fn SET_DDVAL(x: SEXP, v: c_int) {
-    if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
-        return;
-    }
-    unsafe {
-        if !x.is_null() {
-            let gp = if v != 0 {
-                (*x).sxpinfo.gp() | DDVAL_MASK
-            } else {
-                (*x).sxpinfo.gp() & !DDVAL_MASK
-            };
-            (*x).sxpinfo.set_gp(gp);
+/// Checked read handle for a live vector in the active session.
+fn source_vector(x: SEXP) -> Sexp<'static> {
+    crate::mainutils::essentials::owner_sexp(crate::mainutils::essentials::active_owner(), x)
+}
+
+/// Checked write handle for a live vector in the active session.
+fn target_vector(x: SEXP) -> crate::sexp::object::SexpMut<'static> {
+    crate::mainutils::essentials::owner_sexp_mut(x)
+}
+
+fn checked<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| duplication_failure(error))
+}
+
+/// Visit `(destination, source)` index pairs of `nsrc` values recycled into
+/// `n` cells, in GNU `xcopyWithRecycle` order.
+fn recycle_pairs(n: R_xlen_t, nsrc: R_xlen_t, mut f: impl FnMut(R_xlen_t, R_xlen_t)) {
+    let mut sidx: R_xlen_t = 0;
+    for i in 0..n {
+        if sidx == nsrc {
+            sidx = 0;
         }
+        f(i, sidx);
+        sidx += 1;
     }
 }
 
@@ -258,7 +225,7 @@ fn isVectorList(x: SEXP) -> c_int {
 }
 
 /// Get nrows from dim attribute.
-unsafe fn nrows(x: SEXP) -> c_int {
+fn nrows(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -278,7 +245,7 @@ unsafe fn nrows(x: SEXP) -> c_int {
 }
 
 /// Get ncols from dim attribute.
-unsafe fn ncols(x: SEXP) -> c_int {
+fn ncols(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -392,7 +359,7 @@ fn fill_matrix_byrow_iterate<F>(
 /// (shared subtrees for pairlists/vectors, but new atomic vectors are copied).
 ///
 /// Both native input and result stay owned through result admission.
-unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
+fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
     if s.is_null() {
         return s;
     }
@@ -789,18 +756,18 @@ fn prepare_closure<'source>(
 }
 
 /// Deep duplicate an SEXP.
-pub unsafe fn duplicate(s: SEXP) -> SEXP {
-    unsafe { duplicate_entry(s, 1) }
+pub fn duplicate(s: SEXP) -> SEXP {
+    duplicate_entry(s, 1)
 }
 
 /// Alias for duplicate (R API).
-pub unsafe fn Rf_duplicate(s: SEXP) -> SEXP {
-    unsafe { duplicate(s) }
+pub fn Rf_duplicate(s: SEXP) -> SEXP {
+    duplicate(s)
 }
 
 /// Shallow duplicate an SEXP.
-pub unsafe fn shallow_duplicate(s: SEXP) -> SEXP {
-    unsafe { duplicate_entry(s, 0) }
+pub fn shallow_duplicate(s: SEXP) -> SEXP {
+    duplicate_entry(s, 0)
 }
 
 /// GNU duplicates immutable logical constants into mutable ordinary vectors.
@@ -836,79 +803,83 @@ fn duplicate_logical_singleton(
     })?
 }
 
-unsafe fn duplicate_entry(s: SEXP, deep: c_int) -> SEXP {
-    unsafe {
-        if s.is_null() {
-            return s;
-        }
-        if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(s) {
-            return if singleton.snapshot().sxpinfo.type_of() == SEXPTYPE::LGLSXP {
-                duplicate_logical_singleton(singleton)
-                    .unwrap_or_else(|error| duplication_failure(error))
-                    .as_raw()
-            } else {
-                s
-            };
-        }
-        let source =
-            crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|error| duplication_failure(error));
-        let pin = source
-            .pin_runtime()
-            .unwrap_or_else(|error| duplication_failure(error));
-        let node = source
-            .allocation()
-            .unwrap_or_else(|error| duplication_failure(error));
-        let flags = node
-            .heap_identity()
-            .node_snapshot(node)
-            .unwrap_or_else(|| duplication_failure(SexpError::StaleAllocation))
-            .sxpinfo;
-        let trace = flags.trace()
-            && !matches!(
-                flags.type_of(),
-                SEXPTYPE::CLOSXP
-                    | SEXPTYPE::BUILTINSXP
-                    | SEXPTYPE::SPECIALSXP
-                    | SEXPTYPE::PROMSXP
-                    | SEXPTYPE::ENVSXP
-            );
-        let factory = source
-            .node_factory()
-            .unwrap_or_else(|error| duplication_failure(error));
-        let original = source
-            .runtime_owner
-            .as_ref()
-            .unwrap_or_else(|| duplication_failure(SexpError::RootUnavailable));
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::sexp::owner::with_runtime(original, |access| {
-                let copy = access.with_native(|_| factory.wrap(duplicate1(s, deep)))?;
-                if trace {
-                    access.with_native(|_| {
+fn duplicate_entry(s: SEXP, deep: c_int) -> SEXP {
+    if s.is_null() {
+        return s;
+    }
+    if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(s) {
+        return if singleton.snapshot().sxpinfo.type_of() == SEXPTYPE::LGLSXP {
+            duplicate_logical_singleton(singleton)
+                .unwrap_or_else(|error| duplication_failure(error))
+                .as_raw()
+        } else {
+            s
+        };
+    }
+    // SAFETY: `s` arrives from the evaluator graph of the active session;
+    // rooted_raw validates its ownership and no payload loan is held here.
+    let source = unsafe { crate::sexp::altrep::rooted_raw(s) }
+        .unwrap_or_else(|error| duplication_failure(error));
+    let pin = source
+        .pin_runtime()
+        .unwrap_or_else(|error| duplication_failure(error));
+    let node = source
+        .allocation()
+        .unwrap_or_else(|error| duplication_failure(error));
+    let flags = node
+        .heap_identity()
+        .node_snapshot(node)
+        .unwrap_or_else(|| duplication_failure(SexpError::StaleAllocation))
+        .sxpinfo;
+    let trace = flags.trace()
+        && !matches!(
+            flags.type_of(),
+            SEXPTYPE::CLOSXP
+                | SEXPTYPE::BUILTINSXP
+                | SEXPTYPE::SPECIALSXP
+                | SEXPTYPE::PROMSXP
+                | SEXPTYPE::ENVSXP
+        );
+    let factory = source
+        .node_factory()
+        .unwrap_or_else(|error| duplication_failure(error));
+    let original = source
+        .runtime_owner
+        .as_ref()
+        .unwrap_or_else(|| duplication_failure(SexpError::RootUnavailable));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(original, |access| {
+            let copy = access.with_native(|_| factory.wrap(duplicate1(s, deep)))?;
+            if trace {
+                access.with_native(|_| {
+                    // SAFETY: the report only formats the two node addresses.
+                    unsafe {
                         crate::mainutils::debug::memtrace_report(
                             source.as_raw().cast(),
                             copy.as_raw().cast(),
-                        );
-                        Ok(())
-                    })?;
-                    // Post-report validation happens before any native result
-                    // mutation; a new ambient runtime cannot supply authority.
-                    access.require_active()?;
-                    SET_RTRACE(copy.as_raw(), 1);
-                }
+                        )
+                    };
+                    Ok(())
+                })?;
+                // Post-report validation happens before any native result
+                // mutation; a new ambient runtime cannot supply authority.
                 access.require_active()?;
-                Ok(copy)
-            })
-            .unwrap_or_else(|error| duplication_failure(error))
-            .unwrap_or_else(|error| duplication_failure(error))
-        }));
-        if let Some(pin) = &pin {
-            pin.require_live()
-                .unwrap_or_else(|error| duplication_failure(error));
-        }
-        match outcome {
-            Ok(copy) => copy.as_raw(),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
+                // SAFETY: `copy` is the live, freshly duplicated node.
+                unsafe { SET_RTRACE(copy.as_raw(), 1) };
+            }
+            access.require_active()?;
+            Ok(copy)
+        })
+        .unwrap_or_else(|error| duplication_failure(error))
+        .unwrap_or_else(|error| duplication_failure(error))
+    }));
+    if let Some(pin) = &pin {
+        pin.require_live()
+            .unwrap_or_else(|error| duplication_failure(error));
+    }
+    match outcome {
+        Ok(copy) => copy.as_raw(),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -918,55 +889,51 @@ unsafe fn duplicate_entry(s: SEXP, deep: c_int) -> SEXP {
 /// not yet RAISE_NAMED on formal binding, so a caller-owned value often
 /// still has NAMED==1 inside `f(x)`. Use MAYBE_REFERENCED (`NAMED > 0`)
 /// until argument matching increments NAMED.
-pub unsafe fn shallow_duplicate_if_shared(s: SEXP) -> SEXP {
-    unsafe {
-        if s.is_null() || s == R_NilValue() {
-            return s;
-        }
-        if NAMED(s) > 0 {
-            shallow_duplicate(s)
-        } else {
-            s
-        }
+pub fn shallow_duplicate_if_shared(s: SEXP) -> SEXP {
+    if s.is_null() || s == R_NilValue() {
+        return s;
+    }
+    if NAMED(s) > 0 {
+        shallow_duplicate(s)
+    } else {
+        s
     }
 }
 
 /// Lazy duplicate: just set NAMEDMAX on the input.
 /// Returns the input unchanged (no copy is made).
-pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
-    unsafe {
-        if s.is_null() {
-            return s;
-        }
-        match SEXPTYPE(TYPEOF(s)) {
-            SEXPTYPE::NILSXP
-            | SEXPTYPE::SYMSXP
-            | SEXPTYPE::ENVSXP
-            | SEXPTYPE::SPECIALSXP
-            | SEXPTYPE::BUILTINSXP
-            | SEXPTYPE::CHARSXP
-            | SEXPTYPE::PROMSXP => {
-                // Immutable types - nothing to do
-            }
-            SEXPTYPE::CLOSXP
-            | SEXPTYPE::LISTSXP
-            | SEXPTYPE::LANGSXP
-            | SEXPTYPE::DOTSXP
-            | SEXPTYPE::EXPRSXP
-            | SEXPTYPE::VECSXP
-            | SEXPTYPE::LGLSXP
-            | SEXPTYPE::INTSXP
-            | SEXPTYPE::REALSXP
-            | SEXPTYPE::CPLXSXP
-            | SEXPTYPE::RAWSXP
-            | SEXPTYPE::STRSXP
-            | SEXPTYPE::OBJSXP => {
-                ENSURE_NAMEDMAX(s);
-            }
-            _ => {} // intentionally unhandled: SEXPTYPE does not require NAMEDMAX enforcement
-        }
-        s
+pub fn lazy_duplicate(s: SEXP) -> SEXP {
+    if s.is_null() {
+        return s;
     }
+    match SEXPTYPE(TYPEOF(s)) {
+        SEXPTYPE::NILSXP
+        | SEXPTYPE::SYMSXP
+        | SEXPTYPE::ENVSXP
+        | SEXPTYPE::SPECIALSXP
+        | SEXPTYPE::BUILTINSXP
+        | SEXPTYPE::CHARSXP
+        | SEXPTYPE::PROMSXP => {
+            // Immutable types - nothing to do
+        }
+        SEXPTYPE::CLOSXP
+        | SEXPTYPE::LISTSXP
+        | SEXPTYPE::LANGSXP
+        | SEXPTYPE::DOTSXP
+        | SEXPTYPE::EXPRSXP
+        | SEXPTYPE::VECSXP
+        | SEXPTYPE::LGLSXP
+        | SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::RAWSXP
+        | SEXPTYPE::STRSXP
+        | SEXPTYPE::OBJSXP => {
+            ENSURE_NAMEDMAX(s);
+        }
+        _ => {} // intentionally unhandled: SEXPTYPE does not require NAMEDMAX enforcement
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -975,56 +942,51 @@ pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
 
 /// Detect cycles that would be created by assigning `child` as a
 /// component of `s` in a complex assignment.
-pub unsafe fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
-    unsafe {
-        if s == child {
-            match SEXPTYPE(TYPEOF(child)) {
-                SEXPTYPE::NILSXP
-                | SEXPTYPE::SYMSXP
-                | SEXPTYPE::ENVSXP
-                | SEXPTYPE::SPECIALSXP
-                | SEXPTYPE::BUILTINSXP => {
-                    return 0; // OK cycle
-                }
-                _ => {
-                    return 1; // Bad cycle
-                }
+pub fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
+    if s == child {
+        match SEXPTYPE(TYPEOF(child)) {
+            SEXPTYPE::NILSXP
+            | SEXPTYPE::SYMSXP
+            | SEXPTYPE::ENVSXP
+            | SEXPTYPE::SPECIALSXP
+            | SEXPTYPE::BUILTINSXP => {
+                return 0; // OK cycle
+            }
+            _ => {
+                return 1; // Bad cycle
             }
         }
-
-        // Check attributes
-        let attr = ATTRIB(child);
-        if !attr.is_null() && attr != R_NilValue() && R_cycle_detected(s, attr) != 0 {
-            return 1;
-        }
-
-        // Check pairlist
-        if isPairList(child) != 0 {
-            let mut el = child;
-            while !el.is_null() && el != R_NilValue() {
-                if s == el || R_cycle_detected(s, CAR(el)) != 0 {
-                    return 1;
-                }
-                let el_attr = ATTRIB(el);
-                if !el_attr.is_null()
-                    && el_attr != R_NilValue()
-                    && R_cycle_detected(s, el_attr) != 0
-                {
-                    return 1;
-                }
-                el = CDR(el);
-            }
-        } else if isVectorList(child) != 0 {
-            let len = LENGTH(child);
-            for i in 0..len {
-                if R_cycle_detected(s, VECTOR_ELT(child, i as R_xlen_t)) != 0 {
-                    return 1;
-                }
-            }
-        }
-
-        0
     }
+
+    // Check attributes
+    let attr = ATTRIB(child);
+    if !attr.is_null() && attr != R_NilValue() && R_cycle_detected(s, attr) != 0 {
+        return 1;
+    }
+
+    // Check pairlist
+    if isPairList(child) != 0 {
+        let mut el = child;
+        while !el.is_null() && el != R_NilValue() {
+            if s == el || R_cycle_detected(s, CAR(el)) != 0 {
+                return 1;
+            }
+            let el_attr = ATTRIB(el);
+            if !el_attr.is_null() && el_attr != R_NilValue() && R_cycle_detected(s, el_attr) != 0 {
+                return 1;
+            }
+            el = CDR(el);
+        }
+    } else if isVectorList(child) != 0 {
+        let len = LENGTH(child);
+        for i in 0..len {
+            if R_cycle_detected(s, VECTOR_ELT(child, i as R_xlen_t)) != 0 {
+                return 1;
+            }
+        }
+    }
+
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -1478,10 +1440,8 @@ impl<'source> VectorContinuation<'source> {
                     return Ok(CopyStep::Child(CopyRequest::value(value.clone())));
                 }
                 access.with_native(|_| {
-                    unsafe {
-                        lazy_duplicate(value.as_raw());
-                        SET_VECTOR_ELT(self.copy.as_raw(), index as _, value.as_raw());
-                    }
+                    lazy_duplicate(value.as_raw());
+                    SET_VECTOR_ELT(self.copy.as_raw(), index as _, value.as_raw());
                     Ok(())
                 })?;
             }
@@ -1555,7 +1515,7 @@ impl<'source> PairlistContinuation<'source> {
                 return Ok(CopyStep::Child(CopyRequest::value(saved.value.clone())));
             }
             access.with_native(|_| {
-                unsafe { lazy_duplicate(saved.value.as_raw()) };
+                lazy_duplicate(saved.value.as_raw());
                 Ok(())
             })?;
             result = Some(saved.value.clone());
@@ -1640,41 +1600,54 @@ fn duplicate_iterative<'source>(
 ///
 /// Both vectors must have the same type. The source `t` is recycled
 /// into the destination `s` if it is shorter.
-pub unsafe fn copyVector(s: SEXP, t: SEXP) {
-    unsafe {
-        let sT = TYPEOF(s);
-        let tT = TYPEOF(t);
-        if sT != tT {
-            return; // In real R this would error
-        }
-        let ns = XLENGTH(s);
-        let nt = XLENGTH(t);
+pub fn copyVector(s: SEXP, t: SEXP) {
+    let sT = TYPEOF(s);
+    let tT = TYPEOF(t);
+    if sT != tT {
+        return; // In real R this would error
+    }
+    let ns = XLENGTH(s);
+    let nt = XLENGTH(t);
 
-        match SEXPTYPE(sT) {
-            SEXPTYPE::STRSXP => {
-                xcopyStringWithRecycle(s, t, 0, ns, nt);
-            }
-            SEXPTYPE::LGLSXP => {
-                xcopyLogicalWithRecycle(LOGICAL(s), LOGICAL(t), 0, ns, nt);
-            }
-            SEXPTYPE::INTSXP => {
-                xcopyIntegerWithRecycle(INTEGER(s), INTEGER(t), 0, ns, nt);
-            }
-            SEXPTYPE::REALSXP => {
-                xcopyRealWithRecycle(REAL(s), REAL(t), 0, ns, nt);
-            }
-            SEXPTYPE::CPLXSXP => {
-                xcopyComplexWithRecycle(COMPLEX(s), COMPLEX(t), 0, ns, nt);
-            }
-            SEXPTYPE::EXPRSXP | SEXPTYPE::VECSXP => {
-                xcopyVectorWithRecycle(s, t, 0, ns, nt);
-            }
-            SEXPTYPE::RAWSXP => {
-                xcopyRawWithRecycle(RAW(s), RAW(t), 0, ns, nt);
-            }
-            _ => {
-                UNIMPLEMENTED_TYPE(b"copyVector\0".as_ptr() as *const c_char, s);
-            }
+    match SEXPTYPE(sT) {
+        SEXPTYPE::STRSXP => {
+            xcopyStringWithRecycle(s, t, 0, ns, nt);
+        }
+        SEXPTYPE::LGLSXP => {
+            let (src, mut dst) = (source_vector(t), target_vector(s));
+            recycle_pairs(ns, nt, |i, j| {
+                checked(dst.try_set_logical_elt(i, checked(src.try_logical_elt(j))))
+            });
+        }
+        SEXPTYPE::INTSXP => {
+            let (src, mut dst) = (source_vector(t), target_vector(s));
+            recycle_pairs(ns, nt, |i, j| {
+                checked(dst.try_set_integer_elt(i, checked(src.try_integer_elt(j))))
+            });
+        }
+        SEXPTYPE::REALSXP => {
+            let (src, mut dst) = (source_vector(t), target_vector(s));
+            recycle_pairs(ns, nt, |i, j| {
+                checked(dst.try_set_real_elt(i, checked(src.try_real_elt(j))))
+            });
+        }
+        SEXPTYPE::CPLXSXP => {
+            let (src, mut dst) = (source_vector(t), target_vector(s));
+            recycle_pairs(ns, nt, |i, j| {
+                checked(dst.try_set_complex_elt(i, checked(src.try_complex_elt(j))))
+            });
+        }
+        SEXPTYPE::EXPRSXP | SEXPTYPE::VECSXP => {
+            xcopyVectorWithRecycle(s, t, 0, ns, nt);
+        }
+        SEXPTYPE::RAWSXP => {
+            let (src, mut dst) = (source_vector(t), target_vector(s));
+            recycle_pairs(ns, nt, |i, j| {
+                checked(dst.try_set_raw_elt(i, checked(src.try_raw_elt(j))))
+            });
+        }
+        _ => {
+            UNIMPLEMENTED_TYPE("copyVector", s);
         }
     }
 }
@@ -1685,43 +1658,41 @@ pub unsafe fn copyVector(s: SEXP, t: SEXP) {
 
 /// Copy list matrix contents (legacy function).
 #[allow(clippy::never_loop)]
-pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
-    unsafe {
-        let nr = nrows(s);
-        let nc = ncols(s);
-        let ns = (nr as R_xlen_t) * (nc as R_xlen_t);
+pub fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
+    let nr = nrows(s);
+    let nc = ncols(s);
+    let ns = (nr as R_xlen_t) * (nc as R_xlen_t);
 
-        let mut pt = t;
-        if byrow != 0 {
-            let nR = nr as R_xlen_t;
-            let tmp = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
-            for i in 0..nr {
-                for j in 0..nc {
-                    let idx = (i as R_xlen_t) + (j as R_xlen_t) * nR;
-                    SET_VECTOR_ELT(tmp, idx, duplicate(CAR(pt)));
-                    pt = CDR(pt);
-                    if pt.is_null() || pt == R_NilValue() {
-                        pt = t;
-                    }
-                }
-            }
-            let mut sp = s;
-            for i in 0..ns {
-                SETCAR(sp, VECTOR_ELT(tmp, i));
-                sp = CDR(sp);
-            }
-        } else {
-            let mut sp = s;
-            for _ in 0..ns {
-                SETCAR(sp, duplicate(CAR(pt)));
-                sp = CDR(sp);
+    let mut pt = t;
+    if byrow != 0 {
+        let nR = nr as R_xlen_t;
+        let tmp = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
+        for i in 0..nr {
+            for j in 0..nc {
+                let idx = (i as R_xlen_t) + (j as R_xlen_t) * nR;
+                SET_VECTOR_ELT(tmp, idx, duplicate(CAR(pt)));
                 pt = CDR(pt);
                 if pt.is_null() || pt == R_NilValue() {
                     pt = t;
                 }
-                if sp.is_null() || sp == R_NilValue() {
-                    break;
-                }
+            }
+        }
+        let mut sp = s;
+        for i in 0..ns {
+            SETCAR(sp, VECTOR_ELT(tmp, i));
+            sp = CDR(sp);
+        }
+    } else {
+        let mut sp = s;
+        for _ in 0..ns {
+            SETCAR(sp, duplicate(CAR(pt)));
+            sp = CDR(sp);
+            pt = CDR(pt);
+            if pt.is_null() || pt == R_NilValue() {
+                pt = t;
+            }
+            if sp.is_null() || sp == R_NilValue() {
+                break;
             }
         }
     }
@@ -1732,64 +1703,67 @@ pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Helper for VECTOR_ELT_LD: returns lazy_duplicate of the element.
-unsafe fn VECTOR_ELT_LD(x: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe { lazy_duplicate(VECTOR_ELT(x, i)) }
+fn VECTOR_ELT_LD(x: SEXP, i: R_xlen_t) -> SEXP {
+    lazy_duplicate(VECTOR_ELT(x, i))
 }
 
 /// Copy matrix contents from `t` into `s`.
 ///
 /// If `byrow` is nonzero, fills by rows; otherwise fills by columns
 /// (which is equivalent to copyVector).
-pub unsafe fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
-    unsafe {
-        let nr = nrows(s) as R_xlen_t;
-        let nc = ncols(s) as R_xlen_t;
-        let nt = XLENGTH(t);
+pub fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
+    let nr = nrows(s) as R_xlen_t;
+    let nc = ncols(s) as R_xlen_t;
+    let nt = XLENGTH(t);
 
-        if byrow != 0 {
-            match SEXPTYPE(TYPEOF(s)) {
-                SEXPTYPE::STRSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        SET_STRING_ELT(s, didx, STRING_ELT(t, sidx));
-                    });
-                }
-                SEXPTYPE::LGLSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        *LOGICAL(s).add(didx as usize) = *LOGICAL(t).add(sidx as usize);
-                    });
-                }
-                SEXPTYPE::INTSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        *INTEGER(s).add(didx as usize) = *INTEGER(t).add(sidx as usize);
-                    });
-                }
-                SEXPTYPE::REALSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        *REAL(s).add(didx as usize) = *REAL(t).add(sidx as usize);
-                    });
-                }
-                SEXPTYPE::CPLXSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        *COMPLEX(s).add(didx as usize) = *COMPLEX(t).add(sidx as usize);
-                    });
-                }
-                SEXPTYPE::EXPRSXP | SEXPTYPE::VECSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        SET_VECTOR_ELT(s, didx, VECTOR_ELT_LD(t, sidx));
-                    });
-                }
-                SEXPTYPE::RAWSXP => {
-                    fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
-                        *RAW(s).add(didx as usize) = *RAW(t).add(sidx as usize);
-                    });
-                }
-                _ => {
-                    UNIMPLEMENTED_TYPE(b"copyMatrix\0".as_ptr() as *const c_char, s);
-                }
+    if byrow != 0 {
+        match SEXPTYPE(TYPEOF(s)) {
+            SEXPTYPE::STRSXP => {
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    SET_STRING_ELT(s, didx, STRING_ELT(t, sidx));
+                });
             }
-        } else {
-            copyVector(s, t);
+            SEXPTYPE::LGLSXP => {
+                let (src, mut dst) = (source_vector(t), target_vector(s));
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    checked(dst.try_set_logical_elt(didx, checked(src.try_logical_elt(sidx))))
+                });
+            }
+            SEXPTYPE::INTSXP => {
+                let (src, mut dst) = (source_vector(t), target_vector(s));
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    checked(dst.try_set_integer_elt(didx, checked(src.try_integer_elt(sidx))))
+                });
+            }
+            SEXPTYPE::REALSXP => {
+                let (src, mut dst) = (source_vector(t), target_vector(s));
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    checked(dst.try_set_real_elt(didx, checked(src.try_real_elt(sidx))))
+                });
+            }
+            SEXPTYPE::CPLXSXP => {
+                let (src, mut dst) = (source_vector(t), target_vector(s));
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    checked(dst.try_set_complex_elt(didx, checked(src.try_complex_elt(sidx))))
+                });
+            }
+            SEXPTYPE::EXPRSXP | SEXPTYPE::VECSXP => {
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    SET_VECTOR_ELT(s, didx, VECTOR_ELT_LD(t, sidx));
+                });
+            }
+            SEXPTYPE::RAWSXP => {
+                let (src, mut dst) = (source_vector(t), target_vector(s));
+                fill_matrix_byrow_iterate(0, nr, nc, nt, |didx, sidx| {
+                    checked(dst.try_set_raw_elt(didx, checked(src.try_raw_elt(sidx))))
+                });
+            }
+            _ => {
+                UNIMPLEMENTED_TYPE("copyMatrix", s);
+            }
         }
+    } else {
+        copyVector(s, t);
     }
 }
 
@@ -1955,13 +1929,7 @@ pub unsafe fn xcopyRealWithRecycle(
 }
 
 /// Copy string vector elements with recycling.
-pub unsafe fn xcopyStringWithRecycle(
-    dst: SEXP,
-    src: SEXP,
-    dstart: R_xlen_t,
-    n: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
+pub fn xcopyStringWithRecycle(dst: SEXP, src: SEXP, dstart: R_xlen_t, n: R_xlen_t, nsrc: R_xlen_t) {
     if dst.is_null() || src.is_null() || n == 0 {
         return;
     }
@@ -1989,38 +1957,30 @@ pub unsafe fn xcopyStringWithRecycle(
 }
 
 /// Copy generic vector elements with recycling.
-pub unsafe fn xcopyVectorWithRecycle(
-    dst: SEXP,
-    src: SEXP,
-    dstart: R_xlen_t,
-    n: R_xlen_t,
-    nsrc: R_xlen_t,
-) {
-    unsafe {
-        if dst.is_null() || src.is_null() || n == 0 {
-            return;
-        }
-        if nsrc >= n {
-            for i in 0..n {
-                SET_VECTOR_ELT(dst, dstart + i, VECTOR_ELT_LD(src, i));
-            }
-            return;
-        }
-        if nsrc == 1 {
-            let val = VECTOR_ELT_LD(src, 0);
-            for i in 0..n {
-                SET_VECTOR_ELT(dst, dstart + i, val);
-            }
-            return;
-        }
-        let mut sidx: R_xlen_t = 0;
+pub fn xcopyVectorWithRecycle(dst: SEXP, src: SEXP, dstart: R_xlen_t, n: R_xlen_t, nsrc: R_xlen_t) {
+    if dst.is_null() || src.is_null() || n == 0 {
+        return;
+    }
+    if nsrc >= n {
         for i in 0..n {
-            if sidx == nsrc {
-                sidx = 0;
-            }
-            SET_VECTOR_ELT(dst, dstart + i, VECTOR_ELT_LD(src, sidx));
-            sidx += 1;
+            SET_VECTOR_ELT(dst, dstart + i, VECTOR_ELT_LD(src, i));
         }
+        return;
+    }
+    if nsrc == 1 {
+        let val = VECTOR_ELT_LD(src, 0);
+        for i in 0..n {
+            SET_VECTOR_ELT(dst, dstart + i, val);
+        }
+        return;
+    }
+    let mut sidx: R_xlen_t = 0;
+    for i in 0..n {
+        if sidx == nsrc {
+            sidx = 0;
+        }
+        SET_VECTOR_ELT(dst, dstart + i, VECTOR_ELT_LD(src, sidx));
+        sidx += 1;
     }
 }
 
@@ -2112,7 +2072,7 @@ pub unsafe fn xfillRealMatrixWithRecycle(
 }
 
 /// Fill string matrix with recycling.
-pub unsafe fn xfillStringMatrixWithRecycle(
+pub fn xfillStringMatrixWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,
@@ -2127,7 +2087,7 @@ pub unsafe fn xfillStringMatrixWithRecycle(
 }
 
 /// Fill generic vector matrix with recycling.
-pub unsafe fn xfillVectorMatrixWithRecycle(
+pub fn xfillVectorMatrixWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,
@@ -2147,27 +2107,25 @@ pub unsafe fn xfillVectorMatrixWithRecycle(
 
 /// Duplicate before attribute modification using ordinary deep or shallow
 /// value and public-attribute copying.
-unsafe fn duplicate_attr(x: SEXP, deep: c_int) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return x;
-        }
-        if deep != 0 {
-            duplicate(x)
-        } else {
-            shallow_duplicate(x)
-        }
+fn duplicate_attr(x: SEXP, deep: c_int) -> SEXP {
+    if x.is_null() {
+        return x;
+    }
+    if deep != 0 {
+        duplicate(x)
+    } else {
+        shallow_duplicate(x)
     }
 }
 
 /// Shallow duplicate before attribute modification.
-pub unsafe fn R_shallow_duplicate_attr(x: SEXP) -> SEXP {
-    unsafe { duplicate_attr(x, 0) }
+pub fn R_shallow_duplicate_attr(x: SEXP) -> SEXP {
+    duplicate_attr(x, 0)
 }
 
 /// Deep duplicate before attribute modification.
-pub unsafe fn R_duplicate_attr(x: SEXP) -> SEXP {
-    unsafe { duplicate_attr(x, 1) }
+pub fn R_duplicate_attr(x: SEXP) -> SEXP {
+    duplicate_attr(x, 1)
 }
 
 // ---------------------------------------------------------------------------

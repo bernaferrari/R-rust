@@ -1839,75 +1839,73 @@ fn relevel_impl(args: SEXP) -> SEXP {
 
 /// R's `droplevels(x)` — remove unused levels from a factor.
 pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = arg_by_name_or_position(args, &["x"], 0);
-        if inherits_class(x, "data.frame") && TYPEOF(x) == SEXPTYPE::VECSXP {
-            let out = crate::mainutils::duplicate::Rf_duplicate(x);
-            let _g = protect(out);
-            for i in 0..XLENGTH(out) {
-                let col = vector_elt_checked(out, i);
-                if inherits_class(col, "factor") {
-                    let args = Rf_cons(col, R_NilValue());
-                    let _a = protect(args);
-                    put_vector_elt(out, i, do_droplevels(_call, _op, args, _rho));
-                }
-            }
-            return out;
-        }
-        let Some(levels) = aggregate_factor_levels(x) else {
-            return x;
-        };
-        let mut used = BTreeSet::new();
-        for i in 0..XLENGTH(x) {
-            let code = int_elt(x, i);
-            if code != NA_INTEGER && code > 0 {
-                let old_index = (code - 1) as usize;
-                if old_index < levels.len() {
-                    used.insert(old_index);
-                }
+    let x = arg_by_name_or_position(args, &["x"], 0);
+    if inherits_class(x, "data.frame") && TYPEOF(x) == SEXPTYPE::VECSXP {
+        let out = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _g = protect(out);
+        for i in 0..XLENGTH(out) {
+            let col = vector_elt_checked(out, i);
+            if inherits_class(col, "factor") {
+                let args = Rf_cons(col, R_NilValue());
+                let _a = protect(args);
+                put_vector_elt(out, i, do_droplevels(_call, _op, args, _rho));
             }
         }
-        let mut new_levels = Vec::new();
-        let mut old_to_new = BTreeMap::new();
-        for (old_index, level) in levels.iter().enumerate() {
-            if used.contains(&old_index) {
-                new_levels.push(level.clone());
-                old_to_new.insert(old_index, new_levels.len() as i32);
-            }
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(x));
-        if result.is_null() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        for i in 0..XLENGTH(x) {
-            let code = int_elt(x, i);
-            let new_code = if code == NA_INTEGER || code <= 0 {
-                NA_INTEGER
-            } else {
-                old_to_new
-                    .get(&((code - 1) as usize))
-                    .copied()
-                    .unwrap_or(NA_INTEGER)
-            };
-            put_int_elt(result, i, new_code);
-        }
-        set_factor_attrs(result, &new_levels);
-        if inherits_class(x, "ordered") {
-            set_ordered_factor_class(result);
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-        result
+        return out;
     }
+    let Some(levels) = aggregate_factor_levels(x) else {
+        return x;
+    };
+    let mut used = BTreeSet::new();
+    for i in 0..XLENGTH(x) {
+        let code = int_elt(x, i);
+        if code != NA_INTEGER && code > 0 {
+            let old_index = (code - 1) as usize;
+            if old_index < levels.len() {
+                used.insert(old_index);
+            }
+        }
+    }
+    let mut new_levels = Vec::new();
+    let mut old_to_new = BTreeMap::new();
+    for (old_index, level) in levels.iter().enumerate() {
+        if used.contains(&old_index) {
+            new_levels.push(level.clone());
+            old_to_new.insert(old_index, new_levels.len() as i32);
+        }
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(x));
+    if result.is_null() {
+        return result;
+    }
+    let _result_guard = protect(result);
+    for i in 0..XLENGTH(x) {
+        let code = int_elt(x, i);
+        let new_code = if code == NA_INTEGER || code <= 0 {
+            NA_INTEGER
+        } else {
+            old_to_new
+                .get(&((code - 1) as usize))
+                .copied()
+                .unwrap_or(NA_INTEGER)
+        };
+        put_int_elt(result, i, new_code);
+    }
+    set_factor_attrs(result, &new_levels);
+    if inherits_class(x, "ordered") {
+        set_ordered_factor_class(result);
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+    }
+    result
 }
 
 /// GNU `factor(x, levels, labels, exclude = NA, ...)`.

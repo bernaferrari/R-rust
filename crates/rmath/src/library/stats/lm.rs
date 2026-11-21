@@ -40,7 +40,7 @@ unsafe fn asBool(x: SEXP) -> bool {
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::main::duplicate::shallow_duplicate(x) }
+    crate::main::duplicate::shallow_duplicate(x)
 }
 
 unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {

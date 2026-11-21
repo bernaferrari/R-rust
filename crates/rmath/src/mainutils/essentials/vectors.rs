@@ -1808,59 +1808,57 @@ fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
 }
 
 fn pminmax_frame_column(column: SEXP, arg_vecs: &[SEXP], _index: R_xlen_t, is_min: bool) -> SEXP {
-    unsafe {
-        let current = crate::mainutils::duplicate::Rf_duplicate(column);
-        let _g = protect(current);
-        let nrow = XLENGTH(current);
-        for &arg in arg_vecs {
-            if is_data_frame(arg) {
+    let current = crate::mainutils::duplicate::Rf_duplicate(column);
+    let _g = protect(current);
+    let nrow = XLENGTH(current);
+    for &arg in arg_vecs {
+        if is_data_frame(arg) {
+            continue;
+        }
+        let olen = XLENGTH(arg);
+        if olen == 0 {
+            continue;
+        }
+        let mut change = vec![false; nrow as usize];
+        for i in 0..nrow {
+            let left = elt_real_safe(current, i);
+            let right = elt_real_safe(arg, i % olen);
+            if left.is_nan() || right.is_nan() {
                 continue;
             }
-            let olen = XLENGTH(arg);
-            if olen == 0 {
+            change[i as usize] = if is_min { left > right } else { left < right };
+        }
+        let owner = active_owner();
+        let mut current_mut = owner
+            .sexp(current)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for i in 0..nrow {
+            if !change[i as usize] {
                 continue;
             }
-            let mut change = vec![false; nrow as usize];
-            for i in 0..nrow {
-                let left = elt_real_safe(current, i);
-                let right = elt_real_safe(arg, i % olen);
-                if left.is_nan() || right.is_nan() {
-                    continue;
-                }
-                change[i as usize] = if is_min { left > right } else { left < right };
-            }
-            let owner = active_owner();
-            let mut current_mut = owner
-                .sexp(current)
-                .and_then(SexpMut::try_from_checked)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            for i in 0..nrow {
-                if !change[i as usize] {
-                    continue;
-                }
-                let missing = i >= olen;
-                let value = if missing {
-                    NA_REAL
-                } else {
-                    elt_real_safe(arg, i)
-                };
-                if TYPEOF(current) == SEXPTYPE::INTSXP && !missing {
-                    current_mut
-                        .try_set_integer_elt(i, value as c_int)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                } else if TYPEOF(current) == SEXPTYPE::INTSXP {
-                    current_mut
-                        .try_set_integer_elt(i, NA_INTEGER)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                } else {
-                    current_mut
-                        .try_set_real_elt(i, value)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                }
+            let missing = i >= olen;
+            let value = if missing {
+                NA_REAL
+            } else {
+                elt_real_safe(arg, i)
+            };
+            if TYPEOF(current) == SEXPTYPE::INTSXP && !missing {
+                current_mut
+                    .try_set_integer_elt(i, value as c_int)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            } else if TYPEOF(current) == SEXPTYPE::INTSXP {
+                current_mut
+                    .try_set_integer_elt(i, NA_INTEGER)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            } else {
+                current_mut
+                    .try_set_real_elt(i, value)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
-        current
     }
+    current
 }
 
 #[cfg(test)]

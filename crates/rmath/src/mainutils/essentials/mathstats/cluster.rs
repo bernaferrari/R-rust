@@ -621,53 +621,51 @@ fn reorder_dendrogram_sum(
     f64,
     Option<crate::sexp::protect::ProtectGuard<'static>>,
 ) {
-    unsafe {
-        if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
-            let id = if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
-                integer_elt_checked(node, 0)
-            } else if XLENGTH(node) >= 1 {
-                elt_real_safe(node, 0) as i32
-            } else {
-                0
-            };
-            let value = if id >= 1 && (id as usize) <= wts.len() {
-                wts[(id as usize) - 1]
-            } else {
-                crate::sexp::ffi::NA_REAL
-            };
-            let node = crate::mainutils::duplicate::shallow_duplicate(node);
-            let guard = protect(node);
-            set_dendrogram_value(node, value, integer_wts);
-            return (node, value, Some(guard));
-        }
-        let k = XLENGTH(node) as usize;
-        let rebuilt = Rf_allocVector3(SEXPTYPE::VECSXP, k as i64);
-        let guard = protect(rebuilt);
-        let mut values = Vec::with_capacity(k);
-        for i in 0..k {
-            let (child, value, child_guard) =
-                reorder_dendrogram_sum(VECTOR_ELT(node, i as i64), wts, integer_wts);
-            SET_VECTOR_ELT(rebuilt, i as i64, child);
-            drop(child_guard);
-            values.push(value);
-        }
-        let mut order: Vec<usize> = (0..k).collect();
-        order.sort_by(|&a, &b| {
-            values[a]
-                .partial_cmp(&values[b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let kids: Vec<SEXP> = (0..k).map(|i| VECTOR_ELT(rebuilt, i as i64)).collect();
-        for (i, &src) in order.iter().enumerate() {
-            SET_VECTOR_ELT(rebuilt, i as i64, kids[src]);
-        }
-        let sum: f64 = values.iter().copied().sum();
-        copy_dendrogram_attr(rebuilt, node, c"members");
-        copy_dendrogram_attr(rebuilt, node, c"height");
-        copy_dendrogram_attr(rebuilt, node, c"class");
-        set_dendrogram_value(rebuilt, sum, integer_wts);
-        (rebuilt, sum, Some(guard))
+    if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
+        let id = if TYPEOF(node) == SEXPTYPE::INTSXP && XLENGTH(node) >= 1 {
+            integer_elt_checked(node, 0)
+        } else if XLENGTH(node) >= 1 {
+            elt_real_safe(node, 0) as i32
+        } else {
+            0
+        };
+        let value = if id >= 1 && (id as usize) <= wts.len() {
+            wts[(id as usize) - 1]
+        } else {
+            crate::sexp::ffi::NA_REAL
+        };
+        let node = crate::mainutils::duplicate::shallow_duplicate(node);
+        let guard = protect(node);
+        set_dendrogram_value(node, value, integer_wts);
+        return (node, value, Some(guard));
     }
+    let k = XLENGTH(node) as usize;
+    let rebuilt = Rf_allocVector3(SEXPTYPE::VECSXP, k as i64);
+    let guard = protect(rebuilt);
+    let mut values = Vec::with_capacity(k);
+    for i in 0..k {
+        let (child, value, child_guard) =
+            reorder_dendrogram_sum(VECTOR_ELT(node, i as i64), wts, integer_wts);
+        SET_VECTOR_ELT(rebuilt, i as i64, child);
+        drop(child_guard);
+        values.push(value);
+    }
+    let mut order: Vec<usize> = (0..k).collect();
+    order.sort_by(|&a, &b| {
+        values[a]
+            .partial_cmp(&values[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let kids: Vec<SEXP> = (0..k).map(|i| VECTOR_ELT(rebuilt, i as i64)).collect();
+    for (i, &src) in order.iter().enumerate() {
+        SET_VECTOR_ELT(rebuilt, i as i64, kids[src]);
+    }
+    let sum: f64 = values.iter().copied().sum();
+    copy_dendrogram_attr(rebuilt, node, c"members");
+    copy_dendrogram_attr(rebuilt, node, c"height");
+    copy_dendrogram_attr(rebuilt, node, c"class");
+    set_dendrogram_value(rebuilt, sum, integer_wts);
+    (rebuilt, sum, Some(guard))
 }
 
 fn midcache_dendrogram(node: SEXP) {

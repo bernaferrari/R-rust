@@ -262,7 +262,7 @@ pub(crate) fn class_gets(x: SEXP, class: SEXP) -> SEXP {
 pub(crate) fn duplicate(x: SEXP) -> SEXP {
     let _ = checked(x);
     // SAFETY: `x` was just validated as a live registered object.
-    unsafe { crate::main::duplicate::Rf_duplicate(x) }
+    crate::main::duplicate::Rf_duplicate(x)
 }
 
 unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {

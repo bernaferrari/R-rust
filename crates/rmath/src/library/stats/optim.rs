@@ -340,7 +340,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 }
 
 unsafe fn duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::main::duplicate::duplicate(x) }
+    crate::main::duplicate::duplicate(x)
 }
 
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {

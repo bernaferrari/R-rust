@@ -736,12 +736,10 @@ fn eval_owned(
             SEXPTYPE::ENVSXP => {}
             SEXPTYPE::LISTSXP | SEXPTYPE::VECSXP => {
                 let frame = access.with_native(|owner| {
-                    let raw = unsafe {
-                        if env.typeof_() == SEXPTYPE::LISTSXP {
-                            crate::mainutils::duplicate::Rf_duplicate(env.as_raw())
-                        } else {
-                            crate::eval::missing::VectorToPairListNamed(env.as_raw())
-                        }
+                    let raw = if env.typeof_() == SEXPTYPE::LISTSXP {
+                        crate::mainutils::duplicate::Rf_duplicate(env.as_raw())
+                    } else {
+                        crate::eval::missing::VectorToPairListNamed(env.as_raw())
                     };
                     owner.sexp(raw)?.into_owned()
                 })?;

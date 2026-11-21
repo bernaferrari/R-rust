@@ -361,32 +361,30 @@ pub fn R_cmpfun(fun: SEXP) -> bool {
 /// with bytecode. The internal `R_cmpfun` entry point remains the in-place JIT
 /// operation used by the evaluator.
 pub fn compiler_cmpfun(fun: SEXP) -> Result<SEXP, &'static str> {
-    unsafe {
-        if fun.is_null() {
-            return Err("cannot compile a non-function");
-        }
-        match TYPEOF(fun) {
-            t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => Ok(fun),
-            t if t == SEXPTYPE::CLOSXP => {
-                if TYPEOF(BODY(fun)) == SEXPTYPE::BCODESXP {
-                    return Ok(fun);
-                }
-                if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
-                    return Err("bytecode compiler is disabled");
-                }
-                let compiled = crate::mainutils::duplicate::duplicate(fun);
-                if compiled.is_null() {
-                    return Err("could not allocate compiled closure");
-                }
-                let _compiled_guard = crate::sexp::protect::protect(compiled);
-                if super::bc_compile::compile_closure(compiled) {
-                    Ok(compiled)
-                } else {
-                    Err("function body uses unsupported compiler syntax")
-                }
+    if fun.is_null() {
+        return Err("cannot compile a non-function");
+    }
+    match TYPEOF(fun) {
+        t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => Ok(fun),
+        t if t == SEXPTYPE::CLOSXP => {
+            if TYPEOF(BODY(fun)) == SEXPTYPE::BCODESXP {
+                return Ok(fun);
             }
-            _ => Err("cannot compile a non-function"),
+            if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
+                return Err("bytecode compiler is disabled");
+            }
+            let compiled = crate::mainutils::duplicate::duplicate(fun);
+            if compiled.is_null() {
+                return Err("could not allocate compiled closure");
+            }
+            let _compiled_guard = crate::sexp::protect::protect(compiled);
+            if super::bc_compile::compile_closure(compiled) {
+                Ok(compiled)
+            } else {
+                Err("function body uses unsupported compiler syntax")
+            }
         }
+        _ => Err("cannot compile a non-function"),
     }
 }
 

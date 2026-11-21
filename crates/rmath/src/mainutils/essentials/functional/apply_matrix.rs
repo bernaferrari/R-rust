@@ -648,16 +648,14 @@ pub fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn as_array_for_kronecker(x: SEXP) -> SEXP {
-    unsafe {
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
-            return x;
-        }
-        let y = crate::mainutils::duplicate::duplicate(x);
-        let _y = protect(y);
-        set_int_dim(y, &[XLENGTH(y) as c_int]);
-        y
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
+        return x;
     }
+    let y = crate::mainutils::duplicate::duplicate(x);
+    let _y = protect(y);
+    set_int_dim(y, &[XLENGTH(y) as c_int]);
+    y
 }
 
 pub(super) fn array_dims(x: SEXP) -> Vec<c_int> {

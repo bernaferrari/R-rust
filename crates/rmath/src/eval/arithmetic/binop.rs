@@ -292,15 +292,13 @@ pub(crate) fn arithmetic_error(message: impl Into<String>) -> ! {
 }
 
 pub(crate) fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> bool {
-    unsafe {
-        let attr = getAttrib(source, symbol);
-        if attr.is_null() || attr == R_NilValue() {
-            return false;
-        }
-        let attr = crate::mainutils::duplicate::duplicate(attr);
-        setAttrib(result, symbol, attr);
-        true
+    let attr = getAttrib(source, symbol);
+    if attr.is_null() || attr == R_NilValue() {
+        return false;
     }
+    let attr = crate::mainutils::duplicate::duplicate(attr);
+    setAttrib(result, symbol, attr);
+    true
 }
 
 pub(crate) fn copy_dims_if_present(
@@ -308,24 +306,22 @@ pub(crate) fn copy_dims_if_present(
     source: SEXP,
     result_len: R_xlen_t,
 ) -> bool {
-    unsafe {
-        if source.is_null() || LENGTH(source) as R_xlen_t != result_len {
-            return false;
-        }
-        let dim = getAttrib(source, R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            return false;
-        }
-
-        let dim = crate::mainutils::duplicate::duplicate(dim);
-        setAttrib(result, R_DimSymbol(), dim);
-        let dimnames = getAttrib(source, R_DimNamesSymbol());
-        if !dimnames.is_null() && dimnames != R_NilValue() {
-            let dimnames = crate::mainutils::duplicate::duplicate(dimnames);
-            setAttrib(result, R_DimNamesSymbol(), dimnames);
-        }
-        true
+    if source.is_null() || LENGTH(source) as R_xlen_t != result_len {
+        return false;
     }
+    let dim = getAttrib(source, R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() {
+        return false;
+    }
+
+    let dim = crate::mainutils::duplicate::duplicate(dim);
+    setAttrib(result, R_DimSymbol(), dim);
+    let dimnames = getAttrib(source, R_DimNamesSymbol());
+    if !dimnames.is_null() && dimnames != R_NilValue() {
+        let dimnames = crate::mainutils::duplicate::duplicate(dimnames);
+        setAttrib(result, R_DimNamesSymbol(), dimnames);
+    }
+    true
 }
 
 /// Propagate attributes onto a binary-operation result, mirroring upstream
@@ -360,48 +356,46 @@ pub(super) fn propagate_binary_vector_attributes(
     b: SEXP,
     result_len: R_xlen_t,
 ) {
-    unsafe {
-        let nil = R_NilValue();
-        let a_dims = getAttrib(a, R_DimSymbol());
-        let b_dims = getAttrib(b, R_DimSymbol());
-        let a_is_array = !a_dims.is_null() && a_dims != nil;
-        let b_is_array = !b_dims.is_null() && b_dims != nil;
+    let nil = R_NilValue();
+    let a_dims = getAttrib(a, R_DimSymbol());
+    let b_dims = getAttrib(b, R_DimSymbol());
+    let a_is_array = !a_dims.is_null() && a_dims != nil;
+    let b_is_array = !b_dims.is_null() && b_dims != nil;
 
-        if a_is_array || b_is_array {
-            let a_len = LENGTH(a) as R_xlen_t;
-            let b_len = LENGTH(b) as R_xlen_t;
-            // Upstream strips the dims of a length-1 array whose partner is a
-            // vector of a different length (deprecated recycling), so such a
-            // combination falls through to the plain-vector treatment below.
-            let a_counts = !(a_is_array && a_len == 1 && b_len != 1);
-            let b_counts = !(b_is_array && b_len == 1 && a_len != 1);
-            // An array paired with a length-0 non-array skips array treatment.
-            let a_applies = a_is_array && a_counts && (b_len != 0 || a_len == 0);
-            let b_applies = b_is_array && b_counts && (a_len != 0 || b_len == 0);
+    if a_is_array || b_is_array {
+        let a_len = LENGTH(a) as R_xlen_t;
+        let b_len = LENGTH(b) as R_xlen_t;
+        // Upstream strips the dims of a length-1 array whose partner is a
+        // vector of a different length (deprecated recycling), so such a
+        // combination falls through to the plain-vector treatment below.
+        let a_counts = !(a_is_array && a_len == 1 && b_len != 1);
+        let b_counts = !(b_is_array && b_len == 1 && a_len != 1);
+        // An array paired with a length-0 non-array skips array treatment.
+        let a_applies = a_is_array && a_counts && (b_len != 0 || a_len == 0);
+        let b_applies = b_is_array && b_counts && (a_len != 0 || b_len == 0);
 
-            if a_applies && b_applies {
-                if crate::mainutils::relop::conformable(a, b) == 0 {
-                    arithmetic_error("non-conformable arrays");
-                }
-                let dims = crate::mainutils::duplicate::duplicate(a_dims);
-                setAttrib(result, R_DimSymbol(), dims);
-                if copy_attr_if_present(result, a, R_DimNamesSymbol()) {
-                    return;
-                }
-                copy_attr_if_present(result, b, R_DimNamesSymbol());
-            } else if a_applies {
-                copy_dims_if_present(result, a, result_len);
-            } else if b_applies {
-                copy_dims_if_present(result, b, result_len);
-            } else {
-                // Array treatment skipped: plain-vector names below.
-                propagate_plain_names(result, a, b, result_len);
+        if a_applies && b_applies {
+            if crate::mainutils::relop::conformable(a, b) == 0 {
+                arithmetic_error("non-conformable arrays");
             }
-            return;
+            let dims = crate::mainutils::duplicate::duplicate(a_dims);
+            setAttrib(result, R_DimSymbol(), dims);
+            if copy_attr_if_present(result, a, R_DimNamesSymbol()) {
+                return;
+            }
+            copy_attr_if_present(result, b, R_DimNamesSymbol());
+        } else if a_applies {
+            copy_dims_if_present(result, a, result_len);
+        } else if b_applies {
+            copy_dims_if_present(result, b, result_len);
+        } else {
+            // Array treatment skipped: plain-vector names below.
+            propagate_plain_names(result, a, b, result_len);
         }
-
-        propagate_plain_names(result, a, b, result_len);
+        return;
     }
+
+    propagate_plain_names(result, a, b, result_len);
 }
 
 /// Plain-vector tail of the upstream decision table: names only, `x` wins.

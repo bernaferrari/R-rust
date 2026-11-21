@@ -418,9 +418,7 @@ fn execute(
             }
         };
         access.with_native(|_| {
-            unsafe {
-                crate::mainutils::duplicate::lazy_duplicate(value.as_raw());
-            }
+            crate::mainutils::duplicate::lazy_duplicate(value.as_raw());
             Ok(())
         })?;
         access.require_active()?;
@@ -428,14 +426,12 @@ fn execute(
     }
     let result = output.freeze();
     access.with_native(|_| {
-        unsafe {
-            crate::mainutils::duplicate::lazy_duplicate(names_value.as_raw());
-            crate::sexp::attrib_core::setAttrib(
-                result.as_raw(),
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names_value.as_raw(),
-            );
-        }
+        crate::mainutils::duplicate::lazy_duplicate(names_value.as_raw());
+        crate::sexp::attrib_core::setAttrib(
+            result.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names_value.as_raw(),
+        );
         Ok(())
     })?;
     access.require_active()?;

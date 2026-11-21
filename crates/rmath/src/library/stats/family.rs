@@ -35,7 +35,7 @@ unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::main::duplicate::shallow_duplicate(x) }
+    crate::main::duplicate::shallow_duplicate(x)
 }
 
 /// Evaluate x/(1 - x). x must be in the range (0, 1).

@@ -105,7 +105,7 @@ fn duplicate_builder_value(
     value: &crate::sexp::object::Sexp<'static>,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
             .sexp(crate::mainutils::duplicate::Rf_duplicate(value.as_raw()))?
             .into_owned()

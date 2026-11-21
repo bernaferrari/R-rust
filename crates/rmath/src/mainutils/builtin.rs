@@ -137,13 +137,13 @@ fn find_var_in_frame(rho: SEXP, symbol: SEXP) -> SEXP {
 /// Audited boundary: deep duplicate of a live object.
 fn duplicate_sexp(x: SEXP) -> SEXP {
     // SAFETY: duplicate copies a live object under the active runtime.
-    unsafe { duplicate(x) }
+    duplicate(x)
 }
 
 /// Audited boundary: shallow duplicate of a live object.
 fn shallow_duplicate(x: SEXP) -> SEXP {
     // SAFETY: shallow_duplicate copies a live object under the active runtime.
-    unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
 /// Audited boundary: enforce declared arity on live arguments.
@@ -380,10 +380,8 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return s;
         }
         if TYPEOF(input) == SEXPTYPE::BUILTINSXP || TYPEOF(input) == SEXPTYPE::SPECIALSXP {
-            let args_env = find_var_in_frame(
-                R_BaseEnv(),
-                crate::sexp::symbol::install_str(".ArgsEnv"),
-            );
+            let args_env =
+                find_var_in_frame(R_BaseEnv(), crate::sexp::symbol::install_str(".ArgsEnv"));
             let env = if TYPEOF(args_env) == SEXPTYPE::PROMSXP {
                 eval_sexp(args_env, R_BaseEnv())
             } else {
@@ -487,11 +485,7 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             CLOENV(input)
         } else if isNull(input) {
             let ctxt = context_cloenv();
-            if !ctxt.is_null() {
-                ctxt
-            } else {
-                R_GlobalEnv()
-            }
+            if !ctxt.is_null() { ctxt } else { R_GlobalEnv() }
         } else if Rf_isEnvironment(input) != 0 {
             input
         } else {

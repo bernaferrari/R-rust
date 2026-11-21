@@ -515,7 +515,7 @@ pub fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
 
 #[inline(always)]
 pub fn lazy_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::lazy_duplicate(x) }
+    crate::mainutils::duplicate::lazy_duplicate(x)
 }
 
 /// EnsureString: ensure x is a single string (CHARSXP).

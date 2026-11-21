@@ -167,7 +167,7 @@ impl NestedDispatch<'_, '_> {
             .node_factory()
             .expect("anyNA nested dispatch owner");
         let copy = |value: &Sexp<'_>| {
-            let raw = unsafe { crate::mainutils::duplicate::shallow_duplicate(value.as_raw()) };
+            let raw = crate::mainutils::duplicate::shallow_duplicate(value.as_raw());
             check();
             factory.wrap(raw).expect("anyNA nested dispatch copy")
         };

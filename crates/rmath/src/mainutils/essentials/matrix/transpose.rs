@@ -3,121 +3,119 @@ use super::*;
 
 /// R's `drop(x)` — remove extent-one dimensions from arrays and matrices.
 pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
-            return x;
-        }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+        return x;
+    }
 
-        let dim_count = XLENGTH(dim);
-        let mut kept_axes = Vec::new();
-        for i in 0..dim_count {
-            if integer_elt_checked(dim, (i as usize) as R_xlen_t) != 1 {
-                kept_axes.push(i);
-            }
+    let dim_count = XLENGTH(dim);
+    let mut kept_axes = Vec::new();
+    for i in 0..dim_count {
+        if integer_elt_checked(dim, (i as usize) as R_xlen_t) != 1 {
+            kept_axes.push(i);
         }
-        if kept_axes.len() == dim_count as usize {
-            return x;
-        }
+    }
+    if kept_axes.len() == dim_count as usize {
+        return x;
+    }
 
-        let result = crate::mainutils::duplicate::shallow_duplicate(x);
-        if result.is_null() || result == R_NilValue() {
-            return result;
-        }
-        let _result_guard = protect(result);
+    let result = crate::mainutils::duplicate::shallow_duplicate(x);
+    if result.is_null() || result == R_NilValue() {
+        return result;
+    }
+    let _result_guard = protect(result);
 
-        let dimnames =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let dimnames =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
 
-        match kept_axes.len() {
-            0 => {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                    R_NilValue(),
-                );
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    R_NilValue(),
-                );
-                // GNU keeps singleton names only when exactly one axis is
-                // named; two or more named singleton axes are ambiguous.
-                let mut names = R_NilValue();
-                let mut named_axes = 0;
-                if !dimnames.is_null() && dimnames != R_NilValue() {
-                    for axis in 0..dim_count {
-                        let candidate = super::construct::retained_dimname(dimnames, axis);
-                        if !candidate.is_null() && candidate != R_NilValue() {
-                            named_axes += 1;
-                            names = candidate;
-                        }
+    match kept_axes.len() {
+        0 => {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                R_NilValue(),
+            );
+            // GNU keeps singleton names only when exactly one axis is
+            // named; two or more named singleton axes are ambiguous.
+            let mut names = R_NilValue();
+            let mut named_axes = 0;
+            if !dimnames.is_null() && dimnames != R_NilValue() {
+                for axis in 0..dim_count {
+                    let candidate = super::construct::retained_dimname(dimnames, axis);
+                    if !candidate.is_null() && candidate != R_NilValue() {
+                        named_axes += 1;
+                        names = candidate;
                     }
                 }
-                if named_axes != 1 {
-                    names = R_NilValue();
-                }
-                let _names_guard = protect(names);
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
             }
-            1 => {
-                let names = retained_dimname(dimnames, kept_axes[0]);
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                    R_NilValue(),
-                );
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    R_NilValue(),
-                );
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
+            if named_axes != 1 {
+                names = R_NilValue();
             }
-            _ => {
-                let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept_axes.len() as R_xlen_t);
-                if new_dim.is_null() {
-                    return R_NilValue();
-                }
-                let _dim_guard = protect(new_dim);
-                for (out_i, axis) in kept_axes.iter().enumerate() {
-                    set_integer_checked(new_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                    new_dim,
-                );
-
-                let new_dimnames = retained_dimnames(dimnames, &kept_axes);
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    new_dimnames,
-                );
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    R_NilValue(),
-                );
-            }
+            let _names_guard = protect(names);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
+        1 => {
+            let names = retained_dimname(dimnames, kept_axes[0]);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        _ => {
+            let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept_axes.len() as R_xlen_t);
+            if new_dim.is_null() {
+                return R_NilValue();
+            }
+            let _dim_guard = protect(new_dim);
+            for (out_i, axis) in kept_axes.iter().enumerate() {
+                set_integer_checked(new_dim, (out_i) as R_xlen_t, integer_elt_checked(dim, (*axis as usize) as R_xlen_t));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                new_dim,
+            );
 
-        result
+            let new_dimnames = retained_dimnames(dimnames, &kept_axes);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                new_dimnames,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                R_NilValue(),
+            );
+        }
     }
+
+    result
 }
 
 /// R's `t(x)` — transpose a matrix.

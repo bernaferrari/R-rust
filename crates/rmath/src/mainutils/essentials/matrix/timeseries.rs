@@ -87,44 +87,42 @@ fn set_ts_matrix_dimnames(result: SEXP, data: SEXP, nseries: R_xlen_t, args: SEX
 }
 
 fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_xlen_t) -> SEXP {
-    unsafe {
-        if nobs == ndata {
-            return crate::mainutils::duplicate::Rf_duplicate(data);
-        }
-
-        let result = Rf_allocVector3(TYPEOF(data), nobs * nseries);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for series in 0..nseries {
-            for observation in 0..nobs {
-                let source_observation = observation % ndata;
-                copy_matrix_element(
-                    result,
-                    series * nobs + observation,
-                    data,
-                    series * ndata + source_observation,
-                );
-            }
-        }
-
-        if nseries > 1 {
-            set_two_dim_attr(result, nobs, nseries);
-            let dimnames = crate::sexp::attrib_core::getAttrib(
-                data,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-            );
-            if dimnames != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    dimnames,
-                );
-            }
-        }
-        result
+    if nobs == ndata {
+        return crate::mainutils::duplicate::Rf_duplicate(data);
     }
+
+    let result = Rf_allocVector3(TYPEOF(data), nobs * nseries);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for series in 0..nseries {
+        for observation in 0..nobs {
+            let source_observation = observation % ndata;
+            copy_matrix_element(
+                result,
+                series * nobs + observation,
+                data,
+                series * ndata + source_observation,
+            );
+        }
+    }
+
+    if nseries > 1 {
+        set_two_dim_attr(result, nobs, nseries);
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            data,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if dimnames != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+    }
+    result
 }
 
 fn default_ts_class(nseries: R_xlen_t) -> SEXP {

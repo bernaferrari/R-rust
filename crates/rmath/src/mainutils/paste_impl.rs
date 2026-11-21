@@ -365,7 +365,7 @@ fn isNumeric(x: SEXP) -> c_int {
 
 /// Local wrapper for duplicate.
 unsafe fn duplicate(s: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::duplicate(s) }
+    crate::mainutils::duplicate::duplicate(s)
 }
 
 // ---------------------------------------------------------------------------

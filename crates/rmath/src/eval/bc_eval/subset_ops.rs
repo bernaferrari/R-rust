@@ -211,33 +211,31 @@ pub(crate) fn eval_gnu_vecsubassign(
     rho: SEXP,
     subset2: bool,
 ) -> SEXP {
-    unsafe {
-        let mut x = x;
-        if crate::sexp::accessors::NAMED(x) > 1 {
-            x = crate::mainutils::duplicate::shallow_duplicate(x);
-        }
-        let _x = own_operand(x);
-        let rhs = crate::mainutils::subset::factor_replacement_codes(x, rhs, call);
-        let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
-        let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
-        let args = Rf_cons(x, Rf_cons(index, value));
-        let _args = own_operand(args);
-        if subset2 {
-            crate::mainutils::subassign::do_subassign2_dflt(
-                call,
-                crate::sexp::symbol::install_str("[[<-"),
-                args,
-                rho,
-            )
-        } else {
-            crate::mainutils::subassign::do_subassign_dflt(
-                call,
-                crate::sexp::symbol::install_str("[<-"),
-                args,
-                rho,
-            )
-        }
+    let mut x = x;
+    if crate::sexp::accessors::NAMED(x) > 1 {
+        x = crate::mainutils::duplicate::shallow_duplicate(x);
+    }
+    let _x = own_operand(x);
+    let rhs = crate::mainutils::subset::factor_replacement_codes(x, rhs, call);
+    let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
+    let value = value_owned.as_raw();
+    crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
+    let args = Rf_cons(x, Rf_cons(index, value));
+    let _args = own_operand(args);
+    if subset2 {
+        crate::mainutils::subassign::do_subassign2_dflt(
+            call,
+            crate::sexp::symbol::install_str("[[<-"),
+            args,
+            rho,
+        )
+    } else {
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::install_str("[<-"),
+            args,
+            rho,
+        )
     }
 }
 
@@ -251,35 +249,33 @@ pub(crate) fn eval_gnu_matsubassign(
     rho: SEXP,
     subset2: bool,
 ) -> SEXP {
-    unsafe {
-        let mut x = x;
-        if crate::sexp::accessors::NAMED(x) > 1 {
-            x = crate::mainutils::duplicate::shallow_duplicate(x);
-        }
-        let _x = own_operand(x);
-        let _rhs = own_operand(rhs);
-        let _row = own_operand(row);
-        let _column = own_operand(column);
-        let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
-        let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
-        let args = Rf_cons(x, Rf_cons(row, Rf_cons(column, value)));
-        let _args = own_operand(args);
-        if subset2 {
-            crate::mainutils::subassign::do_subassign2_dflt(
-                call,
-                crate::sexp::symbol::install_str("[[<-"),
-                args,
-                rho,
-            )
-        } else {
-            crate::mainutils::subassign::do_subassign_dflt(
-                call,
-                crate::sexp::symbol::install_str("[<-"),
-                args,
-                rho,
-            )
-        }
+    let mut x = x;
+    if crate::sexp::accessors::NAMED(x) > 1 {
+        x = crate::mainutils::duplicate::shallow_duplicate(x);
+    }
+    let _x = own_operand(x);
+    let _rhs = own_operand(rhs);
+    let _row = own_operand(row);
+    let _column = own_operand(column);
+    let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
+    let value = value_owned.as_raw();
+    crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
+    let args = Rf_cons(x, Rf_cons(row, Rf_cons(column, value)));
+    let _args = own_operand(args);
+    if subset2 {
+        crate::mainutils::subassign::do_subassign2_dflt(
+            call,
+            crate::sexp::symbol::install_str("[[<-"),
+            args,
+            rho,
+        )
+    } else {
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::install_str("[<-"),
+            args,
+            rho,
+        )
     }
 }
 
@@ -292,44 +288,42 @@ pub(crate) fn eval_gnu_subassign_indices(
     rho: SEXP,
     subset2: bool,
 ) -> SEXP {
-    unsafe {
-        let mut x = x;
-        if crate::sexp::accessors::NAMED(x) > 1 {
-            x = crate::mainutils::duplicate::shallow_duplicate(x);
-        }
-        let _x = own_operand(x);
-        let _rhs = own_operand(rhs);
-        let _index_roots = indices
-            .iter()
-            .map(|index| own_operand(*index))
-            .collect::<Vec<_>>();
-        let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
-        let value = value_owned.as_raw();
-        crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
-        let mut args = value;
-        let mut roots = Vec::with_capacity(indices.len() + 1);
+    let mut x = x;
+    if crate::sexp::accessors::NAMED(x) > 1 {
+        x = crate::mainutils::duplicate::shallow_duplicate(x);
+    }
+    let _x = own_operand(x);
+    let _rhs = own_operand(rhs);
+    let _index_roots = indices
+        .iter()
+        .map(|index| own_operand(*index))
+        .collect::<Vec<_>>();
+    let value_owned = own_operand(Rf_cons(rhs, R_NilValue()));
+    let value = value_owned.as_raw();
+    crate::sexp::accessors::SETTAG(value, crate::sexp::symbol::install_str("value"));
+    let mut args = value;
+    let mut roots = Vec::with_capacity(indices.len() + 1);
+    roots.push(own_operand(args));
+    for &index in indices.iter().rev() {
+        args = Rf_cons(index, args);
         roots.push(own_operand(args));
-        for &index in indices.iter().rev() {
-            args = Rf_cons(index, args);
-            roots.push(own_operand(args));
-        }
-        args = Rf_cons(x, args);
-        let _args = own_operand(args);
-        let _ = roots;
-        if subset2 {
-            crate::mainutils::subassign::do_subassign2_dflt(
-                call,
-                crate::sexp::symbol::install_str("[[<-"),
-                args,
-                rho,
-            )
-        } else {
-            crate::mainutils::subassign::do_subassign_dflt(
-                call,
-                crate::sexp::symbol::install_str("[<-"),
-                args,
-                rho,
-            )
-        }
+    }
+    args = Rf_cons(x, args);
+    let _args = own_operand(args);
+    let _ = roots;
+    if subset2 {
+        crate::mainutils::subassign::do_subassign2_dflt(
+            call,
+            crate::sexp::symbol::install_str("[[<-"),
+            args,
+            rho,
+        )
+    } else {
+        crate::mainutils::subassign::do_subassign_dflt(
+            call,
+            crate::sexp::symbol::install_str("[<-"),
+            args,
+            rho,
+        )
     }
 }

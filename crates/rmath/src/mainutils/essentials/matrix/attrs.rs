@@ -525,10 +525,121 @@ pub fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let value = CAR(CDR(args));
-        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+        let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        let _x = protect(x);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) == 1 {
+        let ch = STRING_ELT(value, 0);
+        let name = if ch.is_null() {
+            String::new()
+        } else {
+            charsxp_text(ch).unwrap_or_default()
+        };
+        let clear_if_same = |matches: bool| -> Option<SEXP> {
+            if !matches {
+                return None;
+            }
+            let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+            let _x = protect(x);
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                R_NilValue(),
+            );
+            Some(x)
+        };
+        let coerced = match name.as_str() {
+            "integer" => clear_if_same(TYPEOF(x) == SEXPTYPE::INTSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_integer(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            "double" => clear_if_same(TYPEOF(x) == SEXPTYPE::REALSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_double(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            "numeric" => {
+                if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
+                    clear_if_same(true)
+                } else {
+                    Some(crate::mainutils::essentials::do_as_double(
+                        _call,
+                        _op,
+                        Rf_cons(x, R_NilValue()),
+                        _rho,
+                    ))
+                }
+            }
+            "logical" => clear_if_same(TYPEOF(x) == SEXPTYPE::LGLSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_logical(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            "character" => clear_if_same(TYPEOF(x) == SEXPTYPE::STRSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_character(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            "complex" => clear_if_same(TYPEOF(x) == SEXPTYPE::CPLXSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_complex(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            "raw" => clear_if_same(TYPEOF(x) == SEXPTYPE::RAWSXP).or_else(|| {
+                Some(crate::mainutils::essentials::do_as_raw(
+                    _call,
+                    _op,
+                    Rf_cons(x, R_NilValue()),
+                    _rho,
+                ))
+            }),
+            _ => None,
+        };
+        if let Some(coerced) = coerced {
+            let _c = protect(coerced);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return coerced;
+        }
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) == 2
+        && TYPEOF(value) == SEXPTYPE::STRSXP
+    {
+        let n = XLENGTH(value);
+        let eq = |i: i64, s: &[u8]| {
+            let ch = STRING_ELT(value, i);
+            !ch.is_null() && charsxp_text(ch).unwrap_or_default().as_bytes() == s
+        };
+        if (n == 1 && eq(0, b"matrix")) || (n == 2 && eq(0, b"matrix") && eq(1, b"array")) {
             let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
             let _x = protect(x);
             crate::sexp::attrib_core::setAttrib(
@@ -539,125 +650,12 @@ pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
-        if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) == 1 {
-            let ch = STRING_ELT(value, 0);
-            let name = if ch.is_null() {
-                String::new()
-            } else {
-                charsxp_text(ch).unwrap_or_default()
-            };
-            let clear_if_same = |matches: bool| -> Option<SEXP> {
-                if !matches {
-                    return None;
-                }
-                let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-                let _x = protect(x);
-                crate::sexp::attrib_core::setAttrib(
-                    x,
-                    crate::sexp::attrib_core::R_ClassSymbol(),
-                    R_NilValue(),
-                );
-                Some(x)
-            };
-            let coerced = match name.as_str() {
-                "integer" => clear_if_same(TYPEOF(x) == SEXPTYPE::INTSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_integer(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                "double" => clear_if_same(TYPEOF(x) == SEXPTYPE::REALSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_double(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                "numeric" => {
-                    if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
-                        clear_if_same(true)
-                    } else {
-                        Some(crate::mainutils::essentials::do_as_double(
-                            _call,
-                            _op,
-                            Rf_cons(x, R_NilValue()),
-                            _rho,
-                        ))
-                    }
-                }
-                "logical" => clear_if_same(TYPEOF(x) == SEXPTYPE::LGLSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_logical(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                "character" => clear_if_same(TYPEOF(x) == SEXPTYPE::STRSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_character(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                "complex" => clear_if_same(TYPEOF(x) == SEXPTYPE::CPLXSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_complex(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                "raw" => clear_if_same(TYPEOF(x) == SEXPTYPE::RAWSXP).or_else(|| {
-                    Some(crate::mainutils::essentials::do_as_raw(
-                        _call,
-                        _op,
-                        Rf_cons(x, R_NilValue()),
-                        _rho,
-                    ))
-                }),
-                _ => None,
-            };
-            if let Some(coerced) = coerced {
-                let _c = protect(coerced);
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                return coerced;
-            }
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) == 2
-            && TYPEOF(value) == SEXPTYPE::STRSXP
-        {
-            let n = XLENGTH(value);
-            let eq = |i: i64, s: &[u8]| {
-                let ch = STRING_ELT(value, i);
-                !ch.is_null() && charsxp_text(ch).unwrap_or_default().as_bytes() == s
-            };
-            if (n == 1 && eq(0, b"matrix")) || (n == 2 && eq(0, b"matrix") && eq(1, b"array")) {
-                let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-                let _x = protect(x);
-                crate::sexp::attrib_core::setAttrib(
-                    x,
-                    crate::sexp::attrib_core::R_ClassSymbol(),
-                    R_NilValue(),
-                );
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                return x;
-            }
-        }
-        let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
     }
+    let x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `oldClass(x)` — direct S3 class attribute without implicit defaults.
@@ -671,18 +669,16 @@ pub fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `oldClass(x) <- value` — set or remove the direct S3 class attribute.
 pub fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let mut x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -944,18 +940,16 @@ pub fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `comment(x) <- value` — set the comment attribute.
 pub fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
-        let _x = protect(x);
-        crate::sexp::attrib_core::setAttrib(x, comment_symbol(), value);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let mut x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+    let _x = protect(x);
+    crate::sexp::attrib_core::setAttrib(x, comment_symbol(), value);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 pub fn comment_symbol() -> SEXP {

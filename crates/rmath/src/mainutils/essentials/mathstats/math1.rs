@@ -679,7 +679,7 @@ fn checked_math(
             .try_attrib()
             .and_then(Sexp::into_owned)
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let copied = unsafe { crate::mainutils::duplicate::shallow_duplicate(attributes.as_raw()) };
+        let copied = crate::mainutils::duplicate::shallow_duplicate(attributes.as_raw());
         active();
         let copied = root(copied);
 

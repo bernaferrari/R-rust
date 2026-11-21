@@ -285,19 +285,19 @@ pub fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
 }
 
 pub fn shallow_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
 pub fn lazy_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::lazy_duplicate(x) }
+    crate::mainutils::duplicate::lazy_duplicate(x)
 }
 
 pub fn Rf_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::Rf_duplicate(x) }
+    crate::mainutils::duplicate::Rf_duplicate(x)
 }
 
 pub fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
 pub fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
