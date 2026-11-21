@@ -24,13 +24,23 @@ mod macos {
     ///
     /// In the full C implementation this calls `_nl_locale_name_canonicalize`.
     /// Here we do minimal normalization: ensure lowercase language, etc.
-    fn _nl_locale_name_canonicalize(name: *mut c_char) {
+    ///
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
         // Convert the language part to lowercase within the caller's
         // NUL-terminated buffer.
-        let Some(len) = crate::intl::types::cstr(name).map(|s| s.to_bytes_with_nul().len()) else {
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        let Some(len) =
+            unsafe { crate::intl::types::cstr(name) }.map(|s| s.to_bytes_with_nul().len())
+        else {
             return;
         };
-        let Some(bytes) = crate::intl::types::slice_mut(name as *mut u8, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+        let Some(bytes) = (unsafe { crate::intl::types::slice_mut(name as *mut u8, len) }) else {
             return;
         };
         for b in bytes.iter_mut() {

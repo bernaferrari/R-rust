@@ -322,8 +322,12 @@ pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
 }
 
 /// Null-checked shared borrow of an interior pointer.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for shared reads of `T` for the caller-chosen lifetime `'a`.
 #[inline]
-pub(crate) fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+pub(crate) unsafe fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
 }
 
@@ -331,8 +335,13 @@ pub(crate) fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
 ///
 /// Callers must ensure no conflicting borrow of the same object exists,
 /// matching the C code's single-threaded access model.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for exclusive reads/writes of `T` for the lifetime `'a`, with no
+/// other live reference to the pointee.
 #[inline]
-pub(crate) fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+pub(crate) unsafe fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
     unsafe { ptr.as_mut() }
 }
 
@@ -340,8 +349,12 @@ pub(crate) fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
 ///
 /// Callers guarantee the pointer is valid and NUL-terminated, matching
 /// the C API's `char *` contract.
+///
+/// # Safety
+///
+/// `s` must be null or point to a NUL-terminated string that stays live and unmodified for `'a`.
 #[inline]
-pub(crate) fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
+pub(crate) unsafe fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
     if s.is_null() {
         None
     } else {
@@ -353,8 +366,12 @@ pub(crate) fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
 ///
 /// Callers guarantee the buffer holds at least `len` elements, matching
 /// the C API's buffer-and-length contract.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for shared reads of `len` elements for the lifetime `'a`.
 #[inline]
-pub(crate) fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+pub(crate) unsafe fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
     if ptr.is_null() {
         if len == 0 { Some(&[]) } else { None }
     } else {
@@ -366,8 +383,12 @@ pub(crate) fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
 ///
 /// Callers must ensure no conflicting borrow of the buffer exists,
 /// matching the C code's single-threaded access model.
+///
+/// # Safety
+///
+/// `ptr` must be null or valid for exclusive reads/writes of `len` elements for the lifetime `'a`.
 #[inline]
-pub(crate) fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
+pub(crate) unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
     if ptr.is_null() {
         if len == 0 { Some(&mut []) } else { None }
     } else {
@@ -376,8 +397,13 @@ pub(crate) fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
 }
 
 /// Duplicate a C string using `std::alloc`.
-pub(crate) fn c_strdup(s: *const c_char) -> *mut c_char {
-    let Some(s) = cstr(s) else {
+///
+/// # Safety
+///
+/// `s` must be null or point to a NUL-terminated string.
+pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(s) = (unsafe { cstr(s) }) else {
         return ptr::null_mut();
     };
     let len = s.to_bytes().len() + 1;
@@ -394,8 +420,14 @@ pub(crate) fn c_strdup(s: *const c_char) -> *mut c_char {
 }
 
 /// Free memory previously allocated via c_strdup or std::alloc.
-pub(crate) fn c_free(p: *mut c_char) {
-    let Some(s) = cstr(p) else {
+///
+/// # Safety
+///
+/// `p` must be null or a live allocation returned by `c_strdup` (sized by its NUL-terminated
+/// contents) that is not used afterwards.
+pub(crate) unsafe fn c_free(p: *mut c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(s) = (unsafe { cstr(p) }) else {
         return;
     };
     let len = s.to_bytes().len() + 1;

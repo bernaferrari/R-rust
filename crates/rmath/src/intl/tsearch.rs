@@ -58,7 +58,13 @@ const NODE_LAYOUT: Layout = Layout::new::<node_t>();
 /// edges in a row.
 ///
 /// This is the core rebalancing routine used during insertion.
-fn maybe_split_for_insert(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn maybe_split_for_insert(
     rootp: *mut *mut node_t,
     parentp: *mut *mut node_t,
     gparentp: *mut *mut node_t,
@@ -137,7 +143,13 @@ fn maybe_split_for_insert(
 /// If the key already exists in the tree, returns a pointer to the matching
 /// node.  Otherwise, inserts a new node for the key and returns it.
 /// Returns `null` if `vrootp` is null or memory allocation fails.
-pub fn tsearch(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn tsearch(
     key: *const c_void,
     vrootp: *mut c_void,
     compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
@@ -234,8 +246,12 @@ pub fn tfind(
 
     let mut rootp = vrootp as *const *mut node_t;
 
-    while let Some(&root) = ptr_ref(rootp) {
-        let Some(n) = ptr_ref(root) else { break };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    while let Some(&root) = unsafe { ptr_ref(rootp) } {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let Some(n) = (unsafe { ptr_ref(root) }) else {
+            break;
+        };
         let r = compar(key, n.key);
         if r == 0 {
             return root as *mut c_void;
@@ -257,7 +273,13 @@ pub fn tfind(
 ///
 /// Returns a pointer to the parent of the deleted node, or `null` if the
 /// key was not found.
-pub fn tdelete(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn tdelete(
     key: *const c_void,
     vrootp: *mut c_void,
     compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
@@ -470,8 +492,15 @@ pub fn tdelete(
 // ---------------------------------------------------------------------------
 
 /// Recursive tree walker.
-fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
-    let Some(root) = ptr_ref(vroot as *const node_t) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(root) = (unsafe { ptr_ref(vroot as *const node_t) }) else {
         return;
     };
     let rootp = root as *const node_t;
@@ -481,11 +510,13 @@ fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
     } else {
         action(rootp as *const c_void, VISIT::preorder, level);
         if !root.left.is_null() {
-            trecurse(root.left as *const c_void, action, level + 1);
+            // SAFETY: forwarded raw pointers satisfy `trecurse`'s contract per this function's own `# Safety` requirements.
+            unsafe { trecurse(root.left as *const c_void, action, level + 1) };
         }
         action(rootp as *const c_void, VISIT::postorder, level);
         if !root.right.is_null() {
-            trecurse(root.right as *const c_void, action, level + 1);
+            // SAFETY: forwarded raw pointers satisfy `trecurse`'s contract per this function's own `# Safety` requirements.
+            unsafe { trecurse(root.right as *const c_void, action, level + 1) };
         }
         action(rootp as *const c_void, VISIT::endorder, level);
     }
@@ -495,7 +526,16 @@ fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
 ///
 /// For non-leaf nodes, `action` is called three times (preorder, postorder,
 /// endorder).  For leaf nodes, `action` is called once (leaf).
-pub fn twalk(vroot: *const c_void, action: Option<extern "C" fn(*const c_void, VISIT, c_int)>) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn twalk(
+    vroot: *const c_void,
+    action: Option<extern "C" fn(*const c_void, VISIT, c_int)>,
+) {
     if vroot.is_null() {
         return;
     }
@@ -503,7 +543,8 @@ pub fn twalk(vroot: *const c_void, action: Option<extern "C" fn(*const c_void, V
         Some(f) => f,
         None => return,
     };
-    trecurse(vroot, action, 0);
+    // SAFETY: forwarded raw pointers satisfy `trecurse`'s contract per this function's own `# Safety` requirements.
+    unsafe { trecurse(vroot, action, 0) };
 }
 
 // ---------------------------------------------------------------------------
@@ -513,17 +554,26 @@ pub fn twalk(vroot: *const c_void, action: Option<extern "C" fn(*const c_void, V
 type free_fn_t = extern "C" fn(*mut c_void);
 
 /// Recursive helper to destroy a tree.
-fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
-    let Some(n) = ptr_mut(root) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(n) = (unsafe { ptr_mut(root) }) else {
         return;
     };
     let left = n.left;
     let right = n.right;
     if !left.is_null() {
-        tdestroy_recurse(left, freefct);
+        // SAFETY: forwarded raw pointers satisfy `tdestroy_recurse`'s contract per this function's own `# Safety` requirements.
+        unsafe { tdestroy_recurse(left, freefct) };
     }
     if !right.is_null() {
-        tdestroy_recurse(right, freefct);
+        // SAFETY: forwarded raw pointers satisfy `tdestroy_recurse`'s contract per this function's own `# Safety` requirements.
+        unsafe { tdestroy_recurse(right, freefct) };
     }
     freefct(n.key as *mut c_void);
     // Free the node allocated with NODE_LAYOUT in `tsearch`.
@@ -532,7 +582,13 @@ fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
 
 /// Destroy an entire tree, calling `freefct` on each node's key and then
 /// freeing the node itself.
-pub fn tdestroy(vroot: *mut c_void, freefct: Option<extern "C" fn(*mut c_void)>) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn tdestroy(vroot: *mut c_void, freefct: Option<extern "C" fn(*mut c_void)>) {
     if vroot.is_null() {
         return;
     }
@@ -540,7 +596,8 @@ pub fn tdestroy(vroot: *mut c_void, freefct: Option<extern "C" fn(*mut c_void)>)
         Some(f) => f,
         None => return,
     };
-    tdestroy_recurse(vroot as *mut node_t, freefct);
+    // SAFETY: forwarded raw pointers satisfy `tdestroy_recurse`'s contract per this function's own `# Safety` requirements.
+    unsafe { tdestroy_recurse(vroot as *mut node_t, freefct) };
 }
 
 // ---------------------------------------------------------------------------
@@ -570,11 +627,12 @@ mod tests {
     #[test]
     fn test_tsearch_null_rootp() {
         let val: i32 = 42;
-        let result = tsearch(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { tsearch(
             &val as *const i32 as *const c_void,
             ptr::null_mut(),
             Some(int_compar),
-        );
+        ) };
         assert!(result.is_null());
     }
 
@@ -741,11 +799,12 @@ mod tests {
     fn test_tdelete_nonexistent() {
         let rootp = make_root();
         let val: i32 = 999;
-        let result = tdelete(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { tdelete(
             &val as *const i32 as *const c_void,
             rootp as *mut c_void,
             Some(int_compar),
-        );
+        ) };
         assert!(result.is_null());
         drop_root(rootp);
     }

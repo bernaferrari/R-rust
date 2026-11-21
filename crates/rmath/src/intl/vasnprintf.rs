@@ -111,7 +111,8 @@ impl FormatState {
             return false;
         }
         // Write into the owned buffer; space was ensured above.
-        let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) else {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let Some(buf) = (unsafe { slice_mut(self.buf as *mut u8, self.buf_len) }) else {
             return false;
         };
         buf[self.buf_pos] = c as u8;
@@ -119,16 +120,23 @@ impl FormatState {
         true
     }
 
-    fn put_str(&mut self, s: *const c_char, len: usize) -> bool {
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    unsafe fn put_str(&mut self, s: *const c_char, len: usize) -> bool {
         if !self.ensure_space(len) {
             return false;
         }
         // Copy `len` caller bytes into the owned buffer; space was
         // ensured above.
-        let Some(src) = slice_ref(s as *const u8, len) else {
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(src) = (unsafe { slice_ref(s as *const u8, len) }) else {
             return false;
         };
-        let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) else {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let Some(buf) = (unsafe { slice_mut(self.buf as *mut u8, self.buf_len) }) else {
             return false;
         };
         buf[self.buf_pos..self.buf_pos + len].copy_from_slice(src);
@@ -136,17 +144,24 @@ impl FormatState {
         true
     }
 
-    fn finish(mut self, lengthp: *mut usize) -> *mut c_char {
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    unsafe fn finish(mut self, lengthp: *mut usize) -> *mut c_char {
         // NUL-terminate.
         if !self.ensure_space(1) {
             return ptr::null_mut();
         }
         // Write the NUL into the owned buffer and the length through the
         // caller's out-pointer.
-        if let Some(buf) = slice_mut(self.buf as *mut u8, self.buf_len) {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        if let Some(buf) = unsafe { slice_mut(self.buf as *mut u8, self.buf_len) } {
             buf[self.buf_pos] = 0;
         }
-        if let Some(p) = ptr_mut(lengthp) {
+        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(p) = unsafe { ptr_mut(lengthp) } {
             *p = self.buf_pos;
         }
 
@@ -166,22 +181,32 @@ impl FormatState {
 ///
 /// This is a simplified implementation that handles common format specifiers.
 /// For the full implementation, see the C vasnprintf.c.
-fn format_string(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn format_string(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,
 ) -> *mut c_char {
-    let Some(fmt) = cstr(format) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(fmt) = (unsafe { cstr(format) }) else {
         // Write the empty result through the caller's out-pointers, or
         // allocate a 1-byte empty string.
-        if let Some(p) = ptr_mut(lengthp) {
+        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(p) = unsafe { ptr_mut(lengthp) } {
             *p = 0;
         }
-        if let Some(p) = ptr_mut(resultbuf) {
+        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+        if let Some(p) = unsafe { ptr_mut(resultbuf) } {
             *p = 0;
             return resultbuf;
         }
-        return c_strdup(b"\0".as_ptr() as *const c_char);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        return unsafe { c_strdup(b"\0".as_ptr() as *const c_char) };
     };
 
     let mut state = FormatState::new(resultbuf);
@@ -287,29 +312,34 @@ fn format_string(
                     // For the standalone port, we format 0 as a placeholder.
                     // The computed slice is empty, matching the original
                     // pointer-based stub.
-                    let _ = state.put_str(b"\0".as_ptr() as *const c_char, 0);
+                    // SAFETY: forwarded raw pointers satisfy `put_str`'s contract per this function's own `# Safety` requirements.
+                    let _ = unsafe { state.put_str(b"\0".as_ptr() as *const c_char, 0) };
                 }
                 b'u' | b'o' | b'x' | b'X' => {
                     let mut tmp = [0u8; INT_DIGITS + 2];
                     let len = ulong_to_str(0, &mut tmp, 10, conv == b'X');
                     // Emit the digits plus the zeroed byte after them,
                     // matching the original s_len computation.
-                    let _ = state.put_str(tmp.as_ptr() as *const c_char, len + 1);
+                    // SAFETY: forwarded raw pointers satisfy `put_str`'s contract per this function's own `# Safety` requirements.
+                    let _ = unsafe { state.put_str(tmp.as_ptr() as *const c_char, len + 1) };
                 }
                 b's' => {
                     // For the standalone port, output an empty string.
                     // A real implementation would use va_arg to get the string.
-                    let _ = state.put_str(b"\0".as_ptr() as *const c_char, 0);
+                    // SAFETY: forwarded raw pointers satisfy `put_str`'s contract per this function's own `# Safety` requirements.
+                    let _ = unsafe { state.put_str(b"\0".as_ptr() as *const c_char, 0) };
                 }
                 b'c' => {
                     let _ = state.put_char(0);
                 }
                 b'f' | b'e' | b'E' | b'g' | b'G' => {
                     // For the standalone port, output "0".
-                    let _ = state.put_str(b"0\0".as_ptr() as *const c_char, 1);
+                    // SAFETY: forwarded raw pointers satisfy `put_str`'s contract per this function's own `# Safety` requirements.
+                    let _ = unsafe { state.put_str(b"0\0".as_ptr() as *const c_char, 1) };
                 }
                 b'p' => {
-                    let _ = state.put_str(b"(nil)\0".as_ptr() as *const c_char, 5);
+                    // SAFETY: forwarded raw pointers satisfy `put_str`'s contract per this function's own `# Safety` requirements.
+                    let _ = unsafe { state.put_str(b"(nil)\0".as_ptr() as *const c_char, 5) };
                 }
                 b'%' => {
                     let _ = state.put_char(b'%' as c_char);
@@ -328,7 +358,8 @@ fn format_string(
         }
     }
 
-    state.finish(lengthp)
+    // SAFETY: forwarded raw pointers satisfy `finish`'s contract per this function's own `# Safety` requirements.
+    unsafe { state.finish(lengthp) }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,13 +375,20 @@ fn format_string(
 ///
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
-pub fn libintl_vasnprintf(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,
     _args: *mut c_void,
 ) -> *mut c_char {
-    format_string(resultbuf, lengthp, format)
+    // SAFETY: forwarded raw pointers satisfy `format_string`'s contract per this function's own `# Safety` requirements.
+    unsafe { format_string(resultbuf, lengthp, format) }
 }
 
 // ---------------------------------------------------------------------------

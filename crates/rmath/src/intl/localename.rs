@@ -23,7 +23,8 @@ use super::types::*;
 fn alloc_env_var(name: &str) -> Option<*mut c_char> {
     let val = env::var(name).ok()?;
     let s = CString::new(val.as_str()).ok()?;
-    let out = c_strdup(s.as_ptr());
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    let out = unsafe { c_strdup(s.as_ptr()) };
     if out.is_null() { None } else { Some(out) }
 }
 
@@ -54,7 +55,8 @@ fn get_locale_from_env(category: c_int) -> *const c_char {
         return locale;
     }
 
-    c_strdup(b"C\0".as_ptr() as *const c_char)
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { c_strdup(b"C\0".as_ptr() as *const c_char) }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,12 +96,20 @@ pub fn _nl_locale_name(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// `name` must be a valid pointer to a mutable NUL-terminated C string buffer.
-pub fn _nl_locale_name_canonicalize(name: *mut c_char) {
-    let Some(len) = cstr(name).map(|s| s.to_bytes().len()) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(len) = unsafe { cstr(name) }.map(|s| s.to_bytes().len()) else {
         return;
     };
     // Rewrite the caller's NUL-terminated buffer in place.
-    let Some(buf) = slice_mut(name as *mut u8, len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(buf) = (unsafe { slice_mut(name as *mut u8, len) }) else {
         return;
     };
 
@@ -182,7 +192,8 @@ mod tests {
 
     #[test]
     fn test_canonicalize_null() {
-        _nl_locale_name_canonicalize(ptr::null_mut());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { _nl_locale_name_canonicalize(ptr::null_mut()) };
         // Should not crash.
     }
 

@@ -153,8 +153,15 @@ impl gl_once_t {
 /// # Safety
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
-pub fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
-    let Some(once) = ptr_mut(once_control) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(once) = (unsafe { ptr_mut(once_control) }) else {
         return;
     };
     if !once.inited {
@@ -169,8 +176,15 @@ pub fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "
 ///
 /// Returns 1 if this is the first call (the caller should perform the
 /// initialization), 0 otherwise.
-pub fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
-    let Some(once) = ptr_mut(once_control) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(once) = (unsafe { ptr_mut(once_control) }) else {
         return 1;
     };
     if !once.inited {
@@ -206,21 +220,25 @@ mod tests {
         }
 
         let mut once = gl_once_t::new();
-        glthread_once(&mut once, Some(init_fn));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { glthread_once(&mut once, Some(init_fn)) };
         assert_eq!(INIT_CALLED.with(|v| v.get()), true);
 
         // Calling again should not re-initialize.
         INIT_CALLED.with(|v| v.set(false));
-        glthread_once(&mut once, Some(init_fn));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { glthread_once(&mut once, Some(init_fn)) };
         assert_eq!(INIT_CALLED.with(|v| v.get()), false);
     }
 
     #[test]
     fn test_once_singlethreaded() {
         let mut once = gl_once_t::new();
-        let result1 = glthread_once_singlethreaded(&mut once);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result1 = unsafe { glthread_once_singlethreaded(&mut once) };
         assert_eq!(result1, 1);
-        let result2 = glthread_once_singlethreaded(&mut once);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result2 = unsafe { glthread_once_singlethreaded(&mut once) };
         assert_eq!(result2, 0);
     }
 

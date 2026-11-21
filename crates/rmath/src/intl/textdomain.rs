@@ -20,7 +20,13 @@ use crate::intl::types::{self, c_free, c_strdup, cstr};
 ///
 /// # Safety
 /// `domainname` must be a valid pointer to a NUL-terminated C string, or NULL.
-pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
     {
         // A NULL pointer requests the current setting.
         if domainname.is_null() {
@@ -30,7 +36,8 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
         let old_domain = types::with_intl_runtime(|intl| intl.current_default_domain);
 
         // If domain name is the null string, set to default domain "messages".
-        if cstr(domainname).is_some_and(|s| s.to_bytes().is_empty())
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        if unsafe { cstr(domainname) }.is_some_and(|s| s.to_bytes().is_empty())
             || ptr::eq(domainname, types::_nl_default_default_domain.as_ptr())
         {
             types::with_intl_runtime(|intl| {
@@ -46,7 +53,9 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
         }
 
         // Check if the new domain is the same as the old one.
-        let is_same = match (cstr(old_domain), cstr(domainname)) {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        let is_same = match (unsafe { cstr(old_domain) }, unsafe { cstr(domainname) }) {
             (Some(old), Some(new)) => old == new,
             _ => false,
         };
@@ -58,7 +67,8 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
             new_domain = old_domain as *mut c_char;
         } else {
             // Duplicate the domain name.
-            new_domain = c_strdup(domainname);
+            // SAFETY: forwarded raw pointers satisfy `c_strdup`'s contract per this function's own `# Safety` requirements.
+            new_domain = unsafe { c_strdup(domainname) };
 
             if !new_domain.is_null() {
                 types::with_intl_runtime(|intl| intl.current_default_domain = new_domain);
@@ -74,7 +84,8 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
                 && !old_domain.is_null()
                 && !ptr::eq(old_domain, types::_nl_default_default_domain.as_ptr())
             {
-                c_free(old_domain as *mut c_char);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { c_free(old_domain as *mut c_char) };
             }
         }
 
@@ -83,8 +94,15 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
 }
 
 /// Alias for `libintl_textdomain` (unprefixed, for compatibility).
-pub fn textdomain(domainname: *const c_char) -> *mut c_char {
-    libintl_textdomain(domainname)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn textdomain(domainname: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `libintl_textdomain`'s contract per this function's own `# Safety` requirements.
+    unsafe { libintl_textdomain(domainname) }
 }
 
 #[cfg(test)]
@@ -146,15 +164,18 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
 
         let empty = b"\0" as *const u8 as *const c_char;
-        let _ = libintl_textdomain(empty);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let _ = unsafe { libintl_textdomain(empty) };
 
         let before = types::with_intl_runtime(|intl| intl.msg_cat_cntr);
         let custom = b"counter_test\0" as *const u8 as *const c_char;
-        let _ = libintl_textdomain(custom);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let _ = unsafe { libintl_textdomain(custom) };
         assert!(types::with_intl_runtime(|intl| intl.msg_cat_cntr) > before);
 
         // Clean up.
-        let _ = libintl_textdomain(empty);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let _ = unsafe { libintl_textdomain(empty) };
     }
 
     #[test]

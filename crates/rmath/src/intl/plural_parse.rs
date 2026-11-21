@@ -51,8 +51,15 @@ pub(crate) struct PluralParser<'a> {
 }
 
 /// Write the three child pointers of a freshly allocated `nargs`-node.
-fn set_args(node: *mut expression, args: [*mut expression; 3]) -> *mut expression {
-    match ptr_mut(node) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn set_args(node: *mut expression, args: [*mut expression; 3]) -> *mut expression {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    match unsafe { ptr_mut(node) } {
         Some(node) => {
             node.val.args = args;
             node as *mut expression
@@ -66,9 +73,16 @@ impl<'a> PluralParser<'a> {
     ///
     /// Callers guarantee `cp` is a valid NUL-terminated string for the
     /// duration of the parse.
-    pub fn new(cp: *const c_char) -> Self {
+    ///
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    pub unsafe fn new(cp: *const c_char) -> Self {
         PluralParser {
-            bytes: cstr(cp).map_or(&[], |s| s.to_bytes()),
+            // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+            bytes: unsafe { cstr(cp) }.map_or(&[], |s| s.to_bytes()),
             pos: 0,
         }
     }
@@ -120,7 +134,8 @@ impl<'a> PluralParser<'a> {
         // Allocate one node; callers free it with `dealloc` after walking
         // the tree.
         let p = unsafe { std::alloc::alloc(layout) } as *mut expression;
-        let Some(node) = ptr_mut(p) else {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let Some(node) = (unsafe { ptr_mut(p) }) else {
             return ptr::null_mut();
         };
         node.nargs = nargs;
@@ -157,7 +172,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let else_expr = self.parse_ternary();
                 let node = Self::alloc_expr(3, expression_operator::qmop);
-                return set_args(node, [cond, then_expr, else_expr]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                return unsafe { set_args(node, [cond, then_expr, else_expr]) };
             }
         }
         cond
@@ -175,7 +191,8 @@ impl<'a> PluralParser<'a> {
                     self.skip_whitespace();
                     let right = self.parse_and();
                     let node = Self::alloc_expr(2, expression_operator::lor);
-                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                     if node.is_null() {
                         return ptr::null_mut();
                     }
@@ -202,7 +219,8 @@ impl<'a> PluralParser<'a> {
                     self.skip_whitespace();
                     let right = self.parse_equality();
                     let node = Self::alloc_expr(2, expression_operator::land);
-                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                     if node.is_null() {
                         return ptr::null_mut();
                     }
@@ -230,7 +248,8 @@ impl<'a> PluralParser<'a> {
                     self.skip_whitespace();
                     let right = self.parse_comparison();
                     let node = Self::alloc_expr(2, expression_operator::equal);
-                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                     if node.is_null() {
                         return ptr::null_mut();
                     }
@@ -245,7 +264,8 @@ impl<'a> PluralParser<'a> {
                     self.skip_whitespace();
                     let right = self.parse_comparison();
                     let node = Self::alloc_expr(2, expression_operator::not_equal);
-                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                     if node.is_null() {
                         return ptr::null_mut();
                     }
@@ -272,12 +292,14 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_additive();
                 let node = Self::alloc_expr(2, expression_operator::greater_or_equal);
-                set_args(node, [left, right, ptr::null_mut()])
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { set_args(node, [left, right, ptr::null_mut()]) }
             } else {
                 self.skip_whitespace();
                 let right = self.parse_additive();
                 let node = Self::alloc_expr(2, expression_operator::greater_than);
-                set_args(node, [left, right, ptr::null_mut()])
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { set_args(node, [left, right, ptr::null_mut()]) }
             }
         } else if c == b'<' as c_char {
             self.next();
@@ -286,12 +308,14 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_additive();
                 let node = Self::alloc_expr(2, expression_operator::less_or_equal);
-                set_args(node, [left, right, ptr::null_mut()])
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { set_args(node, [left, right, ptr::null_mut()]) }
             } else {
                 self.skip_whitespace();
                 let right = self.parse_additive();
                 let node = Self::alloc_expr(2, expression_operator::less_than);
-                set_args(node, [left, right, ptr::null_mut()])
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { set_args(node, [left, right, ptr::null_mut()]) }
             }
         } else {
             left
@@ -309,7 +333,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_multiplicative();
                 let node = Self::alloc_expr(2, expression_operator::plus);
-                let node = set_args(node, [left, right, ptr::null_mut()]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                 if node.is_null() {
                     return ptr::null_mut();
                 }
@@ -319,7 +344,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_multiplicative();
                 let node = Self::alloc_expr(2, expression_operator::minus);
-                let node = set_args(node, [left, right, ptr::null_mut()]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                 if node.is_null() {
                     return ptr::null_mut();
                 }
@@ -342,7 +368,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_unary();
                 let node = Self::alloc_expr(2, expression_operator::mult);
-                let node = set_args(node, [left, right, ptr::null_mut()]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                 if node.is_null() {
                     return ptr::null_mut();
                 }
@@ -352,7 +379,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_unary();
                 let node = Self::alloc_expr(2, expression_operator::divide);
-                let node = set_args(node, [left, right, ptr::null_mut()]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                 if node.is_null() {
                     return ptr::null_mut();
                 }
@@ -362,7 +390,8 @@ impl<'a> PluralParser<'a> {
                 self.skip_whitespace();
                 let right = self.parse_unary();
                 let node = Self::alloc_expr(2, expression_operator::module);
-                let node = set_args(node, [left, right, ptr::null_mut()]);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let node = unsafe { set_args(node, [left, right, ptr::null_mut()]) };
                 if node.is_null() {
                     return ptr::null_mut();
                 }
@@ -382,7 +411,8 @@ impl<'a> PluralParser<'a> {
             self.skip_whitespace();
             let operand = self.parse_unary();
             let node = Self::alloc_expr(1, expression_operator::lnot);
-            set_args(node, [operand, ptr::null_mut(), ptr::null_mut()])
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { set_args(node, [operand, ptr::null_mut(), ptr::null_mut()]) }
         } else {
             self.parse_primary()
         }
@@ -396,7 +426,8 @@ impl<'a> PluralParser<'a> {
         if c == b'n' as c_char {
             self.next();
             let node = Self::alloc_expr(0, expression_operator::var);
-            if let Some(node) = ptr_mut(node) {
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            if let Some(node) = unsafe { ptr_mut(node) } {
                 node.val = expression_val { num: 0 };
             }
             node
@@ -412,7 +443,8 @@ impl<'a> PluralParser<'a> {
         } else if c >= b'0' as c_char && c <= b'9' as c_char {
             let n = self.parse_number().unwrap_or(0);
             let node = Self::alloc_expr(0, expression_operator::num);
-            if let Some(node) = ptr_mut(node) {
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            if let Some(node) = unsafe { ptr_mut(node) } {
                 node.val = expression_val { num: n };
             }
             node
@@ -434,8 +466,15 @@ impl<'a> PluralParser<'a> {
 ///
 /// # Safety
 /// `arg` must be a valid pointer to a `parse_args` struct.
-pub fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
-    let Some(args) = ptr_mut(arg) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(args) = (unsafe { ptr_mut(arg) }) else {
         return -1;
     };
 
@@ -443,7 +482,8 @@ pub fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
         return -1;
     }
 
-    let mut parser = PluralParser::new(args.cp);
+    // SAFETY: forwarded raw pointers satisfy `new`'s contract per this function's own `# Safety` requirements.
+    let mut parser = unsafe { PluralParser::new(args.cp) };
     let result = parser.parse();
 
     if result.is_null() {
@@ -466,11 +506,17 @@ mod tests {
     fn parse_plural(expr: &str) -> *mut expression {
         let mut bytes = expr.as_bytes().to_vec();
         bytes.push(0);
-        let mut parser = PluralParser::new(bytes.as_ptr() as *const c_char);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let mut parser = unsafe { PluralParser::new(bytes.as_ptr() as *const c_char) };
         parser.parse()
     }
 
-    fn free_expr(p: *mut expression) {
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    unsafe fn free_expr(p: *mut expression) {
         if p.is_null() {
             return;
         }
@@ -532,9 +578,12 @@ mod tests {
     fn test_parse_ternary() {
         let expr = parse_plural("n == 1 ? 0 : 1");
         assert!(!expr.is_null());
-        assert_eq!(plural_eval(expr, 1), 0);
-        assert_eq!(plural_eval(expr, 2), 1);
-        free_expr(expr);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 1) }, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 2) }, 1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_expr(expr) };
     }
 
     #[test]
@@ -543,18 +592,24 @@ mod tests {
             "n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;";
         let expr = parse_plural(expr_str);
         assert!(!expr.is_null());
-        assert_eq!(plural_eval(expr, 1), 0);
-        assert_eq!(plural_eval(expr, 5), 2);
-        assert_eq!(plural_eval(expr, 21), 0);
-        free_expr(expr);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 1) }, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 5) }, 2);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 21) }, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_expr(expr) };
     }
 
     #[test]
     fn test_parse_with_semicolon() {
         let expr = parse_plural("n != 1;");
         assert!(!expr.is_null());
-        assert_eq!(plural_eval(expr, 1), 0);
-        free_expr(expr);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 1) }, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_expr(expr) };
     }
 
     #[test]
@@ -573,7 +628,9 @@ mod tests {
     fn test_parse_modulo() {
         let expr = parse_plural("n % 3");
         assert!(!expr.is_null());
-        assert_eq!(plural_eval(expr, 7), 1);
-        free_expr(expr);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(expr, 7) }, 1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_expr(expr) };
     }
 }

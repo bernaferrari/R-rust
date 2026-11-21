@@ -12,8 +12,14 @@ use std::ptr;
 
 use super::types::*;
 
-fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
-    super::plural_parse::libintl_gettextparse(_arg)
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `libintl_gettextparse`'s contract per this function's own `# Safety` requirements.
+    unsafe { super::plural_parse::libintl_gettextparse(_arg) }
 }
 
 fn boxed_expression(
@@ -69,8 +75,15 @@ fn boxed_germanic_plural() -> *const expression {
 /// and advancing `endp` past the consumed digits.
 ///
 /// Equivalent to `strtoul(nplurals, &endp, 10)` for decimal parsing.
-fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
-    let Some(text) = cstr(s) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(text) = (unsafe { cstr(s) }) else {
         *endp = s;
         return 0;
     };
@@ -102,12 +115,19 @@ fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
 /// * `nullentry` - The null entry (metadata string) from the .mo file header.
 /// * `pluralp`   - Output: pointer to the plural expression.
 /// * `npluralsp` - Output: pointer to the number of plural forms.
-pub fn libintl_gettext_extract_plural(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_gettext_extract_plural(
     nullentry: *const c_char,
     pluralp: *mut *const expression,
     npluralsp: *mut c_ulong,
 ) {
-    if let Some(entry_cstr) = cstr(nullentry) {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    if let Some(entry_cstr) = unsafe { cstr(nullentry) } {
         let entry = entry_cstr.to_bytes();
         let entry_str = std::str::from_utf8(entry).unwrap_or("");
 
@@ -130,10 +150,12 @@ pub fn libintl_gettext_extract_plural(
                 // still inside `nullentry`'s NUL-terminated buffer.
                 let startp = bytes[nplurals_start..].as_ptr() as *const c_char;
                 let mut endp: *const c_char = ptr::null();
-                let n = parse_ulong(startp, &mut endp);
+                // SAFETY: forwarded raw pointers satisfy `parse_ulong`'s contract per this function's own `# Safety` requirements.
+                let n = unsafe { parse_ulong(startp, &mut endp) };
 
                 if endp != startp {
-                    if let Some(p) = ptr_mut(npluralsp) {
+                    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+                    if let Some(p) = unsafe { ptr_mut(npluralsp) } {
                         *p = n;
                     }
 
@@ -144,8 +166,10 @@ pub fn libintl_gettext_extract_plural(
                         res: ptr::null_mut(),
                     };
 
-                    if PLURAL_PARSE(&mut args) == 0 {
-                        if let Some(p) = ptr_mut(pluralp) {
+                    // SAFETY: forwarded raw pointers satisfy `PLURAL_PARSE`'s contract per this function's own `# Safety` requirements.
+                    if unsafe { PLURAL_PARSE(&mut args) } == 0 {
+                        // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+                        if let Some(p) = unsafe { ptr_mut(pluralp) } {
                             *p = args.res;
                         }
                         return;
@@ -156,10 +180,12 @@ pub fn libintl_gettext_extract_plural(
     }
 
     // Fall back to Germanic plural form.
-    if let Some(p) = ptr_mut(pluralp) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(p) = unsafe { ptr_mut(pluralp) } {
         *p = boxed_germanic_plural();
     }
-    if let Some(p) = ptr_mut(npluralsp) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(p) = unsafe { ptr_mut(npluralsp) } {
         *p = 2;
     }
 }
@@ -169,16 +195,30 @@ pub fn libintl_gettext_extract_plural(
 /// Returns the plural form index (0-indexed).
 ///
 /// This is the standalone (non-_LIBC, non-IN_LIBINTL) implementation.
-pub fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
     if pexp.is_null() {
         return 0;
     }
-    plural_eval_internal(pexp, n)
+    // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+    unsafe { plural_eval_internal(pexp, n) }
 }
 
 /// Recursive internal evaluator for plural expression trees.
-fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
-    let Some(exp) = ptr_ref(pexp) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(exp) = (unsafe { ptr_ref(pexp) }) else {
         return 0;
     };
     match exp.operation {
@@ -187,95 +227,125 @@ fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
         expression_operator::num => exp.val.get_num(),
 
         expression_operator::lnot => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
             if left == 0 { 1 } else { 0 }
         }
 
         expression_operator::mult => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             left.wrapping_mul(right)
         }
 
         expression_operator::divide => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if right == 0 { 0 } else { left / right }
         }
 
         expression_operator::module => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if right == 0 { 0 } else { left % right }
         }
 
         expression_operator::plus => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             left.wrapping_add(right)
         }
 
         expression_operator::minus => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             left.wrapping_sub(right)
         }
 
         expression_operator::less_than => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left < right { 1 } else { 0 }
         }
 
         expression_operator::greater_than => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left > right { 1 } else { 0 }
         }
 
         expression_operator::less_or_equal => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left <= right { 1 } else { 0 }
         }
 
         expression_operator::greater_or_equal => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left >= right { 1 } else { 0 }
         }
 
         expression_operator::equal => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left == right { 1 } else { 0 }
         }
 
         expression_operator::not_equal => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left != right { 1 } else { 0 }
         }
 
         expression_operator::land => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left != 0 && right != 0 { 1 } else { 0 }
         }
 
         expression_operator::lor => {
-            let left = plural_eval_internal(exp.val.get_args()[0], n);
-            let right = plural_eval_internal(exp.val.get_args()[1], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let left = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let right = unsafe { plural_eval_internal(exp.val.get_args()[1], n) };
             if left != 0 || right != 0 { 1 } else { 0 }
         }
 
         expression_operator::qmop => {
             // Ternary: condition ? left : right
-            let cond = plural_eval_internal(exp.val.get_args()[0], n);
+            // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+            let cond = unsafe { plural_eval_internal(exp.val.get_args()[0], n) };
             if cond != 0 {
-                plural_eval_internal(exp.val.get_args()[1], n)
+                // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+                unsafe { plural_eval_internal(exp.val.get_args()[1], n) }
             } else {
-                plural_eval_internal(exp.val.get_args()[2], n)
+                // SAFETY: forwarded raw pointers satisfy `plural_eval_internal`'s contract per this function's own `# Safety` requirements.
+                unsafe { plural_eval_internal(exp.val.get_args()[2], n) }
             }
         }
     }
@@ -306,25 +376,30 @@ mod tests {
         let plural = boxed_germanic_plural();
 
         // n=1 -> n!=1 is false -> plural form 0 (singular)
-        let result = plural_eval(plural, 1);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { plural_eval(plural, 1) };
         assert_eq!(result, 0);
 
         // n=0 -> n!=1 is true -> plural form 1 (plural)
-        let result = plural_eval(plural, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { plural_eval(plural, 0) };
         assert_eq!(result, 1);
 
         // n=2 -> n!=1 is true -> plural form 1 (plural)
-        let result = plural_eval(plural, 2);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { plural_eval(plural, 2) };
         assert_eq!(result, 1);
 
         // n=5 -> n!=1 is true -> plural form 1 (plural)
-        let result = plural_eval(plural, 5);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { plural_eval(plural, 5) };
         assert_eq!(result, 1);
     }
 
     #[test]
     fn test_plural_eval_null() {
-        let result = plural_eval(ptr::null(), 42);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { plural_eval(ptr::null(), 42) };
         assert_eq!(result, 0);
     }
 
@@ -332,7 +407,8 @@ mod tests {
     fn test_extract_plural_null_entry() {
         let mut pluralp: *const expression = ptr::null();
         let mut npluralsp: c_ulong = 0;
-        libintl_gettext_extract_plural(ptr::null(), &mut pluralp, &mut npluralsp);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { libintl_gettext_extract_plural(ptr::null(), &mut pluralp, &mut npluralsp) };
         assert_eq!(npluralsp, 2);
         assert!(!pluralp.is_null());
     }
@@ -342,7 +418,8 @@ mod tests {
         let entry = b"Project-Id-Version: foo 1.0\n\0".as_ptr() as *const c_char;
         let mut pluralp: *const expression = ptr::null();
         let mut npluralsp: c_ulong = 0;
-        libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp) };
         // No plural= or nplurals= fields -> fall back to Germanic.
         assert_eq!(npluralsp, 2);
         assert!(!pluralp.is_null());
@@ -354,12 +431,16 @@ mod tests {
             .as_ptr() as *const c_char;
         let mut pluralp: *const expression = ptr::null();
         let mut npluralsp: c_ulong = 0;
-        libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp) };
         assert_eq!(npluralsp, 3);
         assert!(!pluralp.is_null());
-        assert_eq!(plural_eval(pluralp, 1), 0);
-        assert_eq!(plural_eval(pluralp, 5), 2);
-        assert_eq!(plural_eval(pluralp, 21), 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(pluralp, 1) }, 0);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(pluralp, 5) }, 2);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        assert_eq!(unsafe { plural_eval(pluralp, 21) }, 0);
     }
 
     #[test]

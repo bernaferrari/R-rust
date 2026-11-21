@@ -43,7 +43,13 @@ static WIDE_NULL_STRING: [u32; 7] = [
 /// support is limited, this implementation provides the structure and type
 /// handling but the actual variadic extraction would need to be done at a
 /// higher level.  For the standalone port, this serves as the FFI bridge.
-pub fn printf_fetchargs(_args: *mut c_void, a: *mut arguments) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn printf_fetchargs(_args: *mut c_void, a: *mut arguments) -> c_int {
     unsafe {
         if a.is_null() {
             return -1;
@@ -188,7 +194,8 @@ mod tests {
 
     #[test]
     fn test_fetchargs_null_a() {
-        let result = printf_fetchargs(ptr::null_mut(), ptr::null_mut());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { printf_fetchargs(ptr::null_mut(), ptr::null_mut()) };
         assert_eq!(result, -1);
     }
 
@@ -243,7 +250,8 @@ mod tests {
             count: 1,
             arg: &mut arg,
         };
-        let result = printf_fetchargs(ptr::null_mut(), &mut args_struct);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { printf_fetchargs(ptr::null_mut(), &mut args_struct) };
         assert_eq!(result, -1);
     }
 

@@ -99,7 +99,17 @@ fn size_overflow_p(size: usize) -> bool {
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
 /// `d` and `a` must be valid pointers.
-pub fn printf_parse(format: *const c_char, d: *mut char_directives, a: *mut arguments) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn printf_parse(
+    format: *const c_char,
+    d: *mut char_directives,
+    a: *mut arguments,
+) -> c_int {
     unsafe {
         if format.is_null() || d.is_null() || a.is_null() {
             return -1;
@@ -743,7 +753,8 @@ mod tests {
             count: 0,
             arg: ptr::null_mut(),
         };
-        let result = printf_parse(fmt, &mut dirs, &mut args);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { printf_parse(fmt, &mut dirs, &mut args) };
         assert_eq!(result, 0);
         assert_eq!(dirs.count, 0);
         assert_eq!(args.count, 0);
@@ -807,7 +818,8 @@ mod tests {
             count: 0,
             arg: ptr::null_mut(),
         };
-        let result = printf_parse(fmt, &mut dirs, &mut args);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { printf_parse(fmt, &mut dirs, &mut args) };
         assert_eq!(result, 0);
         assert_eq!(dirs.count, 1);
         assert_eq!(dirs.max_width_length, 2);

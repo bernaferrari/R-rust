@@ -30,13 +30,20 @@ use super::types::{c_free, c_strdup, cstr, ptr_mut, slice_mut, slice_ref};
 ///
 /// Returns a pointer to the formatted string (may be `resultbuf` if it fit),
 /// and sets `*lengthp` to the string length (excluding NUL). Returns null on error.
-fn libintl_vasnprintf(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,
     _args: *mut c_void,
 ) -> *mut c_char {
-    let Some(fmt) = cstr(format) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(fmt) = (unsafe { cstr(format) }) else {
         return ptr::null_mut();
     };
 
@@ -47,12 +54,14 @@ fn libintl_vasnprintf(
 
     let _ = resultbuf;
 
-    let result = c_strdup(format);
+    // SAFETY: forwarded raw pointers satisfy `c_strdup`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { c_strdup(format) };
     if result.is_null() {
         return ptr::null_mut();
     }
 
-    if let Some(p) = ptr_mut(lengthp) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(p) = unsafe { ptr_mut(lengthp) } {
         *p = len;
     }
 
@@ -67,9 +76,20 @@ fn libintl_vasnprintf(
 ///
 /// If the format string contains '$' (positional arguments), uses the internal
 /// vasnprintf implementation. Otherwise, delegates to the system vfprintf.
-pub fn libintl_vfprintf(_stream: *mut c_void, format: *const c_char, args: *mut c_void) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vfprintf(
+    _stream: *mut c_void,
+    format: *const c_char,
+    args: *mut c_void,
+) -> c_int {
     // Check if format contains '$'.
-    let has_dollar = cstr(format).is_some_and(|f| f.to_bytes().contains(&b'$'));
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let has_dollar = unsafe { cstr(format) }.is_some_and(|f| f.to_bytes().contains(&b'$'));
 
     if !has_dollar {
         // No positional args -- we can't call C's vfprintf from Rust easily,
@@ -78,34 +98,56 @@ pub fn libintl_vfprintf(_stream: *mut c_void, format: *const c_char, args: *mut 
     }
 
     let mut length: usize = 0;
-    let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
+    // SAFETY: forwarded raw pointers satisfy `libintl_vasnprintf`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { libintl_vasnprintf(ptr::null_mut(), &mut length, format, args) };
     if result.is_null() {
         return -1;
     }
     if length > c_int::MAX as usize {
-        c_free(result);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(result) };
         return -1;
     }
     let retval = length as c_int;
-    c_free(result);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { c_free(result) };
     retval
 }
 
 /// Write formatted output to stdout.
-pub fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
-    libintl_vfprintf(ptr::null_mut(), format, args)
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
+    // SAFETY: forwarded raw pointers satisfy `libintl_vfprintf`'s contract per this function's own `# Safety` requirements.
+    unsafe { libintl_vfprintf(ptr::null_mut(), format, args) }
 }
 
 /// Write formatted output to a string buffer.
-pub fn libintl_vsprintf(resultbuf: *mut c_char, format: *const c_char, args: *mut c_void) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vsprintf(
+    resultbuf: *mut c_char,
+    format: *const c_char,
+    args: *mut c_void,
+) -> c_int {
     let mut length: usize = 0;
-    let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
+    // SAFETY: forwarded raw pointers satisfy `libintl_vasnprintf`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { libintl_vasnprintf(resultbuf, &mut length, format, args) };
     if result.is_null() {
         return -1;
     }
     if result != resultbuf {
         // Didn't fit in the buffer.
-        c_free(result);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(result) };
         return -1;
     }
     if length > c_int::MAX as usize {
@@ -115,14 +157,21 @@ pub fn libintl_vsprintf(resultbuf: *mut c_char, format: *const c_char, args: *mu
 }
 
 /// Write formatted output to a string buffer with maximum length.
-pub fn libintl_vsnprintf(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vsnprintf(
     resultbuf: *mut c_char,
     _maxlength: usize,
     format: *const c_char,
     args: *mut c_void,
 ) -> c_int {
     let mut length: usize = 0;
-    let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
+    // SAFETY: forwarded raw pointers satisfy `libintl_vasnprintf`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { libintl_vasnprintf(resultbuf, &mut length, format, args) };
     if result.is_null() {
         return -1;
     }
@@ -136,14 +185,17 @@ pub fn libintl_vsnprintf(
             // Copy `pruned` bytes plus NUL into the caller's
             // `maxlength`-byte buffer.
             if let (Some(dst), Some(src)) = (
-                slice_mut(resultbuf as *mut u8, _maxlength),
-                slice_ref(result as *const u8, pruned),
+                // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+                unsafe { slice_mut(resultbuf as *mut u8, _maxlength) },
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { slice_ref(result as *const u8, pruned) },
             ) {
                 dst[..pruned].copy_from_slice(src);
                 dst[pruned] = 0;
             }
         }
-        c_free(result);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(result) };
     }
     if length > c_int::MAX as usize {
         return -1;
@@ -152,24 +204,34 @@ pub fn libintl_vsnprintf(
 }
 
 /// Write formatted output to a dynamically allocated string.
-pub fn libintl_vasprintf(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn libintl_vasprintf(
     resultp: *mut *mut c_char,
     format: *const c_char,
     args: *mut c_void,
 ) -> c_int {
     let mut length: usize = 0;
-    let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
+    // SAFETY: forwarded raw pointers satisfy `libintl_vasnprintf`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe { libintl_vasnprintf(ptr::null_mut(), &mut length, format, args) };
     if result.is_null() {
         return -1;
     }
     if length > c_int::MAX as usize {
-        c_free(result);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(result) };
         return -1;
     }
-    if let Some(p) = ptr_mut(resultp) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    if let Some(p) = unsafe { ptr_mut(resultp) } {
         *p = result;
     } else {
-        c_free(result);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(result) };
     }
     length as c_int
 }
@@ -257,7 +319,8 @@ mod tests {
     #[test]
     fn test_vasnprintf_null_format() {
         let mut length: usize = 0;
-        let result = libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut()) };
         assert!(result.is_null());
     }
 }

@@ -31,9 +31,16 @@ const PATH_SEPARATOR: c_char = b':' as c_char;
 ///
 /// An argz vector is a sequence of NUL-terminated strings packed together,
 /// terminated by an additional NUL byte.
-fn __argz_count(argz: *const c_char, len: usize) -> usize {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn __argz_count(argz: *const c_char, len: usize) -> usize {
     // Read the `len`-byte argz vector; each NUL terminates one string.
-    let Some(bytes) = slice_ref(argz as *const u8, len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(bytes) = (unsafe { slice_ref(argz as *const u8, len) }) else {
         return 0;
     };
     bytes.iter().filter(|&&b| b == 0).count()
@@ -58,7 +65,13 @@ fn __argz_stringify(bytes: &mut [u8], sep: c_char) {
 /// Return the next entry in an argz vector after `entry`.
 ///
 /// If `entry` is null, returns the first entry. Returns null after the last.
-fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *const c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *const c_char {
     if entry.is_null() {
         if argz_len > 0 && !argz.is_null() {
             return argz;
@@ -66,7 +79,8 @@ fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *c
         return ptr::null();
     }
     // Walk the caller's `argz_len`-byte argz vector by index.
-    let Some(bytes) = slice_ref(argz as *const u8, argz_len) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let Some(bytes) = (unsafe { slice_ref(argz as *const u8, argz_len) }) else {
         return ptr::null();
     };
     let base = argz as usize;
@@ -107,9 +121,16 @@ fn copy_into(buf: &mut [u8], pos: &mut usize, src: &[u8]) {
 }
 
 /// Check whether a path is absolute (Unix).
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[cfg(unix)]
-fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
-    ptr_ref(p).is_some_and(|c| *c == b'/' as c_char)
+unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    unsafe { ptr_ref(p) }.is_some_and(|c| *c == b'/' as c_char)
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +145,13 @@ fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings.
-pub fn _nl_make_l10nflist(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn _nl_make_l10nflist(
     l10nfile_list: *mut *mut loaded_l10nfile,
     dirlist: *const c_char,
     dirlist_len: usize,
@@ -137,10 +164,12 @@ pub fn _nl_make_l10nflist(
     filename: *const c_char,
     do_allocate: c_int,
 ) -> *mut loaded_l10nfile {
-    let Some(language_cs) = cstr(language) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(language_cs) = (unsafe { cstr(language) }) else {
         return ptr::null_mut();
     };
-    let Some(filename_cs) = cstr(filename) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(filename_cs) = (unsafe { cstr(filename) }) else {
         return ptr::null_mut();
     };
 
@@ -148,29 +177,34 @@ pub fn _nl_make_l10nflist(
     let file_len = filename_cs.to_bytes().len();
 
     // If language contains an absolute path, ignore dirlist.
-    let effective_dirlist_len = if IS_ABSOLUTE_PATH(language) {
+    // SAFETY: forwarded raw pointers satisfy `IS_ABSOLUTE_PATH`'s contract per this function's own `# Safety` requirements.
+    let effective_dirlist_len = if unsafe { IS_ABSOLUTE_PATH(language) } {
         0
     } else {
         dirlist_len
     };
 
     let territory_cs = if (mask & XPG_TERRITORY) != 0 {
-        cstr(territory)
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        unsafe { cstr(territory) }
     } else {
         None
     };
     let codeset_cs = if (mask & XPG_CODESET) != 0 {
-        cstr(codeset)
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        unsafe { cstr(codeset) }
     } else {
         None
     };
     let norm_codeset_cs = if (mask & XPG_NORM_CODESET) != 0 {
-        cstr(normalized_codeset)
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        unsafe { cstr(normalized_codeset) }
     } else {
         None
     };
     let modifier_cs = if (mask & XPG_MODIFIER) != 0 {
-        cstr(modifier)
+        // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+        unsafe { cstr(modifier) }
     } else {
         None
     };
@@ -200,14 +234,17 @@ pub fn _nl_make_l10nflist(
 
     // Construct the file name inside the freshly allocated buffer.
     {
-        let Some(buf) = slice_mut(abs_filename as *mut u8, total_len) else {
-            c_free(abs_filename);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let Some(buf) = (unsafe { slice_mut(abs_filename as *mut u8, total_len) }) else {
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { c_free(abs_filename) };
             return ptr::null_mut();
         };
         let mut pos = 0usize;
 
         if effective_dirlist_len > 0 {
-            if let Some(dl) = slice_ref(dirlist as *const u8, effective_dirlist_len) {
+            // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+            if let Some(dl) = unsafe { slice_ref(dirlist as *const u8, effective_dirlist_len) } {
                 buf[..effective_dirlist_len].copy_from_slice(dl);
                 __argz_stringify(&mut buf[..effective_dirlist_len], PATH_SEPARATOR);
                 buf[effective_dirlist_len - 1] = b'/';
@@ -248,17 +285,22 @@ pub fn _nl_make_l10nflist(
     let mut lastp: *mut *mut loaded_l10nfile = l10nfile_list;
     let mut retval: *mut loaded_l10nfile = ptr::null_mut();
 
-    let mut scan = match ptr_ref(l10nfile_list) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
+    let mut scan = match unsafe { ptr_ref(l10nfile_list) } {
         Some(head) => *head,
         None => {
-            c_free(abs_filename);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { c_free(abs_filename) };
             return ptr::null_mut();
         }
     };
-    while let Some(node) = ptr_mut(scan) {
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    while let Some(node) = unsafe { ptr_mut(scan) } {
         if !node.filename.is_null() {
-            let compare = cstr(abs_filename)
-                .and_then(|abs| cstr(node.filename).map(|scan_cs| abs.cmp(scan_cs)));
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            let compare = unsafe { cstr(abs_filename) }
+                // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+                .and_then(|abs| unsafe { cstr(node.filename) }.map(|scan_cs| abs.cmp(scan_cs)));
             if let Some(compare) = compare {
                 match compare.cmp(&std::cmp::Ordering::Equal) {
                     std::cmp::Ordering::Equal => {
@@ -280,12 +322,14 @@ pub fn _nl_make_l10nflist(
     }
 
     if !retval.is_null() || do_allocate == 0 {
-        c_free(abs_filename);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(abs_filename) };
         return retval;
     }
 
     let dirlist_count = if effective_dirlist_len > 0 {
-        __argz_count(dirlist, effective_dirlist_len)
+        // SAFETY: forwarded raw pointers satisfy `__argz_count`'s contract per this function's own `# Safety` requirements.
+        unsafe { __argz_count(dirlist, effective_dirlist_len) }
     } else {
         1
     };
@@ -299,11 +343,13 @@ pub fn _nl_make_l10nflist(
     // Allocate a zeroed entry including the flexible successor space.
     retval = unsafe { alloc::alloc_zeroed(entry_layout) } as *mut loaded_l10nfile;
     if retval.is_null() {
-        c_free(abs_filename);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { c_free(abs_filename) };
         return ptr::null_mut();
     }
 
-    if let Some(node) = ptr_mut(retval) {
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    if let Some(node) = unsafe { ptr_mut(retval) } {
         node.filename = abs_filename;
         node.decided = if dirlist_count > 1 { 1 } else { 0 }
             | if (mask & XPG_CODESET) != 0 && (mask & XPG_NORM_CODESET) != 0 {
@@ -312,8 +358,10 @@ pub fn _nl_make_l10nflist(
                 0
             };
         node.data = ptr::null();
-        node.next = ptr_mut(lastp).map_or(ptr::null_mut(), |p| *p);
-        if let Some(p) = ptr_mut(lastp) {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        node.next = unsafe { ptr_mut(lastp) }.map_or(ptr::null_mut(), |p| *p);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        if let Some(p) = unsafe { ptr_mut(lastp) } {
             *p = retval;
         }
     }
@@ -334,16 +382,25 @@ pub fn _nl_make_l10nflist(
 ///
 /// # Safety
 /// `codeset` must be a valid pointer to `name_len` bytes.
-pub fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
     let empty = b"\0".as_ptr() as *const c_char;
     if codeset.is_null() || name_len == 0 {
         // Return an allocated empty string.
-        return c_strdup(empty);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        return unsafe { c_strdup(empty) };
     }
 
     {
-        let Some(src) = slice_ref(codeset as *const u8, name_len) else {
-            return c_strdup(empty);
+        // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+        let Some(src) = (unsafe { slice_ref(codeset as *const u8, name_len) }) else {
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            return unsafe { c_strdup(empty) };
         };
 
         let mut len = 0usize;
@@ -365,7 +422,8 @@ pub fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const 
             return ptr::null();
         }
 
-        if let Some(dst) = slice_mut(retval as *mut u8, alloc_len) {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        if let Some(dst) = unsafe { slice_mut(retval as *mut u8, alloc_len) } {
             let mut wp = 0usize;
 
             if only_digit {
@@ -451,7 +509,8 @@ mod tests {
         let file = b"messages.mo\0";
 
         // Search only (do_allocate = 0).
-        let result = _nl_make_l10nflist(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { _nl_make_l10nflist(
             &mut list,
             ptr::null(),
             0,
@@ -463,7 +522,7 @@ mod tests {
             ptr::null(),
             file.as_ptr() as *const c_char,
             0,
-        );
+        ) };
         // Should not find anything since the list is empty.
         assert!(result.is_null());
     }

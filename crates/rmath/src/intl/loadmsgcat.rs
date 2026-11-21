@@ -26,8 +26,16 @@ use super::types::*;
 ///
 /// Returns a pointer to the buffer and sets `*sizep` to the file size.
 /// Returns null on failure.
-fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
-    let (Some(name), Some(out_size)) = (cstr(filename), ptr_mut(sizep)) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let (Some(name), Some(out_size)) = (unsafe { cstr(filename) }, unsafe { ptr_mut(sizep) })
+    else {
         return ptr::null_mut();
     };
     let Ok(path) = name.to_str() else {
@@ -54,7 +62,8 @@ fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
     if buf.is_null() {
         return ptr::null_mut();
     }
-    if let Some(dst) = slice_mut(buf as *mut u8, size) {
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    if let Some(dst) = unsafe { slice_mut(buf as *mut u8, size) } {
         dst.copy_from_slice(&data);
     }
     *out_size = size;
@@ -64,13 +73,25 @@ fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
 /// Read an unaligned u32 from the packed binary .mo catalog.
 ///
 /// `p` must point to at least 4 readable bytes inside the catalog.
-fn mo_u32(p: *const u8) -> nls_uint32 {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn mo_u32(p: *const u8) -> nls_uint32 {
     // Catalog fields are byte-packed; `p` is valid per the caller's bounds.
     unsafe { ptr::read_unaligned(p as *const nls_uint32) }
 }
 
 /// Free a buffer previously allocated with `layout`.
-fn free_buffer(p: *mut u8, layout: Layout) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn free_buffer(p: *mut u8, layout: Layout) {
     // Free the block this module allocated with the matching layout.
     unsafe { alloc::dealloc(p, layout) }
 }
@@ -102,8 +123,15 @@ fn get_sysdep_string_segments(
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
 /// `domainbinding` may be null.
-pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
-    let Some(df) = ptr_mut(domain_file) else {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
+    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(df) = (unsafe { ptr_mut(domain_file) }) else {
         return;
     };
 
@@ -116,7 +144,8 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
 
     // Read the .mo file.
     let mut file_size: usize = 0;
-    let data = read_mo_file(filename, &mut file_size);
+    // SAFETY: forwarded raw pointers satisfy `read_mo_file`'s contract per this function's own `# Safety` requirements.
+    let data = unsafe { read_mo_file(filename, &mut file_size) };
     if data.is_null() {
         df.decided = 1;
         df.data = ptr::null();
@@ -129,12 +158,14 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     let domain = unsafe { alloc::alloc_zeroed(domain_layout) } as *mut loaded_domain;
     if domain.is_null() {
         // Free the `file_size`-byte catalog buffer from read_mo_file.
-        free_buffer(data as *mut u8, data_layout);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_buffer(data as *mut u8, data_layout) };
         df.decided = 1;
         df.data = ptr::null();
         return;
     }
-    let Some(d) = ptr_mut(domain) else {
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    let Some(d) = (unsafe { ptr_mut(domain) }) else {
         return;
     };
 
@@ -147,14 +178,17 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     // Validate the magic number.
     if file_size < 24 {
         // File too small to be a valid .mo file; free both buffers.
-        free_buffer(data as *mut u8, data_layout);
-        free_buffer(domain as *mut u8, domain_layout);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_buffer(data as *mut u8, data_layout) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_buffer(domain as *mut u8, domain_layout) };
         df.decided = 1;
         df.data = ptr::null();
         return;
     }
 
-    let magic = mo_u32(data as *const u8);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    let magic = unsafe { mo_u32(data as *const u8) };
 
     if magic == MO_MAGIC {
         d.must_swap = 0;
@@ -162,8 +196,10 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
         d.must_swap = 1;
     } else {
         // Invalid magic number; free both buffers.
-        free_buffer(data as *mut u8, data_layout);
-        free_buffer(domain as *mut u8, domain_layout);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_buffer(data as *mut u8, data_layout) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { free_buffer(domain as *mut u8, domain_layout) };
         df.decided = 1;
         df.data = ptr::null();
         return;
@@ -171,7 +207,8 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
 
     // Read the header fields.
     let read_u32 = |offset: usize| -> nls_uint32 {
-        let val = mo_u32(data.wrapping_add(offset) as *const u8);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let val = unsafe { mo_u32(data.wrapping_add(offset) as *const u8) };
         if d.must_swap != 0 { SWAP(val) } else { val }
     };
 
@@ -201,8 +238,10 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     // Get the null entry (metadata) from the catalog.
     let nullentry = if nstrings > 0 {
         let tab = d.orig_tab as *const u8;
-        let mut null_length = mo_u32(tab);
-        let mut null_offset = mo_u32(tab.wrapping_add(4));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let mut null_length = unsafe { mo_u32(tab) };
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let mut null_offset = unsafe { mo_u32(tab.wrapping_add(4)) };
         if d.must_swap != 0 {
             null_length = SWAP(null_length);
             null_offset = SWAP(null_offset);
@@ -221,10 +260,20 @@ pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut b
     let mut nplurals: c_ulong = 2;
 
     if !nullentry.is_null() {
-        super::plural_exp::libintl_gettext_extract_plural(nullentry, &mut plural, &mut nplurals);
+        // SAFETY: forwarded raw pointers satisfy `libintl_gettext_extract_plural`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            super::plural_exp::libintl_gettext_extract_plural(nullentry, &mut plural, &mut nplurals)
+        };
     } else {
         // Fall back to Germanic plural.
-        super::plural_exp::libintl_gettext_extract_plural(ptr::null(), &mut plural, &mut nplurals);
+        // SAFETY: forwarded raw pointers satisfy `libintl_gettext_extract_plural`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            super::plural_exp::libintl_gettext_extract_plural(
+                ptr::null(),
+                &mut plural,
+                &mut nplurals,
+            )
+        };
     }
 
     d.plural = plural;
@@ -259,7 +308,8 @@ mod tests {
             next: ptr::null_mut(),
             successor: [ptr::null_mut()],
         };
-        _nl_load_domain(&mut l10nfile, ptr::null_mut());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { _nl_load_domain(&mut l10nfile, ptr::null_mut()) };
         assert_eq!(l10nfile.decided, 1);
         assert!(l10nfile.data.is_null());
     }
@@ -292,7 +342,8 @@ mod tests {
     #[test]
     fn test_read_mo_file_null() {
         let mut size: usize = 0;
-        let result = read_mo_file(ptr::null(), &mut size);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let result = unsafe { read_mo_file(ptr::null(), &mut size) };
         assert!(result.is_null());
     }
 }

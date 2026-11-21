@@ -21,7 +21,13 @@ use crate::intl::types::{c_free, cstr, ptr_mut, slice_mut, slice_ref};
 /// # Safety
 /// `codeset` must be a valid pointer and `name_len` must be the length
 /// of the string at `codeset`.
-fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
     let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
         .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
     // Allocate `name_len + 1` bytes for the normalized codeset.
@@ -31,8 +37,10 @@ fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char
     }
     // Copy the codeset, converting to uppercase and replacing
     // non-alphanumeric characters with underscores.
-    let src = slice_ref(codeset as *const u8, name_len).unwrap_or(&[]);
-    let Some(dst) = slice_mut(result as *mut u8, name_len + 1) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_ref`'s contract per this function's own `# Safety` requirements.
+    let src = unsafe { slice_ref(codeset as *const u8, name_len) }.unwrap_or(&[]);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    let Some(dst) = (unsafe { slice_mut(result as *mut u8, name_len + 1) }) else {
         return result;
     };
     for (d, &b) in dst.iter_mut().zip(src.iter()) {
@@ -64,7 +72,13 @@ fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char
 /// # Safety
 /// `name` must be a valid mutable pointer to a NUL-terminated C string.
 /// All output pointers must be valid.
-pub fn _nl_explode_name(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn _nl_explode_name(
     name: *mut c_char,
     language: *mut *const c_char,
     modifier: *mut *const c_char,
@@ -73,7 +87,8 @@ pub fn _nl_explode_name(
     normalized_codeset: *mut *const c_char,
 ) -> c_int {
     let set_out = |p: *mut *const c_char, v: *const c_char| {
-        if let Some(s) = ptr_mut(p) {
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        if let Some(s) = unsafe { ptr_mut(p) } {
             *s = v;
         }
     };
@@ -85,12 +100,14 @@ pub fn _nl_explode_name(
     set_out(normalized_codeset, ptr::null());
     set_out(language, name);
 
-    let Some(name_len) = cstr(name).map(|s| s.to_bytes().len()) else {
+    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
+    let Some(name_len) = unsafe { cstr(name) }.map(|s| s.to_bytes().len()) else {
         return 0;
     };
     // Rewrite the caller's NUL-terminated buffer in place, inserting
     // NUL separators between components.
-    let Some(buf) = slice_mut(name as *mut u8, name_len + 1) else {
+    // SAFETY: forwarded raw pointers satisfy `slice_mut`'s contract per this function's own `# Safety` requirements.
+    let Some(buf) = (unsafe { slice_mut(name as *mut u8, name_len + 1) }) else {
         return 0;
     };
 
@@ -142,18 +159,22 @@ pub fn _nl_explode_name(
             if cp != start && buf[start] != 0 {
                 let codeset_len = cp - start;
                 let norm =
-                    _nl_normalize_codeset(buf[start..].as_ptr() as *const c_char, codeset_len);
+                    // SAFETY: forwarded raw pointers satisfy `_nl_normalize_codeset`'s contract per this function's own `# Safety` requirements.
+                    unsafe { _nl_normalize_codeset(buf[start..].as_ptr() as *const c_char, codeset_len) };
                 if norm.is_null() {
                     return -1;
                 }
 
                 // Compare normalized with original.
-                let same = cstr(norm)
-                    .zip(cstr(buf[start..].as_ptr() as *const c_char))
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let same = unsafe { cstr(norm) }
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    .zip(unsafe { cstr(buf[start..].as_ptr() as *const c_char) })
                     .is_some_and(|(a, b)| a.to_bytes() == b.to_bytes());
                 if same {
                     // Same, free the normalized copy.
-                    c_free(norm);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe { c_free(norm) };
                 } else {
                     set_out(normalized_codeset, norm);
                     mask |= types::XPG_NORM_CODESET;
@@ -348,14 +369,15 @@ mod tests {
         let mut cs: *const c_char = std::ptr::null();
         let mut norm_cs: *const c_char = std::ptr::null();
 
-        let mask = _nl_explode_name(
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let mask = unsafe { _nl_explode_name(
             name.as_mut_ptr() as *mut c_char,
             &mut lang,
             &mut mod_,
             &mut terr,
             &mut cs,
             &mut norm_cs,
-        );
+        ) };
 
         // Empty name: language == cp, so cp is set to end of string, mask stays 0.
         assert_eq!(mask, 0);
