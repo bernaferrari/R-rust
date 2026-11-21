@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::object::SexpMut;
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
 pub fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -333,8 +334,12 @@ fn restart_stack_as_list() -> SEXP {
                 Some(arena.alloc_vector(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t))
             })
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut result_mut = SexpMut::try_from_checked(result.clone())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         for (index, value) in restarts.iter().enumerate() {
-            SET_VECTOR_ELT(result.as_raw(), index as R_xlen_t, value.as_raw());
+            result_mut
+                .try_set_vector_elt(index as R_xlen_t, value.clone())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         pin.require_live()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -441,12 +446,20 @@ fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> S
             let limit = XLENGTH(names).min(XLENGTH(restart));
             for index in 0..limit {
                 if elt_to_string(names, index) == field_name {
-                    return VECTOR_ELT(restart, index);
+                    return restart_owned
+                        .try_vector_elt(index)
+                        .map(|elt| elt.as_raw())
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
                 }
             }
         }
         if fallback_index < XLENGTH(restart) {
-            VECTOR_ELT(restart, fallback_index)
+            restart_owned
+                .try_vector_elt(fallback_index)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         } else {
             R_NilValue()
         }
@@ -463,17 +476,24 @@ pub(crate) fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
         if restart.is_null() {
             return R_NilValue();
         }
-        let _restart_guard = restart_owned(restart);
-        SET_VECTOR_ELT(
-            restart,
+        let restart_guard = restart_owned(restart);
+        let mut restart_mut = SexpMut::try_from_checked(restart_guard.clone())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let put = |i: R_xlen_t, value: SEXP, restart_mut: &mut SexpMut<'_>| {
+            restart_mut
+                .try_set_vector_elt(i, restart_owned(value))
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        };
+        put(
             0,
             Rf_mkString(CString::new(name).unwrap_or_default().as_ptr()),
+            &mut restart_mut,
         );
-        SET_VECTOR_ELT(restart, 1, exit);
-        SET_VECTOR_ELT(restart, 2, handler);
-        SET_VECTOR_ELT(restart, 3, Rf_mkString(c"".as_ptr()));
-        SET_VECTOR_ELT(restart, 4, R_NilValue());
-        SET_VECTOR_ELT(restart, 5, R_NilValue());
+        put(1, exit, &mut restart_mut);
+        put(2, handler, &mut restart_mut);
+        put(3, Rf_mkString(c"".as_ptr()), &mut restart_mut);
+        put(4, R_NilValue(), &mut restart_mut);
+        put(5, R_NilValue(), &mut restart_mut);
 
         let names = string_vector(&[
             "name".to_string(),
@@ -504,13 +524,20 @@ fn abort_restart_entry() -> SEXP {
         if restart.is_null() {
             return R_NilValue();
         }
-        let _restart_guard = restart_owned(restart);
-        SET_VECTOR_ELT(
-            restart,
-            0,
-            Rf_mkString(CString::new("abort").unwrap_or_default().as_ptr()),
-        );
-        SET_VECTOR_ELT(restart, 1, R_NilValue());
+        let restart_guard = restart_owned(restart);
+        let mut restart_mut = SexpMut::try_from_checked(restart_guard.clone())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        restart_mut
+            .try_set_vector_elt(
+                0,
+                restart_owned(Rf_mkString(
+                    CString::new("abort").unwrap_or_default().as_ptr(),
+                )),
+            )
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        restart_mut
+            .try_set_vector_elt(1, restart_owned(R_NilValue()))
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         crate::sexp::attrib_core::setAttrib(
             restart,
             Rf_install(c"class".as_ptr()),

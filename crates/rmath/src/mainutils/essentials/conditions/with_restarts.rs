@@ -178,9 +178,13 @@ fn deparse_assert_expr(expr: SEXP) -> String {
     unsafe {
         let dcall = crate::mainutils::deparse::deparse1s(expr);
         if !dcall.is_null() && dcall != R_NilValue() {
-            let elt = STRING_ELT(dcall, 0);
-            if !elt.is_null() {
-                return CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+            let owner = active_owner();
+            if let Some(text) = owner_sexp(owner, dcall)
+                .try_string_elt(0)
+                .ok()
+                .and_then(|elt| charsxp_utf8_lossy(&elt))
+            {
+                return text;
             }
         }
         "expr".to_string()
