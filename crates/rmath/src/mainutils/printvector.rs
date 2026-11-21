@@ -94,10 +94,281 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 ///
 /// Named `get_R_PrintData` to avoid collision with `get_R_print` in
 /// printutils.rs (which returns the smaller `RPrint` struct).
-pub unsafe fn get_R_PrintData() -> MutPtr<R_PrintData> {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        MutPtr(&mut (*inst).eval_state.printvector as *mut R_PrintData)
-    })
+pub fn get_R_PrintData() -> MutPtr<R_PrintData> {
+    crate::sexp::instance::with_required_current_instance(|inst|
+        // SAFETY: `inst` is the live current instance for the closure call.
+        unsafe { MutPtr(&mut (*inst).eval_state.printvector as *mut R_PrintData) })
+}
+
+// ---------------------------------------------------------------------------
+// Checked-access boundary helpers
+//
+// The printers below run while the session is live. The few operations that
+// still need unsafe — C ABI buffers, static encode buffers, raw SEXP data
+// pointers and the format/encode entry points in sibling modules — are kept
+// here as small audited boundaries so the print loops can stay safe.
+// ---------------------------------------------------------------------------
+
+/// Audited boundary: copy one Encode* result out of the live static buffer.
+fn encode_result(enc: *const c_char) -> String {
+    // SAFETY: Encode* results point at NUL-terminated static encode buffers
+    // that stay readable until the next encode call.
+    unsafe { std::ffi::CStr::from_ptr(enc) }
+        .to_str()
+        .unwrap_or("")
+        .to_string()
+}
+
+fn encode_logical(x: c_int, w: c_int) -> String {
+    // SAFETY: EncodeLogical writes into a live static encode buffer.
+    encode_result(unsafe { EncodeLogical(x, w) })
+}
+
+fn encode_integer(x: c_int, w: c_int) -> String {
+    // SAFETY: EncodeInteger writes into a live static encode buffer.
+    encode_result(unsafe { EncodeInteger(x, w) })
+}
+
+fn encode_real(
+    x: std::os::raw::c_double,
+    w: c_int,
+    d: c_int,
+    e: c_int,
+    outdec: *const c_char,
+) -> String {
+    // SAFETY: EncodeReal0 writes into a live static encode buffer; `outdec`
+    // is a caller-provided NUL-terminated literal.
+    encode_result(unsafe { EncodeReal0(x, w, d, e, outdec) })
+}
+
+fn encode_complex(
+    z: Rcomplex,
+    wr: c_int,
+    dr: c_int,
+    er: c_int,
+    wi: c_int,
+    di: c_int,
+    ei: c_int,
+    outdec: *const c_char,
+) -> String {
+    // SAFETY: EncodeComplex writes into a live static encode buffer.
+    encode_result(unsafe { EncodeComplex(z, wr, dr, er, wi, di, ei, outdec) })
+}
+
+fn encode_raw(x: u8, prefix: *const c_char) -> String {
+    // SAFETY: EncodeRaw writes into a live static encode buffer; `prefix` is
+    // a caller-provided NUL-terminated literal.
+    encode_result(unsafe { EncodeRaw(x, prefix) })
+}
+
+fn encode_string_elt(s: SEXP, w: c_int, quote: c_int, justify: c_int) -> String {
+    let justify = match justify {
+        1 => Rprt_adj::right,
+        2 => Rprt_adj::centre,
+        3 => Rprt_adj::none,
+        _ => Rprt_adj::left,
+    };
+    // SAFETY: encode_string writes into a live static encode buffer.
+    encode_result(unsafe { encode_string(s, w, quote, justify) })
+}
+
+/// Audited boundary: formatLogicalS field width for a live vector.
+fn format_logical_width(x: SEXP, n: R_xlen_t) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is a live vector; `w` is a live local out-parameter.
+    unsafe { formatLogicalS(x, n, &mut w) };
+    w
+}
+
+/// Audited boundary: formatIntegerS field width for a live vector.
+fn format_integer_s_width(x: SEXP, n: R_xlen_t) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is a live vector; `w` is a live local out-parameter.
+    unsafe { formatIntegerS(x, n, &mut w) };
+    w
+}
+
+/// Audited boundary: formatStringS field width for a live vector.
+fn format_string_width(x: SEXP, n: R_xlen_t, quote: c_int) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is a live vector; `w` is a live local out-parameter.
+    unsafe { formatStringS(x, n, &mut w, quote) };
+    w
+}
+
+/// Audited boundary: formatRealS (w, d, e) for a live vector.
+fn format_real_s_fields(x: SEXP, n: R_xlen_t) -> (c_int, c_int, c_int) {
+    let (mut w, mut d, mut e) = (0, 0, 0);
+    // SAFETY: `x` is a live vector; the out-parameters are live locals.
+    unsafe { formatRealS(x, n, &mut w, &mut d, &mut e, 0) };
+    (w, d, e)
+}
+
+/// Audited boundary: formatComplexS fields for a live vector.
+fn format_complex_s_fields(x: SEXP, n: R_xlen_t) -> (c_int, c_int, c_int, c_int, c_int, c_int) {
+    let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
+    // SAFETY: `x` is a live vector; the out-parameters are live locals.
+    unsafe { formatComplexS(x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0) };
+    (wr, dr, er, wi, di, ei)
+}
+
+/// Audited boundary: formatRawS field width for a live vector.
+fn format_raw_s_width(x: SEXP, n: R_xlen_t) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is a live vector; `w` is a live local out-parameter.
+    unsafe { formatRawS(x, n, &mut w) };
+    w
+}
+
+/// Audited boundary: formatInteger field width on the caller's live buffer.
+fn format_integer_width(x: *const c_int, n: R_xlen_t) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is the caller's live buffer of `n` elements; `w` is a live
+    // local out-parameter.
+    unsafe { formatInteger(x, n, &mut w) };
+    w
+}
+
+/// Audited boundary: formatReal (w, d, e) on the caller's live buffer.
+fn format_real_fields(x: *const f64, n: R_xlen_t) -> (c_int, c_int, c_int) {
+    let (mut w, mut d, mut e) = (0, 0, 0);
+    // SAFETY: `x` is the caller's live buffer of `n` elements; the
+    // out-parameters are live locals.
+    unsafe { formatReal(x, n, &mut w, &mut d, &mut e, 0) };
+    (w, d, e)
+}
+
+/// Audited boundary: formatComplex fields on the caller's live buffer.
+fn format_complex_fields(x: *const Rcomplex, n: R_xlen_t) -> (c_int, c_int, c_int, c_int, c_int, c_int) {
+    let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
+    // SAFETY: `x` is the caller's live buffer of `n` elements; the
+    // out-parameters are live locals.
+    unsafe { formatComplex(x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0) };
+    (wr, dr, er, wi, di, ei)
+}
+
+/// Audited boundary: formatRaw field width on the caller's live buffer.
+fn format_raw_width(x: *const u8, n: R_xlen_t) -> c_int {
+    let mut w = 0;
+    // SAFETY: `x` is the caller's live buffer of `n` elements; `w` is a live
+    // local out-parameter.
+    unsafe { formatRaw(x as *const std::os::raw::c_void, n, &mut w) };
+    w
+}
+
+/// Audited boundary: i-th element of the caller's live c_int buffer.
+fn int_buf_elt(x: *const c_int, i: usize) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    // SAFETY: callers pass a live buffer of at least i + 1 elements or null.
+    unsafe { *x.add(i) }
+}
+
+/// Audited boundary: i-th element of the caller's live f64 buffer.
+fn real_buf_elt(x: *const f64, i: usize) -> f64 {
+    if x.is_null() {
+        return NA_REAL;
+    }
+    // SAFETY: callers pass a live buffer of at least i + 1 elements or null.
+    unsafe { *x.add(i) }
+}
+
+/// Audited boundary: i-th element of the caller's live Rcomplex buffer.
+fn complex_buf_elt(x: *const Rcomplex, i: usize) -> Rcomplex {
+    if x.is_null() {
+        return Rcomplex {
+            r: NA_REAL,
+            i: NA_REAL,
+        };
+    }
+    // SAFETY: callers pass a live buffer of at least i + 1 elements or null.
+    unsafe { *x.add(i) }
+}
+
+/// Audited boundary: i-th element of the caller's live u8 buffer.
+fn raw_buf_elt(x: *const u8, i: usize) -> u8 {
+    if x.is_null() {
+        return 0;
+    }
+    // SAFETY: callers pass a live buffer of at least i + 1 elements or null.
+    unsafe { *x.add(i) }
+}
+
+/// Audited boundary: the LGLSXP data pointer of a live vector.
+fn logical_ptr(x: SEXP) -> *const c_int {
+    // SAFETY: callers pass a live LGLSXP; the pointer is consumed immediately
+    // by a raw-buffer printer under the same contract.
+    unsafe { LOGICAL(x) }
+}
+
+/// Audited boundary: the INTSXP data pointer of a live vector.
+fn integer_ptr(x: SEXP) -> *const c_int {
+    // SAFETY: callers pass a live INTSXP; the pointer is consumed immediately
+    // by a raw-buffer printer under the same contract.
+    unsafe { INTEGER(x) }
+}
+
+/// Audited boundary: the REALSXP data pointer of a live vector.
+fn real_ptr(x: SEXP) -> *const f64 {
+    // SAFETY: callers pass a live REALSXP; the pointer is consumed immediately
+    // by a raw-buffer printer under the same contract.
+    unsafe { REAL(x) }
+}
+
+/// Audited boundary: the CPLXSXP data pointer of a live vector.
+fn complex_ptr(x: SEXP) -> *const Rcomplex {
+    // SAFETY: callers pass a live CPLXSXP; the pointer is consumed immediately
+    // by a raw-buffer printer under the same contract.
+    unsafe { COMPLEX(x) }
+}
+
+/// Audited boundary: the RAWSXP data pointer of a live vector.
+fn raw_ptr(x: SEXP) -> *const u8 {
+    // SAFETY: callers pass a live RAWSXP; the pointer is consumed immediately
+    // by a raw-buffer printer under the same contract.
+    unsafe { RAW(x) }
+}
+
+/// Audited boundary: a live CHARSXP's byte length (None on null CHAR data).
+fn charsxp_len(x: SEXP) -> Option<usize> {
+    // SAFETY: a live CHARSXP exposes NUL-terminated, immutable CHAR data.
+    unsafe {
+        let p = CHAR(x);
+        if p.is_null() {
+            None
+        } else {
+            Some(std::ffi::CStr::from_ptr(p).to_bytes().len())
+        }
+    }
+}
+
+/// Audited boundary: option lookup under the active runtime.
+fn get_option(name: *const c_char) -> SEXP {
+    // SAFETY: `name` is a NUL-terminated literal; GetOption reads session
+    // options under the active runtime.
+    unsafe { crate::mainutils::options::GetOption(name) }
+}
+
+/// Audited boundary: copy a NUL-terminated title (or null) to Rust text.
+fn title_string(title: *const c_char) -> Option<String> {
+    if title.is_null() {
+        return None;
+    }
+    // SAFETY: callers pass a live NUL-terminated title or null.
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(title) }
+            .to_str()
+            .unwrap_or("")
+            .to_string(),
+    )
+}
+
+/// Audited boundary: a live CHARSXP's raw pointer for an out-parameter.
+fn charsxp_ptr(x: SEXP) -> *const c_char {
+    // SAFETY: a live CHARSXP exposes NUL-terminated CHAR data; the pointer is
+    // handed to a caller-owned out-parameter under the documented contract.
+    unsafe { CHAR(x) }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,24 +432,13 @@ fn vector_index(i: R_xlen_t, w: c_int) {
     Rprintf!("{:>pad$}[{}]", "", i, pad = pad);
 }
 
-unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: c_int) -> *const c_char {
-    let justify = match justify {
-        1 => Rprt_adj::right,
-        2 => Rprt_adj::centre,
-        3 => Rprt_adj::none,
-        _ => Rprt_adj::left,
-    };
-    unsafe { encode_string(s, w, quote, justify) }
-}
-
 // ---------------------------------------------------------------------------
 // printLogicalVectorS -- internal, not exported (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    unsafe {
+fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
+    {
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -191,16 +451,12 @@ unsafe fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
             width = 0;
         }
 
-        formatLogicalS(x, n, &mut w);
+        let mut w = format_logical_width(x, n);
         w += rp.gap;
 
-        let px = LOGICAL(x);
+        let px = logical_ptr(x);
         for i in 0..n {
-            let xi = if px.is_null() {
-                NA_INTEGER
-            } else {
-                *px.add(i as usize)
-            };
+            let xi = int_buf_elt(px, i as usize);
 
             // NUMVECTOR_TIGHTLOOP
             if i > 0 && width + w > rp.width {
@@ -213,8 +469,7 @@ unsafe fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = EncodeLogical(xi, w);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_logical(xi, w);
             Rprintf!("{}", s);
             width += w;
         }
@@ -227,9 +482,8 @@ unsafe fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
-    unsafe {
+    {
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -242,15 +496,11 @@ pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
             width = 0;
         }
 
-        formatInteger(x, n, &mut w);
+        let mut w = format_integer_width(x, n);
         w += rp.gap;
 
         for i in 0..n {
-            let xi = if x.is_null() {
-                NA_INTEGER
-            } else {
-                *x.add(i as usize)
-            };
+            let xi = int_buf_elt(x, i as usize);
 
             // NUMVECTOR_TIGHTLOOP
             if i > 0 && width + w > rp.width {
@@ -262,8 +512,7 @@ pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = EncodeInteger(xi, w);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_integer(xi, w);
             Rprintf!("{}", s);
             width += w;
         }
@@ -272,8 +521,8 @@ pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
 }
 
 pub(crate) unsafe fn warn_illegal_outdec() {
-    unsafe {
-        let opt = crate::mainutils::options::GetOption(c"OutDec".as_ptr());
+    {
+        let opt = get_option(c"OutDec".as_ptr());
         if opt.is_null()
             || opt == crate::sexp::globals::R_NilValue()
             || crate::sexp::accessors::TYPEOF(opt) != crate::sexp::ffi::SEXPTYPE::STRSXP
@@ -285,11 +534,9 @@ pub(crate) unsafe fn warn_illegal_outdec() {
         if ch.is_null() {
             return;
         }
-        let p = crate::sexp::accessors::CHAR(ch);
-        if p.is_null() {
+        let Some(nbytes) = charsxp_len(ch) else {
             return;
-        }
-        let nbytes = std::ffi::CStr::from_ptr(p).to_bytes().len();
+        };
         if nbytes == 1 {
             return;
         }
@@ -308,12 +555,10 @@ pub(crate) unsafe fn warn_illegal_outdec() {
 // printRealVector -- exported
 // ---------------------------------------------------------------------------
 pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
-    unsafe {
-        warn_illegal_outdec();
+    {
+        // SAFETY: warn_illegal_outdec only reads session options.
+        unsafe { warn_illegal_outdec() };
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
-        let mut d: c_int = 0;
-        let mut e: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -326,17 +571,13 @@ pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
             width = 0;
         }
 
-        formatReal(x, n, &mut w, &mut d, &mut e, 0);
+        let (mut w, d, e) = format_real_fields(x, n);
         w += rp.gap;
 
         let outdec = b".\0".as_ptr() as *const c_char;
 
         for i in 0..n {
-            let xi = if x.is_null() {
-                NA_REAL
-            } else {
-                *x.add(i as usize)
-            };
+            let xi = real_buf_elt(x, i as usize);
 
             // NUMVECTOR_TIGHTLOOP
             if i > 0 && width + w > rp.width {
@@ -348,8 +589,7 @@ pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = EncodeReal0(xi, w, d, e, outdec);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_real(xi, w, d, e, outdec);
             Rprintf!("{}", s);
             width += w;
         }
@@ -362,14 +602,8 @@ pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
-    unsafe {
+    {
         let rp = get_R_PrintData();
-        let mut wr: c_int = 0;
-        let mut dr: c_int = 0;
-        let mut er: c_int = 0;
-        let mut wi: c_int = 0;
-        let mut di: c_int = 0;
-        let mut ei: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -382,9 +616,7 @@ pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
             width = 0;
         }
 
-        formatComplex(
-            x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-        );
+        let (wr, dr, er, wi, di, ei) = format_complex_fields(x, n);
 
         let w = wr + wi + 2; // +2 for "+" and "i"
         let w = w + rp.gap;
@@ -392,14 +624,7 @@ pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
         let outdec = b".\0".as_ptr() as *const c_char;
 
         for i in 0..n {
-            let cx = if x.is_null() {
-                Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                }
-            } else {
-                *x.add(i as usize)
-            };
+            let cx = complex_buf_elt(x, i as usize);
 
             // NUMVECTOR_TIGHTLOOP (with NA complex check)
             if i > 0 && width + w > rp.width {
@@ -411,12 +636,11 @@ pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                EncodeReal0(NA_REAL, w, 0, 0, outdec)
+            let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
+                encode_real(NA_REAL, w, 0, 0, outdec)
             } else {
-                EncodeComplex(cx, wr + rp.gap, dr, er, wi, di, ei, outdec)
+                encode_complex(cx, wr + rp.gap, dr, er, wi, di, ei, outdec)
             };
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
             Rprintf!("{}", s);
             width += w;
         }
@@ -429,9 +653,8 @@ pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
-    unsafe {
+    {
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -444,13 +667,13 @@ pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
             width = 0;
         }
 
-        formatRaw(x as *const std::os::raw::c_void, n, &mut w);
+        let mut w = format_raw_width(x, n);
         w += rp.gap;
 
         let empty_prefix: [c_char; 1] = [0];
 
         for i in 0..n {
-            let xi = if x.is_null() { 0u8 } else { *x.add(i as usize) };
+            let xi = raw_buf_elt(x, i as usize);
 
             // RAWVECTOR_TIGHTLOOP
             if i > 0 && width + w > rp.width {
@@ -462,8 +685,7 @@ pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = EncodeRaw(xi, empty_prefix.as_ptr());
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_raw(xi, empty_prefix.as_ptr());
             Rprintf!("{:width$}{}", "", s, width = rp.gap as usize);
             width += w;
         }
@@ -475,11 +697,10 @@ pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
 // printStringVectorS -- internal (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
-    unsafe {
+fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
+    {
         // Always use STRING_ELT path (DATAPTR_OR_NULL not available).
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -492,7 +713,7 @@ unsafe fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
             width = 0;
         }
 
-        formatStringS(x, n, &mut w, quote);
+        let w = format_string_width(x, n, quote);
 
         for i in 0..n {
             let si = STRING_ELT(x, i);
@@ -507,8 +728,7 @@ unsafe fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
                     width = 0;
                 }
             }
-            let enc = EncodeString(si, w, quote, rp.right);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_string_elt(si, w, quote, rp.right);
             Rprintf!("{:width$}{}", "", s, width = rp.gap as usize);
             width += w + rp.gap;
         }
@@ -520,32 +740,33 @@ unsafe fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
 // printRawVectorS -- internal (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printRawVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    unsafe {
-        let px = RAW(x);
-        printRawVector(px, n, indx);
-    }
+fn printRawVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
+    // SAFETY: printRawVector reads the live vector's buffer under the same
+    // contract as its own body.
+    unsafe { printRawVector(raw_ptr(x), n, indx) }
 }
 
 // ---------------------------------------------------------------------------
 // printRealVectorS -- internal (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    unsafe {
+fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
+    {
         if let Some(seq) = unexpanded_real(x) {
             print_unexpanded_real_vector(seq, n, indx);
             return;
         }
-        let px = REAL(x);
-        printRealVector(px, n, indx);
+        // SAFETY: printRealVector reads the live vector's buffer under the
+        // same contract as its own body.
+        unsafe { printRealVector(real_ptr(x), n, indx) }
     }
 }
 
 /// Same layout as [`printRealVector`], reading the formula instead of a buffer.
-unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
-    unsafe {
-        warn_illegal_outdec();
+fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
+    {
+        // SAFETY: warn_illegal_outdec only reads session options.
+        unsafe { warn_illegal_outdec() };
         let rp = get_R_PrintData();
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
@@ -574,8 +795,7 @@ unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int
                     width = 0;
                 }
             }
-            let enc = EncodeReal0(xi, w, fmt.d, fmt.e, outdec);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_real(xi, w, fmt.d, fmt.e, outdec);
             Rprintf!("{}", s);
             width += w;
         }
@@ -587,20 +807,21 @@ unsafe fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int
 // printIntegerVectorS -- internal (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printIntegerVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    unsafe {
+fn printIntegerVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
+    {
         if let Some(seq) = unexpanded_int(x) {
             print_unexpanded_integer_vector(seq, n, indx);
             return;
         }
-        let px = INTEGER(x);
-        printIntegerVector(px, n, indx);
+        // SAFETY: printIntegerVector reads the live vector's buffer under the
+        // same contract as its own body.
+        unsafe { printIntegerVector(integer_ptr(x), n, indx) }
     }
 }
 
 /// Same layout as [`printIntegerVector`], reading the formula instead of a buffer.
-unsafe fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
-    unsafe {
+fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
+    {
         let rp = get_R_PrintData();
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
@@ -627,8 +848,7 @@ unsafe fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_
                     width = 0;
                 }
             }
-            let enc = EncodeInteger(xi, w);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_integer(xi, w);
             Rprintf!("{}", s);
             width += w;
         }
@@ -640,19 +860,18 @@ unsafe fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_
 // printComplexVectorS -- internal (static in C)
 // ---------------------------------------------------------------------------
 
-unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    unsafe {
-        let px = COMPLEX(x);
-        printComplexVector(px, n, indx);
-    }
+fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
+    // SAFETY: printComplexVector reads the live vector's buffer under the
+    // same contract as its own body.
+    unsafe { printComplexVector(complex_ptr(x), n, indx) }
 }
 
 // ---------------------------------------------------------------------------
 // printVector -- exported
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
-    unsafe {
+pub fn printVector(x: SEXP, indx: c_int, quote: c_int) {
+    {
         if x.is_null() {
             return;
         }
@@ -713,8 +932,8 @@ pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Helper: print the name row for named vectors.
-unsafe fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, start: R_xlen_t) {
-    unsafe {
+fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, start: R_xlen_t) {
+    {
         let rp = get_R_PrintData();
         let mut j: R_xlen_t = 0;
         while j < nperline as R_xlen_t {
@@ -722,8 +941,7 @@ unsafe fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, st
             if k >= n {
                 break;
             }
-            let enc = EncodeString(STRING_ELT(names, k), w, 0, Rprt_adj_right);
-            let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+            let s = encode_string_elt(STRING_ELT(names, k), w, 0, Rprt_adj_right);
             Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
             j += 1;
         }
@@ -731,14 +949,14 @@ unsafe fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, st
     }
 }
 
-unsafe fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
-    unsafe {
+fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
+    {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
-        formatLogicalS(x, n, &mut w);
-        formatStringS(names, n, &mut wn, 0);
+        w = format_logical_width(x, n);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -767,8 +985,7 @@ unsafe fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                 if k >= n {
                     break;
                 }
-                let enc = EncodeLogical(LOGICAL_ELT(x, k as c_int), w);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_logical(LOGICAL_ELT(x, k as c_int), w);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -778,14 +995,14 @@ unsafe fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     }
 }
 
-unsafe fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
-    unsafe {
+fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
+    {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
-        formatIntegerS(x, n, &mut w);
-        formatStringS(names, n, &mut wn, 0);
+        w = format_integer_s_width(x, n);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -812,8 +1029,7 @@ unsafe fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                 if k >= n {
                     break;
                 }
-                let enc = EncodeInteger(INTEGER_ELT(x, k as c_int), w);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_integer(INTEGER_ELT(x, k as c_int), w);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -823,16 +1039,13 @@ unsafe fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     }
 }
 
-unsafe fn printNamedRealVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
-    unsafe {
+fn printNamedRealVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
+    {
         let rp = get_R_PrintData();
-        let mut w: c_int = 0;
-        let mut d: c_int = 0;
-        let mut e: c_int = 0;
         let mut wn: c_int = 0;
 
-        formatRealS(x, n, &mut w, &mut d, &mut e, 0);
-        formatStringS(names, n, &mut wn, 0);
+        let (mut w, d, e) = format_real_s_fields(x, n);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -861,8 +1074,7 @@ unsafe fn printNamedRealVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                 if k >= n {
                     break;
                 }
-                let enc = EncodeReal0(REAL_ELT(x, k as c_int), w, d, e, outdec);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_real(REAL_ELT(x, k as c_int), w, d, e, outdec);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -872,25 +1084,17 @@ unsafe fn printNamedRealVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     }
 }
 
-unsafe fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
-    unsafe {
+fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
+    {
         let mut w: c_int = 0;
-        let mut wr: c_int = 0;
-        let mut dr: c_int = 0;
-        let mut er: c_int = 0;
-        let mut wi: c_int = 0;
-        let mut di: c_int = 0;
-        let mut ei: c_int = 0;
 
         let rp = get_R_PrintData();
 
-        formatComplexS(
-            x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-        );
+        let (wr, dr, er, wi, di, ei) = format_complex_s_fields(x, n);
         w = wr + wi + 2;
 
         let mut wn: c_int = 0;
-        formatStringS(names, n, &mut wn, 0);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -919,8 +1123,7 @@ unsafe fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                 if k >= n {
                     break;
                 }
-                let enc = EncodeString(STRING_ELT(names, k as i64), w, 0, Rprt_adj_right);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_string_elt(STRING_ELT(names, k as i64), w, 0, Rprt_adj_right);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -937,21 +1140,17 @@ unsafe fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                     Rprintf!("{:width$}", "", width = rp.gap as usize);
                 }
                 if R_IsNA(tmp.r) || R_IsNA(tmp.i) {
-                    let enc = EncodeReal0(NA_REAL, w, 0, 0, outdec);
-                    let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                    let s = encode_real(NA_REAL, w, 0, 0, outdec);
                     Rprintf!("{}", s);
                 } else {
-                    let enc_re = EncodeReal0(tmp.r, wr, dr, er, outdec);
-                    let s_re = std::ffi::CStr::from_ptr(enc_re).to_str().unwrap_or("");
+                    let s_re = encode_real(tmp.r, wr, dr, er, outdec);
                     if ISNAN(tmp.i) {
                         Rprintf!("{}+NaNi", s_re);
                     } else if tmp.i >= 0.0 {
-                        let enc_im = EncodeReal0(tmp.i, wi, di, ei, outdec);
-                        let s_im = std::ffi::CStr::from_ptr(enc_im).to_str().unwrap_or("");
+                        let s_im = encode_real(tmp.i, wi, di, ei, outdec);
                         Rprintf!("{}+{}i", s_re, s_im);
                     } else {
-                        let enc_im = EncodeReal0(-tmp.i, wi, di, ei, outdec);
-                        let s_im = std::ffi::CStr::from_ptr(enc_im).to_str().unwrap_or("");
+                        let s_im = encode_real(-tmp.i, wi, di, ei, outdec);
                         Rprintf!("{}-{}i", s_re, s_im);
                     }
                 }
@@ -963,14 +1162,14 @@ unsafe fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     }
 }
 
-unsafe fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEXP) {
-    unsafe {
+fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEXP) {
+    {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
-        formatStringS(x, n, &mut w, quote);
-        formatStringS(names, n, &mut wn, 0);
+        w = format_string_width(x, n, quote);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -997,8 +1196,7 @@ unsafe fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEX
                 if k >= n {
                     break;
                 }
-                let enc = EncodeString(STRING_ELT(x, k), w, quote, Rprt_adj_right);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_string_elt(STRING_ELT(x, k), w, quote, Rprt_adj_right);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -1008,14 +1206,14 @@ unsafe fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEX
     }
 }
 
-unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
-    unsafe {
+fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
+    {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
-        formatRawS(x, n, &mut w);
-        formatStringS(names, n, &mut wn, 0);
+        w = format_raw_s_width(x, n);
+        wn = format_string_width(names, n, 0);
         if w < wn {
             w = wn;
         }
@@ -1044,8 +1242,7 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                 if k >= n {
                     break;
                 }
-                let enc = EncodeString(STRING_ELT(names, k as i64), w, 0, Rprt_adj_right);
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_string_elt(STRING_ELT(names, k as i64), w, 0, Rprt_adj_right);
                 Rprintf!("{}{:width$}", s, "", width = rp.gap as usize);
                 j += 1;
             }
@@ -1058,8 +1255,7 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
                     break;
                 }
                 let val = RAW_ELT(x, k as c_int);
-                let enc = EncodeRaw(val, empty_prefix.as_ptr());
-                let s = std::ffi::CStr::from_ptr(enc).to_str().unwrap_or("");
+                let s = encode_raw(val, empty_prefix.as_ptr());
                 Rprintf!(
                     "{:pad$}{}{:gap$}",
                     "",
@@ -1080,11 +1276,10 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 // printNamedVector -- exported
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
-    unsafe {
-        if !title.is_null() {
-            let s = std::ffi::CStr::from_ptr(title).to_str().unwrap_or("");
-            Rprintf!("{}\n", s);
+pub fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
+    {
+        if let Some(title) = title_string(title) {
+            Rprintf!("{}\n", title);
         }
 
         if x.is_null() {
