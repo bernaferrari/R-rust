@@ -38,10 +38,11 @@ fn alloc_drawstate(dest: drawing) -> drawstate {
     let Some(data) = ptr_mut(state) else {
         return ptr::null_mut();
     };
-    // Zero the freshly allocated state before publishing it.
-    unsafe { ptr::write_bytes(state as *mut u8, 0, std::mem::size_of::<drawstruct>()) };
-    data.dest = dest;
-    data.hue = Black;
+    *data = drawstruct {
+        dest,
+        hue: Black,
+        ..Default::default()
+    };
     state
 }
 

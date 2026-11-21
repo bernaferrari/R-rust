@@ -57,7 +57,7 @@ fn install_items(parent: menu, items: *mut MenuItem) {
     let mut idx = 0usize;
     loop {
         // Walk the caller's sentinel-terminated `MenuItem` array.
-        let Some(item) = ptr_ref(unsafe { items.add(idx) }) else {
+        let Some(item) = ptr_ref(items.wrapping_add(idx)) else {
             break;
         };
         if item.nm.is_null() && item.fn_.is_none() && item.key == 0 {
