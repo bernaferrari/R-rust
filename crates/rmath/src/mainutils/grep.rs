@@ -26,6 +26,7 @@ use std::os::raw::{c_char, c_int};
 
 use fancy_regex::{Regex as PerlInnerRegex, RegexBuilder as PerlRegexBuilder};
 
+use crate::mainutils::essentials::{set_integer_checked, set_logical_checked};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -93,12 +94,11 @@ fn NA_STRING() -> SEXP {
 }
 
 #[inline(always)]
-unsafe fn isNA_STRING(s: SEXP) -> bool {
+fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return true;
     }
-    let gp = unsafe { (*s).sxpinfo.gp() };
-    gp & 1 != 0
+    LEVELS(s) & 1 != 0
 }
 
 /// isString check -- STRSXP type.
@@ -113,55 +113,38 @@ fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
-#[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(s) }
-}
-
 /// checkArity -- stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
 /// asLogical -- extract logical value from scalar.
 #[inline(always)]
-unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            let p = LOGICAL(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else if t == SEXPTYPE::INTSXP {
-            let p = INTEGER(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else {
-            NA_INTEGER
-        }
+fn asLogical(x: SEXP) -> c_int {
+    if x.is_null() || XLENGTH(x) == 0 {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        INTEGER_ELT(x, 0)
+    } else {
+        NA_INTEGER
     }
 }
 
 /// asBool2 -- extract boolean from scalar (with error on NA).
 #[inline(always)]
-unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
-    unsafe {
-        let v = asLogical(x);
-        if v == NA_INTEGER {
-            std::panic::panic_any(RError {
-                message: "invalid 'logical' argument, NA value".to_string(),
-            });
-        }
-        v != 0
+fn asBool2(x: SEXP, _call: SEXP) -> bool {
+    let v = asLogical(x);
+    if v == NA_INTEGER {
+        std::panic::panic_any(RError {
+            message: "invalid 'logical' argument, NA value".to_string(),
+        });
     }
+    v != 0
 }
 
 #[inline(always)]
@@ -170,45 +153,51 @@ fn PRIMVAL(op: SEXP) -> c_int {
 }
 
 #[inline(always)]
-unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+fn R_NamesSymbol() -> SEXP {
+    crate::sexp::attrib_core::R_NamesSymbol()
 }
 
 #[inline(always)]
-unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, which) }
+fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+    crate::sexp::attrib_core::getAttrib(x, which)
 }
 
 #[inline(always)]
-unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
-        crate::eval::attrib_core::setAttrib(x, which, value);
-    }
+fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    // SAFETY: `x`, `which` and `value` are live, rooted nodes of the current
+    // builtin call; the evaluator setter keeps GNU attribute normalization.
+    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) };
+}
+
+/// Text of a CHARSXP as GNU `CHAR(x)` exposes it, lossily decoded.
+fn char_string(x: SEXP) -> String {
+    String::from_utf8_lossy(&crate::mainutils::printutils::charsxp_bytes(x)).into_owned()
+}
+
+/// Checked CHARSXP holding `bytes`, matching
+/// `Rf_mkChar(CString::new(bytes).unwrap_or_default())`: an interior NUL
+/// yields the empty string.
+fn mk_char_cstring(bytes: &[u8]) -> SEXP {
+    let bytes = if bytes.contains(&0) { &[][..] } else { bytes };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .allocate(|arena| Some(arena.alloc_charsxp(bytes)))
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// ScalarString -- create scalar STRSXP.
 #[inline(always)]
-unsafe fn ScalarString(x: SEXP) -> SEXP {
+fn ScalarString(x: SEXP) -> SEXP {
     Rf_ScalarString(x)
 }
 
-/// mkChar -- create CHARSXP from C string.
 #[inline(always)]
-unsafe fn mkChar(s: *const c_char) -> SEXP {
-    unsafe { Rf_mkChar(s) }
-}
-
-#[inline(always)]
-unsafe fn allocVector<T: Into<crate::sexp::ffi::SEXPTYPE>>(
+fn allocVector<T: Into<crate::sexp::ffi::SEXPTYPE>>(
     sexptype: T,
     length: crate::sexp::ffi::R_xlen_t,
 ) -> SEXP {
     crate::sexp::constructors::Rf_allocVector3(sexptype, length)
-}
-
-#[inline(always)]
-unsafe fn install(name: *const c_char) -> SEXP {
-    unsafe { crate::sexp::symbol::Rf_install(name) }
 }
 
 /// Rf_warning -- issue a warning (forward to errors module).
@@ -224,30 +213,6 @@ fn Rf_error_fmt(msg: &str) -> ! {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
-}
-
-/// Convert a C string to a Rust &str (simplified, assumes ASCII/UTF-8).
-#[inline(always)]
-unsafe fn cstr_to_str(s: *const c_char) -> &'static str {
-    unsafe {
-        if s.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(s).to_str().unwrap_or("")
-        }
-    }
-}
-
-/// Safe CStr to owned String.
-#[inline(always)]
-unsafe fn cstr_to_string(s: *const c_char) -> String {
-    unsafe {
-        if s.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr(s).to_string_lossy().into_owned()
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1390,15 +1355,11 @@ impl GroupNames {
 /// Returns byte offset of first match, or -1.
 ///
 /// Port of R's `R_grep_fixed` from grep.c.
-pub unsafe fn R_grep_fixed(pat: *const c_char, target: *const c_char, ignore_case: c_int) -> c_int {
-    unsafe {
-        if pat.is_null() || target.is_null() {
-            return -1;
-        }
-        let pat_bytes = CStr::from_ptr(pat).to_bytes();
-        let target_bytes = CStr::from_ptr(target).to_bytes();
-        R_grep_fixed_inner(pat_bytes, target_bytes, ignore_case != 0)
-    }
+pub fn R_grep_fixed(pat: Option<&CStr>, target: Option<&CStr>, ignore_case: c_int) -> c_int {
+    let (Some(pat), Some(target)) = (pat, target) else {
+        return -1;
+    };
+    R_grep_fixed_inner(pat.to_bytes(), target.to_bytes(), ignore_case != 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -1411,174 +1372,172 @@ pub unsafe fn R_grep_fixed(pat: *const c_char, target: *const c_char, ignore_cas
 ///
 /// Port of grep.c:do_grep. Handles fixed=TRUE with native matching,
 /// and ERE regex for extended=TRUE (the default).
-pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = env;
-        checkArity(op, args);
+pub fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = env;
+    checkArity(op, args);
 
-        let mut args = args;
-        let pat = CAR(args);
-        args = CDR(args);
-        let text = CAR(args);
-        args = CDR(args);
-        let igcase_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let value_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _perl_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let fixed_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _useBytes = asBool2(CAR(args), call);
-        args = CDR(args);
-        let invert = asBool2(CAR(args), call);
+    let mut args = args;
+    let pat = CAR(args);
+    args = CDR(args);
+    let text = CAR(args);
+    args = CDR(args);
+    let igcase_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let value_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _perl_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let fixed_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _useBytes = asBool2(CAR(args), call);
+    args = CDR(args);
+    let invert = asBool2(CAR(args), call);
 
-        if !isString(pat) || LENGTH(pat) < 1 {
-            Rf_error_fmt("invalid 'pattern' argument");
-        }
-        if !isString(text) {
-            Rf_error_fmt("invalid 'text' argument");
-        }
+    if !isString(pat) || LENGTH(pat) < 1 {
+        Rf_error_fmt("invalid 'pattern' argument");
+    }
+    if !isString(text) {
+        Rf_error_fmt("invalid 'text' argument");
+    }
 
-        let n = XLENGTH(text);
+    let n = XLENGTH(text);
 
-        // Handle NA pattern
-        if isNA_STRING(STRING_ELT(pat, 0)) {
-            if value_opt {
-                let ans = allocVector(SEXPTYPE::STRSXP, n);
-                let _ans_guard = protect(ans);
-                for i in 0..n {
-                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-                }
-                return ans;
-            } else if PRIMVAL(op) != 0 {
-                // grepl case
-                let ans = allocVector(SEXPTYPE::LGLSXP, n);
-                let _ans_guard = protect(ans);
-                let p = LOGICAL(ans);
-                for i in 0..n {
-                    *p.add(i as usize) = NA_LOGICAL;
-                }
-                return ans;
-            } else {
-                let ans = allocVector(SEXPTYPE::INTSXP, n);
-                let _ans_guard = protect(ans);
-                let p = INTEGER(ans);
-                for i in 0..n {
-                    *p.add(i as usize) = NA_INTEGER;
-                }
-                return ans;
-            }
-        }
-
-        // Extract pattern as string
-        let pat_charsxp = STRING_ELT(pat, 0);
-        let pat_str = cstr_to_string(CHAR(pat_charsxp));
-
-        // Compile pattern if needed
-        let ere_nodes = if !fixed_opt {
-            match compile_ere(&pat_str) {
-                Ok(nodes) => Some(nodes),
-                Err(e) => {
-                    Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
-                }
-            }
-        } else {
-            None
-        };
-
-        // For grep (not grepl): collect matching indices
-        let mut match_indices: Vec<R_xlen_t> = Vec::new();
-
+    // Handle NA pattern
+    if isNA_STRING(STRING_ELT(pat, 0)) {
         if value_opt {
-            let mut matched_at: Vec<R_xlen_t> = Vec::new();
-            for i in 0..n {
-                let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-                if isNA_STRING(text_charsxp) {
-                    continue;
-                }
-                let text_str = cstr_to_string(CHAR(text_charsxp));
-                let matched = match_str(
-                    &text_str,
-                    &pat_str,
-                    fixed_opt,
-                    ere_nodes.as_deref(),
-                    igcase_opt,
-                );
-                if if invert { !matched } else { matched } {
-                    matched_at.push(i);
-                }
-            }
-            let ans = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
+            let ans = allocVector(SEXPTYPE::STRSXP, n);
             let _ans_guard = protect(ans);
-            for (j, i) in matched_at.iter().enumerate() {
-                SET_STRING_ELT(ans, j as R_xlen_t, STRING_ELT(text, *i));
-            }
-            let names = getAttrib(text, crate::eval::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == n
-            {
-                let out_names = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
-                let _names_guard = protect(out_names);
-                for (j, i) in matched_at.iter().enumerate() {
-                    SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, *i));
-                }
-                setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), out_names);
+            for i in 0..n {
+                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
             }
             return ans;
         } else if PRIMVAL(op) != 0 {
-            // grepl: return logical vector
+            // grepl case
             let ans = allocVector(SEXPTYPE::LGLSXP, n);
             let _ans_guard = protect(ans);
-            let p = LOGICAL(ans);
             for i in 0..n {
-                let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-                if isNA_STRING(text_charsxp) {
-                    *p.add(i as usize) = NA_LOGICAL;
-                    continue;
-                }
-                let text_str = cstr_to_string(CHAR(text_charsxp));
-                let matched = match_str(
-                    &text_str,
-                    &pat_str,
-                    fixed_opt,
-                    ere_nodes.as_deref(),
-                    igcase_opt,
-                );
-                *p.add(i as usize) = if invert { !matched } else { matched } as c_int;
+                set_logical_checked(ans, (i as usize) as R_xlen_t, NA_LOGICAL);
             }
             return ans;
         } else {
-            // grep: return integer indices
-            for i in 0..n {
-                let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-                if isNA_STRING(text_charsxp) {
-                    continue;
-                }
-                let text_str = cstr_to_string(CHAR(text_charsxp));
-                let matched = match_str(
-                    &text_str,
-                    &pat_str,
-                    fixed_opt,
-                    ere_nodes.as_deref(),
-                    igcase_opt,
-                );
-                let m = if invert { !matched } else { matched };
-                if m {
-                    match_indices.push(i + 1); // R uses 1-based indexing
-                }
-            }
-            let cnt = match_indices.len() as R_xlen_t;
-            let ans = allocVector(SEXPTYPE::INTSXP, cnt);
+            let ans = allocVector(SEXPTYPE::INTSXP, n);
             let _ans_guard = protect(ans);
-            let p = INTEGER(ans);
-            for (j, &idx) in match_indices.iter().enumerate() {
-                *p.add(j) = idx as c_int;
+            for i in 0..n {
+                set_integer_checked(ans, (i as usize) as R_xlen_t, NA_INTEGER);
             }
             return ans;
         }
+    }
+
+    // Extract pattern as string
+    let pat_charsxp = STRING_ELT(pat, 0);
+    let pat_str = char_string(pat_charsxp);
+
+    // Compile pattern if needed
+    let ere_nodes = if !fixed_opt {
+        match compile_ere(&pat_str) {
+            Ok(nodes) => Some(nodes),
+            Err(e) => {
+                Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
+            }
+        }
+    } else {
+        None
+    };
+
+    // For grep (not grepl): collect matching indices
+    let mut match_indices: Vec<R_xlen_t> = Vec::new();
+
+    if value_opt {
+        let mut matched_at: Vec<R_xlen_t> = Vec::new();
+        for i in 0..n {
+            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+            if isNA_STRING(text_charsxp) {
+                continue;
+            }
+            let text_str = char_string(text_charsxp);
+            let matched = match_str(
+                &text_str,
+                &pat_str,
+                fixed_opt,
+                ere_nodes.as_deref(),
+                igcase_opt,
+            );
+            if if invert { !matched } else { matched } {
+                matched_at.push(i);
+            }
+        }
+        let ans = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
+        let _ans_guard = protect(ans);
+        for (j, i) in matched_at.iter().enumerate() {
+            SET_STRING_ELT(ans, j as R_xlen_t, STRING_ELT(text, *i));
+        }
+        let names = getAttrib(text, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+        {
+            let out_names = allocVector(SEXPTYPE::STRSXP, matched_at.len() as R_xlen_t);
+            let _names_guard = protect(out_names);
+            for (j, i) in matched_at.iter().enumerate() {
+                SET_STRING_ELT(out_names, j as R_xlen_t, STRING_ELT(names, *i));
+            }
+            setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), out_names);
+        }
+        return ans;
+    } else if PRIMVAL(op) != 0 {
+        // grepl: return logical vector
+        let ans = allocVector(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
+        for i in 0..n {
+            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+            if isNA_STRING(text_charsxp) {
+                set_logical_checked(ans, (i as usize) as R_xlen_t, NA_LOGICAL);
+                continue;
+            }
+            let text_str = char_string(text_charsxp);
+            let matched = match_str(
+                &text_str,
+                &pat_str,
+                fixed_opt,
+                ere_nodes.as_deref(),
+                igcase_opt,
+            );
+            set_logical_checked(
+                ans,
+                (i as usize) as R_xlen_t,
+                if invert { !matched } else { matched } as c_int,
+            );
+        }
+        return ans;
+    } else {
+        // grep: return integer indices
+        for i in 0..n {
+            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+            if isNA_STRING(text_charsxp) {
+                continue;
+            }
+            let text_str = char_string(text_charsxp);
+            let matched = match_str(
+                &text_str,
+                &pat_str,
+                fixed_opt,
+                ere_nodes.as_deref(),
+                igcase_opt,
+            );
+            let m = if invert { !matched } else { matched };
+            if m {
+                match_indices.push(i + 1); // R uses 1-based indexing
+            }
+        }
+        let cnt = match_indices.len() as R_xlen_t;
+        let ans = allocVector(SEXPTYPE::INTSXP, cnt);
+        let _ans_guard = protect(ans);
+        for (j, &idx) in match_indices.iter().enumerate() {
+            set_integer_checked(ans, (j) as R_xlen_t, idx as c_int);
+        }
+        return ans;
     }
 }
 
@@ -1613,115 +1572,112 @@ pub(crate) fn ere_is_match(pattern: &str, text: &str, ignore_case: bool) -> bool
 /// SEXP do_gsub(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_gsub. PRIMVAL(op) == 0 for sub(), != 0 for gsub().
-pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = env;
-        checkArity(op, args);
+pub fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = env;
+    checkArity(op, args);
 
-        let global = PRIMVAL(op) != 0;
+    let global = PRIMVAL(op) != 0;
 
-        let mut args = args;
-        let pat = CAR(args);
-        args = CDR(args);
-        let rep = CAR(args);
-        args = CDR(args);
-        let text = CAR(args);
-        args = CDR(args);
-        let igcase_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _perl_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let fixed_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _useBytes = asBool2(CAR(args), call);
-        args = CDR(args);
+    let mut args = args;
+    let pat = CAR(args);
+    args = CDR(args);
+    let rep = CAR(args);
+    args = CDR(args);
+    let text = CAR(args);
+    args = CDR(args);
+    let igcase_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _perl_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let fixed_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _useBytes = asBool2(CAR(args), call);
+    args = CDR(args);
 
-        if !isString(pat) || LENGTH(pat) < 1 {
-            Rf_error_fmt("invalid 'pattern' argument");
-        }
-        if !isString(rep) || LENGTH(rep) < 1 {
-            Rf_error_fmt("invalid 'replacement' argument");
-        }
-        if !isString(text) {
-            Rf_error_fmt("invalid 'text' argument");
-        }
+    if !isString(pat) || LENGTH(pat) < 1 {
+        Rf_error_fmt("invalid 'pattern' argument");
+    }
+    if !isString(rep) || LENGTH(rep) < 1 {
+        Rf_error_fmt("invalid 'replacement' argument");
+    }
+    if !isString(text) {
+        Rf_error_fmt("invalid 'text' argument");
+    }
 
-        let n = XLENGTH(text);
+    let n = XLENGTH(text);
 
-        // Handle NA pattern
-        if isNA_STRING(STRING_ELT(pat, 0)) {
-            let ans = allocVector(SEXPTYPE::STRSXP, n);
-            let _ans_guard = protect(ans);
-            for i in 0..n {
-                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-            }
-            return ans;
-        }
-
-        // Extract pattern and replacement strings
-        let pat_charsxp = STRING_ELT(pat, 0);
-        let pat_str = cstr_to_string(CHAR(pat_charsxp));
-
-        let rep_charsxp = STRING_ELT(rep, 0);
-        let rep_str = cstr_to_string(CHAR(rep_charsxp));
-
-        // Compile ERE if needed
-        let ere_nodes = if !fixed_opt {
-            match compile_ere(&pat_str) {
-                Ok(nodes) => Some(nodes),
-                Err(e) => {
-                    Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
-                }
-            }
-        } else {
-            None
-        };
-
-        // Process each text element
+    // Handle NA pattern
+    if isNA_STRING(STRING_ELT(pat, 0)) {
         let ans = allocVector(SEXPTYPE::STRSXP, n);
         let _ans_guard = protect(ans);
         for i in 0..n {
-            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-            if isNA_STRING(text_charsxp) {
-                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-                continue;
-            }
-            if isNA_STRING(rep_charsxp) {
-                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-                continue;
-            }
-
-            let text_str = cstr_to_string(CHAR(text_charsxp));
-
-            let result_bytes = if fixed_opt {
-                R_gsub_fixed_inner(
-                    pat_str.as_bytes(),
-                    text_str.as_bytes(),
-                    rep_str.as_bytes(),
-                    global,
-                    igcase_opt,
-                )
-            } else if let Some(ref nodes) = ere_nodes {
-                ere_gsub(
-                    nodes,
-                    text_str.as_bytes(),
-                    rep_str.as_bytes(),
-                    global,
-                    igcase_opt,
-                )
-            } else {
-                // No match possible
-                text_str.as_bytes().to_vec()
-            };
-
-            // Convert result to CHARSXP
-            let result_cstr = std::ffi::CString::new(result_bytes).unwrap_or_default();
-            let result_charsxp = Rf_mkChar(result_cstr.as_ptr());
-            SET_STRING_ELT(ans, i as R_xlen_t, result_charsxp);
+            SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
         }
-        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(ans, text);
-        ans
+        return ans;
     }
+
+    // Extract pattern and replacement strings
+    let pat_charsxp = STRING_ELT(pat, 0);
+    let pat_str = char_string(pat_charsxp);
+
+    let rep_charsxp = STRING_ELT(rep, 0);
+    let rep_str = char_string(rep_charsxp);
+
+    // Compile ERE if needed
+    let ere_nodes = if !fixed_opt {
+        match compile_ere(&pat_str) {
+            Ok(nodes) => Some(nodes),
+            Err(e) => {
+                Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
+            }
+        }
+    } else {
+        None
+    };
+
+    // Process each text element
+    let ans = allocVector(SEXPTYPE::STRSXP, n);
+    let _ans_guard = protect(ans);
+    for i in 0..n {
+        let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+        if isNA_STRING(text_charsxp) {
+            SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+            continue;
+        }
+        if isNA_STRING(rep_charsxp) {
+            SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+            continue;
+        }
+
+        let text_str = char_string(text_charsxp);
+
+        let result_bytes = if fixed_opt {
+            R_gsub_fixed_inner(
+                pat_str.as_bytes(),
+                text_str.as_bytes(),
+                rep_str.as_bytes(),
+                global,
+                igcase_opt,
+            )
+        } else if let Some(ref nodes) = ere_nodes {
+            ere_gsub(
+                nodes,
+                text_str.as_bytes(),
+                rep_str.as_bytes(),
+                global,
+                igcase_opt,
+            )
+        } else {
+            // No match possible
+            text_str.as_bytes().to_vec()
+        };
+
+        // Convert result to CHARSXP
+        let result_charsxp = mk_char_cstring(&result_bytes);
+        SET_STRING_ELT(ans, i as R_xlen_t, result_charsxp);
+    }
+    crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(ans, text);
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1734,106 +1690,105 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Port of grep.c:do_regexpr. Returns a vector of match positions,
 /// with match.length attribute.
-pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (op, env);
-        checkArity(op, args);
+pub fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (op, env);
+    checkArity(op, args);
 
-        let mut args = args;
-        let pat = CAR(args);
-        args = CDR(args);
-        let text = CAR(args);
-        args = CDR(args);
-        let igcase_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _perl_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let fixed_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _useBytes = asBool2(CAR(args), call);
-        args = CDR(args);
+    let mut args = args;
+    let pat = CAR(args);
+    args = CDR(args);
+    let text = CAR(args);
+    args = CDR(args);
+    let igcase_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _perl_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let fixed_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _useBytes = asBool2(CAR(args), call);
+    args = CDR(args);
 
-        if !isString(pat) || LENGTH(pat) < 1 || isNA_STRING(STRING_ELT(pat, 0)) {
-            Rf_error_fmt("invalid 'pattern' argument");
-        }
-        if !isString(text) {
-            Rf_error_fmt("invalid 'text' argument");
-        }
+    if !isString(pat) || LENGTH(pat) < 1 || isNA_STRING(STRING_ELT(pat, 0)) {
+        Rf_error_fmt("invalid 'pattern' argument");
+    }
+    if !isString(text) {
+        Rf_error_fmt("invalid 'text' argument");
+    }
 
-        let n = XLENGTH(text);
+    let n = XLENGTH(text);
 
-        // Extract pattern
-        let pat_charsxp = STRING_ELT(pat, 0);
-        let pat_str = cstr_to_string(CHAR(pat_charsxp));
+    // Extract pattern
+    let pat_charsxp = STRING_ELT(pat, 0);
+    let pat_str = char_string(pat_charsxp);
 
-        // Compile ERE if needed
-        let ere_nodes = if !fixed_opt {
-            match compile_ere(&pat_str) {
-                Ok(nodes) => Some(nodes),
-                Err(e) => {
-                    Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
-                }
+    // Compile ERE if needed
+    let ere_nodes = if !fixed_opt {
+        match compile_ere(&pat_str) {
+            Ok(nodes) => Some(nodes),
+            Err(e) => {
+                Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
             }
+        }
+    } else {
+        None
+    };
+
+    // Allocate result vectors
+    let ans = allocVector(SEXPTYPE::INTSXP, n);
+    let _ans_guard = protect(ans);
+    let matchlen = allocVector(SEXPTYPE::INTSXP, n);
+    let _matchlen_guard = protect(matchlen);
+
+    // Initialize to -1 (no match)
+    for i in 0..n {
+        set_integer_checked(ans, (i as usize) as R_xlen_t, -1);
+        set_integer_checked(matchlen, (i as usize) as R_xlen_t, -1);
+    }
+
+    // Process each text element
+    for i in 0..n {
+        let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+        if isNA_STRING(text_charsxp) {
+            set_integer_checked(ans, (i as usize) as R_xlen_t, NA_INTEGER);
+            set_integer_checked(matchlen, (i as usize) as R_xlen_t, NA_INTEGER);
+            continue;
+        }
+
+        let text_str = char_string(text_charsxp);
+
+        let result = if fixed_opt {
+            let pos = R_grep_fixed_inner(pat_str.as_bytes(), text_str.as_bytes(), igcase_opt);
+            if pos >= 0 {
+                Some(EreMatch {
+                    start: pos as usize,
+                    end: pos as usize + pat_str.len(),
+                })
+            } else {
+                None
+            }
+        } else if let Some(ref nodes) = ere_nodes {
+            ere_search(nodes, text_str.as_bytes(), igcase_opt)
         } else {
             None
         };
 
-        // Allocate result vectors
-        let ans = allocVector(SEXPTYPE::INTSXP, n);
-        let _ans_guard = protect(ans);
-        let matchlen = allocVector(SEXPTYPE::INTSXP, n);
-        let _matchlen_guard = protect(matchlen);
-        let p_ans = INTEGER(ans);
-        let p_matchlen = INTEGER(matchlen);
-
-        // Initialize to -1 (no match)
-        for i in 0..n {
-            *p_ans.add(i as usize) = -1;
-            *p_matchlen.add(i as usize) = -1;
+        if let Some(m) = result {
+            // R uses 1-based indexing
+            set_integer_checked(ans, (i as usize) as R_xlen_t, (m.start + 1) as c_int);
+            set_integer_checked(
+                matchlen,
+                (i as usize) as R_xlen_t,
+                (m.end - m.start) as c_int,
+            );
         }
-
-        // Process each text element
-        for i in 0..n {
-            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-            if isNA_STRING(text_charsxp) {
-                *p_ans.add(i as usize) = NA_INTEGER;
-                *p_matchlen.add(i as usize) = NA_INTEGER;
-                continue;
-            }
-
-            let text_str = cstr_to_string(CHAR(text_charsxp));
-
-            let result = if fixed_opt {
-                let pos = R_grep_fixed_inner(pat_str.as_bytes(), text_str.as_bytes(), igcase_opt);
-                if pos >= 0 {
-                    Some(EreMatch {
-                        start: pos as usize,
-                        end: pos as usize + pat_str.len(),
-                    })
-                } else {
-                    None
-                }
-            } else if let Some(ref nodes) = ere_nodes {
-                ere_search(nodes, text_str.as_bytes(), igcase_opt)
-            } else {
-                None
-            };
-
-            if let Some(m) = result {
-                // R uses 1-based indexing
-                *p_ans.add(i as usize) = (m.start + 1) as c_int;
-                *p_matchlen.add(i as usize) = (m.end - m.start) as c_int;
-            }
-        }
-
-        // Set match.length attribute
-        // Use install for the attribute name
-        let match_len_str = c"match.length";
-        let names_sym = Rf_mkChar(match_len_str.as_ptr());
-        setAttrib(ans as SEXP, names_sym, matchlen);
-
-        ans
     }
+
+    // Set match.length attribute
+    // Use install for the attribute name
+    let names_sym = mk_char_cstring(b"match.length");
+    setAttrib(ans as SEXP, names_sym, matchlen);
+
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1846,104 +1801,101 @@ pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Port of grep.c:do_regexec. Returns match positions for the overall match
 /// and up to 9 capture groups.
-pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (op, env);
-        checkArity(op, args);
+pub fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (op, env);
+    checkArity(op, args);
 
-        let mut args = args;
-        let pat = CAR(args);
-        args = CDR(args);
-        let text = CAR(args);
-        args = CDR(args);
-        let igcase_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _perl_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let fixed_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _useBytes = asBool2(CAR(args), call);
-        args = CDR(args);
+    let mut args = args;
+    let pat = CAR(args);
+    args = CDR(args);
+    let text = CAR(args);
+    args = CDR(args);
+    let igcase_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _perl_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let fixed_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _useBytes = asBool2(CAR(args), call);
+    args = CDR(args);
 
-        if !isString(pat) || LENGTH(pat) < 1 || isNA_STRING(STRING_ELT(pat, 0)) {
-            Rf_error_fmt("invalid 'pattern' argument");
-        }
-        if !isString(text) {
-            Rf_error_fmt("invalid 'text' argument");
-        }
+    if !isString(pat) || LENGTH(pat) < 1 || isNA_STRING(STRING_ELT(pat, 0)) {
+        Rf_error_fmt("invalid 'pattern' argument");
+    }
+    if !isString(text) {
+        Rf_error_fmt("invalid 'text' argument");
+    }
 
-        let n = XLENGTH(text);
+    let n = XLENGTH(text);
 
-        // Extract pattern
-        let pat_charsxp = STRING_ELT(pat, 0);
-        let pat_str = cstr_to_string(CHAR(pat_charsxp));
+    // Extract pattern
+    let pat_charsxp = STRING_ELT(pat, 0);
+    let pat_str = char_string(pat_charsxp);
 
-        // Compile ERE if needed
-        let _ere_nodes = if !fixed_opt {
-            match compile_ere(&pat_str) {
-                Ok(nodes) => Some(nodes),
-                Err(e) => {
-                    Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
-                }
+    // Compile ERE if needed
+    let _ere_nodes = if !fixed_opt {
+        match compile_ere(&pat_str) {
+            Ok(nodes) => Some(nodes),
+            Err(e) => {
+                Rf_error_fmt(&format!("invalid regular expression '{}': {}", pat_str, e));
             }
+        }
+    } else {
+        None
+    };
+
+    // regexec returns a list of length n; each element is a -1 for no match,
+    // or an integer vector [start, end, capture_start, capture_end, ...]
+    // Since our ERE engine doesn't support capture groups, we return
+    // [start, end] for the overall match only.
+    let ans = allocVector(SEXPTYPE::VECSXP, n);
+    let _ans_guard = protect(ans);
+
+    for i in 0..n {
+        let text_charsxp = STRING_ELT(text, i as R_xlen_t);
+        if isNA_STRING(text_charsxp) {
+            let na_vec = allocVector(SEXPTYPE::INTSXP, 1);
+            let _na_vec_guard = protect(na_vec);
+            set_integer_checked(na_vec, 0, NA_INTEGER);
+            SET_VECTOR_ELT(ans, i as R_xlen_t, na_vec);
+            continue;
+        }
+
+        let text_str = char_string(text_charsxp);
+
+        let result = if fixed_opt {
+            let pos = R_grep_fixed_inner(pat_str.as_bytes(), text_str.as_bytes(), igcase_opt);
+            if pos >= 0 {
+                Some(EreMatch {
+                    start: pos as usize,
+                    end: pos as usize + pat_str.len(),
+                })
+            } else {
+                None
+            }
+        } else if let Some(ref nodes) = _ere_nodes {
+            ere_search(nodes, text_str.as_bytes(), igcase_opt)
         } else {
             None
         };
 
-        // regexec returns a list of length n; each element is a -1 for no match,
-        // or an integer vector [start, end, capture_start, capture_end, ...]
-        // Since our ERE engine doesn't support capture groups, we return
-        // [start, end] for the overall match only.
-        let ans = allocVector(SEXPTYPE::VECSXP, n);
-        let _ans_guard = protect(ans);
-
-        for i in 0..n {
-            let text_charsxp = STRING_ELT(text, i as R_xlen_t);
-            if isNA_STRING(text_charsxp) {
-                let na_vec = allocVector(SEXPTYPE::INTSXP, 1);
-                let _na_vec_guard = protect(na_vec);
-                *INTEGER(na_vec) = NA_INTEGER;
-                SET_VECTOR_ELT(ans, i as R_xlen_t, na_vec);
-                continue;
-            }
-
-            let text_str = cstr_to_string(CHAR(text_charsxp));
-
-            let result = if fixed_opt {
-                let pos = R_grep_fixed_inner(pat_str.as_bytes(), text_str.as_bytes(), igcase_opt);
-                if pos >= 0 {
-                    Some(EreMatch {
-                        start: pos as usize,
-                        end: pos as usize + pat_str.len(),
-                    })
-                } else {
-                    None
-                }
-            } else if let Some(ref nodes) = _ere_nodes {
-                ere_search(nodes, text_str.as_bytes(), igcase_opt)
-            } else {
-                None
-            };
-
-            if let Some(m) = result {
-                let match_vec = allocVector(SEXPTYPE::INTSXP, 2);
-                let _match_vec_guard = protect(match_vec);
-                let p = INTEGER(match_vec);
-                // R uses 1-based indexing for start, and end is the position after the match
-                *p = (m.start + 1) as c_int;
-                *p.add(1) = m.end as c_int;
-                SET_VECTOR_ELT(ans, i as R_xlen_t, match_vec);
-            } else {
-                // No match: -1, -1
-                let no_match = allocVector(SEXPTYPE::INTSXP, 1);
-                let _no_match_guard = protect(no_match);
-                *INTEGER(no_match) = -1;
-                SET_VECTOR_ELT(ans, i as R_xlen_t, no_match);
-            }
+        if let Some(m) = result {
+            let match_vec = allocVector(SEXPTYPE::INTSXP, 2);
+            let _match_vec_guard = protect(match_vec);
+            // R uses 1-based indexing for start, and end is the position after the match
+            set_integer_checked(match_vec, 0, (m.start + 1) as c_int);
+            set_integer_checked(match_vec, (1) as R_xlen_t, m.end as c_int);
+            SET_VECTOR_ELT(ans, i as R_xlen_t, match_vec);
+        } else {
+            // No match: -1, -1
+            let no_match = allocVector(SEXPTYPE::INTSXP, 1);
+            let _no_match_guard = protect(no_match);
+            set_integer_checked(no_match, 0, -1);
+            SET_VECTOR_ELT(ans, i as R_xlen_t, no_match);
         }
-
-        ans
     }
+
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1955,66 +1907,66 @@ pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// SEXP do_grepraw(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_grepraw. Performs fixed-byte matching on raw vectors.
-pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (op, env);
-        checkArity(op, args);
+pub fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    let _ = (op, env);
+    checkArity(op, args);
 
-        let mut args = args;
-        let pat = CAR(args);
-        args = CDR(args);
-        let text = CAR(args);
-        args = CDR(args);
-        let _offset = CAR(args);
-        args = CDR(args);
-        let igcase_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let fixed_opt = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _value = CAR(args);
-        args = CDR(args);
-        let _all_matches = asBool2(CAR(args), call);
-        args = CDR(args);
-        let _invert = asBool2(CAR(args), call);
+    let mut args = args;
+    let pat = CAR(args);
+    args = CDR(args);
+    let text = CAR(args);
+    args = CDR(args);
+    let _offset = CAR(args);
+    args = CDR(args);
+    let igcase_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let fixed_opt = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _value = CAR(args);
+    args = CDR(args);
+    let _all_matches = asBool2(CAR(args), call);
+    args = CDR(args);
+    let _invert = asBool2(CAR(args), call);
 
-        if !fixed_opt {
-            Rf_error_fmt("grepRaw only supports fixed = TRUE in this port");
+    if !fixed_opt {
+        Rf_error_fmt("grepRaw only supports fixed = TRUE in this port");
+    }
+
+    if TYPEOF(pat) != SEXPTYPE::RAWSXP {
+        Rf_error_fmt("'pattern' must be a raw vector");
+    }
+    if TYPEOF(text) != SEXPTYPE::RAWSXP {
+        Rf_error_fmt("'text' must be a raw vector");
+    }
+
+    // Get raw bytes from pattern and text
+    let pat_len = XLENGTH(pat) as usize;
+    let text_len = XLENGTH(text) as usize;
+    if pat_len == 0 || text_len == 0 {
+        let ans = allocVector(SEXPTYPE::INTSXP, 0);
+        let _ans_guard = protect(ans);
+        return ans;
+    }
+
+    let owner = crate::mainutils::essentials::active_owner();
+    let pat_bytes: Vec<u8> = crate::mainutils::essentials::owner_sexp(owner, pat)
+        .iter_raw()
+        .collect();
+    let text_bytes: Vec<u8> = crate::mainutils::essentials::owner_sexp(owner, text)
+        .iter_raw()
+        .collect();
+
+    match fixed_search(&text_bytes, &pat_bytes, igcase_opt) {
+        Some(pos) => {
+            let ans = allocVector(SEXPTYPE::INTSXP, 1);
+            let _ans_guard = protect(ans);
+            set_integer_checked(ans, 0, (pos + 1) as c_int); // 1-based
+            ans
         }
-
-        if TYPEOF(pat) != SEXPTYPE::RAWSXP {
-            Rf_error_fmt("'pattern' must be a raw vector");
-        }
-        if TYPEOF(text) != SEXPTYPE::RAWSXP {
-            Rf_error_fmt("'text' must be a raw vector");
-        }
-
-        // Get raw bytes from pattern and text
-        let pat_len = XLENGTH(pat) as usize;
-        let text_len = XLENGTH(text) as usize;
-        if pat_len == 0 || text_len == 0 {
+        None => {
             let ans = allocVector(SEXPTYPE::INTSXP, 0);
             let _ans_guard = protect(ans);
-            return ans;
-        }
-
-        let pat_raw = DATAPTR(pat) as *const u8;
-        let text_raw = DATAPTR(text) as *const u8;
-
-        let pat_slice = std::slice::from_raw_parts(pat_raw, pat_len);
-        let text_slice = std::slice::from_raw_parts(text_raw, text_len);
-
-        match fixed_search(text_slice, pat_slice, igcase_opt) {
-            Some(pos) => {
-                let ans = allocVector(SEXPTYPE::INTSXP, 1);
-                let _ans_guard = protect(ans);
-                *INTEGER(ans) = (pos + 1) as c_int; // 1-based
-                ans
-            }
-            None => {
-                let ans = allocVector(SEXPTYPE::INTSXP, 0);
-                let _ans_guard = protect(ans);
-                ans
-            }
+            ans
         }
     }
 }
@@ -2261,7 +2213,7 @@ mod tests {
                     })
                 };
                 let args = session.sexp(raw_args).expect("owned grepRaw arguments");
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     do_grepraw(
                         R_NilValue(),
                         R_NilValue(),
@@ -2324,19 +2276,13 @@ mod tests {
     fn test_r_grep_fixed() {
         let pat = test_ok(std::ffi::CString::new("world"));
         let target = test_ok(std::ffi::CString::new("hello world"));
-        assert_eq!(unsafe { R_grep_fixed(pat.as_ptr(), target.as_ptr(), 0) }, 6);
+        assert_eq!(R_grep_fixed(Some(&pat), Some(&target), 0), 6);
 
         let target2 = test_ok(std::ffi::CString::new("hello World"));
-        assert_eq!(
-            unsafe { R_grep_fixed(pat.as_ptr(), target2.as_ptr(), 1) },
-            6
-        );
+        assert_eq!(R_grep_fixed(Some(&pat), Some(&target2), 1), 6);
 
         let target3 = test_ok(std::ffi::CString::new("no match"));
-        assert_eq!(
-            unsafe { R_grep_fixed(pat.as_ptr(), target3.as_ptr(), 0) },
-            -1
-        );
+        assert_eq!(R_grep_fixed(Some(&pat), Some(&target3), 0), -1);
     }
 
     // -- ERE compilation tests --
