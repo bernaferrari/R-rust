@@ -1310,6 +1310,23 @@ pub(crate) fn with_required_in_error<R>(f: impl FnOnce(&mut bool) -> R) -> R {
     })
 }
 
+/// Pin the ambient instance's runtime owner, if it has one.
+///
+/// Used when suspending or restoring ambient dispatch: the pin keeps the
+/// previous owner physically live across bootstrap callbacks.
+pub(crate) fn current_runtime_pin() -> Option<super::owner::OwnerPin> {
+    current_instance_ptr().and_then(|pointer| {
+        // SAFETY: strictly-local `runtime_owner` read under P2; the ambient
+        // pointer names a live instance while it is installed as current.
+        unsafe {
+            (*pointer)
+                .runtime_owner
+                .as_ref()
+                .and_then(|owner| owner.pin().ok())
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

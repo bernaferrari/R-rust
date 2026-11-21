@@ -44,9 +44,9 @@ impl ToplevelExprNoGuard {
 }
 impl Drop for ToplevelExprNoGuard {
     fn drop(&mut self) {
-        unsafe {
-            (*self.owner.as_ptr()).error_state.toplevel_expr_no = 0;
-        }
+        self.owner.with_error_state(|state| {
+            state.toplevel_expr_no = 0;
+        });
     }
 }
 
@@ -67,12 +67,7 @@ impl CurrentInstanceGuard {
     /// and restore only its still-live capability on success or unwind.
     pub(crate) fn detached() -> Self {
         let previous = crate::sexp::instance::current_instance_ptr();
-        let previous_pin = previous.and_then(|pointer| unsafe {
-            (*pointer)
-                .runtime_owner
-                .as_ref()
-                .and_then(|owner| owner.pin().ok())
-        });
+        let previous_pin = crate::sexp::instance::current_runtime_pin();
         let previous_liveness =
             previous.map(|pointer| unsafe { crate::sexp::instance::instance_liveness(pointer) });
         let previous_rng = rmath_nmath::rng::swap_rng(None);
@@ -95,12 +90,7 @@ impl CurrentInstanceGuard {
             .clone()
             .map(|owner| owner.pin().expect("cannot activate a closed R owner"));
         let previous = crate::sexp::instance::current_instance_ptr();
-        let previous_pin = previous.and_then(|pointer| unsafe {
-            (*pointer)
-                .runtime_owner
-                .as_ref()
-                .and_then(|owner| owner.pin().ok())
-        });
+        let previous_pin = crate::sexp::instance::current_runtime_pin();
         let previous_liveness =
             previous.map(|owner| unsafe { crate::sexp::instance::instance_liveness(owner) });
         unsafe { replace_current_instance(Some(instance)) };

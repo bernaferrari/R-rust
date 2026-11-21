@@ -154,6 +154,18 @@ impl OwnerPin {
         // strictly-local single-field lend under the contract above.
         unsafe { f(&(*self.as_ptr()).connections_state) }
     }
+
+    /// Lend this owner's error state for a strictly-local update.
+    ///
+    /// Same strictly-local lend contract as [`Self::with_output_capture`].
+    pub(crate) fn with_error_state<R>(
+        &self,
+        f: impl FnOnce(&mut super::instance::ErrorState) -> R,
+    ) -> R {
+        // SAFETY: the pin retains the original live allocation; this is a
+        // strictly-local single-field lend under the contract above.
+        unsafe { f(&mut (*self.as_ptr()).error_state) }
+    }
 }
 
 /// Execution authority exists only inside `with_runtime`. It cannot be cloned
