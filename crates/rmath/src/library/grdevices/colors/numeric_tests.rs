@@ -49,7 +49,7 @@ fn numeric_color_zero_spelling_preserves_each_callers_background_contract() {
     session.with_protected(|| {
         for token in [c"0", c"00", c"0.0", c"0x0", c"0.1", c"1e-100"] {
             assert_eq!(
-                unsafe { super::converters::str2col(token.as_ptr(), 0xff030201) },
+                super::converters::str2col_bytes(token.to_bytes(), 0xff030201),
                 0xff030201
             );
         }

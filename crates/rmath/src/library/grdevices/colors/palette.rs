@@ -42,12 +42,14 @@ pub(crate) extern "C" fn savePalette_impl(save: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Wrapper for inRGBpar3 with void pointer signature (for Rg_set_col_ptrs).
+///
+/// SAFETY: the engine calls this callback with a live SEXP in `x`.
 pub(crate) unsafe extern "C" fn inRGBpar3_dispatch(
     x: *mut std::os::raw::c_void,
     i: c_int,
     bg: c_uint,
 ) -> c_uint {
-    unsafe { inRGBpar3(x as SEXP, i, bg) }
+    inRGBpar3(x as SEXP, i, bg)
 }
 
 pub fn initPalette() {
@@ -59,8 +61,8 @@ pub fn initPalette() {
     );
 }
 
-pub unsafe fn do_palette(val: SEXP) -> SEXP {
-    unsafe {
+pub fn do_palette(val: SEXP) -> SEXP {
+    {
         if Rf_isString(val) == 0 {
             Rf_error(b"invalid argument type\0".as_ptr() as *const c_char);
         }
@@ -72,14 +74,20 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
         let mut i = 0usize;
         while i < ps {
             let color = with_color_state(|state| state.palette[i]);
-            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(color)));
+            SET_STRING_ELT(ans, i as R_xlen_t, mk_char_ptr(incol2name(color)));
             i += 1;
         }
 
         let n = LENGTH(val) as usize;
         if n == 1 {
-            let s = CHAR(STRING_ELT(val, 0));
-            if StrMatch(b"default\0".as_ptr() as *const c_char, s) != 0 {
+            // StrMatch ignores spaces and ASCII case.
+            let name = charsxp_as_utf8(STRING_ELT(val, 0));
+            let matches_default = name
+                .iter()
+                .filter(|&&b| b != b' ')
+                .map(|b| b.to_ascii_lowercase())
+                .eq(b"default".iter().copied());
+            if matches_default {
                 with_color_state(|state| {
                     state.palette[..DEFAULT_PALETTE.len()].copy_from_slice(&DEFAULT_PALETTE);
                     state.palette_size = DEFAULT_PALETTE.len() as c_int;
@@ -94,11 +102,14 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
             let mut color_buf: [rcolor; MAX_PALETTE_SIZE] = [0; MAX_PALETTE_SIZE];
             let mut i = 0usize;
             while i < n {
-                let s = CHAR(STRING_ELT(val, i as R_xlen_t));
-                color_buf[i] = if *s == b'#' as core::ffi::c_char {
-                    rgb2col(s)
+                let name = charsxp_as_utf8(STRING_ELT(val, i as R_xlen_t));
+                if name.contains(&0) {
+                    crate::sexp::context::r_error("invalid color specification");
+                }
+                color_buf[i] = if name.first() == Some(&b'#') {
+                    rgb2col_bytes(&name)
                 } else {
-                    name2col(s)
+                    name2col_bytes(&name)
                 };
                 i += 1;
             }
@@ -112,15 +123,15 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_palette2(val: SEXP) -> SEXP {
-    unsafe {
+pub fn do_palette2(val: SEXP) -> SEXP {
+    {
         let ps = with_color_state(|state| state.palette_size) as usize;
         let ans = Rf_allocVector(SEXPTYPE::INTSXP, ps as c_int);
         let _ans_guard = protect(ans);
-        let ians = INTEGER(ans);
         let mut i = 0usize;
         while i < ps {
-            *ians.add(i) = with_color_state(|state| state.palette[i]) as c_int;
+            let color = with_color_state(|state| state.palette[i]);
+            SET_INTEGER_ELT(ans, i as c_int, color as c_int);
             i += 1;
         }
 
@@ -135,7 +146,7 @@ pub unsafe fn do_palette2(val: SEXP) -> SEXP {
             with_color_state(|state| {
                 let mut i = 0usize;
                 while i < n {
-                    state.palette[i] = *INTEGER(val).add(i) as rcolor;
+                    state.palette[i] = INTEGER_ELT(val, i as c_int) as rcolor;
                     i += 1;
                 }
                 state.palette_size = n as c_int;

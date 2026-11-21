@@ -73,7 +73,7 @@ fn provider_case(close: bool) {
             .unwrap()
     };
     // No runtime facade or RefCell loan crosses the actual provider callback.
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         inRGBpar3(color.as_raw(), 0, R_TRANWHITE)
     }));
     assert_eq!(calls.get(), 1);
@@ -100,10 +100,7 @@ fn owning_color_na_character_is_transparent() {
         .unwrap()
         .into_owned()
         .unwrap();
-    assert_eq!(
-        unsafe { inRGBpar3(value.as_raw(), 0, 0xff000000) },
-        R_TRANWHITE
-    );
+    assert_eq!(inRGBpar3(value.as_raw(), 0, 0xff000000), R_TRANWHITE);
 }
 #[test]
 fn owning_color_selected_character_survives_collecting_provider() {

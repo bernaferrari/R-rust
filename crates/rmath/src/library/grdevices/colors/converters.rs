@@ -8,20 +8,17 @@ use super::*;
 
 pub(crate) const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
-pub(crate) unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return 0;
-        }
-        if std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes() {
-            1
-        } else {
-            0
-        }
-    }
+/// Build a CHARSXP from a borrowed NUL-terminated name.
+///
+/// SAFETY contract (crate-internal): callers only pass pointers produced by
+/// `RGB2rgb_func`/`RGBA2rgb_func`, `incol2name`, the `COLOR_DATA_BASE` name
+/// table, or byte-string literals, all of which are NUL-terminated and live
+/// for the duration of the R session.
+pub(crate) fn mk_char_ptr(name: *const c_char) -> SEXP {
+    unsafe { Rf_mkChar(name) }
 }
 
-pub(crate) unsafe fn isMatrix(x: SEXP) -> bool {
+pub(crate) fn isMatrix(x: SEXP) -> bool {
     let dim = getAttrib(x, R_DimSymbol());
     Rf_isNull(dim) == 0 && LENGTH(dim) == 2
 }
@@ -98,7 +95,7 @@ pub(crate) fn incol2name_buf_trans(col: rcolor) -> *const c_char {
     }
 }
 
-pub(crate) unsafe fn ScaleColor(x: c_double) -> u32 {
+pub(crate) fn ScaleColor(x: c_double) -> u32 {
     if ISNAN(x) {
         Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
     }
@@ -108,7 +105,7 @@ pub(crate) unsafe fn ScaleColor(x: c_double) -> u32 {
     (255.0 * x + 0.5) as u32
 }
 
-pub(crate) unsafe fn CheckColor(x: c_int) -> u32 {
+pub(crate) fn CheckColor(x: c_int) -> u32 {
     if x == NA_INTEGER {
         Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
     }
@@ -118,7 +115,7 @@ pub(crate) unsafe fn CheckColor(x: c_int) -> u32 {
     x as u32
 }
 
-pub(crate) unsafe fn ScaleAlpha(x: c_double) -> u32 {
+pub(crate) fn ScaleAlpha(x: c_double) -> u32 {
     if ISNAN(x) {
         Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
     }
@@ -128,7 +125,7 @@ pub(crate) unsafe fn ScaleAlpha(x: c_double) -> u32 {
     (255.0 * x + 0.5) as u32
 }
 
-pub(crate) unsafe fn CheckAlpha(x: c_int) -> u32 {
+pub(crate) fn CheckAlpha(x: c_int) -> u32 {
     if x == NA_INTEGER {
         Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
     }
@@ -142,7 +139,7 @@ pub(crate) unsafe fn CheckAlpha(x: c_int) -> u32 {
 // HSV <-> RGB conversion
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn hsv2rgb(
+pub(crate) fn hsv2rgb(
     h: c_double,
     s: c_double,
     v: c_double,
@@ -195,7 +192,7 @@ pub(crate) unsafe fn hsv2rgb(
     }
 }
 
-pub(crate) unsafe fn rgb2hsv(
+pub(crate) fn rgb2hsv(
     r: c_double,
     g: c_double,
     b: c_double,
@@ -271,7 +268,7 @@ pub(crate) fn gtrans(u: c_double) -> c_double {
     }
 }
 
-pub(crate) unsafe fn FixupColor(r: &mut c_int, g: &mut c_int, b: &mut c_int) -> c_int {
+pub(crate) fn FixupColor(r: &mut c_int, g: &mut c_int, b: &mut c_int) -> c_int {
     {
         let mut fix = 0;
         if *r < 0 {
@@ -299,7 +296,7 @@ pub(crate) unsafe fn FixupColor(r: &mut c_int, g: &mut c_int, b: &mut c_int) -> 
     }
 }
 
-pub(crate) unsafe fn hcl2rgb(
+pub(crate) fn hcl2rgb(
     h: c_double,
     c: c_double,
     l: c_double,
@@ -357,29 +354,20 @@ pub(crate) fn c_tolower(c: c_int) -> c_int {
     }
 }
 
-pub(crate) unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
-    unsafe {
-        let mut si = 0usize;
-        let mut ti = 0usize;
-        loop {
-            let sc = *s.add(si);
-            let tc = *t.add(ti);
-            if sc == 0 && tc == 0 {
-                return 1;
+/// `StrMatch` on byte slices: ignores spaces in both operands and folds
+/// ASCII case (palette names are ASCII on every platform).
+pub(crate) fn strmatch_bytes(s: &[u8], t: &[u8]) -> c_int {
+    let mut si = s.iter().filter(|&&c| c != b' ');
+    let mut ti = t.iter().filter(|&&c| c != b' ');
+    loop {
+        match (si.next(), ti.next()) {
+            (None, None) => return 1,
+            (Some(&sc), Some(&tc)) => {
+                if c_tolower(sc as c_int) != c_tolower(tc as c_int) {
+                    return 0;
+                }
             }
-            if sc == b' ' as core::ffi::c_char {
-                si += 1;
-                continue;
-            }
-            if tc == b' ' as core::ffi::c_char {
-                ti += 1;
-                continue;
-            }
-            if c_tolower(sc as c_int) != c_tolower(tc as c_int) {
-                return 0;
-            }
-            si += 1;
-            ti += 1;
+            _ => return 0,
         }
     }
 }
@@ -388,7 +376,7 @@ pub(crate) unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
 // Hex digit conversion
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn hexdigit(d: c_int) -> u32 {
+pub(crate) fn hexdigit(d: c_int) -> u32 {
     if d >= b'0' as c_int && d <= b'9' as c_int {
         return (d - b'0' as c_int) as u32;
     }
@@ -406,12 +394,13 @@ pub(crate) unsafe fn hexdigit(d: c_int) -> u32 {
 // Color specification parsing
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
-    unsafe {
-        if *rgb != b'#' as core::ffi::c_char {
+pub(crate) fn rgb2col_bytes(rgb: &[u8]) -> rcolor {
+    {
+        if rgb.first() != Some(&b'#') {
             Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
         }
-        let len = std::ffi::CStr::from_ptr(rgb).to_bytes().len();
+        let len = rgb.len();
+        let digit = |i: usize| hexdigit(rgb[i] as c_int);
         let mut r: u32 = 0;
         let mut g: u32 = 0;
         let mut b: u32 = 0;
@@ -420,29 +409,29 @@ pub(crate) unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
         // Parse r, g, b and optionally a based on string length
         match len {
             9 => {
-                a = 16 * hexdigit(*rgb.add(7) as c_int) + hexdigit(*rgb.add(8) as c_int);
-                r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
-                g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
-                b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
+                a = 16 * digit(7) + digit(8);
+                r = 16 * digit(1) + digit(2);
+                g = 16 * digit(3) + digit(4);
+                b = 16 * digit(5) + digit(6);
                 R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
             }
             7 => {
-                r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
-                g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
-                b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
+                r = 16 * digit(1) + digit(2);
+                g = 16 * digit(3) + digit(4);
+                b = 16 * digit(5) + digit(6);
                 R_RGB(r as c_int, g as c_int, b as c_int)
             }
             5 => {
-                a = 17 * hexdigit(*rgb.add(4) as c_int);
-                r = 17 * hexdigit(*rgb.add(1) as c_int);
-                g = 17 * hexdigit(*rgb.add(2) as c_int);
-                b = 17 * hexdigit(*rgb.add(3) as c_int);
+                a = 17 * digit(4);
+                r = 17 * digit(1);
+                g = 17 * digit(2);
+                b = 17 * digit(3);
                 R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
             }
             4 => {
-                r = 17 * hexdigit(*rgb.add(1) as c_int);
-                g = 17 * hexdigit(*rgb.add(2) as c_int);
-                b = 17 * hexdigit(*rgb.add(3) as c_int);
+                r = 17 * digit(1);
+                g = 17 * digit(2);
+                b = 17 * digit(3);
                 R_RGB(r as c_int, g as c_int, b as c_int)
             }
             _ => {
@@ -457,42 +446,41 @@ pub(crate) unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
 // Color name/str lookup functions
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn name2col(nm: *const c_char) -> rcolor {
-    unsafe {
-        let nm_bytes = std::ffi::CStr::from_ptr(nm).to_bytes();
-        if nm_bytes == b"NA".as_slice() || nm_bytes == b"transparent".as_slice() {
+pub(crate) fn name2col_bytes(nm: &[u8]) -> rcolor {
+    {
+        if nm == b"NA".as_slice() || nm == b"transparent".as_slice() {
             return R_TRANWHITE;
         }
         for entry in COLOR_DATA_BASE.iter() {
             if entry.name.is_empty() {
                 break;
             }
-            if StrMatch(entry.name.as_ptr() as *const c_char, nm) != 0 {
+            // Table names carry a C-style sentinel NUL.
+            let table_name = entry.name.strip_suffix(b"\0").unwrap_or(entry.name);
+            if strmatch_bytes(table_name, nm) != 0 {
                 return entry.code;
             }
         }
-        let name = std::ffi::CStr::from_ptr(nm).to_string_lossy();
+        let name = String::from_utf8_lossy(nm);
         crate::sexp::context::r_error(format!("invalid color name '{name}'"))
     }
 }
 
-pub(crate) unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
-    unsafe {
-        if *s == b'#' as core::ffi::c_char {
-            return rgb2col(s);
-        }
-        if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
-            let token = std::ffi::CStr::from_ptr(s).to_bytes();
-            let indx = super::numeric::palette_index(token)
-                .unwrap_or_else(|| crate::sexp::context::r_error("invalid color specification"));
-            if indx == 0 {
-                return bg;
+pub(crate) fn str2col_bytes(s: &[u8], bg: rcolor) -> rcolor {
+    {
+        match s.first() {
+            Some(&b'#') => rgb2col_bytes(s),
+            Some(&c) if c.is_ascii_digit() => {
+                let indx = super::numeric::palette_index(s)
+                    .unwrap_or_else(|| crate::sexp::context::r_error("invalid color specification"));
+                if indx == 0 {
+                    return bg;
+                }
+                let ps = with_color_state(|state| state.palette_size) as usize;
+                let idx = (indx - 1) % ps;
+                with_color_state(|state| state.palette[idx])
             }
-            let ps = with_color_state(|state| state.palette_size) as usize;
-            let idx = (indx - 1) % ps;
-            with_color_state(|state| state.palette[idx])
-        } else {
-            name2col(s)
+            _ => name2col_bytes(s),
         }
     }
 }
@@ -502,7 +490,12 @@ pub(crate) unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
 // ---------------------------------------------------------------------------
 
 /// Internal to external color representation.
-pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
+///
+/// Registered in the engine's color-pointer table via `Rg_set_col_ptrs`
+/// (a safe `extern "C" fn` item coerces to the table's `unsafe` fn slot)
+/// and also called directly, so the signature stays `extern "C"` while the
+/// value-only contract lets Rust callers stay safe.
+pub extern "C" fn incol2name(col: c_uint) -> *const c_char {
     if R_OPAQUE(col) != 0 {
         for entry in COLOR_DATA_BASE.iter() {
             if entry.name.is_empty() {
@@ -520,18 +513,22 @@ pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
     }
 }
 
+/// Engine callback (`Rg_set_col_ptrs` slot): the engine hands over a raw
+/// NUL-terminated color name, so the pointer boundary stays unsafe while the
+/// parser itself works on the checked byte slice.
 pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
-    unsafe {
-        if streql(s, b"0\0".as_ptr() as *const c_char) != 0 {
-            Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
-        }
-        str2col(s, R_TRANWHITE)
+    // SAFETY: the engine callback contract guarantees `s` is a live
+    // NUL-terminated string for the duration of the call.
+    let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
+    if bytes == b"0".as_slice() {
+        Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
     }
+    str2col_bytes(bytes, R_TRANWHITE)
 }
 
 /// Convert a sexp element to an R color desc.
-pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
-    unsafe {
+pub fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
+    {
         let t = TYPEOF(x);
         let indx: c_int;
         match t {
@@ -541,8 +538,9 @@ pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
                 let fail = |error: crate::sexp::object::SexpError| -> ! {
                     crate::sexp::context::r_error(error.to_string())
                 };
-                let owner =
-                    crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| fail(error));
+                // SAFETY: the R session owning `x` is active on this thread.
+                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+                    .unwrap_or_else(|error| fail(error));
                 let _pin = owner.pin().unwrap_or_else(|error| fail(error));
                 let parent = owner.sexp(x).unwrap_or_else(|error| fail(error));
                 let character = parent
@@ -555,31 +553,32 @@ pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
                 let text = character
                     .try_as_string()
                     .unwrap_or_else(|error| fail(error));
-                let text = std::ffi::CString::new(text).unwrap_or_else(|_| {
-                    crate::sexp::context::r_error("invalid color specification")
-                });
-                return str2col(text.as_ptr(), bg);
+                if text.bytes().any(|b| b == 0) {
+                    crate::sexp::context::r_error("invalid color specification");
+                }
+                return str2col_bytes(text.as_bytes(), bg);
             }
             tt if tt == SEXPTYPE::LGLSXP => {
                 // LGLSXP
-                indx = *LOGICAL(x).add(i as usize);
+                indx = LOGICAL_ELT(x, i as c_int);
                 if indx == NA_LOGICAL {
                     return R_TRANWHITE;
                 }
             }
             tt if tt == SEXPTYPE::INTSXP => {
                 // INTSXP
-                indx = *INTEGER(x).add(i as usize);
+                indx = INTEGER_ELT(x, i as c_int);
                 if indx == NA_INTEGER {
                     return R_TRANWHITE;
                 }
             }
             tt if tt == SEXPTYPE::REALSXP => {
                 // REALSXP
-                if !R_FINITE(*REAL(x).add(i as usize)) {
+                let val = REAL_ELT(x, i as c_int);
+                if !R_FINITE(val) {
                     return R_TRANWHITE;
                 }
-                indx = *REAL(x).add(i as usize) as c_int;
+                indx = val as c_int;
             }
             _ => {
                 return bg;

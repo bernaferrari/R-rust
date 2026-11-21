@@ -69,16 +69,16 @@ unsafe extern "C-unwind" fn c_devprev(args: crate::sexp::ffi::SEXP) -> crate::se
     devices::devprev(args)
 }
 unsafe extern "C-unwind" fn c_palette(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_palette(args) }
+    colors::do_palette(args)
 }
 unsafe extern "C-unwind" fn c_palette2(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_palette2(args) }
+    colors::do_palette2(args)
 }
 unsafe extern "C-unwind" fn c_col2rgb(
     colors: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { self::colors::do_col2rgb(colors, alpha) }
+    self::colors::do_col2rgb(colors, alpha)
 }
 unsafe extern "C-unwind" fn c_create_at(
     axp: crate::sexp::ffi::SEXP,
@@ -99,7 +99,7 @@ unsafe extern "C-unwind" fn c_gray(
     lev: crate::sexp::ffi::SEXP,
     alpha: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_gray(lev, alpha) }
+    colors::do_gray(lev, alpha)
 }
 unsafe extern "C-unwind" fn c_hsv(
     h: crate::sexp::ffi::SEXP,
@@ -107,7 +107,7 @@ unsafe extern "C-unwind" fn c_hsv(
     v: crate::sexp::ffi::SEXP,
     a: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_hsv(h, s, v, a) }
+    colors::do_hsv(h, s, v, a)
 }
 unsafe extern "C-unwind" fn c_hcl(
     h: crate::sexp::ffi::SEXP,
@@ -116,7 +116,7 @@ unsafe extern "C-unwind" fn c_hcl(
     a: crate::sexp::ffi::SEXP,
     fixup: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_hcl(h, c, l, a, fixup) }
+    colors::do_hcl(h, c, l, a, fixup)
 }
 unsafe extern "C-unwind" fn c_rgb(
     r: crate::sexp::ffi::SEXP,
@@ -126,7 +126,7 @@ unsafe extern "C-unwind" fn c_rgb(
     mcv: crate::sexp::ffi::SEXP,
     nam: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { colors::do_rgb(r, g, b, a, mcv, nam) }
+    colors::do_rgb(r, g, b, a, mcv, nam)
 }
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
@@ -230,7 +230,7 @@ pub(crate) fn lookup_external(
     }
 }
 
-pub unsafe fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
+pub fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
         for name in [
             "C_cairoProps",

@@ -6,8 +6,8 @@ use super::*;
 // SEXP-callable color functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
-    unsafe {
+pub fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
+    {
         let mut r: c_double = 0.0;
         let mut g: c_double = 0.0;
         let mut b: c_double = 0.0;
@@ -56,9 +56,9 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
         if Rf_isNull(a) != 0 {
             let mut i = 0usize;
             while i < max {
-                let hh = *REAL(h).add(i % nh);
-                let ss = *REAL(s).add(i % ns);
-                let vv = *REAL(v).add(i % nv);
+                let hh = REAL_ELT(h, (i % nh) as c_int);
+                let ss = REAL_ELT(s, (i % ns) as c_int);
+                let vv = REAL_ELT(v, (i % nv) as c_int);
                 if hh < 0.0 || hh > 1.0 || ss < 0.0 || ss > 1.0 || vv < 0.0 || vv > 1.0 {
                     Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
                 }
@@ -66,17 +66,17 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     c,
                     i as R_xlen_t,
-                    Rf_mkChar(RGB2rgb_func(ScaleColor(r), ScaleColor(g), ScaleColor(b))),
+                    mk_char_ptr(RGB2rgb_func(ScaleColor(r), ScaleColor(g), ScaleColor(b))),
                 );
                 i += 1;
             }
         } else {
             let mut i = 0usize;
             while i < max {
-                let hh = *REAL(h).add(i % nh);
-                let ss = *REAL(s).add(i % ns);
-                let vv = *REAL(v).add(i % nv);
-                let aa = *REAL(a).add(i % na);
+                let hh = REAL_ELT(h, (i % nh) as c_int);
+                let ss = REAL_ELT(s, (i % ns) as c_int);
+                let vv = REAL_ELT(v, (i % nv) as c_int);
+                let aa = REAL_ELT(a, (i % na) as c_int);
                 if hh < 0.0
                     || hh > 1.0
                     || ss < 0.0
@@ -92,7 +92,7 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     c,
                     i as R_xlen_t,
-                    Rf_mkChar(RGBA2rgb_func(
+                    mk_char_ptr(RGBA2rgb_func(
                         ScaleColor(r),
                         ScaleColor(g),
                         ScaleColor(b),
@@ -106,8 +106,8 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
-    unsafe {
+pub fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
+    {
         let fixup = asLogical(sfixup);
         let mut guards = Vec::with_capacity(5);
         let h = coerceVector(h, SEXPTYPE::REALSXP.into());
@@ -153,9 +153,9 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
         if Rf_isNull(a) != 0 {
             let mut i = 0usize;
             while i < max {
-                let H = *REAL(h).add(i % nh);
-                let C = *REAL(c).add(i % nc);
-                let L = *REAL(l).add(i % nl);
+                let H = REAL_ELT(h, (i % nh) as c_int);
+                let C = REAL_ELT(c, (i % nc) as c_int);
+                let L = REAL_ELT(l, (i % nl) as c_int);
                 if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
                     if L < 0.0 || L > WHITE_Y || C < 0.0 {
                         Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
@@ -173,7 +173,7 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                         SET_STRING_ELT(
                             ans,
                             i as R_xlen_t,
-                            Rf_mkChar(RGB2rgb_func(ir as u32, ig as u32, ib as u32)),
+                            mk_char_ptr(RGB2rgb_func(ir as u32, ig as u32, ib as u32)),
                         );
                     }
                 } else {
@@ -184,10 +184,10 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
         } else {
             let mut i = 0usize;
             while i < max {
-                let H = *REAL(h).add(i % nh);
-                let C = *REAL(c).add(i % nc);
-                let L = *REAL(l).add(i % nl);
-                let mut A = *REAL(a).add(i % na);
+                let H = REAL_ELT(h, (i % nh) as c_int);
+                let C = REAL_ELT(c, (i % nc) as c_int);
+                let L = REAL_ELT(l, (i % nl) as c_int);
+                let mut A = REAL_ELT(a, (i % na) as c_int);
                 if !R_FINITE(A) {
                     A = 1.0;
                 }
@@ -208,7 +208,7 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                         SET_STRING_ELT(
                             ans,
                             i as R_xlen_t,
-                            Rf_mkChar(RGBA2rgb_func(
+                            mk_char_ptr(RGBA2rgb_func(
                                 ir as u32,
                                 ig as u32,
                                 ib as u32,
@@ -226,8 +226,8 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP {
-    unsafe {
+pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP {
+    {
         let mV = asReal(mcv);
         if !R_FINITE(mV) || mV == 0.0 {
             Rf_error(b"invalid value of 'maxColorValue'\0".as_ptr() as *const c_char);
@@ -300,20 +300,20 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
             if Rf_isNull(a) != 0 {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = CheckColor(*INTEGER(r).add(i % nr));
-                    let sg = CheckColor(*INTEGER(g).add(i % ng));
-                    let sb = CheckColor(*INTEGER(b).add(i % nb));
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    let sr = CheckColor(INTEGER_ELT(r, (i % nr) as c_int));
+                    let sg = CheckColor(INTEGER_ELT(g, (i % ng) as c_int));
+                    let sb = CheckColor(INTEGER_ELT(b, (i % nb) as c_int));
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGB2rgb_func(sr, sg, sb)));
                     i += 1;
                 }
             } else {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = CheckColor(*INTEGER(r).add(i % nr));
-                    let sg = CheckColor(*INTEGER(g).add(i % ng));
-                    let sb = CheckColor(*INTEGER(b).add(i % nb));
-                    let sa = CheckAlpha(*INTEGER(a).add(i % na));
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    let sr = CheckColor(INTEGER_ELT(r, (i % nr) as c_int));
+                    let sg = CheckColor(INTEGER_ELT(g, (i % ng) as c_int));
+                    let sb = CheckColor(INTEGER_ELT(b, (i % nb) as c_int));
+                    let sa = CheckAlpha(INTEGER_ELT(a, (i % na) as c_int));
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa)));
                     i += 1;
                 }
             }
@@ -321,20 +321,20 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
             if Rf_isNull(a) != 0 {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = ScaleColor(*REAL(r).add(i % nr));
-                    let sg = ScaleColor(*REAL(g).add(i % ng));
-                    let sb = ScaleColor(*REAL(b).add(i % nb));
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    let sr = ScaleColor(REAL_ELT(r, (i % nr) as c_int));
+                    let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int));
+                    let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int));
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGB2rgb_func(sr, sg, sb)));
                     i += 1;
                 }
             } else {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = ScaleColor(*REAL(r).add(i % nr));
-                    let sg = ScaleColor(*REAL(g).add(i % ng));
-                    let sb = ScaleColor(*REAL(b).add(i % nb));
-                    let sa = ScaleAlpha(*REAL(a).add(i % na));
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    let sr = ScaleColor(REAL_ELT(r, (i % nr) as c_int));
+                    let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int));
+                    let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int));
+                    let sa = ScaleAlpha(REAL_ELT(a, (i % na) as c_int));
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa)));
                     i += 1;
                 }
             }
@@ -342,20 +342,20 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
             if Rf_isNull(a) != 0 {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
-                    let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
-                    let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    let sr = ScaleColor(REAL_ELT(r, (i % nr) as c_int) / mV);
+                    let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int) / mV);
+                    let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int) / mV);
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGB2rgb_func(sr, sg, sb)));
                     i += 1;
                 }
             } else {
                 let mut i = 0usize;
                 while i < l_max {
-                    let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
-                    let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
-                    let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
-                    let sa = ScaleAlpha(*REAL(a).add(i % na) / mV);
-                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    let sr = ScaleColor(REAL_ELT(r, (i % nr) as c_int) / mV);
+                    let sg = ScaleColor(REAL_ELT(g, (i % ng) as c_int) / mV);
+                    let sb = ScaleColor(REAL_ELT(b, (i % nb) as c_int) / mV);
+                    let sa = ScaleAlpha(REAL_ELT(a, (i % na) as c_int) / mV);
+                    SET_STRING_ELT(c, i as R_xlen_t, mk_char_ptr(RGBA2rgb_func(sr, sg, sb, sa)));
                     i += 1;
                 }
             }
@@ -368,8 +368,8 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
     }
 }
 
-pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
-    unsafe {
+pub fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
+    {
         let mut guards = Vec::with_capacity(3);
         let lev = coerceVector(lev, SEXPTYPE::REALSXP.into());
         guards.push(protect(lev));
@@ -390,7 +390,7 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
         if Rf_isNull(a) != 0 {
             let mut i = 0usize;
             while i < nlev {
-                let level = *REAL(lev).add(i);
+                let level = REAL_ELT(lev, i as c_int);
                 if ISNAN(level) || level < 0.0 || level > 1.0 {
                     Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
                 }
@@ -398,7 +398,7 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
-                    Rf_mkChar(RGB2rgb_func(ilevel as u32, ilevel as u32, ilevel as u32)),
+                    mk_char_ptr(RGB2rgb_func(ilevel as u32, ilevel as u32, ilevel as u32)),
                 );
                 i += 1;
             }
@@ -407,16 +407,16 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
             let max = if nlev > na { nlev } else { na };
             let mut i = 0usize;
             while i < max {
-                let level = *REAL(lev).add(i % nlev);
+                let level = REAL_ELT(lev, (i % nlev) as c_int);
                 if ISNAN(level) || level < 0.0 || level > 1.0 {
                     Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
                 }
                 let ilevel = (255.0 * level + 0.5) as c_int;
-                let aa = *REAL(a).add(i % na);
+                let aa = REAL_ELT(a, (i % na) as c_int);
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
-                    Rf_mkChar(RGBA2rgb_func(
+                    mk_char_ptr(RGBA2rgb_func(
                         ilevel as u32,
                         ilevel as u32,
                         ilevel as u32,
@@ -430,8 +430,8 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
-    unsafe {
+pub fn do_RGB2hsv(rgb: SEXP) -> SEXP {
+    {
         use crate::main::array::allocMatrix;
 
         let mut guards = Vec::with_capacity(4);
@@ -441,20 +441,21 @@ pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
             Rf_error(b"rgb is not a matrix (internally)\0".as_ptr() as *const c_char);
         }
         let dd = getAttrib(rgb, R_DimSymbol());
-        if *INTEGER(dd).add(0) != 3 {
+        if INTEGER_ELT(dd, 0) != 3 {
             Rf_error(b"rgb must have 3 rows (internally)\0".as_ptr() as *const c_char);
         }
-        let n = *INTEGER(dd).add(1) as usize;
+        let n = INTEGER_ELT(dd, 1) as usize;
 
-        let ans = allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int);
+        // SAFETY: allocation runs on the R session thread that owns `rgb`.
+        let ans = unsafe { allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int) };
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         guards.push(protect(names));
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"h\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"s\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(names, 2, Rf_mkChar(b"v\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 0, mk_char_ptr(b"h\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 1, mk_char_ptr(b"s\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 2, mk_char_ptr(b"v\0".as_ptr() as *const c_char));
         SET_VECTOR_ELT(dmns, 0, names);
 
         if Rf_isNull(getAttrib(rgb, R_DimNamesSymbol())) == 0 {
@@ -471,14 +472,20 @@ pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
         let mut i = 0usize;
         let mut i3 = 0usize;
         while i < n {
+            let mut hh: c_double = 0.0;
+            let mut ss: c_double = 0.0;
+            let mut vv: c_double = 0.0;
             rgb2hsv(
-                *REAL(rgb).add(i3),
-                *REAL(rgb).add(i3 + 1),
-                *REAL(rgb).add(i3 + 2),
-                &mut *REAL(ans).add(i3),
-                &mut *REAL(ans).add(i3 + 1),
-                &mut *REAL(ans).add(i3 + 2),
+                REAL_ELT(rgb, i3 as c_int),
+                REAL_ELT(rgb, (i3 + 1) as c_int),
+                REAL_ELT(rgb, (i3 + 2) as c_int),
+                &mut hh,
+                &mut ss,
+                &mut vv,
             );
+            SET_REAL_ELT(ans, i3 as c_int, hh);
+            SET_REAL_ELT(ans, (i3 + 1) as c_int, ss);
+            SET_REAL_ELT(ans, (i3 + 2) as c_int, vv);
             i += 1;
             i3 += 3;
         }
@@ -486,8 +493,8 @@ pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
-    unsafe {
+pub fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
+    {
         use crate::main::array::allocMatrix;
 
         let alph = asLogical(alpha);
@@ -505,17 +512,18 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
         guards.push(protect(colors));
 
         let n = LENGTH(colors) as usize;
-        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int);
+        // SAFETY: allocation runs on the R session thread that owns `colors`.
+        let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int) };
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph);
         guards.push(protect(names));
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"red\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"green\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(names, 2, Rf_mkChar(b"blue\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 0, mk_char_ptr(b"red\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 1, mk_char_ptr(b"green\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 2, mk_char_ptr(b"blue\0".as_ptr() as *const c_char));
         if alph != 0 {
-            SET_STRING_ELT(names, 3, Rf_mkChar(b"alpha\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(names, 3, mk_char_ptr(b"alpha\0".as_ptr() as *const c_char));
         }
         SET_VECTOR_ELT(dmns, 0, names);
 
@@ -529,14 +537,14 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
         let mut i = 0usize;
         while i < n {
             let icol = inRGBpar3(colors, i as c_int, R_TRANWHITE);
-            *INTEGER(ans).add(j) = R_RED(icol);
+            SET_INTEGER_ELT(ans, j as c_int, R_RED(icol));
             j += 1;
-            *INTEGER(ans).add(j) = R_GREEN(icol);
+            SET_INTEGER_ELT(ans, j as c_int, R_GREEN(icol));
             j += 1;
-            *INTEGER(ans).add(j) = R_BLUE(icol);
+            SET_INTEGER_ELT(ans, j as c_int, R_BLUE(icol));
             j += 1;
             if alph != 0 {
-                *INTEGER(ans).add(j) = R_ALPHA(icol);
+                SET_INTEGER_ELT(ans, j as c_int, R_ALPHA(icol));
                 j += 1;
             }
             i += 1;
@@ -545,8 +553,8 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_colors() -> SEXP {
-    unsafe {
+pub fn do_colors() -> SEXP {
+    {
         // Count entries
         let mut n = 0usize;
         for entry in COLOR_DATA_BASE.iter() {
@@ -565,7 +573,7 @@ pub unsafe fn do_colors() -> SEXP {
             SET_STRING_ELT(
                 ans,
                 i as R_xlen_t,
-                Rf_mkChar(entry.name.as_ptr() as *const c_char),
+                mk_char_ptr(entry.name.as_ptr() as *const c_char),
             );
             i += 1;
         }
@@ -587,7 +595,7 @@ pub unsafe fn do_col2rgb_builtin(
     args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe {
+    {
         use crate::sexp::ffi::{FALSE, SEXPTYPE};
         use crate::sexp::globals::R_NilValue;
         let colors = CAR(args);
@@ -614,7 +622,7 @@ pub unsafe fn do_colors_builtin(
     _args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe { do_colors() }
+    do_colors()
 }
 
 pub unsafe fn do_palette_builtin(
@@ -623,7 +631,7 @@ pub unsafe fn do_palette_builtin(
     args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe {
+    {
         // `palette()` with no argument queries the current palette:
         // pass an empty string vector (length 0 hits neither the
         // reset nor the set branch, returning the recorded palette).
@@ -644,7 +652,7 @@ pub unsafe fn do_rgb_builtin(
     args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe {
+    {
         let tag_is = |cell: SEXP, name: &[u8]| -> bool {
             let tag = crate::sexp::accessors::TAG(cell);
             if tag.is_null() || crate::sexp::accessors::TYPEOF(tag) != SEXPTYPE::SYMSXP {
@@ -654,7 +662,7 @@ pub unsafe fn do_rgb_builtin(
             if pname.is_null() {
                 return false;
             }
-            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname)).to_bytes() == name
+            crate::sexp::accessors::charsxp_as_utf8(pname).as_slice() == name
         };
         let missing = |value: SEXP| -> bool {
             value.is_null()
@@ -721,7 +729,7 @@ pub unsafe fn do_hsv_builtin(
     args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe {
+    {
         let h = CAR(args);
         let s = if CDR(args).is_null() || CDR(args) == R_NilValue() {
             R_NilValue()
@@ -745,7 +753,7 @@ pub unsafe fn do_gray_builtin(
     args: *mut crate::sexp::ffi::SexprecCore,
     _rho: *mut crate::sexp::ffi::SexprecCore,
 ) -> *mut crate::sexp::ffi::SexprecCore {
-    unsafe {
+    {
         let lev = CAR(args);
         let a = if CDR(args).is_null() || CDR(args) == R_NilValue() {
             R_NilValue()
