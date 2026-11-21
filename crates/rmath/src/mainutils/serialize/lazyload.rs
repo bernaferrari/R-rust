@@ -5,13 +5,15 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 pub fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
-    unsafe {
+    {
         let _fun_guard = protect(fun);
         let _x_guard = protect(x);
         // GNU serialize.c CallHook evaluates LANGSXP fun(x) in GlobalEnv.
         let call = Rf_lang2(fun, x);
         let _call_guard = protect(call);
-        Rf_eval(call, R_GlobalEnv())
+        // SAFETY: `call` is a freshly built protected LANGSXP evaluated in
+        // the canonical global environment.
+        unsafe { Rf_eval(call, R_GlobalEnv()) }
     }
 }
 
@@ -25,7 +27,7 @@ pub fn checkNotPromise(val: SEXP) -> SEXP {
 }
 
 pub fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
-    unsafe {
+    {
         let path = sexp_to_path(file);
         if TYPEOF(bytes) != SEXPTYPE::RAWSXP {
             error("not a proper raw vector");
@@ -48,8 +50,8 @@ pub fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
             Ok(pos) => pos,
             Err(_) => error("write failed"),
         };
-        let data = slice::from_raw_parts(RAW(bytes), len);
-        if fp.write_all(data).is_err() || fp.flush().is_err() {
+        let data = raw_to_bytes(bytes);
+        if fp.write_all(&data).is_err() || fp.flush().is_err() {
             error("write failed");
         }
         if pos > i32::MAX as u64 {
@@ -59,16 +61,15 @@ pub fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
         if key.is_null() {
             error("write failed");
         }
-        *INTEGER(key) = pos as c_int;
-        *INTEGER(key).add(1) = len as c_int;
+        SET_INTEGER_ELT(key, 0, pos as c_int);
+        SET_INTEGER_ELT(key, 1, len as c_int);
         key
     }
 }
 
 pub fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
-    unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+    {
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let operands = [file, key].map(|value| {
             owner
@@ -82,8 +83,6 @@ pub fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
             .unwrap_or_else(|e| error(&e.to_string()));
         if let Some(image) = crate::library::portable_package::database_path(&path) {
             let result = (|| {
-                let owner =
-                    crate::sexp::owner::OwnerToken::current().map_err(|error| error.to_string())?;
                 let file = owner
                     .sexp(file)
                     .and_then(crate::sexp::object::Sexp::into_owned)
@@ -103,7 +102,6 @@ pub fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
             || path == std::path::Path::new(crate::library::datasets::PACKAGE_DATABASE)
         {
             let result = (|| {
-                let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
                 let file = owner
                     .sexp(file)
                     .and_then(crate::sexp::object::Sexp::into_owned)
@@ -195,7 +193,7 @@ pub fn R_lazyLoadDBinsertValue(
 }
 
 pub fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
-    unsafe {
+    {
         if TYPEOF(env) == SEXPTYPE::NILSXP {
             error("use of NULL environment is defunct");
         }
@@ -215,20 +213,24 @@ pub fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
             if name.is_null() {
                 error("bad variable names");
             }
-            let sym = Rf_install(CHAR(name));
-            let mut tmp = R_findVarInFrame(env, sym);
-            if tmp == R_UnboundValue() {
-                error(&format!(
-                    "object '{}' not found",
-                    CStr::from_ptr(CHAR(name)).to_string_lossy()
-                ));
-            }
-            if force != 0 && TYPEOF(tmp) == SEXPTYPE::PROMSXP {
-                tmp = Rf_eval(tmp, R_GlobalEnv());
-                if !tmp.is_null() {
-                    SET_NAMED(tmp, 2);
+            let name_text = String::from_utf8_lossy(&charsxp_as_utf8(name)).into_owned();
+            let sym = install_str(&name_text);
+            // SAFETY: `env` is a caller-owned ENVSXP checked above and `sym`
+            // is a freshly installed symbol; `tmp`, when forced, is a live
+            // PROMSXP evaluated in the canonical global environment.
+            let tmp = unsafe {
+                let mut tmp = R_findVarInFrame(env, sym);
+                if tmp == R_UnboundValue() {
+                    error(&format!("object '{name_text}' not found"));
                 }
-            }
+                if force != 0 && TYPEOF(tmp) == SEXPTYPE::PROMSXP {
+                    tmp = Rf_eval(tmp, R_GlobalEnv());
+                    if !tmp.is_null() {
+                        SET_NAMED(tmp, 2);
+                    }
+                }
+                tmp
+            };
             SET_VECTOR_ELT(val, i as R_xlen_t, tmp);
         }
         setAttrib(val, R_NamesSymbol(), vars);

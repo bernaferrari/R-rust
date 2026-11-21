@@ -6,13 +6,14 @@ use super::*;
 fn serialized_gp_bits(s: SEXP) -> c_int {
     // The caller roots s; take an owned header snapshot without retaining a
     // header or interpreter borrow across recursive writes or callbacks.
+    // SAFETY: `s` is a caller-rooted live SEXP inside a serialization call.
     let object = unsafe { crate::sexp::object::Sexp::try_from_raw(s) }
         .unwrap_or_else(|e| error(&e.to_string()));
     i32::from(object.header().sxpinfo.gp())
 }
 
 pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut BinaryWriter) {
-    unsafe {
+    {
         let _item_guard = protect(s);
         // GNU serializes unexpanded compact integer/real sequences as
         // ALTREP_SXP (compact_intseq / compact_realseq) under version 3;
@@ -54,9 +55,13 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
             }
         }
         {
-            if crate::sexp::altrep::has_extension_raw(s) {
-                let object =
-                    crate::sexp::altrep::rooted_raw(s).unwrap_or_else(|e| error(&e.to_string()));
+            // SAFETY: `s` is a caller-rooted live SEXP; the extension
+            // probe reads its raw header only.
+            if unsafe { crate::sexp::altrep::has_extension_raw(s) } {
+                // SAFETY: `s` passed the extension probe above; the rooted
+                // handle is used only for the guarded materialized copy.
+                let object = unsafe { crate::sexp::altrep::rooted_raw(s) }
+                    .unwrap_or_else(|e| error(&e.to_string()));
                 let _operation = crate::sexp::altrep::serialization_guard(&object)
                     .unwrap_or_else(|e| error(&e.to_string()));
                 let copy = crate::sexp::altrep::materialized_copy(&object)
@@ -132,8 +137,7 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
         // cached value, expression. Capture actual fields before hook callbacks;
         // serialization must never force a deferred binding.
         if stype == SEXPTYPE::PROMSXP {
-            let owner =
-                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+            let owner = current_owner();
             let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
             owner
                 .require_active()
@@ -237,7 +241,9 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
         // but dispatch incorrectly.  Reject it at the boundary until the
         // adapter is complete.
         if stype == SEXPTYPE::BCODESXP {
-            if crate::eval::bc_eval::BCODE_IS_GNU(s) {
+            // SAFETY: `s` is a caller-rooted live BCODESXP; the predicate
+            // reads its raw vector layout.
+            if unsafe { crate::eval::bc_eval::BCODE_IS_GNU(s) } {
                 writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
                 writer.write_i32(1); // GNU WriteBC repetition table length.
                 write_gnu_bc_payload(s, ref_table, writer, 0);
@@ -255,8 +261,8 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };
             writer.write_i32(len);
             if len >= 0 {
-                let char_data = CHAR(s);
-                writer.write_string_bytes(char_data, len);
+                let bytes = charsxp_as_utf8(s);
+                writer.write_string_bytes(bytes.as_ptr() as *const c_char, bytes.len() as c_int);
             }
             return;
         }
@@ -269,25 +275,22 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
             writer.write_i32(flags);
             let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
-            let int_data = INTEGER(s);
-            for i in 0..len as isize {
-                writer.write_i32(*int_data.offset(i));
+            for i in 0..len {
+                writer.write_i32(INTEGER_ELT(s, i as c_int));
             }
         } else if stype == SEXPTYPE::REALSXP {
             writer.write_i32(flags);
             let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
-            let real_data = REAL(s);
-            for i in 0..len as isize {
-                writer.write_f64(*real_data.offset(i));
+            for i in 0..len {
+                writer.write_f64(REAL_ELT(s, i as c_int));
             }
         } else if stype == SEXPTYPE::CPLXSXP {
             writer.write_i32(flags);
             let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
-            let cpx_data = COMPLEX(s);
-            for i in 0..len as isize {
-                let c = *cpx_data.offset(i);
+            for i in 0..len {
+                let c = COMPLEX_ELT(s, i as c_int);
                 writer.write_f64(c.r);
                 writer.write_f64(c.i);
             }
@@ -303,9 +306,8 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
             writer.write_i32(flags);
             let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
-            let raw_data = RAW(s);
-            for i in 0..len as isize {
-                writer.write_byte(*raw_data.offset(i));
+            for i in 0..len {
+                writer.write_byte(RAW_ELT(s, i as c_int));
             }
         } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
             writer.write_i32(flags);
@@ -353,15 +355,15 @@ fn write_compact_sequence(
     origin: c_double,
     step: c_double,
 ) {
-    unsafe {
-        let name_sym = Rf_install(class_name.as_ptr());
+    {
+        let name_sym = install_str(class_name.to_str().unwrap_or("compact_intseq"));
         let _name = protect(name_sym);
-        let pkg_sym = Rf_install(c"base".as_ptr());
+        let pkg_sym = install_str("base");
         let _pkg = protect(pkg_sym);
         let type_vec = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
         let _tv = protect(type_vec);
         if !type_vec.is_null() {
-            *INTEGER(type_vec) = sexp_type;
+            SET_INTEGER_ELT(type_vec, 0, sexp_type);
         }
         let info_tail = Rf_cons(type_vec, R_NilValue());
         let _it = protect(info_tail);
@@ -372,10 +374,9 @@ fn write_compact_sequence(
         let state = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         let _st = protect(state);
         if !state.is_null() {
-            let p = REAL(state);
-            *p = length;
-            *p.add(1) = origin;
-            *p.add(2) = step;
+            SET_REAL_ELT(state, 0, length);
+            SET_REAL_ELT(state, 1, origin);
+            SET_REAL_ELT(state, 2, step);
         }
         writer.write_i32(PackFlags(
             ALTREP_SXP,

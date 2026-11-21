@@ -285,8 +285,7 @@ pub(crate) fn mk_string(text: &str) -> SEXP {
 
 /// Audited boundary: named-attribute write on a live object.
 fn set_attrib(x: SEXP, symbol: SEXP, value: SEXP) {
-    // SAFETY: setAttrib mutates one named slot of a live object.
-    unsafe { crate::eval::attrib_core::setAttrib(x, symbol, value) }
+    crate::sexp::attrib_core::setAttrib(x, symbol, value);
 }
 
 /// Set the class attribute on an SEXP to a two-element vector.

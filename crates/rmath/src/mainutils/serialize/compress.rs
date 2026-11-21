@@ -12,7 +12,7 @@ pub(super) fn raw_snapshot(
     mode: u8,
     encode: bool,
 ) -> super::owned_input::InputBytes {
-    unsafe {
+    {
         let input = owner
             .sexp(input)
             .and_then(|v| v.into_owned())
@@ -24,7 +24,9 @@ pub(super) fn raw_snapshot(
             ));
         }
         if ALTREP(input.as_raw()) != 0 {
-            RAW(input.as_raw());
+            input
+                .materialize_compact_payload_for_raw()
+                .unwrap_or_else(|e| error(&e.to_string()));
         }
         owner
             .require_active()
@@ -63,9 +65,8 @@ pub(super) fn raw_snapshot(
 }
 
 fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean>) -> SEXP {
-    unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+    {
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let bytes = raw_snapshot(&owner, input, mode, decode_error.is_none());
@@ -118,6 +119,8 @@ pub fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
+    // SAFETY: `buf` is a caller-owned C buffer; the null check plus the
+    // single leading-NUL store cannot overrun its `size` bound.
     unsafe {
         if !buf.is_null() && size > 0 {
             *buf = 0;
@@ -139,6 +142,8 @@ pub struct R_instring_stream_st {
 pub type R_instring_stream_t = *mut R_instring_stream_st;
 
 pub fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) {
+    // SAFETY: `s` is a caller-owned out struct; the null check precedes the
+    // two field stores, which stay inside its layout.
     unsafe {
         if !s.is_null() {
             (*s).last = 0;
@@ -152,6 +157,8 @@ pub fn GetChar(s: R_instring_stream_t) -> c_int {
 }
 
 pub fn UngetChar(s: R_instring_stream_t, c: c_int) {
+    // SAFETY: `s` is a caller-owned struct; the null check precedes the
+    // single field store.
     unsafe {
         if !s.is_null() {
             (*s).last = c;

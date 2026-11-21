@@ -984,6 +984,8 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Flush text output only after the original writer storage has moved out of
 /// the table. Every other backend close remains callback-free Rust I/O.
 pub(crate) fn close_connection_at_in(instance: *mut RInstance, index: c_int) {
+    // SAFETY: `instance` is a live RInstance pointer supplied by the
+    // connection teardown path; the owner is pinned immediately below.
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(instance) };
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
     owner

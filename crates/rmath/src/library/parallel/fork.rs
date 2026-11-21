@@ -35,7 +35,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::{with_current_instance, with_required_current_instance};
 use crate::sexp::protect::*;
-use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::install_str;
 
 #[cfg(unix)]
 use libc::{
@@ -50,6 +50,7 @@ use libc::{
 #[cfg(unix)]
 #[inline]
 fn errno_ptr() -> *mut c_int {
+    // SAFETY: libc's errno location returns a valid thread-local pointer.
     unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -128,7 +129,8 @@ impl Default for ForkRuntimeState {
             child_can_exit: 0,
             child_exit_status: -1,
             parent_handler_set: 0,
-            old_sig_handler: unsafe { std::mem::zeroed() },
+            // SAFETY: an all-zero sigaction is a valid placeholder until install.
+        old_sig_handler: unsafe { std::mem::zeroed() },
             is_forked_child: 0,
             ignore_sigpipe: 0,
             interactive: 1,
@@ -139,6 +141,9 @@ impl Default for ForkRuntimeState {
 #[cfg(unix)]
 impl Drop for ForkRuntimeState {
     fn drop(&mut self) {
+        // SAFETY: `children` is a singly-linked list of Box-owned nodes;
+        // each is closed and reclaimed exactly once. sigaction restores
+        // the recorded handler.
         unsafe {
             let mut ci = self.children;
             while !ci.is_null() {
@@ -159,11 +164,15 @@ impl Drop for ForkRuntimeState {
 
 #[cfg(unix)]
 fn with_fork_state<R>(f: impl FnOnce(&mut ForkRuntimeState) -> R) -> R {
+    // SAFETY: `instance` is the live current RInstance; the state field
+    // borrow is strictly local to the closure call.
     with_required_current_instance(|instance| f(unsafe { &mut (*instance).parallel_fork_state }))
 }
 
 #[cfg(unix)]
 fn with_current_fork_state<R>(f: impl FnOnce(&mut ForkRuntimeState) -> R) -> Option<R> {
+    // SAFETY: `instance` is the live current RInstance; the state field
+    // borrow is strictly local to the closure call.
     with_current_instance(|instance| f(unsafe { &mut (*instance).parallel_fork_state }))
 }
 
@@ -182,6 +191,8 @@ fn current_time() -> c_double {
 
 #[cfg(unix)]
 fn block_sigchld(oldset: *mut sigset_t) {
+    // SAFETY: `oldset` is a caller-provided sigset_t out pointer;
+    // `ss` is a fully initialized local set.
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         sigemptyset(&mut ss);
@@ -192,6 +203,7 @@ fn block_sigchld(oldset: *mut sigset_t) {
 
 #[cfg(unix)]
 fn restore_sigchld(oldset: *const sigset_t) {
+    // SAFETY: `oldset` is the sigset_t saved by block_sigchld.
     unsafe {
         sigprocmask(libc::SIG_SETMASK, oldset as *mut sigset_t, ptr::null_mut());
     }
@@ -199,6 +211,8 @@ fn restore_sigchld(oldset: *const sigset_t) {
 
 #[cfg(unix)]
 fn close_fds_child_ci(ci: *mut child_info_t) {
+    // SAFETY: `ci` is a live child node; each fd is closed once
+    // and reset to -1.
     unsafe {
         if (*ci).pfd >= 0 {
             close((*ci).pfd);
@@ -213,6 +227,8 @@ fn close_fds_child_ci(ci: *mut child_info_t) {
 
 #[cfg(unix)]
 fn fd_used_by_children(fd: c_int) -> c_int {
+    // SAFETY: `children` is the fork state's singly-linked list
+    // of live child nodes.
     unsafe {
         if fd == -1 {
             return 0;
@@ -230,6 +246,8 @@ fn fd_used_by_children(fd: c_int) -> c_int {
 
 #[cfg(unix)]
 fn close_non_child_fd(fd: c_int) {
+    // SAFETY: `fd` is a descriptor owned by this process, verified
+    // not to belong to a tracked child before close.
     unsafe {
         if fd_used_by_children(fd) != 0 {
             crate::main::errors::Rf_error(
@@ -246,6 +264,8 @@ fn close_non_child_fd(fd: c_int) {
 
 #[cfg(unix)]
 fn child_sig_handler(sig: c_int) {
+    // SAFETY: signal context; only async-signal-safe state reads and
+    // _exit run here.
     unsafe {
         if sig == SIGUSR1 {
             if let Some(exit_status) = with_current_fork_state(|state| {
@@ -261,6 +281,8 @@ fn child_sig_handler(sig: c_int) {
 
 #[cfg(unix)]
 fn parent_sig_handler(_sig: c_int) {
+    // SAFETY: signal context; errno is saved/restored and only
+    // waitpid on the child list runs here.
     unsafe {
         let old_errno = *errno_ptr();
         if let Some(mut ci) = with_current_fork_state(|state| state.children) {
@@ -277,6 +299,8 @@ fn parent_sig_handler(_sig: c_int) {
 
 #[cfg(unix)]
 fn wait_for_child_ci(ci: *mut child_info_t) {
+    // SAFETY: `ci` is a live child node; waitpid is nonblocking
+    // and only the waitedfor flag is stored.
     unsafe {
         let mut wstat: c_int = 0;
         if waitpid((*ci).pid, &mut wstat, WNOHANG) == (*ci).pid
@@ -289,6 +313,8 @@ fn wait_for_child_ci(ci: *mut child_info_t) {
 
 #[cfg(unix)]
 fn setup_sig_handler() {
+    // SAFETY: `sa` is a fully initialized sigaction; `old_sig_handler`
+    // is the fork state's recorded out slot.
     unsafe {
         if with_fork_state(|state| state.parent_handler_set) == 0 {
             with_fork_state(|state| state.parent_handler_set = 1);
@@ -304,6 +330,7 @@ fn setup_sig_handler() {
 
 #[cfg(unix)]
 fn restore_sig_handler() {
+    // SAFETY: `old` is the sigaction recorded by setup_sig_handler.
     unsafe {
         if with_fork_state(|state| state.parent_handler_set) != 0 {
             let old = with_fork_state(|state| {
@@ -321,6 +348,8 @@ fn restore_sig_handler() {
 
 #[cfg(unix)]
 fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
+    // SAFETY: `ci` is a live child node; kill targets its recorded pid
+    // and fds are closed before detaching.
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         block_sigchld(&mut ss);
@@ -348,6 +377,8 @@ fn terminate_and_detach_child_ci(ci: *mut child_info_t) {
 
 #[cfg(unix)]
 fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
+    // SAFETY: `ci` is a live child node; kill targets its recorded pid
+    // only while not yet reaped.
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         block_sigchld(&mut ss);
@@ -365,6 +396,7 @@ fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
 
 #[cfg(unix)]
 fn rm_child(pid: c_int) -> c_int {
+    // SAFETY: `children` is the fork state's linked list of live nodes.
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let ppid = libc::getpid();
@@ -381,6 +413,8 @@ fn rm_child(pid: c_int) -> c_int {
 
 #[cfg(unix)]
 fn compact_children() {
+    // SAFETY: `children` is the fork state's linked list of Box-owned
+    // nodes; unlinked nodes are reclaimed exactly once.
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let mut prev: *mut child_info_t = ptr::null_mut();
@@ -418,6 +452,8 @@ fn compact_children() {
 
 #[cfg(unix)]
 fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
+    // SAFETY: `dst`/`src` are caller-owned fd_set buffers; nfds is
+    // bounds-checked against FD_SETSIZE.
     unsafe {
         FD_ZERO(dst);
         if nfds as usize > FD_SETSIZE {
@@ -439,6 +475,8 @@ fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
 
 #[cfg(unix)]
 fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
+    // SAFETY: `buf` is a caller-owned buffer of `nbyte` bytes; the
+    // running offset never exceeds it.
     unsafe {
         let mut rbyte: size_t = 0;
         let ptr = buf as *mut u8;
@@ -464,6 +502,8 @@ fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
 
 #[cfg(unix)]
 fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
+    // SAFETY: `buf` is a caller-owned buffer of `nbyte` bytes; the
+    // running offset never exceeds it.
     unsafe {
         let mut wbyte: size_t = 0;
         let ptr = buf as *const u8;
@@ -499,6 +539,8 @@ fn mc_select(
     exceptfds: *mut fd_set,
     timeout: *mut timeval,
 ) -> c_int {
+    // SAFETY: the fd_set/timeval pointers are caller-owned and passed
+    // straight to libc::select.
     unsafe {
         // R_SelectEx is essentially select() with input handler support.
         // For the port, we just use libc::select directly.
@@ -513,6 +555,8 @@ fn mc_select(
 /// Insert a cleanup mark into the children list.
 #[cfg(unix)]
 pub fn mc_prepare_cleanup() -> SEXP {
+    // SAFETY: `ci` is a fresh Box-owned node linked into the fork
+    // state's child list, which owns it thereafter.
     unsafe {
         compact_children();
         let ci = Box::into_raw(Box::new(std::mem::zeroed::<child_info_t>()));
@@ -532,6 +576,8 @@ pub fn mc_prepare_cleanup() -> SEXP {
 /// Terminate and detach all children up to the first cleanup mark.
 #[cfg(unix)]
 pub fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
+    // SAFETY: the child list walk, kill, and sigaction calls operate on
+    // the fork state's live nodes.
     unsafe {
         use crate::main::coerce::{asInteger, asLogical};
 
@@ -627,6 +673,9 @@ pub fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
 ///   [2] = file descriptor of the child-stdin pipe (master->child)
 #[cfg(unix)]
 pub fn mc_fork(sEstranged: SEXP) -> SEXP {
+    // SAFETY: the pipe/fork/dup2 syscalls and the child-list update
+    // below form the POSIX fork boundary; `ci` is a Box-owned node
+    // linked into the fork state, which owns it thereafter.
     unsafe {
         #[cfg(target_os = "android")]
         {
@@ -646,7 +695,6 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
             let mut pid: pid_t = 0;
             let estranged = asInteger(sEstranged) > 0;
             let res = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            let res_i = INTEGER(res);
 
             if !estranged {
                 if pipe(pipefd.as_mut_ptr()) != 0 {
@@ -684,7 +732,7 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
                 );
             }
 
-            *res_i.add(0) = pid as c_int;
+            SET_INTEGER_ELT(res, 0, pid as c_int);
 
             if pid == 0 {
                 // Child process
@@ -702,14 +750,14 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
                 restore_sig_handler();
 
                 if estranged {
-                    *res_i.add(1) = NA_INTEGER as c_int;
-                    *res_i.add(2) = NA_INTEGER as c_int;
+                    SET_INTEGER_ELT(res, 1, NA_INTEGER as c_int);
+                    SET_INTEGER_ELT(res, 2, NA_INTEGER as c_int);
                 } else {
                     close(pipefd[0]);
                     close(sipfd[1]);
-                    with_fork_state(|state| state.master_fd = *res_i.add(1));
-                    *res_i.add(1) = pipefd[1];
-                    *res_i.add(2) = NA_INTEGER as c_int;
+                    with_fork_state(|state| state.master_fd = INTEGER_ELT(res, 1));
+                    SET_INTEGER_ELT(res, 1, pipefd[1]);
+                    SET_INTEGER_ELT(res, 2, NA_INTEGER as c_int);
 
                     dup2(sipfd[0], R_STDIN_FILENO);
                     close(sipfd[0]);
@@ -732,16 +780,16 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
 
                 if estranged {
                     (*ci).detached = 1;
-                    *res_i.add(1) = NA_INTEGER as c_int;
-                    *res_i.add(2) = NA_INTEGER as c_int;
+                    SET_INTEGER_ELT(res, 1, NA_INTEGER as c_int);
+                    SET_INTEGER_ELT(res, 2, NA_INTEGER as c_int);
                     (*ci).pfd = -1;
                     (*ci).sifd = -1;
                 } else {
                     (*ci).detached = 0;
                     close(pipefd[1]); // close write end of data pipe
                     close(sipfd[0]); // close read end of child-stdin pipe
-                    *res_i.add(1) = pipefd[0];
-                    *res_i.add(2) = sipfd[1];
+                    SET_INTEGER_ELT(res, 1, pipefd[0]);
+                    SET_INTEGER_ELT(res, 2, sipfd[1]);
                     (*ci).pfd = pipefd[0];
                     (*ci).sifd = sipfd[1];
                 }
@@ -759,6 +807,7 @@ pub fn mc_fork(sEstranged: SEXP) -> SEXP {
 /// Close or redirect stdout.
 #[cfg(unix)]
 pub fn mc_close_stdout(toNULL: SEXP) -> SEXP {
+    // SAFETY: open/dup2/close on process-owned descriptors.
     unsafe {
         use crate::main::coerce::asLogical;
 
@@ -780,6 +829,7 @@ pub fn mc_close_stdout(toNULL: SEXP) -> SEXP {
 /// Close or redirect stderr.
 #[cfg(unix)]
 pub fn mc_close_stderr(toNULL: SEXP) -> SEXP {
+    // SAFETY: open/dup2/close on process-owned descriptors.
     unsafe {
         use crate::main::coerce::asLogical;
 
@@ -801,18 +851,15 @@ pub fn mc_close_stderr(toNULL: SEXP) -> SEXP {
 /// Close file descriptors.
 #[cfg(unix)]
 pub fn mc_close_fds(sFDS: SEXP) -> SEXP {
-    unsafe {
+    {
         if TYPEOF(sFDS) != SEXPTYPE::INTSXP {
             crate::main::errors::Rf_error(
                 b"descriptors must be integers\0".as_ptr() as *const c_char
             );
         }
         let fds = LENGTH(sFDS);
-        let fd = INTEGER(sFDS);
-        let mut i: c_int = 0;
-        while i < fds {
-            close_non_child_fd(*fd.add(i as usize));
-            i += 1;
+        for i in 0..fds {
+            close_non_child_fd(INTEGER_ELT(sFDS, i));
         }
         Rf_ScalarLogical(1)
     }
@@ -821,6 +868,9 @@ pub fn mc_close_fds(sFDS: SEXP) -> SEXP {
 /// Send data from child to master process.
 #[cfg(unix)]
 pub fn mc_send_master(what: SEXP) -> SEXP {
+    // SAFETY: `b` is a native payload loan of the checked RAWSXP
+    // argument, used only as a read buffer for writerep; the master_fd
+    // and errno accesses are POSIX boundary calls.
     unsafe {
         if with_fork_state(|state| state.is_master) != 0 {
             crate::main::errors::Rf_error(
@@ -884,6 +934,9 @@ pub fn mc_send_master(what: SEXP) -> SEXP {
 /// Send data from master to child process stdin.
 #[cfg(unix)]
 pub fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
+    // SAFETY: `b` is a native payload loan of the checked RAWSXP
+    // argument, used only as a read buffer for writerep; `ci` is a live
+    // child node in the fork state's list.
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -933,6 +986,8 @@ pub fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
 /// Select children with data available to read.
 #[cfg(unix)]
 pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
+    // SAFETY: the fd_set/select/linked-list operations below are the
+    // POSIX boundary; SEXP payloads are read via checked copies.
     unsafe {
         use crate::main::coerce::{asInteger, asReal};
 
@@ -940,7 +995,7 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
         let mut sr: c_int = 0;
         let mut wlen: c_uint = 0;
         let mut wcount: c_uint = 0;
-        let mut which: *const c_int = ptr::null();
+        let mut which: Vec<c_int> = Vec::new();
         let mut ci = with_fork_state(|state| state.children);
         let mut fs: fd_set = std::mem::zeroed();
         let mut timeout: c_double = 0.0;
@@ -951,17 +1006,19 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
         }
 
         if TYPEOF(sWhich) == SEXPTYPE::INTSXP && LENGTH(sWhich) > 0 {
-            which = INTEGER(sWhich);
             wlen = LENGTH(sWhich) as c_uint;
+            which = (0..LENGTH(sWhich))
+                .map(|index| INTEGER_ELT(sWhich, index))
+                .collect();
         }
 
         FD_ZERO(&mut fs);
         while !ci.is_null() {
             if (*ci).detached == 0 && (*ci).ppid == ppid {
-                if !which.is_null() {
+                if !which.is_empty() {
                     let mut k: c_uint = 0;
                     while k < wlen {
-                        if *which.add(k as usize) == (*ci).pid {
+                        if which[k as usize] == (*ci).pid {
                             if (*ci).pfd as usize >= FD_SETSIZE {
                                 crate::main::errors::Rf_error(
                                     b"file descriptor is too large for select()\0".as_ptr()
@@ -993,7 +1050,7 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
             ci = (*ci).next;
         }
 
-        if !which.is_null() && wcount < wlen {
+        if !which.is_empty() && wcount < wlen {
             let mut k: c_uint = 0;
             while k < wlen {
                 let mut found: c_int = 0;
@@ -1001,7 +1058,7 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
                 while !ci2.is_null() {
                     if (*ci2).detached == 0
                         && (*ci2).ppid == ppid
-                        && (*ci2).pid == *which.add(k as usize)
+                        && (*ci2).pid == which[k as usize]
                         && FD_ISSET((*ci2).pfd, &fs)
                     {
                         found = 1;
@@ -1090,11 +1147,11 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
 
         ci = with_fork_state(|state| state.children);
         let res = Rf_allocVector(SEXPTYPE::INTSXP, sr as c_int);
-        let mut res_i = INTEGER(res);
+        let mut next: c_int = 0;
         while !ci.is_null() {
             if (*ci).detached == 0 && (*ci).ppid == ppid && FD_ISSET((*ci).pfd, &fs) {
-                *res_i = (*ci).pid as c_int;
-                res_i = res_i.add(1);
+                SET_INTEGER_ELT(res, next, (*ci).pid as c_int);
+                next += 1;
             }
             ci = (*ci).next;
         }
@@ -1105,6 +1162,8 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
 /// Read data from a child process.
 #[cfg(unix)]
 fn read_child_ci(ci: *mut child_info_t) -> SEXP {
+    // SAFETY: `ci` is a live child node; readrep fills an owned Vec
+    // before the checked element store.
     unsafe {
         if (*ci).detached != 0 {
             return R_NilValue();
@@ -1125,24 +1184,30 @@ fn read_child_ci(ci: *mut child_info_t) -> SEXP {
             return Rf_ScalarInteger(pid as c_int);
         } else {
             let rv = Rf_allocVector(SEXPTYPE::RAWSXP, len as c_int);
-            let rvb = RAW(rv);
+            let mut bytes: Vec<u8> = Vec::new();
             let mut i: R_xlen_t = 0;
             while i < len {
                 let mut to_read: size_t = (len - i) as size_t;
                 if to_read > MC_MAX_CHUNK {
                     to_read = MC_MAX_CHUNK;
                 }
-                let n = readrep(fd, rvb.add(i as usize) as *mut c_void, to_read);
+                let offset = bytes.len();
+                bytes.resize(offset + to_read as usize, 0);
+                let n = readrep(fd, bytes[offset..].as_mut_ptr() as *mut c_void, to_read);
                 if n < 1 {
+                    bytes.truncate(offset);
                     terminate_and_detach_child_ci(ci);
                     return Rf_ScalarInteger(pid as c_int);
                 }
                 i += n as R_xlen_t;
             }
+            for (index, byte) in bytes.iter().enumerate() {
+                SET_RAW_ELT(rv, index as c_int, *byte);
+            }
             let _rv_guard = protect(rv);
             let pa = Rf_ScalarInteger(pid as c_int);
             let _pa_guard = protect(pa);
-            let pid_sym = Rf_install(b"pid\0".as_ptr() as *const c_char);
+            let pid_sym = install_str("pid");
             setAttrib(rv, pid_sym, pa);
             rv
         }
@@ -1152,6 +1217,7 @@ fn read_child_ci(ci: *mut child_info_t) -> SEXP {
 /// Read data from a specific child.
 #[cfg(unix)]
 pub fn mc_read_child(sPid: SEXP) -> SEXP {
+    // SAFETY: `children` is the fork state's linked list of live nodes.
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1174,6 +1240,8 @@ pub fn mc_read_child(sPid: SEXP) -> SEXP {
 /// Read data from any available child.
 #[cfg(unix)]
 pub fn mc_read_children(sTimeout: SEXP) -> SEXP {
+    // SAFETY: the waitpid/fd_set/select/linked-list operations below
+    // are the POSIX boundary.
     unsafe {
         use crate::main::coerce::asReal;
 
@@ -1264,6 +1332,7 @@ pub fn mc_rm_child(sPid: SEXP) -> SEXP {
 /// Get list of attached children PIDs.
 #[cfg(unix)]
 pub fn mc_children() -> SEXP {
+    // SAFETY: `children` is the fork state's linked list of live nodes.
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let mut count: c_uint = 0;
@@ -1277,12 +1346,12 @@ pub fn mc_children() -> SEXP {
 
         let res = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
         if count > 0 {
-            let mut pids = INTEGER(res);
+            let mut next: c_int = 0;
             ci = with_fork_state(|state| state.children);
             while !ci.is_null() {
                 if (*ci).detached == 0 && (*ci).ppid == ppid {
-                    *pids = (*ci).pid as c_int;
-                    pids = pids.add(1);
+                    SET_INTEGER_ELT(res, next, (*ci).pid as c_int);
+                    next += 1;
                 }
                 ci = (*ci).next;
             }
@@ -1294,6 +1363,7 @@ pub fn mc_children() -> SEXP {
 /// Get file descriptors of attached children.
 #[cfg(unix)]
 pub fn mc_fds(sFdi: SEXP) -> SEXP {
+    // SAFETY: `children` is the fork state's linked list of live nodes.
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1310,12 +1380,13 @@ pub fn mc_fds(sFdi: SEXP) -> SEXP {
 
         let res = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
         if count > 0 {
-            let mut fds = INTEGER(res);
+            let mut next: c_int = 0;
             ci = with_fork_state(|state| state.children);
             while !ci.is_null() {
                 if (*ci).detached == 0 && (*ci).ppid == ppid {
-                    *fds = if fdi == 0 { (*ci).pfd } else { (*ci).sifd };
-                    fds = fds.add(1);
+                    let fd = if fdi == 0 { (*ci).pfd } else { (*ci).sifd };
+                    SET_INTEGER_ELT(res, next, fd);
+                    next += 1;
                 }
                 ci = (*ci).next;
             }
@@ -1343,6 +1414,7 @@ pub fn mc_is_child() -> SEXP {
 /// Send a signal to a process.
 #[cfg(unix)]
 pub fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
+    // SAFETY: kill targets the caller-supplied pid/signal directly.
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1358,6 +1430,8 @@ pub fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
 /// Exit a child process.
 #[cfg(unix)]
 pub fn mc_exit(sRes: SEXP) -> SEXP {
+    // SAFETY: writerep/close/_exit on the process-owned master_fd;
+    // errno is read after the write result.
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1467,17 +1541,17 @@ mod tests {
 
 #[cfg(not(unix))]
 pub fn mc_prepare_cleanup() -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_fork(_sEstranged: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::main::errors::Rf_error(
             b"forking is not available on this platform\0".as_ptr() as *const c_char
         );
@@ -1487,22 +1561,22 @@ pub fn mc_fork(_sEstranged: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub fn mc_close_stdout(_toNULL: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_close_stderr(_toNULL: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_close_fds(_sFDS: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(1) }
+    { Rf_ScalarLogical(1) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_send_master(_what: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::main::errors::Rf_error(
             b"only children can send data to the master process\0".as_ptr() as *const c_char,
         );
@@ -1512,7 +1586,7 @@ pub fn mc_send_master(_what: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::main::errors::Rf_error(
             b"only the master process can send data to a child process\0".as_ptr() as *const c_char,
         );
@@ -1522,47 +1596,47 @@ pub fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub fn mc_select_children(_sTimeout: SEXP, _sWhich: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_read_child(_sPid: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_read_children(_sTimeout: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }
 
 #[cfg(not(unix))]
 pub fn mc_rm_child(_sPid: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+    { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_children() -> SEXP {
-    unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
+    { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_fds(_sFdi: SEXP) -> SEXP {
-    unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
+    { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_master_fd() -> SEXP {
-    unsafe { Rf_ScalarInteger(-1) }
+    { Rf_ScalarInteger(-1) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_is_child() -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+    { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::main::errors::Rf_error(b"'mckill' failed\0".as_ptr() as *const c_char);
         R_NilValue()
     }
@@ -1570,7 +1644,7 @@ pub fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub fn mc_exit(_sRes: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::main::errors::Rf_error(
             b"'mcexit' can only be used in a child process\0".as_ptr() as *const c_char
         );
@@ -1580,10 +1654,10 @@ pub fn mc_exit(_sRes: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub fn mc_interactive(_sWhat: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+    { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
 pub fn mc_affinity(_req: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    { R_NilValue() }
 }

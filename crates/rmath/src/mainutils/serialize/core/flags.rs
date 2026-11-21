@@ -47,6 +47,8 @@ pub fn UnpackFlags(
     phasattr: *mut c_int,
     phastag: *mut c_int,
 ) {
+    // SAFETY: each out parameter is caller-owned; every store is preceded
+    // by its own null check.
     unsafe {
         if !ptype.is_null() {
             *ptype = flags & DECODE_TYPE_MASK;
@@ -86,37 +88,43 @@ pub(crate) fn restore_serialized_gp(s: SEXP, levs: c_int, isobj: c_int) {
 }
 
 pub(crate) fn altrep_symbol_name(sym: SEXP) -> String {
-    unsafe {
+    {
         if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
             return String::new();
         }
-        let raw = CHAR(PRINTNAME(sym));
-        if raw.is_null() {
+        let name = PRINTNAME(sym);
+        if name.is_null() {
             return String::new();
         }
-        std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+        String::from_utf8_lossy(&charsxp_as_utf8(name)).into_owned()
     }
 }
 
 pub(crate) fn altrep_state_triple(state: SEXP) -> Result<(f64, f64, f64), String> {
-    unsafe {
+    {
         if state.is_null() {
             return Err("invalid ALTREP compact sequence state".into());
         }
         if TYPEOF(state) == SEXPTYPE::REALSXP && XLENGTH(state) >= 3 {
-            let p = REAL(state);
-            return Ok((*p, *p.add(1), *p.add(2)));
+            return Ok((
+                REAL_ELT(state, 0),
+                REAL_ELT(state, 1),
+                REAL_ELT(state, 2),
+            ));
         }
         if TYPEOF(state) == SEXPTYPE::INTSXP && XLENGTH(state) >= 3 {
-            let p = INTEGER(state);
-            return Ok((*p as f64, *p.add(1) as f64, *p.add(2) as f64));
+            return Ok((
+                INTEGER_ELT(state, 0) as f64,
+                INTEGER_ELT(state, 1) as f64,
+                INTEGER_ELT(state, 2) as f64,
+            ));
         }
         Err("invalid ALTREP compact sequence state".into())
     }
 }
 
 pub(crate) fn expand_compact_intseq(state: SEXP) -> Result<SEXP, String> {
-    unsafe {
+    {
         let (n, first, incr) = altrep_state_triple(state)?;
         if n < 0.0 || n > i32::MAX as f64 {
             return Err("invalid compact integer sequence length".into());
@@ -130,17 +138,16 @@ pub(crate) fn expand_compact_intseq(state: SEXP) -> Result<SEXP, String> {
         }
         let s = Rf_allocVector3(SEXPTYPE::INTSXP, len);
         let _s = protect(s);
-        let data = INTEGER(s);
         let n1 = first as i32;
-        for i in 0..len as isize {
-            *data.offset(i) = n1 + inc * i as i32;
+        for i in 0..len {
+            SET_INTEGER_ELT(s, i as c_int, n1.wrapping_add(inc.wrapping_mul(i as i32)));
         }
         Ok(s)
     }
 }
 
 pub(crate) fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String> {
-    unsafe {
+    {
         let (n, first, incr) = altrep_state_triple(state)?;
         if n < 0.0 || n > i32::MAX as f64 {
             return Err("invalid compact real sequence length".into());
@@ -153,9 +160,8 @@ pub(crate) fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String> {
         let len = n as R_xlen_t;
         let s = Rf_allocVector3(SEXPTYPE::REALSXP, len);
         let _s = protect(s);
-        let data = REAL(s);
-        for i in 0..len as isize {
-            *data.offset(i) = first + incr * i as f64;
+        for i in 0..len {
+            SET_REAL_ELT(s, i as c_int, first + incr * i as f64);
         }
         Ok(s)
     }
@@ -166,6 +172,8 @@ pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
 
     // Capture both edges before the first allocation: formatting and character
     // construction may collect or reenter the owning interpreter.
+    // SAFETY: deferred-string expansion only runs inside an evaluated
+    // unserialize call where the current runtime owner is live.
     let owner =
         unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
     let factory = owner.node_factory();
@@ -194,7 +202,7 @@ pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
             .map_err(|error| error.to_string())?
             .is_nil()
         {
-            let symbol = unsafe { crate::sexp::symbol::Rf_install(c"OutDec".as_ptr()) };
+            let symbol = install_str("OutDec");
             owner.require_active().map_err(|error| error.to_string())?;
             let attribute = crate::sexp::attrib_core::getAttrib(info.as_raw(), symbol);
             let attribute = factory.wrap(attribute).map_err(|error| error.to_string())?;
@@ -242,6 +250,9 @@ pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
                     print.expect("real formatting state"),
                     |_| value,
                 );
+                // SAFETY: `decimal` is a live CString for the call;
+                // EncodeRealDrop0 returns a pointer into a static encoding
+                // buffer valid until the next encode call.
                 let encoded = unsafe {
                     crate::mainutils::printutils::EncodeRealDrop0(
                         value,
@@ -251,6 +262,8 @@ pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
                         decimal.as_ref().expect("real decimal mark").as_ptr(),
                     )
                 };
+                // SAFETY: `encoded` points at the NUL-terminated static
+                // buffer documented above.
                 Some(
                     unsafe { std::ffi::CStr::from_ptr(encoded) }
                         .to_str()
@@ -282,7 +295,7 @@ pub(crate) fn altrep_unserialize_ex(
     isobj: c_int,
     levs: c_int,
 ) -> Result<SEXP, String> {
-    unsafe {
+    {
         if info.is_null() || TYPEOF(info) != SEXPTYPE::LISTSXP {
             return Err("invalid ALTREP class info".into());
         }
@@ -292,7 +305,7 @@ pub(crate) fn altrep_unserialize_ex(
             && TYPEOF(type_cell) == SEXPTYPE::INTSXP
             && XLENGTH(type_cell) >= 1
         {
-            *INTEGER(type_cell)
+            INTEGER_ELT(type_cell, 0)
         } else {
             return Err("invalid ALTREP class type".into());
         };

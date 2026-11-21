@@ -13,6 +13,9 @@ pub struct membuf_st {
 }
 
 pub fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
+    // SAFETY: `mb` is a caller-owned membuf whose `buf` is a Vec handed
+    // out as a raw pointer; `size` always equals its capacity, so the
+    // Vec can be reconstructed, grown, and forgotten here.
     unsafe {
         if mb.is_null() {
             return;
@@ -42,6 +45,8 @@ pub fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
 }
 
 pub extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
+    // SAFETY: `stream` is the caller-owned output stream whose `data`
+    // points at a live membuf; null/capacity checks precede the store.
     unsafe {
         if stream.is_null() {
             return;
@@ -61,6 +66,9 @@ pub extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
 }
 
 pub extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+    // SAFETY: `stream` is the caller-owned output stream whose `data`
+    // points at a live membuf, and `buf` is a caller-owned read buffer
+    // of `length` bytes; capacity is grown before the copy.
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -85,6 +93,8 @@ pub extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length
 }
 
 pub extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
+    // SAFETY: `stream` is the caller-owned input stream whose `data`
+    // points at a live membuf; bounds checks precede the byte read.
     unsafe {
         if stream.is_null() {
             return -1;
@@ -103,6 +113,9 @@ pub extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
 }
 
 pub extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+    // SAFETY: `stream` is the caller-owned input stream whose `data`
+    // points at a live membuf, and `buf` is a caller-owned write buffer
+    // of at least `length` bytes; bounds checks precede the copy.
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -127,6 +140,9 @@ pub fn InitMemInPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    // SAFETY: `mb` is a caller-owned membuf struct and `buf` a
+    // caller-owned input region of `length` bytes that outlives the
+    // stream; the null check precedes the field stores.
     unsafe {
         if mb.is_null() {
             return;
@@ -154,6 +170,8 @@ pub fn InitMemOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    // SAFETY: `mb` is a caller-owned membuf struct; the null check
+    // precedes the initializing field stores.
     unsafe {
         if mb.is_null() {
             return;
@@ -175,6 +193,9 @@ pub fn InitMemOutPStream(
 }
 
 pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
+    // SAFETY: `stream` is the caller-owned output stream whose `data`
+    // points at a live membuf; the buffer is copied out before the
+    // membuf is released.
     unsafe {
         if stream.is_null() {
             error("cannot allocate buffer");
@@ -186,7 +207,10 @@ pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
         let count = (*mb).count;
         let val = Rf_allocVector3(SEXPTYPE::RAWSXP, count as R_xlen_t);
         if !val.is_null() && count > 0 && !(*mb).buf.is_null() {
-            ptr::copy_nonoverlapping((*mb).buf, RAW(val), count);
+            let bytes = std::slice::from_raw_parts((*mb).buf, count);
+            for (index, byte) in bytes.iter().enumerate() {
+                SET_RAW_ELT(val, index as c_int, *byte);
+            }
         }
         free_mem_buffer(mb as *mut c_void);
         val
@@ -194,6 +218,9 @@ pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
 }
 
 pub fn free_mem_buffer(data: *mut c_void) {
+    // SAFETY: `data` is a membuf whose `buf` is a Vec handed out as a
+    // raw pointer with `size` equal to its capacity; it is reclaimed
+    // exactly once here and nulled out.
     unsafe {
         if data.is_null() {
             return;
@@ -247,6 +274,8 @@ pub fn InitBConOutPStream(
 }
 
 pub fn flush_bcon_buffer(bbs: *mut c_void) {
+    // SAFETY: `bbs` is a caller-owned RFile cast; the null check
+    // precedes the flush call.
     unsafe {
         if !bbs.is_null() {
             let fp = bbs as *mut RFile;
@@ -260,6 +289,8 @@ pub fn flush_bcon_buffer(bbs: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
+    // SAFETY: `stream` is the caller-owned output stream whose `data`
+    // points at a live RFile; null checks precede the write.
     unsafe {
         if stream.is_null() {
             return;
@@ -273,6 +304,9 @@ pub extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
 }
 
 pub extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+    // SAFETY: `stream` is the caller-owned output stream whose `data`
+    // points at a live RFile, and `buf` is a caller-owned read buffer
+    // of `length` bytes; null checks precede the write.
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -289,6 +323,8 @@ pub extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, lengt
 }
 
 pub extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
+    // SAFETY: `stream` is the caller-owned input stream whose `data`
+    // points at a live RFile; null checks precede the read.
     unsafe {
         if stream.is_null() {
             return -1;
@@ -302,6 +338,9 @@ pub extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
 }
 
 pub extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+    // SAFETY: `stream` is the caller-owned input stream whose `data`
+    // points at a live RFile, and `buf` is a caller-owned write buffer
+    // of at least `length` bytes; null checks precede the read.
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -330,6 +369,9 @@ pub fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
 // ---------------------------------------------------------------------------
 
 pub fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
+    // SAFETY: `con` is a caller-owned RFile cast and `buf` a
+    // caller-owned read buffer of `n` bytes; null checks precede
+    // the write.
     unsafe {
         if con.is_null() || buf.is_null() || n == 0 {
             return 0;

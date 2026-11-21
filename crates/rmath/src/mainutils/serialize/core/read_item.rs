@@ -41,6 +41,8 @@ type ImportedMetadata = [crate::sexp::object::Sexp<'static>; 2];
 
 fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     use crate::sexp::{instance::RuntimeValue, object::SexpError, owner::OwnerToken};
+    // SAFETY: metadata lookup runs inside an evaluated unserialize call
+    // where the current runtime owner is live.
     let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
     if owner.weak_owner().is_none() {
         return Ok(None); // Explicitly borrowed native fixtures retain their old path.
@@ -48,6 +50,8 @@ fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     let _pin = owner.pin().map_err(|e| e.to_string())?;
     let pointer = owner.as_ptr();
     // No state loan crosses allocation, collection, or provider callbacks.
+    // SAFETY: `pointer` is the pinned current owner; the cache field read
+    // is strictly local with no callback inside the borrow.
     let cached = unsafe {
         (*pointer)
             .serialize_state
@@ -77,6 +81,8 @@ fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     owner.require_active().map_err(|e| e.to_string())?;
     // Allocation callbacks may have initialized this same owner's cache.
     // Preserve that publication and release our redundant temporary cells.
+    // SAFETY: `pointer` is the pinned current owner; the cache field read
+    // is strictly local with no callback inside the borrow.
     let published = unsafe {
         (*pointer)
             .serialize_state
@@ -86,6 +92,8 @@ fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     if let [Some(marker), Some(hint)] = published.map(|value| value.owned()) {
         return Ok(Some([marker, hint]));
     }
+    // SAFETY: `pointer` is the pinned current owner; the cache publish is
+    // a strictly local field store with no callback inside the borrow.
     unsafe {
         (*pointer).serialize_state.imported_bytecode_metadata = [
             RuntimeValue::from_owned(marker.clone()),
@@ -108,7 +116,7 @@ pub(crate) fn read_bc_source(
     }
     reader.item_depth += 1;
     reader.bc_source_depth += 1;
-    let result = (|| unsafe {
+    let result = (|| {
         let code = ReadItemInternal(reader, refs)?;
         let _code = protect(code);
         if TYPEOF(code) != SEXPTYPE::INTSXP {
@@ -116,19 +124,22 @@ pub(crate) fn read_bc_source(
         }
         {
             let n = XLENGTH(code) as usize;
-            let words = if n == 0 {
-                &[]
-            } else {
-                std::slice::from_raw_parts(INTEGER(code), n)
-            };
-            crate::eval::bytecode::validate_gnu_bytecode_stream(words)?;
+            let words: Vec<c_int> = (0..n)
+                .map(|index| INTEGER_ELT(code, index as c_int))
+                .collect();
+            crate::eval::bytecode::validate_gnu_bytecode_stream(&words)?;
         }
         let count = reader.read_object_vector_length()?;
         if count == 0 {
             return Err("GNU compiled closure has no source expression".into());
         }
         let stream_owner = if reader.pull.is_some() {
-            Some(crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?)
+            // SAFETY: pull-mode staging runs inside an evaluated
+            // unserialize call where the current owner is live.
+            Some(
+                unsafe { crate::sexp::owner::OwnerToken::current() }
+                    .map_err(|e| e.to_string())?,
+            )
         } else {
             None
         };
@@ -174,7 +185,11 @@ pub(crate) fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants)? {
+        // SAFETY: `code` and `constants` are live vectors validated by
+        // their wire types above; the adapter validator reads their raw
+        // layouts.
+        if !unsafe { crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants) }?
+        {
             return Ok(VECTOR_ELT(constants, 0));
         }
 
@@ -297,15 +312,15 @@ pub(crate) fn read_packed_string_vec(
 }
 
 pub(crate) fn first_string_elt(names: SEXP) -> String {
-    unsafe {
+    {
         if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) < 1 {
             return String::new();
         }
-        let raw = CHAR(STRING_ELT(names, 0));
-        if raw.is_null() {
+        let elt = STRING_ELT(names, 0);
+        if elt.is_null() {
             return String::new();
         }
-        std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+        String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned()
     }
 }
 
@@ -317,8 +332,11 @@ pub(crate) fn read_promise(
     levs: i32,
     isobj: i32,
 ) -> Result<SEXP, String> {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+    {
+        // SAFETY: promise decoding runs inside an evaluated unserialize
+        // call where the current runtime owner is live.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+            .map_err(|e| e.to_string())?;
         let _pin = owner.pin().map_err(|e| e.to_string())?;
         owner.require_active().map_err(|e| e.to_string())?;
         let factory = owner.node_factory();
@@ -499,10 +517,13 @@ pub(crate) fn read_references_item(
         hasattr,
         ..
     } = flags;
-    unsafe {
+    {
         let len = reader.read_object_vector_length()?;
         let staged = if reader.pull.is_some() {
-            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            // SAFETY: pull-mode staging runs inside an evaluated
+            // unserialize call where the current owner is live.
+            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+                .map_err(|e| e.to_string())?;
             let _pin = owner.pin().map_err(|e| e.to_string())?;
             let reservation = owner
                 .with_arena(|arena| arena.reserve_workspace(0))
@@ -634,6 +655,8 @@ pub(crate) fn read_weakref_item(
         hasattr,
         ..
     } = item;
+    // SAFETY: R_MakeWeakRef allocates a weak reference node inside this
+    // evaluated unserialize call; the result is protected immediately.
     unsafe {
         let s = crate::mainutils::memory_main::R_MakeWeakRef(
             R_NilValue(),
@@ -659,7 +682,7 @@ pub(crate) fn read_persistent_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let names_flag = reader.read_i32()?;
         if names_flag != 0 {
             return Err("names in persistent strings are not supported".into());
@@ -683,9 +706,9 @@ pub(crate) fn read_persistent_item(
                 if i > 0 {
                     key.push(0).map_err(|e| e.to_string())?;
                 }
-                let raw = CHAR(STRING_ELT(names, i as R_xlen_t));
-                if !raw.is_null() {
-                    std::io::Write::write_all(&mut key, std::ffi::CStr::from_ptr(raw).to_bytes())
+                let elt = STRING_ELT(names, i as R_xlen_t);
+                if !elt.is_null() {
+                    std::io::Write::write_all(&mut key, &charsxp_as_utf8(elt))
                         .map_err(|e| e.to_string())?;
                 }
             }
@@ -705,7 +728,9 @@ pub(crate) fn read_persistent_item(
         let restored = if let Some(restore) = reader.lazy_restore.clone() {
             restore.restore(names)?
         } else if let Some(func) = reader.persist_hook_func {
-            func(names, reader.persist_hook_data)
+            // SAFETY: `func` is the stream's installed C persist hook,
+            // invoked with its own hook data and the live `names` vector.
+            unsafe { func(names, reader.persist_hook_data) }
         } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
             return Err("no restore method available".into());
         } else {
@@ -758,7 +783,7 @@ pub(crate) fn read_environment_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let locked = reader.read_i32()?;
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
         let _env = protect(env);
@@ -809,12 +834,17 @@ pub(crate) fn read_environment_item(
                 if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
                     return Err("invalid environment binding name".into());
                 }
-                crate::sexp::envir::defineVar(symbol, CAR(cell), env);
+                // SAFETY: `env` is a freshly allocated environment and
+                // `symbol` is a checked SYMSXP; the binding value is a live
+                // list CAR.
+                unsafe {
+                    crate::sexp::envir::defineVar(symbol, CAR(cell), env);
+                }
                 cell = CDR(cell);
             }
         }
         if attributes != R_NilValue()
-            && crate::eval::attrib_core::getAttrib(env, crate::eval::attrib_core::R_ClassSymbol())
+            && crate::sexp::attrib_core::getAttrib(env, crate::sexp::attrib_core::R_ClassSymbol())
                 != R_NilValue()
         {
             SET_OBJECT(env, 1);
@@ -833,9 +863,10 @@ pub(crate) fn read_symbol_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let pname = ReadItemInternal(reader, ref_table)?;
-        let sym = Rf_install(CHAR(pname));
+        let name = String::from_utf8_lossy(&charsxp_as_utf8(pname)).into_owned();
+        let sym = install_str(&name);
         ref_table.add(sym);
         Ok(sym)
     }
@@ -848,12 +879,12 @@ pub(crate) fn read_character_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let len = reader.read_i32()?;
         if len < 0 {
             Ok(R_NaString())
         } else if len == 0 {
-            let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
+            let s = mk_chars(b"");
             Ok(s)
         } else {
             let bytes =
@@ -861,7 +892,7 @@ pub(crate) fn read_character_item(
             if let Some(name) = crate::sexp::symbol::interned_ascii_character(&bytes) {
                 return Ok(name);
             }
-            let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
+            let s = mk_chars(&bytes);
             Ok(s)
         }
     }
@@ -980,7 +1011,7 @@ pub(crate) fn read_strings_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         let len = reader.read_vector_length(4)?;
         if reader.bc_source_depth > 0 && len == 1 && levs == 0 && isobj == 0 && hasattr == 0 {
             let character = ReadItemInternal(reader, ref_table)?;
@@ -988,7 +1019,10 @@ pub(crate) fn read_strings_item(
                 return Err("invalid character scalar in GNU bytecode".into());
             }
             let _character = protect(character);
-            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            // SAFETY: bytecode string interning runs inside an evaluated
+            // unserialize call where the current owner is live.
+            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+                .map_err(|e| e.to_string())?;
             let value = owner
                 .with_arena(|arena| arena.immutable_bytecode_string(character))
                 .map_err(|e| e.to_string())?;
@@ -1065,7 +1099,7 @@ pub(crate) fn read_bytecode_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         let repeated = reader.read_i32()?;
         if repeated < 1 {
             return Err("GNU R BCODESXP has an invalid repetition table length".into());
@@ -1074,17 +1108,11 @@ pub(crate) fn read_bytecode_item(
         if TYPEOF(code) != SEXPTYPE::INTSXP {
             return Err("GNU R BCODESXP instruction stream is not an integer vector".into());
         }
-        let code_len = XLENGTH(code) as usize;
-        let code_ptr = INTEGER(code);
-        if code_len > 0 && code_ptr.is_null() {
-            return Err("GNU R BCODESXP instruction stream has a null data pointer".into());
-        }
-        let code_slice = if code_len == 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(code_ptr, code_len)
-        };
-        crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
+        let code_len = usize::try_from(XLENGTH(code)).unwrap_or(0);
+        let words: Vec<c_int> = (0..code_len)
+            .map(|index| INTEGER_ELT(code, index as c_int))
+            .collect();
+        crate::eval::bytecode::validate_gnu_bytecode_stream(&words)?;
         Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
     }
 }
@@ -1096,7 +1124,7 @@ pub(crate) fn read_primitive_item(
     item: ItemFlags,
 ) -> Result<SEXP, String> {
     let _ = item;
-    unsafe {
+    {
         // GNU serialize.c: OutInteger(strlen(PRIMNAME)); OutString(name, len)
         let length = reader.read_i32()?;
         if length < 0 {
@@ -1106,7 +1134,11 @@ pub(crate) fn read_primitive_item(
             reader.read_string_bytes(length as usize, |length| _ref_table.reserve(length))?;
         let mut cbuf = bytes;
         cbuf.push(0).map_err(|e| e.to_string())?;
-        let prim = crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char);
+        // SAFETY: `cbuf` is an owned NUL-terminated name buffer live for
+        // the duration of the lookup call.
+        let prim = unsafe {
+            crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char)
+        };
         if prim.is_null() || prim == R_NilValue() {
             Ok(R_NilValue())
         } else {
@@ -1127,12 +1159,16 @@ pub(crate) fn read_external_item(
         hasattr,
         ..
     } = item;
-    unsafe {
+    {
         // GNU serialize.c: HashAdd; WriteItem(PROT); WriteItem(TAG); addr is not serialized.
         let s = allocSExp(SEXPTYPE::EXTPTRSXP);
         let _s_guard = protect(s);
         ref_table.add(s);
-        crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
+        // SAFETY: `s` is a freshly allocated external pointer node; the
+        // raw address slot is cleared to null.
+        unsafe {
+            crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
+        }
         let prot = ReadItemInternal(reader, ref_table)?;
         crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
         let tag = ReadItemInternal(reader, ref_table)?;

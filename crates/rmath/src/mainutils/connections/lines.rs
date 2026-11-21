@@ -502,11 +502,11 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
 }
 
 fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
-    let mode = {
-        let text = CString::new(mode).unwrap_or_default();
-        // SAFETY: `text` is a live NUL-terminated buffer for the call.
-        unsafe { Rf_mkString(text.as_ptr()) }
-    };
+    let mode = crate::mainutils::connections::args::mk_string(if mode.contains('\0') {
+        ""
+    } else {
+        mode
+    });
     let _mode_root = protect(mode);
     let inner = Rf_cons(mode, R_NilValue());
     let _inner_root = protect(inner);
@@ -606,15 +606,13 @@ mod cleanup_identity_tests {
             args.push(value, None).unwrap();
         }
         let args = args.finish().unwrap();
-        unsafe {
-            f.wrap(do_file(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                args.as_raw(),
-                ptr::null_mut(),
-            ))
-            .unwrap()
-        }
+        f.wrap(do_file(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            args.as_raw(),
+            ptr::null_mut(),
+        ))
+        .unwrap()
     }
     fn cleanup_identity(action: u8, remove: bool) {
         let mut session = RSession::new_for_gc_tests();
@@ -622,7 +620,7 @@ mod cleanup_identity_tests {
         session.with_active_in(|instance| unsafe {
             (*instance).browser_files.set_test_clock(0.0);
         });
-        session.with_active(|| unsafe {
+        session.with_active(|| {
             let f = session.owner_token().unwrap().node_factory();
             let original = file(&f, "cleanup-original.txt", "");
             let index = original.try_integer_elt(0).unwrap();

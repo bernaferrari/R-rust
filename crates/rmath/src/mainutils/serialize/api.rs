@@ -5,12 +5,14 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 pub fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
+    // SAFETY: `stream` is a caller-owned output stream that outlives this
+    // call; the null check guards every field access, and each callback
+    // receives only read-only views of buffers owned by this function.
     unsafe {
         if stream.is_null() {
             return;
         }
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let out_ref = &mut *stream;
         // Use OutFormat
@@ -93,25 +95,21 @@ pub fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 // ---------------------------------------------------------------------------
 
 pub fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
-    unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        if stream.is_null() {
-            error("read error");
-        }
-        let bytes = read_stream_bytes_via_inchar(stream, &owner);
-        if bytes.is_empty() {
-            error("read error");
-        }
-        let raw = raw_from_bytes(&bytes);
-        R_unserialize_from_stream_hooks(
-            raw,
-            (*stream).InPersistHookFunc,
-            (*stream).InPersistHookData,
-            None,
-        )
+    let owner = current_owner();
+    let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
+    if stream.is_null() {
+        error("read error");
     }
+    let bytes = read_stream_bytes_via_inchar(stream, &owner);
+    if bytes.is_empty() {
+        error("read error");
+    }
+    let raw = raw_from_bytes(&bytes);
+    // SAFETY: `stream` is the caller-owned input stream, checked for null
+    // above; only its hook fields are read.
+    let (hook_func, hook_data) =
+        unsafe { ((*stream).InPersistHookFunc, (*stream).InPersistHookData) };
+    R_unserialize_from_stream_hooks(raw, hook_func, hook_data, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +117,7 @@ pub fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
-    unsafe {
+    {
         if stream.is_null() {
             error("read error");
         }
@@ -135,55 +133,55 @@ pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
         let _ans_guard = protect(ans);
         let _names_guard = protect(names);
 
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"version".as_ptr()));
+        SET_STRING_ELT(names, 0, mk_char("version"));
         SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(version));
 
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"writer_version".as_ptr()));
+        SET_STRING_ELT(names, 1, mk_char("writer_version"));
         let mut vv = 0;
         let mut vp = 0;
         let mut vs = 0;
         DecodeVersion(writer_version, &mut vv, &mut vp, &mut vs);
         let writer_s = format!("{vv}.{vp}.{vs}");
-        let writer_c = CString::new(writer_s).unwrap_or_default();
-        SET_VECTOR_ELT(ans, 1, Rf_mkString(writer_c.as_ptr()));
+        SET_VECTOR_ELT(ans, 1, mk_string(&writer_s));
 
-        SET_STRING_ELT(names, 2, Rf_mkChar(c"min_reader_version".as_ptr()));
+        SET_STRING_ELT(names, 2, mk_char("min_reader_version"));
         if min_reader_version < 0 {
             SET_VECTOR_ELT(ans, 2, Rf_ScalarString(R_NaString()));
         } else {
             DecodeVersion(min_reader_version, &mut vv, &mut vp, &mut vs);
             let min_reader_s = format!("{vv}.{vp}.{vs}");
-            let min_reader_c = CString::new(min_reader_s).unwrap_or_default();
-            SET_VECTOR_ELT(ans, 2, Rf_mkString(min_reader_c.as_ptr()));
+            SET_VECTOR_ELT(ans, 2, mk_string(&min_reader_s));
         }
 
-        SET_STRING_ELT(names, 3, Rf_mkChar(c"format".as_ptr()));
-        match (*stream).type_ {
+        SET_STRING_ELT(names, 3, mk_char("format"));
+        // SAFETY: `stream` is the caller-owned input stream, checked for
+        // null above; only its format field is read.
+        match unsafe { (*stream).type_ } {
             R_pstream_format_t::R_pstream_ascii_format
             | R_pstream_format_t::R_pstream_asciihex_format => {
-                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"ascii".as_ptr()));
+                SET_VECTOR_ELT(ans, 3, mk_string("ascii"));
             }
             R_pstream_format_t::R_pstream_binary_format => {
-                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"binary".as_ptr()));
+                SET_VECTOR_ELT(ans, 3, mk_string("binary"));
             }
             R_pstream_format_t::R_pstream_xdr_format => {
-                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"xdr".as_ptr()));
+                SET_VECTOR_ELT(ans, 3, mk_string("xdr"));
             }
             _ => error("unknown input format"),
         }
 
         if version == 3 {
-            SET_STRING_ELT(names, 4, Rf_mkChar(c"native_encoding".as_ptr()));
+            SET_STRING_ELT(names, 4, mk_char("native_encoding"));
             let nelen = InInteger(stream);
             if !(0..=R_CODESET_MAX).contains(&nelen) {
                 error("invalid length of encoding name");
             }
             if nelen == 0 {
-                SET_VECTOR_ELT(ans, 4, Rf_mkString(c"".as_ptr()));
+                SET_VECTOR_ELT(ans, 4, mk_string(""));
             } else {
                 let mut bytes = vec![0u8; nelen as usize];
                 InString(stream, bytes.as_mut_ptr() as *mut c_char, nelen);
-                let enc_ch = Rf_mkCharLen(bytes.as_ptr() as *const c_char, nelen);
+                let enc_ch = mk_chars(&bytes);
                 SET_VECTOR_ELT(ans, 4, Rf_ScalarString(enc_ch));
             }
         }
@@ -198,9 +196,8 @@ pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
-    unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+    {
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         if stream.is_null() {
             error("read error");
@@ -219,33 +216,36 @@ pub fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
 }
 
 pub fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
-    unsafe {
+    {
         if stream.is_null() {
             return;
         }
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let mut writer = BinaryWriter::admitted(&owner);
         let mut ref_table = WriteHashTable::for_owner(&owner);
         WriteItemInternal(s, &mut ref_table, &mut writer);
         let data = writer.into_output();
-        if !data.is_empty()
-            && let Some(out_bytes) = (*stream).OutBytes
-        {
-            let mut offset = 0usize;
-            while offset < data.len() {
-                let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
-                let chunk_len_int = chunk_len as c_int;
-                if chunk_len_int < 0 {
-                    break;
+        // SAFETY: `stream` is the caller-owned output stream, checked for
+        // null above; the callback only reads each immutable chunk.
+        unsafe {
+            if !data.is_empty()
+                && let Some(out_bytes) = (*stream).OutBytes
+            {
+                let mut offset = 0usize;
+                while offset < data.len() {
+                    let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
+                    let chunk_len_int = chunk_len as c_int;
+                    if chunk_len_int < 0 {
+                        break;
+                    }
+                    out_bytes(
+                        stream,
+                        data[offset..].as_ptr() as *const c_void,
+                        chunk_len_int,
+                    );
+                    offset += chunk_len;
                 }
-                out_bytes(
-                    stream,
-                    data[offset..].as_ptr() as *const c_void,
-                    chunk_len_int,
-                );
-                offset += chunk_len;
             }
         }
     }
@@ -255,7 +255,7 @@ pub(crate) fn read_stream_bytes_via_inchar(
     stream: R_inpstream_t,
     owner: &crate::sexp::owner::OwnerToken<'_>,
 ) -> super::owned_input::InputBytes {
-    unsafe {
+    {
         let mut out = super::owned_input::InputBytes::new(
             super::workspace::reserve(owner, 0).unwrap_or_else(|e| error(&e)),
             0,
@@ -264,13 +264,17 @@ pub(crate) fn read_stream_bytes_via_inchar(
         if stream.is_null() {
             return out;
         }
-        let Some(in_char) = (*stream).InChar else {
+        // SAFETY: `stream` is the caller-owned input stream, checked for
+        // null above; only its InChar callback field is read.
+        let Some(in_char) = (unsafe { (*stream).InChar }) else {
             return out;
         };
         loop {
             let read = out
                 .push_from(|| {
-                    let ch = in_char(stream);
+                    // SAFETY: `in_char` is the stream's installed read
+                    // callback, invoked with its owning stream pointer.
+                    let ch = unsafe { in_char(stream) };
                     owner
                         .require_active()
                         .unwrap_or_else(|e| error(&e.to_string()));
@@ -298,6 +302,8 @@ pub fn R_InitInPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    // SAFETY: `stream` is a caller-owned input stream struct; the null
+    // check precedes plain field stores that stay inside its layout.
     unsafe {
         if stream.is_null() {
             return;
@@ -324,6 +330,8 @@ pub fn R_InitOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    // SAFETY: `stream` is a caller-owned output stream struct; the null
+    // check precedes plain field stores that stay inside its layout.
     unsafe {
         if stream.is_null() {
             return;
@@ -445,13 +453,12 @@ pub fn R_serialize_with_xdr(
     Sversion: SEXP,
     fun: SEXP,
 ) -> SEXP {
-    unsafe {
+    {
         if object.is_null() {
             error("read error");
         }
 
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let _object_guard = protect(object);
         let _hook_guard = protect(fun);
@@ -480,13 +487,9 @@ pub fn R_serialize_with_xdr(
             SnapshotFormat::Native
         };
         let data = serialize_snapshot(&owner, object, fun, version, format, &[]);
-        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
+        let raw = raw_from_bytes(&data);
         if raw.is_null() {
             error("serialize exceeds session memory limit");
-        }
-        if !data.is_empty() {
-            let raw_ptr = RAW(raw);
-            ptr::copy_nonoverlapping(data.as_ptr(), raw_ptr, data.len());
         }
         raw
     }
@@ -579,10 +582,9 @@ fn serialize_snapshot(
 
 /// Unserialize an R object from a raw vector.
 pub fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
-    unsafe {
+    {
         if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::ENVSXP {
-            let owner =
-                crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+            let owner = current_owner();
             let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
             owner
                 .require_active()
@@ -620,6 +622,8 @@ impl LazyLoadRestore {
         authority
             .with_projection(|pointer| {
                 // This original operation pin retains cleanup storage through unwind.
+                // SAFETY: `pointer` is the projected owner of the stored
+                // authority, valid for the duration of the projection.
                 let owner = unsafe { OwnerToken::from_raw(pointer) };
                 owner.require_active()?;
                 if crate::sexp::memory::is_arena_lent(pointer) {
@@ -627,6 +631,8 @@ impl LazyLoadRestore {
                 }
                 let names = owner.sexp(names)?;
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    // SAFETY: `pointer` is the projected owner whose instance
+                    // is activated only inside this pinned callback scope.
                     crate::sexp::session::with_instance_active(pointer, || {
                         let raw = persist_restore_inner(names.as_raw(), self.data.as_raw(), owner);
                         owner.require_active()?;
@@ -707,8 +713,9 @@ impl Drop for PendingPersistEnvironment<'_> {
                 let Some(parent_pointer) = heap.node_projection(&parent) else {
                     return;
                 };
-                // Both canonical nodes and physical runtime are retained; this
-                // barrier is callback-free and remains valid after revocation.
+                // SAFETY: both canonical nodes and the physical runtime are
+                // retained; this barrier is callback-free and remains valid
+                // after revocation.
                 if !unsafe {
                     crate::sexp::gengc::write_barrier_in(self.owner.as_ptr(), parent_pointer, next)
                 } {
@@ -730,16 +737,19 @@ fn persist_restore_inner(
     data: SEXP,
     owner: crate::sexp::owner::OwnerToken<'_>,
 ) -> SEXP {
+    // SAFETY: `data` is a caller-owned environment SEXP; each
+    // R_findVarInFrame/defineVar call uses installed symbols against
+    // checked environment types inside this pinned restore scope.
     unsafe {
         if data.is_null() || TYPEOF(data) != SEXPTYPE::ENVSXP {
             return R_NilValue();
         }
         let name = if TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) > 0 {
-            let raw = CHAR(STRING_ELT(names, 0));
-            if raw.is_null() {
+            let elt = STRING_ELT(names, 0);
+            if elt.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned()
+                String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned()
             }
         } else {
             String::new()
@@ -747,12 +757,9 @@ fn persist_restore_inner(
         if name.is_empty() {
             return R_NilValue();
         }
-        let Ok(cname) = std::ffi::CString::new(name.clone()) else {
-            return R_NilValue();
-        };
-        let name_sym = Rf_install(cname.as_ptr());
+        let name_sym = install_str(&name);
 
-        let cache_sym = Rf_install(c"cache".as_ptr());
+        let cache_sym = install_str("cache");
         let cache = R_findVarInFrame(data, cache_sym);
         if !cache.is_null() && cache != R_UnboundValue() && TYPEOF(cache) == SEXPTYPE::ENVSXP {
             let hit = R_findVarInFrame(cache, name_sym);
@@ -806,7 +813,7 @@ fn persist_restore_inner(
             );
         }
         let env = env_raw;
-        let refs_sym = Rf_install(c"refs".as_ptr());
+        let refs_sym = install_str("refs");
         let refs = R_findVarInFrame(data, refs_sym);
         let mut key = R_NilValue();
         if !refs.is_null() && refs != R_UnboundValue() {
@@ -819,8 +826,9 @@ fn persist_restore_inner(
                 );
                 if TYPEOF(nm) == SEXPTYPE::STRSXP {
                     for i in 0..XLENGTH(nm) {
-                        let raw = CHAR(STRING_ELT(nm, i));
-                        if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_string_lossy() == name
+                        let raw = STRING_ELT(nm, i);
+                        if !raw.is_null()
+                            && String::from_utf8_lossy(&charsxp_as_utf8(raw)) == name.as_str()
                         {
                             key = VECTOR_ELT(refs, i);
                             break;
@@ -837,9 +845,9 @@ fn persist_restore_inner(
                 crate::sexp::attrib_core::getAttrib(key, crate::sexp::attrib_core::R_NamesSymbol());
             if TYPEOF(kn) == SEXPTYPE::STRSXP {
                 for i in 0..XLENGTH(kn) {
-                    let raw = CHAR(STRING_ELT(kn, i));
+                    let raw = STRING_ELT(kn, i);
                     if !raw.is_null()
-                        && std::ffi::CStr::from_ptr(raw).to_string_lossy() == "eagerKey"
+                        && String::from_utf8_lossy(&charsxp_as_utf8(raw)) == "eagerKey"
                     {
                         key = VECTOR_ELT(key, i);
                         break;
@@ -847,8 +855,8 @@ fn persist_restore_inner(
                 }
             }
         }
-        let datafile = R_findVarInFrame(data, Rf_install(c"datafile".as_ptr()));
-        let compressed = R_findVarInFrame(data, Rf_install(c"compressed".as_ptr()));
+        let datafile = R_findVarInFrame(data, install_str("datafile"));
+        let compressed = R_findVarInFrame(data, install_str("compressed"));
         if datafile.is_null()
             || datafile == R_UnboundValue()
             || compressed.is_null()
@@ -971,13 +979,12 @@ fn R_unserialize_from_stream_hooks(
     hook_data: SEXP,
     lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
-    unsafe {
+    {
         if icon.is_null() {
             error("read error");
         }
 
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         owner
             .require_active()
@@ -1003,7 +1010,9 @@ fn R_unserialize_from_stream_hooks(
         }
 
         if ALTREP(input.as_raw()) != 0 {
-            RAW(input.as_raw());
+            input
+                .materialize_compact_payload_for_raw()
+                .unwrap_or_else(|e| error(&e.to_string()));
         }
         owner
             .require_active()
@@ -1222,9 +1231,8 @@ fn decode_stream_object(
 /// connection, pulling bytes on demand (GNU `R_InitConnInPStream` /
 /// `ConnReadChar` data flow). Trailing bytes stay unread in the connection.
 fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
-    unsafe {
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+    {
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         owner
             .require_active()
@@ -1313,7 +1321,7 @@ pub fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SE
 /// GNU base's wrapper supplies `(object, connection, type, version, refhook)`.
 /// Keep this adapter separate from the public six-argument builtin contract.
 pub fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let object = require_arg(args, 0);
         let conn = require_arg(args, 1);
         let format = asInteger(require_arg(args, 2));
@@ -1330,8 +1338,8 @@ pub fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         let xdr = Rf_ScalarLogical(xdr);
         let raw = R_serialize_with_xdr(object, conn, ascii, xdr, version, hook);
         if TYPEOF(conn) == SEXPTYPE::INTSXP {
-            let bytes = std::slice::from_raw_parts(RAW(raw), XLENGTH(raw) as usize);
-            crate::mainutils::connections::connection_write_bytes(asInteger(conn), bytes);
+            let bytes = raw_to_bytes(raw);
+            crate::mainutils::connections::connection_write_bytes(asInteger(conn), &bytes);
             return R_NilValue();
         }
         raw
@@ -1339,7 +1347,7 @@ pub fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 }
 
 pub fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
             error("argument \"connection\" is missing, with no default");
@@ -1373,9 +1381,8 @@ pub fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let hook = arg_by_name_or_position(args, "refhook", 5);
         let raw = R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, hook);
         if TYPEOF(conn) == SEXPTYPE::INTSXP {
-            let n = XLENGTH(raw) as usize;
-            let bytes = std::slice::from_raw_parts(RAW(raw), n);
-            crate::mainutils::connections::connection_write_bytes(*INTEGER(conn), bytes);
+            let bytes = raw_to_bytes(raw);
+            crate::mainutils::connections::connection_write_bytes(INTEGER_ELT(conn, 0), &bytes);
             return R_NilValue();
         }
         raw
@@ -1387,7 +1394,7 @@ pub fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
             error("wrong number of arguments");
@@ -1403,12 +1410,11 @@ pub fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             R_NilValue(),
             R_NilValue(),
         );
-        let index = *INTEGER(conn) as usize;
+        let index = usize::try_from(INTEGER_ELT(conn, 0)).unwrap_or(0);
         let guard = crate::mainutils::connections::get_connection(index);
         let path = guard[index].as_ref().unwrap().description.clone();
-        let n = XLENGTH(raw) as usize;
-        let bytes = std::slice::from_raw_parts(RAW(raw), n);
-        if std::fs::write(&path, bytes).is_err() {
+        let bytes = raw_to_bytes(raw);
+        if std::fs::write(&path, &bytes).is_err() {
             error("cannot write to connection");
         }
         R_NilValue()
@@ -1420,14 +1426,13 @@ pub fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
             error("wrong number of arguments");
         }
 
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let _arguments = owner.sexp(args).unwrap_or_else(|e| error(&e.to_string()));
         // A connection/class provider can detach the argument tail and collect.
@@ -1507,7 +1512,7 @@ pub(crate) fn decode_lazy_record(
 }
 
 pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, env);
         let key = require_arg(args, 0);
         let file = require_arg(args, 1);
@@ -1516,8 +1521,7 @@ pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Portable pinned data uses the same original lazy-load stream, while
         // retaining all selected operands through provider and reader callbacks.
         // Inspection of ordinary file vectors invokes no provider accessor.
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
+        let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         // Retain the entire native call, environment and argument graph before
         // making the codec retry collecting. NULL compatibility arguments
@@ -1607,7 +1611,9 @@ pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut val_guard = protect(val);
         drop(data);
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
-            val = Rf_eval(val, R_GlobalEnv());
+            // SAFETY: `val` is a live promise SEXP and `R_GlobalEnv` is the
+            // canonical global environment for this evaluation.
+            val = unsafe { Rf_eval(val, R_GlobalEnv()) };
             val_guard = protect(val);
             if !val.is_null() {
                 SET_NAMED(val, 2);

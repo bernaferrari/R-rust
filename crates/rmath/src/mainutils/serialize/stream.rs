@@ -5,6 +5,8 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 pub fn OutInteger(stream: R_outpstream_t, i: c_int) {
+    // SAFETY: `stream` is a caller-owned output stream; the null check
+    // precedes the field read and the callback only reads `bytes`.
     unsafe {
         if stream.is_null() {
             return;
@@ -17,6 +19,8 @@ pub fn OutInteger(stream: R_outpstream_t, i: c_int) {
 }
 
 pub fn OutReal(stream: R_outpstream_t, d: c_double) {
+    // SAFETY: `stream` is a caller-owned output stream; the null check
+    // precedes the field read and the callback only reads `bytes`.
     unsafe {
         if stream.is_null() {
             return;
@@ -36,6 +40,8 @@ pub fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
 }
 
 pub fn OutByte(stream: R_outpstream_t, i: Rbyte) {
+    // SAFETY: `stream` is a caller-owned output stream; the null check
+    // precedes the field read and the callback only reads `i`.
     unsafe {
         if stream.is_null() {
             return;
@@ -47,6 +53,8 @@ pub fn OutByte(stream: R_outpstream_t, i: Rbyte) {
 }
 
 pub fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
+    // SAFETY: `stream` is a caller-owned output stream and `s` a
+    // caller-owned buffer; null/length checks precede the callback.
     unsafe {
         if stream.is_null() || s.is_null() || length <= 0 {
             return;
@@ -58,6 +66,8 @@ pub fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
 }
 
 pub fn OutFormat(stream: R_outpstream_t) {
+    // SAFETY: `stream` is a caller-owned output stream; the null check
+    // precedes field reads and each callback sees a static tag slice.
     unsafe {
         if stream.is_null() {
             return;
@@ -90,6 +100,8 @@ pub fn OutFormat(stream: R_outpstream_t) {
 // ---------------------------------------------------------------------------
 
 pub fn InInteger(stream: R_inpstream_t) -> c_int {
+    // SAFETY: `stream` is a caller-owned input stream; the null check
+    // precedes field reads and the callback fills a local buffer.
     unsafe {
         if stream.is_null() {
             return 0;
@@ -107,6 +119,8 @@ pub fn InInteger(stream: R_inpstream_t) -> c_int {
 }
 
 pub fn InReal(stream: R_inpstream_t) -> c_double {
+    // SAFETY: `stream` is a caller-owned input stream; the null check
+    // precedes field reads and the callback fills a local buffer.
     unsafe {
         if stream.is_null() {
             return 0.0;
@@ -133,6 +147,9 @@ pub fn InComplex(stream: R_inpstream_t) -> Rcomplex {
 }
 
 pub fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
+    // SAFETY: `stream` is a caller-owned input stream and `buf` a
+    // caller-owned buffer of at least `length` bytes; checks precede
+    // the callback write.
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -151,6 +168,9 @@ pub fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
 }
 
 pub fn InFormat(stream: R_inpstream_t) {
+    // SAFETY: `stream` is a caller-owned input stream; the null check
+    // precedes all field reads/writes, and callbacks only fill local
+    // buffers inside this call.
     unsafe {
         if stream.is_null() {
             return;
@@ -272,6 +292,8 @@ pub fn HashGet(item: SEXP, ht: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
+    // SAFETY: `stream` is a caller-owned output stream; the persist hook
+    // receives only its installed hook data and the checked argument.
     unsafe {
         if stream.is_null() {
             error("read error");
@@ -294,6 +316,8 @@ pub fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
 }
 
 pub fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
+    // SAFETY: `stream` is a caller-owned input stream; the persist hook
+    // receives only its installed hook data and the checked argument.
     unsafe {
         if stream.is_null() {
             error("read error");
@@ -334,7 +358,7 @@ pub fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
 }
 
 pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
-    unsafe {
+    {
         if InInteger(stream) != 0 {
             error("names in persistent strings are not supported yet");
         }
@@ -380,11 +404,11 @@ pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
                 let val = if slen < 0 {
                     R_NaString()
                 } else if slen == 0 {
-                    Rf_mkCharLen(c"".as_ptr(), 0)
+                    mk_chars(b"")
                 } else {
                     let mut bytes = vec![0u8; slen as usize];
                     InString(stream, bytes.as_mut_ptr() as *mut c_char, slen);
-                    Rf_mkCharLen(bytes.as_ptr() as *const c_char, slen)
+                    mk_chars(&bytes)
                 };
                 AddReadRef(local_ref_table, val);
                 val
@@ -398,56 +422,52 @@ pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
 }
 
 pub fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
-    unsafe {
-        let int_data = INTEGER(s);
-        for i in 0..length as isize {
-            OutInteger(stream, *int_data.offset(i));
+    {
+        for i in 0..length {
+            OutInteger(stream, INTEGER_ELT(s, i as c_int));
         }
     }
 }
 
 pub fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
-    unsafe {
-        let int_data = INTEGER(obj);
-        for i in 0..length as isize {
-            *int_data.offset(i) = InInteger(stream);
+    {
+        for i in 0..length {
+            let value = InInteger(stream);
+            SET_INTEGER_ELT(obj, i as c_int, value);
         }
     }
 }
 
 pub fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
-    unsafe {
-        let real_data = REAL(s);
-        for i in 0..length as isize {
-            OutReal(stream, *real_data.offset(i));
+    {
+        for i in 0..length {
+            OutReal(stream, REAL_ELT(s, i as c_int));
         }
     }
 }
 
 pub fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
-    unsafe {
-        let real_data = REAL(obj);
-        for i in 0..length as isize {
-            *real_data.offset(i) = InReal(stream);
+    {
+        for i in 0..length {
+            let value = InReal(stream);
+            SET_REAL_ELT(obj, i as c_int, value);
         }
     }
 }
 
 pub fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
-    unsafe {
-        let cpx_data = COMPLEX(s);
-        for i in 0..length as isize {
-            let c = *cpx_data.offset(i);
-            OutComplex(stream, c);
+    {
+        for i in 0..length {
+            OutComplex(stream, COMPLEX_ELT(s, i as c_int));
         }
     }
 }
 
 pub fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
-    unsafe {
-        let cpx_data = COMPLEX(obj);
-        for i in 0..length as isize {
-            *cpx_data.offset(i) = InComplex(stream);
+    {
+        for i in 0..length {
+            let value = InComplex(stream);
+            SET_COMPLEX_ELT(obj, i as c_int, value);
         }
     }
 }
@@ -457,7 +477,7 @@ pub fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 // ---------------------------------------------------------------------------
 
 pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
-    unsafe {
+    {
         let _ = ref_table;
         if stream.is_null() {
             return;
@@ -468,22 +488,27 @@ pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
             error("write failed");
         }
         OutInteger(stream, len as c_int);
-        if len > 0 {
-            if let Some(out_bytes) = (*stream).OutBytes {
-                out_bytes(stream, RAW(raw) as *const c_void, len as c_int);
-            } else if let Some(out_char) = (*stream).OutChar {
-                for i in 0..len as usize {
-                    out_char(stream, *RAW(raw).add(i) as c_int);
+        let bytes = raw_to_bytes(raw);
+        // SAFETY: `stream` is the caller-owned output stream, checked for
+        // null above; each callback only reads the owned `bytes` buffer.
+        unsafe {
+            if !bytes.is_empty() {
+                if let Some(out_bytes) = (*stream).OutBytes {
+                    out_bytes(stream, bytes.as_ptr() as *const c_void, len as c_int);
+                } else if let Some(out_char) = (*stream).OutChar {
+                    for byte in &bytes {
+                        out_char(stream, *byte as c_int);
+                    }
+                } else {
+                    error("write failed");
                 }
-            } else {
-                error("write failed");
             }
         }
     }
 }
 
 pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
-    unsafe {
+    {
         let _ = ref_table;
         if stream.is_null() {
             error("read error");
@@ -494,18 +519,29 @@ pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
         }
         let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
         if len > 0 {
-            if let Some(in_bytes) = (*stream).InBytes {
-                in_bytes(stream, RAW(raw) as *mut c_void, len);
-            } else if let Some(in_char) = (*stream).InChar {
-                for i in 0..len as usize {
-                    let ch = in_char(stream);
-                    if ch < 0 {
-                        error("read error");
+            // SAFETY: `stream` is the caller-owned input stream, checked for
+            // null above; callbacks only fill the owned `bytes` buffer.
+            let bytes = unsafe {
+                if let Some(in_bytes) = (*stream).InBytes {
+                    let mut bytes = vec![0u8; len as usize];
+                    in_bytes(stream, bytes.as_mut_ptr() as *mut c_void, len);
+                    bytes
+                } else if let Some(in_char) = (*stream).InChar {
+                    let mut bytes = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        let ch = in_char(stream);
+                        if ch < 0 {
+                            error("read error");
+                        }
+                        bytes.push(ch as Rbyte);
                     }
-                    *RAW(raw).add(i) = ch as Rbyte;
+                    bytes
+                } else {
+                    error("read error")
                 }
-            } else {
-                error("read error");
+            };
+            for (index, byte) in bytes.iter().enumerate() {
+                SET_RAW_ELT(raw, index as c_int, *byte);
             }
         }
         R_unserialize(raw, R_NilValue())
@@ -517,6 +553,8 @@ pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
+    // SAFETY: `buf` is a caller-owned buffer of at least `length + 1`
+    // bytes; the checks below precede the terminating-NUL store.
     unsafe {
         InString(stream, buf, length);
         if !buf.is_null() && length >= 0 {

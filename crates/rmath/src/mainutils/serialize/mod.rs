@@ -11,7 +11,7 @@
 //! version info, then recursive WriteItem/ReadItem. ASCII, native-endian
 //! binary, and XDR binary headers/bodies are supported.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_double, c_int, c_void};
@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::ptr;
 use std::slice;
 
-use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
+use crate::sexp::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::coerce::{asInteger, asLogical};
 use crate::sexp::accessors::*;
@@ -34,6 +34,8 @@ use crate::sexp::globals::{
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
+use crate::sexp::symbol::install_str;
+#[cfg(test)]
 use crate::sexp::symbol::Rf_install;
 
 fn error(msg: &str) -> ! {
@@ -126,37 +128,43 @@ fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> b
     }
 }
 
+/// Audited boundary: serialize builtins only run inside evaluated R calls,
+/// where the current runtime owner is live.
+fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
+    // SAFETY: serialize builtins only run inside evaluated R calls.
+    unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|e| error(&e.to_string()))
+}
+
 fn call_arg_tag_name(node: SEXP) -> Option<String> {
-    unsafe {
-        let tag = TAG(node);
-        if tag.is_null() || tag == R_NilValue() {
-            return None;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() || pname == R_NaString() {
-            return None;
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return None;
-        }
-        Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
+    let tag = TAG(node);
+    if tag.is_null() || tag == R_NilValue() {
+        return None;
     }
+    let pname = PRINTNAME(tag);
+    if pname.is_null() || pname == R_NaString() {
+        return None;
+    }
+    let bytes = charsxp_as_utf8(pname);
+    if bytes.is_empty() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn scalar_integer_value(value: SEXP) -> Option<c_int> {
-    unsafe {
-        if value.is_null() || value == R_NilValue() || LENGTH(value) < 1 {
-            return None;
-        }
-        let kind = TYPEOF(value);
-        if kind == SEXPTYPE::INTSXP || kind == SEXPTYPE::LGLSXP {
-            Some(*INTEGER(value))
-        } else if kind == SEXPTYPE::REALSXP {
-            Some(*REAL(value) as c_int)
-        } else {
-            None
-        }
+    if value.is_null() || value == R_NilValue() || LENGTH(value) < 1 {
+        return None;
+    }
+    let kind = TYPEOF(value);
+    if kind == SEXPTYPE::INTSXP {
+        Some(INTEGER_ELT(value, 0))
+    } else if kind == SEXPTYPE::LGLSXP {
+        Some(LOGICAL_ELT(value, 0))
+    } else if kind == SEXPTYPE::REALSXP {
+        Some(REAL_ELT(value, 0) as c_int)
+    } else {
+        None
     }
 }
 
@@ -168,32 +176,63 @@ fn sexp_to_path(file: SEXP) -> PathBuf {
         };
     }
     let elt = STRING_ELT(file, 0);
-    let cpath = unsafe { CHAR(elt) };
-    if cpath.is_null() {
+    if elt.is_null() {
         {
             error("not a proper file name")
         };
     }
-    let cstr = unsafe { CStr::from_ptr(cpath) };
+    let bytes = charsxp_as_utf8(elt);
     #[cfg(unix)]
     {
-        PathBuf::from(std::ffi::OsStr::from_bytes(cstr.to_bytes()))
+        PathBuf::from(std::ffi::OsStr::from_bytes(&bytes))
     }
     #[cfg(not(unix))]
     {
-        PathBuf::from(cstr.to_string_lossy().into_owned())
+        PathBuf::from(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
 
 #[inline]
 fn raw_from_bytes(bytes: &[u8]) -> SEXP {
     let ans = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
-    if !ans.is_null() && !bytes.is_empty() {
-        unsafe {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(ans), bytes.len());
+    if !ans.is_null() {
+        for (index, byte) in bytes.iter().enumerate() {
+            SET_RAW_ELT(ans, index as c_int, *byte);
         }
     }
     ans
+}
+
+/// Copy a RAWSXP payload into owned native bytes with checked reads.
+fn raw_to_bytes(raw: SEXP) -> Vec<u8> {
+    let len = usize::try_from(XLENGTH(raw)).unwrap_or(0);
+    let mut bytes = Vec::with_capacity(len);
+    for index in 0..len {
+        let index = c_int::try_from(index).unwrap_or_else(|_| error("read error"));
+        bytes.push(RAW_ELT(raw, index));
+    }
+    bytes
+}
+
+/// Audited boundary: copy UTF-8 text into a fresh CHARSXP node.
+fn mk_char(text: &str) -> SEXP {
+    mk_chars(text.as_bytes())
+}
+
+/// Audited boundary: copy bytes into a fresh CHARSXP node.
+fn mk_chars(bytes: &[u8]) -> SEXP {
+    // SAFETY: `bytes` is a valid read-only buffer for the duration of the
+    // call; Rf_mkCharLen copies exactly `len` bytes into the new node.
+    unsafe { Rf_mkCharLen(bytes.as_ptr() as *const c_char, bytes.len() as c_int) }
+}
+
+/// Build a scalar STRSXP from UTF-8 text.
+fn mk_string(text: &str) -> SEXP {
+    let charsxp = mk_char(text);
+    if charsxp.is_null() {
+        return charsxp;
+    }
+    Rf_ScalarString(charsxp)
 }
 
 #[inline]
@@ -214,6 +253,8 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
 #[inline]
 fn mark_decompress_error(err: *mut Rboolean) {
     if !err.is_null() {
+        // SAFETY: `err` is a caller-owned out parameter checked for null;
+        // the write is a single flag store before returning.
         unsafe {
             *err = 1;
         }
@@ -222,10 +263,14 @@ fn mark_decompress_error(err: *mut Rboolean) {
 
 #[inline]
 fn clear_lazy_load_cache() {
-    with_required_current_instance(|instance| unsafe {
-        (*instance).serialize_state.used = 0;
-        (*instance).serialize_state.cache_names = [ptr::null_mut(); NC];
-        (*instance).serialize_state.cache_ptrs = [ptr::null_mut(); NC];
+    with_required_current_instance(|instance| {
+        // SAFETY: `instance` is the live current RInstance for this
+        // strictly-local cache reset; no callback runs inside the borrow.
+        unsafe {
+            (*instance).serialize_state.used = 0;
+            (*instance).serialize_state.cache_names = [ptr::null_mut(); NC];
+            (*instance).serialize_state.cache_ptrs = [ptr::null_mut(); NC];
+        }
     });
 }
 

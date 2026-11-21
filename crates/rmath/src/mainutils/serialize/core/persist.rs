@@ -23,6 +23,8 @@ pub fn InRefIndex(flags: c_int, reader: &mut BinaryReader) -> Result<c_int, Stri
 // ---------------------------------------------------------------------------
 
 pub fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_int) {
+    // SAFETY: each out parameter is caller-owned; every store is preceded
+    // by its own null check.
     unsafe {
         if !v.is_null() {
             *v = packed / 65536;
@@ -61,30 +63,32 @@ pub(crate) fn sexp_has_tag(s: SEXP) -> bool {
 // Match GNU's structural package/namespace predicates, plus namespaces
 // represented by this runtime's package cache.
 pub(crate) fn persistent_package_or_namespace(s: SEXP) -> bool {
-    unsafe {
-        let name = crate::eval::attrib_core::getAttrib(s, Rf_install(c"name".as_ptr()));
+    {
+        let name = crate::sexp::attrib_core::getAttrib(s, install_str("name"));
         if TYPEOF(name) == SEXPTYPE::STRSXP
             && XLENGTH(name) > 0
-            && CStr::from_ptr(CHAR(STRING_ELT(name, 0)))
-                .to_bytes()
-                .starts_with(b"package:")
+            && charsxp_as_utf8(STRING_ELT(name, 0)).starts_with(b"package:")
         {
             return true;
         }
-        let info = R_findVarInFrame(s, Rf_install(c".__NAMESPACE__.".as_ptr()));
-        if TYPEOF(info) == SEXPTYPE::ENVSXP {
-            let _info_guard = protect(info);
-            let spec = R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
-            if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
-                return true;
+        // SAFETY: `s` is a caller-owned environment SEXP; frame lookups use
+        // installed symbols and the instance borrow is strictly local.
+        unsafe {
+            let info = R_findVarInFrame(s, install_str(".__NAMESPACE__."));
+            if TYPEOF(info) == SEXPTYPE::ENVSXP {
+                let _info_guard = protect(info);
+                let spec = R_findVarInFrame(info, install_str("spec"));
+                if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) > 0 {
+                    return true;
+                }
             }
+            with_required_current_instance(|instance| {
+                (*instance)
+                    .package_namespace_cache
+                    .values()
+                    .any(|(_, env)| *env == s)
+            })
         }
-        with_required_current_instance(|instance| {
-            (*instance)
-                .package_namespace_cache
-                .values()
-                .any(|(_, env)| *env == s)
-        })
     }
 }
 
@@ -110,6 +114,8 @@ pub(crate) fn invoke_persist_hook(
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
 ) -> SEXP {
+    // SAFETY: `func` is the stream's installed persist hook, invoked with
+    // its own hook data; `s` and `hook_data` are live caller SEXPs.
     unsafe {
         if !persistent_hook_eligible(s) {
             return R_NilValue();
@@ -182,6 +188,8 @@ pub(crate) fn write_gnu_bc_payload(
     writer: &mut BinaryWriter,
     depth: usize,
 ) {
+    // SAFETY: the retained boundary covers the GNU bytecode accessors and
+    // stream validator; every other operation uses checked accessors.
     unsafe {
         if depth >= 128 {
             error("GNU bytecode nesting exceeds 128 levels");
@@ -191,7 +199,7 @@ pub(crate) fn write_gnu_bc_payload(
         }
         let code = VECTOR_ELT(s, 0);
         let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
-        if (*s).data.vector().length != 5
+        if XLENGTH(s) != 5
             || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
             || code.is_null()
             || TYPEOF(code) != SEXPTYPE::INTSXP
@@ -200,8 +208,9 @@ pub(crate) fn write_gnu_bc_payload(
         {
             error("invalid GNU constant bytecode payload");
         }
-        let code_ptr = INTEGER(code);
-        if code_ptr.is_null() {
+        let owner = current_owner();
+        let code_obj = owner.sexp(code).unwrap_or_else(|e| error(&e.to_string()));
+        if code_obj.header().payload_lease().is_none() {
             error("GNU bytecode instruction stream has a null data pointer");
         }
         let constant_count = XLENGTH(constants) as usize;
