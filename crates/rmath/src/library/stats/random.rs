@@ -845,7 +845,12 @@ fn result_length(owner: crate::sexp::owner::OwnerToken<'_>, length_argument: SEX
         let dn = if t == SEXPTYPE::REALSXP {
             checked(value.try_real_elt(0))
         } else {
-            match value.integer_elt(0) {
+            let element = if t == SEXPTYPE::LGLSXP {
+                value.logical_elt(0)
+            } else {
+                value.integer_elt(0)
+            };
+            match element {
                 Some(v) if v != NA_INTEGER => v as c_double,
                 _ => f64::NAN,
             }
@@ -970,6 +975,15 @@ fn random_n<const K: usize>(
         }
     }
     let n = result_length(owner, sn);
+    if n == 0 {
+        // SAFETY: the owner is active; a zero-length result skips coercion
+        // and sampling entirely, matching the legacy dispatch order.
+        return unsafe {
+            let x = Rf_allocVector3(type_, 0);
+            let _x_guard = protect(x);
+            x
+        };
+    }
     if sargs
         .iter()
         .any(|argument| checked(owner.sexp(*argument)).len() < 1)
