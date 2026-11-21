@@ -315,14 +315,14 @@ pub(crate) fn lookup_buffer(
                 buffers::kmeans,
                 VoidKernel::Args9(crate::library::stats::kmeans::c_kmeans_macqueen),
             ),
-            "hclust" => BufferRoutine::void(
+            "hclust" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[
                     Integer, Integer, Integer, Integer, Integer, Real, Real, Integer, Real, Real,
                 ],
                 buffers::hclust,
-                VoidKernel::Args10(crate::library::stats::hclust_f::c_hclust),
+                crate::library::stats::hclust_f::hclust_owned,
             ),
             "rbart" => BufferRoutine::void(
                 "stats",
@@ -341,12 +341,12 @@ pub(crate) fn lookup_buffer(
                 buffers::bvalus,
                 VoidKernel::Args7(crate::library::stats::sbart::c_bvalus),
             ),
-            "hcass2" => BufferRoutine::void(
+            "hcass2" => BufferRoutine::owned(
                 "stats",
                 BufferInterface::Fortran,
                 &[Integer, Integer, Integer, Integer, Integer, Integer],
                 buffers::hcass2,
-                VoidKernel::Args6(crate::library::stats::hclust_f::c_hcass2),
+                crate::library::stats::hclust_f::hcass2_owned,
             ),
             "loess_raw" => BufferRoutine::numeric(
                 "stats",

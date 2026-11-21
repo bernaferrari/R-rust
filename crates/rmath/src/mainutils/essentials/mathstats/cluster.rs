@@ -26,7 +26,7 @@ fn complete_link(d: &[f64], a: &[usize], b: &[usize], n: usize) -> f64 {
 
 /// GNU `hclust(d, method="complete")`.
 pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = _rho;
         // GNU stats/R/hclust.R: method order is the Fortran iOpt code.
         const METHODS: [&str; 8] = [
@@ -113,32 +113,22 @@ pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let mut nn = vec![0i32; nu];
         let mut disnn = vec![0f64; nu];
-        let mut n_slot = n;
-        let mut len_slot = len as i32;
-        let mut iopt_slot = iopt;
-        crate::library::stats::hclust_f::c_hclust(
-            &mut n_slot as *mut i32 as *mut std::os::raw::c_void,
-            &mut len_slot as *mut i32 as *mut std::os::raw::c_void,
-            &mut iopt_slot as *mut i32 as *mut std::os::raw::c_void,
-            ia.as_mut_ptr() as *mut std::os::raw::c_void,
-            ib.as_mut_ptr() as *mut std::os::raw::c_void,
-            crit.as_mut_ptr() as *mut std::os::raw::c_void,
-            membr.as_mut_ptr() as *mut std::os::raw::c_void,
-            nn.as_mut_ptr() as *mut std::os::raw::c_void,
-            disnn.as_mut_ptr() as *mut std::os::raw::c_void,
-            diss.as_mut_ptr() as *mut std::os::raw::c_void,
+        crate::library::stats::hclust_f::hclust_body(
+            n,
+            len as i32,
+            iopt,
+            &mut ia,
+            &mut ib,
+            &mut crit,
+            &mut membr,
+            &mut nn,
+            &mut disnn,
+            &mut diss,
         );
         let mut iorder = vec![0i32; nu];
         let mut iia = vec![0i32; nu];
         let mut iib = vec![0i32; nu];
-        crate::library::stats::hclust_f::c_hcass2(
-            &mut n_slot as *mut i32 as *mut std::os::raw::c_void,
-            ia.as_mut_ptr() as *mut std::os::raw::c_void,
-            ib.as_mut_ptr() as *mut std::os::raw::c_void,
-            iorder.as_mut_ptr() as *mut std::os::raw::c_void,
-            iia.as_mut_ptr() as *mut std::os::raw::c_void,
-            iib.as_mut_ptr() as *mut std::os::raw::c_void,
-        );
+        crate::library::stats::hclust_f::hcass2_body(n, &ia, &ib, &mut iorder, &mut iia, &mut iib);
 
         let nmerge = n - 1;
         let merge = alloc_matrix(SEXPTYPE::INTSXP.as_c_int(), nmerge, 2);

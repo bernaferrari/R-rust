@@ -1,9 +1,9 @@
 //! GNU `stats/src/hclust.f`: `hclust` and `hcass2`.
 //!
 //! Indices in the algorithm are 1-based, matching the Fortran. The `.Fortran`
-//! entry points receive pointers to the argument buffers.
+//! entry points use validated Rust buffers.
 
-use std::os::raw::{c_int, c_void};
+use crate::mainutils::native_routines::buffers::{BufferError, NativeBuffer};
 
 fn ioffst(n: i32, i: i32, j: i32) -> usize {
     let n8 = n as i64;
@@ -12,7 +12,7 @@ fn ioffst(n: i32, i: i32, j: i32) -> usize {
     (j8 + (i8 - 1) * n8 - (i8 * (i8 + 1)) / 2) as usize
 }
 
-fn hclust_body(
+pub(crate) fn hclust_body(
     n: i32,
     len: i32,
     iopt: i32,
@@ -156,7 +156,7 @@ fn hclust_body(
     }
 }
 
-fn hcass2_body(
+pub(crate) fn hcass2_body(
     n: i32,
     ia: &[i32],
     ib: &[i32],
@@ -225,54 +225,42 @@ fn hcass2_body(
     }
 }
 
-pub unsafe extern "C-unwind" fn c_hclust(
-    n: *mut c_void,
-    len: *mut c_void,
-    iopt: *mut c_void,
-    ia: *mut c_void,
-    ib: *mut c_void,
-    crit: *mut c_void,
-    membr: *mut c_void,
-    nn: *mut c_void,
-    disnn: *mut c_void,
-    diss: *mut c_void,
-) {
-    unsafe {
-        let n = *(n as *const c_int);
-        let len = *(len as *const c_int);
-        let iopt = *(iopt as *const c_int);
-        if n < 2 || len < 1 {
-            return;
-        }
-        let ia = std::slice::from_raw_parts_mut(ia as *mut c_int, n as usize);
-        let ib = std::slice::from_raw_parts_mut(ib as *mut c_int, n as usize);
-        let crit = std::slice::from_raw_parts_mut(crit as *mut f64, n as usize);
-        let membr = std::slice::from_raw_parts_mut(membr as *mut f64, n as usize);
-        let nn = std::slice::from_raw_parts_mut(nn as *mut c_int, n as usize);
-        let disnn = std::slice::from_raw_parts_mut(disnn as *mut f64, n as usize);
-        let diss = std::slice::from_raw_parts_mut(diss as *mut f64, len as usize);
-        hclust_body(n, len, iopt, ia, ib, crit, membr, nn, disnn, diss);
-    }
+/// `.Fortran(C_hclust, n, len, iopt, ia, ib, crit, membr, nn, disnn, diss)`.
+pub(crate) fn hclust_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    use NativeBuffer::{Integer, Real};
+    let [
+        Integer(n),
+        Integer(len),
+        Integer(iopt),
+        Integer(ia),
+        Integer(ib),
+        Real(crit),
+        Real(membr),
+        Integer(nn),
+        Real(disnn),
+        Real(diss),
+    ] = buffers
+    else {
+        return Err(BufferError::new("invalid hclust buffers"));
+    };
+    hclust_body(n[0], len[0], iopt[0], ia, ib, crit, membr, nn, disnn, diss);
+    Ok(())
 }
 
-pub unsafe extern "C-unwind" fn c_hcass2(
-    n: *mut c_void,
-    ia: *mut c_void,
-    ib: *mut c_void,
-    iorder: *mut c_void,
-    iia: *mut c_void,
-    iib: *mut c_void,
-) {
-    unsafe {
-        let n = *(n as *const c_int);
-        if n < 2 {
-            return;
-        }
-        let ia = std::slice::from_raw_parts(ia as *const c_int, n as usize);
-        let ib = std::slice::from_raw_parts(ib as *const c_int, n as usize);
-        let iorder = std::slice::from_raw_parts_mut(iorder as *mut c_int, n as usize);
-        let iia = std::slice::from_raw_parts_mut(iia as *mut c_int, n as usize);
-        let iib = std::slice::from_raw_parts_mut(iib as *mut c_int, n as usize);
-        hcass2_body(n, ia, ib, iorder, iia, iib);
-    }
+/// `.Fortran(C_hcass2, n, ia, ib, iorder, iia, iib)`.
+pub(crate) fn hcass2_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    use NativeBuffer::Integer;
+    let [
+        Integer(n),
+        Integer(ia),
+        Integer(ib),
+        Integer(iorder),
+        Integer(iia),
+        Integer(iib),
+    ] = buffers
+    else {
+        return Err(BufferError::new("invalid hcass2 buffers"));
+    };
+    hcass2_body(n[0], ia, ib, iorder, iia, iib);
+    Ok(())
 }
