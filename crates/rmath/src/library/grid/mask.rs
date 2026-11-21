@@ -22,44 +22,32 @@
 //!
 //! Grid mask type checking and resolution.
 
-use std::os::raw::c_int;
-
 use crate::mainutils::engine as ge;
-use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::constructors::Rf_lang2;
 use crate::sexp::envir::findFun;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::symbol::Rf_install;
 
 use super::types::{pGEDevDesc, *};
+use super::{inherits, install, protect, scalar_logical};
 
 struct ResolvingPathGuard {
     dd: pGEDevDesc,
 }
 
 impl ResolvingPathGuard {
-    unsafe fn enter(dd: pGEDevDesc) -> Self {
-        unsafe {
-            crate::library::grid::state::setGridStateElement(
-                dd,
-                GSS_RESOLVINGPATH,
-                Rf_ScalarLogical(1),
-            );
-        }
+    fn enter(dd: pGEDevDesc) -> Self {
+        crate::library::grid::state::setGridStateElement(dd, GSS_RESOLVINGPATH, scalar_logical(1));
         Self { dd }
     }
 }
 
 impl Drop for ResolvingPathGuard {
     fn drop(&mut self) {
-        unsafe {
-            crate::library::grid::state::setGridStateElement(
-                self.dd,
-                GSS_RESOLVINGPATH,
-                Rf_ScalarLogical(0),
-            );
-        }
+        crate::library::grid::state::setGridStateElement(
+            self.dd,
+            GSS_RESOLVINGPATH,
+            scalar_logical(0),
+        );
     }
 }
 
@@ -67,63 +55,32 @@ impl Drop for ResolvingPathGuard {
 // Local helpers
 // ---------------------------------------------------------------------------
 
-/// Rf_inherits — check if object inherits from a given class
-unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
-    if x.is_null() || what.is_null() {
-        return 0;
-    }
-    let klass = unsafe { crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol()) };
-    if klass.is_null() || klass == R_NilValue() {
-        return 0;
-    }
-    use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
-    use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
-        return 0;
-    }
-    let cn = match unsafe { CStr::from_ptr(what) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return 0,
-    };
-    let n = LENGTH(klass);
-    for i in 0..n {
-        let elt = unsafe { STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t) };
-        if !elt.is_null() {
-            let cs = unsafe { CHAR(elt) };
-            if !cs.is_null() {
-                if let Ok(s2) = unsafe { CStr::from_ptr(cs) }.to_str() {
-                    if s2 == cn {
-                        return 1;
-                    }
-                }
-            }
-        }
-    }
-    0
-}
-
 // ---------------------------------------------------------------------------
 // isMask — check if object is a GridMask
 // ---------------------------------------------------------------------------
 
-pub unsafe fn isMask(mask: SEXP) -> bool {
-    unsafe { Rf_inherits(mask, b"GridMask\0".as_ptr() as *const std::os::raw::c_char) != 0 }
+pub fn isMask(mask: SEXP) -> bool {
+    inherits(mask, c"GridMask")
 }
 
 // ---------------------------------------------------------------------------
 // resolveMask — resolve a mask via R callback
 // ---------------------------------------------------------------------------
 
-pub unsafe fn resolveMask(mask: SEXP, dd: pGEDevDesc) -> SEXP {
-    let _scope = unsafe { ResolvingPathGuard::enter(dd) };
+pub fn resolveMask(mask: SEXP, dd: pGEDevDesc) -> SEXP {
+    let _scope = ResolvingPathGuard::enter(dd);
     // Use the shared grid eval env so mask callbacks see the same
     // initialization state as the rest of grid.
     let env = grid_eval_env();
-    let resolve_sym =
-        unsafe { Rf_install(b"resolveMask\0".as_ptr() as *const std::os::raw::c_char) };
+    let resolve_sym = install("resolveMask");
+    // SAFETY: `resolve_sym` is a live interned symbol; `env` is the shared
+    // grid evaluation environment.
     let resolve_fn = unsafe { findFun(resolve_sym, env) };
-    let _resolve_fn_guard = unsafe { crate::sexp::protect::protect(resolve_fn) };
+    let _resolve_fn_guard = protect(resolve_fn);
+    // SAFETY: both arguments are live objects lent for the call.
     let r_fcall = unsafe { Rf_lang2(resolve_fn, mask) };
-    let _r_fcall_guard = unsafe { crate::sexp::protect::protect(r_fcall) };
+    let _r_fcall_guard = protect(r_fcall);
+    // SAFETY: R-eval bridge — `r_fcall` is protected above, `env` and `dd`
+    // are the live evaluation context and device.
     unsafe { ge::Rf_eval_with_gd(r_fcall, env, dd) }
 }
