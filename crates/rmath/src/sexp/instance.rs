@@ -552,8 +552,6 @@ pub struct RInstance {
     pub(crate) graphics_color_state: crate::library::grdevices::colors::GraphicsColorState,
     /// Per-instance main/colors.c dispatch pointers installed by grDevices.
     pub(crate) color_dispatch_state: crate::mainutils::colors::ColorDispatchState,
-    /// Per-instance grDevices PostScript/PDF font registry state.
-    pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
     /// Per-instance grid runtime state.
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
     /// Per-instance graphics::plot3d scratch transformation state.
@@ -702,7 +700,6 @@ impl RInstance {
             grid_recording_origin: None,
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
-            postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
             dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
