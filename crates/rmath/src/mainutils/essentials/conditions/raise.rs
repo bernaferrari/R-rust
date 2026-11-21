@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::object::SexpMut;
 
 // ---------------------------------------------------------------------------
 // Error handling: stop, warning, message, tryCatch, inherits, exists, get, assign
@@ -148,14 +149,16 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
             if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 cond_classes.clear();
+                let owner = active_owner();
+                let class_owned = owner_sexp(owner, class);
                 for i in 0..XLENGTH(class) {
-                    let elt = STRING_ELT(class, i);
-                    if !elt.is_null() {
-                        cond_classes.push(
-                            std::ffi::CStr::from_ptr(CHAR(elt))
-                                .to_string_lossy()
-                                .into_owned(),
-                        );
+                    let elt = class_owned
+                        .try_string_elt(i)
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                    if !elt.as_raw().is_null() {
+                        cond_classes.push(charsxp_utf8_lossy(&elt).unwrap_or_default());
                     }
                 }
             }
@@ -239,11 +242,15 @@ pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         let _last = protect(last);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _class = protect(class);
-        SET_STRING_ELT(
-            class,
-            0,
-            crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr()),
-        );
+        {
+            let owner = active_owner();
+            if let (Ok(mut class_mut), Ok(charsxp)) = (
+                owner.sexp(class).and_then(SexpMut::try_from_checked),
+                owner.sexp(crate::sexp::constructors::Rf_mkChar(c"warnings".as_ptr())),
+            ) {
+                let _ = class_mut.try_set_string_elt(0, charsxp);
+            }
+        }
         crate::sexp::attrib_core::setAttrib(last, crate::sexp::attrib_core::R_ClassSymbol(), class);
         last
     }
@@ -422,14 +429,35 @@ pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -
         let _result_guard = protect(result);
         let msg = Rf_mkString(CString::new(message).unwrap_or_default().as_ptr());
         let _msg_guard = protect(msg);
-        SET_VECTOR_ELT(result, 0, msg);
-        SET_VECTOR_ELT(result, 1, call);
+        let owner = active_owner();
+        let mut result_mut = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for (i, value) in [msg, call].into_iter().enumerate() {
+            let value = owner
+                .sexp(value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result_mut
+                .try_set_vector_elt(i as R_xlen_t, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
 
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !names.is_null() {
             let _np = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(c"message".as_ptr()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(c"call".as_ptr()));
+            if let Ok(mut names_mut) =
+                owner.sexp(names).and_then(SexpMut::try_from_checked)
+            {
+                for (i, text) in [c"message", c"call"].into_iter().enumerate() {
+                    let charsxp = owner
+                        .sexp(Rf_mkChar(text.as_ptr()))
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                    let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                }
+            }
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_NamesSymbol(),
@@ -441,12 +469,19 @@ pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -
 
         if !class.is_null() {
             let _cp = protect(class);
-            for (i, name) in classes.iter().enumerate() {
-                SET_STRING_ELT(
-                    class,
-                    i as R_xlen_t,
-                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
-                );
+            if let Ok(mut class_mut) =
+                owner.sexp(class).and_then(SexpMut::try_from_checked)
+            {
+                for (i, name) in classes.iter().enumerate() {
+                    let charsxp = owner
+                        .sexp(Rf_mkChar(
+                            CString::new(*name).unwrap_or_default().as_ptr(),
+                        ))
+                        .unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                    let _ = class_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
         }

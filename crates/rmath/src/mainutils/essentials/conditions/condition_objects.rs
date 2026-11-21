@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::object::SexpMut;
 
 // ---------------------------------------------------------------------------
 // Complete error system: condition handling
@@ -188,21 +189,41 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
             crate::mainutils::coerce::coerceVector(message, SEXPTYPE::STRSXP.as_c_int())
         };
         let _message_guard = protect(message_str);
-        SET_VECTOR_ELT(result, 0, message_str);
-        SET_VECTOR_ELT(result, 1, call_arg);
+        let owner = active_owner();
+        let mut result_mut = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        for (i, value) in [message_str, call_arg].into_iter().enumerate() {
+            let value = owner
+                .sexp(value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result_mut
+                .try_set_vector_elt(i as R_xlen_t, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
         for (i, (_, value)) in extras.iter().enumerate() {
-            SET_VECTOR_ELT(result, (2 + i) as i64, *value);
+            let value = owner
+                .sexp(*value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result_mut
+                .try_set_vector_elt((2 + i) as i64, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
 
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, (2 + extras.len()) as i64);
         if !names.is_null() {
             let mut fields: Vec<&str> = vec!["message", "call"];
             fields.extend(extras.iter().map(|(name, _)| name.as_str()));
-            for (i, n) in fields.iter().enumerate() {
-                let cstr = CString::new(*n).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(names, i as R_xlen_t, charsxp);
+            if let Ok(mut names_mut) =
+                owner.sexp(names).and_then(SexpMut::try_from_checked)
+            {
+                for (i, n) in fields.iter().enumerate() {
+                    let cstr = CString::new(*n).unwrap_or_default();
+                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                    if let Ok(charsxp) = owner.sexp(charsxp) {
+                        let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                    }
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
@@ -218,20 +239,27 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
         };
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, extra_classes as i64 + 2);
         if !class.is_null() {
-            let mut slot = 0usize;
-            for i in 0..extra_classes as isize {
-                let src = crate::sexp::accessors::STRING_ELT(class_arg, i as i64);
-                if !src.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(class, slot as R_xlen_t, src);
-                    slot += 1;
+            if let Ok(mut class_mut) =
+                owner.sexp(class).and_then(SexpMut::try_from_checked)
+            {
+                let class_arg_owned = owner_sexp(owner, class_arg);
+                let mut slot = 0usize;
+                for i in 0..extra_classes as isize {
+                    if let Ok(src) = class_arg_owned.try_string_elt(i as i64) {
+                        if !src.as_raw().is_null() {
+                            let _ =
+                                class_mut.try_set_string_elt(slot as R_xlen_t, src);
+                            slot += 1;
+                        }
+                    }
                 }
-            }
-            for name in [kind, "condition"] {
-                let cstr = CString::new(name).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(class, slot as R_xlen_t, charsxp);
-                    slot += 1;
+                for name in [kind, "condition"] {
+                    let cstr = CString::new(name).unwrap_or_default();
+                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                    if let Ok(charsxp) = owner.sexp(charsxp) {
+                        let _ = class_mut.try_set_string_elt(slot as R_xlen_t, charsxp);
+                        slot += 1;
+                    }
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
