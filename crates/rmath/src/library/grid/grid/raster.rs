@@ -15,7 +15,7 @@ pub unsafe fn L_raster(
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+        set_gp_fill_string(currentgp, "transparent");
 
         let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
             getViewportTransform(currentvp, dd);

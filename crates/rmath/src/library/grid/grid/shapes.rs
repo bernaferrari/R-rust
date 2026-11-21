@@ -50,7 +50,7 @@ pub unsafe fn L_arrows(
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
-            set_gp_fill_string(currentgp, c"transparent".as_ptr());
+            set_gp_fill_string(currentgp, "transparent");
         }
 
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
@@ -130,8 +130,8 @@ pub unsafe fn L_arrows(
                     vpc,
                     vpWidthCM,
                     vpHeightCM,
-                    vertx.as_mut_ptr(),
-                    verty.as_mut_ptr(),
+                    &mut vertx,
+                    &mut verty,
                     gc,
                     dd,
                 );
@@ -185,8 +185,8 @@ pub unsafe fn L_arrows(
                     vpc,
                     vpWidthCM,
                     vpHeightCM,
-                    vertx.as_mut_ptr(),
-                    verty.as_mut_ptr(),
+                    &mut vertx,
+                    &mut verty,
                     gc,
                     dd,
                 );
@@ -219,7 +219,7 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             && LENGTH(resolving_path) > 0
             && *LOGICAL(resolving_path).add(0) != 0
         {
-            set_gp_fill_string(currentgp, c"black".as_ptr());
+            set_gp_fill_string(currentgp, "black");
         }
 
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
@@ -386,7 +386,7 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             && LENGTH(resolving_path) > 0
             && *LOGICAL(resolving_path).add(0) != 0
         {
-            set_gp_fill_string(currentgp, c"black".as_ptr());
+            set_gp_fill_string(currentgp, "black");
         }
 
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
