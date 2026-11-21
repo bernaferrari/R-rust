@@ -13,7 +13,6 @@
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 use super::types::*;
 
@@ -22,19 +21,12 @@ use super::types::*;
 // ---------------------------------------------------------------------------
 
 fn alloc_env_var(name: &str) -> Option<*mut c_char> {
-    unsafe {
-        let val = env::var(name).ok()?;
-        let cstr = CString::new(val.as_str()).ok()?;
-        let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1).ok()?;
-        let out = std::alloc::alloc(layout) as *mut c_char;
-        if out.is_null() {
-            return None;
-        }
-        ptr::copy_nonoverlapping(
-            cstr.as_ptr(),
-            out as *mut core::ffi::c_char,
-            cstr.as_bytes_with_nul().len(),
-        );
+    let val = env::var(name).ok()?;
+    let s = CString::new(val.as_str()).ok()?;
+    let out = c_strdup(s.as_ptr());
+    if out.is_null() {
+        None
+    } else {
         Some(out)
     }
 }
@@ -82,7 +74,7 @@ fn get_locale_from_cf(category: c_int) -> *const c_char {
 
 #[cfg(not(target_os = "macos"))]
 fn get_locale_from_cf(category: c_int) -> *const c_char {
-    unsafe { get_locale_from_env(category) }
+    get_locale_from_env(category)
 }
 
 // ---------------------------------------------------------------------------
@@ -107,30 +99,32 @@ pub fn _nl_locale_name(category: c_int) -> *const c_char {
 /// # Safety
 /// `name` must be a valid pointer to a mutable NUL-terminated C string buffer.
 pub fn _nl_locale_name_canonicalize(name: *mut c_char) {
-    unsafe {
-        if name.is_null() {
-            return;
-        }
+    let Some(len) = cstr(name).map(|s| s.to_bytes().len()) else {
+        return;
+    };
+    // Rewrite the caller's NUL-terminated buffer in place.
+    let Some(buf) = slice_mut(name as *mut u8, len) else {
+        return;
+    };
 
-        // Normalize: convert language part to lowercase, territory to uppercase.
-        let mut p = name;
-        // Lowercase the language part.
-        while *p != 0 && *p != b'_' as c_char && *p != b'.' as c_char && *p != b'@' as c_char {
-            *p = (*p as u8).to_ascii_lowercase() as c_char;
-            p = p.add(1);
-        }
-
-        if *p == b'_' as c_char {
-            p = p.add(1);
-            // Uppercase the territory part.
-            while *p != 0 && *p != b'.' as c_char && *p != b'@' as c_char {
-                *p = (*p as u8).to_ascii_uppercase() as c_char;
-                p = p.add(1);
-            }
-        }
-
-        // Leave codeset and modifier as-is.
+    // Normalize: convert language part to lowercase, territory to uppercase.
+    let mut i = 0usize;
+    // Lowercase the language part.
+    while i < len && buf[i] != b'_' && buf[i] != b'.' && buf[i] != b'@' {
+        buf[i] = buf[i].to_ascii_lowercase();
+        i += 1;
     }
+
+    if i < len && buf[i] == b'_' {
+        i += 1;
+        // Uppercase the territory part.
+        while i < len && buf[i] != b'.' && buf[i] != b'@' {
+            buf[i] = buf[i].to_ascii_uppercase();
+            i += 1;
+        }
+    }
+
+    // Leave codeset and modifier as-is.
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +135,7 @@ pub fn _nl_locale_name_canonicalize(name: *mut c_char) {
 mod tests {
     use super::*;
     use std::ffi::CStr;
+    use std::ptr;
 
     fn some<T>(opt: Option<T>) -> T {
         opt.unwrap_or_else(|| panic!("unexpected None in test"))

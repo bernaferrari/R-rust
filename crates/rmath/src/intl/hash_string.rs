@@ -9,7 +9,7 @@
 
 use std::os::raw::c_char;
 
-use crate::intl::types::HASHWORDBITS;
+use crate::intl::types::{HASHWORDBITS, cstr};
 
 /// Compute the hash value for the given string using the PJW hash algorithm.
 ///
@@ -19,24 +19,21 @@ use crate::intl::types::HASHWORDBITS;
 /// # Safety
 /// `str_param` must be a valid pointer to a NUL-terminated C string.
 pub fn __hash_string(str_param: *const c_char) -> u32 {
-    unsafe {
-        let mut hval: u32 = 0;
-        let mut g: u32;
-        let mut str_ptr = str_param;
+    let mut hval: u32 = 0;
+    let mut g: u32;
 
-        while *str_ptr != 0 {
+    if let Some(s) = cstr(str_param) {
+        for &byte in s.to_bytes() {
             hval = hval.wrapping_shl(4);
-            hval = hval.wrapping_add(*str_ptr as u8 as u32);
+            hval = hval.wrapping_add(byte as u32);
             g = hval & (0xfu32 << (HASHWORDBITS as u32 - 4));
             if g != 0 {
                 hval ^= g >> (HASHWORDBITS as u32 - 8);
                 hval ^= g;
             }
-            str_ptr = str_ptr.add(1);
         }
-
-        hval
     }
+    hval
 }
 
 /// Alias for `__hash_string` (non-prefixed version).

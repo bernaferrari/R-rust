@@ -16,6 +16,8 @@
 
 use std::os::raw::c_int;
 
+use super::types::ptr_mut;
+
 // ---------------------------------------------------------------------------
 // gl_lock_t -- Simple lock (stub, no-op in standalone mode)
 // ---------------------------------------------------------------------------
@@ -152,16 +154,13 @@ impl gl_once_t {
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
 pub fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
-    unsafe {
-        if once_control.is_null() {
-            return;
-        }
-        let once = &mut *once_control;
-        if !once.inited {
-            once.inited = true;
-            if let Some(f) = initfunction {
-                f();
-            }
+    let Some(once) = ptr_mut(once_control) else {
+        return;
+    };
+    if !once.inited {
+        once.inited = true;
+        if let Some(f) = initfunction {
+            f();
         }
     }
 }
@@ -171,17 +170,14 @@ pub fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "
 /// Returns 1 if this is the first call (the caller should perform the
 /// initialization), 0 otherwise.
 pub fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
-    unsafe {
-        if once_control.is_null() {
-            return 1;
-        }
-        let once = &mut *once_control;
-        if !once.inited {
-            once.inited = true;
-            1
-        } else {
-            0
-        }
+    let Some(once) = ptr_mut(once_control) else {
+        return 1;
+    };
+    if !once.inited {
+        once.inited = true;
+        1
+    } else {
+        0
     }
 }
 
