@@ -39,7 +39,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `par(...)` — session-owned graphical parameters.
 pub fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let result = crate::library::graphics::par::do_par(_call, _op, args, _rho);
         // Base `par` is a builtin, so it does not run graphics' R wrapper.
         // One untagged character query (`par("lab")`) returns the value.
@@ -77,7 +77,7 @@ pub fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `layout(...)` — session-owned base graphics layout state.
 pub fn do_layout(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::library::graphics::par::do_layout(_call, _op, _args, _rho) }
+    crate::library::graphics::par::do_layout(_call, _op, _args, _rho)
 }
 
 /// R's `getGraphicsEvent(prompt, onMouseDown, ...)` — no Android event loop is attached here.

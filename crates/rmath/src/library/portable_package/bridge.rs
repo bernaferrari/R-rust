@@ -230,7 +230,7 @@ pub(super) fn install_native(
     // SAFETY: the graphics/grDevices/stats symbol installers keep unsafe fn
     // signatures; `namespace` is a linked, live ENVSXP owned by this runtime
     // for the duration of each strictly-local symbol-table update.
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         match image.name {
             "methods" => crate::library::methods::native_calls::install_methods_call_symbols(
                 namespace.as_raw(),
