@@ -31,119 +31,118 @@ impl Predicate {
 /// Root and pin the original invocation before dispatch or ALTREP callbacks.
 /// No payload span or runtime borrow is held while a provider executes.
 pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, kind: Predicate) -> SEXP {
-    unsafe {
-        let owner = crate::mainutils::essentials::current_owner().expect("active predicate owner");
-        let pin = owner.pin().expect("live predicate owner");
-        let factory = owner.node_factory();
-        let _arguments = factory
-            .wrap(args)
-            .expect("predicate arguments belong to original owner");
-        let _call = (!call.is_null()).then(|| {
-            factory
-                .wrap(call)
-                .expect("predicate call belongs to original owner")
-        });
-        let _operation = (!op.is_null()).then(|| {
-            factory
-                .wrap(op)
-                .expect("predicate operation belongs to original owner")
-        });
-        let _environment = (!rho.is_null()).then(|| {
-            factory
-                .wrap(rho)
-                .expect("predicate environment belongs to original owner")
-        });
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
-                    .expect("live predicate owner after callback");
-            }
-            factory
-                .require_active()
-                .expect("original predicate owner after callback");
-        };
-        let dispatched = super::vectors::dispatch_is(call, op, args, rho, kind.name());
-        check();
-        if let Some(value) = dispatched {
-            return factory
-                .wrap(value)
-                .expect("predicate dispatch result belongs to original owner")
-                .as_raw();
+    let owner = crate::mainutils::essentials::current_owner().expect("active predicate owner");
+    let pin = owner.pin().expect("live predicate owner");
+    let factory = owner.node_factory();
+    let _arguments = factory
+        .wrap(args)
+        .expect("predicate arguments belong to original owner");
+    let _call = (!call.is_null()).then(|| {
+        factory
+            .wrap(call)
+            .expect("predicate call belongs to original owner")
+    });
+    let _operation = (!op.is_null()).then(|| {
+        factory
+            .wrap(op)
+            .expect("predicate operation belongs to original owner")
+    });
+    let _environment = (!rho.is_null()).then(|| {
+        factory
+            .wrap(rho)
+            .expect("predicate environment belongs to original owner")
+    });
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .expect("live predicate owner after callback");
         }
-        let input = factory
-            .wrap(crate::sexp::accessors::CAR(args))
-            .expect("predicate input belongs to original owner");
-        let t = input.typeof_();
-        if ![
-            SEXPTYPE::NILSXP,
-            SEXPTYPE::LGLSXP,
-            SEXPTYPE::INTSXP,
-            SEXPTYPE::REALSXP,
-            SEXPTYPE::CPLXSXP,
-            SEXPTYPE::STRSXP,
-            SEXPTYPE::RAWSXP,
-        ]
-        .contains(&t)
-        {
-            let name = if t == SEXPTYPE::OBJSXP
-                && input.header().sxpinfo.gp() & crate::sexp::accessors::S4_OBJECT_MASK == 0
-            {
-                std::borrow::Cow::Borrowed("object")
-            } else {
-                std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(t.into()))
-                    .to_string_lossy()
-            };
-            crate::mainutils::errors::errorcall_str(
-                call,
-                &format!("default method not implemented for type '{name}'"),
-            );
-        }
-        let length = input.len();
-        let output = factory
-            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, length)))
-            .expect("allocate predicate result");
-        check();
-        let shape = if matches!(kind, Predicate::Nan) {
-            None
-        } else {
-            Some(snapshot_shape(&factory, &input, check))
-        };
-        let mut output = SexpMut::try_from_checked(output).expect("mutable predicate result");
-        for i in 0..length {
-            let value = if t == SEXPTYPE::REALSXP {
-                kind.real(input.try_real_elt(i).expect("read predicate real element"))
-            } else if t == SEXPTYPE::INTSXP {
-                let value = input
-                    .try_integer_elt(i)
-                    .expect("read predicate integer element");
-                matches!(kind, Predicate::Finite) && value != NA_INTEGER
-            } else if t == SEXPTYPE::LGLSXP {
-                let value = input
-                    .try_logical_elt(i)
-                    .expect("read predicate logical element");
-                matches!(kind, Predicate::Finite) && value != NA_INTEGER
-            } else if t == SEXPTYPE::CPLXSXP {
-                let value = input
-                    .try_complex_elt(i)
-                    .expect("read predicate complex element");
-                if matches!(kind, Predicate::Finite) {
-                    kind.real(value.r) && kind.real(value.i)
-                } else {
-                    kind.real(value.r) || kind.real(value.i)
-                }
-            } else {
-                false
-            };
-            check();
-            output
-                .try_set_logical_elt(i, i32::from(value))
-                .expect("write predicate result element");
-        }
-        let output = output.freeze();
-        let (dims, names) = shape.unwrap_or_else(|| snapshot_shape(&factory, &input, check));
-        apply_shape(&output, &dims, &names, check);
-        output.as_raw()
+        factory
+            .require_active()
+            .expect("original predicate owner after callback");
+    };
+    let dispatched = super::vectors::dispatch_is(call, op, args, rho, kind.name());
+    check();
+    if let Some(value) = dispatched {
+        return factory
+            .wrap(value)
+            .expect("predicate dispatch result belongs to original owner")
+            .as_raw();
     }
+    let input = factory
+        .wrap(crate::sexp::accessors::CAR(args))
+        .expect("predicate input belongs to original owner");
+    let t = input.typeof_();
+    if ![
+        SEXPTYPE::NILSXP,
+        SEXPTYPE::LGLSXP,
+        SEXPTYPE::INTSXP,
+        SEXPTYPE::REALSXP,
+        SEXPTYPE::CPLXSXP,
+        SEXPTYPE::STRSXP,
+        SEXPTYPE::RAWSXP,
+    ]
+    .contains(&t)
+    {
+        let name = if t == SEXPTYPE::OBJSXP
+            && input.header().sxpinfo.gp() & crate::sexp::accessors::S4_OBJECT_MASK == 0
+        {
+            std::borrow::Cow::Borrowed("object")
+        } else {
+            std::borrow::Cow::Owned(
+                crate::mainutils::essentials::type2char_text(t.into()).unwrap_or_default(),
+            )
+        };
+        crate::mainutils::errors::errorcall_str(
+            call,
+            &format!("default method not implemented for type '{name}'"),
+        );
+    }
+    let length = input.len();
+    let output = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, length)))
+        .expect("allocate predicate result");
+    check();
+    let shape = if matches!(kind, Predicate::Nan) {
+        None
+    } else {
+        Some(snapshot_shape(&factory, &input, check))
+    };
+    let mut output = SexpMut::try_from_checked(output).expect("mutable predicate result");
+    for i in 0..length {
+        let value = if t == SEXPTYPE::REALSXP {
+            kind.real(input.try_real_elt(i).expect("read predicate real element"))
+        } else if t == SEXPTYPE::INTSXP {
+            let value = input
+                .try_integer_elt(i)
+                .expect("read predicate integer element");
+            matches!(kind, Predicate::Finite) && value != NA_INTEGER
+        } else if t == SEXPTYPE::LGLSXP {
+            let value = input
+                .try_logical_elt(i)
+                .expect("read predicate logical element");
+            matches!(kind, Predicate::Finite) && value != NA_INTEGER
+        } else if t == SEXPTYPE::CPLXSXP {
+            let value = input
+                .try_complex_elt(i)
+                .expect("read predicate complex element");
+            if matches!(kind, Predicate::Finite) {
+                kind.real(value.r) && kind.real(value.i)
+            } else {
+                kind.real(value.r) || kind.real(value.i)
+            }
+        } else {
+            false
+        };
+        check();
+        output
+            .try_set_logical_elt(i, i32::from(value))
+            .expect("write predicate result element");
+    }
+    let output = output.freeze();
+    let (dims, names) = shape.unwrap_or_else(|| snapshot_shape(&factory, &input, check));
+    apply_shape(&output, &dims, &names, check);
+    output.as_raw()
 }
 
 fn snapshot_shape<'s>(

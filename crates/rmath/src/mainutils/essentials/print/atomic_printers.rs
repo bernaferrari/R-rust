@@ -232,15 +232,12 @@ pub fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// Append the closure's environment line, mirroring GNU `PrintClosure`:
 /// printed on every path for which `CLOENV(s) != R_GlobalEnv`.
 pub(crate) fn append_closure_environment(x: SEXP, rendered: &mut String) {
-    unsafe {
-        let env = crate::sexp::accessors::CLOENV(x);
-        if !env.is_null() && env != R_NilValue() && env != crate::sexp::globals::R_GlobalEnv() {
-            let enc = crate::mainutils::printutils::EncodeEnvironment(env);
-            if !enc.is_null() {
-                rendered.push_str(std::ffi::CStr::from_ptr(enc).to_str().unwrap_or(""));
-                rendered.push('\n');
-            }
-        }
+    let env = crate::sexp::accessors::CLOENV(x);
+    if !env.is_null() && env != R_NilValue() && env != crate::sexp::globals::R_GlobalEnv() {
+        let enc = crate::mainutils::printutils::encode_environment_text(env);
+        let end = enc.iter().position(|&b| b == 0).unwrap_or(enc.len());
+        rendered.push_str(std::str::from_utf8(&enc[..end]).unwrap_or(""));
+        rendered.push('\n');
     }
 }
 

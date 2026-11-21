@@ -114,239 +114,235 @@ pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// justification, width wrapping), then the `Levels:` line with encodeString
 /// quoting, the smart max.levels default, and ordered ` < ` separators.
 pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = print_method_x(_call, args, "factor");
-        if x.is_null() || x == R_NilValue() {
-            emit_print_text("NULL\n");
-            return R_NilValue();
-        }
+    let x = print_method_x(_call, args, "factor");
+    if x.is_null() || x == R_NilValue() {
+        emit_print_text("NULL\n");
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
-        let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
+    let n = XLENGTH(x);
+    let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
+    let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
 
-        // print.factor(x, quote = FALSE, max.levels = NULL, width)
-        let mut quote = false;
-        let mut max_levels_num: Option<i64> = None;
-        let mut max_levels_on = true;
-        let mut width_opt: Option<i64> = None;
-        let quote_sym = install_str("quote");
-        let max_sym = install_str("max.levels");
-        let width_sym = install_str("width");
-        let mut p = CDR(args);
-        while !p.is_null() && p != R_NilValue() {
-            let tag = TAG(p);
-            let v = CAR(p);
-            if tag == quote_sym && !v.is_null() && v != R_NilValue() {
-                quote = crate::mainutils::seq::asLogical(v) != 0;
-            } else if tag == max_sym {
-                if v.is_null() || v == R_NilValue() {
-                    max_levels_on = true;
-                } else if TYPEOF(v) == SEXPTYPE::LGLSXP {
-                    let l = if XLENGTH(v) > 0 && !LOGICAL(v).is_null() {
-                        logical_elt_checked(v, 0)
-                    } else {
-                        0
-                    };
-                    if l == 0 {
-                        max_levels_on = false;
-                    }
+    // print.factor(x, quote = FALSE, max.levels = NULL, width)
+    let mut quote = false;
+    let mut max_levels_num: Option<i64> = None;
+    let mut max_levels_on = true;
+    let mut width_opt: Option<i64> = None;
+    let quote_sym = install_str("quote");
+    let max_sym = install_str("max.levels");
+    let width_sym = install_str("width");
+    let mut p = CDR(args);
+    while !p.is_null() && p != R_NilValue() {
+        let tag = TAG(p);
+        let v = CAR(p);
+        if tag == quote_sym && !v.is_null() && v != R_NilValue() {
+            quote = crate::mainutils::seq::asLogical(v) != 0;
+        } else if tag == max_sym {
+            if v.is_null() || v == R_NilValue() {
+                max_levels_on = true;
+            } else if TYPEOF(v) == SEXPTYPE::LGLSXP {
+                let l = if XLENGTH(v) > 0 {
+                    logical_elt_checked(v, 0)
                 } else {
-                    let num = crate::mainutils::seq::asInteger(v);
-                    if num <= 0 {
-                        max_levels_on = false;
-                    } else {
-                        max_levels_num = Some(num as i64);
-                    }
+                    0
+                };
+                if l == 0 {
+                    max_levels_on = false;
                 }
-            } else if tag == width_sym && !v.is_null() && v != R_NilValue() {
-                if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                    width_opt = Some(integer_elt_checked(v, 0) as i64);
-                } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                    width_opt = Some(real_elt_checked(v, 0) as i64);
+            } else {
+                let num = crate::mainutils::seq::asInteger(v);
+                if num <= 0 {
+                    max_levels_on = false;
+                } else {
+                    max_levels_num = Some(num as i64);
                 }
             }
-            p = CDR(p);
+        } else if tag == width_sym && !v.is_null() && v != R_NilValue() {
+            if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                width_opt = Some(integer_elt_checked(v, 0) as i64);
+            } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                width_opt = Some(real_elt_checked(v, 0) as i64);
+            }
         }
+        p = CDR(p);
+    }
 
-        let ord = crate::mainutils::essentials::sexp_has_class(x, "ordered");
-        if n == 0 {
-            emit_print_text(if ord { "ordered()\n" } else { "factor()\n" });
-        } else {
-            // xx <- character(length(x)); xx[] <- as.character(x)
-            let xx = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _xx_guard = protect(xx);
-            let t = TYPEOF(x);
-            for i in 0..n {
-                let ch = if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP) && has_levels {
-                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                    if v == NA_INTEGER {
-                        crate::sexp::globals::R_NaString()
-                    } else if v > 0 && (v as R_xlen_t) <= XLENGTH(levels) {
-                        STRING_ELT(levels, (v - 1) as R_xlen_t)
-                    } else {
-                        // Malformed code: GNU errors; keep the lenient raw
-                        // code rendering so diagnostics stay printable.
-                        let text = CString::new(format!("{v}")).unwrap_or_default();
-                        mk_char_cstr(&text)
-                    }
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+    let ord = crate::mainutils::essentials::sexp_has_class(x, "ordered");
+    if n == 0 {
+        emit_print_text(if ord { "ordered()\n" } else { "factor()\n" });
+    } else {
+        // xx <- character(length(x)); xx[] <- as.character(x)
+        let xx = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _xx_guard = protect(xx);
+        let t = TYPEOF(x);
+        for i in 0..n {
+            let ch = if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP) && has_levels {
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+                if v == NA_INTEGER {
+                    crate::sexp::globals::R_NaString()
+                } else if v > 0 && (v as R_xlen_t) <= XLENGTH(levels) {
+                    STRING_ELT(levels, (v - 1) as R_xlen_t)
+                } else {
+                    // Malformed code: GNU errors; keep the lenient raw
+                    // code rendering so diagnostics stay printable.
                     let text = CString::new(format!("{v}")).unwrap_or_default();
                     mk_char_cstr(&text)
-                } else {
-                    let text = CString::new(elt_to_string(x, i)).unwrap_or_default();
-                    mk_char_cstr(&text)
-                };
-                SET_STRING_ELT(xx, i, ch);
-            }
-            // keepAttrs <- setdiff(names(attributes(x)), c("levels", "class"))
-            let mut attr = crate::sexp::accessors::ATTRIB(x);
-            while !attr.is_null() && attr != R_NilValue() {
-                let tag = TAG(attr);
-                if !tag.is_null() && tag != R_NilValue() {
-                    let name = crate::sexp::accessors::PRINTNAME(tag);
-                    if !name.is_null() && name != R_NilValue() && TYPEOF(name) == SEXPTYPE::CHARSXP
-                    {
-                        let bytes = charsxp_cstring(name).into_bytes();
-                        if bytes != b"levels" && bytes != b"class" {
-                            crate::sexp::attrib_core::Rf_setAttrib(xx, tag, CAR(attr));
-                        }
-                    }
                 }
-                attr = CDR(attr);
-            }
-            if let Some(sexp) = active_owner().sexp(xx).ok() {
-                let text = crate::sexp::output::format_vector_stock(sexp, quote);
-                emit_print_text(&format!("{text}\n"));
-            }
-        }
-
-        // Levels line: GNU cat(if(drop) paste(format(n), ""), "Levels: ", ...)
-        if max_levels_on {
-            let lev: Vec<String> = if has_levels {
-                let nl = XLENGTH(levels);
-                (0..nl)
-                    .map(|i| {
-                        let charsxp = STRING_ELT(levels, i);
-                        if charsxp == crate::sexp::globals::R_NaString() && quote {
-                            // paste() coerces the kept NA to "NA"
-                            "NA".to_string()
-                        } else {
-                            let enc = crate::mainutils::printutils::EncodeString(
-                                charsxp,
-                                0,
-                                if quote { b'"' as c_int } else { 0 },
-                                crate::mainutils::printutils::Rprt_adj::left,
-                            );
-                            std::ffi::CStr::from_ptr(enc).to_string_lossy().into_owned()
-                        }
-                    })
-                    .collect()
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+                let text = CString::new(format!("{v}")).unwrap_or_default();
+                mk_char_cstr(&text)
             } else {
-                Vec::new()
+                let text = CString::new(elt_to_string(x, i)).unwrap_or_default();
+                mk_char_cstr(&text)
             };
-            let nl = lev.len() as i64;
-            let colsep = if ord { " < " } else { " " };
-            let width = width_opt.unwrap_or(crate::mainutils::options::GetOptionWidth() as i64);
-            // width - (nchar("Levels: ") + 3 + 1 + 3)
-            let avail = width - 15;
-            let maxl = match max_levels_num {
-                Some(given) => given,
-                None => {
-                    let mut chosen = nl;
-                    if nl > 1 {
-                        let mut cum = 0i64;
-                        for (k, l) in lev.iter().enumerate() {
-                            cum += l.chars().count() as i64 + colsep.chars().count() as i64;
-                            if cum > avail {
-                                chosen = 1.max(k as i64);
-                                break;
-                            }
-                        }
-                    }
-                    chosen
-                }
-            };
-            let drop = nl > maxl;
-            let mut body: Vec<&str> = Vec::new();
-            if drop {
-                let head = 1.max(maxl - 1) as usize;
-                for l in lev.iter().take(head) {
-                    body.push(l.as_str());
-                }
-                body.push("...");
-                if maxl > 1 {
-                    if let Some(last) = lev.last() {
-                        body.push(last.as_str());
+            SET_STRING_ELT(xx, i, ch);
+        }
+        // keepAttrs <- setdiff(names(attributes(x)), c("levels", "class"))
+        let mut attr = crate::sexp::accessors::ATTRIB(x);
+        while !attr.is_null() && attr != R_NilValue() {
+            let tag = TAG(attr);
+            if !tag.is_null() && tag != R_NilValue() {
+                let name = crate::sexp::accessors::PRINTNAME(tag);
+                if !name.is_null() && name != R_NilValue() && TYPEOF(name) == SEXPTYPE::CHARSXP {
+                    let bytes = charsxp_cstring(name).into_bytes();
+                    if bytes != b"levels" && bytes != b"class" {
+                        crate::sexp::attrib_core::Rf_setAttrib(xx, tag, CAR(attr));
                     }
                 }
-            } else {
-                for l in lev.iter() {
-                    body.push(l.as_str());
-                }
             }
-            let mut line = String::new();
-            if drop {
-                line.push_str(&format!("{nl} "));
-            }
-            line.push_str("Levels: ");
-            line.push_str(&body.join(colsep));
-            line.push('\n');
-            emit_print_text(&line);
+            attr = CDR(attr);
         }
-        if let Some(msg) = factor_validity_message(x) {
-            let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-            crate::mainutils::errors::Rf_warning1(&cmsg);
+        if let Some(sexp) = active_owner().sexp(xx).ok() {
+            let text = crate::sexp::output::format_vector_stock(sexp, quote);
+            emit_print_text(&format!("{text}\n"));
         }
-
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
     }
+
+    // Levels line: GNU cat(if(drop) paste(format(n), ""), "Levels: ", ...)
+    if max_levels_on {
+        let lev: Vec<String> = if has_levels {
+            let nl = XLENGTH(levels);
+            (0..nl)
+                .map(|i| {
+                    let charsxp = STRING_ELT(levels, i);
+                    if charsxp == crate::sexp::globals::R_NaString() && quote {
+                        // paste() coerces the kept NA to "NA"
+                        "NA".to_string()
+                    } else {
+                        let enc = crate::mainutils::printutils::encode_string_bytes(
+                            charsxp,
+                            0,
+                            if quote { b'"' as c_int } else { 0 },
+                            crate::mainutils::printutils::Rprt_adj::left,
+                        )
+                        .unwrap_or_default();
+                        let end = enc.iter().position(|&b| b == 0).unwrap_or(enc.len());
+                        String::from_utf8_lossy(&enc[..end]).into_owned()
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let nl = lev.len() as i64;
+        let colsep = if ord { " < " } else { " " };
+        let width = width_opt.unwrap_or(crate::mainutils::options::GetOptionWidth() as i64);
+        // width - (nchar("Levels: ") + 3 + 1 + 3)
+        let avail = width - 15;
+        let maxl = match max_levels_num {
+            Some(given) => given,
+            None => {
+                let mut chosen = nl;
+                if nl > 1 {
+                    let mut cum = 0i64;
+                    for (k, l) in lev.iter().enumerate() {
+                        cum += l.chars().count() as i64 + colsep.chars().count() as i64;
+                        if cum > avail {
+                            chosen = 1.max(k as i64);
+                            break;
+                        }
+                    }
+                }
+                chosen
+            }
+        };
+        let drop = nl > maxl;
+        let mut body: Vec<&str> = Vec::new();
+        if drop {
+            let head = 1.max(maxl - 1) as usize;
+            for l in lev.iter().take(head) {
+                body.push(l.as_str());
+            }
+            body.push("...");
+            if maxl > 1 {
+                if let Some(last) = lev.last() {
+                    body.push(last.as_str());
+                }
+            }
+        } else {
+            for l in lev.iter() {
+                body.push(l.as_str());
+            }
+        }
+        let mut line = String::new();
+        if drop {
+            line.push_str(&format!("{nl} "));
+        }
+        line.push_str("Levels: ");
+        line.push_str(&body.join(colsep));
+        line.push('\n');
+        emit_print_text(&line);
+    }
+    if let Some(msg) = factor_validity_message(x) {
+        let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
+        crate::mainutils::errors::Rf_warning1(&cmsg);
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 pub(crate) fn factor_validity_message(x: SEXP) -> Option<String> {
-    unsafe {
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let mut is_factor = false;
-        for i in 0..XLENGTH(class) {
-            let name = elt_to_string(class, i);
-            if name == "factor" || name == "ordered" {
-                is_factor = true;
-                break;
-            }
-        }
-        if !is_factor {
-            return None;
-        }
-        let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
-        if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            return Some("factor levels must be \"character\"".to_string());
-        }
-        let n = XLENGTH(levels);
-        // GNU .valid.factor: anyDuplicated(levs) — NA equals only another NA,
-        // never the literal "NA" string.
-        for i in 0..n {
-            let here = STRING_ELT(levels, i);
-            let here_is_na = here == crate::sexp::globals::R_NaString();
-            for j in 0..i {
-                let prev = STRING_ELT(levels, j);
-                let prev_is_na = prev == crate::sexp::globals::R_NaString();
-                let same = if here_is_na || prev_is_na {
-                    here_is_na && prev_is_na
-                } else {
-                    crate::sexp::accessors::CHAR(prev) == crate::sexp::accessors::CHAR(here)
-                };
-                if same {
-                    return Some(format!("duplicated level [{}] in factor", i + 1));
-                }
-            }
-        }
-        None
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return None;
     }
+    let mut is_factor = false;
+    for i in 0..XLENGTH(class) {
+        let name = elt_to_string(class, i);
+        if name == "factor" || name == "ordered" {
+            is_factor = true;
+            break;
+        }
+    }
+    if !is_factor {
+        return None;
+    }
+    let levels = crate::sexp::attrib_core::getAttrib(x, install_str("levels"));
+    if levels.is_null() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+        return Some("factor levels must be \"character\"".to_string());
+    }
+    let n = XLENGTH(levels);
+    // GNU .valid.factor: anyDuplicated(levs) — NA equals only another NA,
+    // never the literal "NA" string.
+    for i in 0..n {
+        let here = STRING_ELT(levels, i);
+        let here_is_na = here == crate::sexp::globals::R_NaString();
+        for j in 0..i {
+            let prev = STRING_ELT(levels, j);
+            let prev_is_na = prev == crate::sexp::globals::R_NaString();
+            let same = if here_is_na || prev_is_na {
+                here_is_na && prev_is_na
+            } else {
+                prev == here
+            };
+            if same {
+                return Some(format!("duplicated level [{}] in factor", i + 1));
+            }
+        }
+    }
+    None
 }
 
 /// GNU `print.rle(x, digits = getOption("digits"), prefix = "", ...)` (base

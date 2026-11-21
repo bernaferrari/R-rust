@@ -574,57 +574,55 @@ pub fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU bind.c `NewName`: tag, tag.elem, or tag1/tag2 when a tagged
 /// argument expands to more than one element.
 fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP {
-    unsafe {
-        let own = if !arg_names.is_null()
-            && arg_names != R_NilValue()
-            && TYPEOF(arg_names) == SEXPTYPE::STRSXP
-            && i < XLENGTH(arg_names)
+    let own = if !arg_names.is_null()
+        && arg_names != R_NilValue()
+        && TYPEOF(arg_names) == SEXPTYPE::STRSXP
+        && i < XLENGTH(arg_names)
+    {
+        let s = owner_sexp(active_owner(), arg_names)
+            .try_string_elt(i)
+            .map(|elt| elt.as_raw())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if !s.is_null()
+            && s != R_NilValue()
+            && (s == crate::sexp::globals::R_NaString() || !charsxp_text_of(s).as_cstr().is_empty())
         {
-            let s = owner_sexp(active_owner(), arg_names)
-                .try_string_elt(i)
-                .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !s.is_null()
-                && s != R_NilValue()
-                && (s == crate::sexp::globals::R_NaString() || *CHAR(s) != 0)
-            {
-                Some(s)
-            } else {
-                None
-            }
+            Some(s)
         } else {
             None
-        };
-        let tag_chars = if !tag.is_null() && tag != R_NilValue() {
-            let p = PRINTNAME(tag);
-            if !p.is_null() && *CHAR(p) != 0 {
-                Some(p)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        match (tag_chars, own) {
-            (Some(t), Some(o)) => {
-                let tb = charsxp_text(t).unwrap_or_default();
-                let ob_cstr = charsxp_cstring(o);
-                let ob = ob_cstr.to_string_lossy();
-                let combined = format!("{tb}.{ob}");
-                let cstr = CString::new(combined).unwrap_or_default();
-                mk_char_cstr(&cstr)
-            }
-            (None, Some(o)) => o,
-            (Some(t), None) if n == 1 => t,
-            (Some(t), None) => {
-                let tb_cstr = charsxp_cstring(t);
-                let tb = tb_cstr.to_string_lossy();
-                let combined = format!("{}{}", tb, i + 1);
-                let cstr = CString::new(combined).unwrap_or_default();
-                mk_char_cstr(&cstr)
-            }
-            (None, None) => mk_char_cstr(c""),
         }
+    } else {
+        None
+    };
+    let tag_chars = if !tag.is_null() && tag != R_NilValue() {
+        let p = PRINTNAME(tag);
+        if !p.is_null() && !charsxp_text_of(p).as_cstr().is_empty() {
+            Some(p)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    match (tag_chars, own) {
+        (Some(t), Some(o)) => {
+            let tb = charsxp_text(t).unwrap_or_default();
+            let ob_cstr = charsxp_cstring(o);
+            let ob = ob_cstr.to_string_lossy();
+            let combined = format!("{tb}.{ob}");
+            let cstr = CString::new(combined).unwrap_or_default();
+            mk_char_cstr(&cstr)
+        }
+        (None, Some(o)) => o,
+        (Some(t), None) if n == 1 => t,
+        (Some(t), None) => {
+            let tb_cstr = charsxp_cstring(t);
+            let tb = tb_cstr.to_string_lossy();
+            let combined = format!("{}{}", tb, i + 1);
+            let cstr = CString::new(combined).unwrap_or_default();
+            mk_char_cstr(&cstr)
+        }
+        (None, None) => mk_char_cstr(c""),
     }
 }
 

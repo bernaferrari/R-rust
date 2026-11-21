@@ -149,30 +149,25 @@ pub fn do_summary_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `summary.character(x)` — summary for character vector (class/length/NA).
 pub fn do_summary_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(x);
-        let mut na_count = 0;
-        for i in 0..n {
-            let charsxp = STRING_ELT(x, i);
-            if charsxp.is_null() {
-                na_count += 1;
-            } else {
-                let s = CHAR(charsxp);
-                if s.is_null() {
-                    na_count += 1;
-                }
-            }
-        }
-        println!("   Length     Class      Mode");
-        println!("{:>9} character character", n);
-        if na_count > 0 {
-            println!("   NA's: {}", na_count);
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let n = XLENGTH(x);
+    let mut na_count = 0;
+    for i in 0..n {
+        let charsxp = STRING_ELT(x, i);
+        if charsxp.is_null() {
+            na_count += 1;
+        } else if charsxp_text_of(charsxp).is_null() {
+            na_count += 1;
+        }
+    }
+    println!("   Length     Class      Mode");
+    println!("{:>9} character character", n);
+    if na_count > 0 {
+        println!("   NA's: {}", na_count);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }

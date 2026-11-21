@@ -1297,3 +1297,24 @@ pub(crate) fn new_hashed_env(enclos: SEXP, size: c_int) -> SEXP {
     // fresh environment and promotes it to a hashed frame.
     unsafe { crate::sexp::envir::R_NewHashedEnv(enclos, size) }
 }
+
+/// Lossy text of `type2char(t)`, or `None` when it has no name.
+pub(crate) fn type2char_text(t: c_int) -> Option<String> {
+    let raw = crate::mainutils::util_main::type2char(t);
+    if raw.is_null() {
+        return None;
+    }
+    // SAFETY: type2char returns null or a static NUL-terminated name.
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+/// Name of a primitive as a C string (`PRIMNAME`), empty for non-primitives.
+pub(crate) fn primname_cstr(op: SEXP) -> &'static std::ffi::CStr {
+    crate::eval::primitive::raw_primitive_entry(op)
+        .and_then(|entry| std::ffi::CStr::from_bytes_until_nul(entry.name).ok())
+        .unwrap_or(c"")
+}

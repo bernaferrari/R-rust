@@ -246,41 +246,40 @@ pub fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `utf8ToInt(x)`: UTF-8 code points of a length-1 string.
 pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) == 0 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "argument must be a character vector of length 1",
-            );
-        }
-        let _x_root = protect(x);
-        if XLENGTH(x) > 1 {
-            crate::mainutils::errors::Rf_warning_cstr(
-                c"argument should be a character vector of length 1\nall but the first element will be ignored");
-        }
-        let ch = STRING_ELT(x, 0);
-        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-            return Rf_ScalarInteger(NA_INTEGER);
-        }
-        // GNU raw.c: `if (!utf8Valid(s)) return ScalarInteger(NA_INTEGER)`.
-        let n = XLENGTH(ch);
-        let bytes = if n <= 0 {
-            &[][..]
-        } else {
-            std::slice::from_raw_parts(CHAR(ch) as *const u8, n as usize)
-        };
-        let Ok(s) = std::str::from_utf8(bytes) else {
-            return Rf_ScalarInteger(NA_INTEGER);
-        };
-        let cps: Vec<i32> = s.chars().map(|c| c as u32 as i32).collect();
-        let out = Rf_allocVector3(SEXPTYPE::INTSXP, cps.len() as i64);
-        let _o = protect(out);
-        for (i, cp) in cps.iter().enumerate() {
-            set_integer_checked(out, (i) as R_xlen_t, *cp);
-        }
-        out
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) == 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "argument must be a character vector of length 1",
+        );
     }
+    let _x_root = protect(x);
+    if XLENGTH(x) > 1 {
+        crate::mainutils::errors::Rf_warning_cstr(
+            c"argument should be a character vector of length 1\nall but the first element will be ignored",
+        );
+    }
+    let ch = STRING_ELT(x, 0);
+    if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+        return Rf_ScalarInteger(NA_INTEGER);
+    }
+    // GNU raw.c: `if (!utf8Valid(s)) return ScalarInteger(NA_INTEGER)`.
+    let n = XLENGTH(ch);
+    let bytes = if n <= 0 {
+        Vec::new()
+    } else {
+        crate::mainutils::printutils::charsxp_bytes(ch)
+    };
+    let Ok(s) = std::str::from_utf8(&bytes) else {
+        return Rf_ScalarInteger(NA_INTEGER);
+    };
+    let cps: Vec<i32> = s.chars().map(|c| c as u32 as i32).collect();
+    let out = Rf_allocVector3(SEXPTYPE::INTSXP, cps.len() as i64);
+    let _o = protect(out);
+    for (i, cp) in cps.iter().enumerate() {
+        set_integer_checked(out, (i) as R_xlen_t, *cp);
+    }
+    out
 }
 
 /// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
@@ -365,7 +364,8 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if multiple {
             if s_pair {
                 crate::main::errors::Rf_warning_cstr(
-                    c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored");
+                    c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored",
+                );
             }
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _o = protect(out);

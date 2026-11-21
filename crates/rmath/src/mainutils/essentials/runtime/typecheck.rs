@@ -140,22 +140,14 @@ fn is_numeric_mode(x: SEXP) -> bool {
 fn sexptype_mode_name(x: SEXP) -> String {
     let t = TYPEOF(x);
     if t == SEXPTYPE::OBJSXP {
-        // SAFETY: x is a live SEXP; reading the S4 flag bit is a pure read.
-        let s4 = (unsafe { (*x).sxpinfo.gp() } & (1 << 4)) != 0;
+        let s4 = crate::sexp::accessors::checked_s4_object_flag(x) != 0;
         return if s4 {
             "S4".to_string()
         } else {
             "object".to_string()
         };
     }
-    let raw = crate::mainutils::util_main::type2char(t);
-    if raw.is_null() {
-        return "unknown".to_string();
-    }
-    // SAFETY: raw is a live NUL-terminated static string.
-    unsafe { CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned()
+    type2char_text(t).unwrap_or_else(|| "unknown".to_string())
 }
 
 fn has_disallowed_vector_attribute(x: SEXP) -> bool {
