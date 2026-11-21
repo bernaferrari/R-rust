@@ -3,24 +3,19 @@
 //! Manages per-device grid state including display lists, viewports,
 //! graphics parameters, and engine callbacks.
 
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 
 use crate::attrib_core;
 use crate::library::grid::gpar::initGPar;
 use crate::library::grid::grid::getDevice;
-use crate::sexp::accessors::{
-    CADR, CAR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
-};
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector, Rf_mkString};
+use crate::sexp::accessors::{LENGTH, TYPEOF};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
 use super::{
-    integer_elt, set_integer_elt, set_logical_elt, set_real_elt, set_vector_elt, vector_elt,
+    alloc_vector, install, integer_elt, mk_char, mk_string, protect, scalar_logical,
+    scalar_real, set_integer_elt, set_logical_elt, set_real_elt, set_vector_elt, vector_elt,
 };
 
 /* ==================== GE event constants ==================== */
@@ -61,8 +56,8 @@ fn error(msg: &str) {
 
 /// Get R_BlankString.
 #[inline]
-unsafe fn R_BlankString() -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_mkChar(b"\0".as_ptr() as *const c_char) }
+fn R_BlankString() -> SEXP {
+    mk_char("")
 }
 
 /* ==================== Helper: isNull ==================== */
@@ -95,6 +90,11 @@ fn isString(x: SEXP) -> bool {
 
 /* ==================== Helper: findVar ==================== */
 
+/// Raw environment-frame lookup bridge.
+///
+/// # Safety
+/// `sym` and `rho` must be live objects lent by translated grid code; the
+/// frame lookup may allocate in the owning session.
 #[inline]
 unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::sexp::envir::R_findVarInFrame(rho, sym) }
@@ -114,22 +114,20 @@ unsafe fn lang1(_sym: SEXP) -> SEXP {
 
 /// Create the grid system state (VECSXP of length 18).
 /// One element per GSS_* constant.
-pub unsafe fn createGridSystemState() -> SEXP {
-    unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 18) }
+pub fn createGridSystemState() -> SEXP {
+    alloc_vector(SEXPTYPE::VECSXP, 18)
 }
 
 /// Initialize the display list for a device.
 ///
 /// Creates an empty list to hold grob references, sets the display list
 /// index to 0, and marks the display list as active.
-pub unsafe fn initDL(dd: pGEDevDesc) {
-    unsafe {
-        let dl = Rf_allocVector(SEXPTYPE::VECSXP, 100);
-        let _dl_guard = protect(dl);
-        setGridStateElement(dd, GSS_DL, dl);
-        setGridStateElement(dd, GSS_DLINDEX, Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        setGridStateElement(dd, GSS_DLON, crate::sexp::constructors::Rf_ScalarLogical(1));
-    }
+pub fn initDL(dd: pGEDevDesc) {
+    let dl = alloc_vector(SEXPTYPE::VECSXP, 100);
+    let _dl_guard = protect(dl);
+    setGridStateElement(dd, GSS_DL, dl);
+    setGridStateElement(dd, GSS_DLINDEX, alloc_vector(SEXPTYPE::INTSXP, 1));
+    setGridStateElement(dd, GSS_DLON, scalar_logical(1));
 }
 
 /// Initialize some bits of the system state (called before engine redraw).
@@ -141,65 +139,63 @@ pub fn initOtherState(dd: pGEDevDesc) {
 }
 
 /// Fill the grid system state with initial values.
-pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
-    unsafe {
-        use crate::sexp::ffi::NA_REAL;
+pub fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
+    use crate::sexp::ffi::NA_REAL;
 
-        let _state_guard = protect(state);
+    let _state_guard = protect(state);
 
-        // GSS_DEVSIZE: current size of device
-        let devsize = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        set_real_elt(devsize, 0, 0.0);
-        set_real_elt(devsize, 1, 0.0);
-        set_vector_elt(state, GSS_DEVSIZE as R_xlen_t, devsize);
+    // GSS_DEVSIZE: current size of device
+    let devsize = alloc_vector(SEXPTYPE::REALSXP, 2);
+    set_real_elt(devsize, 0, 0.0);
+    set_real_elt(devsize, 1, 0.0);
+    set_vector_elt(state, GSS_DEVSIZE as R_xlen_t, devsize);
 
-        // GSS_CURRLOC: current location of grid "pen"
-        let currloc = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        set_real_elt(currloc, 0, NA_REAL);
-        set_real_elt(currloc, 1, NA_REAL);
-        set_vector_elt(state, GSS_CURRLOC as R_xlen_t, currloc);
+    // GSS_CURRLOC: current location of grid "pen"
+    let currloc = alloc_vector(SEXPTYPE::REALSXP, 2);
+    set_real_elt(currloc, 0, NA_REAL);
+    set_real_elt(currloc, 1, NA_REAL);
+    set_vector_elt(state, GSS_CURRLOC as R_xlen_t, currloc);
 
-        // GSS_PREVLOC: previous location of grid "pen"
-        let prevloc = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-        set_real_elt(prevloc, 0, NA_REAL);
-        set_real_elt(prevloc, 1, NA_REAL);
-        set_vector_elt(state, GSS_PREVLOC as R_xlen_t, prevloc);
+    // GSS_PREVLOC: previous location of grid "pen"
+    let prevloc = alloc_vector(SEXPTYPE::REALSXP, 2);
+    set_real_elt(prevloc, 0, NA_REAL);
+    set_real_elt(prevloc, 1, NA_REAL);
+    set_vector_elt(state, GSS_PREVLOC as R_xlen_t, prevloc);
 
-        // GSS_DLON: is the display list on?
-        set_vector_elt(state, GSS_DLON as R_xlen_t, Rf_ScalarLogical(1));
+    // GSS_DLON: is the display list on?
+    set_vector_elt(state, GSS_DLON as R_xlen_t, scalar_logical(1));
 
-        // GSS_ENGINEDLON: are we using the engine's display list?
-        set_vector_elt(state, GSS_ENGINEDLON as R_xlen_t, Rf_ScalarLogical(1));
+    // GSS_ENGINEDLON: are we using the engine's display list?
+    set_vector_elt(state, GSS_ENGINEDLON as R_xlen_t, scalar_logical(1));
 
-        // GSS_CURRGROB: current grob being drawn
-        set_vector_elt(state, GSS_CURRGROB as R_xlen_t, R_NilValue());
+    // GSS_CURRGROB: current grob being drawn
+    set_vector_elt(state, GSS_CURRGROB as R_xlen_t, R_NilValue());
 
-        // GSS_ENGINERECORDING: are we inside a .Call.graphics call?
-        set_vector_elt(state, GSS_ENGINERECORDING as R_xlen_t, Rf_ScalarLogical(0));
+    // GSS_ENGINERECORDING: are we inside a .Call.graphics call?
+    set_vector_elt(state, GSS_ENGINERECORDING as R_xlen_t, scalar_logical(0));
 
-        // GSS_GPAR: initialize graphics parameters
-        initGPar(dd);
+    // GSS_GPAR: initialize graphics parameters
+    initGPar(dd);
 
-        // GSS_GPSAVED: previous gpar settings
-        set_vector_elt(state, GSS_GPSAVED as R_xlen_t, R_NilValue());
+    // GSS_GPSAVED: previous gpar settings
+    set_vector_elt(state, GSS_GPSAVED as R_xlen_t, R_NilValue());
 
-        // GSS_GLOBALINDEX: index in global state list
-        set_vector_elt(state, GSS_GLOBALINDEX as R_xlen_t, R_NilValue());
+    // GSS_GLOBALINDEX: index in global state list
+    set_vector_elt(state, GSS_GLOBALINDEX as R_xlen_t, R_NilValue());
 
-        // GSS_GRIDDEVICE: does this device contain grid output?
-        set_vector_elt(state, GSS_GRIDDEVICE as R_xlen_t, Rf_ScalarLogical(0));
+    // GSS_GRIDDEVICE: does this device contain grid output?
+    set_vector_elt(state, GSS_GRIDDEVICE as R_xlen_t, scalar_logical(0));
 
-        // GSS_SCALE: zoom factor
-        set_vector_elt(state, GSS_SCALE as R_xlen_t, Rf_ScalarReal(1.0));
+    // GSS_SCALE: zoom factor
+    set_vector_elt(state, GSS_SCALE as R_xlen_t, scalar_real(1.0));
 
-        // GSS_RESOLVINGPATH: are we resolving a clipping path?
-        set_vector_elt(state, GSS_RESOLVINGPATH as R_xlen_t, Rf_ScalarLogical(0));
+    // GSS_RESOLVINGPATH: are we resolving a clipping path?
+    set_vector_elt(state, GSS_RESOLVINGPATH as R_xlen_t, scalar_logical(0));
 
-        // GSS_GROUPS: group name to device reference mapping
-        set_vector_elt(state, GSS_GROUPS as R_xlen_t, R_NilValue());
+    // GSS_GROUPS: group name to device reference mapping
+    set_vector_elt(state, GSS_GROUPS as R_xlen_t, R_NilValue());
 
-        set_current_grid_state(state);
-    }
+    set_current_grid_state(state);
 }
 
 /// Get a grid state element by index.
@@ -233,114 +229,110 @@ pub fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
 /* ==================== State slot management ==================== */
 
 /// Remove state from global variable (for GC).
-unsafe fn deglobaliseState(state: SEXP) {
-    unsafe {
-        let index = integer_elt(vector_elt(state, GSS_GLOBALINDEX as R_xlen_t), 0);
-        let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-        let globalstate = findVar(sym, grid_eval_env());
-        set_vector_elt(globalstate, index as R_xlen_t, R_NilValue());
-    }
+fn deglobaliseState(state: SEXP) {
+    let index = integer_elt(vector_elt(state, GSS_GLOBALINDEX as R_xlen_t), 0);
+    let sym = install(".GRID.STATE");
+    // SAFETY: `sym` is a live interned symbol; `grid_eval_env` is the shared
+    // grid environment.
+    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    set_vector_elt(globalstate, index as R_xlen_t, R_NilValue());
 }
 
 /// Find an empty slot in the global state list.
-unsafe fn findStateSlot() -> c_int {
-    unsafe {
-        let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-        let globalstate = findVar(sym, grid_eval_env());
-        let len = LENGTH(globalstate) as i32;
-        for i in 0..len {
-            if isNull(vector_elt(globalstate, i as R_xlen_t)) {
-                return i;
-            }
+fn findStateSlot() -> c_int {
+    let sym = install(".GRID.STATE");
+    // SAFETY: `sym` is a live interned symbol in the shared grid environment.
+    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    let len = LENGTH(globalstate) as i32;
+    for i in 0..len {
+        if isNull(vector_elt(globalstate, i as R_xlen_t)) {
+            return i;
         }
-        error("unable to store 'grid' state.  Too many devices open?");
-        -1
     }
+    error("unable to store 'grid' state.  Too many devices open?");
+    -1
 }
 
 /// Store state in a global variable (to prevent GC).
-unsafe fn globaliseState(state: SEXP) {
-    unsafe {
-        let index = findStateSlot();
-        let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-        let globalstate = findVar(sym, grid_eval_env());
-        let _globalstate_guard = protect(globalstate);
-        let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        let _index_guard = protect(indexsxp);
-        set_integer_elt(indexsxp, 0, index);
-        set_vector_elt(state, GSS_GLOBALINDEX as R_xlen_t, indexsxp);
-        set_vector_elt(globalstate, index as R_xlen_t, state);
-    }
+fn globaliseState(state: SEXP) {
+    let index = findStateSlot();
+    let sym = install(".GRID.STATE");
+    // SAFETY: `sym` is a live interned symbol in the shared grid environment.
+    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    let _globalstate_guard = protect(globalstate);
+    let indexsxp = alloc_vector(SEXPTYPE::INTSXP, 1);
+    let _index_guard = protect(indexsxp);
+    set_integer_elt(indexsxp, 0, index);
+    set_vector_elt(state, GSS_GLOBALINDEX as R_xlen_t, indexsxp);
+    set_vector_elt(globalstate, index as R_xlen_t, state);
 }
 
 /* ==================== GE event callback ==================== */
 
 /// Grid callback for graphics engine events.
-pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
-    unsafe {
-        let mut result: SEXP = R_NilValue();
+pub fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
+    let mut result: SEXP = R_NilValue();
 
-        match task {
-            GE_InitState => {
-                // Create the initial grid state for a device
-                let gridState = createGridSystemState();
-                let _grid_state_guard = protect(gridState);
-                // Store that state with the device for easy retrieval
-                // (stub: cannot access dd->gesd)
-                // Initialize the grid state for a device
-                fillGridSystemState(gridState, dd);
-                // Store the state beneath a top-level variable so it does not get GC'd
-                globaliseState(gridState);
-                // Indicate success
-                result = R_BlankString();
-            }
-            GE_FinaliseState => {
-                // Stub: cannot access dd->gesd with void* pGEDevDesc.
-            }
-            GE_SaveState => {
-                // Nothing to do
-            }
-            GE_RestoreState => {
-                // Stub: complex state restoration logic deferred until GE is ported.
-            }
-            GE_CopyState => {
-                // Stub: copy display list between devices
-            }
-            GE_CheckPlot => {
-                let valid = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
-                set_logical_elt(valid, 0, 1);
-                result = valid;
-            }
-            GE_SaveSnapshotState => {
-                result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-                let _result_guard = protect(result);
-                set_vector_elt(result, 0, R_NilValue());
-                set_vector_elt(result, 1, R_NilValue());
-                let pkgName = Rf_mkString(b"grid\0".as_ptr() as *const c_char);
-                let _pkg_name_guard = protect(pkgName);
-                attrib_core::setAttrib(
-                    result,
-                    Rf_install(b"pkgName\0".as_ptr() as *const c_char),
-                    pkgName,
-                );
-            }
-            GE_RestoreSnapshotState => {
-                // Stub: complex snapshot restoration logic deferred until GE is ported.
-                result = R_NilValue();
-            }
-            GE_ScalePS => {
-                // data is a numeric scale factor
-                let scale = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-                set_real_elt(scale, 0, 1.0); // stub
-                let _ = dd;
-                let _ = data;
-                result = scale;
-            }
-            _ => {
-                // Unknown event - ignore
+    match task {
+        GE_InitState => {
+            // Create the initial grid state for a device
+            let gridState = createGridSystemState();
+            let _grid_state_guard = protect(gridState);
+            // Store that state with the device for easy retrieval
+            // (stub: cannot access dd->gesd)
+            // Initialize the grid state for a device
+            fillGridSystemState(gridState, dd);
+            // Store the state beneath a top-level variable so it does not get GC'd
+            globaliseState(gridState);
+            // Indicate success
+            result = R_BlankString();
+        }
+        GE_FinaliseState => {
+            // Stub: cannot access dd->gesd with void* pGEDevDesc.
+        }
+        GE_SaveState => {
+            // Nothing to do
+        }
+        GE_RestoreState => {
+            // Stub: complex state restoration logic deferred until GE is ported.
+        }
+        GE_CopyState => {
+            // Stub: copy display list between devices
+        }
+        GE_CheckPlot => {
+            let valid = alloc_vector(SEXPTYPE::LGLSXP, 1);
+            set_logical_elt(valid, 0, 1);
+            result = valid;
+        }
+        GE_SaveSnapshotState => {
+            result = alloc_vector(SEXPTYPE::VECSXP, 2);
+            let _result_guard = protect(result);
+            set_vector_elt(result, 0, R_NilValue());
+            set_vector_elt(result, 1, R_NilValue());
+            let pkgName = mk_string("grid");
+            let _pkg_name_guard = protect(pkgName);
+            // SAFETY: `result` and `pkgName` are live protected objects;
+            // `install` returns a live interned symbol.
+            unsafe {
+                attrib_core::setAttrib(result, install("pkgName"), pkgName);
             }
         }
-
-        result
+        GE_RestoreSnapshotState => {
+            // Stub: complex snapshot restoration logic deferred until GE is ported.
+            result = R_NilValue();
+        }
+        GE_ScalePS => {
+            // data is a numeric scale factor
+            let scale = alloc_vector(SEXPTYPE::REALSXP, 1);
+            set_real_elt(scale, 0, 1.0); // stub
+            let _ = dd;
+            let _ = data;
+            result = scale;
+        }
+        _ => {
+            // Unknown event - ignore
+        }
     }
+
+    result
 }
