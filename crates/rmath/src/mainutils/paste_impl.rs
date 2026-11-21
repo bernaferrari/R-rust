@@ -160,7 +160,7 @@ unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
 }
 
 unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeExtptr(x) }
+    crate::mainutils::printutils::EncodeExtptr(x)
 }
 
 fn reconcile_fixed_real_width(

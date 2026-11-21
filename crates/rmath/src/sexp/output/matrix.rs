@@ -199,8 +199,7 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
             let val = real_index(r + c * nrow)
                 .map(|index| seq.real_or_na(index))
                 .unwrap_or(NA_REAL);
-            // SAFETY: EncodeReal writes a session print buffer, not an R node.
-            let encoded = unsafe { EncodeReal(val, fmt.w, fmt.d, fmt.e, b'.' as _) };
+            let encoded = EncodeReal(val, fmt.w, fmt.d, fmt.e, b'.' as _);
             if encoded.is_null() {
                 String::new()
             } else {

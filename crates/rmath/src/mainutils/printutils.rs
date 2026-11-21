@@ -182,6 +182,10 @@ pub(crate) fn charsxp_bytes(x: SEXP) -> Vec<u8> {
     if x.is_null() {
         return Vec::new();
     }
+    // The canonical missing string reads as GNU's immutable "NA" bytes.
+    if x == crate::sexp::globals::R_NaString() {
+        return b"NA".to_vec();
+    }
     wrapped(x).header().char_bytes().unwrap_or_default()
 }
 
@@ -275,29 +279,8 @@ fn na_string_bytes_from_print(rp: RPrint, noquote: bool) -> Vec<u8> {
     charsxp_bytes(na as SEXP)
 }
 
-fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
-    {
-        let na = if noquote {
-            rp.na_string_noquote
-        } else {
-            rp.na_string
-        };
-        if !na.is_null() {
-            // SAFETY: `na` is a live CHARSXP; CHAR returns its contents.
-            let p = unsafe { CHAR(na as SEXP) };
-            if !p.is_null() {
-                return p;
-            }
-        }
-        b"NA\0".as_ptr() as *const c_char
-    }
-}
-
 fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
-    // SAFETY: na_string_ptr_from_print returns a NUL-terminated string.
-    unsafe { CStr::from_ptr(na_string_ptr_from_print(rp, noquote)) }
-        .to_string_lossy()
-        .into_owned()
+    String::from_utf8_lossy(&na_string_bytes_from_print(rp, noquote)).into_owned()
 }
 
 /// Return a copy of the current R_print configuration.
@@ -307,9 +290,7 @@ pub fn get_R_print() -> RPrint {
 
 /// Set the R_print configuration.
 pub fn set_R_print(rp: RPrint) {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.printutils.print = rp;
-    });
+    with_encode_buffers(|state| state.print = rp);
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
@@ -630,11 +611,12 @@ pub(crate) fn encode_real0_text(x: f64, w: c_int, d: c_int, e: c_int, dec: &[u8]
 // ---------------------------------------------------------------------------
 
 /// Encode a real value for printing (single-char decimal separator variant).
-pub unsafe fn EncodeReal(x: f64, w: c_int, d: c_int, e: c_int, cdec: c_char) -> *const c_char {
-    unsafe {
-        let dec_buf = [cdec as u8, 0u8];
-        EncodeReal0(x, w, d, e, dec_buf.as_ptr() as *const c_char)
-    }
+pub fn EncodeReal(x: f64, w: c_int, d: c_int, e: c_int, cdec: c_char) -> *const c_char {
+    // GNU passes `{cdec, '\0'}`: a NUL separator reads as the empty string.
+    let dec = [cdec as u8];
+    let dec: &[u8] = if cdec == 0 { &[] } else { &dec };
+    let text = encode_real0_text(x, w, d, e, dec);
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
 }
 
 // ---------------------------------------------------------------------------
@@ -730,24 +712,14 @@ pub unsafe fn EncodeRealDrop0(
 ///
 /// This is used in specific contexts where the `#` flag ensures a decimal
 /// point is always present.
-pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
-    unsafe {
-        // IEEE: normalize signed zero
-        let x = if x == 0.0 { 0.0 } else { x };
-
-        let na = na_string_str();
-        let formatted = format_real_printf_style(x, w, d, e, true, &na);
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut (*inst).eval_state.printutils.encode_real2;
-            let bytes = formatted.as_bytes();
-            let len = bytes.len().min(NB - 1);
-            buf[..len].copy_from_slice(&bytes[..len]);
-            buf[len] = 0;
-
-            buf.as_ptr() as *const c_char
-        })
-    }
+pub fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
+    // IEEE: normalize signed zero
+    let x = if x == 0.0 { 0.0 } else { x };
+    let na = na_string_str();
+    let formatted = format_real_printf_style(x, w, d, e, true, &na);
+    let bytes = formatted.as_bytes();
+    let text = &bytes[..bytes.len().min(NB - 1)];
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real2, text))
 }
 
 // ---------------------------------------------------------------------------
@@ -985,15 +957,8 @@ pub(crate) fn encode_environment_text(x: SEXP) -> Vec<u8> {
 }
 
 /// Encode an external pointer SEXP for display.
-pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        let buf = &mut (*inst).eval_state.printutils.encode_extptr;
-        let s = "<pointer: 0x0>";
-        let bytes = s.as_bytes();
-        buf[..bytes.len()].copy_from_slice(bytes);
-        buf[bytes.len()] = 0;
-        buf.as_ptr() as *const c_char
-    })
+pub fn EncodeExtptr(_x: SEXP) -> *const c_char {
+    with_encode_buffers(|buffers| store_text(&mut buffers.encode_extptr, b"<pointer: 0x0>"))
 }
 
 /// Create a CHARSXP from a formatted real value.
@@ -1076,61 +1041,64 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// session-owned native buffer. Its next successful encoding replaces the contents.
-pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let instance = owner.as_ptr();
-        let ledger = (*instance).heap_identity.byte_ledger();
-        let rooted = if s.is_null() {
-            None
-        } else {
-            Some(
-                owner
-                    .sexp(s)
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
-            )
-        };
-        let is_na = rooted
-            .as_ref()
-            .is_some_and(|value| value.as_raw() == crate::sexp::globals::R_NaString());
-        let pointer = if s.is_null() || is_na {
-            ptr::null()
-        } else {
-            CHAR(s)
-        };
-        let utf8_profile = crate::mainutils::platform::locale_is_utf8();
-        let plan = if s.is_null() || is_na {
-            string_buffer::StringPlan::na(quote != 0, w, justify)
-        } else if pointer.is_null() {
-            string_buffer::StringPlan::text(b"", 0, true, 0, 0, 0, Rprt_adj::none)
-        } else {
-            let bytes = CStr::from_ptr(pointer).to_bytes();
-            let count = c_int::try_from(bytes.len()).unwrap_or_else(|_| {
-                crate::sexp::context::r_error("encoded string exceeds integer range")
-            });
-            let encoding = crate::sexp::accessors::getCharCE(s);
-            let width = if utf8_profile {
-                usize::try_from(Rstrwid(pointer, count, encoding, quote)).unwrap_or_else(|_| {
-                    crate::sexp::context::r_error("invalid encoded string width")
-                })
-            } else if encoding == CE_UTF8 {
-                bytes.len()
-            } else {
-                string_buffer::body_len(bytes, encoding, quote as u8, false)
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-            };
-            string_buffer::StringPlan::text(bytes, encoding, utf8_profile, quote, w, width, justify)
-        }
+pub fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
+    let owner = crate::mainutils::essentials::active_owner();
+    let _pin = owner
+        .pin()
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        // Ledger admission and streaming formatting are callback-free. No R
-        // allocation or arena lend occurs while this retained buffer is loaned.
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let rooted = if s.is_null() {
+        None
+    } else {
+        Some(
+            owner
+                .sexp(s)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+        )
+    };
+    let is_na = rooted
+        .as_ref()
+        .is_some_and(|value| value.as_raw() == crate::sexp::globals::R_NaString());
+    // GNU CHAR(s) requires a character scalar.
+    let text = match &rooted {
+        Some(value) if !is_na => {
+            if value.typeof_() != SEXPTYPE::CHARSXP {
+                crate::sexp::context::r_error("CHAR requires a character scalar");
+            }
+            value.header().char_bytes()
+        }
+        _ => None,
+    };
+    let utf8_profile = crate::mainutils::platform::locale_is_utf8();
+    let plan = if s.is_null() || is_na {
+        string_buffer::StringPlan::na(quote != 0, w, justify)
+    } else if let Some(bytes) = text.as_deref() {
+        c_int::try_from(bytes.len()).unwrap_or_else(|_| {
+            crate::sexp::context::r_error("encoded string exceeds integer range")
+        });
+        let encoding = crate::sexp::accessors::getCharCE(s);
+        let width = if utf8_profile {
+            usize::try_from(rstrwid_bytes(bytes, encoding, quote))
+                .unwrap_or_else(|_| crate::sexp::context::r_error("invalid encoded string width"))
+        } else if encoding == CE_UTF8 {
+            bytes.len()
+        } else {
+            string_buffer::body_len(bytes, encoding, quote as u8, false)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
+        string_buffer::StringPlan::text(bytes, encoding, utf8_profile, quote, w, width, justify)
+    } else {
+        string_buffer::StringPlan::text(b"", 0, true, 0, 0, 0, Rprt_adj::none)
+    }
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let instance = owner.as_ptr();
+    // SAFETY: `owner` is pinned and active. Ledger admission and streaming
+    // formatting are callback-free; no R allocation or arena lend occurs
+    // while this retained buffer is loaned.
+    unsafe {
+        let ledger = (*instance).heap_identity.byte_ledger();
         (*instance)
             .eval_state
             .printutils
@@ -1276,8 +1244,8 @@ pub unsafe fn EncodeElement0(
 /// Simple wrapper around `EncodeString` with width=0, quote=0, left-justified.
 /// Note: the returned pointer points to an internal buffer that is overwritten
 /// by subsequent calls to EncodeChar/EncodeString.
-pub unsafe fn EncodeChar(x: SEXP) -> *const c_char {
-    unsafe { EncodeString(x, 0, 0, Rprt_adj::left) }
+pub fn EncodeChar(x: SEXP) -> *const c_char {
+    EncodeString(x, 0, 0, Rprt_adj::left)
 }
 
 // ---------------------------------------------------------------------------
