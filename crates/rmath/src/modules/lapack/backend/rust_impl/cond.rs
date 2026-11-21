@@ -1,7 +1,13 @@
 use super::*;
 
 /// DGECON — condition number estimate.
-pub fn dgecon_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgecon_(
     norm: *const u8,
     n: *const core::ffi::c_int,
     a: *const f64,
@@ -85,7 +91,13 @@ pub fn dgecon_(
 }
 
 /// DTRCON — triangular condition number.
-pub fn dtrcon_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dtrcon_(
     _norm: *const u8,
     uplo: *const u8,
     diag: *const u8,
@@ -278,7 +290,13 @@ pub fn dtrcon_(
 }
 
 /// ZGECON — complex condition number estimate.
-pub fn zgecon_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgecon_(
     norm: *const u8,
     n: *const core::ffi::c_int,
     a: *const Rcomplex,
@@ -364,7 +382,13 @@ pub fn zgecon_(
 }
 
 /// ZTRCON — complex triangular condition number.
-pub fn ztrcon_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn ztrcon_(
     _norm: *const u8,
     _uplo: *const u8,
     diag: *const u8,

@@ -78,8 +78,14 @@ unsafe extern "C" {
 ///   CALL RCBLAS_CDOTU_SUB(N, X, INCX, Y, INCY, DOTU)
 ///
 /// All arguments are passed by reference (Fortran convention).
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
 #[cfg(target_os = "macos")]
-pub fn rcblas_cdotu_sub_(
+pub unsafe fn rcblas_cdotu_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -98,8 +104,14 @@ pub fn rcblas_cdotu_sub_(
 ///   CALL RCBLAS_CDOTC_SUB(N, X, INCX, Y, INCY, DOTC)
 ///
 /// All arguments are passed by reference (Fortran convention).
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
 #[cfg(target_os = "macos")]
-pub fn rcblas_cdotc_sub_(
+pub unsafe fn rcblas_cdotc_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -118,8 +130,14 @@ pub fn rcblas_cdotc_sub_(
 ///   CALL RCBLAS_ZDOTU_SUB(N, X, INCX, Y, INCY, DOTU)
 ///
 /// All arguments are passed by reference (Fortran convention).
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
 #[cfg(target_os = "macos")]
-pub fn rcblas_zdotu_sub_(
+pub unsafe fn rcblas_zdotu_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -138,8 +156,14 @@ pub fn rcblas_zdotu_sub_(
 ///   CALL RCBLAS_ZDOTC_SUB(N, X, INCX, Y, INCY, DOTC)
 ///
 /// All arguments are passed by reference (Fortran convention).
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
 #[cfg(target_os = "macos")]
-pub fn rcblas_zdotc_sub_(
+pub unsafe fn rcblas_zdotc_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,

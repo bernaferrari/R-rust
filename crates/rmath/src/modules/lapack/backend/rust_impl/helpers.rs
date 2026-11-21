@@ -15,7 +15,12 @@ pub(crate) fn reserve_native_workspace(bytes: usize) -> Result<Option<TransientR
 }
 
 /// Read a column-major matrix (with optional lda stride) into a faer Mat.
-pub(crate) fn read_mat_f64(ptr: *const f64, m: usize, n: usize, lda: usize) -> Mat<f64> {
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn read_mat_f64(ptr: *const f64, m: usize, n: usize, lda: usize) -> Mat<f64> {
     unsafe {
         let mut mat = Mat::zeros(m, n);
         for j in 0..n {
@@ -28,7 +33,12 @@ pub(crate) fn read_mat_f64(ptr: *const f64, m: usize, n: usize, lda: usize) -> M
 }
 
 /// Write real matrix data to column-major pointer (MatRef).
-pub(crate) fn write_matref_f64(
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn write_matref_f64(
     mat: MatRef<'_, f64>,
     ptr: *mut f64,
     m: usize,
@@ -45,7 +55,18 @@ pub(crate) fn write_matref_f64(
 }
 
 /// Write real matrix (owned) to column-major pointer.
-pub(crate) fn write_owned_f64(mat: &Mat<f64>, ptr: *mut f64, m: usize, n: usize, lda: usize) {
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn write_owned_f64(
+    mat: &Mat<f64>,
+    ptr: *mut f64,
+    m: usize,
+    n: usize,
+    lda: usize,
+) {
     unsafe {
         for j in 0..n {
             for i in 0..m {
@@ -56,7 +77,12 @@ pub(crate) fn write_owned_f64(mat: &Mat<f64>, ptr: *mut f64, m: usize, n: usize,
 }
 
 /// Write complex matrix data to column-major Rcomplex pointer (MatRef).
-pub(crate) fn write_matref_c64(
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn write_matref_c64(
     mat: MatRef<'_, c64>,
     ptr: *mut Rcomplex,
     m: usize,
@@ -74,7 +100,18 @@ pub(crate) fn write_matref_c64(
 }
 
 /// Write complex matrix (owned) to column-major Rcomplex pointer.
-pub(crate) fn write_owned_c64(mat: &Mat<c64>, ptr: *mut Rcomplex, m: usize, n: usize, lda: usize) {
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn write_owned_c64(
+    mat: &Mat<c64>,
+    ptr: *mut Rcomplex,
+    m: usize,
+    n: usize,
+    lda: usize,
+) {
     unsafe {
         for j in 0..n {
             for i in 0..m {
@@ -86,7 +123,17 @@ pub(crate) fn write_owned_c64(mat: &Mat<c64>, ptr: *mut Rcomplex, m: usize, n: u
 }
 
 /// Read a column-major complex matrix into a faer Mat<c64>.
-pub(crate) fn read_mat_c64(ptr: *const Rcomplex, m: usize, n: usize, lda: usize) -> Mat<c64> {
+///
+/// # Safety
+///
+/// `ptr` must be valid for reads (or writes) of an `m`-by-`n` column-major matrix with leading
+/// dimension `lda` (at least `(n - 1) * lda + m` elements when `m, n > 0`).
+pub(crate) unsafe fn read_mat_c64(
+    ptr: *const Rcomplex,
+    m: usize,
+    n: usize,
+    lda: usize,
+) -> Mat<c64> {
     unsafe {
         let mut mat = Mat::zeros(m, n);
         for j in 0..n {

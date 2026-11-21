@@ -577,7 +577,7 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 /// For a nonnegative, representable n-by-n matrix, imaginary and vecs point to
 /// n and n*n initialized f64 elements respectively. These caller-owned native
 /// buffers remain live across allocation/GC; they are not runtime field loans.
-fn complex_eigenvector_matrix(n: i32, imaginary: *const f64, vecs: *const f64) -> SEXP {
+unsafe fn complex_eigenvector_matrix(n: i32, imaginary: *const f64, vecs: *const f64) -> SEXP {
     unsafe {
         let n = usize::try_from(n)
             .unwrap_or_else(|_| crate::sexp::context::r_error("invalid matrix dimensions"));

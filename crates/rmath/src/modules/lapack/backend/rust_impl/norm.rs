@@ -1,7 +1,13 @@
 use super::*;
 
 /// DLANGE — matrix norm (Frobenius / 1-norm / inf-norm / max element).
-pub fn dlange_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dlange_(
     norm: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -78,7 +84,13 @@ pub fn dlange_(
 }
 
 /// ZLANGE — complex matrix norm.
-pub fn zlange_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zlange_(
     norm: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,

@@ -1,7 +1,13 @@
 use super::*;
 
 /// DGESDD — SVD.
-pub fn dgesdd_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgesdd_(
     jobz: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -121,7 +127,13 @@ pub fn dgesdd_(
 }
 
 /// DSYEVR — symmetric eigenvalue decomposition with range selection.
-pub fn dsyevr_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dsyevr_(
     jobz: *const u8,
     range: *const u8,
     uplo: *const u8,
@@ -239,7 +251,13 @@ pub fn dsyevr_(
 }
 
 /// DGEEV — general eigenvalue decomposition.
-pub fn dgeev_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
     n: *const core::ffi::c_int,
@@ -400,7 +418,13 @@ pub fn dgeev_(
 }
 
 /// ZGESDD — complex SVD.
-pub fn zgesdd_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgesdd_(
     jobz: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -517,7 +541,13 @@ pub fn zgesdd_(
 }
 
 /// ZHEEV — Hermitian eigenvalue decomposition.
-pub fn zheev_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zheev_(
     jobz: *const u8,
     uplo: *const u8,
     n: *const core::ffi::c_int,
@@ -590,7 +620,13 @@ pub fn zheev_(
 }
 
 /// ZGEEV — complex general eigenvalue decomposition.
-pub fn zgeev_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
     n: *const core::ffi::c_int,

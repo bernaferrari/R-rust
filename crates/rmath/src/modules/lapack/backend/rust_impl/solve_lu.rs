@@ -1,7 +1,13 @@
 use super::*;
 
 /// DGETRF — LU factorization with partial pivoting.
-pub fn dgetrf_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgetrf_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut f64,
@@ -70,7 +76,13 @@ pub fn dgetrf_(
 }
 
 /// DGESV — solve Ax = B via LU.
-pub fn dgesv_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgesv_(
     n: *const core::ffi::c_int,
     nrhs: *const core::ffi::c_int,
     a: *mut f64,
@@ -155,7 +167,13 @@ pub fn dgesv_(
 }
 
 /// DTRTRS — triangular solve.
-pub fn dtrtrs_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dtrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,
@@ -238,7 +256,13 @@ pub fn dtrtrs_(
 // ============================================================
 
 /// ZGETRF — complex LU factorization.
-pub fn zgetrf_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgetrf_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut Rcomplex,
@@ -304,7 +328,13 @@ pub fn zgetrf_(
 }
 
 /// ZGESV — complex linear solve.
-pub fn zgesv_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgesv_(
     n: *const core::ffi::c_int,
     nrhs: *const core::ffi::c_int,
     a: *mut Rcomplex,
@@ -360,7 +390,13 @@ pub fn zgesv_(
 }
 
 /// ZTRTRS — complex triangular solve.
-pub fn ztrtrs_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn ztrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,

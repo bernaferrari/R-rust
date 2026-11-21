@@ -1,7 +1,13 @@
 use super::*;
 
 /// DGEQP3 — QR factorization with column pivoting.
-pub fn dgeqp3_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dgeqp3_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut f64,
@@ -342,7 +348,13 @@ mod dgeqp3_safety_tests {
 }
 
 /// DORMQR — apply Q from QR factorization to a matrix.
-pub fn dormqr_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn dormqr_(
     side: *const u8,
     trans: *const u8,
     m: *const core::ffi::c_int,
@@ -451,7 +463,13 @@ pub fn dormqr_(
 }
 
 /// ZGEQP3 — complex QR with column pivoting.
-pub fn zgeqp3_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zgeqp3_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut Rcomplex,
@@ -711,7 +729,13 @@ pub fn zgeqp3_(
 }
 
 /// ZUNMQR — apply Q from complex QR.
-pub fn zunmqr_(
+///
+/// # Safety
+///
+/// Every pointer argument must follow the reference LAPACK/BLAS (Fortran by-reference) contract for
+/// this routine: scalars valid for one read (outputs for one write) and arrays valid for the extents implied
+/// by the dimension/leading-dimension/workspace arguments.
+pub unsafe fn zunmqr_(
     side: *const u8,
     trans: *const u8,
     m: *const core::ffi::c_int,
