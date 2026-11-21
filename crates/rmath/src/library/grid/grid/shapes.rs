@@ -1,4 +1,7 @@
 use super::*;
+use crate::library::grid::{
+    duplicate, integer_elt, logical_elt, protect, real_elt, vector_elt,
+};
 
 pub(crate) fn getArrowN(
     x1: SEXP,
@@ -30,7 +33,7 @@ pub(crate) fn getArrowN(
     }
 }
 
-pub unsafe fn L_arrows(
+pub fn L_arrows(
     x1: SEXP,
     x2: SEXP,
     xnm1: SEXP,
@@ -44,10 +47,11 @@ pub unsafe fn L_arrows(
     ends: SEXP,
     r#type: SEXP,
 ) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, "transparent");
@@ -68,11 +72,12 @@ pub unsafe fn L_arrows(
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live device returned above.
+        unsafe { GEMode(1, dd) };
         for i in 0..maxn {
             let mut first = true;
             let mut last = true;
-            match *INTEGER(ends).add((i % ne) as usize) {
+            match integer_elt(ends, (i % ne) as R_xlen_t) {
                 2 => first = false,
                 1 => last = false,
                 _ => {}
@@ -95,8 +100,8 @@ pub unsafe fn L_arrows(
                 let mut yy1: c_double = NA_REAL;
                 if isNull(x1) {
                     if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
-                        xx1 = *REAL(devloc).add(0);
-                        yy1 = *REAL(devloc).add(1);
+                        xx1 = real_elt(devloc, 0);
+                        yy1 = real_elt(devloc, 1);
                     }
                 } else {
                     (xx1, yy1) = transformLocn(x1,
@@ -119,28 +124,32 @@ pub unsafe fn L_arrows(
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
-                calcArrow(
-                    xx1,
-                    yy1,
-                    xx2,
-                    yy2,
-                    angle,
-                    length,
-                    i,
-                    vpc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    &mut vertx,
-                    &mut verty,
-                    gc,
-                    dd,
-                );
-                if toDeviceX(xx2, GE_INCHES, dd).is_finite()
-                    && toDeviceY(yy2, GE_INCHES, dd).is_finite()
-                    && vertx[1].is_finite()
-                    && verty[1].is_finite()
-                {
-                    drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+                // SAFETY: `vertx`/`verty` are live 3-element buffers; `gc`
+                // and `dd` keep their engine/device contracts.
+                unsafe {
+                    calcArrow(
+                        xx1,
+                        yy1,
+                        xx2,
+                        yy2,
+                        angle,
+                        length,
+                        i,
+                        vpc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        &mut vertx,
+                        &mut verty,
+                        gc,
+                        dd,
+                    );
+                    if toDeviceX(xx2, GE_INCHES, dd).is_finite()
+                        && toDeviceY(yy2, GE_INCHES, dd).is_finite()
+                        && vertx[1].is_finite()
+                        && verty[1].is_finite()
+                    {
+                        drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+                    }
                 }
             }
 
@@ -149,8 +158,8 @@ pub unsafe fn L_arrows(
                 let mut yynm1: c_double = NA_REAL;
                 if isNull(xnm1) {
                     if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
-                        xxnm1 = *REAL(devloc).add(0);
-                        yynm1 = *REAL(devloc).add(1);
+                        xxnm1 = real_elt(devloc, 0);
+                        yynm1 = real_elt(devloc, 1);
                     }
                 } else {
                     (xxnm1, yynm1) = transformLocn(xnm1,
@@ -174,32 +183,38 @@ pub unsafe fn L_arrows(
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
-                calcArrow(
-                    xxn,
-                    yyn,
-                    xxnm1,
-                    yynm1,
-                    angle,
-                    length,
-                    i,
-                    vpc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    &mut vertx,
-                    &mut verty,
-                    gc,
-                    dd,
-                );
-                if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
-                    && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
-                    && vertx[1].is_finite()
-                    && verty[1].is_finite()
-                {
-                    drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+                // SAFETY: `vertx`/`verty` are live 3-element buffers; `gc`
+                // and `dd` keep their engine/device contracts.
+                unsafe {
+                    calcArrow(
+                        xxn,
+                        yyn,
+                        xxnm1,
+                        yynm1,
+                        angle,
+                        length,
+                        i,
+                        vpc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        &mut vertx,
+                        &mut verty,
+                        gc,
+                        dd,
+                    );
+                    if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
+                        && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
+                        && vertx[1].is_finite()
+                        && verty[1].is_finite()
+                    {
+                        drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+                    }
                 }
             }
         }
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live device; engine mode teardown mirrors
+        // the `GEMode(1, dd)` above.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }
@@ -208,16 +223,17 @@ pub unsafe fn L_arrows(
  * L_polygon
  * ============================== */
 
-pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
-            && *LOGICAL(resolving_path).add(0) != 0
+            && logical_elt(resolving_path, 0) != 0
         {
             set_gp_fill_string(currentgp, "black");
         }
@@ -233,10 +249,11 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live device returned above.
+        unsafe { GEMode(1, dd) };
         let np = LENGTH(index);
         for i in 0..np {
-            let indices = VECTOR_ELT(index, i as R_xlen_t);
+            let indices = vector_elt(index, i as R_xlen_t);
             updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let nx = LENGTH(indices);
             if nx <= 0 {
@@ -250,7 +267,7 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             let mut start: usize = 0;
 
             for j in 0..nx as usize {
-                let idx = *INTEGER(indices).add(j);
+                let idx = integer_elt(indices, j as R_xlen_t);
                 if idx > 0 {
                     (xx[j], yy[j]) = transformLocn(x,
                         y,
@@ -260,8 +277,12 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
                         vpWidthCM,
                         vpHeightCM,
                         dd, &transform);
-                    xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
-                    yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
+                    // SAFETY: `dd` is the live device; `toDevice*` are
+                    // engine coordinate bridges over the device state.
+                    unsafe {
+                        xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
+                        yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
+                    }
                 }
 
                 let current_finite = xx[j].is_finite() && yy[j].is_finite();
@@ -271,29 +292,39 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
                     start = j;
                 } else if previous_finite && !current_finite {
                     if j.saturating_sub(start) > 1 {
+                        // SAFETY: `xx`/`yy` are live Rust buffers with `nx`
+                        // elements; `gc`/`dd` keep their engine contracts.
+                        unsafe {
+                            GEPolygon(
+                                (j - start) as c_int,
+                                xx.as_ptr().add(start),
+                                yy.as_ptr().add(start),
+                                gc,
+                                dd,
+                            );
+                        }
+                    }
+                } else if previous_finite && j + 1 == nx as usize {
+                    // SAFETY: `xx`/`yy` are live Rust buffers with `nx`
+                    // elements; `gc`/`dd` keep their engine contracts.
+                    unsafe {
                         GEPolygon(
-                            (j - start) as c_int,
+                            (nx as usize - start) as c_int,
                             xx.as_ptr().add(start),
                             yy.as_ptr().add(start),
                             gc,
                             dd,
                         );
                     }
-                } else if previous_finite && j + 1 == nx as usize {
-                    GEPolygon(
-                        (nx as usize - start) as c_int,
-                        xx.as_ptr().add(start),
-                        yy.as_ptr().add(start),
-                        gc,
-                        dd,
-                    );
                 }
 
                 xold = xx[j];
                 yold = yy[j];
             }
         }
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live device; engine mode teardown mirrors
+        // the `GEMode(1, dd)` above.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }
@@ -325,8 +356,8 @@ pub fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
  * L_circleBounds
  * ============================== */
 
-pub unsafe fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
-    unsafe { gridCircle(x, y, r, *REAL(theta), false) }
+pub fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
+    gridCircle(x, y, r, real_elt(theta, 0), false)
 }
 
 /* ==============================
@@ -359,7 +390,7 @@ pub fn L_rect(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
  * L_rectBounds
  * ============================== */
 
-pub unsafe fn L_rectBounds(
+pub fn L_rectBounds(
     x: SEXP,
     y: SEXP,
     w: SEXP,
@@ -368,23 +399,24 @@ pub unsafe fn L_rectBounds(
     vjust: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    unsafe { gridRect(x, y, w, h, hjust, vjust, *REAL(theta), false) }
+    gridRect(x, y, w, h, hjust, vjust, real_elt(theta, 0), false)
 }
 
 /* ==============================
  * L_path
  * ============================== */
 
-pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
-    unsafe {
-        let dd = getDevice();
+pub fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
+    {
+        // SAFETY: device registry bridge.
+        let dd = unsafe { getDevice() };
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
-            && *LOGICAL(resolving_path).add(0) != 0
+            && logical_elt(resolving_path, 0) != 0
         {
             set_gp_fill_string(currentgp, "black");
         }
@@ -400,10 +432,11 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live device returned above.
+        unsafe { GEMode(1, dd) };
 
         for h in 0..LENGTH(index) {
-            let poly_ind = VECTOR_ELT(index, h as R_xlen_t);
+            let poly_ind = vector_elt(index, h as R_xlen_t);
             let npoly = LENGTH(poly_ind);
             if npoly <= 0 {
                 continue;
@@ -412,7 +445,7 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             let mut ntot: c_int = 0;
             let mut nper = vec![0i32; npoly as usize];
             for i in 0..npoly as usize {
-                let n = LENGTH(VECTOR_ELT(poly_ind, i as R_xlen_t));
+                let n = LENGTH(vector_elt(poly_ind, i as R_xlen_t));
                 nper[i] = n;
                 ntot += n;
             }
@@ -424,38 +457,50 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             let mut yy = vec![0.0; ntot as usize];
             let mut k: usize = 0;
             for i in 0..npoly as usize {
-                let indices = INTEGER(VECTOR_ELT(poly_ind, i as R_xlen_t));
+                let indices = vector_elt(poly_ind, i as R_xlen_t);
                 for j in 0..nper[i] as usize {
                     (xx[k], yy[k]) = transformLocn(x,
                         y,
-                        *indices.add(j) - 1,
+                        integer_elt(indices, j as R_xlen_t) - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
                         dd, &transform);
-                    xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
-                    yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
+                    // SAFETY: `dd` is the live device; `toDevice*` are
+                    // engine coordinate bridges over the device state.
+                    unsafe {
+                        xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
+                        yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
+                    }
                     if !xx[k].is_finite() || !yy[k].is_finite() {
-                        Rf_error(c"non-finite x or y in graphics path".as_ptr());
+                        // SAFETY: static format string, no arguments.
+                        unsafe { Rf_error(c"non-finite x or y in graphics path".as_ptr()) };
                     }
                     k += 1;
                 }
             }
 
             updateGContext(currentgp, h, gc, dd, &mut gp_is_scalar, gc_cache);
-            GEPath(
-                xx.as_mut_ptr(),
-                yy.as_mut_ptr(),
-                npoly,
-                nper.as_mut_ptr(),
-                asBool(rule),
-                gc,
-                dd,
-            );
+            // SAFETY: `xx`/`yy`/`nper` are live Rust buffers sized to `ntot`
+            // and `npoly`; `gc`/`dd` keep their engine contracts and `rule`
+            // is coerced through the asBool bridge.
+            unsafe {
+                GEPath(
+                    xx.as_mut_ptr(),
+                    yy.as_mut_ptr(),
+                    npoly,
+                    nper.as_mut_ptr(),
+                    asBool(rule),
+                    gc,
+                    dd,
+                );
+            }
         }
 
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live device; engine mode teardown mirrors
+        // the `GEMode(1, dd)` above.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }
