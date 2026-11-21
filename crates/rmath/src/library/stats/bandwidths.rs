@@ -37,7 +37,7 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 // SAFETY: the raw ABI caller retains the active runtime across dispatch; the
 // returned token borrows the interpreter-held owner and does not outlive it.
 fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
-    checked(unsafe { crate::sexp::owner::OwnerToken::current() })
+    crate::library::stats::checked::current_owner()
 }
 
 fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> c_int {
