@@ -102,14 +102,7 @@ pub fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
         let _x_guard = protect(x);
 
         /* Get the length of the input string for partial matching */
-        let slen = {
-            let c = translateChar(input);
-            if c.is_null() {
-                0
-            } else {
-                std::ffi::CStr::from_ptr(c).to_bytes().len()
-            }
-        };
+        let slen = char_bytes(input).len();
 
         // GNU subset.c: S4 classes extending environment store the env in .xData.
         if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {

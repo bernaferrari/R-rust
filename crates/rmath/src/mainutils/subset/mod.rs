@@ -40,7 +40,6 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, 
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -349,8 +348,31 @@ fn char_bytes(x: SEXP) -> Vec<u8> {
     crate::mainutils::printutils::charsxp_bytes(x)
 }
 
-/// Checked CHARSXP for `text` on the active session heap (`Rf_mkChar`).
+/// Checked STRSXP(1) for `text` (`Rf_mkString`); an interior NUL yields "".
+fn mk_string(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .strings(&[text])
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Lossy UTF-8 text of a CHARSXP's CHAR bytes.
+fn char_lossy(x: SEXP) -> String {
+    String::from_utf8_lossy(&char_bytes(x)).into_owned()
+}
+
+/// UTF-8 text of a CHARSXP's CHAR bytes, empty when invalid.
+fn char_utf8(x: SEXP) -> String {
+    String::from_utf8(char_bytes(x)).unwrap_or_default()
+}
+
+/// Checked CHARSXP for `text` on the active session heap. Like
+/// `Rf_mkChar(CString::new(text).unwrap_or_default())`, an interior NUL
+/// yields the empty string.
 fn mk_char(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
     crate::mainutils::essentials::active_owner()
         .node_factory()
         .character(text)

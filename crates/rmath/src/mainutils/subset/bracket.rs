@@ -6,46 +6,44 @@ use super::*;
 
 /// The `[` subset operator -- the most general form of subsetting.
 fn posixlt_extract_component(x: SEXP, j: SEXP) -> SEXP {
-    unsafe {
-        let ncomp = XLENGTH(x);
-        if TYPEOF(j) == SEXPTYPE::STRSXP && XLENGTH(j) > 0 {
-            let ch = STRING_ELT(j, 0);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
-            }
-            let name = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
-            let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP {
-                for i in 0..XLENGTH(names).min(ncomp) {
-                    let ni = STRING_ELT(names, i);
-                    if ni.is_null() {
-                        continue;
-                    }
-                    let nm = std::ffi::CStr::from_ptr(CHAR(ni)).to_string_lossy();
-                    if nm == name {
-                        return VECTOR_ELT(x, i);
-                    }
-                }
-            }
-            for (i, nm) in crate::mainutils::datetime::ltnames.iter().enumerate() {
-                if *nm == name && (i as R_xlen_t) < ncomp {
-                    return VECTOR_ELT(x, i as R_xlen_t);
-                }
-            }
+    let ncomp = XLENGTH(x);
+    if TYPEOF(j) == SEXPTYPE::STRSXP && XLENGTH(j) > 0 {
+        let ch = STRING_ELT(j, 0);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
             errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
         }
-        let idx = if TYPEOF(j) == SEXPTYPE::INTSXP && XLENGTH(j) > 0 {
-            *INTEGER(j) as R_xlen_t
-        } else if TYPEOF(j) == SEXPTYPE::REALSXP && XLENGTH(j) > 0 {
-            *REAL(j) as R_xlen_t
-        } else {
-            0
-        };
-        if idx < 1 || idx > ncomp {
-            errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
+        let name = char_lossy(ch);
+        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..XLENGTH(names).min(ncomp) {
+                let ni = STRING_ELT(names, i);
+                if ni.is_null() {
+                    continue;
+                }
+                let nm = char_lossy(ni);
+                if nm == name {
+                    return VECTOR_ELT(x, i);
+                }
+            }
         }
-        VECTOR_ELT(x, idx - 1)
+        for (i, nm) in crate::mainutils::datetime::ltnames.iter().enumerate() {
+            if *nm == name && (i as R_xlen_t) < ncomp {
+                return VECTOR_ELT(x, i as R_xlen_t);
+            }
+        }
+        errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
     }
+    let idx = if TYPEOF(j) == SEXPTYPE::INTSXP && XLENGTH(j) > 0 {
+        INTEGER_ELT(j, 0) as R_xlen_t
+    } else if TYPEOF(j) == SEXPTYPE::REALSXP && XLENGTH(j) > 0 {
+        REAL_ELT(j, 0) as R_xlen_t
+    } else {
+        0
+    };
+    if idx < 1 || idx > ncomp {
+        errorcall(std::ptr::null_mut(), "invalid POSIXlt component");
+    }
+    VECTOR_ELT(x, idx - 1)
 }
 
 pub(crate) fn posixlt_index_preserves_balance(
@@ -56,143 +54,135 @@ pub(crate) fn posixlt_index_preserves_balance(
     op: SEXP,
     env: SEXP,
 ) -> bool {
-    unsafe {
-        let bal = getAttrib(x, Rf_install(c"balanced".as_ptr()));
-        if bal.is_null()
-            || bal == R_NilValue()
-            || TYPEOF(bal) != SEXPTYPE::LGLSXP
-            || XLENGTH(bal) == 0
-            || *INTEGER(bal) != TRUE
-        {
-            return false;
-        }
-        if i.is_null() || i == R_NilValue() || i == R_MissingArg() {
-            return true;
-        }
-        let seq = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let _s = protect(seq);
-        for k in 0..n {
-            *INTEGER(seq).add(k as usize) = (k + 1) as i32;
-        }
-        let args = Rf_cons(seq, Rf_cons(i, R_NilValue()));
-        let _g = protect(args);
-        let sub = do_subset_dflt(call, op, args, env);
-        let _u = protect(sub);
-        if sub.is_null() || sub == R_NilValue() {
-            return true;
-        }
-        if TYPEOF(sub) == SEXPTYPE::INTSXP {
-            for k in 0..XLENGTH(sub) {
-                if *INTEGER(sub).add(k as usize) == NA_INTEGER {
-                    return false;
-                }
-            }
-            return true;
-        }
-        if TYPEOF(sub) == SEXPTYPE::REALSXP {
-            for k in 0..XLENGTH(sub) {
-                let v = *REAL(sub).add(k as usize);
-                if v.is_nan() {
-                    return false;
-                }
-            }
-            return true;
-        }
-        false
+    let bal = getAttrib(x, crate::sexp::symbol::install_str("balanced"));
+    if bal.is_null()
+        || bal == R_NilValue()
+        || TYPEOF(bal) != SEXPTYPE::LGLSXP
+        || XLENGTH(bal) == 0
+        || INTEGER_ELT(bal, 0) != TRUE
+    {
+        return false;
     }
+    if i.is_null() || i == R_NilValue() || i == R_MissingArg() {
+        return true;
+    }
+    let seq = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    let _s = protect(seq);
+    for k in 0..n {
+        SET_INTEGER_ELT(seq, k as c_int, (k + 1) as i32);
+    }
+    let args = Rf_cons(seq, Rf_cons(i, R_NilValue()));
+    let _g = protect(args);
+    let sub = do_subset_dflt(call, op, args, env);
+    let _u = protect(sub);
+    if sub.is_null() || sub == R_NilValue() {
+        return true;
+    }
+    if TYPEOF(sub) == SEXPTYPE::INTSXP {
+        for k in 0..XLENGTH(sub) {
+            if INTEGER_ELT(sub, k as c_int) == NA_INTEGER {
+                return false;
+            }
+        }
+        return true;
+    }
+    if TYPEOF(sub) == SEXPTYPE::REALSXP {
+        for k in 0..XLENGTH(sub) {
+            let v = REAL_ELT(sub, k as c_int);
+            if v.is_nan() {
+                return false;
+            }
+        }
+        return true;
+    }
+    false
 }
 
 fn subset_posixlt_time(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let ncomp = XLENGTH(x);
-        let mut n: R_xlen_t = 0;
-        for j in 0..ncomp {
-            let len = XLENGTH(VECTOR_ELT(x, j));
-            if len > n {
-                n = len;
-            }
+    let ncomp = XLENGTH(x);
+    let mut n: R_xlen_t = 0;
+    for j in 0..ncomp {
+        let len = XLENGTH(VECTOR_ELT(x, j));
+        if len > n {
+            n = len;
         }
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
-        let _a = protect(ans);
-        for j in 0..ncomp {
-            let col = crate::mainutils::datetime::recycle_posixlt_component(VECTOR_ELT(x, j), n);
-            let _c = protect(col);
-            let args = Rf_cons(col, Rf_cons(i, R_NilValue()));
-            let _g = protect(args);
-            let sub = do_subset_dflt(call, op, args, env);
-            SET_VECTOR_ELT(ans, j, sub);
-        }
-        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !isNull(names) {
-            setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
-        }
-        setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
-        let tzone = getAttrib(x, sym_Tzone());
-        if !isNull(tzone) {
-            setAttrib(ans, sym_Tzone(), tzone);
-        }
-        // GNU `[.POSIXlt`: balanced stays TRUE iff x is balanced and
-        // seq_along(x)[i] has no NA (out-of-range / missing indices).
-        let keep_balanced = posixlt_index_preserves_balance(x, i, n, call, op, env);
-        setAttrib(
-            ans,
-            Rf_install(c"balanced".as_ptr()),
-            Rf_ScalarLogical(if keep_balanced { TRUE } else { NA_LOGICAL }),
-        );
-        ans
     }
+    let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncomp);
+    let _a = protect(ans);
+    for j in 0..ncomp {
+        let col = crate::mainutils::datetime::recycle_posixlt_component(VECTOR_ELT(x, j), n);
+        let _c = protect(col);
+        let args = Rf_cons(col, Rf_cons(i, R_NilValue()));
+        let _g = protect(args);
+        let sub = do_subset_dflt(call, op, args, env);
+        SET_VECTOR_ELT(ans, j, sub);
+    }
+    let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    if !isNull(names) {
+        setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    }
+    setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
+    let tzone = getAttrib(x, sym_Tzone());
+    if !isNull(tzone) {
+        setAttrib(ans, sym_Tzone(), tzone);
+    }
+    // GNU `[.POSIXlt`: balanced stays TRUE iff x is balanced and
+    // seq_along(x)[i] has no NA (out-of-range / missing indices).
+    let keep_balanced = posixlt_index_preserves_balance(x, i, n, call, op, env);
+    setAttrib(
+        ans,
+        crate::sexp::symbol::install_str("balanced"),
+        Rf_ScalarLogical(if keep_balanced { TRUE } else { NA_LOGICAL }),
+    );
+    ans
 }
 
 pub(crate) fn subset_posixlt_obs(x: SEXP, i: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let mut idx = i;
-        if TYPEOF(i) == SEXPTYPE::STRSXP && XLENGTH(i) > 0 {
-            let year = if XLENGTH(x) > 5 {
-                VECTOR_ELT(x, 5)
-            } else {
-                R_NilValue()
-            };
-            let names = if !year.is_null() && year != R_NilValue() {
-                getAttrib(year, crate::sexp::attrib_core::R_NamesSymbol())
-            } else {
-                R_NilValue()
-            };
-            let ch = STRING_ELT(i, 0);
-            let needle = if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(CHAR(ch))
-                    .to_string_lossy()
-                    .into_owned()
-            };
-            let mut found = 0i32;
-            if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP && !needle.is_empty() {
-                for k in 0..XLENGTH(names) {
-                    let nk = STRING_ELT(names, k);
-                    if nk.is_null() || nk == crate::sexp::globals::R_NaString() {
-                        continue;
-                    }
-                    let nm = std::ffi::CStr::from_ptr(CHAR(nk)).to_string_lossy();
-                    if nm == needle {
-                        found = (k + 1) as i32;
-                        break;
-                    }
+    let mut idx = i;
+    if TYPEOF(i) == SEXPTYPE::STRSXP && XLENGTH(i) > 0 {
+        let year = if XLENGTH(x) > 5 {
+            VECTOR_ELT(x, 5)
+        } else {
+            R_NilValue()
+        };
+        let names = if !year.is_null() && year != R_NilValue() {
+            getAttrib(year, crate::sexp::attrib_core::R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
+        let ch = STRING_ELT(i, 0);
+        let needle = if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            String::new()
+        } else {
+            char_lossy(ch)
+        };
+        let mut found = 0i32;
+        if !isNull(names) && TYPEOF(names) == SEXPTYPE::STRSXP && !needle.is_empty() {
+            for k in 0..XLENGTH(names) {
+                let nk = STRING_ELT(names, k);
+                if nk.is_null() || nk == crate::sexp::globals::R_NaString() {
+                    continue;
+                }
+                let nm = char_lossy(nk);
+                if nm == needle {
+                    found = (k + 1) as i32;
+                    break;
                 }
             }
-            if found == 0 {
-                errorcall(
-                    call,
-                    &format!(
-                        "No element named \"{needle}\" found in x, did you mean x[, \"{needle}\"] instead?"
-                    ),
-                );
-            }
-
-            idx = Rf_ScalarInteger(found);
         }
-        let _i = protect(idx);
-        subset_posixlt_time(x, idx, call, op, env)
+        if found == 0 {
+            errorcall(
+                call,
+                &format!(
+                    "No element named \"{needle}\" found in x, did you mean x[, \"{needle}\"] instead?"
+                ),
+            );
+        }
+
+        idx = Rf_ScalarInteger(found);
     }
+    let _i = protect(idx);
+    subset_posixlt_time(x, idx, call, op, env)
 }
 
 pub fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
@@ -254,115 +244,108 @@ pub fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// argument is honored (it matches the `[.factor` formal whose default is
 /// `drop = FALSE`).
 pub fn subset_default_after_failed_dispatch(call: SEXP, op: SEXP, ans: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let orig = CAR(ans);
-        let is_factor = has_class_factor(orig);
-        if is_factor && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
-            let method = CAR(call);
-            // NextMethod is inside an active factor method. Return the original
-            // integer codes so that method can restore levels before dropping them.
-            if TYPEOF(method) == SEXPTYPE::SYMSXP
-                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(method))) == c"[.default"
-            {
-                return do_subset_dflt(call, op, ans, env);
-            }
+    let orig = CAR(ans);
+    let is_factor = has_class_factor(orig);
+    if is_factor && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+        let method = CAR(call);
+        // NextMethod is inside an active factor method. Return the original
+        // integer codes so that method can restore levels before dropping them.
+        if TYPEOF(method) == SEXPTYPE::SYMSXP && char_bytes(PRINTNAME(method)) == b"[.default" {
+            return do_subset_dflt(call, op, ans, env);
         }
-        // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
-        // from the evaluated argument list. The internal `[` default is
-        // drop = TRUE, but the fixup below emulates the S3 `[.factor`
-        // whose formal default is drop = FALSE.
-        let mut drop: c_int = 0;
-        {
-            let mut cell = ans;
-            while !isNull(cell) {
-                if TAG(cell) == sym_Drop() {
-                    drop = asLogical(CAR(cell));
-                    if drop == NA_LOGICAL && is_factor {
-                        // `if (drop)` with NA in upstream [.factor.
-                        errorcall(call, "missing value where TRUE/FALSE needed");
-                    }
-                    break;
-                }
-                cell = CDR(cell);
-            }
-        }
-        let result = do_subset_dflt(call, op, ans, env);
-        // Base R ships an S3 `[.factor`:
-        //   y <- NextMethod("[")
-        //   attr(y, "contrasts") <- attr(x, "contrasts")
-        //   attr(y, "levels") <- attr(x, "levels")
-        //   class(y) <- oldClass(x)
-        //   if (drop) factor(y, exclude = if (anyNA(levels(x))) NULL else NA) else y
-        // The engine's default `[` strips attributes like stock's
-        // NextMethod target, so apply the same fixup here: subsetting a
-        // factor yields a factor with the original levels, contrasts, and
-        // class; with drop = TRUE unused levels are dropped (the factor()
-        // rebuild keeps used levels in code order, remaps the codes, and
-        // drops the contrasts attribute).
-        if is_factor {
-            let _r_guard = protect(result);
-            let _o_guard = protect(orig);
-            let levels = getAttrib(orig, crate::eval::attrib_core::R_LevelsSymbol());
-            if !isNull(levels) {
-                setAttrib(result, crate::eval::attrib_core::R_LevelsSymbol(), levels);
-            }
-            let class_attr = getAttrib(orig, sym_Class());
-            if !isNull(class_attr) {
-                setAttrib(result, sym_Class(), class_attr);
-            }
-            if drop == 0 {
-                // drop = FALSE: contrasts travel with the levels like
-                // every other kept attribute.
-                let contrasts = getAttrib(orig, sym_Contrasts());
-                if !isNull(contrasts) {
-                    setAttrib(result, sym_Contrasts(), contrasts);
-                }
-            } else if TYPEOF(result) == SEXPTYPE::INTSXP && !isNull(levels) {
-                drop_unused_factor_levels(result, levels);
-            }
-            return result;
-        }
-        result
     }
+    // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
+    // from the evaluated argument list. The internal `[` default is
+    // drop = TRUE, but the fixup below emulates the S3 `[.factor`
+    // whose formal default is drop = FALSE.
+    let mut drop: c_int = 0;
+    {
+        let mut cell = ans;
+        while !isNull(cell) {
+            if TAG(cell) == sym_Drop() {
+                drop = asLogical(CAR(cell));
+                if drop == NA_LOGICAL && is_factor {
+                    // `if (drop)` with NA in upstream [.factor.
+                    errorcall(call, "missing value where TRUE/FALSE needed");
+                }
+                break;
+            }
+            cell = CDR(cell);
+        }
+    }
+    let result = do_subset_dflt(call, op, ans, env);
+    // Base R ships an S3 `[.factor`:
+    //   y <- NextMethod("[")
+    //   attr(y, "contrasts") <- attr(x, "contrasts")
+    //   attr(y, "levels") <- attr(x, "levels")
+    //   class(y) <- oldClass(x)
+    //   if (drop) factor(y, exclude = if (anyNA(levels(x))) NULL else NA) else y
+    // The engine's default `[` strips attributes like stock's
+    // NextMethod target, so apply the same fixup here: subsetting a
+    // factor yields a factor with the original levels, contrasts, and
+    // class; with drop = TRUE unused levels are dropped (the factor()
+    // rebuild keeps used levels in code order, remaps the codes, and
+    // drops the contrasts attribute).
+    if is_factor {
+        let _r_guard = protect(result);
+        let _o_guard = protect(orig);
+        let levels = getAttrib(orig, crate::sexp::symbol::install_str("levels"));
+        if !isNull(levels) {
+            setAttrib(result, crate::sexp::symbol::install_str("levels"), levels);
+        }
+        let class_attr = getAttrib(orig, sym_Class());
+        if !isNull(class_attr) {
+            setAttrib(result, sym_Class(), class_attr);
+        }
+        if drop == 0 {
+            // drop = FALSE: contrasts travel with the levels like
+            // every other kept attribute.
+            let contrasts = getAttrib(orig, sym_Contrasts());
+            if !isNull(contrasts) {
+                setAttrib(result, sym_Contrasts(), contrasts);
+            }
+        } else if TYPEOF(result) == SEXPTYPE::INTSXP && !isNull(levels) {
+            drop_unused_factor_levels(result, levels);
+        }
+        return result;
+    }
+    result
 }
 
 pub fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        if !has_class_factor(target)
-            || TYPEOF(target) != SEXPTYPE::INTSXP
-            || TYPEOF(value) != SEXPTYPE::STRSXP
-        {
-            return value;
-        }
-        let levels = getAttrib(target, crate::eval::attrib_core::R_LevelsSymbol());
-        if isNull(levels) || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            return value;
-        }
-        let nv = XLENGTH(value);
-        let codes = Rf_allocVector3(SEXPTYPE::INTSXP, nv);
-        let _cg = protect(codes);
-        for i in 0..nv {
-            let vs = crate::sexp::accessors::STRING_ELT(value, i);
-            let mut code: c_int = NA_INTEGER;
-            if !vs.is_null() && vs != crate::sexp::globals::R_NaString() {
-                let vb = crate::sexp::accessors::CHAR(vs);
-                for (j, lev) in (0..XLENGTH(levels)).enumerate() {
-                    let ls = crate::sexp::accessors::STRING_ELT(levels, lev);
-                    if !ls.is_null()
-                        && ls != crate::sexp::globals::R_NaString()
-                        && std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ls)).to_bytes()
-                            == std::ffi::CStr::from_ptr(vb).to_bytes()
-                    {
-                        code = (j + 1) as c_int;
-                        break;
-                    }
+    if !has_class_factor(target)
+        || TYPEOF(target) != SEXPTYPE::INTSXP
+        || TYPEOF(value) != SEXPTYPE::STRSXP
+    {
+        return value;
+    }
+    let levels = getAttrib(target, crate::sexp::symbol::install_str("levels"));
+    if isNull(levels) || TYPEOF(levels) != SEXPTYPE::STRSXP {
+        return value;
+    }
+    let nv = XLENGTH(value);
+    let codes = Rf_allocVector3(SEXPTYPE::INTSXP, nv);
+    let _cg = protect(codes);
+    for i in 0..nv {
+        let vs = crate::sexp::accessors::STRING_ELT(value, i);
+        let mut code: c_int = NA_INTEGER;
+        if !vs.is_null() && vs != crate::sexp::globals::R_NaString() {
+            let vb = char_bytes(vs);
+            for (j, lev) in (0..XLENGTH(levels)).enumerate() {
+                let ls = crate::sexp::accessors::STRING_ELT(levels, lev);
+                if !ls.is_null()
+                    && ls != crate::sexp::globals::R_NaString()
+                    && char_bytes(ls).as_slice() == vb.as_slice()
+                {
+                    code = (j + 1) as c_int;
+                    break;
                 }
             }
-            *crate::sexp::accessors::INTEGER(codes).add(i as usize) = code;
         }
-        let _ = call;
-        codes
+        SET_INTEGER_ELT(codes, i as c_int, code);
     }
+    let _ = call;
+    codes
 }
 
 /// The `drop = TRUE` tail of upstream `[.factor`:
@@ -374,82 +357,79 @@ pub fn factor_replacement_codes(target: SEXP, value: SEXP, call: SEXP) -> SEXP {
 /// the fixup survive except contrasts, which the upstream factor()
 /// rebuild drops.
 fn drop_unused_factor_levels(result: SEXP, levels: SEXP) {
-    unsafe {
-        let n_levels = XLENGTH(levels);
-        // Which level codes appear in the subset (1-based)?
-        let mut used = vec![false; n_levels as usize];
-        let n = XLENGTH(result);
-        let codes = INTEGER(result);
-        for i in 0..n as usize {
-            let code = *codes.add(i);
-            if code != NA_INTEGER && code >= 1 && (code as usize) <= n_levels as usize {
-                used[(code - 1) as usize] = true;
-            }
+    let n_levels = XLENGTH(levels);
+    // Which level codes appear in the subset (1-based)?
+    let mut used = vec![false; n_levels as usize];
+    let n = XLENGTH(result);
+    for i in 0..n as usize {
+        let code = INTEGER_ELT(result, (i) as c_int);
+        if code != NA_INTEGER && code >= 1 && (code as usize) <= n_levels as usize {
+            used[(code - 1) as usize] = true;
         }
-        let new_index_of: Vec<i32> = std::iter::once(0)
-            .chain(used.iter().scan(0i32, |acc, &u| {
-                if u {
-                    *acc += 1;
-                }
-                Some(*acc)
-            }))
-            .collect();
-        let kept: usize = used.iter().filter(|&&u| u).count();
-        if kept == n_levels as usize {
-            // Every level is still used: factor() is a no-op beyond
-            // dropping the contrasts attribute.
-            setAttrib(result, sym_Contrasts(), R_NilValue());
-            return;
-        }
-        let new_levels = Rf_allocVector(SEXPTYPE::STRSXP, kept as c_int);
-        let _nl_guard = protect(new_levels);
-        let mut slot = 0usize;
-        for (i, &u) in used.iter().enumerate() {
+    }
+    let new_index_of: Vec<i32> = std::iter::once(0)
+        .chain(used.iter().scan(0i32, |acc, &u| {
             if u {
-                SET_STRING_ELT(
-                    new_levels,
-                    slot as i64,
-                    crate::sexp::accessors::STRING_ELT(levels, i as i64),
-                );
-                slot += 1;
+                *acc += 1;
             }
+            Some(*acc)
+        }))
+        .collect();
+    let kept: usize = used.iter().filter(|&&u| u).count();
+    if kept == n_levels as usize {
+        // Every level is still used: factor() is a no-op beyond
+        // dropping the contrasts attribute.
+        setAttrib(result, sym_Contrasts(), R_NilValue());
+        return;
+    }
+    let new_levels = Rf_allocVector(SEXPTYPE::STRSXP, kept as c_int);
+    let _nl_guard = protect(new_levels);
+    let mut slot = 0usize;
+    for (i, &u) in used.iter().enumerate() {
+        if u {
+            SET_STRING_ELT(
+                new_levels,
+                slot as i64,
+                crate::sexp::accessors::STRING_ELT(levels, i as i64),
+            );
+            slot += 1;
         }
-        for i in 0..n as usize {
-            let code = *codes.add(i);
-            *codes.add(i) = if code == NA_INTEGER || code < 1 || (code as usize) > n_levels as usize
-            {
+    }
+    for i in 0..n as usize {
+        let code = INTEGER_ELT(result, (i) as c_int);
+        SET_INTEGER_ELT(
+            result,
+            (i) as c_int,
+            if code == NA_INTEGER || code < 1 || (code as usize) > n_levels as usize {
                 NA_INTEGER
             } else {
                 new_index_of[code as usize]
-            };
-        }
-        setAttrib(
-            result,
-            crate::eval::attrib_core::R_LevelsSymbol(),
-            new_levels,
+            },
         );
-        setAttrib(result, sym_Contrasts(), R_NilValue());
     }
+    setAttrib(
+        result,
+        crate::sexp::symbol::install_str("levels"),
+        new_levels,
+    );
+    setAttrib(result, sym_Contrasts(), R_NilValue());
 }
 
 pub(crate) fn has_class_factor(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let class_attr = getAttrib(x, sym_Class());
-        if isNull(class_attr) || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        (0..length_int(class_attr)).any(|i| {
-            let si = crate::sexp::accessors::STRING_ELT(class_attr, i as i64);
-            if si.is_null() || si == crate::sexp::globals::R_NaString() {
-                return false;
-            }
-            let c = crate::sexp::accessors::CHAR(si);
-            !c.is_null() && std::ffi::CStr::from_ptr(c).to_bytes() == b"factor"
-        })
+    if x.is_null() {
+        return false;
     }
+    let class_attr = getAttrib(x, sym_Class());
+    if isNull(class_attr) || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
+        return false;
+    }
+    (0..length_int(class_attr)).any(|i| {
+        let si = crate::sexp::accessors::STRING_ELT(class_attr, i as i64);
+        if si.is_null() || si == crate::sexp::globals::R_NaString() {
+            return false;
+        }
+        char_bytes(si) == b"factor"
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -458,21 +438,19 @@ pub(crate) fn has_class_factor(x: SEXP) -> bool {
 
 /// Default method for `[`. Handles vector, matrix, and array subsetting.
 fn language_subscript_keeps_all(x: SEXP, sub: SEXP) -> bool {
-    unsafe {
-        if sub.is_null() || sub == R_NilValue() || TYPEOF(sub) != SEXPTYPE::INTSXP {
-            return false;
-        }
-        let n = length_int(x);
-        if n <= 0 || XLENGTH(sub) != n as i64 {
-            return false;
-        }
-        for i in 0..n {
-            if *INTEGER(sub).add(i as usize) != i + 1 {
-                return false;
-            }
-        }
-        true
+    if sub.is_null() || sub == R_NilValue() || TYPEOF(sub) != SEXPTYPE::INTSXP {
+        return false;
     }
+    let n = length_int(x);
+    if n <= 0 || XLENGTH(sub) != n as i64 {
+        return false;
+    }
+    for i in 0..n {
+        if INTEGER_ELT(sub, i as c_int) != i + 1 {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -569,86 +547,81 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             length_int(first)
         }
         fn fix_na_row_names(rows: SEXP) -> SEXP {
-            unsafe {
-                if rows.is_null() || TYPEOF(rows) != SEXPTYPE::STRSXP {
-                    return rows;
-                }
-                let n = XLENGTH(rows);
-                let mut labels: Vec<Option<String>> = Vec::with_capacity(n as usize);
-                let mut seen = std::collections::HashSet::new();
-                let mut dup = false;
-                let mut had_na = false;
-                let mut has_na_label = false;
-                for i in 0..n {
-                    let s = STRING_ELT(rows, i);
-                    if s.is_null() || s == crate::sexp::globals::R_NaString() {
-                        had_na = true;
-                        if !seen.insert(None) {
-                            dup = true;
-                        }
-                        labels.push(None);
-                    } else {
-                        let text = std::ffi::CStr::from_ptr(CHAR(s))
-                            .to_string_lossy()
-                            .into_owned();
-                        if text == "NA" {
-                            has_na_label = true;
-                        }
-                        if !seen.insert(Some(text.clone())) {
-                            dup = true;
-                        }
-                        labels.push(Some(text));
-                    }
-                }
-                if !had_na && !dup {
-                    return rows;
-                }
-                if !dup && has_na_label {
-                    dup = true;
-                }
-                for label in &mut labels {
-                    if label.is_none() {
-                        *label = Some("NA".to_string());
-                    }
-                }
-                let labels: Vec<String> = if dup {
-                    let mut used = std::collections::HashSet::new();
-                    for text in labels.iter().flatten() {
-                        used.insert(text.clone());
-                    }
-                    let mut kept = std::collections::HashSet::new();
-                    let mut next = std::collections::HashMap::new();
-                    let mut out = Vec::with_capacity(labels.len());
-                    for label in labels {
-                        let base = label.unwrap_or_default();
-                        if kept.insert(base.clone()) {
-                            next.insert(base.clone(), 1u32);
-                            out.push(base);
-                            continue;
-                        }
-                        let mut k = next.get(&base).copied().unwrap_or(1);
-                        loop {
-                            let candidate = format!("{base}.{k}");
-                            k += 1;
-                            if used.insert(candidate.clone()) {
-                                next.insert(base, k);
-                                out.push(candidate);
-                                break;
-                            }
-                        }
-                    }
-                    out
-                } else {
-                    labels.into_iter().map(|s| s.unwrap_or_default()).collect()
-                };
-                let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-                let _g = protect(ans);
-                for (i, label) in labels.iter().enumerate() {
-                    let cstr = std::ffi::CString::new(label.as_str()).unwrap_or_default();
-                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-                }
-                ans
+            if rows.is_null() || TYPEOF(rows) != SEXPTYPE::STRSXP {
+                return rows;
             }
+            let n = XLENGTH(rows);
+            let mut labels: Vec<Option<String>> = Vec::with_capacity(n as usize);
+            let mut seen = std::collections::HashSet::new();
+            let mut dup = false;
+            let mut had_na = false;
+            let mut has_na_label = false;
+            for i in 0..n {
+                let s = STRING_ELT(rows, i);
+                if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                    had_na = true;
+                    if !seen.insert(None) {
+                        dup = true;
+                    }
+                    labels.push(None);
+                } else {
+                    let text = char_lossy(s);
+                    if text == "NA" {
+                        has_na_label = true;
+                    }
+                    if !seen.insert(Some(text.clone())) {
+                        dup = true;
+                    }
+                    labels.push(Some(text));
+                }
+            }
+            if !had_na && !dup {
+                return rows;
+            }
+            if !dup && has_na_label {
+                dup = true;
+            }
+            for label in &mut labels {
+                if label.is_none() {
+                    *label = Some("NA".to_string());
+                }
+            }
+            let labels: Vec<String> = if dup {
+                let mut used = std::collections::HashSet::new();
+                for text in labels.iter().flatten() {
+                    used.insert(text.clone());
+                }
+                let mut kept = std::collections::HashSet::new();
+                let mut next = std::collections::HashMap::new();
+                let mut out = Vec::with_capacity(labels.len());
+                for label in labels {
+                    let base = label.unwrap_or_default();
+                    if kept.insert(base.clone()) {
+                        next.insert(base.clone(), 1u32);
+                        out.push(base);
+                        continue;
+                    }
+                    let mut k = next.get(&base).copied().unwrap_or(1);
+                    loop {
+                        let candidate = format!("{base}.{k}");
+                        k += 1;
+                        if used.insert(candidate.clone()) {
+                            next.insert(base, k);
+                            out.push(candidate);
+                            break;
+                        }
+                    }
+                }
+                out
+            } else {
+                labels.into_iter().map(|s| s.unwrap_or_default()).collect()
+            };
+            let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _g = protect(ans);
+            for (i, label) in labels.iter().enumerate() {
+                SET_STRING_ELT(ans, i as R_xlen_t, mk_char(label));
+            }
+            ans
         }
 
         /// GNU `[.data.frame` row-subsets a column as
@@ -677,42 +650,39 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         /// `1..k` selection keeps the compact form, anything else expands to the
         /// selected row numbers as strings.
         fn subset_frame_rownames(rownames: SEXP, sr: SEXP, _nrows: c_int) -> SEXP {
-            unsafe {
-                if TYPEOF(rownames) == SEXPTYPE::INTSXP
-                    && length_int(rownames) == 2
-                    && INTEGER_ELT(rownames, 0) == NA_INTEGER
-                {
-                    let nsr = LENGTH(sr);
-                    let mut contiguous = true;
-                    for i in 0..nsr {
-                        if INTEGER_ELT(sr, i) != i + 1 {
-                            contiguous = false;
-                            break;
-                        }
+            if TYPEOF(rownames) == SEXPTYPE::INTSXP
+                && length_int(rownames) == 2
+                && INTEGER_ELT(rownames, 0) == NA_INTEGER
+            {
+                let nsr = LENGTH(sr);
+                let mut contiguous = true;
+                for i in 0..nsr {
+                    if INTEGER_ELT(sr, i) != i + 1 {
+                        contiguous = false;
+                        break;
                     }
-                    if contiguous {
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-                        let _ans_guard = protect(ans);
-                        *INTEGER(ans).add(0) = NA_INTEGER;
-                        *INTEGER(ans).add(1) = -nsr;
-                        return ans;
-                    }
-                    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, nsr as R_xlen_t);
+                }
+                if contiguous {
+                    let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                     let _ans_guard = protect(ans);
-                    for i in 0..nsr {
-                        let idx = INTEGER_ELT(sr, i);
-                        let label = if idx == NA_INTEGER {
-                            "NA".to_string()
-                        } else {
-                            format!("{idx}")
-                        };
-                        let cstr = std::ffi::CString::new(label).unwrap_or_default();
-                        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-                    }
+                    SET_INTEGER_ELT(ans, (0) as c_int, NA_INTEGER);
+                    SET_INTEGER_ELT(ans, (1) as c_int, -nsr);
                     return ans;
                 }
-                fix_na_row_names(VectorSubset(rownames, sr, std::ptr::null_mut()))
+                let ans = Rf_allocVector3(SEXPTYPE::STRSXP, nsr as R_xlen_t);
+                let _ans_guard = protect(ans);
+                for i in 0..nsr {
+                    let idx = INTEGER_ELT(sr, i);
+                    let label = if idx == NA_INTEGER {
+                        "NA".to_string()
+                    } else {
+                        format!("{idx}")
+                    };
+                    SET_STRING_ELT(ans, i as R_xlen_t, mk_char(&label));
+                }
+                return ans;
             }
+            fix_na_row_names(VectorSubset(rownames, sr, std::ptr::null_mut()))
         }
 
         /* data.frames with two subscripts: emulate [.data.frame (i, j).
@@ -730,8 +700,8 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let nrows = data_frame_nrows(x, first);
             let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             let _dims_guard = protect(dims);
-            *INTEGER(dims).add(0) = nrows;
-            *INTEGER(dims).add(1) = ncols;
+            SET_INTEGER_ELT(dims, (0) as c_int, nrows);
+            SET_INTEGER_ELT(dims, (1) as c_int, ncols);
             let rownames = getAttrib(x, sym_RowNames());
             let _rownames_guard = protect(rownames);
             let colnames = getAttrib(x, sym_Names());
@@ -774,7 +744,7 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _sc_guard = protect(sc);
 
             if LENGTH(sc) == 1 && drop != 0 {
-                let col = VECTOR_ELT(ax, (*INTEGER(sc) as R_xlen_t) - 1);
+                let col = VECTOR_ELT(ax, (INTEGER_ELT(sc, 0) as R_xlen_t) - 1);
                 let _col_guard = protect(col);
                 return subset_frame_column(col, sr, call);
             }
@@ -783,7 +753,7 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncol as R_xlen_t);
             let _ans_guard = protect(ans);
             for j in 0..ncol {
-                let col = VECTOR_ELT(ax, (*INTEGER(sc).add(j as usize) as R_xlen_t) - 1);
+                let col = VECTOR_ELT(ax, (INTEGER_ELT(sc, j as c_int) as R_xlen_t) - 1);
                 let _col_guard = protect(col);
                 SET_VECTOR_ELT(ans, j as R_xlen_t, subset_frame_column(col, sr, call));
             }
@@ -799,7 +769,7 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     subset_frame_rownames(rownames, sr, nrows),
                 );
             }
-            let terms_sym = Rf_install(c"terms".as_ptr());
+            let terms_sym = crate::sexp::symbol::install_str("terms");
             let terms = getAttrib(x, terms_sym);
             if !isNull(terms) {
                 setAttrib(ans, terms_sym, terms);

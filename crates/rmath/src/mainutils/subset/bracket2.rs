@@ -137,9 +137,9 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 errorcall(call, "subscript out of bounds");
             }
             return match TYPEOF(col) {
-                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(col).add(i as usize)),
-                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(col).add(i as usize)),
-                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(col).add(i as usize)),
+                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(col, i as c_int)),
+                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(col, i as c_int)),
+                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(col, i as c_int)),
                 t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(col, i)),
                 _ => {
                     errorcall(call, "incorrect number of subscripts");
@@ -222,22 +222,22 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _ans_guard = protect(ans);
                     match TYPEOF(x) {
                         t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
+                            SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
                         }
                         t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
+                            SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
                         }
                         t if t == SEXPTYPE::REALSXP => {
-                            *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
+                            SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
                         }
                         t if t == SEXPTYPE::CPLXSXP => {
-                            *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
+                            SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
                         }
                         t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                         }
                         t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
+                            SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                     }
@@ -278,22 +278,22 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _ans_guard = protect(ans);
                 match TYPEOF(x) {
                     t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
+                        SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
+                        SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
+                        SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
+                        SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                     }
                     t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
+                        SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }
@@ -301,13 +301,11 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         } else {
             /* nsubs == ndims >= 2 : matrix|array indexing */
-            let pdims = INTEGER(dims);
             let dimnames = getAttrib(x, sym_DimNames());
             let ndn = length_int(dimnames);
 
             let indx = Rf_allocVector(SEXPTYPE::INTSXP, nsubs);
             let _indx_guard = protect(indx);
-            let pindx = INTEGER(indx);
 
             let mut cur_subs = subs;
             for i in 0..(nsubs as usize) {
@@ -317,10 +315,17 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     R_NilValue()
                 };
-                let idx = get1index(thesub, dname, *pdims.add(i) as R_xlen_t, pok, -1, call);
-                *pindx.add(i) = idx as c_int;
+                let idx = get1index(
+                    thesub,
+                    dname,
+                    INTEGER_ELT(dims, (i) as c_int) as R_xlen_t,
+                    pok,
+                    -1,
+                    call,
+                );
+                SET_INTEGER_ELT(indx, (i) as c_int, idx as c_int);
                 cur_subs = CDR(cur_subs);
-                if idx < 0 || idx >= (*pdims.add(i)) as R_xlen_t {
+                if idx < 0 || idx >= (INTEGER_ELT(dims, (i) as c_int)) as R_xlen_t {
                     errorcallOutOfBoundsSEXP(x, i as c_int, thesub, call);
                 }
             }
@@ -329,13 +334,14 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut offset: R_xlen_t = 0;
             let mut i: usize = (nsubs - 1) as usize;
             loop {
-                offset = (offset + *pindx.add(i) as R_xlen_t) * (*pdims.add(i - 1)) as R_xlen_t;
+                offset = (offset + INTEGER_ELT(indx, (i) as c_int) as R_xlen_t)
+                    * (INTEGER_ELT(dims, (i - 1) as c_int)) as R_xlen_t;
                 if i == 1 {
                     break;
                 }
                 i -= 1;
             }
-            offset += *pindx.add(0) as R_xlen_t;
+            offset += INTEGER_ELT(indx, (0) as c_int) as R_xlen_t;
 
             /* Extract the element */
             let ans: SEXP;
@@ -350,22 +356,22 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _ans_guard = protect(ans);
                 match TYPEOF(x) {
                     t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
+                        SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
+                        SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
+                        SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
+                        SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
                     }
                     t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                     }
                     t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
+                        SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }

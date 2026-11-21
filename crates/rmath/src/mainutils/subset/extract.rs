@@ -10,154 +10,158 @@ use super::*;
 /// according to integer or real subscripts in `indx`.
 #[allow(clippy::absurd_extreme_comparisons)]
 pub fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        if isNull(x) {
-            return x;
-        }
-
-        // ALTREP fast path -- skip for now (no ALTREP in Rust port)
-        let n = xlength(indx);
-        let nx = xlength(x);
-        let mode = TYPEOF(x);
-
-        /* protect allocation in case _ELT operations need to allocate */
-        let result = Rf_allocVector3(mode, n);
-        let _result_guard = protect(result);
-
-        if TYPEOF(indx) == SEXPTYPE::INTSXP {
-            let pindx = INTEGER(indx);
-            for i in 0..n {
-                let ii = *pindx.add(i as usize);
-                if ii > 0 && (ii as R_xlen_t) <= nx {
-                    let ii_0 = (ii - 1) as usize;
-                    match mode {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, (ii - 1) as c_int);
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(i as usize) = INTEGER_ELT(x, (ii - 1) as c_int);
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(i as usize) = REAL_ELT(x, (ii - 1) as c_int);
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            let c = COMPLEX_ELT(x, (ii - 1) as c_int);
-                            *COMPLEX(result).add(i as usize) = c;
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, STRING_ELT(x, (ii - 1) as R_xlen_t));
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii_0 as R_xlen_t));
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(i as usize) = RAW_ELT(x, (ii - 1) as c_int);
-                        }
-                        _ => {
-                            let _ = ii_0; // suppress warning
-                            errorcallNotSubsettable(x, call);
-                        }
-                    }
-                } else {
-                    // Out of bounds or NA
-                    match mode {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(i as usize) = NA_LOGICAL;
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(i as usize) = NA_INTEGER;
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(i as usize) = NA_REAL;
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            *COMPLEX(result).add(i as usize) = crate::sexp::ffi::Rcomplex {
-                                r: NA_REAL,
-                                i: NA_REAL,
-                            };
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, i, R_NilValue());
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(i as usize) = 0;
-                        }
-                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
-                    }
-                }
-            }
-        } else {
-            // REAL subscript
-            let pindx = REAL(indx);
-            for i in 0..n {
-                let di = *pindx.add(i as usize);
-                let ii = (di - 1.0) as R_xlen_t;
-                if R_FINITE(di) && ii >= 0 && ii < nx {
-                    match mode {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, ii as c_int);
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(i as usize) = INTEGER_ELT(x, ii as c_int);
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(i as usize) = REAL_ELT(x, ii as c_int);
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            let c = COMPLEX_ELT(x, ii as c_int);
-                            *COMPLEX(result).add(i as usize) = c;
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(i as usize) = RAW_ELT(x, ii as c_int);
-                        }
-                        _ => {
-                            errorcallNotSubsettable(x, call);
-                        }
-                    }
-                } else {
-                    // Out of bounds or NA
-                    match mode {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(i as usize) = NA_LOGICAL;
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(i as usize) = NA_INTEGER;
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(i as usize) = NA_REAL;
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            *COMPLEX(result).add(i as usize) = crate::sexp::ffi::Rcomplex {
-                                r: NA_REAL,
-                                i: NA_REAL,
-                            };
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, i, R_NilValue());
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(i as usize) = 0;
-                        }
-                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
-                    }
-                }
-            }
-        }
-
-        result
+    if isNull(x) {
+        return x;
     }
+
+    // ALTREP fast path -- skip for now (no ALTREP in Rust port)
+    let n = xlength(indx);
+    let nx = xlength(x);
+    let mode = TYPEOF(x);
+
+    /* protect allocation in case _ELT operations need to allocate */
+    let result = Rf_allocVector3(mode, n);
+    let _result_guard = protect(result);
+
+    if TYPEOF(indx) == SEXPTYPE::INTSXP {
+        for i in 0..n {
+            let ii = INTEGER_ELT(indx, i as c_int);
+            if ii > 0 && (ii as R_xlen_t) <= nx {
+                let ii_0 = (ii - 1) as usize;
+                match mode {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, i as c_int, LOGICAL_ELT(x, (ii - 1) as c_int));
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, i as c_int, INTEGER_ELT(x, (ii - 1) as c_int));
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, i as c_int, REAL_ELT(x, (ii - 1) as c_int));
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        let c = COMPLEX_ELT(x, (ii - 1) as c_int);
+                        SET_COMPLEX_ELT(result, i as c_int, c);
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, i, STRING_ELT(x, (ii - 1) as R_xlen_t));
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii_0 as R_xlen_t));
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, i as c_int, RAW_ELT(x, (ii - 1) as c_int));
+                    }
+                    _ => {
+                        let _ = ii_0; // suppress warning
+                        errorcallNotSubsettable(x, call);
+                    }
+                }
+            } else {
+                // Out of bounds or NA
+                match mode {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, i as c_int, NA_LOGICAL);
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, i as c_int, NA_INTEGER);
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, i as c_int, NA_REAL);
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        SET_COMPLEX_ELT(
+                            result,
+                            i as c_int,
+                            crate::sexp::ffi::Rcomplex {
+                                r: NA_REAL,
+                                i: NA_REAL,
+                            },
+                        );
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, i, R_NilValue());
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, i as c_int, 0);
+                    }
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
+                }
+            }
+        }
+    } else {
+        // REAL subscript
+        for i in 0..n {
+            let di = REAL_ELT(indx, i as c_int);
+            let ii = (di - 1.0) as R_xlen_t;
+            if R_FINITE(di) && ii >= 0 && ii < nx {
+                match mode {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, i as c_int, LOGICAL_ELT(x, ii as c_int));
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, i as c_int, INTEGER_ELT(x, ii as c_int));
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, i as c_int, REAL_ELT(x, ii as c_int));
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        let c = COMPLEX_ELT(x, ii as c_int);
+                        SET_COMPLEX_ELT(result, i as c_int, c);
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, i as c_int, RAW_ELT(x, ii as c_int));
+                    }
+                    _ => {
+                        errorcallNotSubsettable(x, call);
+                    }
+                }
+            } else {
+                // Out of bounds or NA
+                match mode {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, i as c_int, NA_LOGICAL);
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, i as c_int, NA_INTEGER);
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, i as c_int, NA_REAL);
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        SET_COMPLEX_ELT(
+                            result,
+                            i as c_int,
+                            crate::sexp::ffi::Rcomplex {
+                                r: NA_REAL,
+                                i: NA_REAL,
+                            },
+                        );
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, i, R_NilValue());
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, i as c_int, 0);
+                    }
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
+                }
+            }
+        }
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -178,8 +182,7 @@ pub(crate) fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
                 if isNull(pn) {
                     false
                 } else {
-                    let c = CHAR(pn);
-                    !c.is_null() && *c == 0
+                    char_bytes(pn).is_empty()
                 }
             } else {
                 false
@@ -289,8 +292,6 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             errorcall(call, "dimensions would exceed maximum size of array");
         }
 
-        let psr = INTEGER(sr);
-        let psc = INTEGER(sc);
         let mut result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
         let _result_guard = protect(result);
 
@@ -303,7 +304,7 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
         /* Matrix subset loop -- column-major order */
         for j in 0..(ncs as R_xlen_t) {
-            jj = *psc.add(j as usize) as R_xlen_t;
+            jj = INTEGER_ELT(sc, j as c_int) as R_xlen_t;
             if jj != NA_INTEGER as R_xlen_t {
                 if jj < 1 || jj > nc as R_xlen_t {
                     errorcallOutOfBounds(x, 1, jj, call);
@@ -311,7 +312,7 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 jj -= 1;
             }
             for i_idx in 0..(nrs as R_xlen_t) {
-                ii = *psr.add(i_idx as usize) as R_xlen_t;
+                ii = INTEGER_ELT(sr, i_idx as c_int) as R_xlen_t;
                 if ii != NA_INTEGER as R_xlen_t {
                     if ii < 1 || ii > nr as R_xlen_t {
                         errorcallOutOfBounds(x, 0, ii, call);
@@ -323,19 +324,23 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                     /* NA code */
                     match TYPEOF(x) {
                         t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(ij as usize) = NA_LOGICAL;
+                            SET_LOGICAL_ELT(result, ij as c_int, NA_LOGICAL);
                         }
                         t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(ij as usize) = NA_INTEGER;
+                            SET_INTEGER_ELT(result, ij as c_int, NA_INTEGER);
                         }
                         t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(ij as usize) = NA_REAL;
+                            SET_REAL_ELT(result, ij as c_int, NA_REAL);
                         }
                         t if t == SEXPTYPE::CPLXSXP => {
-                            *COMPLEX(result).add(ij as usize) = crate::sexp::ffi::Rcomplex {
-                                r: NA_REAL,
-                                i: NA_REAL,
-                            };
+                            SET_COMPLEX_ELT(
+                                result,
+                                ij as c_int,
+                                crate::sexp::ffi::Rcomplex {
+                                    r: NA_REAL,
+                                    i: NA_REAL,
+                                },
+                            );
                         }
                         t if t == SEXPTYPE::STRSXP => {
                             // GNU ExtractSubset: NA subscripts yield NA_STRING,
@@ -346,7 +351,7 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                             SET_VECTOR_ELT(result, ij, R_NilValue());
                         }
                         t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(ij as usize) = 0;
+                            SET_RAW_ELT(result, ij as c_int, 0);
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                     }
@@ -355,16 +360,16 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                     /* Standard code */
                     match TYPEOF(x) {
                         t if t == SEXPTYPE::LGLSXP => {
-                            *LOGICAL(result).add(ij as usize) = LOGICAL_ELT(x, iijj as c_int);
+                            SET_LOGICAL_ELT(result, ij as c_int, LOGICAL_ELT(x, iijj as c_int));
                         }
                         t if t == SEXPTYPE::INTSXP => {
-                            *INTEGER(result).add(ij as usize) = INTEGER_ELT(x, iijj as c_int);
+                            SET_INTEGER_ELT(result, ij as c_int, INTEGER_ELT(x, iijj as c_int));
                         }
                         t if t == SEXPTYPE::REALSXP => {
-                            *REAL(result).add(ij as usize) = REAL_ELT(x, iijj as c_int);
+                            SET_REAL_ELT(result, ij as c_int, REAL_ELT(x, iijj as c_int));
                         }
                         t if t == SEXPTYPE::CPLXSXP => {
-                            *COMPLEX(result).add(ij as usize) = COMPLEX_ELT(x, iijj as c_int);
+                            SET_COMPLEX_ELT(result, ij as c_int, COMPLEX_ELT(x, iijj as c_int));
                         }
                         t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, ij, STRING_ELT(x, iijj as R_xlen_t));
@@ -373,7 +378,7 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                             SET_VECTOR_ELT(result, ij, VECTOR_ELT_FIX_NAMED(x, iijj));
                         }
                         t if t == SEXPTYPE::RAWSXP => {
-                            *RAW(result).add(ij as usize) = RAW_ELT(x, iijj as c_int);
+                            SET_RAW_ELT(result, ij as c_int, RAW_ELT(x, iijj as c_int));
                         }
                         _ => {
                             errorcall(call, "matrix subscripting not handled for this type");
@@ -387,8 +392,8 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         if nrs >= 0 && ncs >= 0 {
             let attr = Rf_allocVector(SEXPTYPE::INTSXP, 2);
             let _attr_guard = protect(attr);
-            *INTEGER(attr).add(0) = nrs;
-            *INTEGER(attr).add(1) = ncs;
+            SET_INTEGER_ELT(attr, (0) as c_int, nrs);
+            SET_INTEGER_ELT(attr, (1) as c_int, ncs);
             if !isNull(getAttrib(dim, sym_Names())) {
                 setAttrib(attr, sym_Names(), getAttrib(dim, sym_Names()));
             }
@@ -460,25 +465,22 @@ pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Compute a linear index for array subscripting given per-dimension sub-indices.
-pub(crate) unsafe fn findASubIndex(
+pub(crate) fn findASubIndex(
     k: R_xlen_t,
-    subs: *const *const c_int,
-    indx: *const c_int,
-    _pxdims: *const c_int,
-    offset: *const R_xlen_t,
+    subs: &[&[c_int]],
+    indx: &[c_int],
+    offset: &[R_xlen_t],
     _call: SEXP,
 ) -> R_xlen_t {
-    unsafe {
-        let mut ii: R_xlen_t = 0;
-        for j in 0..(k as usize) {
-            let jj = *(*subs.add(j)).add(*indx.add(j) as usize);
-            if jj == NA_INTEGER {
-                return NA_INTEGER as R_xlen_t;
-            }
-            ii += (jj as R_xlen_t - 1) * *offset.add(j);
+    let mut ii: R_xlen_t = 0;
+    for j in 0..(k as usize) {
+        let jj = subs[j][indx[j] as usize];
+        if jj == NA_INTEGER {
+            return NA_INTEGER as R_xlen_t;
         }
-        ii
+        ii += (jj as R_xlen_t - 1) * offset[j];
     }
+    ii
 }
 
 // ---------------------------------------------------------------------------
@@ -492,10 +494,8 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let xdims = getAttrib(x, sym_Dim());
         let _xdims_guard = protect(xdims);
         let k = length_int(xdims);
-        let pxdims = INTEGER(xdims);
-
         /* Use Vec for temporary storage (equivalent to R_alloc in C) */
-        let mut subs: Vec<*const c_int> = Vec::with_capacity(k as usize);
+        let mut subs: Vec<Vec<c_int>> = Vec::with_capacity(k as usize);
         let mut indx: Vec<c_int> = vec![0; k as usize];
         let mut bound: Vec<c_int> = Vec::with_capacity(k as usize);
         let mut offset_arr: Vec<R_xlen_t> = vec![0; k as usize];
@@ -509,7 +509,7 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             sub_guards.push(protect(sub));
             SETCAR(r, sub);
             bound.push(LENGTH(sub));
-            subs.push(INTEGER(sub));
+            subs.push((0..LENGTH(sub)).map(|j| INTEGER_ELT(sub, j)).collect());
             n *= bound[i] as R_xlen_t;
             r = CDR(r);
         }
@@ -522,14 +522,14 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         /* Compute offsets (column-major) */
         offset_arr[0] = 1;
         for i in 1..(k as usize) {
-            offset_arr[i] = offset_arr[i - 1] * (*pxdims.add(i - 1)) as R_xlen_t;
+            offset_arr[i] = offset_arr[i - 1] * (INTEGER_ELT(xdims, (i - 1) as c_int)) as R_xlen_t;
         }
 
         /* Range check on indices */
         for i in 0..(k as usize) {
             for j in 0..(bound[i] as usize) {
-                let jj = *subs[i].add(j);
-                if jj > *pxdims.add(i) || (jj < 1 && jj != NA_INTEGER) {
+                let jj = subs[i][j];
+                if jj > INTEGER_ELT(xdims, (i) as c_int) || (jj < 1 && jj != NA_INTEGER) {
                     errorcallOutOfBounds(x, i as c_int, jj as R_xlen_t, call);
                 }
             }
@@ -539,29 +539,23 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let mut result = Rf_allocVector3(mode, n);
         let _result_guard = protect(result);
 
+        let sub_slices: Vec<&[c_int]> = subs.iter().map(Vec::as_slice).collect();
         for i in 0..n {
-            let ii = findASubIndex(
-                k as R_xlen_t,
-                subs.as_ptr(),
-                indx.as_ptr(),
-                pxdims,
-                offset_arr.as_ptr(),
-                call,
-            );
+            let ii = findASubIndex(k as R_xlen_t, &sub_slices, &indx, &offset_arr, call);
 
             if ii != NA_INTEGER as R_xlen_t {
                 match mode {
                     t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, ii as c_int);
+                        SET_LOGICAL_ELT(result, i as c_int, LOGICAL_ELT(x, ii as c_int));
                     }
                     t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(result).add(i as usize) = INTEGER_ELT(x, ii as c_int);
+                        SET_INTEGER_ELT(result, i as c_int, INTEGER_ELT(x, ii as c_int));
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        *REAL(result).add(i as usize) = REAL_ELT(x, ii as c_int);
+                        SET_REAL_ELT(result, i as c_int, REAL_ELT(x, ii as c_int));
                     }
                     t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(result).add(i as usize) = COMPLEX_ELT(x, ii as c_int);
+                        SET_COMPLEX_ELT(result, i as c_int, COMPLEX_ELT(x, ii as c_int));
                     }
                     t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
@@ -570,7 +564,7 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                         SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
                     }
                     t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(result).add(i as usize) = RAW_ELT(x, ii as c_int);
+                        SET_RAW_ELT(result, i as c_int, RAW_ELT(x, ii as c_int));
                     }
                     _ => {
                         errorcall(call, "array subscripting not handled for this type");
@@ -579,19 +573,23 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             } else {
                 match mode {
                     t if t == SEXPTYPE::LGLSXP => {
-                        *LOGICAL(result).add(i as usize) = NA_LOGICAL;
+                        SET_LOGICAL_ELT(result, i as c_int, NA_LOGICAL);
                     }
                     t if t == SEXPTYPE::INTSXP => {
-                        *INTEGER(result).add(i as usize) = NA_INTEGER;
+                        SET_INTEGER_ELT(result, i as c_int, NA_INTEGER);
                     }
                     t if t == SEXPTYPE::REALSXP => {
-                        *REAL(result).add(i as usize) = NA_REAL;
+                        SET_REAL_ELT(result, i as c_int, NA_REAL);
                     }
                     t if t == SEXPTYPE::CPLXSXP => {
-                        *COMPLEX(result).add(i as usize) = crate::sexp::ffi::Rcomplex {
-                            r: NA_REAL,
-                            i: NA_REAL,
-                        };
+                        SET_COMPLEX_ELT(
+                            result,
+                            i as c_int,
+                            crate::sexp::ffi::Rcomplex {
+                                r: NA_REAL,
+                                i: NA_REAL,
+                            },
+                        );
                     }
                     t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(result, i, R_NilValue());
@@ -600,7 +598,7 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                         SET_VECTOR_ELT(result, i, R_NilValue());
                     }
                     t if t == SEXPTYPE::RAWSXP => {
-                        *RAW(result).add(i as usize) = 0;
+                        SET_RAW_ELT(result, i as c_int, 0);
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                 }
@@ -628,7 +626,7 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let new_dim = Rf_allocVector(SEXPTYPE::INTSXP, k);
         let _new_dim_guard = protect(new_dim);
         for i in 0..(k as usize) {
-            *INTEGER(new_dim).add(i) = bound[i];
+            SET_INTEGER_ELT(new_dim, (i) as c_int, bound[i]);
         }
         if !isNull(getAttrib(xdims, sym_Names())) {
             setAttrib(new_dim, sym_Names(), getAttrib(xdims, sym_Names()));
@@ -676,13 +674,13 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         if drop != 0 {
             result = DropDims(result);
         }
-        let class = getAttrib(x, Rf_install(c"class".as_ptr()));
+        let class = getAttrib(x, crate::sexp::symbol::install_str("class"));
         if !isNull(class) && TYPEOF(class) == SEXPTYPE::STRSXP {
             let mut is_table = false;
             for i in 0..XLENGTH(class) {
                 let elt = STRING_ELT(class, i);
                 if !elt.is_null() {
-                    let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
+                    let bytes = char_bytes(elt);
                     if bytes == b"table" {
                         is_table = true;
                         break;
@@ -690,7 +688,7 @@ pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 }
             }
             if is_table {
-                setAttrib(result, Rf_install(c"class".as_ptr()), class);
+                setAttrib(result, crate::sexp::symbol::install_str("class"), class);
             }
         }
         result
@@ -759,15 +757,9 @@ pub(crate) fn ExtractArg(mut args: SEXP, arg_sym: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Extract the `drop` argument (if present) from the argument list.
-pub(crate) unsafe fn ExtractDropArg(el: SEXP, drop: *mut c_int) {
-    unsafe {
-        let val = asLogical(ExtractArg(el, sym_Drop()));
-        if val == NA_LOGICAL {
-            *drop = 1;
-        } else {
-            *drop = val;
-        }
-    }
+pub(crate) fn ExtractDropArg(el: SEXP, drop: &mut c_int) {
+    let val = asLogical(ExtractArg(el, sym_Drop()));
+    *drop = if val == NA_LOGICAL { 1 } else { val };
 }
 
 // ---------------------------------------------------------------------------
