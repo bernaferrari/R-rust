@@ -10,7 +10,7 @@
 //!   matchArgs_NR, matchArgs_RC
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -20,7 +20,6 @@ use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{CONS_NR, allocList};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Local helper macros and functions
@@ -34,19 +33,19 @@ fn ARGUSED(x: SEXP) -> c_int {
 
 /// SET_ARGUSED(x, v) == SETLEVELS(x, v).
 #[inline(always)]
-unsafe fn SET_ARGUSED(x: SEXP, v: c_int) {
+fn SET_ARGUSED(x: SEXP, v: c_int) {
     SETLEVELS(x, v);
 }
 
 /// SET_TAG equivalent (R macro). Uses existing SETTAG.
 #[inline(always)]
-unsafe fn SET_TAG(x: SEXP, y: SEXP) {
+fn SET_TAG(x: SEXP, y: SEXP) {
     SETTAG(x, y);
 }
 
 /// SET_TYPEOF equivalent (R macro).
 #[inline(always)]
-unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
+fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
     crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
 }
 
@@ -54,32 +53,20 @@ unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
 /// In R, MISSING(x) is gp[2], and SET_MISSING(x,v) sets it.
 /// gp bits 0-1 = LEVELS/ARGUSED, bit 2 = MISSING.
 #[inline(always)]
-unsafe fn SET_MISSING(x: SEXP, v: c_int) {
-    unsafe {
-        if x.is_null() {
-            return;
-        }
-        let gp = if v != 0 {
-            (*x).sxpinfo.gp() | 0x04
-        } else {
-            (*x).sxpinfo.gp() & !0x04
-        };
-        (*x).sxpinfo.set_gp(gp);
+fn SET_MISSING(x: SEXP, v: c_int) {
+    if x.is_null() {
+        return;
     }
+    crate::sexp::accessors::SET_MISSING(x, v);
 }
 
-/// String equality check (streql).
+/// String equality check (streql); two absent strings compare equal.
 #[inline(always)]
-unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe {
-        if s1.is_null() || s2.is_null() {
-            return if s1.is_null() && s2.is_null() { 1 } else { 0 };
-        }
-        if CStr::from_ptr(s1).to_bytes() == CStr::from_ptr(s2).to_bytes() {
-            1
-        } else {
-            0
-        }
+fn streql(s1: Option<&CStr>, s2: Option<&CStr>) -> c_int {
+    match (s1, s2) {
+        (Some(a), Some(b)) => (a == b) as c_int,
+        (None, None) => 1,
+        _ => 0,
     }
 }
 
@@ -89,12 +76,26 @@ fn NA_STRING() -> SEXP {
 }
 
 #[inline(always)]
-unsafe fn isNA_STRING(s: SEXP) -> bool {
+fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return true;
     }
-    let gp = unsafe { (*s).sxpinfo.gp() };
-    gp & 1 != 0
+    LEVELS(s) & 1 != 0
+}
+
+/// Raw CHAR bytes of a CHARSXP (GNU `CHAR(x)`, up to its terminator).
+#[inline(always)]
+fn char_bytes(s: SEXP) -> Vec<u8> {
+    crate::mainutils::printutils::charsxp_bytes(s)
+}
+
+/// Partial (or exact) match of tag bytes `t` against formal bytes `f`.
+fn psmatch_bytes(f: &[u8], t: &[u8], exact: c_int) -> c_int {
+    if exact != 0 {
+        (f == t) as c_int
+    } else {
+        f.starts_with(t) as c_int
+    }
 }
 
 /// isString check — STRSXP type.
@@ -134,85 +135,51 @@ fn IS_CACHED(_s: SEXP) -> c_int {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(s) }
-}
-
-#[inline(always)]
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateCharUTF8(s) }
-}
-
-#[inline(always)]
 fn getCharCE(s: SEXP) -> c_int {
     crate::sexp::accessors::getCharCE(s)
 }
 
 /// checkArity — shared primitive arity validation.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
 /// asInteger — extract integer value from scalar.
 #[inline(always)]
-unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
+fn asInteger(x: SEXP) -> c_int {
+    if x.is_null() || XLENGTH(x) == 0 {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP {
+        INTEGER_ELT(x, 0)
+    } else if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() {
             return NA_INTEGER;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            let p = INTEGER(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else if t == SEXPTYPE::LGLSXP {
-            let p = LOGICAL(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else if t == SEXPTYPE::REALSXP {
-            let p = REAL(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            let v = *p;
-            if v.is_nan() {
-                return NA_INTEGER;
-            }
-            v as c_int
-        } else {
-            NA_INTEGER
-        }
+        v as c_int
+    } else {
+        NA_INTEGER
     }
 }
 
 /// asLogical — extract logical value from scalar.
 #[inline(always)]
-unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            let p = LOGICAL(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else if t == SEXPTYPE::INTSXP {
-            let p = INTEGER(x);
-            if p.is_null() {
-                return NA_INTEGER;
-            }
-            *p
-        } else {
-            NA_INTEGER
-        }
+fn asLogical(x: SEXP) -> c_int {
+    if x.is_null() || XLENGTH(x) == 0 {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        INTEGER_ELT(x, 0)
+    } else {
+        NA_INTEGER
     }
 }
 
@@ -224,7 +191,7 @@ fn isObject(x: SEXP) -> bool {
 
 /// ScalarInteger — allocate a scalar integer.
 #[inline(always)]
-unsafe fn ScalarInteger(x: c_int) -> SEXP {
+fn ScalarInteger(x: c_int) -> SEXP {
     Rf_ScalarInteger(x)
 }
 
@@ -256,7 +223,7 @@ fn length(x: SEXP) -> c_int {
 /// R_warn_partial_match_args — signals a partial-argument-match warning
 /// condition when `options(warnPartialMatchArgs = TRUE)`.
 #[inline(always)]
-pub(crate) unsafe fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEXP) {
+pub(crate) fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEXP) {
     if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchArgs") {
         return;
     }
@@ -270,19 +237,15 @@ pub(crate) unsafe fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEX
 /// In the full R, this checks encoding-aware equality.
 /// For interned strings, pointer equality suffices.
 #[inline(always)]
-unsafe fn Seql_local(a: SEXP, b: SEXP) -> c_int {
-    unsafe {
-        if a == b {
-            return 1;
-        }
-        // Fall back to strcmp for non-interned strings
-        let ca = CHAR(a);
-        let cb = CHAR(b);
-        if ca.is_null() || cb.is_null() {
-            return 0;
-        }
-        streql(ca, cb)
+fn Seql_local(a: SEXP, b: SEXP) -> c_int {
+    if a == b {
+        return 1;
     }
+    // Fall back to strcmp for non-interned strings
+    if a.is_null() || b.is_null() {
+        return 0;
+    }
+    (char_bytes(a) == char_bytes(b)) as c_int
 }
 
 // ---------------------------------------------------------------------------
@@ -293,141 +256,86 @@ unsafe fn Seql_local(a: SEXP, b: SEXP) -> c_int {
 ///
 /// Matches formal name `f` against tag name `t`.
 /// If `exact` is non-zero, requires an exact match.
-/// Otherwise, checks if `t` is a prefix of `f`.
+/// Otherwise, checks if `t` is a prefix of `f`. Absent strings never match.
 ///
 /// This is used by R for argument matching in function calls.
-///
-/// # Safety
-/// `f` and `t` must be valid null-terminated C strings.
-pub unsafe fn psmatch(f: *const c_char, t: *const c_char, exact: c_int) -> c_int {
-    unsafe {
-        if f.is_null() || t.is_null() {
-            return 0;
-        }
-
-        if exact != 0 {
-            return streql(f, t);
-        }
-
-        // Partial match: check if t is a prefix of f
-        let mut ff = f;
-        let mut tt = t;
-        while *tt != 0 {
-            if *tt != *ff {
-                return 0;
-            }
-            tt = tt.add(1);
-            ff = ff.add(1);
-        }
-        1
+pub fn psmatch(f: Option<&CStr>, t: Option<&CStr>, exact: c_int) -> c_int {
+    match (f, t) {
+        (Some(f), Some(t)) => psmatch_bytes(f.to_bytes(), t.to_bytes(), exact),
+        _ => 0,
     }
 }
 
 /// Case-insensitive partial string match.
 ///
 /// Like `psmatch` but ignores ASCII case differences.
-///
-/// # Safety
-/// `f` and `t` must be valid null-terminated C strings.
-pub unsafe fn psmatch_case_insensitive(f: *const c_char, t: *const c_char, exact: c_int) -> c_int {
-    unsafe {
-        if f.is_null() || t.is_null() {
-            return 0;
-        }
+pub fn psmatch_case_insensitive(f: Option<&CStr>, t: Option<&CStr>, exact: c_int) -> c_int {
+    let (Some(f), Some(t)) = (f, t) else {
+        return 0;
+    };
+    let f_bytes = f.to_bytes();
+    let t_bytes = t.to_bytes();
 
-        let f_bytes = CStr::from_ptr(f).to_bytes();
-        let t_bytes = CStr::from_ptr(t).to_bytes();
-
-        if exact != 0 {
-            if f_bytes.len() != t_bytes.len() {
-                return 0;
-            }
-            for i in 0..f_bytes.len() {
-                if !f_bytes[i].eq_ignore_ascii_case(&t_bytes[i]) {
-                    return 0;
-                }
-            }
-            return 1;
-        }
-
-        if t_bytes.len() > f_bytes.len() {
-            return 0;
-        }
-        for i in 0..t_bytes.len() {
-            if !t_bytes[i].eq_ignore_ascii_case(&f_bytes[i]) {
-                return 0;
-            }
-        }
-        1
+    if exact != 0 {
+        return f_bytes.eq_ignore_ascii_case(t_bytes) as c_int;
     }
+
+    if t_bytes.len() > f_bytes.len() {
+        return 0;
+    }
+    f_bytes[..t_bytes.len()].eq_ignore_ascii_case(t_bytes) as c_int
 }
 
 /// R's `pmatch()` algorithm for matching C strings against targets.
 ///
 /// Given a candidate string `x` and a set of target strings `table`,
-/// find the best (partial or exact) match.
+/// find the best (partial or exact) match. Absent table entries are skipped.
 ///
 /// Returns the 1-based index of the match, or 0 if no match.
-/// If `dup` is non-null, it is set to 1 if there are multiple matches.
-///
-/// # Safety
-/// `x` must be a valid null-terminated C string.
-/// `table` must be a valid pointer to an array of `n` valid null-terminated C strings.
-pub unsafe fn R_pmatch(
-    x: *const c_char,
-    table: *const *const c_char,
-    n: c_int,
-    dup: *mut c_int,
-) -> c_int {
-    unsafe {
-        if x.is_null() || table.is_null() || n <= 0 {
-            return 0;
-        }
+/// If `dup` is supplied, it is set to 1 if there are multiple matches.
+pub fn R_pmatch(x: Option<&CStr>, table: &[Option<&CStr>], dup: Option<&mut c_int>) -> c_int {
+    let Some(x) = x else {
+        return 0;
+    };
+    if table.is_empty() {
+        return 0;
+    }
+    let x_bytes = x.to_bytes();
 
-        let x_bytes = CStr::from_ptr(x).to_bytes();
-        let x_len = x_bytes.len();
+    // Try exact match first
+    if let Some(i) = table
+        .iter()
+        .position(|entry| entry.is_some_and(|entry| entry.to_bytes() == x_bytes))
+    {
+        return (i + 1) as c_int;
+    }
 
-        // Try exact match first
-        for i in 0..n as usize {
-            let entry = *table.add(i);
-            if entry.is_null() {
-                continue;
-            }
-            let entry_bytes = CStr::from_ptr(entry).to_bytes();
-            if entry_bytes == x_bytes {
-                return (i + 1) as c_int;
-            }
-        }
-
-        // Try partial match — find unique prefix match
-        let mut match_idx: Option<usize> = None;
-        for i in 0..n as usize {
-            let entry = *table.add(i);
-            if entry.is_null() {
-                continue;
-            }
-            let entry_bytes = CStr::from_ptr(entry).to_bytes();
-            if entry_bytes.len() >= x_len && &entry_bytes[..x_len] == x_bytes {
-                if match_idx.is_some() {
-                    // Duplicate partial match
-                    if !dup.is_null() {
-                        *dup = 1;
-                    }
-                    return 0;
+    // Try partial match — find unique prefix match
+    let mut match_idx: Option<usize> = None;
+    for (i, entry) in table.iter().enumerate() {
+        let Some(entry) = entry else {
+            continue;
+        };
+        if entry.to_bytes().starts_with(x_bytes) {
+            if match_idx.is_some() {
+                // Duplicate partial match
+                if let Some(dup) = dup {
+                    *dup = 1;
                 }
-                match_idx = Some(i);
+                return 0;
             }
+            match_idx = Some(i);
         }
+    }
 
-        match match_idx {
-            Some(idx) => {
-                if !dup.is_null() {
-                    *dup = 0;
-                }
-                (idx + 1) as c_int
+    match match_idx {
+        Some(idx) => {
+            if let Some(dup) = dup {
+                *dup = 0;
             }
-            None => 0,
+            (idx + 1) as c_int
         }
+        None => 0,
     }
 }
 
@@ -441,22 +349,15 @@ pub unsafe fn R_pmatch(
 /// Returns FALSE (0) otherwise.
 ///
 /// Used in subscript.c and subassign.c.
-pub unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
-    unsafe {
-        // "" or NA string matches nothing
-        if isNA_STRING(s) || isNA_STRING(t) {
-            return FALSE;
-        }
-        let cs = CHAR(s);
-        let ct = CHAR(t);
-        if cs.is_null() || ct.is_null() {
-            return FALSE;
-        }
-        if *cs == 0 || *ct == 0 {
-            return FALSE;
-        }
-        Seql_local(s, t)
+pub fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
+    // "" or NA string matches nothing
+    if isNA_STRING(s) || isNA_STRING(t) {
+        return FALSE;
     }
+    if char_bytes(s).is_empty() || char_bytes(t).is_empty() {
+        return FALSE;
+    }
+    Seql_local(s, t)
 }
 
 /// Extract a CHARSXP from various SEXP types.
@@ -465,7 +366,7 @@ pub unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
 /// - CHARSXP: returns itself
 /// - STRSXP of length 1: returns STRING_ELT(x, 0)
 /// - Otherwise: error
-unsafe fn charFromSexp(s: SEXP) -> SEXP {
+fn charFromSexp(s: SEXP) -> SEXP {
     let t = TYPEOF(s);
     if t == SEXPTYPE::SYMSXP {
         PRINTNAME(s)
@@ -494,20 +395,13 @@ unsafe fn charFromSexp(s: SEXP) -> SEXP {
 ///
 /// # Safety
 /// `formal` and `tag` must be valid SEXP pointers.
-pub unsafe fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
-    unsafe {
-        let f = charFromSexp(formal);
-        let t = charFromSexp(tag);
-        let fenc = getCharCE(f);
-        let tenc = getCharCE(t);
-
-        if fenc == tenc {
-            psmatch(CHAR(f), CHAR(t), exact)
-        } else {
-            // Different encodings — translate to UTF-8 for comparison
-            psmatch(translateCharUTF8(f), translateCharUTF8(t), exact)
-        }
-    }
+pub fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
+    let f = charFromSexp(formal);
+    let t = charFromSexp(tag);
+    // Mixed encodings would translate to UTF-8 here; this runtime's
+    // `translateCharUTF8` exposes the stored CHAR bytes, so both cases compare
+    // the CHAR payloads.
+    psmatch_bytes(&char_bytes(f), &char_bytes(t), exact)
 }
 
 // ---------------------------------------------------------------------------
@@ -521,313 +415,303 @@ pub unsafe fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
 /// This is the production three-pass matcher (exact, partial, positional).
 /// Closure evaluation uses `eval/closure.rs::match_closure_args`, a second
 /// port of the same GNU `match.c` algorithm.
-pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let mut seendots: bool;
-        let mut i: c_int;
-        let mut arg_i: c_int = 0;
-        let mut f: SEXP;
-        let mut a: SEXP;
-        let mut b: SEXP;
-        let mut dots: SEXP;
-        let mut actuals: SEXP;
+pub(crate) fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
+    let mut seendots: bool;
+    let mut i: c_int;
+    let mut arg_i: c_int = 0;
+    let mut f: SEXP;
+    let mut a: SEXP;
+    let mut b: SEXP;
+    let mut dots: SEXP;
+    let mut actuals: SEXP;
 
-        actuals = R_NilValue();
-        f = formals;
-        while f != R_NilValue() {
-            // CONS_NR is used since argument lists created here are only
-            // used internally and so should not increment reference counts
-            actuals = CONS_NR(R_MissingArg(), actuals);
-            SET_MISSING(actuals, 1);
-            f = CDR(f);
-            arg_i += 1;
+    actuals = R_NilValue();
+    f = formals;
+    while f != R_NilValue() {
+        // CONS_NR is used since argument lists created here are only
+        // used internally and so should not increment reference counts
+        actuals = CONS_NR(R_MissingArg(), actuals);
+        SET_MISSING(actuals, 1);
+        f = CDR(f);
+        arg_i += 1;
+    }
+
+    // fargused: track which formals have been used, to avoid modifying
+    // the formals SEXPs themselves (which can cause issues with gc/finalizers)
+    let nfarg = if arg_i > 0 { arg_i as usize } else { 1 };
+    let mut fargused = vec![0i32; nfarg];
+
+    // Reset ARGUSED on all supplied args
+    b = supplied;
+    while b != R_NilValue() {
+        SET_ARGUSED(b, 0);
+        b = CDR(b);
+    }
+
+    let _actuals_guard = protect(actuals);
+
+    // ---- First pass: exact matches by tag ----
+    f = formals;
+    a = actuals;
+    arg_i = 0;
+    while f != R_NilValue() {
+        let ftag = TAG(f);
+        if ftag != R_DotsSymbol() && ftag != R_NilValue() {
+            let ftag_name = char_bytes(PRINTNAME(ftag));
+            b = supplied;
+            i = 1;
+            while b != R_NilValue() {
+                let btag = TAG(b);
+                if !btag.is_null() && btag != R_NilValue() {
+                    let btag_name = char_bytes(PRINTNAME(btag));
+                    if ftag_name == btag_name {
+                        if fargused[arg_i as usize] == 2 {
+                            std::panic::panic_any(RError {
+                                message: format!(
+                                    "formal argument \"{}\" matched by multiple actual arguments",
+                                    String::from_utf8_lossy(&ftag_name)
+                                ),
+                            });
+                        }
+                        if ARGUSED(b) == 2 {
+                            std::panic::panic_any(RError {
+                                message: format!(
+                                    "argument {} matches multiple formal arguments",
+                                    i
+                                ),
+                            });
+                        }
+                        SETCAR(a, CAR(b));
+                        if CAR(b) != R_MissingArg() {
+                            SET_MISSING(a, 0);
+                        }
+                        SET_ARGUSED(b, 2);
+                        fargused[arg_i as usize] = 2;
+                    }
+                }
+                b = CDR(b);
+                i += 1;
+            }
         }
+        f = CDR(f);
+        a = CDR(a);
+        arg_i += 1;
+    }
 
-        // fargused: track which formals have been used, to avoid modifying
-        // the formals SEXPs themselves (which can cause issues with gc/finalizers)
-        let nfarg = if arg_i > 0 { arg_i as usize } else { 1 };
-        let mut fargused = vec![0i32; nfarg];
-
-        // Reset ARGUSED on all supplied args
-        b = supplied;
-        while b != R_NilValue() {
-            SET_ARGUSED(b, 0);
-            b = CDR(b);
-        }
-
-        let _actuals_guard = protect(actuals);
-
-        // ---- First pass: exact matches by tag ----
-        f = formals;
-        a = actuals;
-        arg_i = 0;
-        while f != R_NilValue() {
-            let ftag = TAG(f);
-            let ftag_name = CHAR(PRINTNAME(ftag));
-            if ftag != R_DotsSymbol() && ftag != R_NilValue() {
+    // ---- Second pass: partial matches based on tags ----
+    // An exact match is required after first ...
+    // The location of the first ... is saved in "dots"
+    dots = R_NilValue();
+    seendots = false;
+    f = formals;
+    a = actuals;
+    arg_i = 0;
+    while f != R_NilValue() {
+        if fargused[arg_i as usize] == 0 {
+            if TAG(f) == R_DotsSymbol() && !seendots {
+                // Record where ... value goes
+                dots = a;
+                seendots = true;
+            } else {
                 b = supplied;
                 i = 1;
                 while b != R_NilValue() {
-                    let btag = TAG(b);
-                    if !btag.is_null() && btag != R_NilValue() {
-                        let btag_name = CHAR(PRINTNAME(btag));
-                        if streql(ftag_name, btag_name) != 0 {
-                            if fargused[arg_i as usize] == 2 {
-                                std::panic::panic_any(RError {
-                                    message: format!(
-                                        "formal argument \"{}\" matched by multiple actual arguments",
-                                        CStr::from_ptr(ftag_name).to_string_lossy()
-                                    ),
-                                });
-                            }
-                            if ARGUSED(b) == 2 {
-                                std::panic::panic_any(RError {
-                                    message: format!(
-                                        "argument {} matches multiple formal arguments",
-                                        i
-                                    ),
-                                });
-                            }
-                            SETCAR(a, CAR(b));
-                            if CAR(b) != R_MissingArg() {
-                                SET_MISSING(a, 0);
-                            }
-                            SET_ARGUSED(b, 2);
-                            fargused[arg_i as usize] = 2;
+                    if ARGUSED(b) != 2
+                        && !TAG(b).is_null()
+                        && TAG(b) != R_NilValue()
+                        && pmatch(TAG(f), TAG(b), if seendots { TRUE } else { FALSE }) != 0
+                    {
+                        if ARGUSED(b) != 0 {
+                            std::panic::panic_any(RError {
+                                message: format!(
+                                    "argument {} matches multiple formal arguments",
+                                    i
+                                ),
+                            });
                         }
+                        if fargused[arg_i as usize] == 1 {
+                            std::panic::panic_any(RError {
+                                message: format!(
+                                    "formal argument \"{}\" matched by multiple actual arguments",
+                                    String::from_utf8_lossy(&char_bytes(PRINTNAME(TAG(f))))
+                                ),
+                            });
+                        }
+                        R_warn_partial_match_args(call, TAG(b), TAG(f));
+                        SETCAR(a, CAR(b));
+                        if CAR(b) != R_MissingArg() {
+                            SET_MISSING(a, 0);
+                        }
+                        SET_ARGUSED(b, 1);
+                        fargused[arg_i as usize] = 1;
                     }
                     b = CDR(b);
                     i += 1;
                 }
             }
-            f = CDR(f);
-            a = CDR(a);
-            arg_i += 1;
         }
-
-        // ---- Second pass: partial matches based on tags ----
-        // An exact match is required after first ...
-        // The location of the first ... is saved in "dots"
-        dots = R_NilValue();
-        seendots = false;
-        f = formals;
-        a = actuals;
-        arg_i = 0;
-        while f != R_NilValue() {
-            if fargused[arg_i as usize] == 0 {
-                if TAG(f) == R_DotsSymbol() && !seendots {
-                    // Record where ... value goes
-                    dots = a;
-                    seendots = true;
-                } else {
-                    b = supplied;
-                    i = 1;
-                    while b != R_NilValue() {
-                        if ARGUSED(b) != 2
-                            && !TAG(b).is_null()
-                            && TAG(b) != R_NilValue()
-                            && pmatch(TAG(f), TAG(b), if seendots { TRUE } else { FALSE }) != 0
-                        {
-                            if ARGUSED(b) != 0 {
-                                std::panic::panic_any(RError {
-                                    message: format!(
-                                        "argument {} matches multiple formal arguments",
-                                        i
-                                    ),
-                                });
-                            }
-                            if fargused[arg_i as usize] == 1 {
-                                std::panic::panic_any(RError {
-                                    message: format!(
-                                        "formal argument \"{}\" matched by multiple actual arguments",
-                                        CStr::from_ptr(CHAR(PRINTNAME(TAG(f)))).to_string_lossy()
-                                    ),
-                                });
-                            }
-                            R_warn_partial_match_args(call, TAG(b), TAG(f));
-                            SETCAR(a, CAR(b));
-                            if CAR(b) != R_MissingArg() {
-                                SET_MISSING(a, 0);
-                            }
-                            SET_ARGUSED(b, 1);
-                            fargused[arg_i as usize] = 1;
-                        }
-                        b = CDR(b);
-                        i += 1;
-                    }
-                }
-            }
-            f = CDR(f);
-            a = CDR(a);
-            arg_i += 1;
-        }
-
-        // ---- Third pass: matches based on order ----
-        // All args specified in tag=value form have now been matched.
-        // If we find ... we gobble up all the remaining args.
-        // Otherwise we bind untagged values in order to any unmatched formals.
-        f = formals;
-        a = actuals;
-        b = supplied;
-        seendots = false;
-
-        while f != R_NilValue() && b != R_NilValue() && !seendots {
-            if TAG(f) == R_DotsSymbol() {
-                // Skip ... matching until all tags done
-                seendots = true;
-                f = CDR(f);
-                a = CDR(a);
-            } else if CAR(a) != R_MissingArg() {
-                // Already matched by tag — skip to next formal
-                f = CDR(f);
-                a = CDR(a);
-            } else if ARGUSED(b) != 0 || (!TAG(b).is_null() && TAG(b) != R_NilValue()) {
-                // Used or genuinely tagged (GNU: TAG != R_NilValue).
-                // Lazy-load pairlists store untagged args as a null TAG,
-                // which must still take a positional slot.
-                b = CDR(b);
-            } else {
-                // We have a positional match
-                SETCAR(a, CAR(b));
-                if CAR(b) != R_MissingArg() {
-                    SET_MISSING(a, 0);
-                }
-                SET_ARGUSED(b, 1);
-                b = CDR(b);
-                f = CDR(f);
-                a = CDR(a);
-            }
-        }
-
-        if dots != R_NilValue() {
-            // Gobble up all unused actuals
-            SET_MISSING(dots, 0);
-            i = 0;
-            a = supplied;
-            while a != R_NilValue() {
-                if ARGUSED(a) == 0 {
-                    i += 1;
-                }
-                a = CDR(a);
-            }
-
-            if i != 0 {
-                a = allocList(i);
-                SET_TYPEOF(a, SEXPTYPE::DOTSXP);
-                f = a;
-                b = supplied;
-                while b != R_NilValue() {
-                    if ARGUSED(b) == 0 {
-                        SETCAR(f, CAR(b));
-                        SET_TAG(f, TAG(b));
-                        f = CDR(f);
-                    }
-                    b = CDR(b);
-                }
-                SETCAR(dots, a);
-            }
-        } else {
-            // Check that all arguments are used
-            b = supplied;
-            while b != R_NilValue() && ARGUSED(b) != 0 {
-                b = CDR(b);
-            }
-
-            if b != R_NilValue() {
-                // Show bad arguments in call without evaluating them.
-                // Stock match.c wording: singular/plural with every unused
-                // argument listed, e.g. "unused arguments (c = 3, d = 4)".
-                let mut items: Vec<String> = Vec::new();
-                let mut u = b;
-                while u != R_NilValue() {
-                    if ARGUSED(u) == 0 {
-                        items.push(unused_arg_item(CAR(u), TAG(u)));
-                    }
-                    u = CDR(u);
-                }
-                let message = if items.len() == 1 {
-                    format!("unused argument ({})", items[0])
-                } else {
-                    format!("unused arguments ({})", items.join(", "))
-                };
-                std::panic::panic_any(RError { message });
-            }
-        }
-
-        actuals
+        f = CDR(f);
+        a = CDR(a);
+        arg_i += 1;
     }
+
+    // ---- Third pass: matches based on order ----
+    // All args specified in tag=value form have now been matched.
+    // If we find ... we gobble up all the remaining args.
+    // Otherwise we bind untagged values in order to any unmatched formals.
+    f = formals;
+    a = actuals;
+    b = supplied;
+    seendots = false;
+
+    while f != R_NilValue() && b != R_NilValue() && !seendots {
+        if TAG(f) == R_DotsSymbol() {
+            // Skip ... matching until all tags done
+            seendots = true;
+            f = CDR(f);
+            a = CDR(a);
+        } else if CAR(a) != R_MissingArg() {
+            // Already matched by tag — skip to next formal
+            f = CDR(f);
+            a = CDR(a);
+        } else if ARGUSED(b) != 0 || (!TAG(b).is_null() && TAG(b) != R_NilValue()) {
+            // Used or genuinely tagged (GNU: TAG != R_NilValue).
+            // Lazy-load pairlists store untagged args as a null TAG,
+            // which must still take a positional slot.
+            b = CDR(b);
+        } else {
+            // We have a positional match
+            SETCAR(a, CAR(b));
+            if CAR(b) != R_MissingArg() {
+                SET_MISSING(a, 0);
+            }
+            SET_ARGUSED(b, 1);
+            b = CDR(b);
+            f = CDR(f);
+            a = CDR(a);
+        }
+    }
+
+    if dots != R_NilValue() {
+        // Gobble up all unused actuals
+        SET_MISSING(dots, 0);
+        i = 0;
+        a = supplied;
+        while a != R_NilValue() {
+            if ARGUSED(a) == 0 {
+                i += 1;
+            }
+            a = CDR(a);
+        }
+
+        if i != 0 {
+            a = allocList(i);
+            SET_TYPEOF(a, SEXPTYPE::DOTSXP);
+            f = a;
+            b = supplied;
+            while b != R_NilValue() {
+                if ARGUSED(b) == 0 {
+                    SETCAR(f, CAR(b));
+                    SET_TAG(f, TAG(b));
+                    f = CDR(f);
+                }
+                b = CDR(b);
+            }
+            SETCAR(dots, a);
+        }
+    } else {
+        // Check that all arguments are used
+        b = supplied;
+        while b != R_NilValue() && ARGUSED(b) != 0 {
+            b = CDR(b);
+        }
+
+        if b != R_NilValue() {
+            // Show bad arguments in call without evaluating them.
+            // Stock match.c wording: singular/plural with every unused
+            // argument listed, e.g. "unused arguments (c = 3, d = 4)".
+            let mut items: Vec<String> = Vec::new();
+            let mut u = b;
+            while u != R_NilValue() {
+                if ARGUSED(u) == 0 {
+                    items.push(unused_arg_item(CAR(u), TAG(u)));
+                }
+                u = CDR(u);
+            }
+            let message = if items.len() == 1 {
+                format!("unused argument ({})", items[0])
+            } else {
+                format!("unused arguments ({})", items.join(", "))
+            };
+            std::panic::panic_any(RError { message });
+        }
+    }
+
+    actuals
 }
 
 /// One `tag = value` (or bare `value`) item for the stock "unused
 /// argument(s)" error, deparsed without evaluating promises.
-unsafe fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
-    unsafe {
-        let mut car_b = car;
-        if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
-            car_b = PRCODE(car_b);
-        }
-        let text = crate::mainutils::deparse::deparse1line(car_b, false);
-        let deparsed = if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
-            String::new()
-        } else {
-            let chars = CHAR(STRING_ELT(text, 0));
-            if chars.is_null() {
-                String::new()
-            } else {
-                CStr::from_ptr(chars).to_string_lossy().into_owned()
-            }
-        };
-        if tag.is_null() || tag == R_NilValue() {
-            return deparsed;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() || pname == R_NilValue() {
-            return deparsed;
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return deparsed;
-        }
-        format!("{} = {}", CStr::from_ptr(chars).to_string_lossy(), deparsed)
+fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
+    let mut car_b = car;
+    if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
+        car_b = PRCODE(car_b);
     }
+    let text = crate::mainutils::deparse::deparse1line(car_b, false);
+    let deparsed = if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
+        String::new()
+    } else {
+        String::from_utf8_lossy(&char_bytes(STRING_ELT(text, 0))).into_owned()
+    };
+    if tag.is_null() || tag == R_NilValue() {
+        return deparsed;
+    }
+    let pname = PRINTNAME(tag);
+    if pname.is_null() || pname == R_NilValue() {
+        return deparsed;
+    }
+    format!(
+        "{} = {}",
+        String::from_utf8_lossy(&char_bytes(pname)),
+        deparsed
+    )
 }
 
 /// matchArgs_RC — wrapper around matchArgs_NR that enables reference counting.
 ///
 /// Use this if the result might escape into R.
+/// # Safety
+/// No obligations beyond live SEXP arguments; the signature stays `unsafe`
+/// for existing library callers.
 pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let args = matchArgs_NR_local(formals, supplied, call);
-        // In full R, this would enable reference counting on the arglist.
-        // just return the result as-is.
-        args
-    }
+    let args = matchArgs_NR_local(formals, supplied, call);
+    // In full R, this would enable reference counting on the arglist.
+    // just return the result as-is.
+    args
 }
 
 /// Bind evaluated `args` to `names` via GNU `matchArgs` (exact, partial, positional).
+/// # Safety
+/// No obligations beyond live SEXP arguments; the signature stays `unsafe`
+/// for existing library callers.
 pub unsafe fn match_formal_slots(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
-    unsafe {
-        let mut formals = R_NilValue();
-        for name in names.iter().rev() {
-            let mut buf = Vec::with_capacity(name.len() + 1);
-            buf.extend_from_slice(name.as_bytes());
-            buf.push(0);
-            let sym = Rf_install(buf.as_ptr() as *const c_char);
-            let cell = Rf_cons(R_MissingArg(), formals);
-            SETTAG(cell, sym);
-            formals = cell;
-        }
-        let _formals = protect(formals);
-        let matched = matchArgs_RC(formals, args, call);
-        let _matched = protect(matched);
-        let mut out = Vec::with_capacity(names.len());
-        let mut cell = matched;
-        while !cell.is_null() && cell != R_NilValue() {
-            out.push(CAR(cell));
-            cell = CDR(cell);
-        }
-        out
+    let mut formals = R_NilValue();
+    for name in names.iter().rev() {
+        let sym = crate::sexp::symbol::install_str(name);
+        let cell = Rf_cons(R_MissingArg(), formals);
+        SETTAG(cell, sym);
+        formals = cell;
     }
+    let _formals = protect(formals);
+    let matched = matchArgs_NR_local(formals, args, call);
+    let _matched = protect(matched);
+    let mut out = Vec::with_capacity(names.len());
+    let mut cell = matched;
+    while !cell.is_null() && cell != R_NilValue() {
+        out.push(CAR(cell));
+        cell = CDR(cell);
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -851,45 +735,39 @@ mod tests {
     fn test_psmatch_exact() {
         let f = test_ok(CString::new("abc"));
         let t = test_ok(CString::new("abc"));
-        assert_eq!(unsafe { psmatch(f.as_ptr(), t.as_ptr(), 1) }, 1);
+        assert_eq!(psmatch(Some(&f), Some(&t), 1), 1);
 
         let t2 = test_ok(CString::new("ab"));
-        assert_eq!(unsafe { psmatch(f.as_ptr(), t2.as_ptr(), 1) }, 0);
+        assert_eq!(psmatch(Some(&f), Some(&t2), 1), 0);
     }
 
     #[test]
     fn test_psmatch_partial() {
         let f = test_ok(CString::new("abc"));
         let t = test_ok(CString::new("ab"));
-        assert_eq!(unsafe { psmatch(f.as_ptr(), t.as_ptr(), 0) }, 1);
+        assert_eq!(psmatch(Some(&f), Some(&t), 0), 1);
 
         let t2 = test_ok(CString::new("bc"));
-        assert_eq!(unsafe { psmatch(f.as_ptr(), t2.as_ptr(), 0) }, 0);
+        assert_eq!(psmatch(Some(&f), Some(&t2), 0), 0);
 
         let t3 = test_ok(CString::new("abcd"));
-        assert_eq!(unsafe { psmatch(f.as_ptr(), t3.as_ptr(), 0) }, 0);
+        assert_eq!(psmatch(Some(&f), Some(&t3), 0), 0);
     }
 
     #[test]
     fn test_psmatch_null() {
-        assert_eq!(unsafe { psmatch(std::ptr::null(), std::ptr::null(), 0) }, 0);
+        assert_eq!(psmatch(None, None, 0), 0);
     }
 
     #[test]
     fn test_psmatch_case_insensitive() {
         let f = test_ok(CString::new("ABC"));
         let t = test_ok(CString::new("ab"));
-        assert_eq!(
-            unsafe { psmatch_case_insensitive(f.as_ptr(), t.as_ptr(), 0) },
-            1
-        );
+        assert_eq!(psmatch_case_insensitive(Some(&f), Some(&t), 0), 1);
 
         let f2 = test_ok(CString::new("abc"));
         let t2 = test_ok(CString::new("ABC"));
-        assert_eq!(
-            unsafe { psmatch_case_insensitive(f2.as_ptr(), t2.as_ptr(), 1) },
-            1
-        );
+        assert_eq!(psmatch_case_insensitive(Some(&f2), Some(&t2), 1), 1);
     }
 
     #[test]
@@ -898,9 +776,13 @@ mod tests {
         let t1 = test_ok(CString::new("bar"));
         let t2 = test_ok(CString::new("foo"));
         let t3 = test_ok(CString::new("baz"));
-        let table = [t1.as_ptr(), t2.as_ptr(), t3.as_ptr()];
+        let table = [
+            Some(t1.as_c_str()),
+            Some(t2.as_c_str()),
+            Some(t3.as_c_str()),
+        ];
         let mut dup: c_int = 0;
-        let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 3, &mut dup) };
+        let result = R_pmatch(Some(&x), &table, Some(&mut dup));
         assert_eq!(result, 2); // 1-based index
     }
 
@@ -910,9 +792,13 @@ mod tests {
         let t1 = test_ok(CString::new("bar"));
         let t2 = test_ok(CString::new("foo"));
         let t3 = test_ok(CString::new("baz"));
-        let table = [t1.as_ptr(), t2.as_ptr(), t3.as_ptr()];
+        let table = [
+            Some(t1.as_c_str()),
+            Some(t2.as_c_str()),
+            Some(t3.as_c_str()),
+        ];
         let mut dup: c_int = 0;
-        let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 3, &mut dup) };
+        let result = R_pmatch(Some(&x), &table, Some(&mut dup));
         assert_eq!(result, 2);
         assert_eq!(dup, 0);
     }
@@ -922,9 +808,9 @@ mod tests {
         let x = test_ok(CString::new("ba"));
         let t1 = test_ok(CString::new("bar"));
         let t2 = test_ok(CString::new("baz"));
-        let table = [t1.as_ptr(), t2.as_ptr()];
+        let table = [Some(t1.as_c_str()), Some(t2.as_c_str())];
         let mut dup: c_int = 0;
-        let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 2, &mut dup) };
+        let result = R_pmatch(Some(&x), &table, Some(&mut dup));
         assert_eq!(result, 0);
         assert_eq!(dup, 1); // duplicate match
     }
@@ -934,8 +820,8 @@ mod tests {
         let x = test_ok(CString::new("xyz"));
         let t1 = test_ok(CString::new("bar"));
         let t2 = test_ok(CString::new("foo"));
-        let table = [t1.as_ptr(), t2.as_ptr()];
-        let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 2, std::ptr::null_mut()) };
+        let table = [Some(t1.as_c_str()), Some(t2.as_c_str())];
+        let result = R_pmatch(Some(&x), &table, None);
         assert_eq!(result, 0);
     }
 
@@ -944,17 +830,14 @@ mod tests {
         let a = test_ok(CString::new("hello"));
         let b = test_ok(CString::new("hello"));
         let c = test_ok(CString::new("world"));
-        assert_eq!(unsafe { streql(a.as_ptr(), b.as_ptr()) }, 1);
-        assert_eq!(unsafe { streql(a.as_ptr(), c.as_ptr()) }, 0);
-        assert_eq!(unsafe { streql(std::ptr::null(), std::ptr::null()) }, 1);
+        assert_eq!(streql(Some(&a), Some(&b)), 1);
+        assert_eq!(streql(Some(&a), Some(&c)), 0);
+        assert_eq!(streql(None, None), 1);
     }
 
     #[test]
     fn test_NonNullStringMatch_null() {
         // With null NA_STRING, both should be null = NA
-        assert_eq!(
-            unsafe { NonNullStringMatch(ptr::null_mut(), ptr::null_mut()) },
-            FALSE
-        );
+        assert_eq!(NonNullStringMatch(ptr::null_mut(), ptr::null_mut()), FALSE);
     }
 }

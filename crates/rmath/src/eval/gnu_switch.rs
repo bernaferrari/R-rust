@@ -135,10 +135,7 @@ impl OwnedSwitch {
             };
             let mut which = names.len().checked_sub(1).ok_or("bad 'switch' names")?;
             for (index, name) in names[..names.len() - 1].iter().enumerate() {
-                if unsafe {
-                    crate::mainutils::match_mod::pmatch(selector.as_raw(), name.as_raw(), 1)
-                } != 0
-                {
+                if crate::mainutils::match_mod::pmatch(selector.as_raw(), name.as_raw(), 1) != 0 {
                     which = index;
                     break;
                 }

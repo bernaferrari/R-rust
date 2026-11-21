@@ -673,13 +673,11 @@ pub(super) fn match_closure_args<'s>(
                     let value = supplied
                         .try_car()
                         .map_err(|error| sexp_err("supplied value", error))?;
-                    unsafe {
-                        crate::mainutils::match_mod::R_warn_partial_match_args(
-                            factory.nil().as_raw(),
-                            btag.as_raw(),
-                            ftag.as_raw(),
-                        );
-                    }
+                    crate::mainutils::match_mod::R_warn_partial_match_args(
+                        factory.nil().as_raw(),
+                        btag.as_raw(),
+                        ftag.as_raw(),
+                    );
                     crate::sexp::object::SexpMut::try_from_checked(
                         result_cells[formal_idx].clone(),
                     )

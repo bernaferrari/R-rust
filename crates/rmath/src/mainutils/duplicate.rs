@@ -852,13 +852,10 @@ fn duplicate_entry(s: SEXP, deep: c_int) -> SEXP {
             let copy = access.with_native(|_| factory.wrap(duplicate1(s, deep)))?;
             if trace {
                 access.with_native(|_| {
-                    // SAFETY: the report only formats the two node addresses.
-                    unsafe {
-                        crate::mainutils::debug::memtrace_report(
-                            source.as_raw().cast(),
-                            copy.as_raw().cast(),
-                        )
-                    };
+                    crate::mainutils::debug::memtrace_report(
+                        source.as_raw().cast(),
+                        copy.as_raw().cast(),
+                    );
                     Ok(())
                 })?;
                 // Post-report validation happens before any native result

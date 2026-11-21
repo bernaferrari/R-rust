@@ -7,12 +7,12 @@
 //! tracingState/debuggingState, and tracemem/untracemem.
 
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_int;
 
 use crate::mainutils::errors::Rf_error;
-use crate::sexp::accessors::{CAR, CHAR, PRINTNAME, TAG, TYPEOF};
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
+use crate::sexp::accessors::{CAR, PRINTNAME, TAG, TYPEOF};
+use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::globals::set_R_Visible;
@@ -26,51 +26,59 @@ use crate::sexp::globals::set_R_Visible;
 // up in accessors.rs. For now they are safe no-ops / zero-returning stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn SET_RDEBUG(x: SEXP, v: c_int) {
-    if x.is_null() {
-        return;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    let new_gp = if v != 0 { gp | 0x400 } else { gp & !0x400 };
-    unsafe {
-        (*x).sxpinfo.set_gp(new_gp);
-    }
-}
-
-unsafe fn RDEBUG(x: SEXP) -> c_int {
+/// Copy the gp bits of a live registered node through its checked header.
+fn header_gp(x: SEXP) -> u16 {
     if x.is_null() {
         return 0;
     }
-    unsafe { (((*x).sxpinfo.gp() & 0x400) != 0) as c_int }
+    crate::sexp::memory::checked_header(x).map_or(0, |(_, _, header)| header.sxpinfo.gp())
 }
 
-unsafe fn SET_RSTEP(x: SEXP, v: c_int) {
+/// Publish a header update through the node's canonical heap cell.
+/// Null or unregistered pointers are left unchanged.
+fn update_header(x: SEXP, update: impl FnOnce(&mut crate::sexp::ffi::SexprecCore)) {
     if x.is_null() {
         return;
     }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    let new_gp = if v != 0 { gp | 0x100 } else { gp & !0x100 };
-    unsafe {
-        (*x).sxpinfo.set_gp(new_gp);
-    }
-}
-
-unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
-    if x.is_null() {
+    let Some((_, node)) = crate::sexp::memory::checked_projection(x) else {
         return;
-    }
-    let gp = unsafe { (*x).sxpinfo.gp() };
-    let new_gp = if v != 0 { gp | 0x10 } else { gp & !0x10 };
-    unsafe {
-        (*x).sxpinfo.set_gp(new_gp);
-    }
+    };
+    let heap = node.heap_identity();
+    let Some(mut header) = heap.node_snapshot(&node) else {
+        return;
+    };
+    update(&mut header);
+    let _ = heap.replace_node(&node, header);
 }
 
-unsafe fn RTRACE(x: SEXP) -> c_int {
-    if x.is_null() {
-        return 0;
-    }
-    unsafe { (((*x).sxpinfo.gp() & 0x10) != 0) as c_int }
+/// Set or clear one gp bit on a live node.
+fn set_gp_bit(x: SEXP, mask: u16, v: c_int) {
+    update_header(x, |header| {
+        let gp = header.sxpinfo.gp();
+        header
+            .sxpinfo
+            .set_gp(if v != 0 { gp | mask } else { gp & !mask });
+    });
+}
+
+fn SET_RDEBUG(x: SEXP, v: c_int) {
+    set_gp_bit(x, 0x400, v);
+}
+
+fn RDEBUG(x: SEXP) -> c_int {
+    ((header_gp(x) & 0x400) != 0) as c_int
+}
+
+fn SET_RSTEP(x: SEXP, v: c_int) {
+    set_gp_bit(x, 0x100, v);
+}
+
+fn SET_RTRACE(x: SEXP, v: c_int) {
+    set_gp_bit(x, 0x10, v);
+}
+
+fn RTRACE(x: SEXP) -> c_int {
+    ((header_gp(x) & 0x10) != 0) as c_int
 }
 
 fn PRIMVAL(op: SEXP) -> c_int {
@@ -87,41 +95,37 @@ fn PRIMVAL(op: SEXP) -> c_int {
 //   3 = debugonce()    SET_RSTEP(x, 1)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, rho);
-        let s = CAR(args);
-        let t = TYPEOF(s);
+pub fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let _ = (call, rho);
+    let s = CAR(args);
+    let t = TYPEOF(s);
 
-        // Validate that the argument is a function type
-        if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
-            Rf_error(
-                c"debug/undebug/isdebugged/debugonce requires a function".as_ptr() as *const _,
-            );
-        }
-
-        match PRIMVAL(op) {
-            0 => {
-                // debug()
-                SET_RDEBUG(s, 1);
-            }
-            1 => {
-                // undebug()
-                SET_RDEBUG(s, 0);
-            }
-            2 => {
-                // isdebugged()
-                return Rf_ScalarLogical(RDEBUG(s));
-            }
-            3 => {
-                // debugonce()
-                SET_RSTEP(s, 1);
-            }
-            _ => {} // intentionally unhandled: unknown debug operation
-        }
-
-        R_NilValue()
+    // Validate that the argument is a function type
+    if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
+        Rf_error(c"debug/undebug/isdebugged/debugonce requires a function".as_ptr() as *const _);
     }
+
+    match PRIMVAL(op) {
+        0 => {
+            // debug()
+            SET_RDEBUG(s, 1);
+        }
+        1 => {
+            // undebug()
+            SET_RDEBUG(s, 0);
+        }
+        2 => {
+            // isdebugged()
+            return Rf_ScalarLogical(RDEBUG(s));
+        }
+        3 => {
+            // debugonce()
+            SET_RSTEP(s, 1);
+        }
+        _ => {} // intentionally unhandled: unknown debug operation
+    }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -132,25 +136,23 @@ pub unsafe fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 //   1 = .primUntrace    SET_RTRACE(x, 0)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, rho);
-        let s = CAR(args);
+pub fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let _ = (call, rho);
+    let s = CAR(args);
 
-        match PRIMVAL(op) {
-            0 => {
-                // .primTrace
-                SET_RTRACE(s, 1);
-            }
-            1 => {
-                // .primUntrace
-                SET_RTRACE(s, 0);
-            }
-            _ => {} // intentionally unhandled: unknown debug/untrace operation
+    match PRIMVAL(op) {
+        0 => {
+            // .primTrace
+            SET_RTRACE(s, 1);
         }
-
-        R_NilValue()
+        1 => {
+            // .primUntrace
+            SET_RTRACE(s, 0);
+        }
+        _ => {} // intentionally unhandled: unknown debug/untrace operation
     }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -165,48 +167,53 @@ pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `tracingState(on=NULL)` — query or set session tracing.
 /// Dedicated so portable PRIMVAL/PRIMNAME cannot divert this to debuggingState.
-pub unsafe fn do_tracing_state(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { trace_or_debug_state(args, true) }
+pub fn do_tracing_state(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    trace_or_debug_state(args, true)
 }
 
-unsafe fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
-    unsafe {
-        let s = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
-            crate::sexp::globals::R_NilValue()
-        } else {
-            CAR(args)
-        };
-        let query_only = s.is_null()
-            || s == crate::sexp::globals::R_NilValue()
-            || s == crate::sexp::globals::R_MissingArg();
-        let state: c_int = if query_only {
-            -1
-        } else if TYPEOF(s) == SEXPTYPE::LGLSXP && !s.is_null() {
-            let data = crate::sexp::accessors::DATAPTR(s) as *mut c_int;
-            if !data.is_null() { *data } else { 0 }
+fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
+    let s = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+        crate::sexp::globals::R_NilValue()
+    } else {
+        CAR(args)
+    };
+    let query_only = s.is_null()
+        || s == crate::sexp::globals::R_NilValue()
+        || s == crate::sexp::globals::R_MissingArg();
+    let state: c_int = if query_only {
+        -1
+    } else if TYPEOF(s) == SEXPTYPE::LGLSXP && !s.is_null() {
+        if crate::sexp::accessors::XLENGTH(s) > 0 {
+            crate::sexp::accessors::LOGICAL_ELT(s, 0)
         } else {
             0
-        };
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            let slot = if tracing {
+        }
+    } else {
+        0
+    };
+    let prev = crate::sexp::instance::with_required_current_instance(|inst| {
+        // SAFETY: the current instance pointer is live for the closure;
+        // only one scalar state field is read and written, without
+        // allocation or reentry.
+        let slot = unsafe {
+            if tracing {
                 &mut (*inst).eval_state.tracing_state
             } else {
                 &mut (*inst).eval_state.debugging_state
-            };
-            let prev = *slot;
-            if !query_only {
-                *slot = state;
             }
-            Rf_ScalarLogical(prev)
-        })
-    }
+        };
+        let prev = *slot;
+        if !query_only {
+            *slot = state;
+        }
+        prev
+    });
+    Rf_ScalarLogical(prev)
 }
 
-pub unsafe fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let debugging = PRIMVAL(op) == 1;
-        trace_or_debug_state(args, !debugging)
-    }
+pub fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let debugging = PRIMVAL(op) == 1;
+    trace_or_debug_state(args, !debugging)
 }
 
 // ---------------------------------------------------------------------------
@@ -236,19 +243,17 @@ pub extern "C" fn R_current_trace_state() -> c_int {
 // 0x10 via the local SET_RTRACE above; those two flags are not the same bit.
 // ---------------------------------------------------------------------------
 
-unsafe fn memory_traced(x: SEXP) -> bool {
-    unsafe { !x.is_null() && (*x).sxpinfo.trace() }
+fn memory_traced(x: SEXP) -> bool {
+    !x.is_null()
+        && crate::sexp::memory::checked_header(x)
+            .is_some_and(|(_, _, header)| header.sxpinfo.trace())
 }
 
-unsafe fn set_memory_traced(x: SEXP, on: bool) {
-    unsafe {
-        if !x.is_null() {
-            (*x).sxpinfo.set_trace(on);
-        }
-    }
+fn set_memory_traced(x: SEXP, on: bool) {
+    update_header(x, |header| header.sxpinfo.set_trace(on));
 }
 
-unsafe fn reject_traced_function(object: SEXP) {
+fn reject_traced_function(object: SEXP) {
     if object.is_null() {
         return;
     }
@@ -259,34 +264,42 @@ unsafe fn reject_traced_function(object: SEXP) {
 }
 
 /// GNU `check1arg`: a supplied tag must be a prefix of `x`.
-unsafe fn check_tracemem_arg(args: SEXP, _call: SEXP) {
-    unsafe {
-        let tag = TAG(args);
-        if tag.is_null() || tag == R_NilValue() {
-            return;
-        }
-        let bytes = CHAR(PRINTNAME(tag));
-        if bytes.is_null() {
-            return;
-        }
-        let supplied = CStr::from_ptr(bytes).to_bytes();
-        let formal = b"x";
-        if supplied.is_empty() || supplied.len() > formal.len() || !formal.starts_with(supplied) {
-            let message = CString::new(format!(
-                "supplied argument name '{}' does not match 'x'",
-                String::from_utf8_lossy(supplied)
-            ))
-            .unwrap_or_else(|_| CString::new("supplied argument name does not match 'x'").unwrap());
-            Rf_error(message.as_ptr());
-        }
+fn check_tracemem_arg(args: SEXP, _call: SEXP) {
+    let tag = TAG(args);
+    if tag.is_null() || tag == R_NilValue() {
+        return;
     }
+    let pname = PRINTNAME(tag);
+    if pname.is_null() {
+        return;
+    }
+    let supplied_bytes = crate::mainutils::printutils::charsxp_bytes(pname);
+    let supplied = supplied_bytes.as_slice();
+    let formal = b"x";
+    if supplied.is_empty() || supplied.len() > formal.len() || !formal.starts_with(supplied) {
+        let message = CString::new(format!(
+            "supplied argument name '{}' does not match 'x'",
+            String::from_utf8_lossy(supplied)
+        ))
+        .unwrap_or_else(|_| CString::new("supplied argument name does not match 'x'").unwrap());
+        Rf_error(message.as_ptr());
+    }
+}
+
+/// Checked STRSXP(1) scalar on the active session heap.
+fn mk_string(text: &str) -> SEXP {
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .strings(&[text])
+        .map(|vector| vector.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 fn memory_profiling_enabled() -> bool {
     cfg!(feature = "memory-profiling")
 }
 
-unsafe fn reject_without_memory_profiling() {
+fn reject_without_memory_profiling() {
     Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
 }
 
@@ -294,67 +307,59 @@ unsafe fn reject_without_memory_profiling() {
 ///
 /// Without the `memory-profiling` feature this is GNU's
 /// `R_MEMORY_PROFILING` stub: check the argument name, then error.
-pub unsafe fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = (op, rho);
-        if !args.is_null() && args != R_NilValue() {
-            check_tracemem_arg(args, call);
-        }
-        if !memory_profiling_enabled() {
-            reject_without_memory_profiling();
-        }
-        let object = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(args)
-        };
-        reject_traced_function(object);
-        if object.is_null() || object == R_NilValue() {
-            Rf_error(c"cannot trace NULL".as_ptr() as *const _);
-        }
-        let t = TYPEOF(object);
-        if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::PROMSXP {
-            Rf_error(
-                c"'tracemem' is not useful for promise and environment objects".as_ptr()
-                    as *const _,
-            );
-        }
-        if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP {
-            Rf_error(
-                c"'tracemem' is not useful for weak reference or external pointer objects".as_ptr()
-                    as *const _,
-            );
-        }
-        set_memory_traced(object, true);
-        let buffer = CString::new(format!("<{:p}>", object)).unwrap_or_else(|_| {
-            CString::new("<0x0>").unwrap_or_else(|_| CString::new("").unwrap())
-        });
-        Rf_mkString(buffer.as_ptr())
+pub fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let _ = (op, rho);
+    if !args.is_null() && args != R_NilValue() {
+        check_tracemem_arg(args, call);
     }
+    if !memory_profiling_enabled() {
+        reject_without_memory_profiling();
+    }
+    let object = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(args)
+    };
+    reject_traced_function(object);
+    if object.is_null() || object == R_NilValue() {
+        Rf_error(c"cannot trace NULL".as_ptr() as *const _);
+    }
+    let t = TYPEOF(object);
+    if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::PROMSXP {
+        Rf_error(
+            c"'tracemem' is not useful for promise and environment objects".as_ptr() as *const _,
+        );
+    }
+    if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP {
+        Rf_error(
+            c"'tracemem' is not useful for weak reference or external pointer objects".as_ptr()
+                as *const _,
+        );
+    }
+    set_memory_traced(object, true);
+    mk_string(&format!("<{:p}>", object))
 }
 
 /// R's `untracemem(x)` — clear the trace bit. The result is invisible.
-pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = (op, rho);
-        if !args.is_null() && args != R_NilValue() {
-            check_tracemem_arg(args, call);
-        }
-        if !memory_profiling_enabled() {
-            reject_without_memory_profiling();
-        }
-        let object = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(args)
-        };
-        reject_traced_function(object);
-        if memory_traced(object) {
-            set_memory_traced(object, false);
-        }
-        set_R_Visible(FALSE);
-        R_NilValue()
+pub fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let _ = (op, rho);
+    if !args.is_null() && args != R_NilValue() {
+        check_tracemem_arg(args, call);
     }
+    if !memory_profiling_enabled() {
+        reject_without_memory_profiling();
+    }
+    let object = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(args)
+    };
+    reject_traced_function(object);
+    if memory_traced(object) {
+        set_memory_traced(object, false);
+    }
+    set_R_Visible(FALSE);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -462,29 +467,25 @@ fn insert_native_try_catch_frames(frames: &mut Vec<ReportedFrame>) {
     }
 }
 
-unsafe fn traced_call_name(fun: SEXP) -> String {
-    unsafe {
-        if fun.is_null() || fun == R_NilValue() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
-            return "<Anonymous>".to_string();
-        }
-        let pname = PRINTNAME(fun);
-        if pname.is_null() || pname == R_NilValue() {
-            return "<Anonymous>".to_string();
-        }
-        let bytes = CHAR(pname);
-        if bytes.is_null() {
-            return "<Anonymous>".to_string();
-        }
-        CStr::from_ptr(bytes).to_string_lossy().into_owned()
+fn traced_call_name(fun: SEXP) -> String {
+    if fun.is_null() || fun == R_NilValue() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
+        return "<Anonymous>".to_string();
     }
+    let pname = PRINTNAME(fun);
+    if pname.is_null() || pname == R_NilValue() {
+        return "<Anonymous>".to_string();
+    }
+    String::from_utf8_lossy(&crate::mainutils::printutils::charsxp_bytes(pname)).into_owned()
 }
 
-pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
+pub fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
     if !memory_profiling_enabled() || R_current_trace_state() == 0 {
         return;
     }
     let mut line = format!("tracemem[{old:p} -> {new:p}]: ");
     let mut frames = Vec::new();
+    // SAFETY: the context chain is the evaluator's live stack of RCNTXT
+    // frames; each node is read in place and outlives this walk.
     unsafe {
         let mut cptr = crate::sexp::context::R_GlobalContext();
         while !cptr.is_null() {
@@ -533,12 +534,10 @@ mod tests {
     /// calls themselves don't panic with null.
     #[test]
     fn test_debug_set_rdebug() {
-        unsafe {
-            // The stub SET_RDEBUG should not panic even with null
-            SET_RDEBUG(ptr::null_mut(), 1);
-            SET_RDEBUG(ptr::null_mut(), 0);
-            SET_RSTEP(ptr::null_mut(), 1);
-        }
+        // The stub SET_RDEBUG should not panic even with null
+        SET_RDEBUG(ptr::null_mut(), 1);
+        SET_RDEBUG(ptr::null_mut(), 0);
+        SET_RSTEP(ptr::null_mut(), 1);
     }
 
     /// Test that the tracing/debugging state functions work correctly.
@@ -585,11 +584,9 @@ mod tests {
     /// Test that the stub accessors return expected values.
     #[test]
     fn test_stub_accessors() {
-        unsafe {
-            assert_eq!(RDEBUG(ptr::null_mut()), 0);
-            assert_eq!(RTRACE(ptr::null_mut()), 0);
-            assert_eq!(PRIMVAL(ptr::null_mut()), 0);
-        }
+        assert_eq!(RDEBUG(ptr::null_mut()), 0);
+        assert_eq!(RTRACE(ptr::null_mut()), 0);
+        assert_eq!(PRIMVAL(ptr::null_mut()), 0);
     }
 
     /// Test that do_retracemem returns without panicking.
@@ -610,8 +607,6 @@ mod tests {
     /// A report with no active session does not panic.
     #[test]
     fn test_memtrace_report_noop() {
-        unsafe {
-            memtrace_report(ptr::null_mut(), ptr::null_mut());
-        }
+        memtrace_report(ptr::null_mut(), ptr::null_mut());
     }
 }

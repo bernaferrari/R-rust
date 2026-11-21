@@ -800,7 +800,7 @@ pub(crate) fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, nlist: *mut SEXP
 
 /// NonNullStringMatch: match non-null strings.
 pub(crate) fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
-    unsafe { crate::mainutils::match_mod::NonNullStringMatch(s, t) }
+    crate::mainutils::match_mod::NonNullStringMatch(s, t)
 }
 
 /// R_CurrentExpression: stub returning nil.

@@ -175,24 +175,22 @@ pub(super) fn strip_call_prefix(message: &str) -> String {
 /// upstream dropped bottom-position support) and NA leave it off; numeric
 /// values convert to logical.
 pub(super) fn show_error_locations_enabled() -> bool {
-    unsafe {
-        let opt_owner = crate::sexp::context::own_control_value(
-            crate::mainutils::options::existing_option("show.error.locations"),
-        );
-        let opt = opt_owner.as_raw();
-        if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
-            return false;
-        }
-        if crate::mainutils::coerce::asLogical(opt) == 1 {
-            return true;
-        }
-        if TYPEOF(opt) == SEXPTYPE::STRSXP {
-            let tag = STRING_ELT(opt, 0);
-            // All prefixes of "top" are ASCII in the supported encodings.
-            return crate::mainutils::match_mod::psmatch(c"top".as_ptr(), CHAR(tag), 0) != 0;
-        }
-        false
+    let opt_owner = crate::sexp::context::own_control_value(
+        crate::mainutils::options::existing_option("show.error.locations"),
+    );
+    let opt = opt_owner.as_raw();
+    if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
+        return false;
     }
+    if crate::mainutils::coerce::asLogical(opt) == 1 {
+        return true;
+    }
+    if TYPEOF(opt) == SEXPTYPE::STRSXP {
+        let tag = STRING_ELT(opt, 0);
+        // All prefixes of "top" are ASCII in the supported encodings.
+        return b"top".starts_with(&crate::mainutils::printutils::charsxp_bytes(tag));
+    }
+    false
 }
 
 pub(super) fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
