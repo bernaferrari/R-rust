@@ -172,26 +172,24 @@ pub(crate) fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
 }
 
 pub(crate) fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
-    unsafe {
-        match TYPEOF(sequence) {
-            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(sequence).add(index as usize)),
-            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(sequence).add(index as usize)),
-            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(sequence).add(index as usize)),
-            t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(*COMPLEX(sequence).add(index as usize)),
-            t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(sequence, index as i64)),
-            t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(*RAW(sequence).add(index as usize)),
-            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                VECTOR_ELT(sequence, index as i64)
-            }
-            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
-                let mut node = sequence;
-                for _ in 0..index {
-                    node = CDR(node);
-                }
-                CAR(node)
-            }
-            _ => bc_error("invalid for() loop sequence"),
+    match TYPEOF(sequence) {
+        t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(sequence, index as i32)),
+        t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(sequence, index as i32)),
+        t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(sequence, index as i32)),
+        t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(sequence, index as i32)),
+        t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(sequence, index as i64)),
+        t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(sequence, index as i32)),
+        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+            VECTOR_ELT(sequence, index as i64)
         }
+        t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+            let mut node = sequence;
+            for _ in 0..index {
+                node = CDR(node);
+            }
+            CAR(node)
+        }
+        _ => bc_error("invalid for() loop sequence"),
     }
 }
 

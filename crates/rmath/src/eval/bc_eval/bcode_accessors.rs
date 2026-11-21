@@ -41,7 +41,7 @@ pub fn BCODE_IS_GNU(x: SEXP) -> bool {
         !marker.is_null()
             && TYPEOF(marker) == SEXPTYPE::INTSXP
             && LENGTH(marker) == 1
-            && *INTEGER(marker) == super::super::bytecode::GNU_BC_DIALECT_MARKER
+            && INTEGER_ELT(marker, 0) == super::super::bytecode::GNU_BC_DIALECT_MARKER
     }
 }
 

@@ -25,7 +25,7 @@ fn test_scalar_addition() {
         let b = Rf_ScalarInteger(2);
         let result = real_binary("+", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(result), 3);
+        assert_eq!(INTEGER_ELT(result, 0), 3);
     }
 }
 
@@ -37,7 +37,7 @@ fn test_real_addition() {
         let b = Rf_ScalarReal(2.5);
         let result = real_binary("+", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-        let v = *REAL(result);
+        let v = REAL_ELT(result, 0);
         assert!((v - 4.0).abs() < 1e-10);
     }
 }
@@ -49,7 +49,7 @@ fn test_scalar_multiplication() {
         let a = Rf_ScalarInteger(3);
         let b = Rf_ScalarInteger(4);
         let result = real_binary("*", a, b);
-        assert_eq!(*INTEGER(result), 12);
+        assert_eq!(INTEGER_ELT(result, 0), 12);
     }
 }
 
@@ -61,7 +61,7 @@ fn test_division_produces_real() {
         let b = Rf_ScalarInteger(3);
         let result = real_binary("/", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-        let v = *REAL(result);
+        let v = REAL_ELT(result, 0);
         assert!((v - 3.3333333333333335).abs() < 1e-10);
     }
 }
@@ -74,18 +74,18 @@ fn test_division_by_zero_matches_r_real_semantics() {
 
         let pos = real_binary("/", Rf_ScalarInteger(1), zero);
         assert_eq!(TYPEOF(pos), SEXPTYPE::REALSXP);
-        assert!((*REAL(pos)).is_infinite());
-        assert!((*REAL(pos)).is_sign_positive());
+        assert!((REAL_ELT(pos, 0)).is_infinite());
+        assert!((REAL_ELT(pos, 0)).is_sign_positive());
 
         let neg = real_binary("/", Rf_ScalarInteger(-1), zero);
         assert_eq!(TYPEOF(neg), SEXPTYPE::REALSXP);
-        assert!((*REAL(neg)).is_infinite());
-        assert!((*REAL(neg)).is_sign_negative());
+        assert!((REAL_ELT(neg, 0)).is_infinite());
+        assert!((REAL_ELT(neg, 0)).is_sign_negative());
 
         let nan = real_binary("/", Rf_ScalarInteger(0), zero);
         assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP);
-        assert!((*REAL(nan)).is_nan());
-        assert_ne!((*REAL(nan)).to_bits(), NA_REAL.to_bits());
+        assert!((REAL_ELT(nan, 0)).is_nan());
+        assert_ne!((REAL_ELT(nan, 0)).to_bits(), NA_REAL.to_bits());
     }
 }
 
@@ -97,7 +97,7 @@ fn test_scalar_power() {
         let b = Rf_ScalarInteger(10);
         let result = real_binary("^", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-        assert_eq!(*REAL(result), 1024.0);
+        assert_eq!(REAL_ELT(result, 0), 1024.0);
     }
 }
 
@@ -108,7 +108,7 @@ fn test_comparison_lt() {
         let a = Rf_ScalarInteger(1);
         let b = Rf_ScalarInteger(2);
         let result = binary_compare("<", a, b);
-        assert_eq!(*LOGICAL(result), TRUE);
+        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
     }
 }
 
@@ -119,7 +119,7 @@ fn test_comparison_eq() {
         let a = Rf_ScalarInteger(5);
         let b = Rf_ScalarInteger(5);
         let result = binary_compare("==", a, b);
-        assert_eq!(*LOGICAL(result), TRUE);
+        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
     }
 }
 
@@ -130,7 +130,7 @@ fn test_comparison_ne() {
         let a = Rf_ScalarReal(1.0);
         let b = Rf_ScalarReal(2.0);
         let result = binary_compare("!=", a, b);
-        assert_eq!(*LOGICAL(result), TRUE);
+        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
     }
 }
 
@@ -141,7 +141,7 @@ fn test_scalar_modulo() {
         let a = Rf_ScalarInteger(10);
         let b = Rf_ScalarInteger(3);
         let result = real_binary("%%", a, b);
-        assert_eq!(*INTEGER(result), 1);
+        assert_eq!(INTEGER_ELT(result, 0), 1);
     }
 }
 
@@ -152,7 +152,7 @@ fn test_scalar_integer_division() {
         let a = Rf_ScalarInteger(10);
         let b = Rf_ScalarInteger(3);
         let result = real_binary("%/%", a, b);
-        assert_eq!(*INTEGER(result), 3);
+        assert_eq!(INTEGER_ELT(result, 0), 3);
     }
 }
 
@@ -164,23 +164,23 @@ fn test_modulo_and_floor_division_by_zero_match_r_shape() {
 
         let int_mod = real_binary("%%", Rf_ScalarInteger(1), int_zero);
         assert_eq!(TYPEOF(int_mod), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(int_mod), NA_INTEGER);
+        assert_eq!(INTEGER_ELT(int_mod, 0), NA_INTEGER);
 
         let int_floor_div = real_binary("%/%", Rf_ScalarInteger(1), int_zero);
         assert_eq!(TYPEOF(int_floor_div), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(int_floor_div), NA_INTEGER);
+        assert_eq!(INTEGER_ELT(int_floor_div, 0), NA_INTEGER);
 
         let real_zero = Rf_ScalarReal(0.0);
 
         let real_mod = real_binary("%%", Rf_ScalarReal(1.0), real_zero);
         assert_eq!(TYPEOF(real_mod), SEXPTYPE::REALSXP);
-        assert!((*REAL(real_mod)).is_nan());
-        assert_ne!((*REAL(real_mod)).to_bits(), NA_REAL.to_bits());
+        assert!((REAL_ELT(real_mod, 0)).is_nan());
+        assert_ne!((REAL_ELT(real_mod, 0)).to_bits(), NA_REAL.to_bits());
 
         let real_floor_div = real_binary("%/%", Rf_ScalarReal(-1.0), real_zero);
         assert_eq!(TYPEOF(real_floor_div), SEXPTYPE::REALSXP);
-        assert!((*REAL(real_floor_div)).is_infinite());
-        assert!((*REAL(real_floor_div)).is_sign_negative());
+        assert!((REAL_ELT(real_floor_div, 0)).is_infinite());
+        assert!((REAL_ELT(real_floor_div, 0)).is_sign_negative());
     }
 }
 
@@ -191,14 +191,14 @@ fn test_real_modulo_na_by_zero_is_nan_but_integer_path_stays_na() {
         for zero in [0.0, -0.0] {
             let result = real_binary("%%", Rf_ScalarReal(NA_REAL), Rf_ScalarReal(zero));
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-            let value = *REAL(result);
+            let value = REAL_ELT(result, 0);
             assert!(value.is_nan());
             assert!(!crate::sexp::ffi::R_IsNA(value));
         }
 
         let integer_result = real_binary("%%", Rf_ScalarInteger(NA_INTEGER), Rf_ScalarInteger(0));
         assert_eq!(TYPEOF(integer_result), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(integer_result), NA_INTEGER);
+        assert_eq!(INTEGER_ELT(integer_result, 0), NA_INTEGER);
     }
 }
 
@@ -210,20 +210,20 @@ fn test_vector_addition_with_recycling() {
     unsafe {
         // c(1,2,3) + c(10,20) should recycle → c(11, 22, 13)
         let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        *INTEGER(a).add(0) = 1;
-        *INTEGER(a).add(1) = 2;
-        *INTEGER(a).add(2) = 3;
+        SET_INTEGER_ELT(a, 0 as i32, 1);
+        SET_INTEGER_ELT(a, 1 as i32, 2);
+        SET_INTEGER_ELT(a, 2 as i32, 3);
 
         let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(b).add(0) = 10;
-        *INTEGER(b).add(1) = 20;
+        SET_INTEGER_ELT(b, 0 as i32, 10);
+        SET_INTEGER_ELT(b, 1 as i32, 20);
 
         let result = real_binary("+", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
         assert_eq!(LENGTH(result), 3);
-        assert_eq!(*INTEGER(result).add(0), 11); // 1+10
-        assert_eq!(*INTEGER(result).add(1), 22); // 2+20
-        assert_eq!(*INTEGER(result).add(2), 13); // 3+10 (recycled)
+        assert_eq!(INTEGER_ELT(result, 0 as i32), 11); // 1+10
+        assert_eq!(INTEGER_ELT(result, 1 as i32), 22); // 2+20
+        assert_eq!(INTEGER_ELT(result, 2 as i32), 13); // 3+10 (recycled)
     }
 }
 
@@ -233,21 +233,21 @@ fn test_vector_comparison() {
     unsafe {
         // c(1,2,3) > c(2,1,2) → c(FALSE, TRUE, TRUE)
         let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        *INTEGER(a).add(0) = 1;
-        *INTEGER(a).add(1) = 2;
-        *INTEGER(a).add(2) = 3;
+        SET_INTEGER_ELT(a, 0 as i32, 1);
+        SET_INTEGER_ELT(a, 1 as i32, 2);
+        SET_INTEGER_ELT(a, 2 as i32, 3);
 
         let b = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        *INTEGER(b).add(0) = 2;
-        *INTEGER(b).add(1) = 1;
-        *INTEGER(b).add(2) = 2;
+        SET_INTEGER_ELT(b, 0 as i32, 2);
+        SET_INTEGER_ELT(b, 1 as i32, 1);
+        SET_INTEGER_ELT(b, 2 as i32, 2);
 
         let result = binary_compare(">", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
         assert_eq!(LENGTH(result), 3);
-        assert_eq!(*LOGICAL(result).add(0), FALSE); // 1 > 2
-        assert_eq!(*LOGICAL(result).add(1), TRUE); // 2 > 1
-        assert_eq!(*LOGICAL(result).add(2), TRUE); // 3 > 2
+        assert_eq!(LOGICAL_ELT(result, 0 as i32), FALSE); // 1 > 2
+        assert_eq!(LOGICAL_ELT(result, 1 as i32), TRUE); // 2 > 1
+        assert_eq!(LOGICAL_ELT(result, 2 as i32), TRUE); // 3 > 2
     }
 }
 
@@ -284,8 +284,8 @@ fn test_vector_arithmetic_polls_cancellation() {
         let a = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
         let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
         for i in 0..2048 {
-            *INTEGER(a).add(i) = i as i32;
-            *INTEGER(b).add(i) = 1;
+            SET_INTEGER_ELT(a, i as i32, i as i32);
+            SET_INTEGER_ELT(b, i as i32, 1);
         }
 
         expect_cancelled(|| {
@@ -303,8 +303,8 @@ fn test_vector_compare_polls_cancellation() {
         let a = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
         let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
         for i in 0..2048 {
-            *INTEGER(a).add(i) = i as i32;
-            *INTEGER(b).add(i) = i as i32;
+            SET_INTEGER_ELT(a, i as i32, i as i32);
+            SET_INTEGER_ELT(b, i as i32, i as i32);
         }
 
         expect_cancelled(|| {
@@ -321,7 +321,7 @@ fn test_unary_math_polls_cancellation() {
     unsafe {
         let x = Rf_allocVector3(SEXPTYPE::REALSXP, 2048);
         for i in 0..2048 {
-            *REAL(x).add(i) = i as f64;
+            SET_REAL_ELT(x, i as i32, i as f64);
         }
 
         expect_cancelled(|| {
@@ -338,7 +338,7 @@ fn test_vector_na_propagation() {
         let b = Rf_ScalarInteger(5);
         let result = real_binary("+", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(result), NA_INTEGER);
+        assert_eq!(INTEGER_ELT(result, 0), NA_INTEGER);
     }
 }
 
@@ -349,15 +349,15 @@ fn test_scalar_plus_vector() {
         // 1 + c(10, 20, 30) → c(11, 21, 31)
         let a = Rf_ScalarInteger(1);
         let b = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        *INTEGER(b).add(0) = 10;
-        *INTEGER(b).add(1) = 20;
-        *INTEGER(b).add(2) = 30;
+        SET_INTEGER_ELT(b, 0 as i32, 10);
+        SET_INTEGER_ELT(b, 1 as i32, 20);
+        SET_INTEGER_ELT(b, 2 as i32, 30);
 
         let result = real_binary("+", a, b);
         assert_eq!(LENGTH(result), 3);
-        assert_eq!(*INTEGER(result).add(0), 11);
-        assert_eq!(*INTEGER(result).add(1), 21);
-        assert_eq!(*INTEGER(result).add(2), 31);
+        assert_eq!(INTEGER_ELT(result, 0 as i32), 11);
+        assert_eq!(INTEGER_ELT(result, 1 as i32), 21);
+        assert_eq!(INTEGER_ELT(result, 2 as i32), 31);
     }
 }
 
@@ -366,15 +366,15 @@ fn test_unary_minus_vector() {
     let _session = RSession::new();
     unsafe {
         let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        *INTEGER(a).add(0) = 1;
-        *INTEGER(a).add(1) = -5;
-        *INTEGER(a).add(2) = 0;
+        SET_INTEGER_ELT(a, 0 as i32, 1);
+        SET_INTEGER_ELT(a, 1 as i32, -5);
+        SET_INTEGER_ELT(a, 2 as i32, 0);
 
         let result = unary_minus(a);
         assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(result).add(0), -1);
-        assert_eq!(*INTEGER(result).add(1), 5);
-        assert_eq!(*INTEGER(result).add(2), 0);
+        assert_eq!(INTEGER_ELT(result, 0 as i32), -1);
+        assert_eq!(INTEGER_ELT(result, 1 as i32), 5);
+        assert_eq!(INTEGER_ELT(result, 2 as i32), 0);
     }
 }
 
@@ -386,6 +386,6 @@ fn test_real_plus_int_produces_real() {
         let b = Rf_ScalarInteger(2);
         let result = real_binary("+", a, b);
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-        assert!((*REAL(result) - 3.5).abs() < 1e-10);
+        assert!((REAL_ELT(result, 0) - 3.5).abs() < 1e-10);
     }
 }

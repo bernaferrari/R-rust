@@ -1649,7 +1649,7 @@ mod tests {
             let bcode = compile_expr(expr, env.clone().as_raw()).expect("constant should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(*INTEGER(result), 42);
+            assert_eq!(INTEGER_ELT(result, 0), 42);
         }
     }
 
@@ -1667,7 +1667,7 @@ mod tests {
             let sym = crate::sexp::symbol::install_str("x");
             let bcode = compile_expr(sym, env.clone().as_raw()).expect("symbol should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
-            assert_eq!(*INTEGER(result), 9);
+            assert_eq!(INTEGER_ELT(result, 0), 9);
         }
     }
 
@@ -1692,7 +1692,7 @@ mod tests {
             crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
             let bcode = compile_expr(call, env.clone().as_raw()).expect("addition should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
-            assert_eq!(*INTEGER(result), 6);
+            assert_eq!(INTEGER_ELT(result, 0), 6);
         }
     }
 
@@ -1745,7 +1745,7 @@ mod tests {
 
             let bcode = compile_expr(block, env.clone().as_raw()).expect("block should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.clone().as_raw());
-            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(INTEGER_ELT(result, 0), 1);
             assert_eq!(
                 *INTEGER(crate::sexp::envir::R_findVar(
                     crate::sexp::symbol::install_str("x"),
@@ -1792,7 +1792,7 @@ mod tests {
             let bcode = compile_expr(for_call, env).expect("for loop should compile");
             let result = super::super::bc_eval::bcEval(bcode, env);
             assert_eq!(result, R_NilValue());
-            assert_eq!(*INTEGER(crate::sexp::envir::R_findVar(sum, env)), 6);
+            assert_eq!(INTEGER_ELT(crate::sexp::envir::R_findVar(sum, env), 0), 6);
 
             let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let empty_for = Rf_cons(
@@ -1883,7 +1883,7 @@ mod tests {
             drop(compiler);
             owner.full_gc().unwrap();
             let value = super::super::bc_eval::bcEval(bytecode.as_raw(), environment.as_raw());
-            assert_eq!(*INTEGER(value), 73);
+            assert_eq!(INTEGER_ELT(value, 0), 73);
             drop(bytecode);
             owner.full_gc().unwrap();
             assert!(crate::sexp::memory::checked_projection(constant).is_none());

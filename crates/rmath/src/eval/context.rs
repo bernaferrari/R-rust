@@ -6,7 +6,7 @@ use std::ptr;
 use crate::mainutils::coerce::asInteger;
 use crate::mainutils::duplicate::{duplicate, shallow_duplicate};
 use crate::mainutils::relop::{PRIMVAL, checkArity};
-use crate::sexp::accessors::{CAR, CDR, INTEGER, SETCAR};
+use crate::sexp::accessors::{CAR, CDR, SETCAR, SET_INTEGER_ELT};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::constructors::{Rf_allocVector, Rf_length};
 use crate::sexp::context::{R_GlobalContext_in, RCNTXT, ctxt_flags};
@@ -425,7 +425,7 @@ pub unsafe fn do_sys_in(
                 let nframe = framedepth(cptr);
                 let rval = Rf_allocVector(SEXPTYPE::INTSXP, nframe);
                 for i in 0..nframe {
-                    *INTEGER(rval).add(i as usize) = R_sysparent_in(instance, nframe - i, cptr);
+                    SET_INTEGER_ELT(rval, i as i32, R_sysparent_in(instance, nframe - i, cptr));
                 }
                 rval
             }
@@ -824,7 +824,7 @@ mod owned_transfer_tests {
                     .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
                     .unwrap();
                 let pointer = value.as_raw();
-                *INTEGER(pointer) = 87;
+                SET_INTEGER_ELT(pointer, 0, 87);
                 let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
                 let target = crate::sexp::context::Rf_begincontext_in(
                     instance,

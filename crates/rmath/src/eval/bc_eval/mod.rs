@@ -18,8 +18,8 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, ENCLOS, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, STRING_ELT,
-    TYPEOF, VECTOR_ELT,
+    CAR, CDR, CHAR, COMPLEX_ELT, ENCLOS, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, LOGICAL_ELT,
+    PRINTNAME, RAW_ELT, REAL, REAL_ELT, SET_INTEGER_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;

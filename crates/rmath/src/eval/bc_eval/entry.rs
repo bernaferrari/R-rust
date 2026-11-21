@@ -726,11 +726,11 @@ pub(crate) fn bc_eval_private(
                             {
                                 seq_len = LENGTH(seq_val);
                             }
-                            let ctr = *INTEGER(ctr_ptr);
+                            let ctr = INTEGER_ELT(ctr_ptr, 0);
                             if ctr + 1 >= seq_len {
                                 pc = target;
                             } else {
-                                *INTEGER(ctr_ptr) = ctr + 1;
+                                SET_INTEGER_ELT(ctr_ptr, 0, ctr + 1);
                                 let idx = (ctr + 1) as usize;
                                 if TYPEOF(seq_val) == SEXPTYPE::INTSXP {
                                     let data = INTEGER(seq_val);

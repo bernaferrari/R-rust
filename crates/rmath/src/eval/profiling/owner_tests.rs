@@ -1232,7 +1232,7 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
             crate::eval::bc_eval::bcEval(bcode.as_raw(), crate::sexp::globals::R_GlobalEnv());
         R_EndProfiling();
 
-        assert_eq!(*INTEGER(result), 99);
+        assert_eq!(INTEGER_ELT(result, 0), 99);
         assert!(
             in_bc_seen.get(),
             "GNU bcEval must set R_Srcref to R_InBCInterpreter"

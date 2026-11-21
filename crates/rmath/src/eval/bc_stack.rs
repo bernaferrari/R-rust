@@ -162,7 +162,7 @@ mod tests {
                 .unwrap()
                 .full_gc()
                 .unwrap();
-            assert_eq!(*INTEGER(popped.as_raw()), 22);
+            assert_eq!(INTEGER_ELT(popped.as_raw(), 0), 22);
             assert!(stack.is_empty());
             assert!(crate::sexp::memory::checked_projection(a).is_none());
         });
@@ -187,7 +187,7 @@ mod tests {
                 .unwrap_err();
                 assert!(error.downcast_ref::<RError>().is_some());
                 assert_eq!(stack.depth(), 1);
-                assert_eq!(*INTEGER(stack.top()), 3);
+                assert_eq!(INTEGER_ELT(stack.top(), 0), 3);
             }
             let value = stack.top();
             let error = catch_unwind(AssertUnwindSafe(|| {
@@ -217,7 +217,7 @@ mod tests {
             with_bc_stack(|stack| {
                 assert_eq!(stack.depth(), 1);
                 let value = stack.pop_owned();
-                assert_eq!({ *INTEGER(value.as_raw()) }, 17);
+                assert_eq!({ INTEGER_ELT(value.as_raw(), 0) }, 17);
             })
         });
     }

@@ -319,29 +319,26 @@ fn get_R_ToplevelContext() -> *mut RCNTXT {
 
 /// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.
 fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
-    unsafe {
-        if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0
-        {
-            return R_NilValue();
-        }
-        let body = crate::sexp::context::own_control_value(body);
-        let constants = crate::sexp::context::own_control_value(
-            crate::eval::bc_eval::BCODE_CONSTS(body.as_raw()),
-        );
-        let table = find_loc_table(constants.as_raw(), c"srcrefsIndex");
-        if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::INTSXP {
-            return R_NilValue();
-        }
-        let table_len = LENGTH(table) as isize;
-        if relpc >= table_len {
-            return R_NilValue();
-        }
-        let cidx = *INTEGER(table).offset(relpc);
-        if cidx < 0 || cidx >= LENGTH(constants.as_raw()) {
-            return R_NilValue();
-        }
-        crate::sexp::accessors::VECTOR_ELT(constants.as_raw(), cidx as i64)
+    if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0
+    {
+        return R_NilValue();
     }
+    let body = crate::sexp::context::own_control_value(body);
+    let constants =
+        crate::sexp::context::own_control_value(crate::eval::bc_eval::BCODE_CONSTS(body.as_raw()));
+    let table = find_loc_table(constants.as_raw(), c"srcrefsIndex");
+    if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::INTSXP {
+        return R_NilValue();
+    }
+    let table_len = LENGTH(table) as isize;
+    if relpc >= table_len {
+        return R_NilValue();
+    }
+    let cidx = crate::sexp::accessors::INTEGER_ELT(table, relpc as i32);
+    if cidx < 0 || cidx >= LENGTH(constants.as_raw()) {
+        return R_NilValue();
+    }
+    crate::sexp::accessors::VECTOR_ELT(constants.as_raw(), cidx as i64)
 }
 
 /// Return the srcref for the current bytecode instruction (when `cptr` is null)

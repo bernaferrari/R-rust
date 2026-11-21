@@ -247,7 +247,7 @@ fn gnu_constant_return_uses_code_pool_after_source_edit() {
         // the tagged GNU instruction stream and its constant pool.
         SET_VECTOR_ELT(bcode, 4, Rf_ScalarInteger(99));
         let result = bcEval(bcode, R_BaseEnv());
-        assert_eq!(*INTEGER(result), 42);
+        assert_eq!(INTEGER_ELT(result, 0), 42);
     }
 }
 
@@ -293,7 +293,7 @@ fn gnu_doloopbreak_skips_the_loop_body_constant() {
         SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(7));
         SET_VECTOR_ELT(consts, 1, Rf_ScalarInteger(42));
         let result = bcEval(gnu_tagged_bcode(&code, consts), R_BaseEnv());
-        assert_eq!(*INTEGER(result), 42);
+        assert_eq!(INTEGER_ELT(result, 0), 42);
     }
 }
 
@@ -487,10 +487,10 @@ fn test_bc_eval_setvar2_writes_enclosing_frame() {
 
     let result = unsafe { bcEval(bcode, child) };
     unsafe {
-        assert_eq!(*INTEGER(result), 42);
+        assert_eq!(INTEGER_ELT(result, 0), 42);
         let found_parent = crate::sexp::envir::R_findVarInFrame(parent, sym);
         assert_ne!(found_parent, R_UnboundValue());
-        assert_eq!(*INTEGER(found_parent), 42);
+        assert_eq!(INTEGER_ELT(found_parent, 0), 42);
         let found_child = crate::sexp::envir::R_findVarInFrame(child, sym);
         assert_eq!(found_child, R_UnboundValue());
     }
@@ -586,7 +586,7 @@ fn test_bc_eval_swload_loads_constant_table_entry() {
 
     let result = unsafe { bcEval(bcode, env) };
     unsafe {
-        assert_eq!(*INTEGER(result), 42);
+        assert_eq!(INTEGER_ELT(result, 0), 42);
     }
 }
 
@@ -645,7 +645,7 @@ fn test_bc_eval_operand_stack_survives_gc_in_callee() {
     );
     unsafe {
         assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-        assert_eq!(*LOGICAL(result), TRUE);
+        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
     }
 }
 #[test]
@@ -687,7 +687,7 @@ fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
     );
     unsafe {
         assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
-        assert_eq!(*LOGICAL(result), TRUE);
+        assert_eq!(LOGICAL_ELT(result, 0), TRUE);
     }
 }
 #[test]
