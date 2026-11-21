@@ -71,7 +71,8 @@ fn base_binding_peer(env: SEXP) -> Option<SEXP> {
     if env.is_null() {
         return None;
     }
-    let base = with_current_instance(super::globals::R_BaseEnv_in)?;
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let base = with_current_instance(|inst| unsafe { super::globals::R_BaseEnv_in(inst) })?;
     {
         if base.is_null() || base == R_NilValue() || env == R_NilValue() {
             return None;
@@ -118,7 +119,8 @@ fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
     if env.is_null() || symbol.is_null() {
         return None;
     }
-    let base = with_current_instance(super::globals::R_BaseEnv_in)?;
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let base = with_current_instance(|inst| unsafe { super::globals::R_BaseEnv_in(inst) })?;
     unsafe {
         if base.is_null() || env == R_NilValue() {
             return None;
@@ -165,7 +167,8 @@ fn sexp_err(context: &str, err: SexpError) -> String {
 }
 
 fn global_env_handle<'a>() -> Sexp<'a> {
-    let raw = with_required_current_instance(R_GlobalEnv_in);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let raw = with_required_current_instance(|inst| unsafe { R_GlobalEnv_in(inst) });
     unsafe { Sexp::from_raw_unchecked(raw) }
 }
 
@@ -202,9 +205,7 @@ pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
     super::instance::with_required_binding_tables(|tables| {
         tables.locked_bindings.insert(binding_key(env, symbol));
         if let Some(peer) = peer {
-            tables
-                .locked_bindings
-                .insert(binding_key(peer, symbol));
+            tables.locked_bindings.insert(binding_key(peer, symbol));
         }
     });
 }
@@ -212,13 +213,9 @@ pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
 pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
     let peer = base_binding_peer(env);
     super::instance::with_required_binding_tables(|tables| {
-        tables
-            .locked_bindings
-            .remove(&binding_key(env, symbol));
+        tables.locked_bindings.remove(&binding_key(env, symbol));
         if let Some(peer) = peer {
-            tables
-                .locked_bindings
-                .remove(&binding_key(peer, symbol));
+            tables.locked_bindings.remove(&binding_key(peer, symbol));
         }
     });
 }
@@ -350,9 +347,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
             }
             SETCAR(frame, fun);
             super::instance::with_required_binding_tables(|tables| {
-                tables
-                    .active_bindings
-                    .insert(binding_key(env, symbol), fun);
+                tables.active_bindings.insert(binding_key(env, symbol), fun);
                 if let Some(peer) = peer {
                     tables
                         .active_bindings
@@ -377,9 +372,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
     SET_FRAME(env, new_cell);
     mirror_base_frame(env, peer);
     super::instance::with_required_binding_tables(|tables| {
-        tables
-            .active_bindings
-            .insert(binding_key(env, symbol), fun);
+        tables.active_bindings.insert(binding_key(env, symbol), fun);
         if let Some(peer) = peer {
             tables
                 .active_bindings

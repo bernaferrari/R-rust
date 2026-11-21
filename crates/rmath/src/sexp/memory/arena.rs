@@ -1591,7 +1591,11 @@ thread_local! {
     static LEND_LEDGER: RefCell<Vec<LendLedger>> = const { RefCell::new(Vec::new()) };
 }
 
-pub(super) fn install_lend_ledger(inst: *mut super::super::instance::RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(super) unsafe fn install_lend_ledger(inst: *mut super::super::instance::RInstance) {
     let ledger = unsafe {
         let arena = &(*inst).arena;
         LendLedger {

@@ -300,7 +300,7 @@ fn get_R_ToplevelContext() -> *mut RCNTXT {
 /// whose class inherits `tclass`, e.g. `"srcrefsIndex"`).
 ///
 /// Mirrors GNU R's `findLocTable()` in `src/main/eval.c`.
- fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
+fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
     if constants.is_null() || constants == R_NilValue() || TYPEOF(constants) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
@@ -319,8 +319,7 @@ fn get_R_ToplevelContext() -> *mut RCNTXT {
 
 /// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.
 fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
-    if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0
-    {
+    if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0 {
         return R_NilValue();
     }
     let body = crate::sexp::context::own_control_value(body);
@@ -401,10 +400,15 @@ fn with_profiling_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ProfilingState) -> R,
 {
-    with_required_current_instance(|instance| with_profiling_state_in(instance, f))
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|instance| unsafe { with_profiling_state_in(instance, f) })
 }
 
-pub(crate) fn with_profiling_state_in<F, R>(instance: *mut RInstance, f: F) -> R
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn with_profiling_state_in<F, R>(instance: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut ProfilingState) -> R,
 {
@@ -426,7 +430,9 @@ impl ProfileEpoch {
         let pin = owner
             .pin()?
             .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
-        let generation = with_profiling_state_in(owner.as_ptr(), |state| state.profile_generation);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let generation =
+            unsafe { with_profiling_state_in(owner.as_ptr(), |state| state.profile_generation) };
         Ok(Self { pin, generation })
     }
     fn unchanged(&self) -> bool {
@@ -434,20 +440,26 @@ impl ProfileEpoch {
         owner
             .require_active()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        with_profiling_state_in(owner.as_ptr(), |state| {
-            state.profile_generation == self.generation
-        })
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            with_profiling_state_in(owner.as_ptr(), |state| {
+                state.profile_generation == self.generation
+            })
+        }
     }
 }
 struct SamplingGuard(ProfileEpoch);
 impl Drop for SamplingGuard {
     fn drop(&mut self) {
         // Physical cleanup must still work when a provider revoked the owner.
-        with_profiling_state_in(self.0.pin.as_ptr(), |state| {
-            if state.profile_generation == self.0.generation {
-                state.sampling_in_progress = false;
-            }
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            with_profiling_state_in(self.0.pin.as_ptr(), |state| {
+                if state.profile_generation == self.0.generation {
+                    state.sampling_in_progress = false;
+                }
+            })
+        };
     }
 }
 
@@ -459,9 +471,12 @@ pub(crate) fn sample_at_safe_point(
 ) -> crate::sexp::object::SexpResult<()> {
     // Each audited caller has just checked its original execution owner. The
     // disabled path must stay a plain flag read, without clocks or Rc traffic.
-    if with_profiling_state_in(owner.as_ptr(), |state| {
-        state.profiling == 0 || state.profile_schedule.is_none()
-    }) {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    if unsafe {
+        with_profiling_state_in(owner.as_ptr(), |state| {
+            state.profiling == 0 || state.profile_schedule.is_none()
+        })
+    } {
         return Ok(());
     }
     crate::sexp::instance::check_cancellation();
@@ -472,27 +487,33 @@ fn write_profile_sample(
     forced: bool,
 ) -> crate::sexp::object::SexpResult<()> {
     owner.require_active()?;
-    if with_profiling_state_in(owner.as_ptr(), |state| {
-        state.profiling == 0 || state.sampling_in_progress
-    }) {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    if unsafe {
+        with_profiling_state_in(owner.as_ptr(), |state| {
+            state.profiling == 0 || state.sampling_in_progress
+        })
+    } {
         return Ok(());
     }
     let epoch = ProfileEpoch::capture(owner)?;
-    let ready = with_profiling_state_in(owner.as_ptr(), |state| {
-        if state.profiling == 0 || state.sampling_in_progress {
-            return false;
-        }
-        if !forced
-            && !state
-                .profile_schedule
-                .as_mut()
-                .is_some_and(ProfileSchedule::due)
-        {
-            return false;
-        }
-        state.sampling_in_progress = true;
-        true
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let ready = unsafe {
+        with_profiling_state_in(owner.as_ptr(), |state| {
+            if state.profiling == 0 || state.sampling_in_progress {
+                return false;
+            }
+            if !forced
+                && !state
+                    .profile_schedule
+                    .as_mut()
+                    .is_some_and(ProfileSchedule::due)
+            {
+                return false;
+            }
+            state.sampling_in_progress = true;
+            true
+        })
+    };
     if ready {
         let _guard = SamplingGuard(epoch);
         let _visibility = super::runtime::VisibilityGuard::new();
@@ -513,10 +534,15 @@ struct MemoryProfileSnapshot {
 }
 
 fn memory_profile_snapshot() -> MemoryProfileSnapshot {
-    with_required_current_instance(memory_profile_snapshot_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { memory_profile_snapshot_in(inst) })
 }
 
-fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileSnapshot {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileSnapshot {
     // P1/P2: all borrows are statement-local reads/writes of plain counters;
     // nothing here allocates or reenters the interpreter.
     unsafe {
@@ -558,10 +584,15 @@ unsafe fn write_memory_profile_prefix(pb: *mut profbuf, snapshot: MemoryProfileS
 
 /// Check whether R profiling is currently active.
 pub fn R_Profiling_active() -> c_int {
-    with_required_current_instance(R_Profiling_active_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_Profiling_active_in(inst) })
 }
 
-pub(crate) fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
     unsafe { (*instance).eval_state.profiling.profiling }
 }
 
@@ -571,10 +602,15 @@ pub(crate) fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
 
 /// Check if R profiling is enabled (public API).
 pub fn R_isRprofiling() -> c_int {
-    with_required_current_instance(R_isRprofiling_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_isRprofiling_in(inst) })
 }
 
-pub(crate) fn R_isRprofiling_in(instance: *mut RInstance) -> c_int {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_isRprofiling_in(instance: *mut RInstance) -> c_int {
     unsafe { (*instance).eval_state.profiling.profiling }
 }
 
@@ -2220,12 +2256,10 @@ mod tests {
     }
 
     fn pairlist(values: &[SEXP]) -> SEXP {
-        
-            values
-                .iter()
-                .rev()
-                .fold(R_NilValue(), |tail, value| Rf_cons(*value, tail))
-        
+        values
+            .iter()
+            .rev()
+            .fold(R_NilValue(), |tail, value| Rf_cons(*value, tail))
     }
 
     fn unique_profile_path(prefix: &str) -> String {
@@ -2425,22 +2459,41 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        with_profiling_state_in(&mut left as *mut RInstance, |state| {
-            state.profiling = 1;
-            state.bc_profiling = 1;
-            state.current_opcode = 9;
-            state.opcode_counts[9] = 17;
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            with_profiling_state_in(&mut left as *mut RInstance, |state| {
+                state.profiling = 1;
+                state.bc_profiling = 1;
+                state.current_opcode = 9;
+                state.opcode_counts[9] = 17;
+            })
+        };
 
-        assert_eq!(R_Profiling_active_in(&mut left as *mut RInstance), 1);
-        assert_eq!(R_isRprofiling_in(&mut left as *mut RInstance), 1);
-        assert_eq!(R_Profiling_active_in(&mut right as *mut RInstance), 0);
-        assert_eq!(R_isRprofiling_in(&mut right as *mut RInstance), 0);
-        with_profiling_state_in(&mut right as *mut RInstance, |state| {
-            assert_eq!(state.bc_profiling, 0);
-            assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
-            assert_eq!(state.opcode_counts[9], 0);
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(
+            unsafe { R_Profiling_active_in(&mut left as *mut RInstance) },
+            1
+        );
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_isRprofiling_in(&mut left as *mut RInstance) }, 1);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(
+            unsafe { R_Profiling_active_in(&mut right as *mut RInstance) },
+            0
+        );
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(
+            unsafe { R_isRprofiling_in(&mut right as *mut RInstance) },
+            0
+        );
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            with_profiling_state_in(&mut right as *mut RInstance, |state| {
+                assert_eq!(state.bc_profiling, 0);
+                assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
+                assert_eq!(state.opcode_counts[9], 0);
+            })
+        };
     }
 
     #[test]
@@ -2501,11 +2554,14 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        let before = memory_profile_snapshot_in(&mut left as *mut RInstance);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let before = unsafe { memory_profile_snapshot_in(&mut left as *mut RInstance) };
         left.arena.alloc_vector(SEXPTYPE::REALSXP, 64);
         left.arena.alloc_charsxp(b"profile-explicit-left");
-        let after = memory_profile_snapshot_in(&mut left as *mut RInstance);
-        let right_snapshot = memory_profile_snapshot_in(&mut right as *mut RInstance);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let after = unsafe { memory_profile_snapshot_in(&mut left as *mut RInstance) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let right_snapshot = unsafe { memory_profile_snapshot_in(&mut right as *mut RInstance) };
 
         assert!(after.current_bytes > before.current_bytes);
         assert!(after.active_nodes > before.active_nodes);
@@ -2559,44 +2615,40 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| {
             let path = unique_profile_path("rport-rprof");
-            let args = 
-                pairlist(&[
-                    r_string(&path),
-                    Rf_ScalarLogical(FALSE),
-                    Rf_ScalarReal(0.02),
-                    Rf_ScalarLogical(FALSE),
-                    Rf_ScalarLogical(FALSE),
-                    Rf_ScalarLogical(FALSE),
-                    Rf_ScalarLogical(FALSE),
-                    Rf_ScalarInteger(100),
-                    Rf_ScalarInteger(PROFBUFSIZ as c_int),
-                    r_string("elapsed"),
-                ])
-            ;
+            let args = pairlist(&[
+                r_string(&path),
+                Rf_ScalarLogical(FALSE),
+                Rf_ScalarReal(0.02),
+                Rf_ScalarLogical(FALSE),
+                Rf_ScalarLogical(FALSE),
+                Rf_ScalarLogical(FALSE),
+                Rf_ScalarLogical(FALSE),
+                Rf_ScalarInteger(100),
+                Rf_ScalarInteger(PROFBUFSIZ as c_int),
+                r_string("elapsed"),
+            ]);
 
-            
-                crate::mainutils::essentials::do_Rprof(
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    args,
-                    R_NilValue(),
-                );
-            
+            crate::mainutils::essentials::do_Rprof(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                args,
+                R_NilValue(),
+            );
+
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 1);
                 assert_eq!(state.mem_profiling, 0);
                 assert!(state.profile_outfile >= 0);
             });
 
-            
-                let stop_args = pairlist(&[r_string("")]);
-                crate::mainutils::essentials::do_Rprof(
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    stop_args,
-                    R_NilValue(),
-                );
-            
+            let stop_args = pairlist(&[r_string("")]);
+            crate::mainutils::essentials::do_Rprof(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                stop_args,
+                R_NilValue(),
+            );
+
             with_profiling_state(|state| {
                 assert_eq!(state.profiling, 0);
                 assert_eq!(state.profile_outfile, -1);

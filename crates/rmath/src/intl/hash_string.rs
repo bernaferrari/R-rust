@@ -18,12 +18,6 @@ use crate::intl::types::{HASHWORDBITS, cstr};
 ///
 /// # Safety
 /// `str_param` must be a valid pointer to a NUL-terminated C string.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn __hash_string(str_param: *const c_char) -> u32 {
     let mut hval: u32 = 0;
     let mut g: u32;

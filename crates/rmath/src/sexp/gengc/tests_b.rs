@@ -129,9 +129,12 @@ fn test_gc_root_updates_can_target_instance_explicitly() {
     right.preserve_stack.push_for_test(right_root);
     right.gc_state.remembered_set.add(right_obj);
 
-    update_protect_stack_in(&mut left, &old_to_new);
-    update_preserve_stack_in(&mut left, &old_to_new);
-    update_remembered_set_in(&mut left, &old_to_new);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { update_protect_stack_in(&mut left, &old_to_new) };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { update_preserve_stack_in(&mut left, &old_to_new) };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { update_remembered_set_in(&mut left, &old_to_new) };
 
     left.legacy_protect
         .with_entries(|entries| assert_eq!(entries[0], new));
@@ -1432,7 +1435,8 @@ fn test_remembered_set_remap_updates_membership() {
     inst.gc_state.remembered_set.add(old);
     let mut map = HashMap::new();
     map.insert(old as usize, new);
-    update_remembered_set_in(&mut inst, &map);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { update_remembered_set_in(&mut inst, &map) };
 
     assert!(inst.gc_state.remembered_set.iter().any(|obj| obj == new));
     // Membership follows the remapped address: re-adding the new pointer
@@ -1633,7 +1637,10 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
         .zip(replacements.iter().copied())
         .map(|(old, new)| (old as usize, new))
         .collect::<HashMap<_, _>>();
-    instance::with_required_current_instance(|inst| update_instance_roots_in(inst, &remap));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    instance::with_required_current_instance(|inst| unsafe {
+        update_instance_roots_in(inst, &remap)
+    });
 
     instance::with_required_current_instance(|inst| unsafe {
         assert_eq!(
@@ -1753,7 +1760,8 @@ fn test_locked_tables_swept_with_dead_keys_live_keys_kept() {
     crate::sexp::envir::lock_binding_raw(live_env, sym);
 
     // Root only live_env across the collection.
-    instance::with_required_current_instance(|inst| push_protect_in(inst, live_env));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    instance::with_required_current_instance(|inst| unsafe { push_protect_in(inst, live_env) });
 
     full_gc();
 
@@ -1824,7 +1832,8 @@ fn test_binding_tables_resolve_across_gc_churn() {
     }
     instance::with_required_current_instance(|inst| {
         for &(env, _) in &rooted {
-            push_protect_in(inst, env);
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            unsafe { push_protect_in(inst, env) };
         }
     });
 

@@ -20,13 +20,18 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
     if !unsafe { write_barrier_in(instance, parent, child) } {
         // A valid edge may have been published by an infallible setter.
         // Invalid inputs are rejected before any reservation is attempted.
-        if checked_barrier_pair(instance, parent, child).is_some() {
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        if unsafe { checked_barrier_pair(instance, parent, child) }.is_some() {
             std::alloc::handle_alloc_error(std::alloc::Layout::new::<SEXP>());
         }
     }
 }
 
-pub(crate) fn checked_barrier_pair(
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn checked_barrier_pair(
     instance: *mut instance::RInstance,
     parent: SEXP,
     child: SEXP,
@@ -69,12 +74,15 @@ pub(crate) unsafe fn write_barrier_in(
     {
         return true;
     }
-    let Some((parent, parent_gen, child_gen)) = checked_barrier_pair(instance, parent, child)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let Some((parent, parent_gen, child_gen)) =
+        (unsafe { checked_barrier_pair(instance, parent, child) })
     else {
         return false;
     };
     if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
-        with_gc_state_in(instance, |state| state.remembered_set.try_add(parent))
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { with_gc_state_in(instance, |state| state.remembered_set.try_add(parent)) }
     } else {
         true
     }

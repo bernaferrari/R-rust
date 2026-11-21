@@ -274,10 +274,17 @@ pub(crate) fn append_bounded(
 
 /// Start capturing R output.
 pub fn start_capture() {
-    super::super::instance::with_required_current_instance(start_capture_in);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::super::instance::with_required_current_instance(|inst| unsafe {
+        start_capture_in(inst)
+    });
 }
 
-pub(crate) fn start_capture_in(inst: *mut RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn start_capture_in(inst: *mut RInstance) {
     // P2: strictly-local RefCell write; no ambient write intervenes.
     unsafe {
         (*inst).output_capture.borrow_mut().start();
@@ -286,10 +293,15 @@ pub(crate) fn start_capture_in(inst: *mut RInstance) {
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    super::super::instance::with_required_current_instance(stop_capture_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::super::instance::with_required_current_instance(|inst| unsafe { stop_capture_in(inst) })
 }
 
-pub(crate) fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
     // P2: strictly-local RefCell read/write; no ambient write intervenes.
     unsafe { (*inst).output_capture.borrow_mut().stop() }
 }
@@ -316,7 +328,8 @@ impl OutputCaptureGuard {
 
     pub(crate) fn start() -> Self {
         let owner = Self::owner();
-        start_capture_in(owner.as_ptr());
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { start_capture_in(owner.as_ptr()) };
         let frame = owner.with_output_capture(|capture| capture.borrow().current.id);
         Self {
             owner,
@@ -374,10 +387,16 @@ impl Drop for OutputCaptureGuard {
 
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
-    super::super::instance::with_current_instance(is_capturing_in).unwrap_or(false)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::super::instance::with_current_instance(|inst| unsafe { is_capturing_in(inst) })
+        .unwrap_or(false)
 }
 
-pub fn is_capturing_in(inst: *mut RInstance) -> bool {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub unsafe fn is_capturing_in(inst: *mut RInstance) -> bool {
     // P2: strictly-local RefCell read; no ambient write intervenes.
     let capture_active = unsafe { (*inst).output_capture.borrow().is_capturing() };
     capture_active || crate::mainutils::connections::output_sink_active_in(inst)
@@ -385,11 +404,18 @@ pub fn is_capturing_in(inst: *mut RInstance) -> bool {
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
-    super::super::instance::with_current_instance(|inst| capture_stdout_in(inst, msg));
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    super::super::instance::with_current_instance(|inst| unsafe { capture_stdout_in(inst, msg) });
 }
 
-pub fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
-    capture_stdout_bytes_in(inst, msg.as_bytes());
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { capture_stdout_bytes_in(inst, msg.as_bytes()) };
 }
 fn call_native<T>(owner: super::super::owner::OwnerToken<'_>, operation: impl FnOnce() -> T) -> T {
     owner
@@ -469,7 +495,11 @@ fn route_runtime(
     }
     false
 }
-fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
     let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
     let _pin = owner
         .pin()
@@ -503,7 +533,8 @@ pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_
         .require_active()
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        capture_stdout_bytes_in(owner.as_ptr(), msg)
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { capture_stdout_bytes_in(owner.as_ptr(), msg) }
     }));
     owner
         .require_active()
@@ -521,16 +552,28 @@ pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_
 /// between print() side effects, deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
     super::super::instance::with_current_instance(|inst| {
-        capture_error_bytes_in(inst, OutputStream::Message, msg)
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { capture_error_bytes_in(inst, OutputStream::Message, msg) }
     });
 }
 pub fn capture_stderr(msg: &str) {
-    super::super::instance::with_current_instance(|inst| capture_stderr_in(inst, msg));
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    super::super::instance::with_current_instance(|inst| unsafe { capture_stderr_in(inst, msg) });
 }
-pub fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
-    capture_error_bytes_in(inst, OutputStream::Stderr, msg);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { capture_error_bytes_in(inst, OutputStream::Stderr, msg) };
 }
-fn capture_error_bytes_in(inst: *mut RInstance, stream: OutputStream, msg: &str) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn capture_error_bytes_in(inst: *mut RInstance, stream: OutputStream, msg: &str) {
     let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
     let _pin = owner
         .pin()

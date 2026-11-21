@@ -3,17 +3,15 @@ use crate::sexp::accessors::INTEGER_ELT;
 use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
 
 fn frame(name: &str) -> crate::sexp::context::ContextGuard {
-     frame_in(name, R_NilValue(), R_NilValue()) 
+    frame_in(name, R_NilValue(), R_NilValue())
 }
-fn frame_in(
-    name: &str,
-    environment: SEXP,
-    parent: SEXP,
-) -> crate::sexp::context::ContextGuard {
+fn frame_in(name: &str, environment: SEXP, parent: SEXP) -> crate::sexp::context::ContextGuard {
     unsafe {
         let owner = OwnerToken::current().unwrap();
         let factory = owner.node_factory();
-        let symbol = factory.wrap(crate::sexp::symbol::install_str(name)).unwrap();
+        let symbol = factory
+            .wrap(crate::sexp::symbol::install_str(name))
+            .unwrap();
         let call = factory.call(&symbol, &factory.nil()).unwrap();
         crate::sexp::context::begin_context_guard(
             ctxt_flags::CTXT_FUNCTION,
@@ -31,8 +29,8 @@ fn frame_in(
 #[test]
 fn owner_profile_includes_the_current_leaf_frame() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let path =
             std::env::temp_dir().join(format!("rport-profile-leaf-{}.out", std::process::id()));
         let filename = owner
@@ -65,7 +63,7 @@ fn owner_profile_includes_the_current_leaf_frame() {
 }
 
 fn source_provider(owner: OwnerToken<'_>) -> Sexp<'static> {
-     source_provider_body(owner, "function() { 1L + 2L; \"owner-profile.R\" }") 
+    source_provider_body(owner, "function() { 1L + 2L; \"owner-profile.R\" }")
 }
 fn source_provider_body(owner: OwnerToken<'_>, body: &str) -> Sexp<'static> {
     unsafe {
@@ -247,8 +245,8 @@ fn owner_profile_cancellation_precedes_sampling_and_still_allows_stop() {
     let mut session = RSession::new_for_gc_tests();
     let token = crate::sexp::session::CancellationToken::new();
     session.set_cancellation_token(Some(token.clone()));
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let _source = source_provider(owner);
         let factory = owner.node_factory();
         let expression = factory
@@ -280,8 +278,8 @@ fn owner_profile_cancellation_precedes_sampling_and_still_allows_stop() {
 #[test]
 fn owner_profile_wasm_boundary_refuses_start_and_keeps_stop_a_noop() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let factory = owner.node_factory();
         let name = factory.strings(&["unavailable-profile.out"]).unwrap();
         let args = factory
@@ -316,44 +314,42 @@ fn profile_arguments(
     filename: Sexp<'static>,
     interval: Sexp<'static>,
 ) -> Sexp<'static> {
-    
-        let factory = owner.node_factory();
-        let false_value = factory.domain().logical(false).into_owned().unwrap();
-        let files = factory
-            .wrap(crate::sexp::constructors::Rf_ScalarInteger(100))
+    let factory = owner.node_factory();
+    let false_value = factory.domain().logical(false).into_owned().unwrap();
+    let files = factory
+        .wrap(crate::sexp::constructors::Rf_ScalarInteger(100))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let bytes = factory
+        .wrap(crate::sexp::constructors::Rf_ScalarInteger(
+            PROFBUFSIZ as i32,
+        ))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let event = factory.strings(&["elapsed"]).unwrap().into_owned().unwrap();
+    let values = [
+        filename,
+        false_value.clone(),
+        interval,
+        false_value.clone(),
+        false_value.clone(),
+        false_value.clone(),
+        false_value,
+        files,
+        bytes,
+        event,
+    ];
+    let mut args = factory.nil().into_owned().unwrap();
+    for value in values.iter().rev() {
+        args = factory
+            .pairlist_cell(value, &args, &factory.nil())
             .unwrap()
             .into_owned()
             .unwrap();
-        let bytes = factory
-            .wrap(crate::sexp::constructors::Rf_ScalarInteger(
-                PROFBUFSIZ as i32,
-            ))
-            .unwrap()
-            .into_owned()
-            .unwrap();
-        let event = factory.strings(&["elapsed"]).unwrap().into_owned().unwrap();
-        let values = [
-            filename,
-            false_value.clone(),
-            interval,
-            false_value.clone(),
-            false_value.clone(),
-            false_value.clone(),
-            false_value,
-            files,
-            bytes,
-            event,
-        ];
-        let mut args = factory.nil().into_owned().unwrap();
-        for value in values.iter().rev() {
-            args = factory
-                .pairlist_cell(value, &args, &factory.nil())
-                .unwrap()
-                .into_owned()
-                .unwrap();
-        }
-        args
-    
+    }
+    args
 }
 
 #[test]
@@ -417,7 +413,7 @@ fn owner_profile_argument_provider_revocation_cannot_start_a_replacement_profile
             .into_owned()
             .unwrap();
         (
-             profile_arguments(owner, filename, interval) ,
+            profile_arguments(owner, filename, interval),
             owner.weak_owner().unwrap(),
         )
     };
@@ -623,8 +619,8 @@ fn profile_workspace_source_table_replacement_admits_both_live_backings() {
 #[test]
 fn owner_profile_filter_keeps_parent_function_frames() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let factory = owner.node_factory();
         let global = factory.wrap(crate::sexp::globals::R_GlobalEnv()).unwrap();
         let nil = factory.nil();
@@ -746,8 +742,8 @@ fn owner_profile_filter_advances_synthetic_parent_contexts_after_collection() {
 #[test]
 fn owner_profile_preserves_visibility_when_source_providers_reenter() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let _source = source_provider(owner);
         crate::eval::runtime::set_visible(FALSE);
         R_WriteProfile(0);
@@ -763,8 +759,8 @@ fn owner_profile_preserves_visibility_when_source_providers_reenter() {
 #[test]
 fn owner_profile_preserves_visibility_when_a_source_provider_errors() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let _source = source_provider_body(owner, "function() stop(\"profiling source sentinel\")");
         crate::eval::runtime::set_visible(FALSE);
         let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| R_WriteProfile(0)));
@@ -833,8 +829,8 @@ fn owner_profile_filter_keeps_an_oldest_function_without_a_toplevel_marker() {
 #[test]
 fn owner_profile_typed_eval_returns_source_errors_in_its_result() {
     let session = RSession::new_for_gc_tests();
-    session.with_active(|| 
-{        let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
         let _source = source_provider_body(
             owner,
             "function() stop(\"typed profiling source sentinel\")",
@@ -1129,7 +1125,9 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
 
         // Active binding in global env that triggers R_WriteProfile(0) when
         // GNU_OP_GETVAR evaluates it, while R_Srcref == get_R_InBCInterpreter().
-        let trigger_sym = factory.wrap(crate::sexp::symbol::install_str("gnu_bc_probe")).unwrap();
+        let trigger_sym = factory
+            .wrap(crate::sexp::symbol::install_str("gnu_bc_probe"))
+            .unwrap();
         let sampled = std::rc::Rc::new(std::cell::Cell::new(false));
         let in_bc_seen = std::rc::Rc::new(std::cell::Cell::new(false));
         let sampled_cb = sampled.clone();

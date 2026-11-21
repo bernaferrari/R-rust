@@ -235,7 +235,11 @@ pub(crate) struct RenderPlotBackendGuard {
 
 #[cfg(feature = "renderplot-device")]
 impl RenderPlotBackendGuard {
-    pub(crate) fn install<'a>(
+    /// # Safety
+    ///
+    /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+    /// no conflicting outstanding borrow of the fields touched here.
+    pub(crate) unsafe fn install<'a>(
         instance: *mut RInstance,
         backend: *mut (dyn r_graphics_engine::DrawTarget + 'a),
     ) -> Self {
@@ -284,7 +288,11 @@ pub(crate) struct ProtectScope {
 }
 
 impl ProtectScope {
-    pub(crate) fn new(instance: *mut RInstance) -> Self {
+    /// # Safety
+    ///
+    /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+    /// no conflicting outstanding borrow of the fields touched here.
+    pub(crate) unsafe fn new(instance: *mut RInstance) -> Self {
         let liveness = unsafe { crate::sexp::instance::instance_liveness(instance) };
         let (legacy_depth, root_depth) = unsafe {
             (

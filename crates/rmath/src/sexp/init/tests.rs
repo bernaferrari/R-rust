@@ -354,7 +354,8 @@ fn managed_initialization_does_not_restore_previous_owner_dropped_by_callback() 
         current_instance_ptr().is_none(),
         "revoked previous owner must not be restored"
     );
-    assert!(is_initialized_in(target_pointer));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert!(unsafe { is_initialized_in(target_pointer) });
 }
 
 #[test]
@@ -378,7 +379,8 @@ fn managed_initialization_rejects_callback_revocation_before_publication() {
     }));
     assert!(failure.is_err());
     assert!(fired.get(), "bootstrap must exercise owner revocation");
-    assert!(!is_initialized_in(target_pointer));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert!(!unsafe { is_initialized_in(target_pointer) });
     assert!(current_instance_ptr().is_none());
 }
 

@@ -21,12 +21,6 @@ use crate::intl::types::{c_free, cstr, ptr_mut, slice_mut, slice_ref};
 /// # Safety
 /// `codeset` must be a valid pointer and `name_len` must be the length
 /// of the string at `codeset`.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
     let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
         .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
@@ -72,12 +66,6 @@ unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut
 /// # Safety
 /// `name` must be a valid mutable pointer to a NUL-terminated C string.
 /// All output pointers must be valid.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn _nl_explode_name(
     name: *mut c_char,
     language: *mut *const c_char,
@@ -370,14 +358,16 @@ mod tests {
         let mut norm_cs: *const c_char = std::ptr::null();
 
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let mask = unsafe { _nl_explode_name(
-            name.as_mut_ptr() as *mut c_char,
-            &mut lang,
-            &mut mod_,
-            &mut terr,
-            &mut cs,
-            &mut norm_cs,
-        ) };
+        let mask = unsafe {
+            _nl_explode_name(
+                name.as_mut_ptr() as *mut c_char,
+                &mut lang,
+                &mut mod_,
+                &mut terr,
+                &mut cs,
+                &mut norm_cs,
+            )
+        };
 
         // Empty name: language == cp, so cp is set to end of string, mask stays 0.
         assert_eq!(mask, 0);

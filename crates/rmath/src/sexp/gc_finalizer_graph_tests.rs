@@ -88,10 +88,14 @@ fn collect(collection: &Collection, session: &RSession) -> (usize, usize) {
     match collection {
         Collection::Full => full_gc(),
         Collection::Minor => minor_gc(),
-        Collection::Torture => run_gc_cycle_in(
-            session.owner_token().unwrap().as_ptr(),
-            do_torture_mark_sweep_in,
-        ),
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        Collection::Torture => unsafe {
+            run_gc_cycle_in(
+                session.owner_token().unwrap().as_ptr(),
+                // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+                |inst| unsafe { do_torture_mark_sweep_in(inst) },
+            )
+        },
     }
 }
 

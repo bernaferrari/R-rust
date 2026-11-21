@@ -5,7 +5,12 @@ use super::*;
 /// Newly ready finalizers become roots during this collection, after the
 /// initial mark pass. Trace their complete graph before deciding what to free.
 /// Keys alone are insufficient: a child can have been queued for sweeping too.
-pub(crate) fn retain_newly_ready_finalizer_graph(
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn retain_newly_ready_finalizer_graph(
     instance: *mut instance::RInstance,
     to_free: &mut Vec<SEXP>,
     promote_young: bool,

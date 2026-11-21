@@ -217,7 +217,12 @@ impl Default for RCNTXT {
 /// Re-entering the evaluator never derives a new unique reference to a live
 /// context. Removing stack ownership invalidates unleased pointers. Guards and callback
 /// operations retain the same original cell until their cleanup completes.
-fn stack_top_mut(instance: *mut RInstance) -> Option<*mut RCNTXT> {
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn stack_top_mut(instance: *mut RInstance) -> Option<*mut RCNTXT> {
     // SAFETY: `instance` is a live instance pointer from the caller; the
     // Vec access is strictly local and the derived pointer is handed to the
     // caller per the module policy.
@@ -274,7 +279,8 @@ pub unsafe fn R_GlobalContext_in(instance: *mut RInstance) -> *mut RCNTXT {
     // fixups in nextmethod.rs, conexit updates in R_run_onexits_*), so it
     // must be derived from the owning stack, never cast from `&RCNTXT`.
     // P2: read-only derivation from the Vec; no ambient write intervenes.
-    stack_top_mut(instance).unwrap_or(ptr::null_mut())
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    (unsafe { stack_top_mut(instance) }).unwrap_or(ptr::null_mut())
 }
 
 /// Push a new context onto the stack and return a mutable pointer to it.

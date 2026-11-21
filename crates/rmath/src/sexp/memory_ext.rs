@@ -145,10 +145,17 @@ fn with_raw_cons<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
 {
-    super::instance::with_required_current_instance(|instance| with_raw_cons_in(instance, f))
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::instance::with_required_current_instance(|instance| unsafe {
+        with_raw_cons_in(instance, f)
+    })
 }
 
-fn with_raw_cons_in<F, R>(instance: *mut RInstance, f: F) -> R
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn with_raw_cons_in<F, R>(instance: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
 {
@@ -175,7 +182,8 @@ pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP)
     });
     let ptr = unsafe { (*instance).persistent_nodes.allocate_header(header) }
         .unwrap_or_else(|_| crate::sexp::context::r_error("persistent cons allocation"));
-    with_raw_cons_in(instance, |rc| rc.push(ptr));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_raw_cons_in(instance, |rc| rc.push(ptr)) };
     ptr
 }
 
@@ -190,13 +198,16 @@ pub(crate) unsafe fn free_raw_cons_in(instance: *mut RInstance, ptr: SEXP) {
     if ptr.is_null() {
         return;
     }
-    let removed = with_raw_cons_in(instance, |cells| {
-        cells
-            .iter()
-            .position(|&p| p == ptr)
-            .map(|pos| cells.remove(pos))
-            .is_some()
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let removed = unsafe {
+        with_raw_cons_in(instance, |cells| {
+            cells
+                .iter()
+                .position(|&p| p == ptr)
+                .map(|pos| cells.remove(pos))
+                .is_some()
+        })
+    };
     if removed {
         unsafe { (*instance).persistent_nodes.remove(ptr) };
     }
@@ -334,10 +345,15 @@ fn with_vmax<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<TransientAllocation>) -> R,
 {
-    super::instance::with_required_current_instance(|instance| with_vmax_in(instance, f))
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::instance::with_required_current_instance(|instance| unsafe { with_vmax_in(instance, f) })
 }
 
-fn with_vmax_in<F, R>(instance: *mut RInstance, f: F) -> R
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn with_vmax_in<F, R>(instance: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut Vec<TransientAllocation>) -> R,
 {
@@ -421,7 +437,8 @@ impl<'session> TransientScope<'session> {
     ) -> super::object::SexpResult<Self> {
         let pin = owner.managed().map(|owner| owner.pin()).transpose()?;
         owner.require_active()?;
-        let mark = with_vmax_in(owner.identity_ptr(), |vmax| vmax.len());
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let mark = unsafe { with_vmax_in(owner.identity_ptr(), |vmax| vmax.len()) };
         Ok(Self {
             owner,
             mark,
@@ -450,12 +467,19 @@ impl Drop for TransientScope<'_> {
 ///
 /// Returns an opaque value to pass to vmaxset().
 pub fn vmaxget() -> *mut c_void {
-    super::instance::with_required_current_instance(vmaxget_in)
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    super::instance::with_required_current_instance(|inst| unsafe { vmaxget_in(inst) })
 }
 
-pub(crate) fn vmaxget_in(instance: *mut RInstance) -> *mut c_void {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn vmaxget_in(instance: *mut RInstance) -> *mut c_void {
     // This is an opaque index, never an address to dereference.
-    with_vmax_in(instance, |vmax| ptr::without_provenance_mut(vmax.len()))
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_vmax_in(instance, |vmax| ptr::without_provenance_mut(vmax.len())) }
 }
 
 /// Reset transient allocations to the given watermark.
@@ -469,10 +493,13 @@ pub fn vmaxset(value: *mut c_void) {
 
 pub(crate) unsafe fn vmaxset_in(instance: *mut RInstance, value: *mut c_void) {
     let mark = value.addr();
-    with_vmax_in(instance, |vmax| {
-        let drain_start = mark.min(vmax.len());
-        vmax.truncate(drain_start);
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_vmax_in(instance, |vmax| {
+            let drain_start = mark.min(vmax.len());
+            vmax.truncate(drain_start);
+        })
+    };
 }
 
 #[cfg(test)]
@@ -481,8 +508,14 @@ fn raw_cons_len() -> usize {
 }
 
 #[cfg(test)]
-fn raw_cons_len_in(instance: *mut RInstance) -> usize {
-    with_raw_cons_in(instance, |rc| rc.len())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn raw_cons_len_in(instance: *mut RInstance) -> usize {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_raw_cons_in(instance, |rc| rc.len()) }
 }
 
 #[cfg(test)]
@@ -491,8 +524,14 @@ fn vmax_len() -> usize {
 }
 
 #[cfg(test)]
-fn vmax_len_in(instance: *mut RInstance) -> usize {
-    with_vmax_in(instance, |vmax| vmax.len())
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn vmax_len_in(instance: *mut RInstance) -> usize {
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_vmax_in(instance, |vmax| vmax.len()) }
 }
 
 // ---------------------------------------------------------------------------

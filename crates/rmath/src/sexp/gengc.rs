@@ -181,10 +181,15 @@ fn with_gc_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GcState) -> R,
 {
-    instance::with_required_current_instance(|instance| with_gc_state_in(instance, f))
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    instance::with_required_current_instance(|instance| unsafe { with_gc_state_in(instance, f) })
 }
 
-fn with_gc_state_in<F, R>(instance: *mut instance::RInstance, f: F) -> R
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+unsafe fn with_gc_state_in<F, R>(instance: *mut instance::RInstance, f: F) -> R
 where
     F: FnOnce(&mut GcState) -> R,
 {

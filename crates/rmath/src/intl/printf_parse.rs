@@ -99,12 +99,6 @@ fn size_overflow_p(size: usize) -> bool {
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
 /// `d` and `a` must be valid pointers.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn printf_parse(
     format: *const c_char,
     d: *mut char_directives,

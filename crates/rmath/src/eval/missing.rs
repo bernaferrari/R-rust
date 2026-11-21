@@ -148,7 +148,7 @@ fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
     dots_context_error("indexing '...' with an invalid index");
 }
 
- fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
+fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
     let mut nargs = 0;
     let mut arg = args;
     while !arg.is_null() && arg != R_NilValue() {
@@ -728,7 +728,7 @@ fn MAYBE_SHARED(x: SEXP) -> bool {
 }
 
 /// Increment the NAMED field, capped at 2.
- fn INCREMENT_NAMED(x: SEXP) {
+fn INCREMENT_NAMED(x: SEXP) {
     if !x.is_null() {
         let n = NAMED(x);
         if n < 2 {
@@ -820,7 +820,6 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
 /// Ported from R's `replaceCall()` in eval.c. Constructs a call like:
 ///   fun(target, indices..., value = rhs)
 pub fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
-    
     let nargs = if !args.is_null() && args != R_NilValue() {
         LENGTH(args)
     } else {
@@ -855,7 +854,6 @@ pub fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
     SETTAG(ptmp, value_sym);
 
     tmp
-
 }
 
 // ---------------------------------------------------------------------------
@@ -867,7 +865,7 @@ pub fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
 /// Ported from R's `unpromiseArgs()` in eval.c. This is called after
 /// a closure execution to clean up promise arguments that are no longer
 /// needed. It clears the promise code and environment fields.
-pub  fn unpromiseArgs(pargs: SEXP) {
+pub fn unpromiseArgs(pargs: SEXP) {
     let mut current = pargs;
     while !current.is_null() && current != R_NilValue() {
         let v = CAR(current);
@@ -895,8 +893,8 @@ pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
     let msg = if arg_sym.is_null() {
         "argument is missing, with no default".to_string()
     } else {
-        let name = crate::sexp::symbol::symbol_name_from_ptr(arg_sym)
-            .unwrap_or_else(|| "???".to_string());
+        let name =
+            crate::sexp::symbol::symbol_name_from_ptr(arg_sym).unwrap_or_else(|| "???".to_string());
         format!("argument \"{name}\" is missing, with no default")
     };
     crate::mainutils::errors::errorcall_cpy(
@@ -1088,7 +1086,6 @@ pub fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `R_initEvalSymbols()` in eval.c. Installs symbols
 /// for assignment operators and other special forms.
 pub fn R_initEvalSymbols() {
-    
     // Assignment operator symbols
     crate::sexp::symbol::install_str(":=");
     crate::sexp::symbol::install_str("<-");
@@ -1122,7 +1119,6 @@ pub fn R_initEvalSymbols() {
 
     // Initialize eval symbols from symbols.rs
     super::symbols::R_initEvalSymbols();
-
 }
 
 // ---------------------------------------------------------------------------
@@ -1137,11 +1133,11 @@ pub fn R_initEvalSymbols() {
 pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
-        eprintln!("Error: invalid (NULL) left side of assignment");
-        std::panic::panic_any(RError {
-            message: "invalid (NULL) left side of assignment".to_string(),
-        });
-    }
+            eprintln!("Error: invalid (NULL) left side of assignment");
+            std::panic::panic_any(RError {
+                message: "invalid (NULL) left side of assignment".to_string(),
+            });
+        }
 
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             // Simple symbol -- the target variable
@@ -1200,20 +1196,30 @@ pub fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 /// Get whether the bytecode interpreter is active.
 #[inline]
 pub fn get_R_BCIntActive() -> c_int {
-    with_required_current_instance(get_R_BCIntActive_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { get_R_BCIntActive_in(inst) })
 }
 
-pub(crate) fn get_R_BCIntActive_in(inst: *mut RInstance) -> c_int {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn get_R_BCIntActive_in(inst: *mut RInstance) -> c_int {
     unsafe { (*inst).eval_state.bc_int_active }
 }
 
 /// Set whether the bytecode interpreter is active.
 #[inline]
 pub fn set_R_BCIntActive(val: c_int) {
-    with_required_current_instance(|inst| set_R_BCIntActive_in(inst, val));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_BCIntActive_in(inst, val) });
 }
 
-pub(crate) fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
     unsafe { (*inst).eval_state.bc_int_active = val };
 }
 
@@ -1367,7 +1373,7 @@ pub fn R_initialize_bcode_full() {
 /// Ensure a value has NAMED >= 1.
 ///
 /// Ported from the ENSURE_NAMED macro in eval.c.
-pub  fn R_ensureNamed(x: SEXP, n: c_int) {
+pub fn R_ensureNamed(x: SEXP, n: c_int) {
     if !x.is_null() && x != R_NilValue() {
         let current = crate::sexp::accessors::NAMED(x);
         if current < n {
@@ -1419,10 +1425,20 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        set_R_BCIntActive_in(&mut left as *mut RInstance, 1);
-        set_R_BCIntActive_in(&mut right as *mut RInstance, 2);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_BCIntActive_in(&mut left as *mut RInstance, 1) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_BCIntActive_in(&mut right as *mut RInstance, 2) };
 
-        assert_eq!(get_R_BCIntActive_in(&mut left as *mut RInstance), 1);
-        assert_eq!(get_R_BCIntActive_in(&mut right as *mut RInstance), 2);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(
+            unsafe { get_R_BCIntActive_in(&mut left as *mut RInstance) },
+            1
+        );
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(
+            unsafe { get_R_BCIntActive_in(&mut right as *mut RInstance) },
+            2
+        );
     }
 }

@@ -12,7 +12,12 @@ use super::*;
 /// (`alloc_gc_torture_ticks` / `alloc_gc_collect_requested`), and
 /// `with_arena_in` feeds the recorded state through its own live instance
 /// borrow into this function once the allocating closure has returned.
-pub(crate) fn process_deferred_alloc_gc_in(
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn process_deferred_alloc_gc_in(
     instance: *mut instance::RInstance,
     torture_ticks: u32,
     collect_requested: bool,
@@ -39,7 +44,12 @@ pub(crate) fn process_deferred_alloc_gc_in(
 /// `R_in_gc` path) instead of recursing. `ticks` is the number of deferred
 /// allocation entries consumed since the last processing point; at most one
 /// collection runs per call.
-pub(crate) fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
     unsafe {
         if (*instance).memory_state.gc_force_gap <= 0 {
             // Not armed: default behavior is identical (single branch).
@@ -70,15 +80,26 @@ pub(crate) fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32
         (*instance).gc_state.gc_pending = false;
         let _collection = crate::mainutils::memory_main::GcOperationGuard::enter(pin, true)
             .unwrap_or_else(|failure| gc_entry_failure(failure));
-        run_gc_cycle_in(instance, do_torture_mark_sweep_in);
+        // `run_gc_cycle_in` hands the live `instance` back to the callback.
+        run_gc_cycle_in(instance, |inst| do_torture_mark_sweep_in(inst));
     }
 }
 
-pub(crate) fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
     unsafe { (*instance).gc_state.gc_pending || (*instance).arena.growth_warrants_gc() }
 }
 
-pub(crate) fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec<SEXP> {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn collect_environment_binding_values(
+    instance: *mut instance::RInstance,
+) -> Vec<SEXP> {
     {
         let mut values = Vec::new();
         let mut seen_envs = std::collections::HashSet::new();
@@ -117,7 +138,8 @@ pub(crate) fn owned_environment_binding_values(
     owner: super::super::owner::OwnerToken<'_>,
 ) -> super::super::object::SexpResult<Vec<super::super::object::Sexp<'static>>> {
     owner.require_active()?;
-    collect_environment_binding_values(owner.as_ptr())
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    (unsafe { collect_environment_binding_values(owner.as_ptr()) })
         .into_iter()
         .map(|value| owner.sexp(value)?.into_owned())
         .collect()

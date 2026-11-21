@@ -37,14 +37,7 @@ fn fixed_live_heap_mark_measurement() {
         let mut rounds = 0;
         let mut mark_ns = 0;
         while started.elapsed() < Duration::from_secs(3) {
-            instance::with_required_current_instance(|owner| {
-                run_gc_cycle_in(owner, |owner| {
-                    let mark_started = Instant::now();
-                    mark_from_all_roots_in(owner);
-                    mark_ns += mark_started.elapsed().as_nanos();
-                    (0, 0)
-                });
-            });
+            mark_ns += timed_mark_from_all_roots_current();
             rounds += 1;
         }
         let elapsed_ns = started.elapsed().as_nanos();

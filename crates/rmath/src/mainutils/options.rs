@@ -597,7 +597,8 @@ fn refresh_options_binding(owner: OwnerToken<'_>) {
     // These identities belong to the captured owner, before pairlist callbacks.
     let base = require_options(
         factory
-            .wrap(R_BaseEnv_in(owner.as_ptr()))
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            .wrap(unsafe { R_BaseEnv_in(owner.as_ptr()) })
             .and_then(Sexp::into_owned),
     );
     let symbol = require_options(factory.wrap(options_symbol()).and_then(Sexp::into_owned));

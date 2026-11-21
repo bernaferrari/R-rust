@@ -36,10 +36,15 @@ fn require_initialization_live(pin: &super::owner::OwnerPin) {
 }
 
 pub fn is_initialized() -> bool {
-    with_required_current_instance(is_initialized_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { is_initialized_in(inst) })
 }
 
-pub(crate) fn is_initialized_in(inst: *mut RInstance) -> bool {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn is_initialized_in(inst: *mut RInstance) -> bool {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).initialized }
 }
@@ -884,10 +889,15 @@ unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
 }
 
 pub fn shutdown_r() {
-    with_required_current_instance(shutdown_r_in);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { shutdown_r_in(inst) });
 }
 
-pub(crate) fn shutdown_r_in(inst: *mut RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn shutdown_r_in(inst: *mut RInstance) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).initialized = false;

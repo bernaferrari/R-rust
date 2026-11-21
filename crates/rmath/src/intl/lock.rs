@@ -153,12 +153,6 @@ impl gl_once_t {
 /// # Safety
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
     // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
     let Some(once) = (unsafe { ptr_mut(once_control) }) else {

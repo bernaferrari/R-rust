@@ -96,12 +96,6 @@ pub fn _nl_locale_name(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// `name` must be a valid pointer to a mutable NUL-terminated C string buffer.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
     // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
     let Some(len) = unsafe { cstr(name) }.map(|s| s.to_bytes().len()) else {

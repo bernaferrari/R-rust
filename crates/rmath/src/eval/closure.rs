@@ -51,10 +51,7 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
 /// # Safety
 /// Activate the live owner of all inputs and retain their reachable graphs
 /// through allocation and R reentry. No Rust payload loan may cross execution.
-pub fn create_env_safe<'a>(
-    bindings: Sexp<'a>,
-    parent: Sexp<'a>,
-) -> Result<Sexp<'a>, String> {
+pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let env = NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut());
     unsafe { Sexp::try_from_raw(env) }.map_err(|err| sexp_err("failed to create environment", err))
 }
@@ -318,7 +315,8 @@ fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
     let Some(instance) = crate::sexp::instance::current_instance_ptr() else {
         return false;
     };
-    let empty = crate::sexp::globals::R_EmptyEnv_in(instance);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let empty = unsafe { crate::sexp::globals::R_EmptyEnv_in(instance) };
     let mut hops = 0;
     while !start.is_null() && start != crate::sexp::globals::R_NilValue() && hops < 64 {
         if start == needle {
@@ -819,7 +817,7 @@ fn deparse_for_error(expr: SEXP) -> String {
     }
 }
 
- fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
+fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
     let mut formal = formals;
     let mut actual = frame;
 
@@ -1083,7 +1081,8 @@ mod owned_matcher_tests {
                 "revoked owners refuse results; live owners resume after nested session construction"
             );
             assert_eq!(
-                R_Visible_in(instance),
+                // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+                unsafe { R_Visible_in(instance) },
                 visible,
                 "cleanup restores the original body visibility, close={close}, replace={replace}"
             );
@@ -1095,7 +1094,8 @@ mod owned_matcher_tests {
                     .unwrap()
                     .with_active_in(|other| {
                         assert_eq!(
-                            R_Visible_in(other),
+                            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+                            unsafe { R_Visible_in(other) },
                             1 - visible,
                             "original cleanup must not change a replacement runtime"
                         );
@@ -1237,7 +1237,7 @@ mod owned_matcher_tests {
                 .unwrap();
             formals.push(factory.missing(), Some(tag)).unwrap();
             let value = factory
-                .wrap( crate::sexp::constructors::Rf_ScalarInteger(number) )
+                .wrap(crate::sexp::constructors::Rf_ScalarInteger(number))
                 .unwrap();
             arguments.push(value, None).unwrap();
         }
@@ -1255,10 +1255,9 @@ mod owned_matcher_tests {
             if !changed.replace(true) {
                 // The caller retains both original heads for this callback.
                 // Every detached indexed cell must now be owned by the matcher.
-                
-                    SETCDR(original_formals, nil);
-                    SETCDR(original_arguments, nil);
-                
+
+                SETCDR(original_formals, nil);
+                SETCDR(original_arguments, nil);
             }
             crate::sexp::gengc::full_gc();
         }));
@@ -1267,8 +1266,7 @@ mod owned_matcher_tests {
             (*instance).memory_state.gc_force_wait = 1;
         });
         let before = crate::sexp::protect::R_ProtectCount();
-        let matched =
-             match_closure_args(&factory, formals.clone(), arguments.clone()) .unwrap();
+        let matched = match_closure_args(&factory, formals.clone(), arguments.clone()).unwrap();
         session.with_active_in(|instance| unsafe {
             (*instance).memory_state.gc_force_gap = 0;
         });
@@ -1323,10 +1321,10 @@ mod owned_matcher_tests {
                 .unwrap()
         });
         let selected = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(37) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(37))
             .unwrap();
         let handled = factory
-            .wrap( crate::sexp::constructors::Rf_ScalarInteger(0) )
+            .wrap(crate::sexp::constructors::Rf_ScalarInteger(0))
             .unwrap();
         let symbol = |name: &CStr| {
             factory

@@ -65,62 +65,92 @@ pub fn R_RestartToken() -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn R_GlobalEnv() -> SEXP {
-    with_required_current_instance(R_GlobalEnv_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_GlobalEnv_in(inst) })
 }
 
 pub fn R_BaseEnv() -> SEXP {
-    with_required_current_instance(R_BaseEnv_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_BaseEnv_in(inst) })
 }
 
 pub fn R_EmptyEnv() -> SEXP {
-    with_required_current_instance(R_EmptyEnv_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_EmptyEnv_in(inst) })
 }
 
-pub(crate) fn R_GlobalEnv_in(inst: *mut RInstance) -> SEXP {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_GlobalEnv_in(inst: *mut RInstance) -> SEXP {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).global_env }
 }
 
-pub(crate) fn R_BaseEnv_in(inst: *mut RInstance) -> SEXP {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_BaseEnv_in(inst: *mut RInstance) -> SEXP {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).base_env }
 }
 
-pub(crate) fn R_EmptyEnv_in(inst: *mut RInstance) -> SEXP {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_EmptyEnv_in(inst: *mut RInstance) -> SEXP {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).empty_env }
 }
 
 /// Set the global environment.
 pub fn set_R_GlobalEnv(env: SEXP) {
-    with_required_current_instance(|inst| set_R_GlobalEnv_in(inst, env));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_GlobalEnv_in(inst, env) });
 }
 
 /// Set the base environment.
 pub fn set_R_BaseEnv(env: SEXP) {
-    with_required_current_instance(|inst| set_R_BaseEnv_in(inst, env));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_BaseEnv_in(inst, env) });
 }
 
 /// Set the empty environment.
 pub fn set_R_EmptyEnv(env: SEXP) {
-    with_required_current_instance(|inst| set_R_EmptyEnv_in(inst, env));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_EmptyEnv_in(inst, env) });
 }
 
-pub(crate) fn set_R_GlobalEnv_in(inst: *mut RInstance, env: SEXP) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_GlobalEnv_in(inst: *mut RInstance, env: SEXP) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).global_env = env;
     }
 }
 
-pub(crate) fn set_R_BaseEnv_in(inst: *mut RInstance, env: SEXP) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_BaseEnv_in(inst: *mut RInstance, env: SEXP) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).base_env = env;
     }
 }
 
-pub(crate) fn set_R_EmptyEnv_in(inst: *mut RInstance, env: SEXP) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_EmptyEnv_in(inst: *mut RInstance, env: SEXP) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).empty_env = env;
@@ -149,54 +179,79 @@ pub fn INTEGER_IS_NA(x: i32) -> bool {
 
 /// Get the current R_Visible flag.
 pub fn R_Visible() -> i32 {
-    with_required_current_instance(R_Visible_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_Visible_in(inst) })
 }
 
 /// Set the R_Visible flag.
 pub fn set_R_Visible(v: i32) {
-    with_required_current_instance(|inst| set_R_Visible_in(inst, v));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_Visible_in(inst, v) });
 }
 
 /// Get the current evaluation depth.
 pub fn R_EvalDepth() -> i32 {
-    with_required_current_instance(R_EvalDepth_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_EvalDepth_in(inst) })
 }
 
 /// Set the evaluation depth.
 pub fn set_R_EvalDepth(d: i32) {
-    with_required_current_instance(|inst| set_R_EvalDepth_in(inst, d));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { set_R_EvalDepth_in(inst, d) });
 }
 
 /// Get the evaluation depth limit.
 pub fn R_EvalDepthLimit() -> i32 {
-    with_required_current_instance(R_EvalDepthLimit_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_EvalDepthLimit_in(inst) })
 }
 
-pub(crate) fn R_Visible_in(inst: *mut RInstance) -> i32 {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_Visible_in(inst: *mut RInstance) -> i32 {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).eval_state.visible }
 }
 
-pub(crate) fn set_R_Visible_in(inst: *mut RInstance, v: i32) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_Visible_in(inst: *mut RInstance, v: i32) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).eval_state.visible = v;
     }
 }
 
-pub(crate) fn R_EvalDepth_in(inst: *mut RInstance) -> i32 {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_EvalDepth_in(inst: *mut RInstance) -> i32 {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).eval_state.eval_depth }
 }
 
-pub(crate) fn set_R_EvalDepth_in(inst: *mut RInstance, d: i32) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn set_R_EvalDepth_in(inst: *mut RInstance, d: i32) {
     // P2: single-field write; no other raw path touches the instance here.
     unsafe {
         (*inst).eval_state.eval_depth = d;
     }
 }
 
-pub(crate) fn R_EvalDepthLimit_in(inst: *mut RInstance) -> i32 {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn R_EvalDepthLimit_in(inst: *mut RInstance) -> i32 {
     // P2: single-field read; no ambient write intervenes.
     unsafe { (*inst).eval_state.eval_depth_limit }
 }
@@ -592,42 +647,58 @@ mod tests {
     fn test_environment_accessors_can_target_instance_explicitly() {
         let mut left = RInstance::new_for_gc_tests();
         let mut right = RInstance::new_for_gc_tests();
-        let left_saved = R_GlobalEnv_in(&mut left);
-        let right_saved = R_GlobalEnv_in(&mut right);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let left_saved = unsafe { R_GlobalEnv_in(&mut left) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let right_saved = unsafe { R_GlobalEnv_in(&mut right) };
 
-        set_R_GlobalEnv_in(&mut left, 0x1 as SEXP);
-        set_R_GlobalEnv_in(&mut right, 0x2 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut left, 0x1 as SEXP) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut right, 0x2 as SEXP) };
 
-        assert_eq!(R_GlobalEnv_in(&mut left), 0x1 as SEXP);
-        assert_eq!(R_GlobalEnv_in(&mut right), 0x2 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut left) }, 0x1 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut right) }, 0x2 as SEXP);
 
-        set_R_GlobalEnv_in(&mut left, left_saved);
-        set_R_GlobalEnv_in(&mut right, right_saved);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut left, left_saved) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut right, right_saved) };
     }
 
     #[test]
     fn test_ambient_environment_wrapper_uses_current_instance_only() {
         let mut left = RInstance::new_for_gc_tests();
         let mut right = RInstance::new_for_gc_tests();
-        let left_saved = R_GlobalEnv_in(&mut left);
-        let right_saved = R_GlobalEnv_in(&mut right);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let left_saved = unsafe { R_GlobalEnv_in(&mut left) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        let right_saved = unsafe { R_GlobalEnv_in(&mut right) };
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
 
         unsafe {
             set_R_GlobalEnv(0x1 as SEXP);
         }
-        assert_eq!(R_GlobalEnv_in(&mut left), 0x1 as SEXP);
-        assert_eq!(R_GlobalEnv_in(&mut right), right_saved);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut left) }, 0x1 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut right) }, right_saved);
 
         unsafe {
             replace_current_instance(Some(&mut right));
             set_R_GlobalEnv(0x2 as SEXP);
         }
-        assert_eq!(R_GlobalEnv_in(&mut left), 0x1 as SEXP);
-        assert_eq!(R_GlobalEnv_in(&mut right), 0x2 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut left) }, 0x1 as SEXP);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_GlobalEnv_in(&mut right) }, 0x2 as SEXP);
 
-        set_R_GlobalEnv_in(&mut left, left_saved);
-        set_R_GlobalEnv_in(&mut right, right_saved);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut left, left_saved) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_GlobalEnv_in(&mut right, right_saved) };
         unsafe {
             replace_current_instance(previous);
         }
@@ -644,22 +715,34 @@ mod tests {
         // ambient re-acquisition the `set_R_Visible`/`set_R_EvalDepth`
         // calls below perform (Stacked Borrows).
         let left_ptr = current_instance_ptr().expect("left should be installed");
-        set_R_Visible_in(unsafe { &mut *left_ptr }, 0);
-        set_R_Visible_in(&mut right, 1);
-        set_R_EvalDepth_in(unsafe { &mut *left_ptr }, 7);
-        set_R_EvalDepth_in(&mut right, 13);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_Visible_in(unsafe { &mut *left_ptr }, 0) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_Visible_in(&mut right, 1) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_EvalDepth_in(unsafe { &mut *left_ptr }, 7) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { set_R_EvalDepth_in(&mut right, 13) };
 
-        assert_eq!(R_Visible_in(unsafe { &mut *left_ptr }), 0);
-        assert_eq!(R_Visible_in(&mut right), 1);
-        assert_eq!(R_EvalDepth_in(unsafe { &mut *left_ptr }), 7);
-        assert_eq!(R_EvalDepth_in(&mut right), 13);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_Visible_in(unsafe { &mut *left_ptr }) }, 0);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_Visible_in(&mut right) }, 1);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_EvalDepth_in(unsafe { &mut *left_ptr }) }, 7);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_EvalDepth_in(&mut right) }, 13);
 
         set_R_Visible(1);
         set_R_EvalDepth(3);
-        assert_eq!(R_Visible_in(&mut left), 1);
-        assert_eq!(R_Visible_in(&mut right), 1);
-        assert_eq!(R_EvalDepth_in(&mut left), 3);
-        assert_eq!(R_EvalDepth_in(&mut right), 13);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_Visible_in(&mut left) }, 1);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_Visible_in(&mut right) }, 1);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_EvalDepth_in(&mut left) }, 3);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_EvalDepth_in(&mut right) }, 13);
         unsafe {
             replace_current_instance(previous);
         }

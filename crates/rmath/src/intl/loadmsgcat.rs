@@ -123,12 +123,6 @@ fn get_sysdep_string_segments(
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
 /// `domainbinding` may be null.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
     // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
     let Some(df) = (unsafe { ptr_mut(domain_file) }) else {

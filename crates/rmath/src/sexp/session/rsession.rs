@@ -873,7 +873,12 @@ impl RSession {
     }
 
     #[cfg(feature = "renderplot-device")]
-    pub(crate) fn eval_script_with_output_capture_then_renderplot<'session, 'backend, T, F>(
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    pub(crate) unsafe fn eval_script_with_output_capture_then_renderplot<'session, 'backend, T, F>(
         &'session mut self,
         code: &str,
         backend: *mut (dyn r_graphics_engine::DrawTarget + 'backend),
@@ -1333,7 +1338,8 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            let _scope = ProtectScope::new(self.instance_ptr());
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            let _scope = unsafe { ProtectScope::new(self.instance_ptr()) };
             f()
         })
     }

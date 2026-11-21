@@ -145,12 +145,6 @@ unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn _nl_make_l10nflist(
     l10nfile_list: *mut *mut loaded_l10nfile,
     dirlist: *const c_char,
@@ -382,12 +376,6 @@ pub unsafe fn _nl_make_l10nflist(
 ///
 /// # Safety
 /// `codeset` must be a valid pointer to `name_len` bytes.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
     let empty = b"\0".as_ptr() as *const c_char;
     if codeset.is_null() || name_len == 0 {
@@ -510,19 +498,21 @@ mod tests {
 
         // Search only (do_allocate = 0).
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { _nl_make_l10nflist(
-            &mut list,
-            ptr::null(),
-            0,
-            0,
-            lang.as_ptr() as *const c_char,
-            ptr::null(),
-            ptr::null(),
-            ptr::null(),
-            ptr::null(),
-            file.as_ptr() as *const c_char,
-            0,
-        ) };
+        let result = unsafe {
+            _nl_make_l10nflist(
+                &mut list,
+                ptr::null(),
+                0,
+                0,
+                lang.as_ptr() as *const c_char,
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                file.as_ptr() as *const c_char,
+                0,
+            )
+        };
         // Should not find anything since the list is empty.
         assert!(result.is_null());
     }

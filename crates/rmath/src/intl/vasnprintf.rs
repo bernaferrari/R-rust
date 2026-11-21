@@ -375,12 +375,6 @@ unsafe fn format_string(
 ///
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,

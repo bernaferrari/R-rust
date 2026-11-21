@@ -81,7 +81,9 @@ fn sweep_remap_torture_clears_old_children_of_unmarked_young_survivor() {
         .unwrap();
     session.with_active(|| {
         let collected = instance::with_required_current_instance(|owner| {
-            run_gc_cycle_in(owner, do_torture_mark_sweep_in)
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            unsafe { run_gc_cycle_in(owner, |inst| unsafe { do_torture_mark_sweep_in(inst) }) }
         });
         assert_eq!(collected, (0, 1));
         assert!(parent.is_live());

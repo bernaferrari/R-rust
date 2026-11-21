@@ -30,23 +30,30 @@ impl Drop for NotificationGuard {
     }
 }
 
-pub(crate) fn notify_gc_callbacks_in(owner: *mut instance::RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn notify_gc_callbacks_in(owner: *mut instance::RInstance) {
     // SAFETY: collection reaches notification with a live owner. This weak
     // token detects teardown; it does not pretend to keep the allocation live.
     let liveness = unsafe { instance::instance_liveness(owner) };
     // Only owned leases and copied statistics survive callback execution.
     // Registration or nested collection can mutate GcState freely.
-    let snapshot = with_gc_state_in(owner, |state| {
-        if state.notifying.get() {
-            None
-        } else {
-            Some((
-                state.callbacks.clone(),
-                state.stats.clone(),
-                state.notifying.clone(),
-            ))
-        }
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let snapshot = unsafe {
+        with_gc_state_in(owner, |state| {
+            if state.notifying.get() {
+                None
+            } else {
+                Some((
+                    state.callbacks.clone(),
+                    state.stats.clone(),
+                    state.notifying.clone(),
+                ))
+            }
+        })
+    };
     let Some((callbacks, stats, notifying)) = snapshot else {
         return;
     };

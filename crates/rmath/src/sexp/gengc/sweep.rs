@@ -26,44 +26,69 @@ pub(crate) fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
     matches!(t.0, 16 | 19 | 20 | 21) // STRSXP, VECSXP, EXPRSXP, BCODESXP
 }
 
-pub(crate) fn update_protect_stack_in(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn update_protect_stack_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
     {
-        update_protect_stack_refs_in(instance, |ptr| {
-            let addr = ptr as usize;
-            old_to_new.get(&addr).copied().unwrap_or(ptr)
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            update_protect_stack_refs_in(instance, |ptr| {
+                let addr = ptr as usize;
+                old_to_new.get(&addr).copied().unwrap_or(ptr)
+            })
+        };
     }
 }
 
-pub(crate) fn update_preserve_stack_in(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn update_preserve_stack_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
     {
-        update_preserve_stack_refs_in(instance, |ptr| {
-            let addr = ptr as usize;
-            old_to_new.get(&addr).copied().unwrap_or(ptr)
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            update_preserve_stack_refs_in(instance, |ptr| {
+                let addr = ptr as usize;
+                old_to_new.get(&addr).copied().unwrap_or(ptr)
+            })
+        };
     }
 }
 
 pub(crate) fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
     instance::with_required_current_instance(|instance| {
-        update_remembered_set_in(instance, old_to_new)
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { update_remembered_set_in(instance, old_to_new) }
     });
 }
 
-pub(crate) fn update_remembered_set_in(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn update_remembered_set_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
     {
-        with_gc_state_in(instance, |state| {
-            state.remembered_set.remap(old_to_new);
-        });
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe {
+            with_gc_state_in(instance, |state| {
+                state.remembered_set.remap(old_to_new);
+            })
+        };
     }
 }
 
@@ -79,12 +104,17 @@ pub(crate) fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<NodeLi
 #[cfg(test)]
 pub(crate) fn update_object_references(old_to_new: &HashMap<NodeLink, NodeLink>) {
     instance::with_required_current_instance(|owner| {
-        update_object_references_in(owner, old_to_new);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { update_object_references_in(owner, old_to_new) };
     });
 }
 
 #[cfg(test)]
-pub(crate) fn update_object_references_in(
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn update_object_references_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<NodeLink, NodeLink>,
 ) {
@@ -101,7 +131,12 @@ pub(crate) fn update_object_references_in(
 /// valid after sxpinfo.mark is cleared. Marked strong children cannot be swept;
 /// the weak key is deliberately unmarked and must still be cleared. Unmarked
 /// old/young survivors of partial collection still require all-edge cleanup.
-pub(crate) fn update_swept_object_references_in(
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn update_swept_object_references_in(
     instance: *mut instance::RInstance,
     old_to_nil: &HashMap<NodeLink, NodeLink>,
 ) {
@@ -124,7 +159,11 @@ pub(crate) fn update_swept_object_references_in(
     }
 }
 
-pub(crate) fn sweep_link_remap(
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn sweep_link_remap(
     instance: *mut instance::RInstance,
     freed: &[SEXP],
     nil: SEXP,
@@ -156,7 +195,11 @@ pub(crate) fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usiz
         .unwrap_or(addr)
 }
 
-pub(crate) fn update_instance_roots_in(
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn update_instance_roots_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
@@ -274,15 +317,23 @@ pub(crate) fn update_instance_roots_in(
     }
 }
 
-pub(crate) fn clear_swept_references_in(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn clear_swept_references_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
     old_links: &HashMap<NodeLink, NodeLink>,
 ) {
     {
-        update_instance_roots_in(instance, old_to_new);
-        update_remembered_set_in(instance, old_to_new);
-        update_swept_object_references_in(instance, old_links);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { update_instance_roots_in(instance, old_to_new) };
+        // SAFETY: forwarded raw pointers satisfy `update_remembered_set_in`'s contract per this function's own `# Safety` requirements.
+        unsafe { update_remembered_set_in(instance, old_to_new) };
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        unsafe { update_swept_object_references_in(instance, old_links) };
     }
 }
 

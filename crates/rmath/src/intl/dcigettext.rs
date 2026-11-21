@@ -492,12 +492,6 @@ unsafe fn lookup_message_in_domain(
 /// # Safety
 /// `msgid` must be a valid pointer to a NUL-terminated C string.
 /// Other string pointers may be NULL.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn libintl_dcigettext(
     domainname: *const c_char,
     msgid: *const c_char,
@@ -597,7 +591,8 @@ mod tests {
     #[test]
     fn test_dcigettext_null_msgid() {
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcigettext(ptr::null(), ptr::null(), ptr::null(), 1, LC_MESSAGES) };
+        let result =
+            unsafe { libintl_dcigettext(ptr::null(), ptr::null(), ptr::null(), 1, LC_MESSAGES) };
         assert!(result.is_null());
     }
 
@@ -615,13 +610,15 @@ mod tests {
 
         let msgid = b"hello world\0" as *const u8 as *const c_char;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcigettext(
-            b"nonexistent_domain\0" as *const u8 as *const c_char,
-            msgid,
-            ptr::null(),
-            1,
-            LC_MESSAGES,
-        ) };
+        let result = unsafe {
+            libintl_dcigettext(
+                b"nonexistent_domain\0" as *const u8 as *const c_char,
+                msgid,
+                ptr::null(),
+                1,
+                LC_MESSAGES,
+            )
+        };
         // With no catalog loaded, should return msgid.
         assert_eq!(result, msgid as *mut c_char);
     }

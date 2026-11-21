@@ -283,19 +283,28 @@ fn test_capture_can_target_instance_explicitly() {
     let right = right_session
         .with_active(|| crate::sexp::instance::with_required_current_instance(|instance| instance));
 
-    start_capture_in(left);
-    capture_stdout_in(left, "left");
-    capture_stderr_in(left, "left err");
-    assert!(is_capturing_in(left));
-    assert!(!is_capturing_in(right));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { start_capture_in(left) };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { capture_stdout_in(left, "left") };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { capture_stderr_in(left, "left err") };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert!(unsafe { is_capturing_in(left) });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert!(!unsafe { is_capturing_in(right) });
 
-    start_capture_in(right);
-    capture_stdout_in(right, "right");
-    let right_output = stop_capture_in(right);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { start_capture_in(right) };
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { capture_stdout_in(right, "right") };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let right_output = unsafe { stop_capture_in(right) };
     assert_eq!(right_output.stdout, "right");
     assert_eq!(right_output.stderr, "");
 
-    let left_output = stop_capture_in(left);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let left_output = unsafe { stop_capture_in(left) };
     assert_eq!(left_output.stdout, "left");
     assert_eq!(left_output.stderr, "left err");
 }

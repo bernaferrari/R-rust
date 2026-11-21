@@ -18,12 +18,14 @@ use crate::sexp::instance::with_required_current_instance;
 
 #[inline]
 pub(crate) fn global_env() -> SEXP {
-    with_required_current_instance(R_GlobalEnv_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_GlobalEnv_in(inst) })
 }
 
 #[inline]
 pub(crate) fn base_env() -> SEXP {
-    with_required_current_instance(R_BaseEnv_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_BaseEnv_in(inst) })
 }
 
 #[inline]
@@ -33,17 +35,20 @@ pub(crate) fn global_context() -> *mut RCNTXT {
 
 #[inline]
 pub(crate) fn set_global_env(env: SEXP) {
-    with_required_current_instance(|instance| set_R_GlobalEnv_in(instance, env));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|instance| unsafe { set_R_GlobalEnv_in(instance, env) });
 }
 
 #[inline]
 pub(crate) fn visible() -> c_int {
-    with_required_current_instance(R_Visible_in)
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|inst| unsafe { R_Visible_in(inst) })
 }
 
 #[inline]
 pub(crate) fn set_visible(value: c_int) {
-    with_required_current_instance(|instance| set_R_Visible_in(instance, value));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    with_required_current_instance(|instance| unsafe { set_R_Visible_in(instance, value) });
 }
 
 #[inline]
@@ -86,7 +91,8 @@ impl VisibilityGuard {
     /// permitted here: a body or exit handler may already have revoked it.
     pub(crate) fn capture_original(&mut self) {
         if let Some(instance) = self.original_instance() {
-            self.saved = R_Visible_in(instance);
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            self.saved = unsafe { R_Visible_in(instance) };
         }
     }
 
@@ -107,7 +113,8 @@ impl Drop for VisibilityGuard {
         // Cleanup belongs to the original pinned owner even after revocation,
         // and must not dispatch through a newer or absent ambient runtime.
         {
-            set_R_Visible_in(instance, self.saved);
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            unsafe { set_R_Visible_in(instance, self.saved) };
         }
     }
 }
@@ -136,7 +143,8 @@ mod tests {
             panic!("visibility unwind probe");
         }));
         assert!(result.is_err());
-        assert_eq!(R_Visible_in(inspection_pin.as_ptr()), saved);
+        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert_eq!(unsafe { R_Visible_in(inspection_pin.as_ptr()) }, saved);
         assert!(!crate::sexp::instance::has_current_instance());
     }
 }

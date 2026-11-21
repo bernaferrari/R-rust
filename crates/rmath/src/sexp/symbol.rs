@@ -106,10 +106,16 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
     if sym.is_null() {
         return None;
     }
-    super::instance::with_current_instance(|inst| symbol_name_from_ptr_in(inst, sym)).flatten()
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    super::instance::with_current_instance(|inst| unsafe { symbol_name_from_ptr_in(inst, sym) })
+        .flatten()
 }
 
-pub(crate) fn symbol_name_from_ptr_in(inst: *mut RInstance, sym: SEXP) -> Option<String> {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn symbol_name_from_ptr_in(inst: *mut RInstance, sym: SEXP) -> Option<String> {
     // P2: read-only scan of one field; no ambient write intervenes.
     unsafe {
         (*inst)

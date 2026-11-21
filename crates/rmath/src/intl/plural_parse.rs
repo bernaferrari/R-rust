@@ -466,12 +466,6 @@ impl<'a> PluralParser<'a> {
 ///
 /// # Safety
 /// `arg` must be a valid pointer to a `parse_args` struct.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
     // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
     let Some(args) = (unsafe { ptr_mut(arg) }) else {

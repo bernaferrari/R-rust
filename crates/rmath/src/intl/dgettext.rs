@@ -15,12 +15,6 @@ use crate::intl::types;
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings (or NULL for domainname).
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn libintl_dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
     // SAFETY: forwarded raw pointers satisfy `libintl_dcgettext`'s contract per this function's own `# Safety` requirements.
     unsafe { crate::intl::dcgettext::libintl_dcgettext(domainname, msgid, types::LC_MESSAGES) }

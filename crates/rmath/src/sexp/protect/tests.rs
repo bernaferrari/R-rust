@@ -112,13 +112,16 @@ fn test_protect_n_guard_drops_against_original_instance() {
         protect_raw_pointer(token(0x2))
     };
     let guard = protect_n(2);
-    assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 2);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert_eq!(unsafe { R_ProtectCount_in(addr_of_mut!(left)) }, 2);
     unsafe {
         replace_current_instance(Some(&mut right));
     }
     drop(guard);
-    assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 0);
-    assert_eq!(R_ProtectCount_in(addr_of_mut!(right)), 0);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert_eq!(unsafe { R_ProtectCount_in(addr_of_mut!(left)) }, 0);
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    assert_eq!(unsafe { R_ProtectCount_in(addr_of_mut!(right)) }, 0);
     unsafe {
         replace_current_instance(previous);
     }
@@ -325,23 +328,33 @@ fn test_protect_guard_drops_against_original_instance() {
     };
     // As above: inspect through the installed pointer, never a fresh
     // borrow of the local, while the guard is live.
-    with_protected_objects_in(left_ptr, |legacy, roots| {
-        assert!(legacy.is_empty());
-        assert_eq!(roots, &[token(0x1)]);
-    });
-    with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
-        assert!(legacy.is_empty());
-        assert!(roots.is_empty());
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(left_ptr, |legacy, roots| {
+            assert!(legacy.is_empty());
+            assert_eq!(roots, &[token(0x1)]);
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
+            assert!(legacy.is_empty());
+            assert!(roots.is_empty());
+        })
+    };
     unsafe {
         replace_current_instance(Some(&mut right));
     }
     drop(guard);
-    with_protected_objects_in(left_ptr, |_, roots| {
-        // The root either collapsed (tail release) or tombstoned.
-        assert!(roots.iter().all(|&p| p.is_null()));
-    });
-    with_protected_objects_in(addr_of_mut!(right), |_, roots| assert!(roots.is_empty()));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(left_ptr, |_, roots| {
+            // The root either collapsed (tail release) or tombstoned.
+            assert!(roots.iter().all(|&p| p.is_null()));
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_protected_objects_in(addr_of_mut!(right), |_, roots| assert!(roots.is_empty())) };
     unsafe {
         replace_current_instance(previous);
     }
@@ -361,10 +374,13 @@ fn test_indexed_guard_drops_against_original_instance() {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         protect_with_index_raw(token(0x1), "test")
     };
-    with_protected_objects_in(left_ptr, |legacy, roots| {
-        assert!(legacy.is_empty());
-        assert_eq!(roots, &[token(0x1)]);
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(left_ptr, |legacy, roots| {
+            assert!(legacy.is_empty());
+            assert_eq!(roots, &[token(0x1)]);
+        })
+    };
     unsafe {
         replace_current_instance(Some(&mut right));
     }
@@ -372,19 +388,29 @@ fn test_indexed_guard_drops_against_original_instance() {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         guard.reprotect_raw(token(0x2))
     });
-    with_protected_objects_in(left_ptr, |legacy, roots| {
-        assert!(legacy.is_empty());
-        assert_eq!(roots, &[token(0x2)])
-    });
-    with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
-        assert!(legacy.is_empty());
-        assert!(roots.is_empty());
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(left_ptr, |legacy, roots| {
+            assert!(legacy.is_empty());
+            assert_eq!(roots, &[token(0x2)])
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(addr_of_mut!(right), |legacy, roots| {
+            assert!(legacy.is_empty());
+            assert!(roots.is_empty());
+        })
+    };
     drop(guard);
-    with_protected_objects_in(left_ptr, |_, roots| {
-        assert!(roots.iter().all(|&p| p.is_null()))
-    });
-    with_protected_objects_in(addr_of_mut!(right), |_, roots| assert!(roots.is_empty()));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_protected_objects_in(left_ptr, |_, roots| {
+            assert!(roots.iter().all(|&p| p.is_null()))
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe { with_protected_objects_in(addr_of_mut!(right), |_, roots| assert!(roots.is_empty())) };
     unsafe {
         replace_current_instance(previous);
     }
@@ -482,18 +508,30 @@ fn test_preserve_guard_drops_against_original_instance() {
         .sexp(raw)
         .expect("left object should wrap");
     let guard = preserve_sexp(value);
-    with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
-        assert_eq!(objects, &[raw])
-    });
-    with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
+            assert_eq!(objects, &[raw])
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()))
+    };
     unsafe {
         replace_current_instance(Some(&mut right));
     }
     drop(guard);
-    with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
-        assert!(objects.is_empty())
-    });
-    with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()));
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
+            assert!(objects.is_empty())
+        })
+    };
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()))
+    };
     unsafe {
         replace_current_instance(previous);
     }
@@ -1082,7 +1120,8 @@ fn safe_gc_owner_teardown_skips_native_guard_cleanup_even_on_unwind() {
         }
         let counted = protect_n(1);
         let preserve_lease =
-            try_push_preserve_in(session.owner_token().unwrap().as_ptr(), token(4)).unwrap();
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            (unsafe { try_push_preserve_in(session.owner_token().unwrap().as_ptr(), token(4)) }).unwrap();
         let preserved = PreserveGuard {
             owner: Some(unsafe { GuardOwner::new(session.owner_token().unwrap().as_ptr()) }),
             lease: preserve_lease,
@@ -1114,10 +1153,13 @@ fn projection_update_callback_may_destroy_owner() {
     let pointer = session.owner_token().unwrap().as_ptr();
     let guard = unsafe { protect(token(1)) };
     let mut owner = Some(session);
-    update_protect_stack_refs_in(pointer, |_| {
-        drop(owner.take());
-        token(2)
-    });
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    unsafe {
+        update_protect_stack_refs_in(pointer, |_| {
+            drop(owner.take());
+            token(2)
+        })
+    };
     drop(guard);
     assert!(super::super::instance::current_instance_ptr().is_none());
 }

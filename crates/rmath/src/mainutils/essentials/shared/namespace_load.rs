@@ -891,10 +891,14 @@ impl Drop for MethodsMetadataSourceBody<'_> {
             )
             .expect("owned methods closure retains its original body");
         if self.availability.is_live()
-            && crate::eval::jit::get_R_jit_enabled_in(self.owner.as_ptr()) == 0
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            && unsafe { crate::eval::jit::get_R_jit_enabled_in(self.owner.as_ptr()) } == 0
         {
             // Preserve an explicit callback change to a different JIT level.
-            crate::eval::jit::set_R_jit_enabled_in(self.owner.as_ptr(), self.jit_enabled);
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            unsafe {
+                crate::eval::jit::set_R_jit_enabled_in(self.owner.as_ptr(), self.jit_enabled)
+            };
         }
     }
 }

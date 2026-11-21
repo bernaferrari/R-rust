@@ -123,7 +123,11 @@ pub(crate) fn mark_checked_root_snapshot(roots: impl IntoIterator<Item = RootVal
     drain_trace_worklist(pending);
 }
 
-pub(crate) fn mark_instance_roots(instance: *mut instance::RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn mark_instance_roots(instance: *mut instance::RInstance) {
     unsafe {
         mark_reachable((*instance).empty_env);
         mark_reachable((*instance).base_env);
@@ -252,7 +256,34 @@ pub fn minor_gc() -> (usize, usize) {
     instance::with_required_current_instance(|owner| unsafe { minor_gc_in(owner) })
 }
 
-pub(crate) fn run_gc_cycle_in<F>(instance: *mut instance::RInstance, collect: F) -> (usize, usize)
+/// Run one marking-only collection cycle on the current instance and return
+/// the nanoseconds spent marking from all roots (manual benchmark support).
+#[cfg(test)]
+pub(super) fn timed_mark_from_all_roots_current() -> u128 {
+    let mut mark_ns = 0;
+    instance::with_required_current_instance(|owner| {
+        // SAFETY: `owner` is the live current instance supplied by the
+        // accessor; `run_gc_cycle_in` hands that same pointer to the callback.
+        unsafe {
+            run_gc_cycle_in(owner, |owner| {
+                let mark_started = std::time::Instant::now();
+                mark_from_all_roots_in(owner);
+                mark_ns += mark_started.elapsed().as_nanos();
+                (0, 0)
+            })
+        };
+    });
+    mark_ns
+}
+
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn run_gc_cycle_in<F>(
+    instance: *mut instance::RInstance,
+    collect: F,
+) -> (usize, usize)
 where
     F: FnOnce(*mut instance::RInstance) -> (usize, usize),
 {
@@ -313,10 +344,16 @@ where
 /// No whole-instance borrow or Rust payload loan may overlap collection or
 /// callbacks. Arena lends are detected and defer the collection request.
 pub(crate) unsafe fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
-    run_gc_cycle_in(instance, do_minor_gc_in)
+    // SAFETY: `instance` is live per this function's contract, and
+    // `run_gc_cycle_in` hands that same pointer to the collector callback.
+    unsafe { run_gc_cycle_in(instance, |inst| do_minor_gc_in(inst)) }
 }
 
-pub(crate) fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe {
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
@@ -399,7 +436,9 @@ pub fn full_gc() -> (usize, usize) {
 /// No whole-instance borrow or Rust payload loan may overlap collection or
 /// callbacks. Arena lends are detected and defer the collection request.
 pub(crate) unsafe fn full_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
-    run_gc_cycle_in(instance, do_full_mark_sweep_in)
+    // SAFETY: `instance` is live per this function's contract, and
+    // `run_gc_cycle_in` hands that same pointer to the collector callback.
+    unsafe { run_gc_cycle_in(instance, |inst| do_full_mark_sweep_in(inst)) }
 }
 
 /// gctorture collection: full mark from all roots, but only OLD-generation
@@ -415,7 +454,14 @@ pub(crate) unsafe fn full_gc_in(instance: *mut instance::RInstance) -> (usize, u
 /// reclaimed, as usual, by the safe-point/quiescent collections that never
 /// run mid-construction. Old-generation garbage — the accumulation gctorture
 /// exists to exercise — is still reclaimed on every forced cycle.
-pub(crate) fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
+///
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn do_torture_mark_sweep_in(
+    instance: *mut instance::RInstance,
+) -> (usize, usize) {
     unsafe {
         mark_from_all_roots_in(instance);
 
@@ -477,7 +523,11 @@ pub(crate) fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (u
     }
 }
 
-pub(crate) fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
     unsafe {
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
@@ -486,7 +536,11 @@ pub(crate) fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
     }
 }
 
-pub(crate) fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
+/// # Safety
+///
+/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
+/// no conflicting outstanding borrow of the fields touched here.
+pub(crate) unsafe fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
     unsafe {
         // Remembered parents are conservative roots only while collecting
         // the young generation. Full collection establishes old reachability

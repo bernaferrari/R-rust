@@ -214,7 +214,8 @@ fn weak_protection_scope_skips_destroyed_owner_even_on_unwind() {
         let mut owner = Some(session);
         let mut fresh = None;
         let result = catch_unwind(AssertUnwindSafe(|| {
-            let _scope = ProtectScope::new(pointer);
+            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+            let _scope = unsafe { ProtectScope::new(pointer) };
             unsafe {
                 super::super::protect::protect_raw_pointer(R_NilValue());
             }

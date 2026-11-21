@@ -43,12 +43,6 @@ static WIDE_NULL_STRING: [u32; 7] = [
 /// support is limited, this implementation provides the structure and type
 /// handling but the actual variadic extraction would need to be done at a
 /// higher level.  For the standalone port, this serves as the FFI bridge.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
 pub unsafe fn printf_fetchargs(_args: *mut c_void, a: *mut arguments) -> c_int {
     unsafe {
         if a.is_null() {
