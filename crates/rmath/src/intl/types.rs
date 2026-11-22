@@ -52,7 +52,7 @@ pub(crate) struct loaded_l10nfile {
 }
 
 // ---------------------------------------------------------------------------
-// Printf argument types (from printf-args.h)
+// Message catalog constants (from gmo.h)
 // ---------------------------------------------------------------------------
 
 /// Magic numbers for .mo files.
@@ -61,123 +61,6 @@ pub(crate) const MO_MAGIC_SWAPPED: nls_uint32 = 0xde12_0495;
 
 /// Number of bits in the hash word (assumes unsigned long has at least 32 bits).
 pub(crate) const HASHWORDBITS: c_int = 32;
-
-/// Descriptor for a static string contained in a binary .mo file.
-#[repr(C)]
-pub(crate) struct string_desc {
-    pub length: nls_uint32,
-    pub offset: nls_uint32,
-}
-
-/// In-memory representation of a system-dependent string.
-#[repr(C)]
-pub(crate) struct sysdep_string_desc {
-    pub length: usize,
-    pub pointer: *const c_char,
-}
-
-/// Cache of translated strings after charset conversion.
-#[repr(C)]
-pub(crate) struct converted_domain {
-    pub encoding: *const c_char,
-    /// Opaque conversion descriptor (iconv_t equivalent).
-    pub conv: *mut c_void,
-    pub conv_tab: *mut *mut c_char,
-}
-
-// ---------------------------------------------------------------------------
-// Plural expression types (from plural-exp.h)
-// ---------------------------------------------------------------------------
-
-/// Operators for plural-form expression trees.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum expression_operator {
-    var,
-    num,
-    lnot,
-    mult,
-    divide,
-    module,
-    plus,
-    minus,
-    less_than,
-    greater_than,
-    less_or_equal,
-    greater_or_equal,
-    equal,
-    not_equal,
-    land,
-    lor,
-    qmop,
-}
-
-/// A node in the plural-form expression tree.
-#[repr(C)]
-pub(crate) struct expression {
-    pub nargs: c_int,
-    pub operation: expression_operator,
-    /// Union: either a numeric literal or up to three child expression pointers.
-    pub val: expression_val,
-}
-
-/// Union variant for `expression.val`.
-#[repr(C)]
-pub(crate) union expression_val {
-    pub num: std::os::raw::c_ulong,
-    pub args: [*mut expression; 3],
-}
-
-impl expression_val {
-    pub(crate) fn get_num(&self) -> std::os::raw::c_ulong {
-        unsafe { self.num }
-    }
-
-    pub(crate) fn get_args(&self) -> &[*mut expression; 3] {
-        unsafe { &self.args }
-    }
-}
-
-/// Parser state passed between the scanner and the plural-form parser.
-#[repr(C)]
-pub(crate) struct parse_args {
-    pub cp: *const c_char,
-    pub res: *mut expression,
-}
-
-// ---------------------------------------------------------------------------
-// Loaded domain (from gettextP.h)
-// ---------------------------------------------------------------------------
-
-/// The in-memory representation of an opened message catalog (.mo file).
-#[repr(C)]
-pub(crate) struct loaded_domain {
-    pub data: *const c_char,
-    pub use_mmap: c_int,
-    pub mmap_size: usize,
-    pub must_swap: c_int,
-    pub malloced: *mut c_void,
-
-    pub nstrings: nls_uint32,
-    pub orig_tab: *const string_desc,
-    pub trans_tab: *const string_desc,
-
-    pub n_sysdep_strings: nls_uint32,
-    pub orig_sysdep_tab: *const sysdep_string_desc,
-    pub trans_sysdep_tab: *const sysdep_string_desc,
-
-    pub hash_size: nls_uint32,
-    pub hash_tab: *const nls_uint32,
-    pub must_swap_hash_tab: c_int,
-
-    pub conversions: *mut converted_domain,
-    pub nconversions: usize,
-    /// Stub for gl_rwlock_t conversions_lock.
-    pub conversions_lock: [u8; 0],
-
-    pub plural: *const expression,
-    pub nplurals: std::os::raw::c_ulong,
-}
 
 // ---------------------------------------------------------------------------
 // Binding (from gettextP.h)
@@ -313,12 +196,6 @@ pub(crate) fn with_intl_runtime<R>(f: impl FnOnce(&mut IntlRuntimeState) -> R) -
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
-
-/// Byte-swap a 32-bit value (for .mo files with opposite endianness).
-#[inline]
-pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
-    (i << 24) | ((i & 0xff00) << 8) | ((i >> 8) & 0xff00) | (i >> 24)
-}
 
 /// Null-checked shared borrow of an interior pointer.
 ///

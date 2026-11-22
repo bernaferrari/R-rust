@@ -1,287 +1,112 @@
 #![warn(unused_unsafe)]
-//! Port of loadmsgcat.c -- Message catalog loading.
+//! Message catalog loading for GNU gettext.
 //!
-//! Loads a .mo (Machine Object) message catalog file into memory and sets up
-//! the hash table for fast string lookup. The .mo file format is defined by
-//! the GNU gettext project.
-//!
-//! For the standalone Rust port, we provide a simplified implementation that
-//! handles the basic .mo file format with stubs for mmap and iconv.
+//! Safe .mo (Machine Object) parser producing an owned `Catalog` with
+//! byte-range entry references and a bounded linear lookup. The portable
+//! `_nl_load_domain` adapter boxes the catalog behind the legacy raw
+//! `loaded_l10nfile` cache slot.
 
-#![allow(non_snake_case)]
-
-use std::alloc::{self, Layout};
-use std::fs::File;
-use std::io::Read as IoRead;
-use std::os::raw::{c_char, c_ulong, c_void};
+use std::ffi::CStr;
+use std::ops::Range;
+use std::os::raw::c_ulong;
 use std::ptr;
 
-use super::types::*;
+use super::plural_exp::PluralForms;
+use super::types::{MO_MAGIC, MO_MAGIC_SWAPPED, cstr, loaded_l10nfile, ptr_mut};
 
-// ---------------------------------------------------------------------------
-// Helper: read a .mo file from disk (no mmap)
-// ---------------------------------------------------------------------------
+pub(super) struct Catalog {
+    bytes: Vec<u8>,
+    entries: Vec<(Range<usize>, Range<usize>)>,
+    plural: PluralForms,
+}
 
-/// Read the entire contents of a .mo file into a malloc'd buffer.
-///
-/// Returns a pointer to the buffer and sets `*sizep` to the file size.
-/// Returns null on failure.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
-    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
-    let (Some(name), Some(out_size)) = (unsafe { cstr(filename) }, unsafe { ptr_mut(sizep) })
-    else {
-        return ptr::null_mut();
-    };
-    let Ok(path) = name.to_str() else {
-        return ptr::null_mut();
-    };
-
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    let mut data = Vec::new();
-    if file.read_to_end(&mut data).is_err() {
-        return ptr::null_mut();
+impl Catalog {
+    pub(super) fn lookup(&self, id: &CStr, plural_n: Option<c_ulong>) -> Option<&CStr> {
+        let (_, trans) = self.entries.iter().find(|(original, _)| {
+            let original = &self.bytes[original.clone()];
+            original.split(|&byte| byte == 0).next() == Some(id.to_bytes())
+        })?;
+        let text = &self.bytes[trans.clone()];
+        let index = plural_n.map_or(0, |n| self.plural.index(n));
+        let form = text.split_inclusive(|&byte| byte == 0).nth(index)?;
+        CStr::from_bytes_with_nul(form)
+            .ok()
+            .filter(|form| !form.is_empty())
     }
+}
 
-    // Add a NUL terminator at the end for safety.
-    data.push(0);
-
-    let size = data.len();
-    let layout = Layout::from_size_align(size, 1).unwrap_or(Layout::new::<u8>());
-    // Allocate `size` bytes for the catalog contents.
-    let buf = unsafe { alloc::alloc(layout) } as *mut c_char;
-    if buf.is_null() {
-        return ptr::null_mut();
+pub(super) fn parse_catalog(bytes: Vec<u8>) -> Option<Catalog> {
+    if bytes.len() < 28 {
+        return None;
     }
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    if let Some(dst) = unsafe { slice_mut(buf as *mut u8, size) } {
-        dst.copy_from_slice(&data);
-    }
-    *out_size = size;
-    buf
+    let swapped = match u32::from_ne_bytes(bytes[..4].try_into().ok()?) {
+        MO_MAGIC => false,
+        MO_MAGIC_SWAPPED => true,
+        _ => return None,
+    };
+    let word = |offset: usize| -> Option<u32> {
+        let word = u32::from_ne_bytes(
+            bytes
+                .get(offset..offset.checked_add(4)?)?
+                .try_into()
+                .ok()?,
+        );
+        Some(if swapped { word.swap_bytes() } else { word })
+    };
+    let table = |offset: usize, count: usize| -> Option<Range<usize>> {
+        let end = offset.checked_add(count.checked_mul(8)?)?;
+        bytes.get(offset..end)?;
+        Some(offset..end)
+    };
+    let entry = |offset: usize| -> Option<Range<usize>> {
+        let len = word(offset)? as usize;
+        let start = word(offset + 4)? as usize;
+        let end = start.checked_add(len)?;
+        let tail = end.checked_add(1)?;
+        let text = bytes.get(start..tail)?;
+        (text.last() == Some(&0)).then_some(start..tail)
+    };
+    let count = word(8)? as usize;
+    let originals = table(word(12)? as usize, count)?;
+    let translations = table(word(16)? as usize, count)?;
+    let entries: Vec<_> = originals
+        .step_by(8)
+        .zip(translations.step_by(8))
+        .map(|(o, t)| Some((entry(o)?, entry(t)?)))
+        .collect::<Option<_>>()?;
+    let metadata = entries
+        .first()
+        .filter(|(orig, _)| orig.len() == 1)
+        .map_or(&[][..], |(_, trans)| {
+            &bytes[trans.start..trans.end - 1]
+        });
+    let plural = PluralForms::from_metadata(metadata);
+    Some(Catalog {
+        bytes,
+        entries,
+        plural,
+    })
 }
 
-/// Read an unaligned u32 from the packed binary .mo catalog.
-///
-/// `p` must point to at least 4 readable bytes inside the catalog.
+/// Load the catalog into an owned value. The legacy cache holds a raw owning pointer.
 ///
 /// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn mo_u32(p: *const u8) -> nls_uint32 {
-    // Catalog fields are byte-packed; `p` is valid per the caller's bounds.
-    unsafe { ptr::read_unaligned(p as *const nls_uint32) }
-}
-
-/// Free a buffer previously allocated with `layout`.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn free_buffer(p: *mut u8, layout: Layout) {
-    // Free the block this module allocated with the matching layout.
-    unsafe { alloc::dealloc(p, layout) }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: get system-dependent string segments (stub)
-// ---------------------------------------------------------------------------
-
-/// Get the segments for system-dependent strings.
-///
-/// In the C implementation, this looks for the "sysdep" field in the .mo
-/// file header. For the standalone port, we return NULL (no sysdep strings).
-fn get_sysdep_string_segments(
-    _domain: *mut loaded_domain,
-    _nullentry: *const c_char,
-) -> *const c_ulong {
-    ptr::null()
-}
-
-// ---------------------------------------------------------------------------
-// Public API: _nl_load_domain
-// ---------------------------------------------------------------------------
-
-/// Load a message domain from its .mo file.
-///
-/// Reads the .mo file, validates its header, sets up the string tables
-/// and hash table, and extracts the plural expression.
-///
-/// # Safety
-/// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
+/// `domain_file` must be null or point to a live writable node with no loaded data,
+/// and its filename must be null or a valid NUL-terminated path for the call.
 pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile) {
-    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
-    let Some(df) = (unsafe { ptr_mut(domain_file) }) else {
+    // SAFETY: the caller supplies a live, exclusively writable node.
+    let Some(file) = (unsafe { ptr_mut(domain_file) }) else {
         return;
     };
-
-    let filename = df.filename;
-    if filename.is_null() {
-        df.decided = 1;
-        df.data = ptr::null();
-        return;
-    }
-
-    // Read the .mo file.
-    let mut file_size: usize = 0;
-    // SAFETY: forwarded raw pointers satisfy `read_mo_file`'s contract per this function's own `# Safety` requirements.
-    let data = unsafe { read_mo_file(filename, &mut file_size) };
-    if data.is_null() {
-        df.decided = 1;
-        df.data = ptr::null();
-        return;
-    }
-    let data_layout = Layout::from_size_align(file_size, 1).unwrap_or(Layout::new::<u8>());
-
-    // Allocate a zeroed loaded_domain structure.
-    let domain_layout = Layout::new::<loaded_domain>();
-    let domain = unsafe { alloc::alloc_zeroed(domain_layout) } as *mut loaded_domain;
-    if domain.is_null() {
-        // Free the `file_size`-byte catalog buffer from read_mo_file.
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { free_buffer(data as *mut u8, data_layout) };
-        df.decided = 1;
-        df.data = ptr::null();
-        return;
-    }
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    let Some(d) = (unsafe { ptr_mut(domain) }) else {
-        return;
-    };
-
-    d.data = data;
-    d.use_mmap = 0;
-    d.mmap_size = file_size;
-    d.must_swap = 0;
-    d.malloced = ptr::null_mut();
-
-    // Validate the magic number.
-    if file_size < 24 {
-        // File too small to be a valid .mo file; free both buffers.
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { free_buffer(data as *mut u8, data_layout) };
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { free_buffer(domain as *mut u8, domain_layout) };
-        df.decided = 1;
-        df.data = ptr::null();
-        return;
-    }
-
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    let magic = unsafe { mo_u32(data as *const u8) };
-
-    if magic == MO_MAGIC {
-        d.must_swap = 0;
-    } else if magic == MO_MAGIC_SWAPPED {
-        d.must_swap = 1;
-    } else {
-        // Invalid magic number; free both buffers.
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { free_buffer(data as *mut u8, data_layout) };
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { free_buffer(domain as *mut u8, domain_layout) };
-        df.decided = 1;
-        df.data = ptr::null();
-        return;
-    }
-
-    // Read the header fields.
-    let read_u32 = |offset: usize| -> nls_uint32 {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let val = unsafe { mo_u32(data.wrapping_add(offset) as *const u8) };
-        if d.must_swap != 0 { SWAP(val) } else { val }
-    };
-
-    let _revision = read_u32(4);
-    let nstrings = read_u32(8);
-    let orig_table_offset = read_u32(12);
-    let trans_table_offset = read_u32(16);
-    let hash_table_size = read_u32(20);
-    let hash_table_offset = read_u32(24);
-
-    d.nstrings = nstrings;
-    d.orig_tab = data.wrapping_add(orig_table_offset as usize) as *const string_desc;
-    d.trans_tab = data.wrapping_add(trans_table_offset as usize) as *const string_desc;
-    d.hash_size = hash_table_size;
-    d.hash_tab = if hash_table_size > 0 {
-        data.wrapping_add(hash_table_offset as usize) as *const nls_uint32
-    } else {
-        ptr::null()
-    };
-    d.must_swap_hash_tab = 0;
-
-    // Handle system-dependent strings (stub).
-    d.n_sysdep_strings = 0;
-    d.orig_sysdep_tab = ptr::null();
-    d.trans_sysdep_tab = ptr::null();
-
-    // Get the null entry (metadata) from the catalog.
-    let nullentry = if nstrings > 0 {
-        let tab = d.orig_tab as *const u8;
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let mut null_length = unsafe { mo_u32(tab) };
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let mut null_offset = unsafe { mo_u32(tab.wrapping_add(4)) };
-        if d.must_swap != 0 {
-            null_length = SWAP(null_length);
-            null_offset = SWAP(null_offset);
-        }
-        if null_length == 0 {
-            ptr::null()
-        } else {
-            data.wrapping_add(null_offset as usize)
-        }
-    } else {
-        ptr::null()
-    };
-
-    // Get the plural expression and nplurals from the null entry.
-    let mut plural: *const expression = ptr::null();
-    let mut nplurals: c_ulong = 2;
-
-    if !nullentry.is_null() {
-        // SAFETY: forwarded raw pointers satisfy `libintl_gettext_extract_plural`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            super::plural_exp::libintl_gettext_extract_plural(nullentry, &mut plural, &mut nplurals)
-        };
-    } else {
-        // Fall back to Germanic plural.
-        // SAFETY: forwarded raw pointers satisfy `libintl_gettext_extract_plural`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            super::plural_exp::libintl_gettext_extract_plural(
-                ptr::null(),
-                &mut plural,
-                &mut nplurals,
-            )
-        };
-    }
-
-    d.plural = plural;
-    d.nplurals = nplurals;
-
-    // Initialize conversions.
-    d.conversions = ptr::null_mut();
-    d.nconversions = 0;
-
-    // Get sysdep segments.
-    let _segments = get_sysdep_string_segments(domain, nullentry);
-
-    // Mark as loaded.
-    df.data = domain as *const c_void;
-    df.decided = 1;
+    // SAFETY: the node's filename satisfies the caller's C-string contract.
+    let catalog = unsafe { cstr(file.filename) }
+        .and_then(|path| path.to_str().ok())
+        .and_then(|path| std::fs::read(path).ok())
+        .and_then(parse_catalog);
+    file.data = catalog.map_or(ptr::null(), |catalog| {
+        Box::into_raw(Box::new(catalog)).cast_const().cast()
+    });
+    file.decided = 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +116,95 @@ pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::raw::c_char;
+
+    /// Build a minimal two-entry catalog: metadata entry plus one message
+    /// with three plural translations, optionally padded to unaligned tables.
+    fn catalog_bytes(big_endian: bool) -> Vec<u8> {
+        let originals: [&[u8]; 2] = [b"", b"bird\0birds"];
+        let translations: [&[u8]; 2] = [
+            b"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n==2 ? 1 : 2;\n",
+            b"one\0few\0many",
+        ];
+        let word = |value: u32| {
+            if big_endian {
+                value.to_be_bytes()
+            } else {
+                value.to_le_bytes()
+            }
+        };
+        let orig_table = 29usize; // one pad byte exercises unaligned table reads.
+        let trans_table = orig_table + originals.len() * 8;
+        let mut cursor = trans_table + translations.len() * 8;
+        let mut orig_descs = Vec::new();
+        let mut trans_descs = Vec::new();
+        let mut strings = Vec::new();
+        for (original, translation) in originals.iter().zip(translations.iter()) {
+            orig_descs.extend_from_slice(&word(original.len() as u32));
+            orig_descs.extend_from_slice(&word(cursor as u32));
+            strings.extend_from_slice(original);
+            strings.push(0);
+            cursor += original.len() + 1;
+            trans_descs.extend_from_slice(&word(translation.len() as u32));
+            trans_descs.extend_from_slice(&word(cursor as u32));
+            strings.extend_from_slice(translation);
+            strings.push(0);
+            cursor += translation.len() + 1;
+        }
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&word(MO_MAGIC));
+        bytes.extend_from_slice(&word(0)); // revision
+        bytes.extend_from_slice(&word(originals.len() as u32));
+        bytes.extend_from_slice(&word(orig_table as u32));
+        bytes.extend_from_slice(&word(trans_table as u32));
+        bytes.extend_from_slice(&word(0)); // hash table size
+        bytes.extend_from_slice(&word(0)); // hash table offset
+        bytes.push(0); // unaligned pad before original table
+        bytes.extend_from_slice(&orig_descs);
+        bytes.extend_from_slice(&trans_descs);
+        bytes.extend_from_slice(&strings);
+        bytes
+    }
+
+    #[test]
+    fn test_catalog_parses_little_endian_and_forms() {
+        let catalog = parse_catalog(catalog_bytes(false)).unwrap();
+        assert_eq!(catalog.lookup(c"bird", Some(1)), Some(c"one"));
+        assert_eq!(catalog.lookup(c"bird", Some(2)), Some(c"few"));
+        assert_eq!(catalog.lookup(c"bird", Some(4)), Some(c"many"));
+        assert!(catalog.lookup(c"missing", None).is_none());
+    }
+
+    #[test]
+    fn test_catalog_parses_big_endian_and_forms() {
+        let catalog = parse_catalog(catalog_bytes(true)).unwrap();
+        assert_eq!(catalog.lookup(c"bird", Some(1)), Some(c"one"));
+        assert_eq!(catalog.lookup(c"bird", Some(2)), Some(c"few"));
+        assert_eq!(catalog.lookup(c"bird", Some(4)), Some(c"many"));
+        assert!(catalog.lookup(c"missing", None).is_none());
+    }
+
+    #[test]
+    fn test_catalog_rejects_truncated_input() {
+        let bytes = catalog_bytes(false);
+        assert!(parse_catalog(bytes[..27].to_vec()).is_none());
+        assert!(parse_catalog(bytes[..bytes.len() - 1].to_vec()).is_none());
+    }
+
+    #[test]
+    fn test_catalog_rejects_bad_table_offset() {
+        let mut bytes = catalog_bytes(false);
+        bytes[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(parse_catalog(bytes).is_none());
+    }
+
+    #[test]
+    fn test_catalog_rejects_bad_entry_offset() {
+        let mut bytes = catalog_bytes(false);
+        // Translation descriptor 1 offset field: table at 45, entry 0 offset at +4.
+        bytes[49..53].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(parse_catalog(bytes).is_none());
+    }
 
     #[test]
     fn test_load_domain_null_file() {
@@ -301,7 +215,7 @@ mod tests {
             next: ptr::null_mut(),
             successor: [ptr::null_mut()],
         };
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: stack-owned node is live and exclusively writable for the call.
         unsafe { _nl_load_domain(&mut l10nfile) };
         assert_eq!(l10nfile.decided, 1);
         assert!(l10nfile.data.is_null());
@@ -309,34 +223,16 @@ mod tests {
 
     #[test]
     fn test_load_domain_missing_file() {
-        unsafe {
-            let fname = b"/nonexistent/path/messages.mo\0";
-            let layout =
-                Layout::from_size_align(fname.len(), 1).unwrap_or_else(|e| panic!("layout: {e:?}"));
-            let fname_buf = alloc::alloc(layout) as *mut c_char;
-            ptr::copy_nonoverlapping(fname.as_ptr() as *const c_char, fname_buf, fname.len());
-
-            let mut l10nfile = loaded_l10nfile {
-                filename: fname_buf,
-                decided: 0,
-                data: ptr::null(),
-                next: ptr::null_mut(),
-                successor: [ptr::null_mut()],
-            };
-            _nl_load_domain(&mut l10nfile);
-            assert_eq!(l10nfile.decided, 1);
-            assert!(l10nfile.data.is_null());
-
-            // Cleanup filename.
-            alloc::dealloc(fname_buf as *mut u8, layout);
-        }
-    }
-
-    #[test]
-    fn test_read_mo_file_null() {
-        let mut size: usize = 0;
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { read_mo_file(ptr::null(), &mut size) };
-        assert!(result.is_null());
+        let mut l10nfile = loaded_l10nfile {
+            filename: b"/nonexistent/path/messages.mo\0".as_ptr() as *const c_char,
+            decided: 0,
+            data: ptr::null(),
+            next: ptr::null_mut(),
+            successor: [ptr::null_mut()],
+        };
+        // SAFETY: stack-owned node and literal NUL-terminated path for the call.
+        unsafe { _nl_load_domain(&mut l10nfile) };
+        assert_eq!(l10nfile.decided, 1);
+        assert!(l10nfile.data.is_null());
     }
 }
