@@ -836,31 +836,51 @@ pub unsafe fn Rstrdup(s: *const c_char) -> *mut c_char {
 /// Shell sort with parallel index array.
 ///
 /// Port of R's static `isort_with_index` from util.c.
+///
+/// # Safety
+/// For `n >= 2` both pointers describe separate initialized mutable buffers
+/// of `n` elements.
 pub unsafe fn isort_with_index(x: *mut c_int, indx: *mut c_int, n: c_int) {
-    unsafe {
-        // Compute initial gap (Knuth's sequence)
-        let mut h: c_int = 1;
-        while h <= n / 9 {
-            h = 3 * h + 1;
-        }
+    let Ok(n) = usize::try_from(n) else {
+        return;
+    };
+    if n < 2 {
+        return;
+    }
+    // SAFETY: for `n >= 2` the caller guarantees separate initialized mutable
+    // buffers of `n` elements.
+    let (x, indices) = unsafe {
+        (
+            std::slice::from_raw_parts_mut(x, n),
+            std::slice::from_raw_parts_mut(indx, n),
+        )
+    };
+    isort_with_index_slice(x, indices);
+}
 
-        while h > 0 {
-            let mut i = h;
-            while i < n {
-                let v = *x.add(i as usize);
-                let iv = *indx.add(i as usize);
-                let mut j = i;
-                while j >= h && *x.add((j - h) as usize) > v {
-                    *x.add(j as usize) = *x.add((j - h) as usize);
-                    *indx.add(j as usize) = *indx.add((j - h) as usize);
-                    j -= h;
-                }
-                *x.add(j as usize) = v;
-                *indx.add(j as usize) = iv;
-                i += 1;
+/// Shell sort two aligned buffers with Knuth's gap sequence.
+fn isort_with_index_slice(x: &mut [c_int], indices: &mut [c_int]) {
+    assert_eq!(x.len(), indices.len());
+    let n = x.len();
+    // Compute initial gap (Knuth's sequence)
+    let mut gap = 1;
+    while gap <= n / 9 {
+        gap = 3 * gap + 1;
+    }
+    while gap > 0 {
+        for i in gap..n {
+            let value = x[i];
+            let index = indices[i];
+            let mut j = i;
+            while j >= gap && x[j - gap] > value {
+                x[j] = x[j - gap];
+                indices[j] = indices[j - gap];
+                j -= gap;
             }
-            h /= 3;
+            x[j] = value;
+            indices[j] = index;
         }
+        gap /= 3;
     }
 }
 
@@ -870,8 +890,13 @@ pub unsafe fn isort_with_index(x: *mut c_int, indx: *mut c_int, n: c_int) {
 
 /// Binary coding: assign each value in `x` to a bin defined by `breaks`.
 ///
-/// This is the core algorithm from R's `bincode` in util.c.
-/// SEXP-dependent wrapper is a stub.
+/// Raw-buffer adapter for the binning algorithm from R's `bincode` in util.c.
+///
+/// # Safety
+/// `x` describes `n` initialized doubles and `code` a writable out-region of
+/// `n` ints that does not overlap the inputs; either may be null when
+/// `n == 0`, and `code`'s cells may be uninitialized. When `nb >= 2`,
+/// `breaks` describes `nb` initialized doubles.
 pub unsafe fn bincode_impl(
     x: *const c_double,
     n: usize,
@@ -881,49 +906,64 @@ pub unsafe fn bincode_impl(
     right: c_int,
     include_border: c_int,
 ) {
-    unsafe {
-        if nb < 2 || nb == NA_INTEGER {
-            r_error("invalid 'breaks' argument");
-        }
+    if nb < 2 {
+        r_error("invalid 'breaks' argument");
+    }
+    // SAFETY: the caller guarantees `nb` initialized doubles.
+    let breaks = unsafe { std::slice::from_raw_parts(breaks, nb as usize) };
+    let x = if n == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees `n` initialized doubles.
+        unsafe { std::slice::from_raw_parts(x, n) }
+    };
+    let codes = bincode_slice(x, breaks, right != 0, include_border != 0);
+    if !codes.is_empty() {
+        // SAFETY: the caller provides that many writable cells; `codes` is a
+        // separate allocation.
+        unsafe { ptr::copy_nonoverlapping(codes.as_ptr(), code, codes.len()) };
+    }
+}
 
-        let nb1 = nb - 1;
-        let lft = if right != 0 { 0 } else { 1 };
-
-        // Verify breaks are sorted
-        for i in 1..nb {
-            if *breaks.add((i - 1) as usize) > *breaks.add(i as usize) {
-                r_error("'breaks' is not sorted");
+/// Binary coding over slices: assign each value in `x` to a bin defined
+/// by sorted `breaks`; NaN, out-of-range, and the open boundary when
+/// `include_border` is false produce NA.
+pub(crate) fn bincode_slice(
+    x: &[f64],
+    breaks: &[f64],
+    right: bool,
+    include_border: bool,
+) -> Vec<c_int> {
+    if breaks.len() < 2 {
+        r_error("invalid 'breaks' argument");
+    }
+    if breaks.windows(2).any(|pair| pair[0] > pair[1]) {
+        r_error("'breaks' is not sorted");
+    }
+    let last = breaks.len() - 1;
+    x.iter()
+        .map(|&value| {
+            if value.is_nan()
+                || value < breaks[0]
+                || breaks[last] < value
+                || (!include_border && value == breaks[if right { 0 } else { last }])
+            {
+                return NA_INTEGER;
             }
-        }
-
-        for i in 0..n {
-            *code.add(i) = NA_INTEGER;
-            let xi = *x.add(i);
-            if !xi.is_nan() {
-                let mut lo: c_int = 0;
-                let mut hi = nb1;
-                if xi < *breaks.add(lo as usize)
-                    || *breaks.add(hi as usize) < xi
-                    || (xi == *breaks.add(if lft != 0 { hi } else { lo } as usize)
-                        && include_border == 0)
-                {
-                    // NA
+            let mut lo = 0;
+            let mut hi = last;
+            while hi - lo >= 2 {
+                let mid = lo + (hi - lo) / 2;
+                if value > breaks[mid] || (!right && value == breaks[mid]) {
+                    lo = mid;
                 } else {
-                    while hi - lo >= 2 {
-                        let mid = (hi + lo) / 2;
-                        if xi > *breaks.add(mid as usize)
-                            || (lft != 0 && xi == *breaks.add(mid as usize))
-                        {
-                            lo = mid;
-                        } else {
-                            hi = mid;
-                        }
-                    }
-                    *code.add(i) = lo + 1;
+                    hi = mid;
                 }
             }
-        }
-    }
+            c_int::try_from(lo + 1)
+                .unwrap_or_else(|_| r_error("long vector 'breaks' is not supported"))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1707,13 +1747,37 @@ mod tests {
         unsafe {
             let x = [0.5, 1.5, 2.5, 3.5, 4.5];
             let breaks = [1.0, 2.0, 3.0, 4.0, 5.0];
-            let mut code = [0i32; 5];
-            bincode_impl(x.as_ptr(), 5, breaks.as_ptr(), 5, code.as_mut_ptr(), 1, 0);
+            let mut code = [std::mem::MaybeUninit::<i32>::uninit(); 5];
+            bincode_impl(
+                x.as_ptr(),
+                5,
+                breaks.as_ptr(),
+                5,
+                code.as_mut_ptr().cast(),
+                1,
+                0,
+            );
+            let code = code.map(|value| value.assume_init());
             assert_eq!(code[0], NA_INTEGER); // 0.5 < breaks[0]
             assert_eq!(code[1], 1); // 1.5 in [1,2)
             assert_eq!(code[2], 2); // 2.5 in [2,3)
             assert_eq!(code[3], 3); // 3.5 in [3,4)
             assert_eq!(code[4], 4); // 4.5 in [4,5)
+        }
+    }
+
+    #[test]
+    fn test_bincode_empty_input_accepts_null_buffers() {
+        unsafe {
+            bincode_impl(
+                ptr::null(),
+                0,
+                [0.0, 1.0].as_ptr(),
+                2,
+                ptr::null_mut(),
+                1,
+                0,
+            );
         }
     }
 
