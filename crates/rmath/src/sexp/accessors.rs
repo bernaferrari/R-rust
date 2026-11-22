@@ -345,6 +345,19 @@ pub fn SETLEVELS(x: SEXP, v: c_int) {
     });
 }
 
+/// gp bit used by the resizable-vector compatibility helpers.
+const RESIZABLE_BIT: u16 = 1 << 5;
+
+pub(crate) fn has_resizable_flag(x: SEXP) -> bool {
+    header_snapshot(x).is_some_and(|header| header.sxpinfo.gp() & RESIZABLE_BIT != 0)
+}
+
+pub(crate) fn set_resizable_flag(x: SEXP) {
+    mutate_header(x, |header| {
+        header.sxpinfo.set_gp(header.sxpinfo.gp() | RESIZABLE_BIT)
+    });
+}
+
 /// GNU `MISSING(x)` — gp bit 2 on a pairlist binding cell.
 pub fn MISSING(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| ((header.sxpinfo.gp() & 0x04) != 0) as c_int)

@@ -29,6 +29,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
 #[cfg(test)]
 #[path = "memory_finalizer_batch_tests.rs"]
@@ -1265,6 +1266,55 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
     }
 }
 
+fn checked_memory<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|failure| error(&failure.to_string()))
+}
+
+fn mset_check<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|_| error("Invalid mset"))
+}
+
+/// Rooted view of the `CONS(store, counter)` precious multiset cells.
+/// `TAG() == initialSize` retains GNU's representation.
+struct MSet<'s> {
+    store: Sexp<'s>,
+    count: Sexp<'s>,
+    initial: Sexp<'s>,
+    len: c_int,
+}
+
+impl<'s> MSet<'s> {
+    fn read(mset: &Sexp<'s>) -> Self {
+        if mset.typeof_() != SEXPTYPE::LISTSXP {
+            error("Invalid mset");
+        }
+        let store = mset_check(mset.try_car());
+        let count = mset_check(mset.try_cdr());
+        let initial = mset_check(mset.try_tag());
+        // Dense storage only: element operations must not invoke
+        // ALTREP provider callbacks while the multiset is mutated.
+        let scalar = |s: &Sexp<'_>| {
+            s.typeof_() == SEXPTYPE::INTSXP && s.len() == 1 && ALTREP(s.as_raw()) == 0
+        };
+        if (!store.is_nil() && (store.typeof_() != SEXPTYPE::VECSXP || ALTREP(store.as_raw()) != 0))
+            || !scalar(&count)
+            || !scalar(&initial)
+        {
+            error("Invalid mset");
+        }
+        let len = mset_check(count.try_integer_elt(0));
+        if len < 0 || i64::from(len) > store.len() {
+            error("Invalid mset");
+        }
+        Self {
+            store,
+            count,
+            initial,
+            len,
+        }
+    }
+}
+
 /// Create a new multi-set for protecting objects.
 ///
 /// This is the equivalent of R's `R_NewPreciousMSet()`.
@@ -1272,22 +1322,21 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
 /// Multi-set representation: `CONS(store, npreserved)` with `TAG() == initialSize`.
 /// `store` is a VECSXP or R_NilValue. `npreserved` is an INTSXP of length 1.
 pub fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
-    let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-    if npreserved.is_null() {
-        error("could not allocate precious mset");
+    if initialSize < 0 {
+        error("'initialSize' must be non-negative");
     }
-    crate::sexp::accessors::SET_INTEGER_ELT(npreserved, 0, 0);
-
-    let mset = Rf_cons(R_NilValue(), npreserved);
-    if mset.is_null() {
-        error("could not allocate precious mset");
-    }
-
-    let size = if initialSize < 0 { 0 } else { initialSize };
-    let isize = Rf_ScalarInteger(size);
-    crate::sexp::accessors::SETTAG(mset, isize);
-
-    mset
+    checked_memory(OwnerToken::with_current(|owner| {
+        let counter = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        checked_memory(owner.require_active());
+        let counter = checked_memory(owner.sexp(counter));
+        let set = Rf_cons(R_NilValue(), counter.as_raw());
+        checked_memory(owner.require_active());
+        let set = checked_memory(owner.sexp(set));
+        let initial = Rf_ScalarInteger(initialSize);
+        checked_memory(owner.require_active());
+        SETTAG(set.as_raw(), initial);
+        set.as_raw()
+    }))
 }
 
 /// Add an object to a multi-set.
@@ -1296,51 +1345,64 @@ pub fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
 ///
 /// Ported from `r-source/src/main/memory.c:3733`.
 pub fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
-    unsafe {
-        if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
-            return;
-        }
-
-        let store = crate::sexp::accessors::CAR(mset);
-        let n_ptr = crate::sexp::accessors::INTEGER(crate::sexp::accessors::CDR(mset));
-        if n_ptr.is_null() {
-            return;
-        }
-        let n = *n_ptr;
-
-        let mut store = store;
-        if store == R_NilValue() {
-            let mut newsize =
-                crate::sexp::accessors::INTEGER_ELT(crate::sexp::accessors::TAG(mset), 0)
-                    as R_xlen_t;
-            if newsize == 0 {
-                newsize = 4;
-            }
-            store = Rf_allocVector3(SEXPTYPE::VECSXP, newsize);
-            crate::sexp::accessors::SETCAR(mset, store);
-        }
-
-        let size = crate::sexp::accessors::XLENGTH(store);
-        if n as R_xlen_t == size {
-            let newsize = 2 * size;
-            if newsize >= i32::MAX as R_xlen_t || newsize < size {
+    if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
+        return;
+    }
+    checked_memory(OwnerToken::with_current(|owner| {
+        let object = checked_memory(owner.sexp(x));
+        let mset = mset_check(owner.sexp(mset));
+        loop {
+            let current = MSet::read(&mset);
+            let index = i64::from(current.len);
+            let next = current
+                .len
+                .checked_add(1)
+                .unwrap_or_else(|| error("Multi-set overflow"));
+            let mut count = mset_check(SexpMut::try_from_checked(current.count.clone()));
+            if index < current.store.len() {
+                let mut store = mset_check(SexpMut::try_from_checked(current.store.clone()));
+                checked_memory(store.try_set_vector_elt(index, object));
+                checked_memory(count.try_set_integer_elt(0, next));
                 return;
             }
-            let newstore = Rf_allocVector3(SEXPTYPE::VECSXP, newsize);
-            for i in 0..size {
-                crate::sexp::accessors::SET_VECTOR_ELT(
-                    newstore,
-                    i,
-                    crate::sexp::accessors::VECTOR_ELT(store, i),
-                );
+            let capacity = if current.store.is_nil() {
+                match mset_check(current.initial.try_integer_elt(0)) {
+                    0 => 4,
+                    n if n > 0 => i64::from(n),
+                    _ => error("Invalid mset"),
+                }
+            } else {
+                current
+                    .store
+                    .len()
+                    .checked_mul(2)
+                    .filter(|n| *n > index && *n < i64::from(c_int::MAX))
+                    .unwrap_or_else(|| error("Multi-set overflow"))
+            };
+            let raw = Rf_allocVector3(SEXPTYPE::VECSXP, capacity);
+            checked_memory(owner.require_active());
+            let mut replacement =
+                checked_memory(SexpMut::try_from_checked(checked_memory(owner.sexp(raw))));
+            // The growth allocation can invoke a callback that changed this
+            // same set; only publish when the cells we read are unchanged.
+            let latest = MSet::read(&mset);
+            if latest.len != current.len
+                || latest.store.as_raw() != current.store.as_raw()
+                || latest.count.as_raw() != current.count.as_raw()
+                || latest.initial.as_raw() != current.initial.as_raw()
+            {
+                continue;
             }
-            crate::sexp::accessors::SETCAR(mset, newstore);
-            store = newstore;
+            for i in 0..index {
+                let value = checked_memory(current.store.try_vector_elt(i));
+                checked_memory(replacement.try_set_vector_elt(i, value));
+            }
+            checked_memory(replacement.try_set_vector_elt(index, object));
+            SETCAR(mset.as_raw(), replacement.as_raw());
+            checked_memory(count.try_set_integer_elt(0, next));
+            return;
         }
-
-        crate::sexp::accessors::SET_VECTOR_ELT(store, n as R_xlen_t, x);
-        *n_ptr = n + 1;
-    }
+    }));
 }
 
 /// Remove (one instance of) the object from the multi-set.
@@ -1349,43 +1411,30 @@ pub fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
 ///
 /// Ported from `r-source/src/main/memory.c:3767`.
 pub fn R_ReleaseFromMSet(x: SEXP, mset: SEXP) {
-    unsafe {
-        if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
-            return;
-        }
-
-        let store = crate::sexp::accessors::CAR(mset);
-        if store == R_NilValue() {
-            return;
-        }
-
-        let n_ptr = crate::sexp::accessors::INTEGER(crate::sexp::accessors::CDR(mset));
-        if n_ptr.is_null() {
-            return;
-        }
-        let n = *n_ptr;
-
-        let mut i = (n as R_xlen_t) - 1;
-        loop {
-            if crate::sexp::accessors::VECTOR_ELT(store, i) == x {
-                while i < (n as R_xlen_t) - 1 {
-                    crate::sexp::accessors::SET_VECTOR_ELT(
-                        store,
-                        i,
-                        crate::sexp::accessors::VECTOR_ELT(store, i + 1),
-                    );
-                    i += 1;
-                }
-                crate::sexp::accessors::SET_VECTOR_ELT(store, i, R_NilValue());
-                *n_ptr = n - 1;
-                return;
-            }
-            if i == 0 {
-                break;
-            }
-            i -= 1;
-        }
+    if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
+        return;
     }
+    checked_memory(OwnerToken::with_current(|owner| {
+        let object = checked_memory(owner.sexp(x));
+        let mset = mset_check(owner.sexp(mset));
+        let current = MSet::read(&mset);
+        let n = i64::from(current.len);
+        let Some(i) = (0..n)
+            .rev()
+            .find(|&i| checked_memory(current.store.try_vector_elt(i)).as_raw() == object.as_raw())
+        else {
+            return;
+        };
+        let mut count = mset_check(SexpMut::try_from_checked(current.count.clone()));
+        let mut output = mset_check(SexpMut::try_from_checked(current.store.clone()));
+        for j in i..n - 1 {
+            let value = checked_memory(current.store.try_vector_elt(j + 1));
+            checked_memory(output.try_set_vector_elt(j, value));
+        }
+        let nil = checked_memory(owner.sexp(R_NilValue()));
+        checked_memory(output.try_set_vector_elt(n - 1, nil));
+        checked_memory(count.try_set_integer_elt(0, current.len - 1));
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1396,10 +1445,7 @@ pub fn R_ReleaseFromMSet(x: SEXP, mset: SEXP) {
 ///
 /// This is the equivalent of R's `R_isResizable()`.
 pub fn R_isResizable(x: SEXP) -> c_int {
-    if x.is_null() {
-        return 0;
-    }
-    unsafe { (((*x).sxpinfo.gp() & (1 << 5)) != 0) as c_int }
+    c_int::from(crate::sexp::accessors::has_resizable_flag(x))
 }
 
 /// Get the maximum length of a resizable vector.
@@ -1425,14 +1471,9 @@ pub fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP {
 ///
 /// This is the equivalent of R's `R_duplicateAsResizable()`.
 pub fn R_duplicateAsResizable(x: SEXP) -> SEXP {
-    unsafe {
-        let dup = crate::mainutils::duplicate::Rf_duplicate(x);
-        if !dup.is_null() {
-            let gp = (*dup).sxpinfo.gp() | (1 << 5);
-            (*dup).sxpinfo.set_gp(gp);
-        }
-        dup
-    }
+    let dup = crate::mainutils::duplicate::Rf_duplicate(x);
+    crate::sexp::accessors::set_resizable_flag(dup);
+    dup
 }
 
 // ---------------------------------------------------------------------------
@@ -1480,24 +1521,29 @@ pub fn initStack() {
 ///
 /// This is the equivalent of R's `do_memoryprofile()`.
 pub fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
-        if result.is_null() {
+    checked_memory(OwnerToken::with_current(|owner| {
+        let raw = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
+        checked_memory(owner.require_active());
+        if raw.is_null() {
             return R_NilValue();
         }
-        let data = REAL(result);
-        crate::sexp::instance::with_required_current_instance(|instance| {
-            *data.add(0) = (*instance).arena.node_count() as f64;
-            *data.add(1) = (*instance).arena.free_count() as f64;
-            *data.add(2) = (*instance).arena.total_bytes_allocated() as f64;
-            *data.add(3) = (*instance)
-                .gc_state
-                .stats
-                .peak_memory
-                .max((*instance).arena.total_bytes_allocated()) as f64;
-        });
-        result
-    }
+        let mut result =
+            checked_memory(SexpMut::try_from_checked(checked_memory(owner.sexp(raw))));
+        let (nodes, free, bytes) = checked_memory(owner.with_arena(|arena| {
+            (
+                arena.node_count(),
+                arena.free_count(),
+                arena.total_bytes_allocated(),
+            )
+        }));
+        let peak = crate::sexp::gengc::get_gc_stats()
+            .peak_memory
+            .max(bytes);
+        for (i, value) in [nodes, free, bytes, peak].into_iter().enumerate() {
+            checked_memory(result.try_set_real_elt(i as R_xlen_t, value as f64));
+        }
+        result.freeze().as_raw()
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -2412,5 +2458,79 @@ mod owned_gc_operation_tests {
     #[test]
     fn owned_gc_operation_actual_allocation_callback_revocation_restores_original() {
         allocation_callback_cleanup(true);
+    }
+
+    #[test]
+    fn precious_mset_growth_rechecks_state_after_gc_callback() {
+        use crate::sexp::gengc::register_gc_callback;
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let set = owner.sexp(R_NewPreciousMSet(1)).unwrap();
+            let first = owner.sexp(Rf_ScalarInteger(1001)).unwrap();
+            let nested = owner.sexp(Rf_ScalarInteger(1002)).unwrap();
+            R_PreserveInMSet(first.as_raw(), set.as_raw());
+
+            let set_raw = set.as_raw();
+            let first_raw = first.as_raw();
+            let nested_raw = nested.as_raw();
+            let invoked = std::rc::Rc::new(std::cell::Cell::new(false));
+            {
+                let invoked = invoked.clone();
+                register_gc_callback(Box::new(move |_| {
+                    if invoked.replace(true) {
+                        return;
+                    }
+                    R_gc_torture(0, 0, 0);
+                    R_ReleaseFromMSet(first_raw, set_raw);
+                    R_PreserveInMSet(nested_raw, set_raw);
+                    R_PreserveInMSet(first_raw, set_raw);
+                }));
+            }
+            // Its only GC root during the growth collection is the one
+            // established inside R_PreserveInMSet.
+            let newcomer_raw = Rf_ScalarInteger(1003);
+            R_gc_torture(1, 1, 0);
+            R_PreserveInMSet(newcomer_raw, set_raw);
+            R_gc_torture(0, 0, 0);
+
+            let store = owner.sexp(CAR(set_raw)).unwrap();
+            let count = owner.sexp(CDR(set_raw)).unwrap();
+            assert!(invoked.get());
+            assert_eq!(count.try_integer_elt(0).unwrap(), 3);
+            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), nested_raw);
+            assert_eq!(store.try_vector_elt(1).unwrap().as_raw(), first_raw);
+            assert_eq!(store.try_vector_elt(2).unwrap().as_raw(), newcomer_raw);
+
+            // Releasing a duplicated entry removes the rightmost instance
+            // while keeping the remaining order stable.
+            R_PreserveInMSet(first_raw, set_raw);
+            R_gc_torture(0, 0, 0);
+            R_ReleaseFromMSet(first_raw, set_raw);
+            assert_eq!(count.try_integer_elt(0).unwrap(), 3);
+            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), nested_raw);
+            assert_eq!(store.try_vector_elt(1).unwrap().as_raw(), first_raw);
+            assert_eq!(store.try_vector_elt(2).unwrap().as_raw(), newcomer_raw);
+
+            R_ReleaseFromMSet(nested_raw, set_raw);
+            R_ReleaseFromMSet(newcomer_raw, set_raw);
+            R_ReleaseFromMSet(first_raw, set_raw);
+            R_ReleaseFromMSet(first_raw, set_raw);
+            assert_eq!(count.try_integer_elt(0).unwrap(), 0);
+            assert_eq!(store.try_vector_elt(0).unwrap().as_raw(), R_NilValue());
+        });
+    }
+
+    #[test]
+    fn resizable_duplicate_marks_only_the_copy() {
+        let session = RSession::new();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let source = owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 3)).unwrap();
+            let dup = R_duplicateAsResizable(source.as_raw());
+            assert_eq!(R_isResizable(source.as_raw()), 0);
+            assert_eq!(R_isResizable(dup), 1);
+            assert_eq!(XLENGTH(dup), 3);
+        });
     }
 }
