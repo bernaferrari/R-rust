@@ -616,24 +616,20 @@ pub(crate) fn read_weakref_item(
         hasattr,
         ..
     } = item;
-    // SAFETY: R_MakeWeakRef allocates a weak reference node inside this
-    // evaluated unserialize call; the result is protected immediately.
-    unsafe {
-        let s = crate::mainutils::memory_main::R_MakeWeakRef(
-            R_NilValue(),
-            R_NilValue(),
-            R_NilValue(),
-            0,
-        );
-        let _s_guard = protect(s);
-        ref_table.add(s);
-        restore_serialized_gp(s, levs, isobj);
-        if hasattr != 0 {
-            let attr = ReadItemInternal(reader, ref_table)?;
-            SET_ATTRIB(s, attr);
-        }
-        Ok(s)
+    let s = crate::mainutils::memory_main::R_MakeWeakRef(
+        R_NilValue(),
+        R_NilValue(),
+        R_NilValue(),
+        0,
+    );
+    let _s_guard = protect(s);
+    ref_table.add(s);
+    restore_serialized_gp(s, levs, isobj);
+    if hasattr != 0 {
+        let attr = ReadItemInternal(reader, ref_table)?;
+        SET_ATTRIB(s, attr);
     }
+    Ok(s)
 }
 
 #[inline(never)]

@@ -27,7 +27,7 @@ use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{ExtPtrBody, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 use crate::sexp::heap::NodeLink;
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
@@ -565,60 +565,64 @@ pub(crate) fn R_ReleaseObject_memory(s: SEXP) {
 // Weak references and finalizers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> SEXP {
-    unsafe {
-        validate_weak_reference_key(key);
-        if !is_valid_r_finalizer(fin) {
-            error("finalizer must be a function or NULL");
-        }
-        crate::sexp::owner::OwnerToken::with_current(|owner| {
-            let factory = owner.node_factory();
-            // Inputs must stay alive until the finalizer is registered, including
-            // the weak key during allocation callbacks before registration.
-            let _inputs: Vec<_> = [key, val, fin]
-                .into_iter()
-                .filter(|raw| !raw.is_null())
-                .map(|raw| {
-                    factory
-                        .wrap(raw)
-                        .unwrap_or_else(|error_| error(&error_.to_string()))
-                })
-                .collect();
-            let result = factory
-                .allocate(|arena| {
-                    let key = arena.link_from_projection(key)?;
-                    let val = arena.link_from_projection(val)?;
-                    let fin = arena.link_from_projection(fin)?;
-                    let node = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-                    if node.is_null() {
-                        return None;
-                    }
-                    (*node).data = crate::sexp::ffi::NodeBody::List(crate::sexp::ffi::Listsxp {
-                        carval: key,
-                        cdrval: val,
-                        tagval: fin,
-                    });
-                    Some(node)
-                })
-                .unwrap_or_else(|error_| error(&error_.to_string()));
-            let s = result.as_raw();
-            if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
-                register_r_finalizer(key, fin, _onexit != 0);
-            }
-            s
-        })
-        .unwrap_or_else(|error_| error(&error_.to_string()))
+fn make_weak_ref(key: SEXP, val: SEXP, fin: SEXP, register: impl FnOnce()) -> SEXP {
+    validate_weak_reference_key(key);
+    if !is_valid_r_finalizer(fin) {
+        error("finalizer must be a function or NULL");
     }
+    checked_memory(OwnerToken::with_current(|owner| {
+        let factory = owner.node_factory();
+        // Keep the key alive through deferred collection and registration;
+        // the published key edge is weak and does not take over this root.
+        let inputs = [key, val, fin].map(|raw| {
+            (!raw.is_null()).then(|| checked_memory(factory.wrap(raw)))
+        });
+        let [carval, cdrval, tagval] = inputs.each_ref().map(|value| match value {
+            Some(value) => checked_memory(factory.link(value)),
+            None => NodeLink::NULL,
+        });
+        let body = NodeBody::List(Listsxp {
+            carval,
+            cdrval,
+            tagval,
+        });
+        let result = checked_memory(factory.allocate(|arena| {
+            let raw = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+            let node = arena.node_token(raw)?;
+            let heap = arena.heap_identity();
+            let mut header = heap.node_snapshot(&node)?;
+            header.data = body;
+            heap.replace_node(&node, header)?;
+            Some(raw)
+        }));
+        register();
+        result.as_raw()
+    }))
 }
 
-pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: c_int) -> SEXP {
-    unsafe {
-        let s = R_MakeWeakRef(key, val, R_NilValue(), 0);
-        if !s.is_null() {
-            register_c_finalizer(key, fin, onexit != 0);
+/// Create a weak reference with an R finalizer.
+///
+/// This is the equivalent of R's `R_MakeWeakRef()`.
+pub fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: c_int) -> SEXP {
+    make_weak_ref(key, val, fin, || {
+        if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
+            register_r_finalizer(key, fin, onexit != 0);
         }
-        s
-    }
+    })
+}
+
+/// Create a weak reference with a native finalizer.
+///
+/// This is the equivalent of R's `R_MakeWeakRefC()`.
+///
+/// # Safety
+/// `fin` must remain callable for the lifetime of the registration and be
+/// safe to invoke with the key's SEXP cast to `*mut c_void`, without unwinding
+/// through the C ABI.
+pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: c_int) -> SEXP {
+    make_weak_ref(key, val, R_NilValue(), || {
+        register_c_finalizer(key, fin, onexit != 0);
+    })
 }
 
 pub fn R_WeakRefKey(w: SEXP) -> SEXP {
@@ -1840,35 +1844,31 @@ mod tests {
     #[test]
     fn test_weak_ref_roundtrip() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
-            let val = crate::sexp::constructors::Rf_ScalarInteger(99);
-            let w = R_MakeWeakRef(key, val, R_NilValue(), 0);
-            assert!(!w.is_null());
+        let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+        let val = crate::sexp::constructors::Rf_ScalarInteger(99);
+        let w = R_MakeWeakRef(key, val, R_NilValue(), 0);
+        assert!(!w.is_null());
 
-            let k = R_WeakRefKey(w);
-            assert_eq!(k, key);
+        let k = R_WeakRefKey(w);
+        assert_eq!(k, key);
 
-            let v = R_WeakRefValue(w);
-            assert_eq!(v, val);
+        let v = R_WeakRefValue(w);
+        assert_eq!(v, val);
 
-            // null weak ref returns nil
-            assert_eq!(R_WeakRefKey(ptr::null_mut()), R_NilValue());
-            assert_eq!(R_WeakRefValue(ptr::null_mut()), R_NilValue());
-        }
+        // null weak ref returns nil
+        assert_eq!(R_WeakRefKey(ptr::null_mut()), R_NilValue());
+        assert_eq!(R_WeakRefValue(ptr::null_mut()), R_NilValue());
     }
 
     #[test]
     fn test_weak_ref_rejects_non_reference_key_like_gnu_r() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let key = crate::sexp::constructors::Rf_ScalarInteger(42);
-            let val = crate::sexp::constructors::Rf_ScalarInteger(99);
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _ = R_MakeWeakRef(key, val, R_NilValue(), 0);
-            }));
-            assert!(result.is_err());
-        }
+        let key = crate::sexp::constructors::Rf_ScalarInteger(42);
+        let val = crate::sexp::constructors::Rf_ScalarInteger(99);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = R_MakeWeakRef(key, val, R_NilValue(), 0);
+        }));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -2200,11 +2200,14 @@ mod tests {
     fn test_make_weak_ref_with_r_finalizer_registers_deferred_finalizer() {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
-        session.with_protected(|| unsafe {
+        session.with_protected(|| {
             with_memory_state(|state| state.pending_finalizers.clear());
             let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             let body = Rf_ScalarInteger(123);
-            let fun = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), body, R_GlobalEnv());
+            // SAFETY: nil formals, fresh body, global env — a complete closure.
+            let fun = unsafe {
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), body, R_GlobalEnv())
+            };
 
             let weak = R_MakeWeakRef(key, R_NilValue(), fun, 1);
             assert_eq!(TYPEOF(weak), SEXPTYPE::WEAKREFSXP);
@@ -2621,6 +2624,77 @@ mod owned_gc_operation_tests {
             assert!(!stale_node.is_live());
             let cleared = catch_unwind(AssertUnwindSafe(|| R_ClearExternalPtr(stale)));
             assert!(cleared.is_err());
+        });
+    }
+
+    #[test]
+    fn weak_ref_construction_keeps_key_during_gc_but_not_afterward() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+            // Rooted only until the value allocation; the weak edge published
+            // by construction must not take over this root.
+            let key_root = owner.sexp(key).unwrap();
+            let value = Rf_ScalarInteger(1307);
+            let key_node = key_root.allocation().unwrap().clone();
+            let value_node = crate::sexp::memory::checked_node(value).unwrap();
+            let collections = Rc::new(Cell::new(0usize));
+            {
+                let collections = collections.clone();
+                let key_node = key_node.clone();
+                let value_node = value_node.clone();
+                register_gc_callback(Box::new(move |_| {
+                    collections.set(collections.get() + 1);
+                    if collections.get() == 1 {
+                        assert!(key_node.is_live());
+                        assert!(value_node.is_live());
+                        R_gc_torture(0, 0, 0);
+                    }
+                }));
+            }
+            drop(key_root);
+            R_gc_torture(1, 1, 0);
+            let weak = owner
+                .sexp(R_MakeWeakRef(key, value, R_NilValue(), 0))
+                .unwrap();
+            R_gc_torture(0, 0, 0);
+            assert!(collections.get() >= 1);
+            assert_eq!(R_WeakRefKey(weak.as_raw()), key);
+            assert_eq!(R_WeakRefValue(weak.as_raw()), value);
+
+            crate::sexp::gengc::full_gc();
+            assert!(!key_node.is_live());
+            assert_eq!(R_WeakRefKey(weak.as_raw()), R_NilValue());
+            assert!(value_node.is_live());
+            assert_eq!(INTEGER_ELT(R_WeakRefValue(weak.as_raw()), 0), 1307);
+        });
+    }
+
+    #[test]
+    fn weak_ref_c_finalizer_is_deferred_and_runs_once() {
+        thread_local! {
+            static RUNS: Cell<usize> = const { Cell::new(0) };
+        }
+        extern "C" fn count(_: *mut c_void) {
+            RUNS.with(|runs| runs.set(runs.get() + 1));
+        }
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            RUNS.with(|runs| runs.set(0));
+            let owner = session.owner_token().unwrap();
+            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+            let key_root = owner.sexp(key).unwrap();
+            // SAFETY: `count` has no preconditions and never unwinds.
+            let weak = unsafe { R_MakeWeakRefC(key, R_NilValue(), count, 0) };
+            let _weak = owner.sexp(weak).unwrap();
+            R_gc();
+            assert_eq!(RUNS.with(|runs| runs.get()), 0);
+            drop(key_root);
+            R_gc();
+            assert_eq!(RUNS.with(|runs| runs.get()), 1);
+            R_gc();
+            assert_eq!(RUNS.with(|runs| runs.get()), 1);
         });
     }
 }

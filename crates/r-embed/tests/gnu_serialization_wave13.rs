@@ -42,3 +42,27 @@ fn gnu_external_pointer_stream_reads() {
         .unwrap();
     assert_eq!(value.trim(), "external-pointer-wire: PASS");
 }
+
+#[test]
+fn gnu_shared_weak_reference_stream_reads() {
+    let mut session = RSession::new().unwrap();
+    let value = session
+        .eval(
+            r#"local({
+  x <- unserialize(charToRaw("A
+2
+263682
+131840
+19
+2
+23
+511
+"))
+  stopifnot(length(x)==2L, identical(typeof(x[[1L]]), 'weakref'), identical(x[[1L]],x[[2L]]))
+  cat('weak-reference-wire: PASS
+')
+})"#,
+        )
+        .unwrap();
+    assert_eq!(value.trim(), "weak-reference-wire: PASS");
+}
