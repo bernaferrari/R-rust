@@ -34,116 +34,116 @@ fn keep_source_enabled(args: SEXP) -> bool {
     !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
 }
 
-pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        reset_parse_state();
-        // `file=` (by name or as the lone positional): read the file and
-        // parse its content with strict file-parse semantics.
-        let file = file_arg(args);
-        if !file.is_null() && file != R_NilValue() {
-            if crate::mainutils::connections::inherits_class(file, "connection") {
-                let index = crate::mainutils::connections::checked_connection_index(
-                    crate::mainutils::connections::as_integer(file),
-                );
-                let mut content = String::new();
+pub fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    reset_parse_state();
+    // `file=` (by name or as the lone positional): read the file and
+    // parse its content with strict file-parse semantics.
+    let file = file_arg(args);
+    if !file.is_null() && file != R_NilValue() {
+        if crate::mainutils::connections::inherits_class(file, "connection") {
+            let index = crate::mainutils::connections::checked_connection_index(
+                crate::mainutils::connections::as_integer(file),
+            );
+            let mut content = String::new();
+            {
+                let mut table = crate::mainutils::connections::connection_table();
+                let Some(conn) = table[index].as_mut() else {
+                    parse_failure("invalid connection");
+                };
+                while let Some(line) =
+                    crate::mainutils::connections::read_pushback_line(conn, false)
                 {
-                    let mut table = crate::mainutils::connections::connection_table();
-                    let Some(conn) = table[index].as_mut() else {
-                        parse_failure("invalid connection");
-                    };
-                    while let Some(line) =
-                        crate::mainutils::connections::read_pushback_line(conn, false)
-                    {
-                        content.push_str(&line);
-                        content.push('\n');
-                    }
-                    if let Some(reader) = conn.reader.as_mut() {
-                        use std::io::Read;
-                        let _ = reader.read_to_string(&mut content);
-                    }
+                    content.push_str(&line);
+                    content.push('\n');
                 }
-                remember_parse_context(&content);
-                return parse_content_to_exprs(&content);
+                if let Some(reader) = conn.reader.as_mut() {
+                    use std::io::Read;
+                    let _ = reader.read_to_string(&mut content);
+                }
             }
-            let path = local_elt_to_string(file, 0);
-            if !path.is_empty() {
-                match crate::mainutils::browser_files::read_text_or_host(&path) {
-                    Ok(content) => {
-                        remember_parse_context(&content);
-                        if keep_source_enabled(args) {
-                            return crate::mainutils::essentials::parse_with_srcrefs(
-                                &content, &path,
-                            );
-                        }
-                        return parse_content_to_exprs(&content);
+            remember_parse_context(&content);
+            return parse_content_to_exprs(&content);
+        }
+        let path = local_elt_to_string(file, 0);
+        if !path.is_empty() {
+            match crate::mainutils::browser_files::read_text_or_host(&path) {
+                Ok(content) => {
+                    remember_parse_context(&content);
+                    if keep_source_enabled(args) {
+                        return crate::mainutils::essentials::parse_with_srcrefs(
+                            &content, &path,
+                        );
                     }
-                    Err(err) => {
-                        parse_failure(format!("cannot open file '{path}': {err}"));
-                    }
+                    return parse_content_to_exprs(&content);
+                }
+                Err(err) => {
+                    parse_failure(format!("cannot open file '{path}': {err}"));
                 }
             }
         }
-        let text = parse_text_arg(args);
-        if text.is_null() || text == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
-        }
-        if TYPEOF(text) != SEXPTYPE::STRSXP {
+    }
+    let text = parse_text_arg(args);
+    if text.is_null() || text == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
+    }
+    if TYPEOF(text) != SEXPTYPE::STRSXP {
+        parse_failure("invalid 'text' argument");
+    }
+
+    // Multi-element `text` is ONE source stream: upstream concatenates
+    // the vector with newlines before parsing (a function split across
+    // elements parses as a whole). Join first, then strict-parse once.
+    let n = XLENGTH(text);
+    let mut combined = String::new();
+    for i in 0..n {
+        let elt = STRING_ELT(text, i);
+        if elt == R_NaString() {
             parse_failure("invalid 'text' argument");
         }
-
-        // Multi-element `text` is ONE source stream: upstream concatenates
-        // the vector with newlines before parsing (a function split across
-        // elements parses as a whole). Join first, then strict-parse once.
-        let n = XLENGTH(text);
-        let mut combined = String::new();
-        for i in 0..n {
-            let elt = STRING_ELT(text, i);
-            if elt == R_NaString() {
-                parse_failure("invalid 'text' argument");
-            }
-            let source =
-                String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned();
-            if !combined.is_empty() {
-                combined.push('\n');
-            }
-            combined.push_str(&source);
+        let source =
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned();
+        if !combined.is_empty() {
+            combined.push('\n');
         }
-        if combined.trim().is_empty() {
-            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
-        }
-        remember_parse_context(&combined);
-        return if keep_source_enabled(args) {
-            crate::mainutils::essentials::parse_with_srcrefs(&combined, "<text>")
-        } else {
-            parse_content_to_exprs(&combined)
-        };
+        combined.push_str(&source);
     }
+    if combined.trim().is_empty() {
+        return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
+    }
+    remember_parse_context(&combined);
+    return if keep_source_enabled(args) {
+        crate::mainutils::essentials::parse_with_srcrefs(&combined, "<text>")
+    } else {
+        parse_content_to_exprs(&combined)
+    };
 }
 
 // Parse whole-file content with strict file-parse semantics,
 // shared by the `file=` path below.
-unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
-    unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions_strict(content, arena, parser_factory.clone())
+fn parse_content_to_exprs(content: &str) -> SEXP {
+    let owner = crate::sexp::owner::OwnerToken::current()
+        .expect("parsing requires an active session");
+    let parser_factory = owner.node_factory();
+    let parsed = owner
+        .with_arena(|arena| {
+            crate::eval::parser::parse_expressions_strict(content, arena, parser_factory)
                 .map_err(|err| err.to_string())
-        });
-        match parsed {
-            Ok(exprs) => {
-                let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, exprs.len() as R_xlen_t);
-                if result.is_null() {
-                    return R_NilValue();
-                }
-                let _result_guard = protect(result);
-                for (i, expr) in exprs.iter().enumerate() {
-                    SET_VECTOR_ELT(result, i as R_xlen_t, expr.clone().as_raw());
-                }
-                result
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    match parsed {
+        Ok(exprs) => {
+            let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, exprs.len() as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
-            Err(message) => {
-                parse_failure(message);
+            let _result_guard = protect(result);
+            for (i, expr) in exprs.iter().enumerate() {
+                SET_VECTOR_ELT(result, i as R_xlen_t, expr.clone().as_raw());
             }
+            result
+        }
+        Err(message) => {
+            parse_failure(message);
         }
     }
 }
@@ -165,53 +165,42 @@ fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
 }
 
 // Compare a tag symbol's printed name without reaching into private modules.
-unsafe fn tag_name_is(tag: SEXP, want: &str) -> bool {
-    unsafe {
-        if tag.is_null() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        let pname = crate::sexp::accessors::PRINTNAME(tag);
-        if pname.is_null() {
-            return false;
-        }
-        let chars = crate::sexp::accessors::CHAR(pname);
-        if chars.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(chars).to_str().unwrap_or("") == want
+fn tag_name_is(tag: SEXP, want: &str) -> bool {
+    if tag.is_null() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+        return false;
     }
+    crate::sexp::accessors::char_cstr_bytes_opt(crate::sexp::accessors::PRINTNAME(tag))
+        .is_some_and(|bytes| bytes == want.as_bytes())
 }
 
 // `file` by name, or the lone positional string when it names a
 // readable file (parse(file=...) / parse(path)).
-unsafe fn file_arg(args: SEXP) -> SEXP {
-    unsafe {
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag_name_is(tag, "file") {
-                return CAR(cell);
-            }
-            cell = CDR(cell);
+fn file_arg(args: SEXP) -> SEXP {
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag_name_is(tag, "file") {
+            return CAR(cell);
         }
-        // Lone positional string that names a readable file. A tagged
-        // argument (e.g. parse(text="1")) matched its formal by name and
-        // must never fall into the positional `file` slot.
-        if !args.is_null()
-            && args != R_NilValue()
-            && (CDR(args).is_null() || CDR(args) == R_NilValue())
-            && (TAG(args).is_null() || TAG(args) == R_NilValue())
-        {
-            let first = CAR(args);
-            if TYPEOF(first) == SEXPTYPE::STRSXP {
-                let path = local_elt_to_string(first, 0);
-                if !path.is_empty() && std::path::Path::new(&path).is_file() {
-                    return first;
-                }
-            }
-        }
-        R_NilValue()
+        cell = CDR(cell);
     }
+    // Lone positional string that names a readable file. A tagged
+    // argument (e.g. parse(text="1")) matched its formal by name and
+    // must never fall into the positional `file` slot.
+    if !args.is_null()
+        && args != R_NilValue()
+        && (CDR(args).is_null() || CDR(args) == R_NilValue())
+        && (TAG(args).is_null() || TAG(args) == R_NilValue())
+    {
+        let first = CAR(args);
+        if TYPEOF(first) == SEXPTYPE::STRSXP {
+            let path = local_elt_to_string(first, 0);
+            if !path.is_empty() && std::path::Path::new(&path).is_file() {
+                return first;
+            }
+        }
+    }
+    R_NilValue()
 }
 
 fn parse_text_arg(args: SEXP) -> SEXP {
@@ -443,40 +432,36 @@ mod tests {
     #[test]
     fn test_do_parse_stub() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_parse(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert_eq!(TYPEOF(result), SEXPTYPE::EXPRSXP);
-            assert_eq!(XLENGTH(result), 0);
-        }
+        let result = do_parse(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+        assert_eq!(TYPEOF(result), SEXPTYPE::EXPRSXP);
+        assert_eq!(XLENGTH(result), 0);
     }
 
     #[test]
     fn test_do_parse_text_arg() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        unsafe {
-            let text = crate::sexp::constructors::mk_string_str("1 + 2");
-            let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
-            let args = crate::sexp::constructors::Rf_cons(
-                R_NilValue(),
-                crate::sexp::constructors::Rf_cons(
-                    n,
-                    crate::sexp::constructors::Rf_cons(text, R_NilValue()),
-                ),
-            );
-            let mut cell = args;
-            for _ in 0..3 {
-                crate::sexp::accessors::SETTAG(cell, R_NilValue());
-                cell = CDR(cell);
-            }
-            let result = do_parse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::EXPRSXP);
-            assert_eq!(XLENGTH(result), 1);
+        let text = crate::sexp::constructors::mk_string_str("1 + 2");
+        let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
+        let args = crate::sexp::constructors::Rf_cons(
+            R_NilValue(),
+            crate::sexp::constructors::Rf_cons(
+                n,
+                crate::sexp::constructors::Rf_cons(text, R_NilValue()),
+            ),
+        );
+        let mut cell = args;
+        for _ in 0..3 {
+            crate::sexp::accessors::SETTAG(cell, R_NilValue());
+            cell = CDR(cell);
         }
+        let result = do_parse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+        assert_eq!(TYPEOF(result), SEXPTYPE::EXPRSXP);
+        assert_eq!(XLENGTH(result), 1);
     }
 
     #[test]

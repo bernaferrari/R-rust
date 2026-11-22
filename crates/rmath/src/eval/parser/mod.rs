@@ -90,15 +90,12 @@ pub(crate) struct Parser<'arena, 'session> {
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Capture the live translated caller's owner before lending its arena.
-///
-/// # Safety
-/// The active instance allocation must outlive every use of the returned
-/// factory and handle. Only session-borrowed callers may expose handles to safe code.
-pub(crate) unsafe fn active_factory<'session>() -> SessionNodeFactory<'session> {
-    let owner =
-        crate::sexp::instance::current_instance_ptr().expect("parsing requires an active session");
-    SessionNodeFactory::new(unsafe { crate::sexp::owner::OwnerToken::from_raw(owner) })
+/// Capture the active parser domain before borrowing its arena. The factory
+/// validates the original owner's liveness when used.
+pub(crate) fn active_factory() -> SessionNodeFactory<'static> {
+    crate::sexp::owner::OwnerToken::current()
+        .expect("parsing requires an active session")
+        .node_factory()
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +126,18 @@ pub(crate) fn parse_expressions<'session>(
 ) -> Result<Vec<Sexp<'session>>, ParseError> {
     let mut parser = Parser::new(input, arena, domain);
     parser.parse_top_level_expressions()
+}
+
+/// Parse trusted source with plain expression semantics under the active
+/// session's original owner. The checked arena lend retains the owner and
+/// rejects it if a deferred callback switches or revokes it.
+pub(crate) fn parse_active_expressions(input: &str) -> Result<Vec<Sexp<'static>>, ParseError> {
+    let owner = crate::sexp::owner::OwnerToken::current()
+        .expect("parsing requires an active session");
+    let factory = owner.node_factory();
+    owner
+        .with_arena(|arena| parse_expressions(input, arena, factory))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Parse R source the way `parse()`/`source()` do: newline-crossing `else`

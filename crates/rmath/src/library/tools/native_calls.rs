@@ -393,18 +393,13 @@ pub fn install_tools_call_symbols(env: SEXP) {
 }
 
 fn eval_tools_source(env: SEXP, source: &str) {
-    unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(source, arena, parser_factory.clone())
-        });
-        crate::eval::parser::flush_literal_warnings();
-        let Ok(exprs) = parsed else {
-            return;
-        };
-        for expr in &exprs {
-            let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
-        }
+    let parsed = crate::eval::parser::parse_active_expressions(source);
+    crate::eval::parser::flush_literal_warnings();
+    let Ok(exprs) = parsed else {
+        return;
+    };
+    for expr in &exprs {
+        let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), env);
     }
 }
 pub fn install_tools_assert_closures(env: SEXP) {

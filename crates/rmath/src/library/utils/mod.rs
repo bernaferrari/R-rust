@@ -204,134 +204,134 @@ unsafe extern "C-unwind" fn c_edit(
 }
 
 pub fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
-    unsafe {
-        // The original utils wrapper calls .External(C_Rprof, ...). Keep its
-        // registration authority in this namespace's original allocation.
-        crate::sexp::owner::OwnerToken::with_current(|owner| {
-            let _pin = owner
-                .pin()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let factory = owner.node_factory();
-            let namespace = factory
-                .wrap(env)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let binding = factory
-                .wrap(crate::sexp::symbol::install_str("C_Rprof"))
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let keys = crate::mainutils::native_symbols::AttributeKeys {
-                names: factory
-                    .wrap(crate::sexp::symbol::install_str("names"))
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
-                class: factory
-                    .wrap(crate::sexp::symbol::install_str("class"))
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
-            };
-            let metadata =
-                crate::mainutils::native_symbols::symbol_info(owner, "Rprof", "utils", true, &keys)
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-                    .expect("bundled Rprof registration is present");
-            let address = metadata
-                .try_vector_elt(1)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            owner
-                .require_active()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
-            drop(metadata);
-            owner
-                .require_active()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let binding = factory
-                .wrap(crate::sexp::symbol::install_str("C_charClass"))
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let metadata = crate::mainutils::native_symbols::symbol_info(
-                owner,
-                "charClass",
-                "utils",
-                true,
-                &keys,
-            )
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-            .expect("bundled charClass registration is present");
-            let address = metadata
-                .try_vector_elt(1)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            owner
-                .require_active()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
-            drop(metadata);
-            owner
-                .require_active()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let flush = c"C_flushconsole";
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&flush),
-                crate::sexp::constructors::mk_string_bytes(flush.to_bytes()),
-                env,
-            );
-            let cname = std::ffi::CString::new("C_countfields").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&cname),
-                crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
-                env,
-            );
-            let head = std::ffi::CString::new("C_readtablehead").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&head),
-                crate::sexp::constructors::mk_string_bytes(head.to_bytes()),
-                env,
-            );
-            let convert = std::ffi::CString::new("C_typeconvert").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&convert),
-                crate::sexp::constructors::mk_string_bytes(convert.to_bytes()),
-                env,
-            );
-            let write = std::ffi::CString::new("C_writetable").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&write),
-                crate::sexp::constructors::mk_string_bytes(write.to_bytes()),
-                env,
-            );
-            let size = std::ffi::CString::new("C_objectSize").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&size),
-                crate::sexp::constructors::mk_string_bytes(size.to_bytes()),
-                env,
-            );
-            let edit = std::ffi::CString::new("C_edit").unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::install_cstr(&edit),
-                crate::sexp::constructors::mk_string_bytes(edit.to_bytes()),
-                env,
-            );
-            let maker = crate::sexp::symbol::install_str("makeRweaveLatexCodeRunner");
-            let bound = crate::sexp::envir::R_findVarInFrame(env, maker);
-            if bound.is_null()
-                || bound == crate::sexp::globals::R_UnboundValue()
-                || bound == crate::sexp::globals::R_NilValue()
-            {
-                return;
-            }
-            let parser_factory = crate::eval::parser::active_factory();
-            let parsed = crate::sexp::memory::with_arena(|arena| {
+    // The original utils wrapper calls .External(C_Rprof, ...). Keep its
+    // registration authority in this namespace's original allocation.
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let namespace = factory
+            .wrap(env)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let binding = factory
+            .wrap(crate::sexp::symbol::install_str("C_Rprof"))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let keys = crate::mainutils::native_symbols::AttributeKeys {
+            names: factory
+                .wrap(crate::sexp::symbol::install_str("names"))
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            class: factory
+                .wrap(crate::sexp::symbol::install_str("class"))
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+        };
+        let metadata =
+            crate::mainutils::native_symbols::symbol_info(owner, "Rprof", "utils", true, &keys)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+                .expect("bundled Rprof registration is present");
+        let address = metadata
+            .try_vector_elt(1)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
+        drop(metadata);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let binding = factory
+            .wrap(crate::sexp::symbol::install_str("C_charClass"))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let metadata = crate::mainutils::native_symbols::symbol_info(
+            owner,
+            "charClass",
+            "utils",
+            true,
+            &keys,
+        )
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        .expect("bundled charClass registration is present");
+        let address = metadata
+            .try_vector_elt(1)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
+        drop(metadata);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let flush = c"C_flushconsole";
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&flush),
+            crate::sexp::constructors::mk_string_bytes(flush.to_bytes()),
+            env,
+        );
+        let cname = std::ffi::CString::new("C_countfields").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&cname),
+            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+            env,
+        );
+        let head = std::ffi::CString::new("C_readtablehead").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&head),
+            crate::sexp::constructors::mk_string_bytes(head.to_bytes()),
+            env,
+        );
+        let convert = std::ffi::CString::new("C_typeconvert").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&convert),
+            crate::sexp::constructors::mk_string_bytes(convert.to_bytes()),
+            env,
+        );
+        let write = std::ffi::CString::new("C_writetable").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&write),
+            crate::sexp::constructors::mk_string_bytes(write.to_bytes()),
+            env,
+        );
+        let size = std::ffi::CString::new("C_objectSize").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&size),
+            crate::sexp::constructors::mk_string_bytes(size.to_bytes()),
+            env,
+        );
+        let edit = std::ffi::CString::new("C_edit").unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&edit),
+            crate::sexp::constructors::mk_string_bytes(edit.to_bytes()),
+            env,
+        );
+        let maker = crate::sexp::symbol::install_str("makeRweaveLatexCodeRunner");
+        let bound = crate::sexp::envir::R_findVarInFrame(env, maker);
+        if bound.is_null()
+            || bound == crate::sexp::globals::R_UnboundValue()
+            || bound == crate::sexp::globals::R_NilValue()
+        {
+            return;
+        }
+        let parser_factory = owner.node_factory();
+        let parsed = owner
+            .with_arena(|arena| {
                 crate::eval::parser::parse_expressions(
                     "RweaveLatexRuncode <- makeRweaveLatexCodeRunner()",
                     arena,
                     parser_factory,
                 )
-            });
-            crate::eval::parser::flush_literal_warnings();
-            if let Ok(exprs) = parsed {
-                for expr in &exprs {
-                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        crate::eval::eval::Rf_eval(expr.clone().as_raw(), env)
-                    }));
-                }
+            })
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        crate::eval::parser::flush_literal_warnings();
+        if let Ok(exprs) = parsed {
+            for expr in &exprs {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::eval::eval::Rf_eval(expr.clone().as_raw(), env)
+                }));
             }
-        })
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-    }
+        }
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 mod utils;

@@ -193,27 +193,22 @@ fn retarget_base_closure_envs(base_env: SEXP) {
 }
 
 fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
-    unsafe {
-        let parser_factory = crate::eval::parser::active_factory();
-        let parsed = super::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(source, arena, parser_factory.clone())
-        });
-        crate::eval::parser::flush_literal_warnings();
-        let Ok(exprs) = parsed else {
-            return;
-        };
-        if exprs.len() != 1 {
-            return;
-        }
-        let value = crate::eval::eval::Rf_eval(exprs[0].clone().as_raw(), base_env);
-        let _v = super::protect::protect(value);
-        let symbol = Rf_install_in_current(name);
-        defineVar(symbol, value, base_env);
-        // GNU defineVar writes the closure into the symbol value slot.
-        // Deparse uses SYMVALUE to distinguish primitives (PP_FUNCALL,
-        // inlist++) from closures (plain call, no inlist++).
-        SET_SYMVALUE(symbol, value);
+    let parsed = crate::eval::parser::parse_active_expressions(source);
+    crate::eval::parser::flush_literal_warnings();
+    let Ok(exprs) = parsed else {
+        return;
+    };
+    if exprs.len() != 1 {
+        return;
     }
+    let value = crate::eval::eval::Rf_eval(exprs[0].clone().as_raw(), base_env);
+    let _v = super::protect::protect(value);
+    let symbol = Rf_install_in_current(name);
+    defineVar(symbol, value, base_env);
+    // GNU defineVar writes the closure into the symbol value slot.
+    // Deparse uses SYMVALUE to distinguish primitives (PP_FUNCALL,
+    // inlist++) from closures (plain call, no inlist++).
+    SET_SYMVALUE(symbol, value);
 }
 
 /// Bind `.GlobalEnv` inside the fresh base environment.
