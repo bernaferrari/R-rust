@@ -22,6 +22,7 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::object::{SessionNodeFactory, Sexp};
+use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install_in;
 
@@ -30,12 +31,26 @@ use super::eval::Rf_eval;
 const BYTECODE_COMPILER_AVAILABLE: bool = true;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct JitSettings {
-    jit_enabled: c_int,
-    compile_pkgs: c_int,
-    disable_bytecode: c_int,
-    min_jit_score: c_int,
-    loop_jit_score: c_int,
+pub(crate) struct JitSettings {
+    pub(crate) jit_enabled: c_int,
+    pub(crate) compile_pkgs: c_int,
+    pub(crate) disable_bytecode: c_int,
+    pub(crate) check_constants: c_int,
+    pub(crate) min_jit_score: c_int,
+    pub(crate) loop_jit_score: c_int,
+}
+
+impl Default for JitSettings {
+    fn default() -> Self {
+        Self {
+            jit_enabled: 0,
+            compile_pkgs: 0,
+            disable_bytecode: 0,
+            check_constants: 0,
+            min_jit_score: 50,
+            loop_jit_score: 50,
+        }
+    }
 }
 
 impl JitSettings {
@@ -54,6 +69,7 @@ impl JitSettings {
             jit_enabled,
             compile_pkgs: parse_enabled_flag(compile_pkgs, FALSE),
             disable_bytecode,
+            check_constants: 0,
             min_jit_score,
             loop_jit_score,
         }
@@ -96,24 +112,26 @@ fn current_env_settings() -> JitSettings {
 }
 
 fn apply_jit_settings(settings: JitSettings) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { apply_jit_settings_in(inst, settings) });
+    let owner = current_jit_owner();
+    // Keep the runtime's separate constant-check setting across reinitialization.
+    owner
+        .set_jit_settings(JitSettings {
+            check_constants: jit_settings(owner).check_constants,
+            ..settings
+        })
+        .unwrap_or_else(jit_owner_error);
 }
 
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn apply_jit_settings_in(inst: *mut RInstance, settings: JitSettings) {
-    // Raw place writes only: no &mut RInstance is formed, so reentrant
-    // ambient access during later init phases stays sound (P1).
-    unsafe {
-        (*inst).eval_state.jit_enabled = settings.jit_enabled;
-        (*inst).eval_state.compile_pkgs = settings.compile_pkgs;
-        (*inst).eval_state.disable_bytecode = settings.disable_bytecode;
-        (*inst).eval_state.min_jit_score = settings.min_jit_score;
-        (*inst).eval_state.loop_jit_score = settings.loop_jit_score;
-    }
+fn current_jit_owner() -> OwnerToken<'static> {
+    OwnerToken::current().expect("mutable R runtime state requires an active RInstance")
+}
+
+fn jit_settings(owner: OwnerToken<'_>) -> JitSettings {
+    owner.jit_settings().unwrap_or_else(jit_owner_error)
+}
+
+fn jit_owner_error<T>(error: crate::sexp::SexpError) -> T {
+    crate::sexp::context::r_error(error.to_string())
 }
 
 pub fn bytecode_compiler_available() -> bool {
@@ -458,28 +476,24 @@ pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
     unsafe { r_parse_eval_string(str, std::ptr::null_mut()) }
 }
 
-/// Check compiler options.
-///
-/// Ported from R's `checkCompilerOptions()` in eval.c.
-fn checkCompilerOptions(jitEnabled: c_int) {
-    let (min_jit_score, loop_jit_score) = jit_thresholds(jitEnabled);
-    with_required_current_instance(|inst| {
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { set_R_min_jit_score_in(inst, min_jit_score) };
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { set_R_loop_jit_score_in(inst, loop_jit_score) };
-    });
-}
-
 /// Apply `compiler::enableJIT` semantics and return the previous level.
 /// Negative and NA-coerced values are queries, matching GNU R's internal
 /// `do_enablejit`; nonnegative values are stored without clamping.
 pub fn compiler_enable_jit(level: SEXP) -> c_int {
-    let old = get_R_jit_enabled();
+    let owner = current_jit_owner();
+    let old = jit_settings(owner).jit_enabled;
     let new = crate::mainutils::coerce::asInteger(level);
+    owner.require_active().unwrap_or_else(jit_owner_error);
     if new >= 0 {
-        checkCompilerOptions(new);
-        set_R_jit_enabled(new);
+        let (min_jit_score, loop_jit_score) = jit_thresholds(new);
+        owner
+            .set_jit_settings(JitSettings {
+                jit_enabled: new,
+                min_jit_score,
+                loop_jit_score,
+                ..jit_settings(owner)
+            })
+            .unwrap_or_else(jit_owner_error);
     }
     old
 }
@@ -490,27 +504,8 @@ pub fn compiler_enable_jit(level: SEXP) -> c_int {
 /// - R_ENABLE_JIT: enable/disable JIT (default 3 = enabled)
 /// - _R_COMPILE_PKGS_: compile package code
 /// - R_DISABLE_BYTECODE: disable bytecode
-/// - _R_COMPILE_PKGS_: compile packages
 pub fn R_init_jit_enabled() {
-    let settings = current_env_settings();
-    checkCompilerOptions(settings.jit_enabled);
-    apply_jit_settings(settings);
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn R_init_jit_enabled_in(inst: *mut RInstance) {
-    let settings = current_env_settings();
-    let (min_jit_score, loop_jit_score) = jit_thresholds(settings.jit_enabled);
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { set_R_min_jit_score_in(inst, min_jit_score) };
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { set_R_loop_jit_score_in(inst, loop_jit_score) };
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { apply_jit_settings_in(inst, settings) };
+    apply_jit_settings(current_env_settings());
 }
 
 /// Check if a function should be JIT-compiled.
@@ -530,8 +525,7 @@ pub fn R_CheckJIT(op: SEXP) -> c_int {
     }
 
     let score = JIT_score(op);
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    if score >= with_required_current_instance(|inst| unsafe { get_R_min_jit_score_in(inst) }) {
+    if score >= jit_settings(current_jit_owner()).min_jit_score {
         if R_cmpfun(op) {
             TRUE
         } else {
@@ -548,104 +542,33 @@ pub fn R_CheckJIT(op: SEXP) -> c_int {
 
 /// Get whether JIT is enabled.
 pub fn get_R_jit_enabled() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { get_R_jit_enabled_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_jit_enabled_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.jit_enabled }
+    jit_settings(current_jit_owner()).jit_enabled
 }
 
 /// Set whether JIT is enabled.
 pub fn set_R_jit_enabled(val: c_int) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { set_R_jit_enabled_in(inst, val) });
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_jit_enabled_in(inst: *mut RInstance, val: c_int) {
-    unsafe { (*inst).eval_state.jit_enabled = val };
+    let owner = current_jit_owner();
+    owner
+        .set_jit_settings(JitSettings {
+            jit_enabled: val,
+            ..jit_settings(owner)
+        })
+        .unwrap_or_else(jit_owner_error);
 }
 
 /// Get whether to compile packages.
 pub fn get_R_compile_pkgs() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { get_R_compile_pkgs_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_compile_pkgs_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.compile_pkgs }
+    jit_settings(current_jit_owner()).compile_pkgs
 }
 
 /// Get whether bytecode is disabled.
 pub fn get_R_disable_bytecode() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { get_R_disable_bytecode_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_disable_bytecode_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.disable_bytecode }
+    jit_settings(current_jit_owner()).disable_bytecode
 }
 
 /// Get the constant checking level.
 pub fn get_R_check_constants() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { get_R_check_constants_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_check_constants_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.check_constants }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_min_jit_score_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.min_jit_score }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_min_jit_score_in(inst: *mut RInstance, val: c_int) {
-    unsafe { (*inst).eval_state.min_jit_score = val };
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_loop_jit_score_in(inst: *mut RInstance) -> c_int {
-    unsafe { (*inst).eval_state.loop_jit_score }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_loop_jit_score_in(inst: *mut RInstance, val: c_int) {
-    unsafe { (*inst).eval_state.loop_jit_score = val };
+    jit_settings(current_jit_owner()).check_constants
 }
 
 // ---------------------------------------------------------------------------
@@ -1124,7 +1047,7 @@ mod tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let factory = SessionNodeFactory::new(owner);
             let global = factory.wrap(crate::sexp::globals::R_GlobalEnv()).unwrap();
-            (*instance).eval_state.jit_enabled = 0;
+            set_R_jit_enabled(0);
             let parse = |source: &str| {
                 owner
                     .with_arena(|arena| crate::eval::parser::parse(source, arena, factory.clone()))
@@ -1339,9 +1262,7 @@ mod tests {
         }
         // Compiler-package discovery is unrelated to this actual tail-call
         // application; the source closure exercises matching/forcing directly.
-        session.with_active_in(|instance| unsafe {
-            (*instance).eval_state.jit_enabled = 0;
-        });
+        session.with_active(|| set_R_jit_enabled(0));
         let notifications = Rc::new(Cell::new(0));
         let observed = notifications.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
@@ -1468,75 +1389,52 @@ mod tests {
 
     #[test]
     fn test_jit_settings_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        let left_owner = left.owner_token().unwrap();
+        let right_owner = right.owner_token().unwrap();
+        let left_settings = JitSettings::from_env_values(Some("3"), Some("1"), Some("0"));
+        let right_settings = JitSettings::from_env_values(Some("0"), Some("0"), Some("1"));
 
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            apply_jit_settings_in(
-                &mut left as *mut RInstance,
-                JitSettings::from_env_values(Some("3"), Some("1"), Some("0")),
-            )
-        };
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            apply_jit_settings_in(
-                &mut right as *mut RInstance,
-                JitSettings::from_env_values(Some("0"), Some("0"), Some("1")),
-            )
-        };
+        right.with_active(|| {
+            right_owner.set_jit_settings(right_settings).unwrap();
+            left_owner.set_jit_settings(left_settings).unwrap();
+            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_compile_pkgs(), FALSE);
+            assert_eq!(get_R_disable_bytecode(), TRUE);
+            assert_eq!(left_owner.jit_settings().unwrap(), left_settings);
+        });
 
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_jit_enabled_in(&mut left as *mut RInstance) },
-            3
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_compile_pkgs_in(&mut left as *mut RInstance) },
-            TRUE
-        );
-        assert_eq!(
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe { get_R_disable_bytecode_in(&mut left as *mut RInstance) },
-            FALSE
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_min_jit_score_in(&mut left as *mut RInstance) },
-            50
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_loop_jit_score_in(&mut left as *mut RInstance) },
-            50
-        );
+        left.with_active(|| {
+            assert_eq!(get_R_jit_enabled(), 3);
+            assert_eq!(get_R_compile_pkgs(), TRUE);
+            assert_eq!(get_R_disable_bytecode(), FALSE);
+            assert_eq!(right_owner.jit_settings().unwrap(), right_settings);
+        });
+    }
 
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_jit_enabled_in(&mut right as *mut RInstance) },
-            0
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { get_R_compile_pkgs_in(&mut right as *mut RInstance) },
-            FALSE
-        );
-        assert_eq!(
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe { get_R_disable_bytecode_in(&mut right as *mut RInstance) },
-            TRUE
-        );
-        assert_eq!(
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe { get_R_min_jit_score_in(&mut right as *mut RInstance) },
-            c_int::MAX
-        );
-        assert_eq!(
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe { get_R_loop_jit_score_in(&mut right as *mut RInstance) },
-            c_int::MAX
-        );
+    #[test]
+    fn test_jit_settings_reject_revoked_owner() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.with_active(|| OwnerToken::current().unwrap());
+        drop(session);
+        let replacement = RSession::new_for_gc_tests();
+        replacement.with_active(|| {
+            let current = current_jit_owner();
+            let before = current.jit_settings().unwrap();
+            assert!(matches!(
+                owner.jit_settings(),
+                Err(crate::sexp::SexpError::RootUnavailable)
+            ));
+            assert!(matches!(
+                owner.set_jit_settings(JitSettings {
+                    jit_enabled: 99,
+                    ..before
+                }),
+                Err(crate::sexp::SexpError::RootUnavailable)
+            ));
+            assert_eq!(current.jit_settings().unwrap(), before);
+        });
     }
 
     #[test]
@@ -1570,7 +1468,10 @@ mod tests {
             assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::LANGSXP);
 
             set_R_jit_enabled(3);
-            with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
+            let owner = current_jit_owner();
+            let mut settings = jit_settings(owner);
+            settings.min_jit_score = 0;
+            owner.set_jit_settings(settings).unwrap();
 
             assert_eq!(R_CheckJIT(fun), TRUE);
             assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
@@ -1598,7 +1499,10 @@ mod tests {
                 crate::sexp::globals::R_GlobalEnv(),
             );
             set_R_jit_enabled(3);
-            with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
+            let owner = current_jit_owner();
+            let mut settings = jit_settings(owner);
+            settings.min_jit_score = 0;
+            owner.set_jit_settings(settings).unwrap();
 
             assert_eq!(R_CheckJIT(fun), FALSE);
             assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::SYMSXP);

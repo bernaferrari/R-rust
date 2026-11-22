@@ -162,9 +162,10 @@ mod tests_a {
             .expect("bytecode belongs to session");
         let env = session.global_env().expect("global env should exist");
 
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-            (*inst).eval_state.disable_bytecode = TRUE;
-        });
+        let owner = session.owner_token().unwrap();
+        let mut settings = owner.jit_settings().unwrap();
+        settings.disable_bytecode = TRUE;
+        owner.set_jit_settings(settings).unwrap();
 
         let err = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ EvalContext::new(env)
             .eval(bcode) }

@@ -2221,7 +2221,7 @@ mod tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let factory = crate::sexp::object::SessionNodeFactory::new(owner);
             let nil = R_NilValue();
-            (*instance).eval_state.jit_enabled = 0;
+            crate::eval::jit::set_R_jit_enabled(0);
             let srcfile = factory
                 .wrap(crate::sexp::memory_ext::NewEnvironment(
                     nil,

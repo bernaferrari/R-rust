@@ -850,15 +850,14 @@ impl Drop for MethodsMetadataSourceBody<'_> {
                 crate::sexp::heap::ReferenceChild::Node(original),
             )
             .expect("owned methods closure retains its original body");
-        if self.availability.is_live()
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            && unsafe { crate::eval::jit::get_R_jit_enabled_in(self.owner.as_ptr()) } == 0
+        // Preserve an explicit callback change to a different JIT level.
+        if let Ok(settings) = self.owner.jit_settings()
+            && settings.jit_enabled == 0
         {
-            // Preserve an explicit callback change to a different JIT level.
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe {
-                crate::eval::jit::set_R_jit_enabled_in(self.owner.as_ptr(), self.jit_enabled)
-            };
+            let _ = self.owner.set_jit_settings(crate::eval::jit::JitSettings {
+                jit_enabled: self.jit_enabled,
+                ..settings
+            });
         }
     }
 }
@@ -880,13 +879,14 @@ pub(super) fn methods_metadata_source_body<'s>(fun: SEXP) -> Option<MethodsMetad
         }
         let allocation = function.allocation().ok()?.clone();
         let source_allocation = source.allocation().ok()?;
+        let settings = owner.jit_settings().ok()?;
         let guard = MethodsMetadataSourceBody {
             function,
             original,
             allocation,
             owner,
             availability: crate::sexp::instance::instance_liveness(owner.as_ptr()),
-            jit_enabled: crate::eval::jit::get_R_jit_enabled_in(owner.as_ptr()),
+            jit_enabled: settings.jit_enabled,
         };
         if !crate::sexp::gengc::write_barrier_in(
             owner.as_ptr(),
@@ -900,7 +900,12 @@ pub(super) fn methods_metadata_source_body<'s>(fun: SEXP) -> Option<MethodsMetad
             crate::sexp::ffi::EdgeField::ClosureBody,
             crate::sexp::heap::ReferenceChild::Node(source_allocation),
         )?;
-        crate::eval::jit::set_R_jit_enabled_in(owner.as_ptr(), 0);
+        owner
+            .set_jit_settings(crate::eval::jit::JitSettings {
+                jit_enabled: 0,
+                ..settings
+            })
+            .ok()?;
         Some(guard)
     }
 }

@@ -949,7 +949,7 @@ mod owned_matcher_tests {
         let called = Rc::new(Cell::new(false));
         let observed = called.clone();
         session.with_active_in(|instance| unsafe {
-            (*instance).eval_state.jit_enabled = 0;
+            crate::eval::jit::set_R_jit_enabled(0);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if observed.get() {
                     return;
@@ -1027,7 +1027,7 @@ mod owned_matcher_tests {
             let called = Rc::new(Cell::new(false));
             let observed = called.clone();
             unsafe {
-                (*instance).eval_state.jit_enabled = 0;
+                crate::eval::jit::set_R_jit_enabled(0);
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     if observed.get() {
                         return;
@@ -1155,7 +1155,7 @@ mod owned_matcher_tests {
             let retained_node = Rc::new(RefCell::new(None));
             let node_observed = retained_node.clone();
             session.with_active_in(|instance| unsafe {
-                (*instance).eval_state.jit_enabled = 0;
+                crate::eval::jit::set_R_jit_enabled(0);
                 (*instance).memory_state.gc_force_gap = if force_allocations { 1 } else { 0 };
                 (*instance).memory_state.gc_force_wait = 1;
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
@@ -1293,9 +1293,7 @@ mod owned_matcher_tests {
         let owner = session.owner_token().unwrap();
         let factory = SessionNodeFactory::new(owner);
         let global = session.global_env().unwrap();
-        session.with_active_in(|instance| unsafe {
-            (*instance).eval_state.jit_enabled = 0;
-        });
+        session.with_active(|| crate::eval::jit::set_R_jit_enabled(0));
         let parse = |input: &str| {
             owner
                 .with_arena(|arena| crate::eval::parser::parse(input, arena, factory.clone()))

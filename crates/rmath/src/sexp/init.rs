@@ -101,7 +101,7 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
         super::session::with_instance_active(inst, || {
             pre_intern_symbols_in(inst);
             require_initialization_live(&pin);
-            crate::eval::jit::R_init_jit_enabled_in(inst);
+            crate::eval::jit::R_init_jit_enabled();
             require_initialization_live(&pin);
             crate::eval::arithmetic::register_special_forms(base_env);
             require_initialization_live(&pin);

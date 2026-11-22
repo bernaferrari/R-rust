@@ -125,7 +125,9 @@ mod methods_startup_tests {
                         .unwrap(),
                 )
                 .unwrap();
-            crate::eval::jit::set_R_min_jit_score_in(owner.as_ptr(), 0);
+            let mut settings = owner.jit_settings().unwrap();
+            settings.min_jit_score = 0;
+            owner.set_jit_settings(settings).unwrap();
             assert!(crate::eval::jit::R_cmpfun(function.as_raw()));
             let original = function.try_body().unwrap();
             assert!(original.is_bytecode());

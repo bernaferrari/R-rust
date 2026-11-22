@@ -18,6 +18,8 @@ use super::{
     session::RSession,
 };
 
+use crate::eval::jit::JitSettings;
+
 /// Revocable authority to the original interpreter allocation. Values retain
 /// this weak capability, never a strong edge back to their runtime.
 #[derive(Clone)]
@@ -639,6 +641,23 @@ impl<'session> OwnerToken<'session> {
         // SAFETY: the generation is live and we only clone the
         // connection-table handle.
         unsafe { (*self.as_ptr()).connection_table.clone() }
+    }
+
+    /// Copy the owner's session-local compiler settings. Liveness, not active
+    /// status, is required so metadata restoration can target its original
+    /// owner while another session is active.
+    pub(crate) fn jit_settings(self) -> SexpResult<JitSettings> {
+        self.require_live()?;
+        // SAFETY: the owner is live and Cell::get only copies scalar settings.
+        Ok(unsafe { (*self.as_ptr()).jit_settings.get() })
+    }
+
+    /// Replace the owner's session-local compiler settings.
+    pub(crate) fn set_jit_settings(self, settings: JitSettings) -> SexpResult<()> {
+        self.require_live()?;
+        // SAFETY: the owner is live and Cell::set holds no evaluator borrow.
+        unsafe { (*self.as_ptr()).jit_settings.set(settings) };
+        Ok(())
     }
 
     /// Clone the owner's session-local sink-state handle. The `Rc` keeps
