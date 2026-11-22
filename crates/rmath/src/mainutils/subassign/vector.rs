@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
+    OneIndex, get1index, int_arraySubscript, make_subscript, mat2indsub, strmat2intmat, vectorIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -569,7 +569,7 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
         }
 
         let mut stretch: R_xlen_t = 1;
-        let indx = makeSubscript(x, s, &mut stretch, R_NilValue());
+        let indx = make_subscript(x, s, &mut stretch, R_NilValue());
         let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 

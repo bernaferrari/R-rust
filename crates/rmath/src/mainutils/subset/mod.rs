@@ -30,7 +30,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat,
+    get1index, int_arraySubscript, make_subscript, mat2indsub, strmat2intmat,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;

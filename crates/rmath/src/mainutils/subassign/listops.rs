@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
+    OneIndex, get1index, int_arraySubscript, make_subscript, mat2indsub, strmat2intmat, vectorIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -86,54 +86,52 @@ pub(crate) fn SimpleListAssign(
     ind: c_int,
     _check_cycles: bool,
 ) -> SEXP {
-    unsafe {
-        let sub = CAR(s);
-        if Rf_length(s) > 1 {
-            // Error: invalid number of subscripts
-            return x;
-        }
-
-        let sub = GetOneIndex(sub, ind);
-        let _sub_guard = protect(sub);
-        let mut stretch: R_xlen_t = 1;
-        let indx = makeSubscript(x, sub, &mut stretch, R_NilValue());
-        let _indx_guard = protect(indx);
-
-        let n = Rf_length(indx);
-        if n > 1 {
-            // Error: invalid subscript
-            return x;
-        }
-
-        let mut nx = Rf_length(x);
-        let mut x = x;
-
-        if stretch > 0 {
-            let t = CAR(s);
-            let yi = allocList((stretch - nx as R_xlen_t) as c_int);
-            let _yi_guard = protect(yi);
-            if isString(t) && Rf_length(t) == (stretch - nx as R_xlen_t) as c_int {
-                let mut z = yi;
-                for i in 0..Rf_length(t) {
-                    SETTAG(z, installTrChar(STRING_ELT(t, i as R_xlen_t)));
-                    z = CDR(z);
-                }
-            }
-            x = listAppend(x, yi);
-            nx = stretch as c_int;
-        }
-        let _x_guard = protect(x);
-
-        if n == 1 {
-            let ii = asInteger(indx);
-            if ii != NA_INTEGER {
-                let ii = ii - 1;
-                let xi = nthcdr(x, ii % nx);
-                SETCAR(xi, y);
-            }
-        }
-        x
+    let sub = CAR(s);
+    if Rf_length(s) > 1 {
+        // Error: invalid number of subscripts
+        return x;
     }
+
+    let sub = GetOneIndex(sub, ind);
+    let _sub_guard = protect(sub);
+    let mut stretch: R_xlen_t = 1;
+    let indx = make_subscript(x, sub, &mut stretch, R_NilValue());
+    let _indx_guard = protect(indx);
+
+    let n = Rf_length(indx);
+    if n > 1 {
+        // Error: invalid subscript
+        return x;
+    }
+
+    let mut nx = Rf_length(x);
+    let mut x = x;
+
+    if stretch > 0 {
+        let t = CAR(s);
+        let yi = allocList((stretch - nx as R_xlen_t) as c_int);
+        let _yi_guard = protect(yi);
+        if isString(t) && Rf_length(t) == (stretch - nx as R_xlen_t) as c_int {
+            let mut z = yi;
+            for i in 0..Rf_length(t) {
+                SETTAG(z, installTrChar(STRING_ELT(t, i as R_xlen_t)));
+                z = CDR(z);
+            }
+        }
+        x = listAppend(x, yi);
+        nx = stretch as c_int;
+    }
+    let _x_guard = protect(x);
+
+    if n == 1 {
+        let ii = asInteger(indx);
+        if ii != NA_INTEGER {
+            let ii = ii - 1;
+            let xi = nthcdr(x, ii % nx);
+            SETCAR(xi, y);
+        }
+    }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -142,62 +140,60 @@ pub(crate) fn SimpleListAssign(
 
 /// Port of `listRemove()` -- removes an element from a pairlist (for `x[[s]] <- NULL`).
 pub(crate) fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
-    unsafe {
-        let nx = Rf_length(x);
-        let s = GetOneIndex(s, ind);
-        let _s_guard = protect(s);
-        let mut stretch: R_xlen_t = 0;
-        let s = makeSubscript(x, s, &mut stretch, R_NilValue());
-        let _subscript_guard = protect(s);
-        let ns = Rf_length(s);
+    let nx = Rf_length(x);
+    let s = GetOneIndex(s, ind);
+    let _s_guard = protect(s);
+    let mut stretch: R_xlen_t = 0;
+    let s = make_subscript(x, s, &mut stretch, R_NilValue());
+    let _subscript_guard = protect(s);
+    let ns = Rf_length(s);
 
-        let mut indx = vec![1i32; nx as usize];
-        if TYPEOF(s) == REALSXP {
-            for i in 0..ns {
-                let di = REAL_ELT(s, i);
-                if R_FINITE(di) {
-                    indx[(di as R_xlen_t - 1) as usize] = 0;
-                }
-            }
-        } else {
-            for i in 0..ns {
-                let ii = INTEGER_ELT(s, i);
-                if ii != NA_INTEGER {
-                    indx[(ii - 1) as usize] = 0;
-                }
+    let mut indx = vec![1i32; nx as usize];
+    if TYPEOF(s) == REALSXP {
+        for i in 0..ns {
+            let di = REAL_ELT(s, i);
+            if R_FINITE(di) {
+                indx[(di as R_xlen_t - 1) as usize] = 0;
             }
         }
-
-        let mut px = x;
-        let mut pv: SEXP = ptr::null_mut();
-        let mut val: SEXP = ptr::null_mut();
-        for i in 0..nx {
-            if indx[i as usize] != 0 {
-                if isNull(val) {
-                    val = px;
-                }
-                pv = px;
-            } else {
-                if !isNull(pv) {
-                    SETCDR(pv, CDR(px));
-                }
+    } else {
+        for i in 0..ns {
+            let ii = INTEGER_ELT(s, i);
+            if ii != NA_INTEGER {
+                indx[(ii - 1) as usize] = 0;
             }
-            px = CDR(px);
         }
-
-        if !isNull(val) {
-            SET_ATTRIB(val, ATTRIB(x));
-            if IS_S4_OBJECT(x) != 0 {
-                SET_S4_OBJECT(val);
-            } else {
-                UNSET_S4_OBJECT(val);
-            }
-            SET_OBJECT(val, OBJECT(x));
-            RAISE_NAMED(val, NAMED(x));
-        }
-
-        val
     }
+
+    let mut px = x;
+    let mut pv: SEXP = ptr::null_mut();
+    let mut val: SEXP = ptr::null_mut();
+    for i in 0..nx {
+        if indx[i as usize] != 0 {
+            if isNull(val) {
+                val = px;
+            }
+            pv = px;
+        } else {
+            if !isNull(pv) {
+                SETCDR(pv, CDR(px));
+            }
+        }
+        px = CDR(px);
+    }
+
+    if !isNull(val) {
+        SET_ATTRIB(val, ATTRIB(x));
+        if IS_S4_OBJECT(x) != 0 {
+            SET_S4_OBJECT(val);
+        } else {
+            UNSET_S4_OBJECT(val);
+        }
+        SET_OBJECT(val, OBJECT(x));
+        RAISE_NAMED(val, NAMED(x));
+    }
+
+    val
 }
 
 // ---------------------------------------------------------------------------

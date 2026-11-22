@@ -25,7 +25,6 @@
 //!   realSubscript(), stringSubscript()
 
 use std::os::raw::{c_double, c_int};
-use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -33,6 +32,7 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYP
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
 use crate::sexp::protect::protect;
+use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
 fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -776,6 +776,23 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
     }
 }
 
+fn checked_index<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn new_index<'s>(owner: OwnerToken<'s>, kind: SEXPTYPE, len: R_xlen_t) -> SexpMut<'s> {
+    checked_index(owner.require_active());
+    let p = Rf_allocVector3(kind, len);
+    checked_index(owner.require_active());
+    checked_index(SexpMut::try_from_checked(checked_index(owner.sexp(p))))
+}
+
+fn check_subscript_count(actual: R_xlen_t, expected: R_xlen_t) {
+    if actual != expected {
+        error("subscript changed during indexing");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // nullSubscript — create a 1:n index vector
 // ---------------------------------------------------------------------------
@@ -783,18 +800,12 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
 /// Create a null subscript (a vector of 1, 2, ..., n).
 ///
 /// Used when the subscript is missing (R_MissingArg).
-unsafe fn nullSubscript(n: R_xlen_t) -> SEXP {
-    unsafe {
-        if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let ap = INTEGER(ans);
-        for i in 0..n as usize {
-            *ap.add(i) = (i + 1) as c_int;
-        }
-        ans
+fn nullSubscript(owner: OwnerToken<'_>, n: R_xlen_t) -> SEXP {
+    let mut ans = new_index(owner, SEXPTYPE::INTSXP, n.max(0));
+    for i in 0..n {
+        checked_index(ans.try_set_integer_elt(i, (i + 1) as c_int));
     }
+    ans.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -805,64 +816,59 @@ unsafe fn nullSubscript(n: R_xlen_t) -> SEXP {
 ///
 /// TRUE values select their position, NA_LOGICAL inserts NA, FALSE skips.
 /// The logical vector is recycled to length `nx` if shorter.
-unsafe fn logicalSubscript(
-    s: SEXP,
+fn logicalSubscript(
+    owner: OwnerToken<'_>,
+    s: &Sexp<'_>,
     ns: R_xlen_t,
     nx: R_xlen_t,
-    stretch: *mut R_xlen_t,
-    _call: SEXP,
-    _dimno: c_int,
+    stretch: &mut R_xlen_t,
 ) -> SEXP {
-    unsafe {
-        // Trunk semantics: entry value > 0 means stretching is allowed; when
-        // the logical subscript is longer than x, the caller must grow x to
-        // `ns` (not merely to the count of TRUEs, which could leave the
-        // returned indices out of range of the grown vector).
-        let canstretch = *stretch > 0;
-        *stretch = if ns > nx { ns } else { 0 };
-        if ns == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        if !canstretch && ns > nx {
-            error("(subscript) logical subscript too long");
-        }
-
-        let out_len = if ns < nx { nx } else { ns };
-
-        // The pinned GNU oracle silently recycles logical indices even
-        // when the target length is not an exact multiple. This admission
-        // also holds with warn=2; dimension-length rejection remains above.
-
-        // Count TRUE and NA values to determine result length. R logical
-        // subscripts recycle to the target length when shorter; NA selects an
-        // NA slot in the result, just like stock subscript.c.
-        let mut count: R_xlen_t = 0;
-        for i in 0..out_len {
-            let v = LOGICAL_ELT(s, (i % ns) as c_int);
-            if v == 1 || v == NA_LOGICAL {
-                count += 1;
-            }
-        }
-
-        // Allocate result
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, count);
-        let ap = INTEGER(ans);
-
-        // Fill in indices
-        let mut j: R_xlen_t = 0;
-        for i in 0..out_len {
-            let v = LOGICAL_ELT(s, (i % ns) as c_int);
-            if v == 1 {
-                *ap.add(j as usize) = (i + 1) as c_int;
-                j += 1;
-            } else if v == NA_LOGICAL {
-                *ap.add(j as usize) = NA_INTEGER;
-                j += 1;
-            }
-        }
-
-        ans
+    // Trunk semantics: entry value > 0 means stretching is allowed; when
+    // the logical subscript is longer than x, the caller must grow x to
+    // `ns` (not merely to the count of TRUEs, which could leave the
+    // returned indices out of range of the grown vector).
+    let canstretch = *stretch > 0;
+    *stretch = if ns > nx { ns } else { 0 };
+    if ns == 0 {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
     }
+    if !canstretch && ns > nx {
+        error("(subscript) logical subscript too long");
+    }
+
+    let out_len = if ns < nx { nx } else { ns };
+
+    // The pinned GNU oracle silently recycles logical indices even
+    // when the target length is not an exact multiple. This admission
+    // also holds with warn=2; dimension-length rejection remains above.
+
+    // Count TRUE and NA values to determine result length. R logical
+    // subscripts recycle to the target length when shorter; NA selects an
+    // NA slot in the result, just like stock subscript.c.
+    let mut count: R_xlen_t = 0;
+    for i in 0..out_len {
+        let v = checked_index(s.try_logical_elt(i % ns));
+        if v == 1 || v == NA_LOGICAL {
+            count += 1;
+        }
+    }
+
+    // Fill in indices through typed cells so provider callbacks and
+    // collection cannot invalidate the destination.
+    let mut ans = new_index(owner, SEXPTYPE::INTSXP, count);
+    let mut j: R_xlen_t = 0;
+    for i in 0..out_len {
+        let v = checked_index(s.try_logical_elt(i % ns));
+        let selected = match v {
+            1 => (i + 1) as c_int,
+            NA_LOGICAL => NA_INTEGER,
+            _ => continue,
+        };
+        checked_index(ans.try_set_integer_elt(j, selected));
+        j += 1;
+    }
+    check_subscript_count(j, count);
+    ans.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -870,42 +876,40 @@ unsafe fn logicalSubscript(
 // ---------------------------------------------------------------------------
 
 /// Process a negative subscript by creating a logical mask and inverting.
-unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> SEXP {
-    unsafe {
-        let _ = call;
-        if nx <= 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-
-        // Create a logical mask: TRUE for selected, FALSE for excluded
-        let mask = Rf_allocVector3(SEXPTYPE::LGLSXP, nx);
-        let _mask_guard = protect(mask);
-        let mp = LOGICAL(mask);
-        for i in 0..nx as usize {
-            *mp.add(i) = 1; // TRUE = include
-        }
-
-        // Mark excluded indices from the subscript
-        for i in 0..ns {
-            let v = INTEGER_ELT(s, i as c_int);
-            if v == NA_INTEGER {
-                error("NA's in subscript are not allowed");
-            }
-            if v < 0 {
-                let idx = (-v) as usize;
-                if idx >= 1 && idx <= nx as usize {
-                    *mp.add(idx - 1) = 0;
-                }
-            } else if v == 0 {
-            } else {
-                error("only 0's may be mixed with negative subscripts");
-            }
-        }
-
-        // Now use logicalSubscript on the mask
-        let mut stretch = 0;
-        logicalSubscript(mask, nx, nx, &mut stretch, call, 0)
+fn negativeSubscript(
+    owner: OwnerToken<'_>,
+    s: &Sexp<'_>,
+    ns: R_xlen_t,
+    nx: R_xlen_t,
+) -> SEXP {
+    if nx <= 0 {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
     }
+
+    // Create a logical mask: TRUE for selected, FALSE for excluded
+    let mut mask = new_index(owner, SEXPTYPE::LGLSXP, nx);
+    for i in 0..nx {
+        checked_index(mask.try_set_logical_elt(i, 1));
+    }
+
+    // Mark excluded indices from the subscript
+    for i in 0..ns {
+        let v = checked_index(s.try_integer_elt(i));
+        if v == NA_INTEGER {
+            error("NA's in subscript are not allowed");
+        }
+        let idx = -i64::from(v);
+        if (1..=nx).contains(&idx) {
+            checked_index(mask.try_set_logical_elt(idx - 1, 0));
+        }
+        if v > 0 {
+            error("only 0's may be mixed with negative subscripts");
+        }
+    }
+
+    // Now use logicalSubscript on the mask
+    let mut stretch: R_xlen_t = 0;
+    logicalSubscript(owner, &mask.freeze(), nx, nx, &mut stretch)
 }
 
 // ---------------------------------------------------------------------------
@@ -913,39 +917,34 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Process a positive subscript by removing zeros.
-unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, _nx: R_xlen_t) -> SEXP {
-    unsafe {
-        // Upstream (subscript.c positiveSubscript) drops zeros and keeps
-        // every positive index — including on zero-length targets, where
-        // the caller (integerSubscript) has already either raised the
-        // out-of-bounds error or recorded the stretch. An nx == 0 early
-        // return is a misport: it made `r[1:2] <- list(...)` on an empty
-        // list enlarge `r` (SubassignTypeFix) yet assign nothing, leaving
-        // NULL elements behind.
+fn positiveSubscript(owner: OwnerToken<'_>, s: &Sexp<'_>, ns: R_xlen_t) -> SEXP {
+    // Upstream (subscript.c positiveSubscript) drops zeros and keeps
+    // every positive index — including on zero-length targets, where
+    // the caller (integerSubscript) has already either raised the
+    // out-of-bounds error or recorded the stretch. An nx == 0 early
+    // return is a misport: it made `r[1:2] <- list(...)` on an empty
+    // list enlarge `r` (SubassignTypeFix) yet assign nothing, leaving
+    // NULL elements behind.
 
-        // Count non-zero values
-        let mut count: R_xlen_t = 0;
-        for i in 0..ns {
-            let v = INTEGER_ELT(s, i as c_int);
-            if v != 0 {
-                count += 1;
-            }
+    // Count non-zero values
+    let mut count: R_xlen_t = 0;
+    for i in 0..ns {
+        if checked_index(s.try_integer_elt(i)) != 0 {
+            count += 1;
         }
-
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, count);
-        let ap = INTEGER(ans);
-
-        let mut j: R_xlen_t = 0;
-        for i in 0..ns {
-            let v = INTEGER_ELT(s, i as c_int);
-            if v != 0 {
-                *ap.add(j as usize) = v;
-                j += 1;
-            }
-        }
-
-        ans
     }
+
+    let mut ans = new_index(owner, SEXPTYPE::INTSXP, count);
+    let mut j: R_xlen_t = 0;
+    for i in 0..ns {
+        let v = checked_index(s.try_integer_elt(i));
+        if v != 0 {
+            checked_index(ans.try_set_integer_elt(j, v));
+            j += 1;
+        }
+    }
+    check_subscript_count(j, count);
+    ans.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -957,52 +956,51 @@ unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, _nx: R_xlen_t) -> SEXP {
 /// Detects mixed NA/negative/positive patterns and enforces R's subscript rules:
 /// - Only 0's may be mixed with negative subscripts
 /// - Positive subscripts beyond nx may trigger stretching
-unsafe fn integerSubscript(
-    s: SEXP,
+fn integerSubscript(
+    owner: OwnerToken<'_>,
+    s: &Sexp<'_>,
     ns: R_xlen_t,
     nx: R_xlen_t,
-    stretch: *mut R_xlen_t,
+    stretch: &mut R_xlen_t,
     call: SEXP,
     x: SEXP,
 ) -> SEXP {
-    unsafe {
-        // Trunk semantics (subscript.c): the entry value of *stretch > 0 means
-        // the caller allows growth; on return *stretch is 0, or the new
-        // required length of x when the largest positive index exceeds nx.
-        let canstretch = *stretch > 0;
-        *stretch = 0;
-        let mut max: c_int = 0;
-        let mut isna = false;
-        let mut neg = false;
-        for i in 0..ns {
-            let ii = INTEGER_ELT(s, i as c_int);
-            if ii < 0 {
-                if ii == NA_INTEGER {
-                    isna = true;
-                } else {
-                    neg = true;
-                }
-            } else if ii > max {
-                max = ii;
-            }
-        }
-        let umax = max as R_xlen_t;
-        if umax > nx {
-            if canstretch {
-                *stretch = umax;
+    // Trunk semantics (subscript.c): the entry value of *stretch > 0 means
+    // the caller allows growth; on return *stretch is 0, or the new
+    // required length of x when the largest positive index exceeds nx.
+    let canstretch = *stretch > 0;
+    *stretch = 0;
+    let mut max: c_int = 0;
+    let mut isna = false;
+    let mut neg = false;
+    for i in 0..ns {
+        let ii = checked_index(s.try_integer_elt(i));
+        if ii < 0 {
+            if ii == NA_INTEGER {
+                isna = true;
             } else {
-                ECALL_OutOfBounds(x, -1, umax, call);
+                neg = true;
             }
+        } else if ii > max {
+            max = ii;
         }
-        if neg {
-            if max == 0 && !isna {
-                return negativeSubscript(s, ns, nx, ptr::null_mut());
-            } else {
-                error("only 0's may be mixed with negative subscripts");
-            }
-        }
-        return positiveSubscript(s, ns, nx);
     }
+    let umax = max as R_xlen_t;
+    if umax > nx {
+        if canstretch {
+            *stretch = umax;
+        } else {
+            ECALL_OutOfBounds(x, -1, umax, call);
+        }
+    }
+    if neg {
+        if max == 0 && !isna {
+            return negativeSubscript(owner, s, ns, nx);
+        } else {
+            error("only 0's may be mixed with negative subscripts");
+        }
+    }
+    positiveSubscript(owner, s, ns)
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,106 +1011,104 @@ unsafe fn integerSubscript(
 ///
 /// Converts to integer indices, handling NA, Inf, truncation, and
 /// negative values according to R's subscript rules.
-unsafe fn realSubscript(
-    s: SEXP,
+fn realSubscript(
+    owner: OwnerToken<'_>,
+    s: &Sexp<'_>,
     ns: R_xlen_t,
     nx: R_xlen_t,
-    stretch: *mut R_xlen_t,
+    stretch: &mut R_xlen_t,
     call: SEXP,
     x: SEXP,
 ) -> SEXP {
-    unsafe {
-        // Trunk semantics (subscript.c realSubscript): entry *stretch > 0
-        // allows growth; fractional/finite values truncate, NA/NaN/Inf map to
-        // NA indices. May return a REALSXP index vector when any value
-        // exceeds INT_MAX.
-        let canstretch = *stretch > 0;
-        *stretch = 0;
-        let mut min = 0.0f64;
-        let mut max = 0.0f64;
-        let mut isna = false;
-        for i in 0..ns {
-            let ii = REAL_ELT(s, i as c_int);
-            if ii.is_finite() {
-                if ii < min {
-                    min = ii;
-                }
-                if ii > max {
-                    max = ii;
-                }
-            } else {
-                isna = true;
+    // Trunk semantics (subscript.c realSubscript): entry *stretch > 0
+    // allows growth; fractional/finite values truncate, NA/NaN/Inf map to
+    // NA indices. May return a REALSXP index vector when any value
+    // exceeds INT_MAX.
+    let canstretch = *stretch > 0;
+    *stretch = 0;
+    let mut min = 0.0f64;
+    let mut max = 0.0f64;
+    let mut isna = false;
+    for i in 0..ns {
+        let ii = checked_index(s.try_real_elt(i));
+        if ii.is_finite() {
+            if ii < min {
+                min = ii;
             }
-        }
-        if max >= nx as f64 + 1.0 {
-            if canstretch {
-                *stretch = max as R_xlen_t;
-            } else {
-                ECALL_OutOfBounds(x, -1, max as R_xlen_t, call);
+            if ii > max {
+                max = ii;
             }
-        }
-        if min <= -1.0 {
-            if max < 1.0 && !isna {
-                let mut stretch2: R_xlen_t = 0;
-                let indx = Rf_allocVector3(SEXPTYPE::LGLSXP, nx);
-                let pindx = LOGICAL(indx);
-                for i in 0..nx as usize {
-                    *pindx.add(i) = 1;
-                }
-                for i in 0..ns {
-                    let dx = REAL_ELT(s, i as c_int);
-                    if dx.is_finite() && dx <= -1.0 && -dx < nx as f64 + 1.0 {
-                        let ix = (-dx - 1.0) as R_xlen_t;
-                        *pindx.add(ix as usize) = 0;
-                    }
-                }
-                return logicalSubscript(indx, nx, nx, &mut stretch2, call, 0);
-            } else {
-                error("only 0's may be mixed with negative subscripts");
-            }
-        }
-        // Positive path: return a REALSXP index only if needed.
-        let mut int_ok = true;
-        let mut cnt: R_xlen_t = 0;
-        for i in 0..ns {
-            let ds = REAL_ELT(s, i as c_int);
-            if ds.is_finite() && ds > c_int::MAX as f64 {
-                int_ok = false;
-            }
-            if !ds.is_finite() || (ds as R_xlen_t) != 0 {
-                cnt += 1;
-            }
-        }
-        if int_ok {
-            let indx = Rf_allocVector3(SEXPTYPE::INTSXP, cnt);
-            let pindx = INTEGER(indx);
-            let mut j: R_xlen_t = 0;
-            for i in 0..ns {
-                let ds = REAL_ELT(s, i as c_int);
-                let ia: c_int = if !ds.is_finite() {
-                    NA_INTEGER
-                } else {
-                    ds as c_int
-                };
-                if ia != 0 {
-                    *pindx.add(j as usize) = ia;
-                    j += 1;
-                }
-            }
-            indx
         } else {
-            let indx = Rf_allocVector3(SEXPTYPE::REALSXP, cnt);
-            let pindx = REAL(indx);
-            let mut j: R_xlen_t = 0;
+            isna = true;
+        }
+    }
+    if max >= nx as f64 + 1.0 {
+        if canstretch {
+            *stretch = max as R_xlen_t;
+        } else {
+            ECALL_OutOfBounds(x, -1, max as R_xlen_t, call);
+        }
+    }
+    if min <= -1.0 {
+        if max < 1.0 && !isna {
+            let mut stretch2: R_xlen_t = 0;
+            let mut indx = new_index(owner, SEXPTYPE::LGLSXP, nx);
+            for i in 0..nx {
+                checked_index(indx.try_set_logical_elt(i, 1));
+            }
             for i in 0..ns {
-                let ds = REAL_ELT(s, i as c_int);
-                if !ds.is_finite() || (ds as R_xlen_t) != 0 {
-                    *pindx.add(j as usize) = ds;
-                    j += 1;
+                let dx = checked_index(s.try_real_elt(i));
+                if dx.is_finite() && dx <= -1.0 && -dx < nx as f64 + 1.0 {
+                    let ix = (-dx - 1.0) as R_xlen_t;
+                    checked_index(indx.try_set_logical_elt(ix, 0));
                 }
             }
-            indx
+            return logicalSubscript(owner, &indx.freeze(), nx, nx, &mut stretch2);
+        } else {
+            error("only 0's may be mixed with negative subscripts");
         }
+    }
+    // Positive path: return a REALSXP index only if needed.
+    let mut int_ok = true;
+    let mut cnt: R_xlen_t = 0;
+    for i in 0..ns {
+        let ds = checked_index(s.try_real_elt(i));
+        if ds.is_finite() && ds > c_int::MAX as f64 {
+            int_ok = false;
+        }
+        if !ds.is_finite() || (ds as R_xlen_t) != 0 {
+            cnt += 1;
+        }
+    }
+    if int_ok {
+        let mut indx = new_index(owner, SEXPTYPE::INTSXP, cnt);
+        let mut j: R_xlen_t = 0;
+        for i in 0..ns {
+            let ds = checked_index(s.try_real_elt(i));
+            let ia: c_int = if !ds.is_finite() {
+                NA_INTEGER
+            } else {
+                ds as c_int
+            };
+            if ia != 0 {
+                checked_index(indx.try_set_integer_elt(j, ia));
+                j += 1;
+            }
+        }
+        check_subscript_count(j, cnt);
+        indx.freeze().as_raw()
+    } else {
+        let mut indx = new_index(owner, SEXPTYPE::REALSXP, cnt);
+        let mut j: R_xlen_t = 0;
+        for i in 0..ns {
+            let ds = checked_index(s.try_real_elt(i));
+            if !ds.is_finite() || (ds as R_xlen_t) != 0 {
+                checked_index(indx.try_set_real_elt(j, ds));
+                j += 1;
+            }
+        }
+        check_subscript_count(j, cnt);
+        indx.freeze().as_raw()
     }
 }
 
@@ -1125,134 +1121,148 @@ unsafe fn realSubscript(
 /// Matches strings against names on the vector. For assignment contexts,
 /// new names cause the vector to be "stretched". Uses hashing for large
 /// name sets (ns * nx > 15*nx + ns) for performance.
-unsafe fn stringSubscript(
+fn stringSubscript(
+    owner: OwnerToken<'_>,
     s: SEXP,
     ns: R_xlen_t,
     nx: R_xlen_t,
     names: SEXP,
-    stretch: *mut R_xlen_t,
+    stretch: &mut R_xlen_t,
     call: SEXP,
     x: SEXP,
     dim: c_int,
 ) -> SEXP {
-    unsafe {
-        let _ = (call, dim);
-        // Trunk semantics (subscript.c stringSubscript): unmatched names are
-        // an error unless stretching is allowed; when stretching, the new
-        // names are returned as the "use.names" attribute (a VECSXP) of the
-        // generated subscript vector, and *stretch becomes the new required
-        // length of x. VectorAssign consumes it to name the new elements.
-        let canstretch = *stretch > 0;
-        *stretch = 0;
+    let _ = (call, dim);
+    // Trunk semantics (subscript.c stringSubscript): unmatched names are
+    // an error unless stretching is allowed; when stretching, the new
+    // names are returned as the "use.names" attribute (a VECSXP) of the
+    // generated subscript vector, and *stretch becomes the new required
+    // length of x. VectorAssign consumes it to name the new elements.
+    let canstretch = *stretch > 0;
+    *stretch = 0;
 
-        let is_non_null_string = |elt: SEXP| -> bool {
-            !elt.is_null() && elt != R_NilValue() && elt != crate::sexp::globals::R_NaString()
-        };
+    let _names = (TYPEOF(names) == SEXPTYPE::STRSXP).then(|| checked_index(owner.sexp(names)));
+    let string_at = |x: SEXP, i: R_xlen_t| {
+        let value = STRING_ELT(x, i);
+        checked_index(owner.require_active());
+        value
+    };
 
-        // First pass: match against the names on x. Unmatched entries stay 0.
-        // (Trunk only hashes for large inputs; linear matching is equivalent.)
-        let indx = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-        let _indx_guard = protect(indx);
-        let mut guards: Vec<_> = Vec::new();
-        let pindx = INTEGER(indx);
-        for i in 0..ns {
-            let mut sub: R_xlen_t = 0;
-            let si = STRING_ELT(s, i);
-            if si == crate::sexp::globals::R_NaString() {
-                *pindx.add(i as usize) = crate::sexp::ffi::NA_INTEGER;
-                continue;
-            }
-            if is_non_null_string(si) {
-                let sbytes = &crate::sexp::accessors::char_cstr_bytes(si)[..];
-                if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                    for j in 0..nx {
-                        let name_j = STRING_ELT(names, j);
-                        if is_non_null_string(name_j) {
-                            let nbytes = &crate::sexp::accessors::char_cstr_bytes(name_j)[..];
-                            if !sbytes.is_empty() && nbytes == sbytes {
-                                sub = j + 1;
-                                break;
-                            }
+    let is_non_null_string = |elt: SEXP| -> bool {
+        !elt.is_null() && elt != R_NilValue() && elt != crate::sexp::globals::R_NaString()
+    };
+
+    // First pass: match against the names on x. Unmatched entries stay 0.
+    // (Trunk only hashes for large inputs; linear matching is equivalent.)
+    let mut indx = new_index(owner, SEXPTYPE::INTSXP, ns);
+    let mut guards: Vec<_> = Vec::new();
+    for i in 0..ns {
+        let mut sub: R_xlen_t = 0;
+        let si = string_at(s, i);
+        if si == crate::sexp::globals::R_NaString() {
+            checked_index(indx.try_set_integer_elt(i, crate::sexp::ffi::NA_INTEGER));
+            continue;
+        }
+        if is_non_null_string(si) {
+            let sbytes = &crate::sexp::accessors::char_cstr_bytes(si)[..];
+            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                for j in 0..nx {
+                    let name_j = string_at(names, j);
+                    if is_non_null_string(name_j) {
+                        let nbytes = &crate::sexp::accessors::char_cstr_bytes(name_j)[..];
+                        if !sbytes.is_empty() && nbytes == sbytes {
+                            sub = j + 1;
+                            break;
                         }
                     }
                 }
             }
-            *pindx.add(i as usize) = sub as c_int;
         }
+        checked_index(indx.try_set_integer_elt(i, sub as c_int));
+    }
 
-        // Second pass: resolve unmatched entries against earlier subscripts
-        // (duplicates of an already-seen new name share its slot); genuinely
-        // new names extend the vector when allowed.
-        let nnames = nx;
-        let mut extra = nnames;
-        let mut indexnames: SEXP = R_NilValue();
-        let mut sindx: SEXP = R_NilValue();
-        for i in 0..ns {
-            let mut sub = *pindx.add(i as usize) as R_xlen_t;
-            if sub == 0 {
-                let si = STRING_ELT(s, i);
-                if is_non_null_string(si) {
-                    if indexnames.is_null() || indexnames == R_NilValue() {
-                        // match(s, s, 0): first-occurrence index of each element
-                        sindx = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-                        guards.push(protect(sindx));
-                        let ps = INTEGER(sindx);
-                        for a in 0..ns {
-                            let ea = STRING_ELT(s, a);
-                            let mut found: R_xlen_t = 0;
-                            if is_non_null_string(ea) {
-                                let abytes = &crate::sexp::accessors::char_cstr_bytes(ea)[..];
-                                for b in 0..a {
-                                    let eb = STRING_ELT(s, b);
-                                    if is_non_null_string(eb) {
-                                        let bbytes =
-                                            &crate::sexp::accessors::char_cstr_bytes(eb)[..];
-                                        if bbytes == abytes {
-                                            found = b + 1;
-                                            break;
-                                        }
+    // Second pass: resolve unmatched entries against earlier subscripts
+    // (duplicates of an already-seen new name share its slot); genuinely
+    // new names extend the vector when allowed.
+    let nnames = nx;
+    let mut extra = nnames;
+    let mut indexnames: SEXP = R_NilValue();
+    let mut sindx: Option<Sexp<'_>> = None;
+    for i in 0..ns {
+        let mut sub = indx
+            .integer_elt(i)
+            .unwrap_or_else(|| error("invalid subscript staging index"))
+            as R_xlen_t;
+        if sub == 0 {
+            let si = string_at(s, i);
+            if is_non_null_string(si) {
+                if indexnames.is_null() || indexnames == R_NilValue() {
+                    // match(s, s, 0): first-occurrence index of each element
+                    let mut matches = new_index(owner, SEXPTYPE::INTSXP, ns);
+                    for a in 0..ns {
+                        let ea = string_at(s, a);
+                        let mut found: R_xlen_t = 0;
+                        if is_non_null_string(ea) {
+                            let abytes = &crate::sexp::accessors::char_cstr_bytes(ea)[..];
+                            for b in 0..a {
+                                let eb = string_at(s, b);
+                                if is_non_null_string(eb) {
+                                    let bbytes =
+                                        &crate::sexp::accessors::char_cstr_bytes(eb)[..];
+                                    if bbytes == abytes {
+                                        found = b + 1;
+                                        break;
                                     }
                                 }
                             }
-                            *ps.add(a as usize) = found as c_int;
                         }
-                        indexnames = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
-                        guards.push(protect(indexnames));
-                        for z in 0..ns {
-                            SET_VECTOR_ELT(indexnames, z, R_NilValue());
-                        }
+                        checked_index(matches.try_set_integer_elt(a, found as c_int));
                     }
-                    let j = *INTEGER(sindx).add(i as usize) as R_xlen_t;
-                    if j >= 1 {
-                        sub = *pindx.add((j - 1) as usize) as R_xlen_t;
-                        SET_VECTOR_ELT(indexnames, i, STRING_ELT(s, j - 1));
+                    sindx = Some(matches.freeze());
+                    indexnames = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
+                    guards.push(protect(indexnames));
+                    for z in 0..ns {
+                        SET_VECTOR_ELT(indexnames, z, R_NilValue());
                     }
                 }
-            }
-            if sub == 0 {
-                if !canstretch {
-                    ECALL_OutOfBoundsCHAR(x, dim, STRING_ELT(s, i), call);
+                let j = i64::from(checked_index(
+                    sindx
+                        .as_ref()
+                        .expect("initialized index matches")
+                        .try_integer_elt(i),
+                ));
+                if j >= 1 {
+                    sub = indx
+                        .integer_elt(j - 1)
+                        .unwrap_or_else(|| error("invalid subscript staging index"))
+                        as R_xlen_t;
+                    SET_VECTOR_ELT(indexnames, i, string_at(s, j - 1));
                 }
-                extra += 1;
-                sub = extra;
-                SET_VECTOR_ELT(indexnames, i, STRING_ELT(s, i));
-            }
-            *pindx.add(i as usize) = sub as c_int;
-        }
-
-        if extra != nnames {
-            use crate::eval::attrib_core::setAttrib;
-            setAttrib(
-                indx,
-                crate::eval::attrib_core::R_UseNamesSymbol(),
-                indexnames,
-            );
-            if canstretch {
-                *stretch = extra;
             }
         }
-        indx
+        if sub == 0 {
+            if !canstretch {
+                ECALL_OutOfBoundsCHAR(x, dim, string_at(s, i), call);
+            }
+            extra += 1;
+            sub = extra;
+            SET_VECTOR_ELT(indexnames, i, string_at(s, i));
+        }
+        checked_index(indx.try_set_integer_elt(i, sub as c_int));
     }
+
+    if extra != nnames {
+        use crate::eval::attrib_core::setAttrib;
+        setAttrib(
+            indx.as_raw(),
+            crate::eval::attrib_core::R_UseNamesSymbol(),
+            indexnames,
+        );
+        if canstretch {
+            *stretch = extra;
+        }
+    }
+    indx.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -1263,8 +1273,12 @@ unsafe fn stringSubscript(
 ///
 /// This is the internal implementation used by `[i,j,...]` and `[<-...`.
 /// The public API is `arraySubscript`.
-pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call: SEXP) -> SEXP {
-    unsafe {
+pub fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call: SEXP) -> SEXP {
+    checked_index(OwnerToken::with_current(|owner| {
+        let _x = (!x.is_null()).then(|| checked_index(owner.sexp(x)));
+        let _dims = (!dims.is_null()).then(|| checked_index(owner.sexp(dims)));
+        let source = checked_index(owner.sexp(s));
+
         let mut stretch: R_xlen_t = 0;
         let ns = if TYPEOF(s) == SEXPTYPE::SYMSXP {
             0
@@ -1272,23 +1286,33 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
             LENGTH(s)
         };
         let nd = INTEGER_ELT(dims, dim);
+        checked_index(owner.require_active());
         crate::mainutils::subset::note_oob_subscript(dim + 1);
         let stype = TYPEOF(s);
         let ans = if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype == SEXPTYPE::LGLSXP {
-            logicalSubscript(
-                s,
+            logicalSubscript(owner, &source, ns as R_xlen_t, nd as R_xlen_t, &mut stretch)
+        } else if stype == SEXPTYPE::INTSXP {
+            integerSubscript(
+                owner,
+                &source,
                 ns as R_xlen_t,
                 nd as R_xlen_t,
                 &mut stretch,
                 call,
-                dim + 1,
+                x,
             )
-        } else if stype == SEXPTYPE::INTSXP {
-            integerSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
         } else if stype == SEXPTYPE::REALSXP {
-            realSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
+            realSubscript(
+                owner,
+                &source,
+                ns as R_xlen_t,
+                nd as R_xlen_t,
+                &mut stretch,
+                call,
+                x,
+            )
         } else if stype == SEXPTYPE::STRSXP {
             let dnames = crate::eval::attrib_core::getAttrib(
                 x,
@@ -1297,12 +1321,15 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
             if dnames.is_null() || dnames == R_NilValue() {
                 error("no 'dimnames' attribute for array");
             }
+            let _dnames_guard = protect(dnames);
             let dnames_col = if dim < LENGTH(dnames) {
                 VECTOR_ELT(dnames, dim as R_xlen_t)
             } else {
                 R_NilValue()
             };
+            checked_index(owner.require_active());
             stringSubscript(
+                owner,
                 s,
                 ns as R_xlen_t,
                 nd as R_xlen_t,
@@ -1313,13 +1340,14 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
                 dim,
             )
         } else if stype == SEXPTYPE::SYMSXP {
-            nullSubscript(nd as R_xlen_t)
+            nullSubscript(owner, nd as R_xlen_t)
         } else {
             error("invalid subscript type 'unknown'");
         };
         crate::mainutils::subset::note_oob_subscript(0);
+        checked_index(owner.require_active());
         ans
-    }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1330,7 +1358,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
 ///
 /// This is used by packages arules, cba, proxy, and seriation.
 /// Delegates to `int_arraySubscript` with `call = R_NilValue`.
-pub unsafe fn arraySubscript(
+pub fn arraySubscript(
     dim: c_int,
     s: SEXP,
     dims: SEXP,
@@ -1338,15 +1366,13 @@ pub unsafe fn arraySubscript(
     _strg: usize,
     x: SEXP,
 ) -> SEXP {
-    unsafe {
-        // Note: dng and strg are function pointer parameters in C
-        // (AttrGetter and StringEltGetter typedefs), ignored in this port.
-        int_arraySubscript(dim, s, dims, x, R_NilValue())
-    }
+    // Note: dng and strg are function pointer parameters in C
+    // (AttrGetter and StringEltGetter typedefs), ignored in this port.
+    int_arraySubscript(dim, s, dims, x, R_NilValue())
 }
 
 // ---------------------------------------------------------------------------
-// makeSubscript — subscript creation for [ and [<-
+// make_subscript — subscript creation for [ and [<-
 // ---------------------------------------------------------------------------
 
 /// Create a subscript vector for `[` and `[<-` operators.
@@ -1357,12 +1383,15 @@ pub unsafe fn arraySubscript(
 ///
 /// If `*stretch` is 0 on entry, the vector `x` cannot be stretched.
 /// Otherwise, `*stretch` returns the new required length for `x`.
-pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP) -> SEXP {
-    unsafe {
-        // Check that x is a vector, list, or language object
-        // if !isVector(x) && !isList(x) && !isLanguage(x) {
-        //     ECALL(call, "subscripting on non-vector");
-        // }
+pub(crate) fn make_subscript(
+    x: SEXP,
+    s: SEXP,
+    stretch: &mut R_xlen_t,
+    call: SEXP,
+) -> SEXP {
+    checked_index(OwnerToken::with_current(|owner| {
+        let _x = (!x.is_null()).then(|| checked_index(owner.sexp(x)));
+        let source = checked_index(owner.sexp(s));
 
         let nx = XLENGTH(x);
 
@@ -1371,20 +1400,18 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
         if stype == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.as_c_int()) != 0 {
             let i = SCALAR_IVAL(s);
             if i > 0 && (i as R_xlen_t) <= nx {
-                if !stretch.is_null() {
-                    *stretch = 0;
-                }
+                *stretch = 0;
                 return s;
             }
         } else if stype == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.as_c_int()) != 0 {
             let di = SCALAR_DVAL(s);
             if di >= 1.0 && (di as R_xlen_t) <= nx {
-                if !stretch.is_null() {
-                    *stretch = 0;
-                }
+                *stretch = 0;
                 return s;
             }
         }
+        // Scalar reads may have invoked a provider; re-validate.
+        checked_index(owner.require_active());
 
         let ns = if matches!(
             SEXPTYPE(TYPEOF(s)),
@@ -1398,33 +1425,49 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
         } else {
             0
         };
-        let mut _stretch_val: R_xlen_t = 0;
 
         let stype2 = TYPEOF(s);
-        if stype2 == SEXPTYPE::NILSXP {
-            if !stretch.is_null() {
-                *stretch = 0;
-            }
+        let ans = if stype2 == SEXPTYPE::NILSXP {
+            *stretch = 0;
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype2 == SEXPTYPE::LGLSXP {
-            logicalSubscript(s, ns, nx, stretch, call, 0)
+            logicalSubscript(owner, &source, ns, nx, stretch)
         } else if stype2 == SEXPTYPE::INTSXP {
-            integerSubscript(s, ns, nx, stretch, call, x)
+            integerSubscript(owner, &source, ns, nx, stretch, call, x)
         } else if stype2 == SEXPTYPE::REALSXP {
-            realSubscript(s, ns, nx, stretch, call, x)
+            realSubscript(owner, &source, ns, nx, stretch, call, x)
         } else if stype2 == SEXPTYPE::STRSXP {
             let names =
                 crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            stringSubscript(s, ns, nx, names, stretch, call, x, -1)
+            stringSubscript(owner, s, ns, nx, names, stretch, call, x, -1)
         } else if stype2 == SEXPTYPE::SYMSXP {
-            if !stretch.is_null() {
-                *stretch = 0;
-            }
-            nullSubscript(nx)
+            *stretch = 0;
+            nullSubscript(owner, nx)
         } else {
             error("invalid subscript type 'unknown'");
-        }
+        };
+        checked_index(owner.require_active());
+        ans
+    }))
+}
+
+/// Raw-pointer compatibility adapter for subscript construction.
+///
+/// # Safety
+/// A non-null `stretch` must be readable and writable through the call.
+pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP) -> SEXP {
+    let mut value = if stretch.is_null() {
+        0
+    } else {
+        // SAFETY: the caller supplies a readable slot.
+        unsafe { stretch.read() }
+    };
+    let result = make_subscript(x, s, &mut value, call);
+    if !stretch.is_null() {
+        // SAFETY: the caller retains a writable slot.
+        unsafe { stretch.write(value) };
     }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,6 +1477,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
 #[cfg(test)]
 mod tests {
     use crate::sexp::ffi::{FALSE, NA_INTEGER, TRUE};
+    use std::ptr;
     use std::os::raw::{c_char, c_double, c_int};
     use std::panic::{self, AssertUnwindSafe};
 
@@ -1765,6 +1809,59 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
+    }
+
+    /// A variable logical provider may collect mid-fill; the typed
+    /// destination stays valid because SexpMut retains the owner.
+    #[test]
+    fn subscript_result_survives_collection_during_altrep_fill() {
+        use crate::sexp::{
+            RSession,
+            altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
+        };
+        use std::{cell::Cell, rc::Rc};
+
+        struct CollectLogical(Rc<Cell<usize>>);
+        impl AltrepClass for CollectLogical {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::LGLSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(3)
+            }
+            fn element<'s>(
+                &self,
+                _: &AltrepContext<'s>,
+                i: i64,
+            ) -> SexpResult<AltrepElement<'s>> {
+                let calls = self.0.get() + 1;
+                self.0.set(calls);
+                if calls == 4 {
+                    crate::sexp::gengc::full_gc();
+                }
+                Ok(AltrepElement::Logical([1, 0, NA_LOGICAL][i as usize]))
+            }
+        }
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let reads = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class("subscript-logical-gc", CollectLogical(reads.clone()))
+                .unwrap();
+            let s = AltrepBuilder::new(class).build().unwrap();
+            let owner = session.owner_token().unwrap();
+            let x = owner
+                .sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 3))
+                .unwrap();
+            let mut stretch = 1;
+            let result = make_subscript(x.as_raw(), s.as_raw(), &mut stretch, R_NilValue());
+            assert_eq!(reads.get(), 6);
+            assert_eq!(stretch, 0);
+            assert_eq!(XLENGTH(result), 2);
+            assert_eq!(INTEGER_ELT(result, 0), 1);
+            assert_eq!(INTEGER_ELT(result, 1), NA_INTEGER);
+        });
     }
 
     #[test]

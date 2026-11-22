@@ -217,7 +217,7 @@ pub(crate) fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 
         /* Convert to a vector of integer subscripts in the range 1:length(x). */
         let mut stretch: R_xlen_t = 1;
-        let indx = makeSubscript(x, s, &mut stretch, call);
+        let indx = make_subscript(x, s, &mut stretch, call);
         let _indx_guard = protect(indx);
 
         /* Allocate the result. */
@@ -271,193 +271,191 @@ pub(crate) fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 /// Subset a matrix by row and column indices.
 #[allow(clippy::absurd_extreme_comparisons)]
 pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
-    unsafe {
-        let nr = nrows(x);
-        let nc = ncols(x);
+    let nr = nrows(x);
+    let nc = ncols(x);
 
-        /* s is protected on entry */
-        let dim = getAttrib(x, sym_Dim());
-        let _dim_guard = protect(dim);
+    /* s is protected on entry */
+    let dim = getAttrib(x, sym_Dim());
+    let _dim_guard = protect(dim);
 
-        /* Convert row and column subscripts to integer form */
-        let sr = int_arraySubscript(0, CAR(s), dim, x, call);
-        let _sr_guard = protect(sr);
-        let sc = int_arraySubscript(1, CADR(s), dim, x, call);
-        let _sc_guard = protect(sc);
-        let nrs = LENGTH(sr);
-        let ncs = LENGTH(sc);
+    /* Convert row and column subscripts to integer form */
+    let sr = int_arraySubscript(0, CAR(s), dim, x, call);
+    let _sr_guard = protect(sr);
+    let sc = int_arraySubscript(1, CADR(s), dim, x, call);
+    let _sc_guard = protect(sc);
+    let nrs = LENGTH(sr);
+    let ncs = LENGTH(sc);
 
-        /* Overflow check */
-        if (nrs as R_xlen_t) * (ncs as R_xlen_t) > R_XLEN_T_MAX {
-            errorcall(call, "dimensions would exceed maximum size of array");
-        }
-
-        let mut result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
-        let _result_guard = protect(result);
-
-        let mut i: R_xlen_t;
-        let mut j: R_xlen_t;
-        let mut ii: R_xlen_t;
-        let mut jj: R_xlen_t;
-        let mut ij: R_xlen_t;
-        let mut iijj: R_xlen_t;
-
-        /* Matrix subset loop -- column-major order */
-        for j in 0..(ncs as R_xlen_t) {
-            jj = INTEGER_ELT(sc, j as c_int) as R_xlen_t;
-            if jj != NA_INTEGER as R_xlen_t {
-                if jj < 1 || jj > nc as R_xlen_t {
-                    errorcallOutOfBounds(x, 1, jj, call);
-                }
-                jj -= 1;
-            }
-            for i_idx in 0..(nrs as R_xlen_t) {
-                ii = INTEGER_ELT(sr, i_idx as c_int) as R_xlen_t;
-                if ii != NA_INTEGER as R_xlen_t {
-                    if ii < 1 || ii > nr as R_xlen_t {
-                        errorcallOutOfBounds(x, 0, ii, call);
-                    }
-                    ii -= 1;
-                }
-                ij = i_idx + j * (nrs as R_xlen_t);
-                if ii == NA_INTEGER as R_xlen_t || jj == NA_INTEGER as R_xlen_t {
-                    /* NA code */
-                    match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            SET_LOGICAL_ELT(result, ij as c_int, NA_LOGICAL);
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            SET_INTEGER_ELT(result, ij as c_int, NA_INTEGER);
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            SET_REAL_ELT(result, ij as c_int, NA_REAL);
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            SET_COMPLEX_ELT(
-                                result,
-                                ij as c_int,
-                                crate::sexp::ffi::Rcomplex {
-                                    r: NA_REAL,
-                                    i: NA_REAL,
-                                },
-                            );
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            // GNU ExtractSubset: NA subscripts yield NA_STRING,
-                            // not NULL (`m[c(1,NA), ]` keeps is.na() TRUE).
-                            SET_STRING_ELT(result, ij, crate::sexp::globals::R_NaString());
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, ij, R_NilValue());
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            SET_RAW_ELT(result, ij as c_int, 0);
-                        }
-                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
-                    }
-                } else {
-                    iijj = ii + jj * (nr as R_xlen_t);
-                    /* Standard code */
-                    match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            SET_LOGICAL_ELT(result, ij as c_int, LOGICAL_ELT(x, iijj as c_int));
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            SET_INTEGER_ELT(result, ij as c_int, INTEGER_ELT(x, iijj as c_int));
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            SET_REAL_ELT(result, ij as c_int, REAL_ELT(x, iijj as c_int));
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            SET_COMPLEX_ELT(result, ij as c_int, COMPLEX_ELT(x, iijj as c_int));
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, ij, STRING_ELT(x, iijj as R_xlen_t));
-                        }
-                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                            SET_VECTOR_ELT(result, ij, VECTOR_ELT_FIX_NAMED(x, iijj));
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            SET_RAW_ELT(result, ij as c_int, RAW_ELT(x, iijj as c_int));
-                        }
-                        _ => {
-                            errorcall(call, "matrix subscripting not handled for this type");
-                        }
-                    }
-                }
-            }
-        }
-
-        /* Set dim attribute */
-        if nrs >= 0 && ncs >= 0 {
-            let attr = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-            let _attr_guard = protect(attr);
-            SET_INTEGER_ELT(attr, (0) as c_int, nrs);
-            SET_INTEGER_ELT(attr, (1) as c_int, ncs);
-            if !isNull(getAttrib(dim, sym_Names())) {
-                setAttrib(attr, sym_Names(), getAttrib(dim, sym_Names()));
-            }
-            setAttrib(result, sym_Dim(), attr);
-        }
-
-        /* Transfer dimnames */
-        if nrs >= 0 && ncs >= 0 {
-            let dimnames = getAttrib(x, sym_DimNames());
-            let dimnamesnames = getAttrib(dimnames, sym_Names());
-            let _dimnamesnames_guard = protect(dimnamesnames);
-            if !isNull(dimnames) {
-                let newdimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _newdimnames_guard = protect(newdimnames);
-                if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
-                    SET_VECTOR_ELT(
-                        newdimnames,
-                        0,
-                        if nrs == 0 {
-                            R_NilValue()
-                        } else {
-                            ExtractSubset(VECTOR_ELT(dimnames, 0), sr, call)
-                        },
-                    );
-                    SET_VECTOR_ELT(
-                        newdimnames,
-                        1,
-                        if ncs == 0 {
-                            R_NilValue()
-                        } else {
-                            ExtractSubset(VECTOR_ELT(dimnames, 1), sc, call)
-                        },
-                    );
-                } else {
-                    SET_VECTOR_ELT(
-                        newdimnames,
-                        0,
-                        if nrs == 0 {
-                            R_NilValue()
-                        } else {
-                            ExtractSubset(CAR(dimnames), sr, call)
-                        },
-                    );
-                    SET_VECTOR_ELT(
-                        newdimnames,
-                        1,
-                        if ncs == 0 {
-                            R_NilValue()
-                        } else {
-                            ExtractSubset(CADR(dimnames), sc, call)
-                        },
-                    );
-                }
-                setAttrib(newdimnames, sym_Names(), dimnamesnames);
-                setAttrib(result, sym_DimNames(), newdimnames);
-            }
-        }
-
-        if drop != 0 {
-            result = DropDims(result);
-        }
-
-        result
+    /* Overflow check */
+    if (nrs as R_xlen_t) * (ncs as R_xlen_t) > R_XLEN_T_MAX {
+        errorcall(call, "dimensions would exceed maximum size of array");
     }
+
+    let mut result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
+    let _result_guard = protect(result);
+
+    let mut i: R_xlen_t;
+    let mut j: R_xlen_t;
+    let mut ii: R_xlen_t;
+    let mut jj: R_xlen_t;
+    let mut ij: R_xlen_t;
+    let mut iijj: R_xlen_t;
+
+    /* Matrix subset loop -- column-major order */
+    for j in 0..(ncs as R_xlen_t) {
+        jj = INTEGER_ELT(sc, j as c_int) as R_xlen_t;
+        if jj != NA_INTEGER as R_xlen_t {
+            if jj < 1 || jj > nc as R_xlen_t {
+                errorcallOutOfBounds(x, 1, jj, call);
+            }
+            jj -= 1;
+        }
+        for i_idx in 0..(nrs as R_xlen_t) {
+            ii = INTEGER_ELT(sr, i_idx as c_int) as R_xlen_t;
+            if ii != NA_INTEGER as R_xlen_t {
+                if ii < 1 || ii > nr as R_xlen_t {
+                    errorcallOutOfBounds(x, 0, ii, call);
+                }
+                ii -= 1;
+            }
+            ij = i_idx + j * (nrs as R_xlen_t);
+            if ii == NA_INTEGER as R_xlen_t || jj == NA_INTEGER as R_xlen_t {
+                /* NA code */
+                match TYPEOF(x) {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, ij as c_int, NA_LOGICAL);
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, ij as c_int, NA_INTEGER);
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, ij as c_int, NA_REAL);
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        SET_COMPLEX_ELT(
+                            result,
+                            ij as c_int,
+                            crate::sexp::ffi::Rcomplex {
+                                r: NA_REAL,
+                                i: NA_REAL,
+                            },
+                        );
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        // GNU ExtractSubset: NA subscripts yield NA_STRING,
+                        // not NULL (`m[c(1,NA), ]` keeps is.na() TRUE).
+                        SET_STRING_ELT(result, ij, crate::sexp::globals::R_NaString());
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, ij, R_NilValue());
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, ij as c_int, 0);
+                    }
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
+                }
+            } else {
+                iijj = ii + jj * (nr as R_xlen_t);
+                /* Standard code */
+                match TYPEOF(x) {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        SET_LOGICAL_ELT(result, ij as c_int, LOGICAL_ELT(x, iijj as c_int));
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        SET_INTEGER_ELT(result, ij as c_int, INTEGER_ELT(x, iijj as c_int));
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        SET_REAL_ELT(result, ij as c_int, REAL_ELT(x, iijj as c_int));
+                    }
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        SET_COMPLEX_ELT(result, ij as c_int, COMPLEX_ELT(x, iijj as c_int));
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        SET_STRING_ELT(result, ij, STRING_ELT(x, iijj as R_xlen_t));
+                    }
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                        SET_VECTOR_ELT(result, ij, VECTOR_ELT_FIX_NAMED(x, iijj));
+                    }
+                    t if t == SEXPTYPE::RAWSXP => {
+                        SET_RAW_ELT(result, ij as c_int, RAW_ELT(x, iijj as c_int));
+                    }
+                    _ => {
+                        errorcall(call, "matrix subscripting not handled for this type");
+                    }
+                }
+            }
+        }
+    }
+
+    /* Set dim attribute */
+    if nrs >= 0 && ncs >= 0 {
+        let attr = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let _attr_guard = protect(attr);
+        SET_INTEGER_ELT(attr, (0) as c_int, nrs);
+        SET_INTEGER_ELT(attr, (1) as c_int, ncs);
+        if !isNull(getAttrib(dim, sym_Names())) {
+            setAttrib(attr, sym_Names(), getAttrib(dim, sym_Names()));
+        }
+        setAttrib(result, sym_Dim(), attr);
+    }
+
+    /* Transfer dimnames */
+    if nrs >= 0 && ncs >= 0 {
+        let dimnames = getAttrib(x, sym_DimNames());
+        let dimnamesnames = getAttrib(dimnames, sym_Names());
+        let _dimnamesnames_guard = protect(dimnamesnames);
+        if !isNull(dimnames) {
+            let newdimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _newdimnames_guard = protect(newdimnames);
+            if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
+                SET_VECTOR_ELT(
+                    newdimnames,
+                    0,
+                    if nrs == 0 {
+                        R_NilValue()
+                    } else {
+                        ExtractSubset(VECTOR_ELT(dimnames, 0), sr, call)
+                    },
+                );
+                SET_VECTOR_ELT(
+                    newdimnames,
+                    1,
+                    if ncs == 0 {
+                        R_NilValue()
+                    } else {
+                        ExtractSubset(VECTOR_ELT(dimnames, 1), sc, call)
+                    },
+                );
+            } else {
+                SET_VECTOR_ELT(
+                    newdimnames,
+                    0,
+                    if nrs == 0 {
+                        R_NilValue()
+                    } else {
+                        ExtractSubset(CAR(dimnames), sr, call)
+                    },
+                );
+                SET_VECTOR_ELT(
+                    newdimnames,
+                    1,
+                    if ncs == 0 {
+                        R_NilValue()
+                    } else {
+                        ExtractSubset(CADR(dimnames), sc, call)
+                    },
+                );
+            }
+            setAttrib(newdimnames, sym_Names(), dimnamesnames);
+            setAttrib(result, sym_DimNames(), newdimnames);
+        }
+    }
+
+    if drop != 0 {
+        result = DropDims(result);
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -489,210 +487,208 @@ pub(crate) fn findASubIndex(
 
 /// Subset an array (N dimensions) by per-dimension indices.
 pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
-    unsafe {
-        let mode = TYPEOF(x);
-        let xdims = getAttrib(x, sym_Dim());
-        let _xdims_guard = protect(xdims);
-        let k = length_int(xdims);
-        /* Use Vec for temporary storage (equivalent to R_alloc in C) */
-        let mut subs: Vec<Vec<c_int>> = Vec::with_capacity(k as usize);
-        let mut indx: Vec<c_int> = vec![0; k as usize];
-        let mut bound: Vec<c_int> = Vec::with_capacity(k as usize);
-        let mut offset_arr: Vec<R_xlen_t> = vec![0; k as usize];
+    let mode = TYPEOF(x);
+    let xdims = getAttrib(x, sym_Dim());
+    let _xdims_guard = protect(xdims);
+    let k = length_int(xdims);
+    /* Use Vec for temporary storage (equivalent to R_alloc in C) */
+    let mut subs: Vec<Vec<c_int>> = Vec::with_capacity(k as usize);
+    let mut indx: Vec<c_int> = vec![0; k as usize];
+    let mut bound: Vec<c_int> = Vec::with_capacity(k as usize);
+    let mut offset_arr: Vec<R_xlen_t> = vec![0; k as usize];
 
-        /* Construct subscripts and compute bounds */
-        let mut sub_guards = Vec::with_capacity(k as usize);
-        let mut n: R_xlen_t = 1;
-        let mut r = s;
-        for i in 0..(k as usize) {
-            let sub = int_arraySubscript(i as c_int, CAR(r), xdims, x, call);
-            sub_guards.push(protect(sub));
-            SETCAR(r, sub);
-            bound.push(LENGTH(sub));
-            subs.push((0..LENGTH(sub)).map(|j| INTEGER_ELT(sub, j)).collect());
-            n *= bound[i] as R_xlen_t;
-            r = CDR(r);
-        }
-
-        /* Initialize index array */
-        for i in 0..(k as usize) {
-            indx[i] = 0;
-        }
-
-        /* Compute offsets (column-major) */
-        offset_arr[0] = 1;
-        for i in 1..(k as usize) {
-            offset_arr[i] = offset_arr[i - 1] * (INTEGER_ELT(xdims, (i - 1) as c_int)) as R_xlen_t;
-        }
-
-        /* Range check on indices */
-        for i in 0..(k as usize) {
-            for j in 0..(bound[i] as usize) {
-                let jj = subs[i][j];
-                if jj > INTEGER_ELT(xdims, (i) as c_int) || (jj < 1 && jj != NA_INTEGER) {
-                    errorcallOutOfBounds(x, i as c_int, jj as R_xlen_t, call);
-                }
-            }
-        }
-
-        /* Transfer subset elements */
-        let mut result = Rf_allocVector3(mode, n);
-        let _result_guard = protect(result);
-
-        let sub_slices: Vec<&[c_int]> = subs.iter().map(Vec::as_slice).collect();
-        for i in 0..n {
-            let ii = findASubIndex(k as R_xlen_t, &sub_slices, &indx, &offset_arr, call);
-
-            if ii != NA_INTEGER as R_xlen_t {
-                match mode {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        SET_LOGICAL_ELT(result, i as c_int, LOGICAL_ELT(x, ii as c_int));
-                    }
-                    t if t == SEXPTYPE::INTSXP => {
-                        SET_INTEGER_ELT(result, i as c_int, INTEGER_ELT(x, ii as c_int));
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        SET_REAL_ELT(result, i as c_int, REAL_ELT(x, ii as c_int));
-                    }
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        SET_COMPLEX_ELT(result, i as c_int, COMPLEX_ELT(x, ii as c_int));
-                    }
-                    t if t == SEXPTYPE::STRSXP => {
-                        SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
-                    }
-                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                        SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
-                    }
-                    t if t == SEXPTYPE::RAWSXP => {
-                        SET_RAW_ELT(result, i as c_int, RAW_ELT(x, ii as c_int));
-                    }
-                    _ => {
-                        errorcall(call, "array subscripting not handled for this type");
-                    }
-                }
-            } else {
-                match mode {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        SET_LOGICAL_ELT(result, i as c_int, NA_LOGICAL);
-                    }
-                    t if t == SEXPTYPE::INTSXP => {
-                        SET_INTEGER_ELT(result, i as c_int, NA_INTEGER);
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        SET_REAL_ELT(result, i as c_int, NA_REAL);
-                    }
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        SET_COMPLEX_ELT(
-                            result,
-                            i as c_int,
-                            crate::sexp::ffi::Rcomplex {
-                                r: NA_REAL,
-                                i: NA_REAL,
-                            },
-                        );
-                    }
-                    t if t == SEXPTYPE::STRSXP => {
-                        SET_STRING_ELT(result, i, R_NilValue());
-                    }
-                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                        SET_VECTOR_ELT(result, i, R_NilValue());
-                    }
-                    t if t == SEXPTYPE::RAWSXP => {
-                        SET_RAW_ELT(result, i as c_int, 0);
-                    }
-                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
-                }
-            }
-
-            /* Increment multi-dimensional index */
-            if n > 1 {
-                let mut j = 0;
-                let kk = k as usize;
-                loop {
-                    indx[j] += 1;
-                    if indx[j] < bound[j] {
-                        break;
-                    }
-                    indx[j] = 0;
-                    j = (j + 1) % kk;
-                    if j == 0 {
-                        break;
-                    }
-                }
-            }
-        }
-
-        /* Set dim attribute */
-        let new_dim = Rf_allocVector(SEXPTYPE::INTSXP, k);
-        let _new_dim_guard = protect(new_dim);
-        for i in 0..(k as usize) {
-            SET_INTEGER_ELT(new_dim, (i) as c_int, bound[i]);
-        }
-        if !isNull(getAttrib(xdims, sym_Names())) {
-            setAttrib(new_dim, sym_Names(), getAttrib(xdims, sym_Names()));
-        }
-        setAttrib(result, sym_Dim(), new_dim);
-
-        /* Transfer dimnames */
-        let dimnames = getAttrib(x, sym_DimNames());
-        let dimnamesnames = getAttrib(dimnames, sym_Names());
-        let _dimnamesnames_guard = protect(dimnamesnames);
-        if !isNull(dimnames) {
-            let new_xdims = Rf_allocVector3(SEXPTYPE::VECSXP, k as R_xlen_t);
-            let _new_xdims_guard = protect(new_xdims);
-            let mut jj = 0;
-            if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
-                let mut rr = s;
-                for i in 0..(k as usize) {
-                    if bound[i] > 0 {
-                        SET_VECTOR_ELT(
-                            new_xdims,
-                            jj as R_xlen_t,
-                            ExtractSubset(VECTOR_ELT(dimnames, i as R_xlen_t), CAR(rr), call),
-                        );
-                    } else {
-                        SET_VECTOR_ELT(new_xdims, jj as R_xlen_t, R_NilValue());
-                    }
-                    jj += 1;
-                    rr = CDR(rr);
-                }
-            } else {
-                let mut p = dimnames;
-                let mut q = new_xdims;
-                let mut rr = s;
-                for i in 0..(k as usize) {
-                    SETCAR(q, ExtractSubset(CAR(p), CAR(rr), call));
-                    p = CDR(p);
-                    q = CDR(q);
-                    rr = CDR(rr);
-                }
-            }
-            setAttrib(new_xdims, sym_Names(), dimnamesnames);
-            setAttrib(result, sym_DimNames(), new_xdims);
-        }
-
-        if drop != 0 {
-            result = DropDims(result);
-        }
-        let class = getAttrib(x, crate::sexp::symbol::install_str("class"));
-        if !isNull(class) && TYPEOF(class) == SEXPTYPE::STRSXP {
-            let mut is_table = false;
-            for i in 0..XLENGTH(class) {
-                let elt = STRING_ELT(class, i);
-                if !elt.is_null() {
-                    let bytes = char_bytes(elt);
-                    if bytes == b"table" {
-                        is_table = true;
-                        break;
-                    }
-                }
-            }
-            if is_table {
-                setAttrib(result, crate::sexp::symbol::install_str("class"), class);
-            }
-        }
-        result
+    /* Construct subscripts and compute bounds */
+    let mut sub_guards = Vec::with_capacity(k as usize);
+    let mut n: R_xlen_t = 1;
+    let mut r = s;
+    for i in 0..(k as usize) {
+        let sub = int_arraySubscript(i as c_int, CAR(r), xdims, x, call);
+        sub_guards.push(protect(sub));
+        SETCAR(r, sub);
+        bound.push(LENGTH(sub));
+        subs.push((0..LENGTH(sub)).map(|j| INTEGER_ELT(sub, j)).collect());
+        n *= bound[i] as R_xlen_t;
+        r = CDR(r);
     }
+
+    /* Initialize index array */
+    for i in 0..(k as usize) {
+        indx[i] = 0;
+    }
+
+    /* Compute offsets (column-major) */
+    offset_arr[0] = 1;
+    for i in 1..(k as usize) {
+        offset_arr[i] = offset_arr[i - 1] * (INTEGER_ELT(xdims, (i - 1) as c_int)) as R_xlen_t;
+    }
+
+    /* Range check on indices */
+    for i in 0..(k as usize) {
+        for j in 0..(bound[i] as usize) {
+            let jj = subs[i][j];
+            if jj > INTEGER_ELT(xdims, (i) as c_int) || (jj < 1 && jj != NA_INTEGER) {
+                errorcallOutOfBounds(x, i as c_int, jj as R_xlen_t, call);
+            }
+        }
+    }
+
+    /* Transfer subset elements */
+    let mut result = Rf_allocVector3(mode, n);
+    let _result_guard = protect(result);
+
+    let sub_slices: Vec<&[c_int]> = subs.iter().map(Vec::as_slice).collect();
+    for i in 0..n {
+        let ii = findASubIndex(k as R_xlen_t, &sub_slices, &indx, &offset_arr, call);
+
+        if ii != NA_INTEGER as R_xlen_t {
+            match mode {
+                t if t == SEXPTYPE::LGLSXP => {
+                    SET_LOGICAL_ELT(result, i as c_int, LOGICAL_ELT(x, ii as c_int));
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    SET_INTEGER_ELT(result, i as c_int, INTEGER_ELT(x, ii as c_int));
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    SET_REAL_ELT(result, i as c_int, REAL_ELT(x, ii as c_int));
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    SET_COMPLEX_ELT(result, i as c_int, COMPLEX_ELT(x, ii as c_int));
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
+                }
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                    SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    SET_RAW_ELT(result, i as c_int, RAW_ELT(x, ii as c_int));
+                }
+                _ => {
+                    errorcall(call, "array subscripting not handled for this type");
+                }
+            }
+        } else {
+            match mode {
+                t if t == SEXPTYPE::LGLSXP => {
+                    SET_LOGICAL_ELT(result, i as c_int, NA_LOGICAL);
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    SET_INTEGER_ELT(result, i as c_int, NA_INTEGER);
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    SET_REAL_ELT(result, i as c_int, NA_REAL);
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    SET_COMPLEX_ELT(
+                        result,
+                        i as c_int,
+                        crate::sexp::ffi::Rcomplex {
+                            r: NA_REAL,
+                            i: NA_REAL,
+                        },
+                    );
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(result, i, R_NilValue());
+                }
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                    SET_VECTOR_ELT(result, i, R_NilValue());
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    SET_RAW_ELT(result, i as c_int, 0);
+                }
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
+            }
+        }
+
+        /* Increment multi-dimensional index */
+        if n > 1 {
+            let mut j = 0;
+            let kk = k as usize;
+            loop {
+                indx[j] += 1;
+                if indx[j] < bound[j] {
+                    break;
+                }
+                indx[j] = 0;
+                j = (j + 1) % kk;
+                if j == 0 {
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Set dim attribute */
+    let new_dim = Rf_allocVector(SEXPTYPE::INTSXP, k);
+    let _new_dim_guard = protect(new_dim);
+    for i in 0..(k as usize) {
+        SET_INTEGER_ELT(new_dim, (i) as c_int, bound[i]);
+    }
+    if !isNull(getAttrib(xdims, sym_Names())) {
+        setAttrib(new_dim, sym_Names(), getAttrib(xdims, sym_Names()));
+    }
+    setAttrib(result, sym_Dim(), new_dim);
+
+    /* Transfer dimnames */
+    let dimnames = getAttrib(x, sym_DimNames());
+    let dimnamesnames = getAttrib(dimnames, sym_Names());
+    let _dimnamesnames_guard = protect(dimnamesnames);
+    if !isNull(dimnames) {
+        let new_xdims = Rf_allocVector3(SEXPTYPE::VECSXP, k as R_xlen_t);
+        let _new_xdims_guard = protect(new_xdims);
+        let mut jj = 0;
+        if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
+            let mut rr = s;
+            for i in 0..(k as usize) {
+                if bound[i] > 0 {
+                    SET_VECTOR_ELT(
+                        new_xdims,
+                        jj as R_xlen_t,
+                        ExtractSubset(VECTOR_ELT(dimnames, i as R_xlen_t), CAR(rr), call),
+                    );
+                } else {
+                    SET_VECTOR_ELT(new_xdims, jj as R_xlen_t, R_NilValue());
+                }
+                jj += 1;
+                rr = CDR(rr);
+            }
+        } else {
+            let mut p = dimnames;
+            let mut q = new_xdims;
+            let mut rr = s;
+            for i in 0..(k as usize) {
+                SETCAR(q, ExtractSubset(CAR(p), CAR(rr), call));
+                p = CDR(p);
+                q = CDR(q);
+                rr = CDR(rr);
+            }
+        }
+        setAttrib(new_xdims, sym_Names(), dimnamesnames);
+        setAttrib(result, sym_DimNames(), new_xdims);
+    }
+
+    if drop != 0 {
+        result = DropDims(result);
+    }
+    let class = getAttrib(x, crate::sexp::symbol::install_str("class"));
+    if !isNull(class) && TYPEOF(class) == SEXPTYPE::STRSXP {
+        let mut is_table = false;
+        for i in 0..XLENGTH(class) {
+            let elt = STRING_ELT(class, i);
+            if !elt.is_null() {
+                let bytes = char_bytes(elt);
+                if bytes == b"table" {
+                    is_table = true;
+                    break;
+                }
+            }
+        }
+        if is_table {
+            setAttrib(result, crate::sexp::symbol::install_str("class"), class);
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
