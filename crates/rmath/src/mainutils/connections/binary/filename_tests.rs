@@ -1,6 +1,6 @@
 use super::*;
 use crate::sexp::{
-    RSession, Sexp,
+    RSession, Sexp, SexpMut,
     altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
     object::SexpResult,
 };
@@ -253,6 +253,82 @@ fn owned_anonymous_write_lines_token_rejects_slot_reuse_from_character_provider(
         error.contains("original connection is no longer available"),
         "{error}"
     );
+    assert_replacement_untouched(&session, index);
+}
+
+#[test]
+fn writetable_provider_reuses_slot_without_writing_to_replacement() {
+    let mut session = session();
+    let con = session
+        .eval_script_with_output_capture("file('binary/output.txt', 'w')")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let index = con.try_integer_elt(0).unwrap() as usize;
+    let calls = Rc::new(Cell::new(0));
+    let seen = calls.clone();
+    let class = session
+        .register_altrep_class(
+            "write.table.connection.replace",
+            ConnectionProvider {
+                kind: SEXPTYPE::STRSXP,
+                callback: Rc::new(move || {
+                    seen.set(seen.get() + 1);
+                    replace_connection(index);
+                    crate::sexp::gengc::full_gc();
+                }),
+            },
+        )
+        .unwrap();
+    let data = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let factory = session.owner_token().unwrap().node_factory();
+    let own = |v: Sexp<'_>| v.into_owned().unwrap();
+    let int = |v: i32| {
+        let cell = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let mut cell = SexpMut::try_from_checked(cell).unwrap();
+        cell.try_set_integer_elt(0, v).unwrap();
+        cell.freeze().into_owned().unwrap()
+    };
+    let text = |v: &str| own(factory.strings(&[v]).unwrap());
+    let nil = own(factory.nil());
+    let args = arguments(
+        &session,
+        &[
+            nil.clone(),
+            data,
+            con,
+            int(1),
+            int(1),
+            nil.clone(),
+            text(";"),
+            text("\n"),
+            text("NA"),
+            text("."),
+            nil,
+            own(factory.domain().logical(false)),
+        ],
+    );
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::library::utils::writetable(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            args.as_raw(),
+            ptr::null_mut(),
+        )
+    }));
+    let err = result.expect_err("retired connection must reject write");
+    assert_eq!(
+        err.downcast_ref::<RError>().unwrap().message,
+        "original connection is no longer available"
+    );
+    assert_eq!(calls.get(), 1);
     assert_replacement_untouched(&session, index);
 }
 

@@ -29,20 +29,26 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::{protect, protect_with_index_raw};
 
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
 use crate::main::duplicate::{Rf_duplicate, copyVector};
 use crate::mainutils::connections::{
-    connection_fgetc, connection_pushback, connection_write_bytes,
+    connection_fgetc, connection_pushback, connection_token, connection_write_bytes,
 };
 use crate::mainutils::errors::{
     R_CheckUserInterrupt, Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr,
 };
 use crate::mainutils::print::PrintDefaults;
-use crate::mainutils::printutils::EncodeElement0;
+use crate::mainutils::format::{
+    complex_field_with_print, format_get_R_print, real_field_with_print,
+};
+use crate::mainutils::printutils::{
+    encode_complex_text, encode_integer_text, encode_logical_text, encode_raw_text,
+    encode_real0_text,
+};
+use crate::sexp::{Sexp, owner::OwnerToken};
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::mainutils::number_parse::{ParsedNumber, parse_number};
 
@@ -183,32 +189,6 @@ fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
         SET_INTEGER_ELT(ans, i, matched);
     }
     ans
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn write_connection_cstr(con: c_int, value: *const c_char) {
-    unsafe {
-        if value.is_null() {
-            return;
-        }
-        connection_write_bytes(con, CStr::from_ptr(value).to_bytes());
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
-    // SAFETY: forwarded raw pointers satisfy `write_connection_cstr`'s contract per this function's own `# Safety` requirements.
-    unsafe { write_connection_cstr(con, first) };
-    // SAFETY: forwarded raw pointers satisfy `write_connection_cstr`'s contract per this function's own `# Safety` requirements.
-    unsafe { write_connection_cstr(con, second) };
 }
 
 /* LocalData struct — mirrors the C version */
@@ -486,26 +466,6 @@ fn ruleout_types(bytes: &[u8], typeInfo: &mut Typecvt_Info, decimal: u8, exact: 
     }
 }
 
-/* isna — check if element at index is NA */
-fn isna(x: SEXP, indx: R_xlen_t) -> bool {
-    unsafe {
-        match TYPEOF(x) {
-            tt if tt == SEXPTYPE::LGLSXP => LOGICAL(x).add(indx as usize).read() == NA_LOGICAL(),
-            tt if tt == SEXPTYPE::INTSXP => INTEGER(x).add(indx as usize).read() == NA_INTEGER(),
-            tt if tt == SEXPTYPE::REALSXP => {
-                let v = REAL(x).add(indx as usize).read();
-                v.is_nan()
-            }
-            tt if tt == SEXPTYPE::STRSXP => STRING_ELT(x, indx) == NA_STRING(),
-            tt if tt == SEXPTYPE::CPLXSXP => {
-                let rc = COMPLEX(x).add(indx as usize).read();
-                rc.r.is_nan() || rc.i.is_nan()
-            }
-            _ => false,
-        }
-    }
-}
-
 /* NA_STRING — get the NA string sentinel */
 fn NA_STRING() -> SEXP {
     crate::main::relop::NA_STRING()
@@ -547,33 +507,6 @@ fn isVectorList(x: SEXP) -> bool {
 #[inline]
 fn isVectorAtomic(x: SEXP) -> bool {
     crate::sexp::object::raw_is_atomic_vector(x)
-}
-
-/// inherits — check if object has a given class
-fn inherits(x: SEXP, what: &CStr) -> bool {
-    unsafe {
-        let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
-        if isNull(klass) {
-            // Check for special types by name
-            if TYPEOF(x) == SEXPTYPE::VECSXP && what.to_str().unwrap_or("") == "data.frame" {
-                return true;
-            }
-            return false;
-        }
-        if TYPEOF(klass) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        let len = LENGTH(klass);
-        let what_cstr = what;
-        let what_str = what_cstr.to_str().unwrap_or("");
-        for i in 0..len {
-            let s = CHAR(STRING_ELT(klass, i as R_xlen_t));
-            if what_cstr.to_bytes() == CStr::from_ptr(s).to_bytes() {
-                return true;
-            }
-        }
-        false
-    }
 }
 
 /// SET_TYPEOF — set the type of a SEXP
@@ -630,66 +563,137 @@ fn r_warning(fmt: &CStr, arg: Option<&CStr>) {
     Rf_warning_cstr(crate::mainutils::errors::c_chars_until_nul(&buf));
 }
 
-/// EncodeElement2 — encode an element for writetable output.
-/// For STRSXP: quotes the string if requested, handling doubled quotes.
-/// For other types: delegates to EncodeElement0.
-fn EncodeElement2(
-    x: SEXP,
-    indx: R_xlen_t,
-    quote: bool,
-    qmethod: bool,
-    buf: &mut [c_char],
-    dec: *const c_char,
-) -> *const c_char {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            let p0 = translateChar(STRING_ELT(x, indx));
-            if !quote {
-                return p0;
-            }
-            // Calculate needed buffer length
-            let mut nbuf: usize = 2; // opening + closing quote
-            let mut p = p0;
-            while *p != 0 {
-                nbuf += if *p == '"' as c_char { 2 } else { 1 };
-                p = p.add(1);
-            }
-            if nbuf > buf.len() {
-                nbuf = buf.len();
-            }
-            let mut q = buf.as_mut_ptr();
-            *q = '"' as c_char;
-            q = q.add(1);
-            p = p0;
-            while *p != 0 && (q as usize - buf.as_ptr() as usize) < buf.len() - 2 {
-                if *p == '"' as c_char {
-                    if qmethod {
-                        *q = '\\' as c_char;
-                    } else {
-                        *q = '"' as c_char;
-                    }
-                    q = q.add(1);
-                }
-                *q = *p;
-                q = q.add(1);
-                p = p.add(1);
-            }
-            *q = '"' as c_char;
-            q = q.add(1);
-            *q = 0;
-            buf.as_ptr()
-        } else {
-            // GNU writetable sets R_print.digits = DBL_DIG (15) around
-            // EncodeElement0. format_set returns the stored pin (digits 0
-            // means "use options"); restore that, not the resolved 7.
-            let mut pinned = crate::mainutils::format::format_get_R_print();
-            pinned.digits = 15;
-            let old = crate::mainutils::format::format_set_R_print(pinned);
-            let encoded = EncodeElement0(x, indx, if quote { '"' as c_int } else { 0 }, dec);
-            crate::mainutils::format::format_set_R_print(old);
-            encoded
-        }
+fn table_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn is_factor_column(x: SEXP) -> bool {
+    let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
+    isString(klass)
+        && (0..XLENGTH(klass))
+            .any(|i| char_cstr_bytes(STRING_ELT(klass, i)) == b"factor")
+}
+
+fn table_string(text: &[u8], quote: bool, escape: bool) -> Vec<u8> {
+    if !quote {
+        return text.to_vec();
     }
+    let quotes = text.iter().filter(|&&byte| byte == b'"').count();
+    let length = text
+        .len()
+        .checked_add(quotes)
+        .and_then(|n| n.checked_add(2))
+        .unwrap_or_else(|| crate::sexp::context::r_error("quoted table value is too long"));
+    let mut out = Vec::new();
+    out.try_reserve_exact(length)
+        .unwrap_or_else(|_| crate::sexp::context::r_error("cannot allocate quoted table value"));
+    out.push(b'"');
+    for &byte in text {
+        if byte == b'"' {
+            out.push(if escape { b'\\' } else { b'"' });
+        }
+        out.push(byte);
+    }
+    out.push(b'"');
+    out
+}
+
+fn table_cell(
+    x: &Sexp<'_>,
+    i: R_xlen_t,
+    levels: Option<&Sexp<'_>>,
+    quote: bool,
+    escape: bool,
+    decimal: u8,
+    owner: OwnerToken<'_>,
+) -> Option<Vec<u8>> {
+    let require_active = || {
+        table_checked(owner.require_active());
+    };
+    let string = |x: &Sexp<'_>, i: R_xlen_t| {
+        let s = table_checked(x.try_string_elt(i));
+        require_active();
+        (!s.is_na_string())
+            .then(|| table_string(&char_cstr_bytes(s.as_raw()), quote, escape))
+    };
+    if let Some(levels) = levels {
+        let code = match x.typeof_() {
+            SEXPTYPE::INTSXP => {
+                let value = table_checked(x.try_integer_elt(i));
+                if value == NA_INTEGER() {
+                    return None;
+                }
+                require_active();
+                i64::from(value) - 1
+            }
+            SEXPTYPE::REALSXP => {
+                let value = table_checked(x.try_real_elt(i));
+                if value.is_nan() {
+                    return None;
+                }
+                require_active();
+                (value - 1.0) as i64
+            }
+            _ => crate::sexp::context::r_error("factor column does not have numeric codes"),
+        };
+        return string(levels, code);
+    }
+    Some(match x.typeof_() {
+        SEXPTYPE::STRSXP => return string(x, i),
+        SEXPTYPE::LGLSXP => {
+            let v = table_checked(x.try_logical_elt(i));
+            require_active();
+            if v == NA_LOGICAL() {
+                return None;
+            }
+            encode_logical_text(v, if v == 0 { 5 } else { 4 })
+        }
+        SEXPTYPE::INTSXP => {
+            let v = table_checked(x.try_integer_elt(i));
+            require_active();
+            if v == NA_INTEGER() {
+                return None;
+            }
+            encode_integer_text(v, 0)
+        }
+        SEXPTYPE::REALSXP => {
+            let v = table_checked(x.try_real_elt(i));
+            require_active();
+            if v.is_nan() {
+                return None;
+            }
+            let mut print = format_get_R_print();
+            print.digits = DBL_DIG_VAL;
+            let f = real_field_with_print(1, 0, print, |_| v);
+            encode_real0_text(v, f.w, f.d, f.e, &[decimal])
+        }
+        SEXPTYPE::CPLXSXP => {
+            let v = table_checked(x.try_complex_elt(i));
+            require_active();
+            if v.r.is_nan() || v.i.is_nan() {
+                return None;
+            }
+            let mut print = format_get_R_print();
+            print.digits = DBL_DIG_VAL;
+            let f = complex_field_with_print(&[v], 0, print);
+            let mut text =
+                encode_complex_text(v, f.wr, f.dr, f.er, f.wi, f.di, f.ei);
+            if decimal != b'.' {
+                for byte in &mut text {
+                    if *byte == b'.' {
+                        *byte = decimal;
+                    }
+                }
+            }
+            text
+        }
+        SEXPTYPE::RAWSXP => {
+            let v = table_checked(x.try_raw_elt(i));
+            require_active();
+            encode_raw_text(v, b"")
+        }
+        _ => Vec::new(),
+    })
 }
 
 /* ========== Exported functions ========== */
@@ -1463,243 +1467,216 @@ pub fn readtablehead(args: SEXP) -> SEXP {
  * Ported from r-source/src/library/utils/src/io.c
  */
 pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
+    let _ = (call, op, env);
 
-        let mut args_cdr = CDR(args);
-        let x = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
+    let owner = table_checked(OwnerToken::current());
+    let _pin = table_checked(owner.pin());
+    let roots = table_checked(owner.sexp(args));
+    let mut args_cdr = CDR(roots.as_raw());
+    let x = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
 
-        // file is a connection — get it
-        let file_arg = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let con = crate::main::coerce::asInteger(file_arg);
+    // file is a connection — get it
+    let file_arg = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let con = crate::main::coerce::asInteger(file_arg);
+    // Coercion may have re-entered the interpreter; re-validate the session
+    // and bind the connection by identity, not by borrowed table slot.
+    table_checked(owner.require_active());
+    let connection =
+        connection_token(con).unwrap_or_else(|e| crate::sexp::context::r_error(e));
+    let write = |bytes: &[u8]| {
+        table_checked(owner.require_active());
+        let index = connection
+            .require_current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e));
+        connection_write_bytes(index, bytes);
+    };
 
-        let nr = crate::main::coerce::asInteger(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let nc = crate::main::coerce::asInteger(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let rnames = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let sep = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let eol = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let na = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let dec = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let quote = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let qmethod0 = asLogical(CAR(args_cdr));
+    let nr = crate::main::coerce::asInteger(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let nc = crate::main::coerce::asInteger(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let rnames = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let sep = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let eol = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let na = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let dec = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let quote = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let qmethod0 = asLogical(CAR(args_cdr));
 
-        // Validate arguments
-        if nr == NA_INTEGER() {
-            r_error(c"invalid '%s' argument", Some(c"nr"));
-        }
-        if nc == NA_INTEGER() {
-            r_error(c"invalid '%s' argument", Some(c"nc"));
-        }
-        if !isNull(rnames) && !isString(rnames) {
-            r_error(c"invalid '%s' argument", Some(c"rnames"));
-        }
-        if !isString(sep) {
-            r_error(c"invalid '%s' argument", Some(c"sep"));
-        }
-        if !isString(eol) {
-            r_error(c"invalid '%s' argument", Some(c"eol"));
-        }
-        if !isString(na) {
-            r_error(c"invalid '%s' argument", Some(c"na"));
-        }
-        if !isString(dec) {
-            r_error(c"invalid '%s' argument", Some(c"dec"));
-        }
-        if qmethod0 == NA_LOGICAL() {
-            r_error(c"invalid '%s' argument", Some(c"qmethod"));
-        }
-        let qmethod = qmethod0 != 0;
+    // Validate arguments (NA_INTEGER is the negative sentinel).
+    if nr < 0 {
+        r_error(c"invalid '%s' argument", Some(c"nr"));
+    }
+    if nc < 0 {
+        r_error(c"invalid '%s' argument", Some(c"nc"));
+    }
+    if !isNull(rnames) && !isString(rnames) {
+        r_error(c"invalid '%s' argument", Some(c"rnames"));
+    }
+    if !isString(sep) || LENGTH(sep) < 1 {
+        r_error(c"invalid '%s' argument", Some(c"sep"));
+    }
+    if !isString(eol) || LENGTH(eol) < 1 {
+        r_error(c"invalid '%s' argument", Some(c"eol"));
+    }
+    if !isString(na) || LENGTH(na) < 1 {
+        r_error(c"invalid '%s' argument", Some(c"na"));
+    }
+    if !isString(dec) || LENGTH(dec) < 1 {
+        r_error(c"invalid '%s' argument", Some(c"dec"));
+    }
+    if qmethod0 == NA_LOGICAL() {
+        r_error(c"invalid '%s' argument", Some(c"qmethod"));
+    }
+    let qmethod = qmethod0 != 0;
 
-        let csep = translateChar(STRING_ELT(sep, 0));
-        let ceol = translateChar(STRING_ELT(eol, 0));
-        let cna = translateChar(STRING_ELT(na, 0));
-        let sdec = translateChar(STRING_ELT(dec, 0));
-        if CStr::from_ptr(sdec).to_bytes().len() != 1 {
-            r_error(c"'dec' must be a single character", None);
-        }
+    let sep = char_cstr_bytes(STRING_ELT(sep, 0));
+    let eol = char_cstr_bytes(STRING_ELT(eol, 0));
+    let na = char_cstr_bytes(STRING_ELT(na, 0));
+    let sdec = char_cstr_bytes(STRING_ELT(dec, 0));
+    let [decimal] = sdec.as_slice() else {
+        crate::sexp::context::r_error("'dec' must be a single character");
+    };
+    let decimal = *decimal;
 
-        // Parse quote columns
-        // quote_col[j] = true means column j+1 should be quoted
-        // quote_rn = true means row names should be quoted (when quote has a 0 element)
-        let mut quote_rn = false;
-        // Allocate quote_col array using R_alloc
-        let quote_col = R_alloc(1, nc as usize) as *mut bool;
-        for j in 0..nc as usize {
-            *quote_col.add(j) = false;
+    // Root the table input and row names before any provider callback can
+    // collect or replace the connection.
+    let x = table_checked(owner.sexp(x));
+    let row_names = (!isNull(rnames)).then(|| table_checked(owner.sexp(rnames)));
+
+    // Check source shapes before admitting workspace.
+    let data_frame = isVectorList(x.as_raw());
+    if data_frame {
+        if x.len() < i64::from(nc) {
+            crate::sexp::context::r_error("corrupt data frame -- not enough columns");
         }
-        let quote_len = if isNull(quote) { 0 } else { LENGTH(quote) };
-        for i in 0..quote_len {
-            let this = *INTEGER(quote).add(i as usize);
+    } else {
+        if !isVectorAtomic(x.as_raw()) {
+            r_error(c"write.table: x must be a matrix or data frame", None);
+        }
+        if x.len() < i64::from(nr) * i64::from(nc) {
+            crate::sexp::context::r_error("matrix length is smaller than nrow * ncol");
+        }
+    }
+
+    let columns = nc as usize;
+
+    // Admit scratch workspace sized like the original R_alloc reservations,
+    // before the first host allocation below.
+    let scratch_per_col = std::mem::size_of::<bool>()
+        + if data_frame {
+            std::mem::size_of::<Option<Sexp<'_>>>()
+        } else {
+            0
+        };
+    let scratch_bytes = columns
+        .checked_mul(scratch_per_col)
+        .unwrap_or_else(|| crate::sexp::context::r_error("table workspace size overflow"));
+    let _scratch = table_checked(owner.with_arena(|arena| arena.reserve_workspace(scratch_bytes)))
+        .unwrap_or_else(|| crate::sexp::context::r_error("table workspace exceeds session memory limit"));
+
+    // Parse quote columns.
+    // quote_col[j] = true means column j+1 should be quoted;
+    // quote_rn = true means row names should be quoted (when quote has a 0 element).
+    let mut quote_rn = false;
+    let mut quote_col = Vec::new();
+    quote_col
+        .try_reserve_exact(columns)
+        .unwrap_or_else(|_| crate::sexp::context::r_error("cannot allocate table quote columns"));
+    quote_col.resize(columns, false);
+    if !isNull(quote) {
+        let quote = table_checked(owner.sexp(quote));
+        for i in 0..quote.len() {
+            let this = table_checked(quote.try_integer_elt(i));
             if this == 0 {
                 quote_rn = true;
-            }
-            if this > 0 {
-                *quote_col.add((this - 1) as usize) = true;
-            }
-        }
-
-        // Initialize print defaults for maximum precision
-        PrintDefaults();
-
-        // String buffer for EncodeElement2
-        let mut encode_buf: [c_char; 8192] = [0; 8192];
-
-        if isVectorList(x) {
-            // A data frame
-            // Pre-fetch level vectors for factor columns
-            // Use R_alloc for the levels array
-            let levels_arr = R_alloc(std::mem::size_of::<SEXP>(), nc as usize) as *mut SEXP;
-            for j in 0..nc as usize {
-                let xj = VECTOR_ELT(x, j as R_xlen_t);
-                if LENGTH(xj) != nr {
-                    crate::mainutils::r_format::r_snprintf_c(
-                        &mut encode_buf,
-                        b"corrupt data frame -- length of column %d does not match nrows\0",
-                        &[(j + 1).into()],
-                    );
-                    Rf_error_cstr(crate::mainutils::errors::c_chars_until_nul(&encode_buf));
-                }
-                if inherits(xj, c"factor") {
-                    *levels_arr.add(j) = attrib_core::getAttrib(xj, attrib_core::R_LevelsSymbol());
-                } else {
-                    *levels_arr.add(j) = R_NilValue();
-                }
-            }
-
-            for i in 0..nr as usize {
-                // Check user interrupt every 1000 rows
-                if i % 1000 == 999 {
-                    R_CheckUserInterrupt();
-                }
-
-                // Write row name + separator
-                if !isNull(rnames) {
-                    let s = EncodeElement2(
-                        rnames,
-                        i as R_xlen_t,
-                        quote_rn,
-                        qmethod,
-                        &mut encode_buf,
-                        sdec,
-                    );
-                    write_connection_cstr2(con, s, csep);
-                }
-
-                for j in 0..nc as usize {
-                    if j > 0 {
-                        write_connection_cstr(con, csep);
-                    }
-                    let xj = VECTOR_ELT(x, j as R_xlen_t);
-                    let tmp: *const c_char;
-                    if isna(xj, i as R_xlen_t) {
-                        tmp = cna;
-                    } else if !isNull(*levels_arr.add(j)) {
-                        // Factor column — look up level string
-                        let lev = *levels_arr.add(j);
-                        if TYPEOF(xj) == SEXPTYPE::INTSXP {
-                            let idx = (*INTEGER(xj).add(i) - 1) as R_xlen_t;
-                            tmp = EncodeElement2(
-                                lev,
-                                idx,
-                                *quote_col.add(j),
-                                qmethod,
-                                &mut encode_buf,
-                                sdec,
-                            );
-                        } else if TYPEOF(xj) == SEXPTYPE::REALSXP {
-                            let idx = (*REAL(xj).add(i) - 1.0) as R_xlen_t;
-                            tmp = EncodeElement2(
-                                lev,
-                                idx,
-                                *quote_col.add(j),
-                                qmethod,
-                                &mut encode_buf,
-                                sdec,
-                            );
-                        } else {
-                            r_error_int(
-                                c"column %d claims to be a factor but does not have numeric codes",
-                                (j + 1) as c_int,
-                            );
-                            tmp = ptr::null(); // unreachable
-                        }
-                    } else {
-                        tmp = EncodeElement2(
-                            xj,
-                            i as R_xlen_t,
-                            *quote_col.add(j),
-                            qmethod,
-                            &mut encode_buf,
-                            sdec,
-                        );
-                    }
-                    write_connection_cstr(con, tmp);
-                }
-
-                // Write end-of-line
-                write_connection_cstr(con, ceol);
-            }
-        } else {
-            // A matrix
-            if !isVectorAtomic(x) {
-                r_error(c"write.table: x must be a matrix or data frame", None);
-            }
-
-            for i in 0..nr as usize {
-                // Check user interrupt every 1000 rows
-                if i % 1000 == 999 {
-                    R_CheckUserInterrupt();
-                }
-
-                // Write row name + separator
-                if !isNull(rnames) {
-                    let s = EncodeElement2(
-                        rnames,
-                        i as R_xlen_t,
-                        quote_rn,
-                        qmethod,
-                        &mut encode_buf,
-                        sdec,
-                    );
-                    write_connection_cstr2(con, s, csep);
-                }
-
-                for j in 0..nc as usize {
-                    if j > 0 {
-                        write_connection_cstr(con, csep);
-                    }
-                    let col_offset = (j as R_xlen_t) * (nr as R_xlen_t);
-                    let tmp: *const c_char;
-                    if isna(x, i as R_xlen_t + col_offset) {
-                        tmp = cna;
-                    } else {
-                        tmp = EncodeElement2(
-                            x,
-                            i as R_xlen_t + col_offset,
-                            *quote_col.add(j),
-                            qmethod,
-                            &mut encode_buf,
-                            sdec,
-                        );
-                    }
-                    write_connection_cstr(con, tmp);
-                }
-
-                // Write end-of-line
-                write_connection_cstr(con, ceol);
+            } else if this > 0 && let Some(flag) = quote_col.get_mut((this - 1) as usize) {
+                *flag = true;
             }
         }
-
-        R_NilValue()
     }
+
+    // Quote element reads above may have re-entered; re-validate the session.
+    table_checked(owner.require_active());
+
+    // Initialize print defaults once; cells format through the owned text
+    // encoders with a captured configuration, never a temporarily changed
+    // global precision.
+    PrintDefaults();
+
+    // Validate and root factor level vectors up front.
+    let mut levels: Vec<Option<Sexp<'_>>> = Vec::new();
+    if data_frame {
+        levels
+            .try_reserve_exact(columns)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("cannot allocate factor level table"));
+        for j in 0..i64::from(nc) {
+            let col = table_checked(x.try_vector_elt(j));
+            table_checked(owner.require_active());
+            if col.len() != i64::from(nr) {
+                r_error_int(
+                    c"corrupt data frame -- length of column %d does not match nrows",
+                    (j + 1) as c_int,
+                );
+            }
+            let levels_for_col = if is_factor_column(col.as_raw()) {
+                table_checked(owner.require_active());
+                let lev = attrib_core::getAttrib(col.as_raw(), attrib_core::R_LevelsSymbol());
+                if isNull(lev) {
+                    None
+                } else {
+                    if !matches!(col.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::REALSXP) {
+                        r_error_int(
+                            c"column %d claims to be a factor but does not have numeric codes",
+                            (j + 1) as c_int,
+                        );
+                    }
+                    Some(table_checked(owner.sexp(lev)))
+                }
+            } else {
+                None
+            };
+            levels.push(levels_for_col);
+        }
+    }
+
+    for i in 0..i64::from(nr) {
+        // Check user interrupt every 1000 rows.
+        if i % 1000 == 999 {
+            R_CheckUserInterrupt();
+        }
+
+        if let Some(names) = &row_names {
+            let bytes = table_cell(names, i, None, quote_rn, qmethod, decimal, owner)
+                .unwrap_or_else(|| table_string(b"NA", quote_rn, qmethod));
+            write(&bytes);
+            write(&sep);
+        }
+
+        for (j, &quote) in quote_col.iter().enumerate() {
+            if j != 0 {
+                write(&sep);
+            }
+            let bytes = if data_frame {
+                let col = table_checked(x.try_vector_elt(j as i64));
+                table_checked(owner.require_active());
+                table_cell(&col, i, levels[j].as_ref(), quote, qmethod, decimal, owner)
+            } else {
+                table_cell(&x, j as i64 * i64::from(nr) + i, None, quote, qmethod, decimal, owner)
+            };
+            write(bytes.as_deref().unwrap_or(&na));
+        }
+
+        write(&eol);
+    }
+
+    R_NilValue()
 }

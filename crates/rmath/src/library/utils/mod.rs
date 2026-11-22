@@ -4,6 +4,8 @@ mod char_class;
 mod hashtab;
 mod init;
 mod io;
+#[cfg(test)]
+pub(crate) use self::io::writetable;
 mod size;
 mod sock;
 mod stubs;

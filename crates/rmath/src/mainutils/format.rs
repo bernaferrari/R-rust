@@ -1331,6 +1331,20 @@ pub(crate) struct ComplexField {
 /// Slice form of [`formatComplex`]: Re and Im parts are formatted
 /// independently, NA entries are skipped, and the combined width admits NA.
 pub(crate) fn complex_field(x: &[Rcomplex], nsmall: c_int) -> ComplexField {
+    complex_field_impl(x, nsmall, None)
+}
+
+/// [`complex_field`] using a captured formatting configuration instead of the
+/// live session options.
+pub(crate) fn complex_field_with_print(
+    x: &[Rcomplex],
+    nsmall: c_int,
+    print: RPrint,
+) -> ComplexField {
+    complex_field_impl(x, nsmall, Some(print))
+}
+
+fn complex_field_impl(x: &[Rcomplex], nsmall: c_int, print: Option<RPrint>) -> ComplexField {
     if x.is_empty() {
         return ComplexField::default();
     }
@@ -1352,7 +1366,7 @@ pub(crate) fn complex_field(x: &[Rcomplex], nsmall: c_int) -> ComplexField {
         if values.is_empty() {
             RealField { w: 0, d: 0, e: 0 }
         } else {
-            real_field(values.len() as R_xlen_t, nsmall, |i| values[i as usize])
+            real_field_impl(values.len() as R_xlen_t, nsmall, print, |i| values[i as usize])
         }
     };
     let r = part(&re);
@@ -1366,7 +1380,7 @@ pub(crate) fn complex_field(x: &[Rcomplex], nsmall: c_int) -> ComplexField {
         ei: i.e,
     };
     // Ensure space for NA in the combined width.
-    let na_width = current_R_print().na_width;
+    let na_width = print.unwrap_or_else(current_R_print).na_width;
     if naflag && field.wr + field.wi + 2 < na_width {
         field.wr += na_width - (field.wr + field.wi + 2);
     }
