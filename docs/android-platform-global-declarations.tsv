@@ -2,8 +2,6 @@
 # Individual declarations require review. Previous file-level classifications are
 # retained in android-platform-global-allowlist.tsv as historical context only.
 crates/rmath/src/intl/intl_exports.rs	immutable-static	libintl_version	constant-version	allow-immutable	rport-9g89c	Fixed five-byte version value; no interior mutability or session data.	f7c1fef7aeab2999e46e6ddbe59007023fdbbd669600b4af9ae9933190e2a5b2
-crates/rmath/src/intl/printf_args.rs	immutable-static	NULL_STRING	constant-fallback	allow-immutable	rport-9g89c	Fixed NUL-terminated byte slice used as a const fallback pointer.	57272d3bdf6f315b9d32f5bce850b08f3d6b1a29a6efc28db4511fef05834487
-crates/rmath/src/intl/printf_args.rs	immutable-static	WIDE_NULL_STRING	constant-fallback	allow-immutable	rport-9g89c	Fixed u32 array used as a const wide-string fallback pointer.	57272d3bdf6f315b9d32f5bce850b08f3d6b1a29a6efc28db4511fef05834487
 crates/rmath/src/library/graphics/plot3d.rs	immutable-static	AXIS_START	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.	b8f7662de27db3c46615da9a9b321b2254c20d1a69bb590be4130ecf69f5eb61
 crates/rmath/src/library/graphics/plot3d.rs	immutable-static	EDGE	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.	b8f7662de27db3c46615da9a9b321b2254c20d1a69bb590be4130ecf69f5eb61
 crates/rmath/src/library/graphics/plot3d.rs	immutable-static	FACE	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.	b8f7662de27db3c46615da9a9b321b2254c20d1a69bb590be4130ecf69f5eb61

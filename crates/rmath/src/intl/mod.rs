@@ -52,18 +52,9 @@ pub(crate) mod plural_exp;
 pub(crate) mod plural_parse;
 
 // ---------------------------------------------------------------------------
-// Printf implementation
-// ---------------------------------------------------------------------------
-pub(crate) mod printf;
-pub(crate) mod printf_args;
-pub(crate) mod printf_parse;
-pub(crate) mod vasnprintf;
-
-// ---------------------------------------------------------------------------
-// String hashing and search
+// String hashing
 // ---------------------------------------------------------------------------
 pub(crate) mod hash_string;
-pub(crate) mod tsearch;
 
 // ---------------------------------------------------------------------------
 // Public API wrappers
