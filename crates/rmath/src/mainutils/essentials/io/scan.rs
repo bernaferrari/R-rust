@@ -694,9 +694,9 @@ fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
     if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
         return default;
     }
-    if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
-        integer_elt_checked(arg, 0)
-    } else {
-        default
+    match TYPEOF(arg) {
+        t if t == SEXPTYPE::LGLSXP => logical_elt_checked(arg, 0),
+        t if t == SEXPTYPE::INTSXP => integer_elt_checked(arg, 0),
+        _ => default,
     }
 }
