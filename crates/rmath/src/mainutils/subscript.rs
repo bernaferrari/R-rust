@@ -31,7 +31,9 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
-use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, getAttrib, setAttrib};
+use crate::eval::attrib_core::{
+    R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+};
 use crate::sexp::protect::protect;
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
@@ -160,8 +162,103 @@ fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
 /// Compute a single index for `[[<-` assignment.
 ///
 /// Returns the 0-based index, or `nx` if no match found (for string/symbol
-/// subscripts, meaning "append at end"). Sets `*newname` when a string
-/// subscript is provided.
+/// subscripts, meaning "append at end"). The second tuple field is the new
+/// name or R_NilValue. The caller must root it before an operation that can
+/// allocate or invoke runtime callbacks.
+pub(crate) fn one_index(
+    x: SEXP,
+    s: SEXP,
+    nx: R_xlen_t,
+    partial: c_int,
+    pos: c_int,
+    call: SEXP,
+) -> (R_xlen_t, SEXP) {
+    checked_index(OwnerToken::with_current(|owner| {
+        let _x = (!x.is_null()).then(|| checked_index(owner.sexp(x)));
+        let _call = (!call.is_null()).then(|| checked_index(owner.sexp(call)));
+        let n = XLENGTH(s);
+        if pos < 0 && n > 1 {
+            error("attempt to select more than one element in OneIndex");
+        }
+        if pos < 0 && n < 1 {
+            error("attempt to select less than one element in OneIndex");
+        }
+        let source = checked_index(owner.sexp(s));
+        let pos = i64::from(pos.max(0));
+        let nil = R_NilValue();
+        match source.typeof_() {
+            SEXPTYPE::LGLSXP => {
+                let i = checked_index(source.try_logical_elt(pos));
+                checked_index(owner.require_active());
+                if i == NA_LOGICAL {
+                    // Upstream (subassign.c) raises this while processing the
+                    // subscript, before any typed assignment arm.
+                    error("NAs are not allowed in subscripted assignments");
+                }
+                (integerOneIndex(i, nx, call), nil)
+            }
+            SEXPTYPE::INTSXP => {
+                let i = checked_index(source.try_integer_elt(pos));
+                checked_index(owner.require_active());
+                (integerOneIndex(i, nx, call), nil)
+            }
+            SEXPTYPE::REALSXP => {
+                let v = checked_index(source.try_real_elt(pos));
+                checked_index(owner.require_active());
+                let index = if v.is_nan() {
+                    -1
+                } else if v >= 1.0 {
+                    (v - 1.0) as R_xlen_t
+                } else if v > -1.0 || nx < 2 {
+                    error("attempt to select less than one element in OneIndex")
+                } else if nx == 2 && v > -3.0 {
+                    (2.0 + v.trunc()) as R_xlen_t
+                } else {
+                    error("attempt to select more than one element in OneIndex")
+                };
+                (index, nil)
+            }
+            kind @ (SEXPTYPE::STRSXP | SEXPTYPE::SYMSXP) => {
+                let names = getAttrib(x, R_NamesSymbol());
+                let names = if names.is_null() { nil } else { names };
+                let names = checked_index(owner.sexp(names));
+                let is_symbol = kind == SEXPTYPE::SYMSXP;
+                let name = if is_symbol {
+                    checked_index(owner.sexp(PRINTNAME(s)))
+                } else {
+                    checked_index(source.try_string_elt(pos))
+                };
+                checked_index(owner.require_active());
+                let bytes = char_cstr_bytes(name.as_raw());
+                let index = find_single_name(
+                    owner,
+                    &names,
+                    &bytes,
+                    nx,
+                    if is_symbol {
+                        0
+                    } else {
+                        i32::from(partial != 0)
+                    },
+                    None,
+                    false,
+                    is_symbol,
+                );
+                (if index == -1 { nx } else { index }, name.as_raw())
+            }
+            _ => error("invalid subscript type 'unknown'"),
+        }
+    }))
+}
+
+/// Raw-pointer compatibility adapter for `[[<-` index selection.
+///
+/// Returns the 0-based index, or `nx` if no match found (for string/symbol
+/// subscripts, meaning "append at end"). Writes the CHARSXP to install as a
+/// name to `*newname` when a string subscript is provided.
+///
+/// # Safety
+/// A non-null `newname` must be writable through the call.
 pub unsafe fn OneIndex(
     x: SEXP,
     s: SEXP,
@@ -171,137 +268,87 @@ pub unsafe fn OneIndex(
     pos: c_int,
     call: SEXP,
 ) -> R_xlen_t {
-    unsafe {
-        let mut _pos = pos;
-        let mut _indx: R_xlen_t = -1;
-
-        if _pos < 0 && LENGTH(s) > 1 {
-            error("attempt to select more than one element in OneIndex");
-        }
-        if _pos < 0 && LENGTH(s) < 1 {
-            error("attempt to select less than one element in OneIndex");
-        }
-
-        if _pos < 0 {
-            _pos = 0;
-        }
-
-        _indx = -1;
-        if !newname.is_null() {
-            *newname = R_NilValue();
-        }
-
-        let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP {
-            let i = LOGICAL_ELT(s, _pos);
-            if i == NA_LOGICAL {
-                // Upstream (subassign.c) raises this while processing the
-                // subscript, before any typed assignment arm.
-                error("NAs are not allowed in subscripted assignments");
-            }
-            _indx = integerOneIndex(i, nx, call);
-        } else if stype == SEXPTYPE::INTSXP {
-            _indx = integerOneIndex(INTEGER_ELT(s, _pos), nx, call);
-        } else if stype == SEXPTYPE::REALSXP {
-            let dblind = REAL_ELT(s, _pos);
-            if !dblind.is_nan() {
-                if dblind >= 1.0 {
-                    _indx = (dblind - 1.0) as R_xlen_t;
-                } else if dblind > -1.0 || nx < 2 {
-                    error("attempt to select less than one element in OneIndex");
-                } else if nx == 2 && dblind > -3.0 {
-                    _indx = (2.0 + dblind.trunc()) as R_xlen_t;
-                } else {
-                    error("attempt to select more than one element in OneIndex");
-                }
-            }
-        } else if stype == SEXPTYPE::STRSXP {
-            // String subscript: match against names of x
-            let _vmax = crate::sexp::memory_ext::vmaxget();
-            let names =
-                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                let _names_guard = protect(names);
-                // Try exact match
-                let ss = CHAR(STRING_ELT(s, _pos as R_xlen_t));
-                if !ss.is_null() {
-                    for i in 0..nx {
-                        let tmp = CHAR(STRING_ELT(names, i));
-                        if tmp.is_null() || *tmp == 0 {
-                            continue;
-                        }
-                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
-                            == std::ffi::CStr::from_ptr(ss).to_bytes()
-                        {
-                            _indx = i;
-                            break;
-                        }
-                    }
-                    // Try partial match if partial > 0
-                    if partial != 0 && _indx == -1 && !ss.is_null() {
-                        let ss_bytes = std::ffi::CStr::from_ptr(ss).to_bytes();
-                        for i in 0..nx {
-                            let tmp = CHAR(STRING_ELT(names, i));
-                            if tmp.is_null() || *tmp == 0 {
-                                continue;
-                            }
-                            if std::ffi::CStr::from_ptr(tmp)
-                                .to_bytes()
-                                .starts_with(ss_bytes)
-                            {
-                                if _indx == -1 {
-                                    _indx = i;
-                                } else {
-                                    _indx = -2; // multiple partial matches
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if _indx == -1 {
-                _indx = nx;
-            }
-            if !newname.is_null() {
-                *newname = STRING_ELT(s, _pos as R_xlen_t);
-            }
-            crate::sexp::memory_ext::vmaxset(_vmax);
-        } else if stype == SEXPTYPE::SYMSXP {
-            // Symbol subscript: match against names of x
-            let _vmax = crate::sexp::memory_ext::vmaxget();
-            let names =
-                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                let _names_guard = protect(names);
-                let sname = CHAR(PRINTNAME(s));
-                if !sname.is_null() {
-                    for i in 0..nx {
-                        let tmp = CHAR(STRING_ELT(names, i));
-                        if tmp.is_null() {
-                            continue;
-                        }
-                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
-                            == std::ffi::CStr::from_ptr(sname).to_bytes()
-                        {
-                            _indx = i;
-                            break;
-                        }
-                    }
-                }
-            }
-            if _indx == -1 {
-                _indx = nx;
-            }
-            if !newname.is_null() {
-                *newname = PRINTNAME(s);
-            }
-            crate::sexp::memory_ext::vmaxset(_vmax);
-        } else {
-            error("invalid subscript type 'unknown'");
-        }
-        _indx
+    let (index, name) = one_index(x, s, nx, partial, pos, call);
+    if !newname.is_null() {
+        // SAFETY: the caller retains a writable output slot.
+        unsafe { newname.write(name) };
     }
+    index
+}
+
+/// Shared name matcher for `[[`/`[[<-` index selection: exact pass first,
+/// then a partial pass only when `partial != 0`. Returns the match offset,
+/// `-1` for no match, or `-2` for an ambiguous partial match.
+/// `warning_call` carries the caller's call only when partial matches should
+/// warn (GNU `pok == -1`).
+fn find_single_name(
+    owner: OwnerToken<'_>,
+    names: &Sexp<'_>,
+    target: &[u8],
+    limit: R_xlen_t,
+    partial: c_int,
+    warning_call: Option<SEXP>,
+    skip_na: bool,
+    allow_empty_exact: bool,
+) -> R_xlen_t {
+    let read_name = |i| {
+        let name = checked_index(names.try_string_elt(i));
+        checked_index(owner.require_active());
+        if skip_na && name.is_na_string() {
+            None
+        } else {
+            Some(char_cstr_bytes(name.as_raw()))
+        }
+    };
+    let end = names.len().min(limit);
+    for i in 0..end {
+        if let Some(name) = read_name(i)
+            && (allow_empty_exact || !name.is_empty())
+            && name == target
+        {
+            return i;
+        }
+    }
+    if partial == 0 {
+        return -1;
+    }
+    let mut found = -1;
+    for i in 0..end {
+        let Some(name) = read_name(i) else {
+            continue;
+        };
+        if name.is_empty() || !name.starts_with(target) {
+            continue;
+        }
+        let ambiguous = found != -1;
+        if let Some(call) = warning_call {
+            let lead = if ambiguous {
+                "further partial match"
+            } else {
+                "partial match"
+            };
+            let message = std::ffi::CString::new(format!(
+                "{lead} of '{}' to '{}'",
+                String::from_utf8_lossy(target),
+                String::from_utf8_lossy(&name)
+            ))
+            .expect("names were copied as C strings");
+            if !ambiguous && (call.is_null() || call == R_NilValue()) {
+                crate::mainutils::errors::Rf_warning_cstr(&message);
+            } else {
+                crate::mainutils::errors::warningcall_cstr(
+                    if ambiguous { R_NilValue() } else { call },
+                    &message,
+                );
+            }
+            checked_index(owner.require_active());
+        }
+        if ambiguous {
+            return -2;
+        }
+        found = i;
+    }
+    found
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +365,7 @@ pub unsafe fn OneIndex(
 /// - `len` is the length of the object or dimension
 /// - `pos` is len-1 or -1 for `[[`, -1 for `[[<-`
 /// - `pok` is "partial ok" (1 = allow, -1 = warn and allow, 0 = no)
-pub unsafe fn get1index(
+pub fn get1index(
     s: SEXP,
     names: SEXP,
     len: R_xlen_t,
@@ -326,152 +373,100 @@ pub unsafe fn get1index(
     pos: c_int,
     call: SEXP,
 ) -> R_xlen_t {
-    unsafe {
-        let mut _pos = pos;
-        let mut _pok = pok;
-
-        let warn_pok = _pok == -1;
-        if warn_pok {
-            _pok = 1;
-        }
-
-        if _pos < 0 {
-            _pos = 0;
-        }
-
-        if _pos < 0 && LENGTH(s) != 1 {
-            if LENGTH(s) > 1 {
+    checked_index(OwnerToken::with_current(|owner| {
+        let _call = (!call.is_null()).then(|| checked_index(owner.sexp(call)));
+        let names = checked_index(owner.sexp(if names.is_null() {
+            R_NilValue()
+        } else {
+            names
+        }));
+        let n = XLENGTH(s);
+        if pos < 0 && n != 1 {
+            if n > 1 {
                 error("attempt to select more than one element in get1index");
             } else {
                 error("attempt to select less than one element in get1index");
             }
-        } else if _pos >= LENGTH(s) {
+        } else if i64::from(pos) >= n {
             error("internal error in use of recursive indexing");
         }
+        let pos = i64::from(pos.max(0));
+        let source = checked_index(owner.sexp(s));
         let mut indx: R_xlen_t = -1;
-
-        let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP {
-            let i = LOGICAL_ELT(s, _pos);
-            if i == NA_LOGICAL {
-                // Upstream (subassign.c) raises this while processing the
-                // subscript, before any typed assignment arm.
-                error("NAs are not allowed in subscripted assignments");
+        match source.typeof_() {
+            SEXPTYPE::LGLSXP => {
+                let i = checked_index(source.try_logical_elt(pos));
+                checked_index(owner.require_active());
+                if i == NA_LOGICAL {
+                    // Upstream (subassign.c) raises this while processing the
+                    // subscript, before any typed assignment arm.
+                    error("NAs are not allowed in subscripted assignments");
+                }
+                if i != NA_INTEGER {
+                    indx = integerOneIndex(i, len, call);
+                }
             }
-            if i != NA_INTEGER {
-                indx = integerOneIndex(i, len, call);
+            SEXPTYPE::INTSXP => {
+                let i = checked_index(source.try_integer_elt(pos));
+                checked_index(owner.require_active());
+                if i != NA_INTEGER {
+                    indx = integerOneIndex(i, len, call);
+                }
             }
-        } else if stype == SEXPTYPE::INTSXP {
-            let i = INTEGER_ELT(s, _pos);
-            if i != NA_INTEGER {
-                indx = integerOneIndex(i, len, call);
-            }
-        } else if stype == SEXPTYPE::REALSXP {
-            let dblind = REAL_ELT(s, _pos);
-            if !dblind.is_nan() {
-                if dblind >= 1.0 {
-                    if dblind.is_finite() {
-                        indx = (dblind - 1.0) as R_xlen_t;
-                    }
-                } else if dblind <= -1.0 {
-                    if len == 2 && dblind > -3.0 {
-                        indx = (2.0 + dblind.trunc()) as R_xlen_t;
+            SEXPTYPE::REALSXP => {
+                let v = checked_index(source.try_real_elt(pos));
+                checked_index(owner.require_active());
+                if !v.is_nan() {
+                    if v >= 1.0 {
+                        if v.is_finite() {
+                            indx = (v - 1.0) as R_xlen_t;
+                        }
+                    } else if v <= -1.0 {
+                        if len == 2 && v > -3.0 {
+                            indx = (2.0 + v.trunc()) as R_xlen_t;
+                        } else {
+                            crate::mainutils::errors::record_error_call(call, true);
+                            error("invalid negative subscript in get1index <real>");
+                        }
                     } else {
-                        crate::mainutils::errors::record_error_call(call, true);
-                        error("invalid negative subscript in get1index <real>");
-                    }
-                } else {
-                    error("attempt to select less than one element in get1index");
-                }
-            }
-        } else if stype == SEXPTYPE::STRSXP {
-            // NA matches nothing
-            let elt = STRING_ELT(s, _pos as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() { /* NA -> no match */
-            } else {
-                let cs = CHAR(elt);
-                // "" matches nothing
-                if !cs.is_null() && *cs != 0 {
-                    let _vmax = crate::sexp::memory_ext::vmaxget();
-                    let ss = cs;
-                    let names_len = if !names.is_null() { XLENGTH(names) } else { 0 };
-                    for i in 0..names_len {
-                        let name_elt = STRING_ELT(names, i);
-                        if name_elt.is_null() || name_elt == R_NilValue() {
-                            continue;
-                        }
-                        let tmp = CHAR(name_elt);
-                        if tmp.is_null() {
-                            continue;
-                        }
-                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
-                            == std::ffi::CStr::from_ptr(ss).to_bytes()
-                        {
-                            indx = i;
-                            break;
-                        }
-                    }
-                    // Try partial match if pok > 0
-                    if _pok != 0 && indx == -1 {
-                        let ss_bytes = std::ffi::CStr::from_ptr(ss).to_bytes();
-                        for i in 0..names_len {
-                            let name_elt = STRING_ELT(names, i);
-                            if name_elt.is_null() || name_elt == R_NilValue() {
-                                continue;
-                            }
-                            let tmp = CHAR(name_elt);
-                            if tmp.is_null() {
-                                continue;
-                            }
-                            if std::ffi::CStr::from_ptr(tmp)
-                                .to_bytes()
-                                .starts_with(ss_bytes)
-                            {
-                                if indx == -1 {
-                                    indx = i;
-                                } else {
-                                    indx = -2; // multiple partial matches
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    crate::sexp::memory_ext::vmaxset(_vmax);
-                }
-            }
-        } else if stype == SEXPTYPE::SYMSXP {
-            if s == R_MissingArg() {
-                crate::mainutils::errors::signal_missing_subscript(call, None);
-            }
-
-            // Symbol subscript: match against names
-            let _vmax = crate::sexp::memory_ext::vmaxget();
-            let sname = CHAR(PRINTNAME(s));
-            let names_len = if !names.is_null() { XLENGTH(names) } else { 0 };
-            if !sname.is_null() {
-                for i in 0..names_len {
-                    let name_elt = STRING_ELT(names, i);
-                    if name_elt.is_null() || name_elt == R_NilValue() {
-                        continue;
-                    }
-                    let tmp = CHAR(name_elt);
-                    if tmp.is_null() {
-                        continue;
-                    }
-                    if std::ffi::CStr::from_ptr(tmp).to_bytes()
-                        == std::ffi::CStr::from_ptr(sname).to_bytes()
-                    {
-                        indx = i;
-                        break;
+                        error("attempt to select less than one element in get1index");
                     }
                 }
             }
-            crate::sexp::memory_ext::vmaxset(_vmax);
-        } else {
-            error("invalid subscript type 'unknown'");
+            SEXPTYPE::STRSXP => {
+                let target = checked_index(source.try_string_elt(pos));
+                checked_index(owner.require_active());
+                // NA and "" match nothing.
+                if target.is_na_string() {
+                    return -1;
+                }
+                let bytes = char_cstr_bytes(target.as_raw());
+                if bytes.is_empty() {
+                    return -1;
+                }
+                return find_single_name(
+                    owner,
+                    &names,
+                    &bytes,
+                    names.len(),
+                    pok,
+                    (pok == -1).then_some(call),
+                    true,
+                    false,
+                );
+            }
+            SEXPTYPE::SYMSXP => {
+                if s == R_MissingArg() {
+                    crate::mainutils::errors::signal_missing_subscript(call, None);
+                }
+                let name = PRINTNAME(s);
+                let bytes = char_cstr_bytes(name);
+                return find_single_name(owner, &names, &bytes, names.len(), 0, None, true, true);
+            }
+            _ => error("invalid subscript type 'unknown'"),
         }
         indx
-    }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -482,7 +477,7 @@ pub unsafe fn get1index(
 ///
 /// `x` is a list or pairlist, indexed recursively from level `start` to
 /// `stop-1`. For `[[<-` it needs to duplicate if substructure might be shared.
-pub unsafe fn vectorIndex(
+pub fn vectorIndex(
     x: SEXP,
     thesub: SEXP,
     start: c_int,
@@ -491,37 +486,40 @@ pub unsafe fn vectorIndex(
     call: SEXP,
     dup: Rboolean,
 ) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return R_NilValue();
-        }
-
-        let mut y = x;
-        let need_dup = dup != 0;
+    if x.is_null() {
+        return R_NilValue();
+    }
+    checked_index(OwnerToken::with_current(|owner| {
+        let mut value = checked_index(owner.sexp(x));
+        let _sub = (!thesub.is_null()).then(|| checked_index(owner.sexp(thesub)));
+        let _call = (!call.is_null()).then(|| checked_index(owner.sexp(call)));
 
         // If dup requested, duplicate the outermost level
-        if need_dup && start < stop {
+        if dup != 0 && start < stop {
             let newx = crate::mainutils::duplicate::duplicate(x);
+            checked_index(owner.require_active());
             if !newx.is_null() {
-                y = newx;
+                value = checked_index(owner.sexp(newx));
             }
         }
 
         for i in start..stop {
             // Get the index for this level
+            let y = value.as_raw();
             let names = if Rf_isVector(y) != 0 {
-                crate::eval::attrib_core::getAttrib(y, crate::eval::attrib_core::R_NamesSymbol())
+                getAttrib(y, R_NamesSymbol())
             } else {
                 R_NilValue()
             };
             let len = XLENGTH(y);
             let indx = get1index(thesub, names, len, pok, i, call);
+            checked_index(owner.require_active());
             if indx < 0 || indx >= len {
                 error("no such index at level 1");
             }
             if Rf_isVector(y) != 0 {
                 if TYPEOF(y) == SEXPTYPE::VECSXP || TYPEOF(y) == SEXPTYPE::EXPRSXP {
-                    y = VECTOR_ELT(y, indx);
+                    value = checked_index(value.try_vector_elt(indx));
                 } else {
                     error("recursive indexing failed at level 1");
                 }
@@ -530,13 +528,14 @@ pub unsafe fn vectorIndex(
                 for _ in 0..indx {
                     p = CDR(p);
                 }
-                y = CAR(p);
+                value = checked_index(owner.sexp(CAR(p)));
             } else {
                 error("attempt to select more than one element in vectorIndex");
             }
+            checked_index(owner.require_active());
         }
-        y
-    }
+        value.as_raw()
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1631,35 +1630,29 @@ mod tests {
     #[should_panic]
     fn test_get1index_null_args() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, -1, ptr::null_mut());
-        }
+        get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, -1, ptr::null_mut());
     }
 
     #[test]
     #[should_panic]
     fn test_get1index_pos_out_of_range() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, 5, ptr::null_mut());
-        }
+        get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, 5, ptr::null_mut());
     }
 
     #[test]
     fn test_vector_index_null_input_returns_nil() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = vectorIndex(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                0,
-                1,
-                0,
-                ptr::null_mut(),
-                0,
-            );
-            assert_eq!(result, R_NilValue());
-        }
+        let result = vectorIndex(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            1,
+            0,
+            ptr::null_mut(),
+            0,
+        );
+        assert_eq!(result, R_NilValue());
     }
 
     #[test]
@@ -1928,6 +1921,59 @@ mod tests {
             let result = owner.sexp(result).unwrap();
             assert_eq!(result.try_integer_elt(0).unwrap(), 1);
             assert_eq!(result.try_integer_elt(1).unwrap(), 6);
+        });
+    }
+
+    /// The string target is copied before a names provider runs, so a
+    /// collection mid-match cannot invalidate it.
+    #[test]
+    fn single_index_keeps_names_until_altrep_collection() {
+        use crate::sexp::{
+            RSession,
+            altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
+        };
+
+        struct CollectNames {
+            target: bool,
+        }
+        impl AltrepClass for CollectNames {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::STRSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(if self.target { 1 } else { 2 })
+            }
+            fn element<'s>(
+                &self,
+                context: &AltrepContext<'s>,
+                i: i64,
+            ) -> SexpResult<AltrepElement<'s>> {
+                if self.target {
+                    return Ok(AltrepElement::String(context.string("alph")?));
+                }
+                crate::sexp::gengc::full_gc();
+                Ok(AltrepElement::String(context.string(if i == 0 {
+                    "beta"
+                } else {
+                    "alpha"
+                })?))
+            }
+        }
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let names_class = session
+                .register_altrep_class("single-index-gc", CollectNames { target: false })
+                .unwrap();
+            let names = AltrepBuilder::new(names_class).build().unwrap();
+            let target_class = session
+                .register_altrep_class("single-index-target", CollectNames { target: true })
+                .unwrap();
+            let target = AltrepBuilder::new(target_class).build().unwrap();
+            assert_eq!(
+                get1index(target.as_raw(), names.as_raw(), 2, 1, -1, R_NilValue()),
+                1
+            );
         });
     }
 

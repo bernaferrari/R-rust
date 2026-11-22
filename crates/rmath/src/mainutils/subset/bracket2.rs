@@ -45,16 +45,23 @@ pub fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// indices of length > 1. Recursively descends into list/pairlist elements
 /// from level `start` to level `stop - 1`.
 fn vectorIndex(
-    mut x: SEXP,
+    x: SEXP,
     thesub: SEXP,
     start: c_int,
     stop: c_int,
     pok: c_int,
     call: SEXP,
 ) -> SEXP {
-    unsafe {
+    fn checked<T>(r: crate::sexp::object::SexpResult<T>) -> T {
+        r.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    }
+    checked(crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let mut value = checked(owner.sexp(x));
+        let _sub = (!thesub.is_null()).then(|| checked(owner.sexp(thesub)));
+        let _call = (!call.is_null()).then(|| checked(owner.sexp(call)));
         let mut i = start;
         while i < stop {
+            let x = value.as_raw();
             if !isVectorList(x) && !isPairList(x) {
                 if i != 0 {
                     errorcall(
@@ -68,191 +75,131 @@ fn vectorIndex(
                     );
                 }
             }
-            let x_guard = protect(x);
             let names = getAttrib(x, sym_Names());
-            let names_guard = protect(names);
             let offset = get1index(thesub, names, xlength(x), pok, i, call);
-            drop(names_guard);
-            drop(x_guard);
+            checked(owner.require_active());
             if offset < 0 || offset >= xlength(x) {
                 errorcall(call, &format!("no such index at level {}", i + 1));
             }
-            if isPairList(x) {
-                let cx = nthcdr(x, offset as c_int);
-                RAISE_NAMED(CAR(cx), NAMED(x));
-                x = CAR(cx);
+            let child = if isPairList(x) {
+                checked(owner.sexp(CAR(nthcdr(x, offset as c_int))))
             } else {
-                let cx = x;
-                x = VECTOR_ELT(cx, offset);
-                RAISE_NAMED(x, NAMED(cx));
-            }
+                checked(value.try_vector_elt(offset))
+            };
+            checked(owner.require_active());
+            RAISE_NAMED(child.as_raw(), NAMED(x));
+            value = child;
             i += 1;
         }
-        x
-    }
+        value.as_raw()
+    }))
 }
 
 pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let _args_guard = protect(args);
+    let _args_guard = protect(args);
 
-        let mut drop: c_int = 1;
-        ExtractDropArg(args, &mut drop);
-        let exact = ExtractExactArg(args);
-        let pok = if exact == -1 {
-            exact
-        } else {
-            if exact == 0 { 1 } else { 0 }
+    let mut drop: c_int = 1;
+    ExtractDropArg(args, &mut drop);
+    let exact = ExtractExactArg(args);
+    let pok = if exact == -1 {
+        exact
+    } else {
+        if exact == 0 { 1 } else { 0 }
+    };
+
+    let x = CAR(args);
+    let subs = CDR(args);
+    let nsubs = length_int(subs);
+
+    if nsubs == 0 {
+        errorcall(call, "no index specified");
+    }
+
+    if isNull(x) {
+        if CAR(subs) == crate::sexp::globals::R_MissingArg() {
+            crate::mainutils::errors::R_MissingSubscriptError(x, call);
+        }
+        return x;
+    }
+
+    let dims = getAttrib(x, sym_Dim());
+    if nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP {
+        let ncols = XLENGTH(x);
+        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let j = crate::mainutils::subscript::get1index(CADR(subs), names, ncols, pok, 0, call);
+        if j < 0 || j >= ncols {
+            errorcall(call, "undefined columns selected");
+        }
+        let col = VECTOR_ELT(x, j);
+        let nrows = XLENGTH(col);
+        let rownames = getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
+        let i =
+            crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, pok, 0, call);
+        if i < 0 || i >= nrows {
+            errorcall(call, "subscript out of bounds");
+        }
+        return match TYPEOF(col) {
+            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(col, i as c_int)),
+            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(col, i as c_int)),
+            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(col, i as c_int)),
+            t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(col, i)),
+            _ => {
+                errorcall(call, "incorrect number of subscripts");
+                R_NilValue()
+            }
         };
+    }
+    let ndims = length_int(dims);
+    if nsubs > 1 && nsubs != ndims {
+        errorcall(call, "incorrect number of subscripts");
+    }
 
-        let x = CAR(args);
-        let subs = CDR(args);
-        let nsubs = length_int(subs);
+    let _x_guard = protect(x);
 
-        if nsubs == 0 {
-            errorcall(call, "no index specified");
+    /* Environment subsetting */
+    if isEnvironment(x) {
+        if nsubs != 1 || !isString(CAR(subs)) || length_int(CAR(subs)) != 1 {
+            errorcall(call, "wrong arguments for subsetting an environment");
+        }
+        let sym = installTrChar(STRING_ELT(CAR(subs), 0));
+        let mut ans = R_findVarInFrame(x, sym);
+        if isPromise(ans) {
+            let _promise_guard = protect(ans);
+            ans = crate::sexp::envir::forcePromise(ans);
+        } else {
+            ENSURE_NAMEDMAX(ans);
         }
 
-        if isNull(x) {
-            if CAR(subs) == crate::sexp::globals::R_MissingArg() {
-                crate::mainutils::errors::R_MissingSubscriptError(x, call);
-            }
-            return x;
+        if ans == R_UnboundValue() {
+            return R_NilValue();
         }
-
-        let dims = getAttrib(x, sym_Dim());
-        if nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP {
-            let ncols = XLENGTH(x);
-            let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            let j = crate::mainutils::subscript::get1index(CADR(subs), names, ncols, pok, 0, call);
-            if j < 0 || j >= ncols {
-                errorcall(call, "undefined columns selected");
-            }
-            let col = VECTOR_ELT(x, j);
-            let nrows = XLENGTH(col);
-            let rownames = getAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol());
-            let i =
-                crate::mainutils::subscript::get1index(CAR(subs), rownames, nrows, pok, 0, call);
-            if i < 0 || i >= nrows {
-                errorcall(call, "subscript out of bounds");
-            }
-            return match TYPEOF(col) {
-                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(col, i as c_int)),
-                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(col, i as c_int)),
-                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(col, i as c_int)),
-                t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(col, i)),
-                _ => {
-                    errorcall(call, "incorrect number of subscripts");
-                    R_NilValue()
-                }
-            };
+        if NAMED(ans) != 0 {
+            ENSURE_NAMEDMAX(ans);
         }
-        let ndims = length_int(dims);
-        if nsubs > 1 && nsubs != ndims {
-            errorcall(call, "incorrect number of subscripts");
-        }
+        return ans;
+    }
 
-        let _x_guard = protect(x);
+    /* Check subsettable types */
+    if !isVector(x) && !isPairList(x) && !isLanguage(x) {
+        errorcallNotSubsettable(x, call);
+    }
 
-        /* Environment subsetting */
-        if isEnvironment(x) {
-            if nsubs != 1 || !isString(CAR(subs)) || length_int(CAR(subs)) != 1 {
-                errorcall(call, "wrong arguments for subsetting an environment");
-            }
-            let sym = installTrChar(STRING_ELT(CAR(subs), 0));
-            let mut ans = R_findVarInFrame(x, sym);
-            if isPromise(ans) {
-                let _promise_guard = protect(ans);
-                ans = crate::sexp::envir::forcePromise(ans);
-            } else {
-                ENSURE_NAMEDMAX(ans);
-            }
+    let named_x = NAMED(x);
 
-            if ans == R_UnboundValue() {
-                return R_NilValue();
-            }
-            if NAMED(ans) != 0 {
-                ENSURE_NAMEDMAX(ans);
-            }
-            return ans;
-        }
+    if nsubs == 1 {
+        /* Vector indexing */
+        let thesub = CAR(subs);
+        let len = length_int(thesub);
 
-        /* Check subsettable types */
-        if !isVector(x) && !isPairList(x) && !isLanguage(x) {
-            errorcallNotSubsettable(x, call);
-        }
-
-        let named_x = NAMED(x);
-
-        if nsubs == 1 {
-            /* Vector indexing */
-            let thesub = CAR(subs);
-            let len = length_int(thesub);
-
-            if len > 1 {
-                /* Multi-element index: recursively descend via vectorIndex,
-                then apply the final index to the resulting element. */
-                let x = vectorIndex(x, thesub, 0, (len - 1) as c_int, pok, call);
-                let _x_guard = protect(x);
-                let named_x = NAMED(x);
-                let xnames = getAttrib(x, sym_Names());
-                let _xnames_guard = protect(xnames);
-                let offset = get1index(thesub, xnames, xlength(x), pok, (len - 1) as c_int, call);
-                if offset < 0 || offset >= xlength(x) {
-                    if offset < 0
-                        && (isVectorList(x) || isExpression(x) || isPairList(x) || isLanguage(x))
-                    {
-                        return R_NilValue();
-                    } else {
-                        errorcallOutOfBoundsSEXP(x, -1, thesub, call);
-                    }
-                }
-                /* Extract the final element */
-                if isPairList(x) {
-                    let ans = CAR(nthcdr(x, offset as c_int));
-                    RAISE_NAMED(ans, named_x);
-                    return ans;
-                } else if isVectorList(x) {
-                    let ans = VECTOR_ELT(x, offset);
-                    RAISE_NAMED(ans, named_x);
-                    return ans;
-                } else {
-                    /* atomic: return single-element vector */
-                    let ans = Rf_allocVector3(TYPEOF(x), 1);
-                    let _ans_guard = protect(ans);
-                    match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP => {
-                            SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
-                        }
-                        t if t == SEXPTYPE::INTSXP => {
-                            SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
-                        }
-                        t if t == SEXPTYPE::REALSXP => {
-                            SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
-                        }
-                        t if t == SEXPTYPE::CPLXSXP => {
-                            SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
-                        }
-                        t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
-                        }
-                        t if t == SEXPTYPE::RAWSXP => {
-                            SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
-                        }
-                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
-                    }
-                    return ans;
-                }
-            }
-
-            /* Single-element index */
-            let mut xnames = getAttrib(x, sym_Names());
-            if (isNull(xnames) || xnames == R_NilValue()) && (isPairList(x) || isLanguage(x)) {
-                xnames = pairlist_tag_names(x);
-            }
+        if len > 1 {
+            /* Multi-element index: recursively descend via vectorIndex,
+            then apply the final index to the resulting element. */
+            let x = vectorIndex(x, thesub, 0, (len - 1) as c_int, pok, call);
+            let _x_guard = protect(x);
+            let named_x = NAMED(x);
+            let xnames = getAttrib(x, sym_Names());
             let _xnames_guard = protect(xnames);
-            let offset = get1index(thesub, xnames, xlength(x), pok, -1, call);
-
+            let offset = get1index(thesub, xnames, xlength(x), pok, (len - 1) as c_int, call);
             if offset < 0 || offset >= xlength(x) {
                 if offset < 0
                     && (isVectorList(x) || isExpression(x) || isPairList(x) || isLanguage(x))
@@ -262,8 +209,7 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     errorcallOutOfBoundsSEXP(x, -1, thesub, call);
                 }
             }
-
-            /* Extract the element */
+            /* Extract the final element */
             if isPairList(x) {
                 let ans = CAR(nthcdr(x, offset as c_int));
                 RAISE_NAMED(ans, named_x);
@@ -273,7 +219,7 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 RAISE_NAMED(ans, named_x);
                 return ans;
             } else {
-                /* Atomic vector: return scalar */
+                /* atomic: return single-element vector */
                 let ans = Rf_allocVector3(TYPEOF(x), 1);
                 let _ans_guard = protect(ans);
                 match TYPEOF(x) {
@@ -299,86 +245,141 @@ pub fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 return ans;
             }
-        } else {
-            /* nsubs == ndims >= 2 : matrix|array indexing */
-            let dimnames = getAttrib(x, sym_DimNames());
-            let ndn = length_int(dimnames);
-
-            let indx = Rf_allocVector(SEXPTYPE::INTSXP, nsubs);
-            let _indx_guard = protect(indx);
-
-            let mut cur_subs = subs;
-            for i in 0..(nsubs as usize) {
-                let thesub = CAR(cur_subs);
-                let dname = if (i as c_int) < ndn {
-                    VECTOR_ELT(dimnames, i as R_xlen_t)
-                } else {
-                    R_NilValue()
-                };
-                let idx = get1index(
-                    thesub,
-                    dname,
-                    INTEGER_ELT(dims, (i) as c_int) as R_xlen_t,
-                    pok,
-                    -1,
-                    call,
-                );
-                SET_INTEGER_ELT(indx, (i) as c_int, idx as c_int);
-                cur_subs = CDR(cur_subs);
-                if idx < 0 || idx >= (INTEGER_ELT(dims, (i) as c_int)) as R_xlen_t {
-                    errorcallOutOfBoundsSEXP(x, i as c_int, thesub, call);
-                }
-            }
-
-            /* Compute linear offset */
-            let mut offset: R_xlen_t = 0;
-            let mut i: usize = (nsubs - 1) as usize;
-            loop {
-                offset = (offset + INTEGER_ELT(indx, (i) as c_int) as R_xlen_t)
-                    * (INTEGER_ELT(dims, (i - 1) as c_int)) as R_xlen_t;
-                if i == 1 {
-                    break;
-                }
-                i -= 1;
-            }
-            offset += INTEGER_ELT(indx, (0) as c_int) as R_xlen_t;
-
-            /* Extract the element */
-            let ans: SEXP;
-            if isPairList(x) {
-                ans = CAR(nthcdr(x, offset as c_int));
-                RAISE_NAMED(ans, named_x);
-            } else if isVectorList(x) {
-                ans = VECTOR_ELT(x, offset);
-                RAISE_NAMED(ans, named_x);
-            } else {
-                ans = Rf_allocVector3(TYPEOF(x), 1);
-                let _ans_guard = protect(ans);
-                match TYPEOF(x) {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
-                    }
-                    t if t == SEXPTYPE::INTSXP => {
-                        SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
-                    }
-                    t if t == SEXPTYPE::CPLXSXP => {
-                        SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
-                    }
-                    t if t == SEXPTYPE::STRSXP => {
-                        SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
-                    }
-                    t if t == SEXPTYPE::RAWSXP => {
-                        SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
-                    }
-                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
-                }
-            }
-
-            ans
         }
+
+        /* Single-element index */
+        let mut xnames = getAttrib(x, sym_Names());
+        if (isNull(xnames) || xnames == R_NilValue()) && (isPairList(x) || isLanguage(x)) {
+            xnames = pairlist_tag_names(x);
+        }
+        let _xnames_guard = protect(xnames);
+        let offset = get1index(thesub, xnames, xlength(x), pok, -1, call);
+
+        if offset < 0 || offset >= xlength(x) {
+            if offset < 0
+                && (isVectorList(x) || isExpression(x) || isPairList(x) || isLanguage(x))
+            {
+                return R_NilValue();
+            } else {
+                errorcallOutOfBoundsSEXP(x, -1, thesub, call);
+            }
+        }
+
+        /* Extract the element */
+        if isPairList(x) {
+            let ans = CAR(nthcdr(x, offset as c_int));
+            RAISE_NAMED(ans, named_x);
+            return ans;
+        } else if isVectorList(x) {
+            let ans = VECTOR_ELT(x, offset);
+            RAISE_NAMED(ans, named_x);
+            return ans;
+        } else {
+            /* Atomic vector: return scalar */
+            let ans = Rf_allocVector3(TYPEOF(x), 1);
+            let _ans_guard = protect(ans);
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::LGLSXP => {
+                    SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
+                }
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
+            }
+            return ans;
+        }
+    } else {
+        /* nsubs == ndims >= 2 : matrix|array indexing */
+        let dimnames = getAttrib(x, sym_DimNames());
+        let ndn = length_int(dimnames);
+
+        let indx = Rf_allocVector(SEXPTYPE::INTSXP, nsubs);
+        let _indx_guard = protect(indx);
+
+        let mut cur_subs = subs;
+        for i in 0..(nsubs as usize) {
+            let thesub = CAR(cur_subs);
+            let dname = if (i as c_int) < ndn {
+                VECTOR_ELT(dimnames, i as R_xlen_t)
+            } else {
+                R_NilValue()
+            };
+            let idx = get1index(
+                thesub,
+                dname,
+                INTEGER_ELT(dims, (i) as c_int) as R_xlen_t,
+                pok,
+                -1,
+                call,
+            );
+            SET_INTEGER_ELT(indx, (i) as c_int, idx as c_int);
+            cur_subs = CDR(cur_subs);
+            if idx < 0 || idx >= (INTEGER_ELT(dims, (i) as c_int)) as R_xlen_t {
+                errorcallOutOfBoundsSEXP(x, i as c_int, thesub, call);
+            }
+        }
+
+        /* Compute linear offset */
+        let mut offset: R_xlen_t = 0;
+        let mut i: usize = (nsubs - 1) as usize;
+        loop {
+            offset = (offset + INTEGER_ELT(indx, (i) as c_int) as R_xlen_t)
+                * (INTEGER_ELT(dims, (i - 1) as c_int)) as R_xlen_t;
+            if i == 1 {
+                break;
+            }
+            i -= 1;
+        }
+        offset += INTEGER_ELT(indx, (0) as c_int) as R_xlen_t;
+
+        /* Extract the element */
+        let ans: SEXP;
+        if isPairList(x) {
+            ans = CAR(nthcdr(x, offset as c_int));
+            RAISE_NAMED(ans, named_x);
+        } else if isVectorList(x) {
+            ans = VECTOR_ELT(x, offset);
+            RAISE_NAMED(ans, named_x);
+        } else {
+            ans = Rf_allocVector3(TYPEOF(x), 1);
+            let _ans_guard = protect(ans);
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::LGLSXP => {
+                    SET_LOGICAL_ELT(ans, (0) as c_int, LOGICAL_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    SET_INTEGER_ELT(ans, (0) as c_int, INTEGER_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    SET_REAL_ELT(ans, (0) as c_int, REAL_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    SET_COMPLEX_ELT(ans, (0) as c_int, COMPLEX_ELT(x, offset as c_int));
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    SET_RAW_ELT(ans, (0) as c_int, RAW_ELT(x, offset as c_int));
+                }
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
+            }
+        }
+
+        ans
     }
 }
 

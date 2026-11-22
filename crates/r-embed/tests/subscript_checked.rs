@@ -77,3 +77,41 @@ cat('matrix-subscript-checked: PASS\n')"#
         "matrix-subscript-checked: PASS\n"
     );
 }
+
+#[test]
+fn single_and_recursive_subscripts_match_gnu() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"x <- setNames(list(3L,4L,5L),c('alpha','alpine',NA_character_))
+stopifnot(
+  identical(x[['alpha']],3L),
+  identical(x[['alph',exact=FALSE]],3L),
+  is.null(x[['al',exact=FALSE]]),
+  is.null(x[[NA_character_]]),
+  is.null(x[['NA']]),
+  is.null(x[['']]))
+messages <- character()
+ans <- withCallingHandlers(
+  x[['al',exact=NA]],
+  warning=function(w) {
+    messages <<- c(messages,conditionMessage(w))
+    invokeRestart('muffleWarning')
+  })
+stopifnot(
+  is.null(ans),
+  identical(
+    messages,
+    c("partial match of 'al' to 'alpha'",
+      "further partial match of 'al' to 'alpine'")))
+y <- list(a=list(b=2L))
+stopifnot(identical(y[[c('a','b')]],2L))
+y[[c('a','new')]] <- 7L
+stopifnot(identical(y[[c('a','new')]],7L))
+cat('single-subscript-checked: PASS\n')"#
+            )
+            .unwrap(),
+        "single-subscript-checked: PASS\n"
+    );
+}

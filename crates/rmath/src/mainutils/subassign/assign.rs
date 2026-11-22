@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
+    get1index, int_arraySubscript, makeSubscript, mat2indsub, one_index, strmat2intmat, vectorIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -919,7 +919,6 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut thesub: SEXP = R_NilValue();
         let mut len = 0;
         let mut off: R_xlen_t = -1;
-        let mut newname: SEXP = R_NilValue();
 
         if nsubs == 1 {
             thesub = CAR(subs);
@@ -930,6 +929,7 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 xtop = x;
                 let mut parent = x;
                 for i in 0..(len - 1) {
+                    let _parent_guard = protect(parent);
                     let names = getAttrib(parent, crate::sexp::attrib_core::R_NamesSymbol());
                     let indx = get1index(thesub, names, XLENGTH(parent), TRUE, i, call);
                     if indx < 0 || indx >= XLENGTH(parent) {
@@ -942,6 +942,7 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     } else {
                         R_NilValue()
                     };
+                    let _child_guard = protect(child);
                     if i < len - 2
                         && (TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP)
                     {
@@ -952,15 +953,8 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
                 xup = vectorIndex(x, thesub, 0, len - 2, TRUE, call, FALSE);
                 dynamic_guards.push(protect(xup));
-                off = OneIndex(
-                    xup,
-                    thesub,
-                    XLENGTH(xup),
-                    0,
-                    &mut newname,
-                    len - 2,
-                    R_NilValue(),
-                );
+                let (index, _) = one_index(xup, thesub, XLENGTH(xup), 0, len - 2, R_NilValue());
+                off = index;
                 x = vectorIndex(xup, thesub, len - 2, len - 1, TRUE, call, FALSE);
                 dynamic_guards.push(protect(x));
                 recursed = true;
@@ -983,16 +977,20 @@ pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if nsubs == 0 || CAR(subs) == R_MissingArg() {
                 errorMissingSubscript(x, call);
             }
+            let mut newname: SEXP = R_NilValue();
+            let _newname_guard;
             if nsubs == 1 {
-                offset = OneIndex(
+                let (index, name) = one_index(
                     x,
                     thesub,
                     XLENGTH(x),
                     0,
-                    &mut newname,
                     if recursed { len - 1 } else { -1 },
                     R_NilValue(),
                 );
+                offset = index;
+                newname = name;
+                _newname_guard = protect(newname);
                 if isVectorList(x) && isNull(y) {
                     let old_x = x;
                     x = DeleteOneVectorListItem(x, offset);
