@@ -48,3 +48,17 @@ fn public_numeric_identical_contract_matches_gnu() {
         );
     }
 }
+
+#[test]
+fn identical_and_all_equal_cover_checked_atomic_comparison_paths() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                "a <- structure(1L, alpha=1L, beta=2L); b <- structure(1L, beta=2L, alpha=1L); r <- as.raw(c(0,255)); s <- as.raw(c(0,254)); good <- c(1+2i,3+4i); bad <- c(1+2i,3+5i); identical(a,b) && !identical(a,b,attrib.as.set=FALSE) && identical(r,as.raw(c(0,255))) && !identical(r,s) && identical(good,c(1+2i,3+4i)) && !identical(good,bad) && isTRUE(all.equal(r,as.raw(c(0,255)))) && !isTRUE(all.equal(r,s)) && isTRUE(all.equal(good,c(1+2i,3+4i))) && isTRUE(all.equal(c(TRUE,NA,FALSE),c(TRUE,NA,FALSE)))"
+            )
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}

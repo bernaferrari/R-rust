@@ -15,12 +15,14 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, BODY, CAR, CDR, CLOENV, FORMALS, INTEGER_ELT, LENGTH, LOGICAL_ELT, PRIMOFFSET,
+    PRINTNAME, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, atomic_payload_for_comparison,
+    char_cstr_bytes_opt,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -198,25 +200,15 @@ fn compute_strictness(flags: c_int) -> c_int {
     str
 }
 
-unsafe fn attr_tag_name(tag: SEXP) -> Option<&'static str> {
-    unsafe {
-        if tag.is_null() || tag == R_NilValue() {
-            return None;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() || pname == R_NilValue() {
-            return None;
-        }
-        let ptr = CHAR(pname);
-        if ptr.is_null() {
-            return None;
-        }
-        std::ffi::CStr::from_ptr(ptr).to_str().ok()
+fn attr_tag_name(tag: SEXP) -> Option<String> {
+    if tag.is_null() || tag == R_NilValue() {
+        return None;
     }
-}
-
-fn is_srcref_attr_name(name: &str) -> bool {
-    name == "srcref"
+    let pname = PRINTNAME(tag);
+    if pname.is_null() || pname == R_NilValue() {
+        return None;
+    }
+    String::from_utf8(char_cstr_bytes_opt(pname)?).ok()
 }
 
 fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
@@ -225,171 +217,214 @@ fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
 
 /// GNU can ignore source references on closures; every public vector attribute
 /// otherwise participates in equality, independently of private ALTREP storage.
-unsafe fn skip_identical_attr(object: SEXP, cell: SEXP, flags: c_int) -> bool {
-    unsafe {
-        ignore_closure_srcref(object, flags)
-            && attr_tag_name(TAG(cell)).is_some_and(is_srcref_attr_name)
-    }
+fn skip_identical_attr(object: SEXP, cell: SEXP, flags: c_int) -> bool {
+    ignore_closure_srcref(object, flags) && attr_tag_name(TAG(cell)).as_deref() == Some("srcref")
 }
 
-unsafe fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> c_int {
-    unsafe {
-        let mut n = 0;
-        let mut p = list;
-        while !p.is_null() && p != R_NilValue() {
-            if !skip_identical_attr(object, p, flags) {
-                n += 1;
-            }
-            p = CDR(p);
+fn attr_pairlist_len_filtered(object: SEXP, list: SEXP, flags: c_int) -> c_int {
+    let mut n = 0;
+    let mut p = list;
+    while !p.is_null() && p != R_NilValue() {
+        if !skip_identical_attr(object, p, flags) {
+            n += 1;
         }
-        n
+        p = CDR(p);
     }
+    n
 }
 
 /// GNU `R_body_no_src`: `BODY` with srcref/srcfile/wholeSrcref stripped
 /// when `ignore.srcref` is the default.
-unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
-    unsafe {
-        let mut body = BODY(fun);
-        if !body.is_null() && TYPEOF(body) == SEXPTYPE::BCODESXP {
-            let source = crate::eval::bc_eval::BCODE_EXPR(body);
-            if !source.is_null() && source != R_NilValue() {
-                body = source;
-            }
+fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
+    let mut body = BODY(fun);
+    if !body.is_null() && TYPEOF(body) == SEXPTYPE::BCODESXP {
+        let source = crate::eval::bc_eval::BCODE_EXPR(body);
+        if !source.is_null() && source != R_NilValue() {
+            body = source;
         }
-        if flags & IDENT_USE_SRCREF != 0 {
-            return body;
-        }
-        let has_src = [c"srcref", c"srcfile", c"wholeSrcref"].iter().any(|name| {
-            let attr =
-                crate::sexp::attrib_core::getAttrib(body, crate::sexp::symbol::install_cstr(&name));
-            !attr.is_null() && attr != R_NilValue()
-        });
-        if !has_src {
-            return body;
-        }
-        let copy = crate::mainutils::duplicate::duplicate(body);
-        let _g = crate::sexp::protect::protect(copy);
-        for name in [c"srcref", c"srcfile", c"wholeSrcref"] {
-            crate::sexp::attrib_core::setAttrib(
-                copy,
-                crate::sexp::symbol::install_cstr(&name),
-                R_NilValue(),
-            );
-        }
-        copy
     }
+    if flags & IDENT_USE_SRCREF != 0 {
+        return body;
+    }
+    let has_src = [c"srcref", c"srcfile", c"wholeSrcref"].iter().any(|name| {
+        let attr =
+            crate::sexp::attrib_core::getAttrib(body, crate::sexp::symbol::install_cstr(&name));
+        !attr.is_null() && attr != R_NilValue()
+    });
+    if !has_src {
+        return body;
+    }
+    let copy = crate::mainutils::duplicate::duplicate(body);
+    let _g = protect(copy);
+    for name in [c"srcref", c"srcfile", c"wholeSrcref"] {
+        crate::sexp::attrib_core::setAttrib(
+            copy,
+            crate::sexp::symbol::install_cstr(&name),
+            R_NilValue(),
+        );
+    }
+    copy
 }
 
 /// GNU `identical.c` attribute comparison: tagged pairlists, either by
 /// order (`IDENT_ATTR_BY_ORDER`) or as a set of unique tags.
-unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
-    unsafe {
-        let ax = ATTRIB(x);
-        let ay = ATTRIB(y);
-        let nx = attr_pairlist_len_filtered(x, ax, flags);
-        let ny = attr_pairlist_len_filtered(y, ay, flags);
+fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
+    let ax = ATTRIB(x);
+    let ay = ATTRIB(y);
+    let nx = attr_pairlist_len_filtered(x, ax, flags);
+    let ny = attr_pairlist_len_filtered(y, ay, flags);
 
-        if nx == 0 && ny == 0 {
-            return 1;
+    if nx == 0 && ny == 0 {
+        return 1;
+    }
+    if nx == 0 || ny == 0 {
+        return 0;
+    }
+    if (!ax.is_null() && ax != R_NilValue() && TYPEOF(ax) != SEXPTYPE::LISTSXP)
+        || (!ay.is_null() && ay != R_NilValue() && TYPEOF(ay) != SEXPTYPE::LISTSXP)
+    {
+        return 1;
+    }
+    // GNU identical.c PROTECTs ax/ay: getAttrib and recursive
+    // R_compute_identical can allocate.
+    let _ax = protect(ax);
+    let _ay = protect(ay);
+
+    if flags & IDENT_ATTR_BY_ORDER != 0 {
+        let mut px = ax;
+        let mut py = ay;
+        loop {
+            while !px.is_null() && px != R_NilValue() && skip_identical_attr(x, px, flags) {
+                px = CDR(px);
+            }
+            while !py.is_null() && py != R_NilValue() && skip_identical_attr(y, py, flags) {
+                py = CDR(py);
+            }
+
+            let px_done = px.is_null() || px == R_NilValue();
+            let py_done = py.is_null() || py == R_NilValue();
+            if px_done || py_done {
+                return if px_done && py_done { 1 } else { 0 };
+            }
+            let tag = TAG(px);
+            if attr_tag_name(tag).as_deref() == Some("row.names") {
+                let atrx = getAttrib(x, R_RowNamesSymbol());
+                let _atrx = protect(atrx);
+                let atry = getAttrib(y, R_RowNamesSymbol());
+                let _atry = protect(atry);
+                if R_compute_identical(atrx, atry, flags) == 0 {
+                    return 0;
+                }
+            } else if R_compute_identical(CAR(px), CAR(py), flags) == 0 {
+                return 0;
+            }
+            if R_compute_identical(
+                if TAG(px).is_null() {
+                    R_NilValue()
+                } else {
+                    PRINTNAME(TAG(px))
+                },
+                if TAG(py).is_null() {
+                    R_NilValue()
+                } else {
+                    PRINTNAME(TAG(py))
+                },
+                flags,
+            ) == 0
+            {
+                return 0;
+            }
+            px = CDR(px);
+            py = CDR(py);
         }
-        if nx == 0 || ny == 0 {
+    }
+
+    if nx != ny {
+        return 0;
+    }
+    let mut elx = ax;
+    while !elx.is_null() && elx != R_NilValue() {
+        if skip_identical_attr(x, elx, flags) {
+            elx = CDR(elx);
+            continue;
+        }
+        let Some(tx) = attr_tag_name(TAG(elx)) else {
             return 0;
-        }
-        if (!ax.is_null() && ax != R_NilValue() && TYPEOF(ax) != SEXPTYPE::LISTSXP)
-            || (!ay.is_null() && ay != R_NilValue() && TYPEOF(ay) != SEXPTYPE::LISTSXP)
-        {
-            return 1;
-        }
-        // GNU identical.c PROTECTs ax/ay: getAttrib and recursive
-        // R_compute_identical can allocate.
-        let _ax = crate::sexp::protect::protect(ax);
-        let _ay = crate::sexp::protect::protect(ay);
+        };
 
-        if flags & IDENT_ATTR_BY_ORDER != 0 {
-            let mut px = ax;
-            let mut py = ay;
-            loop {
-                while !px.is_null() && px != R_NilValue() && skip_identical_attr(x, px, flags) {
-                    px = CDR(px);
-                }
-                while !py.is_null() && py != R_NilValue() && skip_identical_attr(y, py, flags) {
-                    py = CDR(py);
-                }
-
-                let px_done = px.is_null() || px == R_NilValue();
-                let py_done = py.is_null() || py == R_NilValue();
-                if px_done || py_done {
-                    return if px_done && py_done { 1 } else { 0 };
-                }
-                let tag = TAG(px);
-                if attr_tag_name(tag) == Some("row.names") {
+        let mut ely = ay;
+        let mut found = false;
+        while !ely.is_null() && ely != R_NilValue() {
+            if attr_tag_name(TAG(ely)).as_deref() == Some(tx.as_str()) {
+                if tx == "row.names" {
                     let atrx = getAttrib(x, R_RowNamesSymbol());
+                    let _atrx = protect(atrx);
                     let atry = getAttrib(y, R_RowNamesSymbol());
+                    let _atry = protect(atry);
                     if R_compute_identical(atrx, atry, flags) == 0 {
                         return 0;
                     }
-                } else if R_compute_identical(CAR(px), CAR(py), flags) == 0 {
+                } else if R_compute_identical(CAR(elx), CAR(ely), flags) == 0 {
                     return 0;
                 }
-                if R_compute_identical(
-                    if TAG(px).is_null() {
-                        R_NilValue()
-                    } else {
-                        PRINTNAME(TAG(px))
-                    },
-                    if TAG(py).is_null() {
-                        R_NilValue()
-                    } else {
-                        PRINTNAME(TAG(py))
-                    },
-                    flags,
-                ) == 0
-                {
-                    return 0;
-                }
-                px = CDR(px);
-                py = CDR(py);
+                found = true;
+                break;
             }
+            ely = CDR(ely);
         }
-
-        if nx != ny {
+        if !found {
             return 0;
         }
-        let mut elx = ax;
-        while !elx.is_null() && elx != R_NilValue() {
-            if skip_identical_attr(x, elx, flags) {
-                elx = CDR(elx);
-                continue;
-            }
-            let Some(tx) = attr_tag_name(TAG(elx)) else {
-                return 0;
-            };
+        elx = CDR(elx);
+    }
+    1
+}
 
-            let mut ely = ay;
-            let mut found = false;
-            while !ely.is_null() && ely != R_NilValue() {
-                if attr_tag_name(TAG(ely)) == Some(tx) {
-                    if tx == "row.names" {
-                        let atrx = getAttrib(x, R_RowNamesSymbol());
-                        let atry = getAttrib(y, R_RowNamesSymbol());
-                        if R_compute_identical(atrx, atry, flags) == 0 {
-                            return 0;
-                        }
-                    } else if R_compute_identical(CAR(elx), CAR(ely), flags) == 0 {
-                        return 0;
-                    }
-                    found = true;
-                    break;
-                }
-                ely = CDR(ely);
-            }
-            if !found {
-                return 0;
-            }
-            elx = CDR(elx);
+/// Dense atomic comparison over checked typed payloads. Compact builtin
+/// int/real sequences keep their element-wise provider reads.
+fn atomic_identical(x: SEXP, y: SEXP, kind: SEXPTYPE, flags: c_int) -> bool {
+    let n = LENGTH(x);
+    if n != LENGTH(y) {
+        return false;
+    }
+    if n == 0 {
+        return true;
+    }
+    let strictness = compute_strictness(flags);
+    if kind == SEXPTYPE::INTSXP
+        && (crate::sexp::altseq::unexpanded_int(x).is_some()
+            || crate::sexp::altseq::unexpanded_int(y).is_some())
+    {
+        return (0..n).all(|i| INTEGER_ELT(x, i) == INTEGER_ELT(y, i));
+    }
+    if kind == SEXPTYPE::REALSXP
+        && (crate::sexp::altseq::unexpanded_real(x).is_some()
+            || crate::sexp::altseq::unexpanded_real(y).is_some())
+    {
+        return (0..n).all(|i| neWithNaN(REAL_ELT(x, i), REAL_ELT(y, i), strictness) == 0);
+    }
+    let n = usize::try_from(n)
+        .unwrap_or_else(|_| crate::sexp::context::r_error("invalid comparison length"));
+    let left = atomic_payload_for_comparison(x, kind, n);
+    let right = atomic_payload_for_comparison(y, kind, n);
+    match kind {
+        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => {
+            (0..n).all(|i| left.integer_elt(i) == right.integer_elt(i))
         }
-        1
+        SEXPTYPE::REALSXP => (0..n).all(|i| {
+            neWithNaN(
+                left.real_elt(i).expect("validated real payload"),
+                right.real_elt(i).expect("validated real payload"),
+                strictness,
+            ) == 0
+        }),
+        SEXPTYPE::CPLXSXP => (0..n).all(|i| {
+            let a = left.complex_elt(i).expect("validated complex payload");
+            let b = right.complex_elt(i).expect("validated complex payload");
+            neWithNaN(a.r, b.r, strictness) == 0 && neWithNaN(a.i, b.i, strictness) == 0
+        }),
+        SEXPTYPE::RAWSXP => (0..n).all(|i| left.byte_elt(i) == right.byte_elt(i)),
+        _ => unreachable!("validated atomic type"),
     }
 }
 
@@ -400,321 +435,186 @@ unsafe fn attributes_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
 /// comparisons, NA handling, and attribute comparison.
 ///
 /// Returns 1 if identical, 0 if not.
-pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
-    unsafe {
-        // This engine spells "no attributes" both as a null ATTRIB pointer
-        // (fresh vectors) and as R_NilValue (e.g. as.vector's stripped
-        // copies); upstream R only uses R_NilValue. Normalize so the two
-        // empty spellings compare equal, in value position and inside the
-        // attribute checks below.
-        let x = if x.is_null() { R_NilValue() } else { x };
-        let y = if y.is_null() { R_NilValue() } else { y };
-        // Quick pointer equality check
-        if x == y {
-            return 1;
-        }
-
-        // Both NULL => identical
-        if x.is_null() && y.is_null() {
-            return 1;
-        }
-        // One NULL, one non-NULL => not identical
-        if x.is_null() || y.is_null() {
-            return 0;
-        }
-
-        // Check TYPEOF
-        if TYPEOF(x) != TYPEOF(y) {
-            return 0;
-        }
-
-        // Check OBJECT flag
-        if OBJECT(x) != OBJECT(y) {
-            return 0;
-        }
-
-        // Check S4 flag
-        if IS_S4_OBJECT(x) != IS_S4_OBJECT(y) {
-            return 0;
-        }
-
-        // GNU identical.c: compare tagged pairlist attributes. Default
-        // attrib.as.set=TRUE matches tags regardless of order (S4 slots
-        // live here). The previous "both present" check treated every
-        // pair of S4 objects as identical.
-        if attributes_identical(x, y, flags) == 0 {
-            return 0;
-        }
-
-        let t = TYPEOF(x);
-
-        // Use integer constants for match since SEXPTYPE::X.as_c_int() is not a pattern
-        if t == SEXPTYPE::NILSXP {
-            return 1;
-        } else if t == SEXPTYPE::LGLSXP {
-            // LGLSXP: compare logical arrays via memcmp
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            let lx = LOGICAL(x);
-            let ly = LOGICAL(y);
-            if lx.is_null() && ly.is_null() {
-                return 1;
-            }
-            if lx.is_null() || ly.is_null() {
-                return 0;
-            }
-            let size = (nx as usize) * std::mem::size_of::<c_int>();
-            if size == 0 {
-                return 1;
-            }
-            return if std::slice::from_raw_parts(lx, nx as usize)
-                == std::slice::from_raw_parts(ly, nx as usize)
-            {
-                1
-            } else {
-                0
-            };
-        } else if t == SEXPTYPE::INTSXP {
-            // INTSXP: compare integer arrays via memcmp
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            if crate::sexp::altseq::unexpanded_int(x).is_some()
-                || crate::sexp::altseq::unexpanded_int(y).is_some()
-            {
-                for i in 0..nx {
-                    if INTEGER_ELT(x, i) != INTEGER_ELT(y, i) {
-                        return 0;
-                    }
-                }
-                return 1;
-            }
-            let ix = INTEGER(x);
-            let iy = INTEGER(y);
-            if ix.is_null() || iy.is_null() {
-                return if ix.is_null() && iy.is_null() { 1 } else { 0 };
-            }
-            let size = (nx as usize) * std::mem::size_of::<c_int>();
-            if size == 0 {
-                return 1;
-            }
-            return if std::slice::from_raw_parts(ix, nx as usize)
-                == std::slice::from_raw_parts(iy, nx as usize)
-            {
-                1
-            } else {
-                0
-            };
-        } else if t == SEXPTYPE::REALSXP {
-            // REALSXP: compare doubles element-by-element using neWithNaN
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            if crate::sexp::altseq::unexpanded_real(x).is_some()
-                || crate::sexp::altseq::unexpanded_real(y).is_some()
-            {
-                let strictness = compute_strictness(flags);
-                for i in 0..nx {
-                    if neWithNaN(REAL_ELT(x, i), REAL_ELT(y, i), strictness) != 0 {
-                        return 0;
-                    }
-                }
-                return 1;
-            }
-            let rx = REAL(x);
-            let ry = REAL(y);
-            if rx.is_null() || ry.is_null() {
-                return if rx.is_null() && ry.is_null() { 1 } else { 0 };
-            }
-            let str = compute_strictness(flags);
-            for i in 0..nx as usize {
-                if neWithNaN(*rx.add(i), *ry.add(i), str) != 0 {
-                    return 0;
-                }
-            }
-            return 1;
-        } else if t == SEXPTYPE::CPLXSXP {
-            // CPLXSXP: compare complex numbers element-by-element
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            let cx = COMPLEX(x);
-            let cy = COMPLEX(y);
-            if cx.is_null() && cy.is_null() {
-                return 1;
-            }
-            if cx.is_null() || cy.is_null() {
-                return 0;
-            }
-            let str = compute_strictness(flags);
-            for i in 0..nx as usize {
-                let zx = *cx.add(i);
-                let zy = *cy.add(i);
-                if neWithNaN(zx.r, zy.r, str) != 0 {
-                    return 0;
-                }
-                if neWithNaN(zx.i, zy.i, str) != 0 {
-                    return 0;
-                }
-            }
-            return 1;
-        } else if t == SEXPTYPE::STRSXP {
-            // STRSXP: compare CHARSXP pointers element by element
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            for i in 0..nx as i64 {
-                let sx = STRING_ELT(x, i);
-                let sy = STRING_ELT(y, i);
-                if !charsxp_identical(sx, sy) {
-                    return 0;
-                }
-            }
-            return 1;
-        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
-            // VECSXP / EXPRSXP: recursive comparison of elements
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            for i in 0..nx as i64 {
-                if R_compute_identical(VECTOR_ELT(x, i), VECTOR_ELT(y, i), flags) == 0 {
-                    return 0;
-                }
-            }
-            return 1;
-        } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
-            // LISTSXP/LANGSXP: recursive on CAR, CDR, TAG.
-            // Normalize null CDR/TAG to R_NilValue so legacy null-terminated
-            // chains compare equal to GNU-style Nil-terminated ones.
-            let normalize =
-                |node: SEXP| -> SEXP { if node.is_null() { R_NilValue() } else { node } };
-            let mut lx = x;
-            let mut ly = y;
-            loop {
-                if R_compute_identical(CAR(lx), CAR(ly), flags) == 0 {
-                    return 0;
-                }
-                if R_compute_identical(normalize(TAG(lx)), normalize(TAG(ly)), flags) == 0 {
-                    return 0;
-                }
-                let nx = normalize(CDR(lx));
-                let ny = normalize(CDR(ly));
-                if nx == ny {
-                    return 1;
-                }
-                if nx == R_NilValue() || ny == R_NilValue() {
-                    return 0;
-                }
-                if TYPEOF(nx) != TYPEOF(ny) {
-                    return 0;
-                }
-                if TYPEOF(nx) != SEXPTYPE::LISTSXP
-                    && TYPEOF(nx) != SEXPTYPE::LANGSXP
-                    && TYPEOF(nx) != SEXPTYPE::DOTSXP
-                {
-                    return R_compute_identical(nx, ny, flags);
-                }
-                lx = nx;
-                ly = ny;
-            }
-        } else if t == SEXPTYPE::CLOSXP {
-            // GNU identical.c CLOSXP: formals, then body (expression without
-            // srcref when ignore.bytecode/ignore.srcref), then env pointer.
-            if R_compute_identical(FORMALS(x), FORMALS(y), flags) == 0 {
-                return 0;
-            }
-            let bodies = if flags & IDENT_USE_BYTECODE == 0 {
-                R_compute_identical(
-                    body_expr_no_src(x, flags),
-                    body_expr_no_src(y, flags),
-                    flags,
-                )
-            } else {
-                R_compute_identical(BODY(x), BODY(y), flags)
-            };
-            if bodies == 0 {
-                return 0;
-            }
-            if flags & IDENT_USE_CLOENV != 0 && CLOENV(x) != CLOENV(y) {
-                return 0;
-            }
-            return 1;
-        } else if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::SYMSXP {
-            // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
-            return 0;
-        } else if t == SEXPTYPE::PROMSXP {
-            let ex = crate::mainutils::coerce::substitute(
-                crate::sexp::accessors::PRCODE(x),
-                crate::sexp::accessors::PRENV(x),
-            );
-            let ey = crate::mainutils::coerce::substitute(
-                crate::sexp::accessors::PRCODE(y),
-                crate::sexp::accessors::PRENV(y),
-            );
-            return R_compute_identical(ex, ey, flags);
-        } else if t == SEXPTYPE::OBJSXP {
-            // OBJSXP: attributes already tested, so all slots identical
-            // (S4 and bare objects alike, e.g. .OBJSXP()-constructed ones).
-            return 1;
-        } else if t == SEXPTYPE::RAWSXP {
-            // RAWSXP: memcmp on raw bytes
-            let nx = LENGTH(x);
-            let ny = LENGTH(y);
-            if nx != ny {
-                return 0;
-            }
-            let rx = RAW(x);
-            let ry = RAW(y);
-            if rx.is_null() && ry.is_null() {
-                return 1;
-            }
-            if rx.is_null() || ry.is_null() {
-                return 0;
-            }
-            let size = nx as usize;
-            if size == 0 {
-                return 1;
-            }
-            return if std::slice::from_raw_parts(rx, nx as usize)
-                == std::slice::from_raw_parts(ry, nx as usize)
-            {
-                1
-            } else {
-                0
-            };
-        } else if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
-            return if PRIMOFFSET(x) == PRIMOFFSET(y) { 1 } else { 0 };
-        } else if t == SEXPTYPE::EXTPTRSXP {
-            // GNU identical.c: default compares EXTPTR_PTR. extptr.as.ref
-            // compares the external-pointer objects themselves.
-            if flags & IDENT_EXTPTR_AS_REF != 0 {
-                return 0;
-            }
-            return if crate::mainutils::memory_main::R_ExternalPtrAddr(x)
-                == crate::mainutils::memory_main::R_ExternalPtrAddr(y)
-            {
-                1
-            } else {
-                0
-            };
-        }
-
-        // Default: pointer equality (already checked x != y)
-        0
+pub fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
+    // This engine spells "no attributes" both as a null ATTRIB pointer
+    // (fresh vectors) and as R_NilValue (e.g. as.vector's stripped
+    // copies); upstream R only uses R_NilValue. Normalize so the two
+    // empty spellings compare equal, in value position and inside the
+    // attribute checks below.
+    let x = if x.is_null() { R_NilValue() } else { x };
+    let y = if y.is_null() { R_NilValue() } else { y };
+    // Quick pointer equality check
+    if x == y {
+        return 1;
     }
+
+    // Both NULL => identical
+    if x.is_null() && y.is_null() {
+        return 1;
+    }
+    // One NULL, one non-NULL => not identical
+    if x.is_null() || y.is_null() {
+        return 0;
+    }
+
+    // Check TYPEOF
+    if TYPEOF(x) != TYPEOF(y) {
+        return 0;
+    }
+
+    // Check OBJECT flag
+    if OBJECT(x) != OBJECT(y) {
+        return 0;
+    }
+
+    // Check S4 flag
+    if IS_S4_OBJECT(x) != IS_S4_OBJECT(y) {
+        return 0;
+    }
+
+    // GNU identical.c: compare tagged pairlist attributes. Default
+    // attrib.as.set=TRUE matches tags regardless of order (S4 slots
+    // live here). The previous "both present" check treated every
+    // pair of S4 objects as identical.
+    if attributes_identical(x, y, flags) == 0 {
+        return 0;
+    }
+
+    let t = TYPEOF(x);
+
+    // Use integer constants for match since SEXPTYPE::X.as_c_int() is not a pattern
+    if t == SEXPTYPE::NILSXP {
+        return 1;
+    } else if matches!(
+        SEXPTYPE(t),
+        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+    ) {
+        return i32::from(atomic_identical(x, y, SEXPTYPE(t), flags));
+    } else if t == SEXPTYPE::STRSXP {
+        // STRSXP: compare CHARSXP pointers element by element
+        let nx = LENGTH(x);
+        let ny = LENGTH(y);
+        if nx != ny {
+            return 0;
+        }
+        for i in 0..nx as i64 {
+            let sx = STRING_ELT(x, i);
+            let sy = STRING_ELT(y, i);
+            if !charsxp_identical(sx, sy) {
+                return 0;
+            }
+        }
+        return 1;
+    } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+        // VECSXP / EXPRSXP: recursive comparison of elements
+        let nx = LENGTH(x);
+        let ny = LENGTH(y);
+        if nx != ny {
+            return 0;
+        }
+        for i in 0..nx as i64 {
+            if R_compute_identical(VECTOR_ELT(x, i), VECTOR_ELT(y, i), flags) == 0 {
+                return 0;
+            }
+        }
+        return 1;
+    } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
+        // LISTSXP/LANGSXP: recursive on CAR, CDR, TAG.
+        // Normalize null CDR/TAG to R_NilValue so legacy null-terminated
+        // chains compare equal to GNU-style Nil-terminated ones.
+        let normalize =
+            |node: SEXP| -> SEXP { if node.is_null() { R_NilValue() } else { node } };
+        let mut lx = x;
+        let mut ly = y;
+        loop {
+            if R_compute_identical(CAR(lx), CAR(ly), flags) == 0 {
+                return 0;
+            }
+            if R_compute_identical(normalize(TAG(lx)), normalize(TAG(ly)), flags) == 0 {
+                return 0;
+            }
+            let nx = normalize(CDR(lx));
+            let ny = normalize(CDR(ly));
+            if nx == ny {
+                return 1;
+            }
+            if nx == R_NilValue() || ny == R_NilValue() {
+                return 0;
+            }
+            if TYPEOF(nx) != TYPEOF(ny) {
+                return 0;
+            }
+            if TYPEOF(nx) != SEXPTYPE::LISTSXP
+                && TYPEOF(nx) != SEXPTYPE::LANGSXP
+                && TYPEOF(nx) != SEXPTYPE::DOTSXP
+            {
+                return R_compute_identical(nx, ny, flags);
+            }
+            lx = nx;
+            ly = ny;
+        }
+    } else if t == SEXPTYPE::CLOSXP {
+        // GNU identical.c CLOSXP: formals, then body (expression without
+        // srcref when ignore.bytecode/ignore.srcref), then env pointer.
+        if R_compute_identical(FORMALS(x), FORMALS(y), flags) == 0 {
+            return 0;
+        }
+        let bodies = if flags & IDENT_USE_BYTECODE == 0 {
+            let left = body_expr_no_src(x, flags);
+            let _left = protect(left);
+            let right = body_expr_no_src(y, flags);
+            let _right = protect(right);
+            R_compute_identical(left, right, flags)
+        } else {
+            R_compute_identical(BODY(x), BODY(y), flags)
+        };
+        if bodies == 0 {
+            return 0;
+        }
+        if flags & IDENT_USE_CLOENV != 0 && CLOENV(x) != CLOENV(y) {
+            return 0;
+        }
+        return 1;
+    } else if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::SYMSXP {
+        // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
+        return 0;
+    } else if t == SEXPTYPE::PROMSXP {
+        let ex = crate::mainutils::coerce::substitute(
+            crate::sexp::accessors::PRCODE(x),
+            crate::sexp::accessors::PRENV(x),
+        );
+        let _ex = protect(ex);
+        let ey = crate::mainutils::coerce::substitute(
+            crate::sexp::accessors::PRCODE(y),
+            crate::sexp::accessors::PRENV(y),
+        );
+        let _ey = protect(ey);
+        return R_compute_identical(ex, ey, flags);
+    } else if t == SEXPTYPE::OBJSXP {
+        // OBJSXP: attributes already tested, so all slots identical
+        // (S4 and bare objects alike, e.g. .OBJSXP()-constructed ones).
+        return 1;
+    } else if t == SEXPTYPE::RAWSXP {
+        return i32::from(atomic_identical(x, y, SEXPTYPE::RAWSXP, flags));
+    } else if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
+        return if PRIMOFFSET(x) == PRIMOFFSET(y) { 1 } else { 0 };
+    } else if t == SEXPTYPE::EXTPTRSXP {
+        // GNU identical.c: default compares EXTPTR_PTR. extptr.as.ref
+        // compares the external-pointer objects themselves.
+        if flags & IDENT_EXTPTR_AS_REF != 0 {
+            return 0;
+        }
+        return if crate::mainutils::memory_main::R_ExternalPtrAddr(x)
+            == crate::mainutils::memory_main::R_ExternalPtrAddr(y)
+        {
+            1
+        } else {
+            0
+        };
+    }
+
+    // Default: pointer equality (already checked x != y)
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -726,8 +626,8 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
 /// Calls `R_compute_identical(s1, s2, 0)` with all default settings:
 /// numeric equality for numbers, single NA representation,
 /// attribute comparison as set.
-pub unsafe fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
-    unsafe { R_compute_identical(s1, s2, 0) }
+pub fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
+    R_compute_identical(s1, s2, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -738,104 +638,94 @@ pub unsafe fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
 ///
 /// Arguments: x, y, num.eq, single.NA, attrib.as.set,
 ///            ignore.bytecode, ignore.environment, ignore.srcref, extptr.as.ref
-pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::Rf_ScalarLogical;
-        use crate::sexp::globals::R_NilValue;
+pub fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    use crate::sexp::constructors::Rf_ScalarLogical;
+    use crate::sexp::globals::R_NilValue;
 
-        let x = CAR(args);
-        let rest = CDR(args);
-        let y = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
+    let x = CAR(args);
+    let rest = CDR(args);
+    let y = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(rest)
+    };
+
+    // Parse the flag arguments
+    let mut flags: c_int = 0;
+    let mut opt = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        CDR(rest)
+    };
+
+    let mut next_arg = || {
+        if opt.is_null() || opt == R_NilValue() {
+            None
         } else {
-            CAR(rest)
-        };
-
-        // Parse the flag arguments
-        let mut flags: c_int = 0;
-        let mut opt = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
-        } else {
-            CDR(rest)
-        };
-
-        let mut next_arg = || {
-            if opt.is_null() || opt == R_NilValue() {
-                None
-            } else {
-                let value = CAR(opt);
-                opt = CDR(opt);
-                Some(value)
-            }
-        };
-
-        let logical_false = |value: SEXP| -> bool {
-            !value.is_null() && TYPEOF(value) == SEXPTYPE::LGLSXP && {
-                let ptr = LOGICAL(value);
-                !ptr.is_null() && *ptr == 0
-            }
-        };
-
-        let logical_true = |value: SEXP| -> bool {
-            !value.is_null() && TYPEOF(value) == SEXPTYPE::LGLSXP && {
-                let ptr = LOGICAL(value);
-                !ptr.is_null() && *ptr != 0
-            }
-        };
-
-        // num.eq: default TRUE. If num.eq=FALSE, set IDENT_NUM_AS_BITS
-        if let Some(v) = next_arg() {
-            if logical_false(v) {
-                flags |= IDENT_NUM_AS_BITS;
-            }
+            let value = CAR(opt);
+            opt = CDR(opt);
+            Some(value)
         }
+    };
 
-        // single.NA: default TRUE. If single.NA=FALSE, set IDENT_NA_AS_BITS
-        if let Some(v) = next_arg() {
-            if logical_false(v) {
-                flags |= IDENT_NA_AS_BITS;
-            }
+    let logical_value = |value: SEXP| {
+        (TYPEOF(value) == SEXPTYPE::LGLSXP && LENGTH(value) > 0).then(|| LOGICAL_ELT(value, 0))
+    };
+    let logical_false = |value| logical_value(value) == Some(0);
+    let logical_true = |value| logical_value(value).is_some_and(|v| v != 0);
+
+    // num.eq: default TRUE. If num.eq=FALSE, set IDENT_NUM_AS_BITS
+    if let Some(v) = next_arg() {
+        if logical_false(v) {
+            flags |= IDENT_NUM_AS_BITS;
         }
-
-        // attrib.as.set: default TRUE. If FALSE, set IDENT_ATTR_BY_ORDER
-        if let Some(v) = next_arg() {
-            if logical_false(v) {
-                flags |= IDENT_ATTR_BY_ORDER;
-            }
-        }
-
-        // GNU: use_bytecode = !ignore.bytecode (default ignore = TRUE).
-        if let Some(v) = next_arg() {
-            if logical_false(v) {
-                flags |= IDENT_USE_BYTECODE;
-            }
-        }
-
-        // GNU: use_cloenv = !ignore.environment (default ignore = FALSE).
-        flags |= IDENT_USE_CLOENV;
-        if let Some(v) = next_arg() {
-            if logical_true(v) {
-                flags &= !IDENT_USE_CLOENV;
-            }
-        }
-
-        // GNU: use_srcref = !ignore.srcref (default ignore = TRUE).
-        if let Some(v) = next_arg() {
-            if logical_false(v) {
-                flags |= IDENT_USE_SRCREF;
-            }
-        }
-
-        // extptr.as.ref: default FALSE
-        if let Some(v) = next_arg() {
-            if logical_true(v) {
-                flags |= IDENT_EXTPTR_AS_REF;
-            }
-        }
-
-        let result = R_compute_identical(x, y, flags);
-        Rf_ScalarLogical(result)
     }
+
+    // single.NA: default TRUE. If single.NA=FALSE, set IDENT_NA_AS_BITS
+    if let Some(v) = next_arg() {
+        if logical_false(v) {
+            flags |= IDENT_NA_AS_BITS;
+        }
+    }
+
+    // attrib.as.set: default TRUE. If FALSE, set IDENT_ATTR_BY_ORDER
+    if let Some(v) = next_arg() {
+        if logical_false(v) {
+            flags |= IDENT_ATTR_BY_ORDER;
+        }
+    }
+
+    // GNU: use_bytecode = !ignore.bytecode (default ignore = TRUE).
+    if let Some(v) = next_arg() {
+        if logical_false(v) {
+            flags |= IDENT_USE_BYTECODE;
+        }
+    }
+
+    // GNU: use_cloenv = !ignore.environment (default ignore = FALSE).
+    flags |= IDENT_USE_CLOENV;
+    if let Some(v) = next_arg() {
+        if logical_true(v) {
+            flags &= !IDENT_USE_CLOENV;
+        }
+    }
+
+    // GNU: use_srcref = !ignore.srcref (default ignore = TRUE).
+    if let Some(v) = next_arg() {
+        if logical_false(v) {
+            flags |= IDENT_USE_SRCREF;
+        }
+    }
+
+    // extptr.as.ref: default FALSE
+    if let Some(v) = next_arg() {
+        if logical_true(v) {
+            flags |= IDENT_EXTPTR_AS_REF;
+        }
+    }
+
+    let result = R_compute_identical(x, y, flags);
+    Rf_ScalarLogical(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -942,18 +832,14 @@ mod tests {
 
     #[test]
     fn test_compute_identical_null() {
-        unsafe {
-            // Both null => identical
-            assert_eq!(R_compute_identical(ptr::null_mut(), ptr::null_mut(), 0), 1);
-        }
+        // Both null => identical
+        assert_eq!(R_compute_identical(ptr::null_mut(), ptr::null_mut(), 0), 1);
     }
 
     #[test]
     fn test_compute_identical_same_pointer() {
-        unsafe {
-            let nil = R_NilValue();
-            assert_eq!(R_compute_identical(nil, nil, 0), 1);
-        }
+        let nil = R_NilValue();
+        assert_eq!(R_compute_identical(nil, nil, 0), 1);
     }
 
     #[test]
@@ -967,7 +853,7 @@ mod tests {
             .build_in(&mut second)
             .unwrap();
         // Different types => not identical
-        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
     }
 
     #[test]
@@ -980,7 +866,7 @@ mod tests {
         let y = crate::sexp::builder::IntVector::new(&[42, 99])
             .build_in(&mut second)
             .unwrap();
-        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
     }
 
     #[test]
@@ -994,7 +880,7 @@ mod tests {
             .build_in(&mut second)
             .unwrap();
         // Each owning value retains the actual initialized allocation.
-        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 1);
     }
 
     #[test]
@@ -1008,7 +894,7 @@ mod tests {
             .build_in(&mut second)
             .unwrap();
         // Each owning value retains the actual initialized allocation.
-        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 0);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
     }
 
     #[test]
@@ -1022,7 +908,7 @@ mod tests {
             .build_in(&mut second)
             .unwrap();
         // Each owning value retains the actual initialized allocation.
-        assert_eq!(unsafe { R_compute_identical(x.as_raw(), y.as_raw(), 0) }, 1);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 1);
     }
 
     #[test]
@@ -1031,15 +917,13 @@ mod tests {
         let x = arena.alloc_node(SEXPTYPE::SPECIALSXP);
         let y = arena.alloc_node(SEXPTYPE::SPECIALSXP);
         let z = arena.alloc_node(SEXPTYPE::SPECIALSXP);
-        unsafe {
-            crate::sexp::accessors::SET_PRIMOFFSET(x, 42);
-            crate::sexp::accessors::SET_PRIMOFFSET(y, 42);
-            crate::sexp::accessors::SET_PRIMOFFSET(z, 99);
+        crate::sexp::accessors::SET_PRIMOFFSET(x, 42);
+        crate::sexp::accessors::SET_PRIMOFFSET(y, 42);
+        crate::sexp::accessors::SET_PRIMOFFSET(z, 99);
 
-            // Same offset => identical
-            assert_eq!(R_compute_identical(x, y, 0), 1);
-            assert_eq!(R_compute_identical(x, z, 0), 0);
-        }
+        // Same offset => identical
+        assert_eq!(R_compute_identical(x, y, 0), 1);
+        assert_eq!(R_compute_identical(x, z, 0), 0);
     }
 
     #[test]
@@ -1048,11 +932,9 @@ mod tests {
         let x = crate::sexp::builder::IntVector::new(&[])
             .build_in(&mut arena)
             .unwrap();
-        unsafe {
-            let nil = R_NilValue();
-            assert_eq!(R_compute_identical(nil, x.as_raw(), 0), 0);
-            assert_eq!(R_compute_identical(x.as_raw(), nil, 0), 0);
-        }
+        let nil = R_NilValue();
+        assert_eq!(R_compute_identical(nil, x.as_raw(), 0), 0);
+        assert_eq!(R_compute_identical(x.as_raw(), nil, 0), 0);
     }
 
     #[test]
@@ -1065,10 +947,8 @@ mod tests {
         let y = crate::sexp::builder::IntVector::new(&[])
             .build_in(&mut second)
             .unwrap();
-        unsafe {
-            crate::sexp::accessors::SET_OBJECT(y.as_raw(), 1);
-            assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
-        }
+        crate::sexp::accessors::SET_OBJECT(y.as_raw(), 1);
+        assert_eq!(R_compute_identical(x.as_raw(), y.as_raw(), 0), 0);
     }
 
     #[test]
@@ -1088,10 +968,28 @@ mod tests {
 
     #[test]
     fn test_R_identical() {
-        unsafe {
+        let nil = R_NilValue();
+        assert_eq!(R_identical(nil, nil), 1);
+        assert_eq!(R_identical(ptr::null_mut(), ptr::null_mut()), 1);
+    }
+
+    #[test]
+    fn test_identical_external_pointer_address_versus_reference() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
             let nil = R_NilValue();
-            assert_eq!(R_identical(nil, nil), 1);
-            assert_eq!(R_identical(ptr::null_mut(), ptr::null_mut()), 1);
-        }
+            let address = std::ptr::dangling_mut::<u64>().cast();
+            // SAFETY: the opaque address is never dereferenced; both nodes
+            // stay protected for the duration of the comparisons.
+            let a = unsafe { crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil) };
+            let _a = protect(a);
+            let b = unsafe { crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil) };
+            let _b = protect(b);
+            assert_eq!(R_compute_identical(a, b, 0), 1);
+            assert_eq!(R_compute_identical(a, b, IDENT_EXTPTR_AS_REF), 0);
+            assert_eq!(R_compute_identical(a, a, IDENT_EXTPTR_AS_REF), 1);
+            crate::mainutils::memory_main::R_ClearExternalPtr(b);
+            assert_eq!(R_compute_identical(a, b, 0), 0);
+        });
     }
 }

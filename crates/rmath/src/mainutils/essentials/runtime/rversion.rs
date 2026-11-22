@@ -269,33 +269,31 @@ fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
 
 /// R's `body(fn)` — get the body of a function.
 pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let fn_arg = CAR(args);
-        if fn_arg.is_null()
-            || fn_arg == R_NilValue()
-            || (TYPEOF(fn_arg) != SEXPTYPE::CLOSXP
-                && TYPEOF(fn_arg) != SEXPTYPE::BUILTINSXP
-                && TYPEOF(fn_arg) != SEXPTYPE::SPECIALSXP)
-        {
-            crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function");
-            return R_NilValue();
-        }
-        if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
-            return R_NilValue();
-        }
-        let body = crate::sexp::accessors::BODY(fn_arg);
-        if body.is_null() {
-            R_NilValue()
-        } else if TYPEOF(body) == SEXPTYPE::BCODESXP {
-            let source = crate::eval::bc_eval::BCODE_EXPR(body);
-            if source.is_null() || source == R_NilValue() {
-                body
-            } else {
-                source
-            }
-        } else {
+    let fn_arg = CAR(args);
+    if fn_arg.is_null()
+        || fn_arg == R_NilValue()
+        || (TYPEOF(fn_arg) != SEXPTYPE::CLOSXP
+            && TYPEOF(fn_arg) != SEXPTYPE::BUILTINSXP
+            && TYPEOF(fn_arg) != SEXPTYPE::SPECIALSXP)
+    {
+        crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function");
+        return R_NilValue();
+    }
+    if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {
+        return R_NilValue();
+    }
+    let body = crate::sexp::accessors::BODY(fn_arg);
+    if body.is_null() {
+        R_NilValue()
+    } else if TYPEOF(body) == SEXPTYPE::BCODESXP {
+        let source = crate::eval::bc_eval::BCODE_EXPR(body);
+        if source.is_null() || source == R_NilValue() {
             body
+        } else {
+            source
         }
+    } else {
+        body
     }
 }
 

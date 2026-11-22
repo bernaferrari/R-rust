@@ -964,13 +964,17 @@ pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
 /// Get the address stored in an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrAddr()`.
-pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
-    unsafe {
-        if s.is_null() {
-            return ptr::null_mut();
-        }
-        (*s).data.extptr().address
+/// The returned address is opaque; this accessor does not dereference it.
+pub fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
+    if s.is_null() {
+        return ptr::null_mut();
     }
+    let (_, _, header) =
+        crate::sexp::memory::checked_header(s).unwrap_or_else(|| error("unowned external pointer"));
+    let crate::sexp::ffi::NodeBody::ExtPtr(body) = header.data else {
+        error("expected external pointer");
+    };
+    body.address
 }
 
 /// Get the tag of an external pointer.

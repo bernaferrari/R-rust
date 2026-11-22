@@ -240,26 +240,24 @@ pub fn do_growconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `.Internal(putconst(constBuf, constCount, x))`.
 pub fn do_putconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let const_buf = CAR(args);
-        if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
-            compiler_error("constant buffer must be a generic vector");
-        }
-        let const_count = crate::main::coerce::asInteger(CAR(CDR(args)));
-        let n = crate::sexp::accessors::XLENGTH(const_buf);
-        if const_count < 0 || const_count as i64 >= n {
-            compiler_error("bad constCount value");
-        }
-        let x = CAR(CDR(CDR(args)));
-        for i in 0..const_count {
-            let y = crate::sexp::accessors::VECTOR_ELT(const_buf, i as i64);
-            if x == y || crate::mainutils::identical::R_compute_identical(x, y, 16) != 0 {
-                return Rf_ScalarInteger(i);
-            }
-        }
-        crate::sexp::accessors::SET_VECTOR_ELT(const_buf, const_count as i64, x);
-        Rf_ScalarInteger(const_count)
+    let const_buf = CAR(args);
+    if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
+        compiler_error("constant buffer must be a generic vector");
     }
+    let const_count = crate::main::coerce::asInteger(CAR(CDR(args)));
+    let n = crate::sexp::accessors::XLENGTH(const_buf);
+    if const_count < 0 || const_count as i64 >= n {
+        compiler_error("bad constCount value");
+    }
+    let x = CAR(CDR(CDR(args)));
+    for i in 0..const_count {
+        let y = crate::sexp::accessors::VECTOR_ELT(const_buf, i as i64);
+        if x == y || crate::mainutils::identical::R_compute_identical(x, y, 16) != 0 {
+            return Rf_ScalarInteger(i);
+        }
+    }
+    crate::sexp::accessors::SET_VECTOR_ELT(const_buf, const_count as i64, x);
+    Rf_ScalarInteger(const_count)
 }
 
 /// GNU `.Internal(getconst(constBuf, n))`: the first `n` pool entries.

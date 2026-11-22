@@ -712,6 +712,24 @@ fn read_raw_value<T>(
     result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
 }
 
+/// Retain an atomic vector's typed storage without exposing a native pointer.
+/// Like a data-pointer read, this materializes an ALTREP when necessary.
+pub(crate) fn atomic_payload_for_comparison(
+    pointer: SEXP,
+    kind: SEXPTYPE,
+    length: usize,
+) -> super::payload::PayloadLease {
+    read_raw_value(pointer, |value| {
+        value.materialize_compact_payload_for_raw()?;
+        let header = value.header();
+        header
+            .payload_lease()
+            .filter(|lease| header.type_of() == kind && length <= lease.capacity())
+            .cloned()
+            .ok_or(super::object::SexpError::MissingData { sexptype: kind })
+    })
+}
+
 /// Project the actual retained payload for translated native operations.
 /// # Safety
 /// Retain the original parent and exclude conflicting payload loans, mutation

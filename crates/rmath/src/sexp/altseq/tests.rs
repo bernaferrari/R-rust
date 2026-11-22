@@ -180,6 +180,12 @@ fn compact_raw_payload_rejects_negative_header_length() {
 #[test]
 fn compact_comparisons_read_values_without_expansion_under_budget() {
     let session = RSession::new_for_gc_tests();
+    // Full startup pre-interns class and names; keep the budget focused on
+    // vector payloads.
+    session.with_active(|| {
+        crate::sexp::attrib_core::R_ClassSymbol();
+        crate::sexp::attrib_core::R_NamesSymbol();
+    });
     for real in [false, true] {
         let (left, right, args) = session.with_active(|| unsafe {
             let make = || {

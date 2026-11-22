@@ -7,13 +7,12 @@
 //! package is sourced at startup, keep the common numeric comparison here so
 //! callers get tolerance-aware comparison rather than an `identical()` alias.
 
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
+use std::ffi::CString;
 
 use crate::mainutils::identical::{R_IsNA, R_compute_identical};
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL_ELT,
-    STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, CAR, CDR, COMPLEX_ELT, INTEGER_ELT, LENGTH, LOGICAL_ELT, PRINTNAME, RAW_ELT,
+    REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, char_cstr_bytes_opt,
 };
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
@@ -30,73 +29,69 @@ struct AllEqualArgs {
 }
 
 /// Evaluated builtin backing the public `all.equal()` binding.
-pub unsafe fn do_all_equal(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let Some(matched) = match_args(args) else {
-            return mismatch("all.equal requires target and current");
-        };
+pub fn do_all_equal(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let Some(matched) = match_args(args) else {
+        return mismatch("all.equal requires target and current");
+    };
 
-        match compare(
-            matched.target,
-            matched.current,
-            matched.tolerance,
-            matched.scale,
-            matched.check_attributes,
-            0,
-        ) {
-            Ok(()) => crate::sexp::globals::R_True(),
-            Err(message) => mismatch(&message),
-        }
+    match compare(
+        matched.target,
+        matched.current,
+        matched.tolerance,
+        matched.scale,
+        matched.check_attributes,
+        0,
+    ) {
+        Ok(()) => crate::sexp::globals::R_True(),
+        Err(message) => mismatch(&message),
     }
 }
 
-unsafe fn match_args(args: SEXP) -> Option<AllEqualArgs> {
-    unsafe {
-        let mut target = None;
-        let mut current = None;
-        let mut tolerance = DEFAULT_TOLERANCE;
-        let mut scale = None;
-        let mut check_attributes = true;
-        let mut positional = 0usize;
-        let mut cell = args;
+fn match_args(args: SEXP) -> Option<AllEqualArgs> {
+    let mut target = None;
+    let mut current = None;
+    let mut tolerance = DEFAULT_TOLERANCE;
+    let mut scale = None;
+    let mut check_attributes = true;
+    let mut positional = 0usize;
+    let mut cell = args;
 
-        while !is_nil(cell) {
-            let value = CAR(cell);
-            match tag_name(TAG(cell)).as_deref() {
-                Some("target") => target = Some(value),
-                Some("current") => current = Some(value),
-                Some("tolerance") | Some("tol") => {
-                    if let Some(value) = scalar_number(value) {
-                        tolerance = value.abs();
-                    }
-                }
-                Some("scale") => scale = scalar_number(value).map(f64::abs),
-                Some("check.attributes") | Some("check.attr") => {
-                    check_attributes = scalar_logical(value).unwrap_or(true)
-                }
-                _ => {
-                    if positional == 0 && target.is_none() {
-                        target = Some(value);
-                    } else if positional <= 1 && current.is_none() {
-                        current = Some(value);
-                    }
-                    positional += 1;
+    while !is_nil(cell) {
+        let value = CAR(cell);
+        match tag_name(TAG(cell)).as_deref() {
+            Some("target") => target = Some(value),
+            Some("current") => current = Some(value),
+            Some("tolerance") | Some("tol") => {
+                if let Some(value) = scalar_number(value) {
+                    tolerance = value.abs();
                 }
             }
-            cell = CDR(cell);
+            Some("scale") => scale = scalar_number(value).map(f64::abs),
+            Some("check.attributes") | Some("check.attr") => {
+                check_attributes = scalar_logical(value).unwrap_or(true)
+            }
+            _ => {
+                if positional == 0 && target.is_none() {
+                    target = Some(value);
+                } else if positional <= 1 && current.is_none() {
+                    current = Some(value);
+                }
+                positional += 1;
+            }
         }
-
-        Some(AllEqualArgs {
-            target: target?,
-            current: current?,
-            tolerance,
-            scale,
-            check_attributes,
-        })
+        cell = CDR(cell);
     }
+
+    Some(AllEqualArgs {
+        target: target?,
+        current: current?,
+        tolerance,
+        scale,
+        check_attributes,
+    })
 }
 
-unsafe fn compare(
+fn compare(
     target: SEXP,
     current: SEXP,
     tolerance: f64,
@@ -104,125 +99,123 @@ unsafe fn compare(
     check_attributes: bool,
     depth: usize,
 ) -> Result<(), String> {
-    unsafe {
-        if target == current {
-            return Ok(());
-        }
-        if depth >= MAX_COMPARE_DEPTH {
-            return Err("objects are nested too deeply".into());
-        }
-        if is_nil(target) || is_nil(current) {
-            return Err("target and current differ in nullness".into());
-        }
+    if target == current {
+        return Ok(());
+    }
+    if depth >= MAX_COMPARE_DEPTH {
+        return Err("objects are nested too deeply".into());
+    }
+    if is_nil(target) || is_nil(current) {
+        return Err("target and current differ in nullness".into());
+    }
 
-        // GNU all.equal.default: is.language → all.equal.language (deparse
-        // only). S4 formula subclasses are LANGSXP with class "mForm", not
-        // "formula", so the class check alone misses them.
-        if TYPEOF(target) == SEXPTYPE::LANGSXP || TYPEOF(current) == SEXPTYPE::LANGSXP {
-            if crate::mainutils::essentials::sexp_has_class(target, "formula")
-                || crate::mainutils::essentials::sexp_has_class(current, "formula")
-            {
-                return compare_formula(target, current);
-            }
-            return compare_language(target, current);
-        }
+    // GNU all.equal.default: is.language → all.equal.language (deparse
+    // only). S4 formula subclasses are LANGSXP with class "mForm", not
+    // "formula", so the class check alone misses them.
+    if TYPEOF(target) == SEXPTYPE::LANGSXP || TYPEOF(current) == SEXPTYPE::LANGSXP {
         if crate::mainutils::essentials::sexp_has_class(target, "formula")
             || crate::mainutils::essentials::sexp_has_class(current, "formula")
         {
             return compare_formula(target, current);
         }
-        if crate::mainutils::essentials::sexp_has_class(target, "condition")
-            && crate::mainutils::essentials::sexp_has_class(current, "condition")
-        {
-            return compare_condition(target, current);
-        }
+        return compare_language(target, current);
+    }
+    if crate::mainutils::essentials::sexp_has_class(target, "formula")
+        || crate::mainutils::essentials::sexp_has_class(current, "formula")
+    {
+        return compare_formula(target, current);
+    }
+    if crate::mainutils::essentials::sexp_has_class(target, "condition")
+        && crate::mainutils::essentials::sexp_has_class(current, "condition")
+    {
+        return compare_condition(target, current);
+    }
 
-        if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
-            || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")
-        {
-            let t = crate::mainutils::essentials::do_as_POSIXct(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                crate::sexp::constructors::Rf_cons(target, R_NilValue()),
-                std::ptr::null_mut(),
-            );
-            let _t = crate::sexp::protect::protect(t);
-            let c = crate::mainutils::essentials::do_as_POSIXct(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                crate::sexp::constructors::Rf_cons(current, R_NilValue()),
-                std::ptr::null_mut(),
-            );
-            let _c = crate::sexp::protect::protect(c);
-            return compare_numeric(t, c, tolerance, scale);
-        }
-        if LENGTH(target) != LENGTH(current) {
-            return Err(format!(
-                "Lengths ({}, {}) differ",
-                LENGTH(target),
-                LENGTH(current)
-            ));
-        }
+    if crate::mainutils::essentials::sexp_has_class(target, "POSIXt")
+        || crate::mainutils::essentials::sexp_has_class(current, "POSIXt")
+    {
+        let t = crate::mainutils::essentials::do_as_POSIXct(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            crate::sexp::constructors::Rf_cons(target, R_NilValue()),
+            std::ptr::null_mut(),
+        );
+        let _t = crate::sexp::protect::protect(t);
+        let c = crate::mainutils::essentials::do_as_POSIXct(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            crate::sexp::constructors::Rf_cons(current, R_NilValue()),
+            std::ptr::null_mut(),
+        );
+        let _c = crate::sexp::protect::protect(c);
+        return compare_numeric(t, c, tolerance, scale);
+    }
+    if LENGTH(target) != LENGTH(current) {
+        return Err(format!(
+            "Lengths ({}, {}) differ",
+            LENGTH(target),
+            LENGTH(current)
+        ));
+    }
 
-        if check_attributes {
-            compare_attributes(target, current, tolerance, depth + 1)?;
-        }
+    if check_attributes {
+        compare_attributes(target, current, tolerance, depth + 1)?;
+    }
 
-        let target_type = TYPEOF(target);
-        let current_type = TYPEOF(current);
-        if is_numeric_type(target_type) && is_numeric_type(current_type) {
-            return compare_numeric(target, current, tolerance, scale);
-        }
-        if target_type == SEXPTYPE::CLOSXP || current_type == SEXPTYPE::CLOSXP {
-            return compare_language(target, current);
-        }
-        if target_type != current_type {
-            return Err(format!(
-                "Modes differ: target is {}, current is {}",
-                type_name(target_type),
-                type_name(current_type)
-            ));
-        }
+    let target_type = TYPEOF(target);
+    let current_type = TYPEOF(current);
+    if is_numeric_type(target_type) && is_numeric_type(current_type) {
+        return compare_numeric(target, current, tolerance, scale);
+    }
+    if target_type == SEXPTYPE::CLOSXP || current_type == SEXPTYPE::CLOSXP {
+        return compare_language(target, current);
+    }
+    if target_type != current_type {
+        return Err(format!(
+            "Modes differ: target is {}, current is {}",
+            type_name(target_type),
+            type_name(current_type)
+        ));
+    }
 
-        if target_type == SEXPTYPE::STRSXP {
-            for index in 0..LENGTH(target) as usize {
-                if !strings_equal(
-                    STRING_ELT(target, index as i64),
-                    STRING_ELT(current, index as i64),
-                ) {
-                    return Err(format!("{} string mismatch", index + 1));
-                }
+    if target_type == SEXPTYPE::STRSXP {
+        for index in 0..LENGTH(target) as usize {
+            if !strings_equal(
+                STRING_ELT(target, index as i64),
+                STRING_ELT(current, index as i64),
+            ) {
+                return Err(format!("{} string mismatch", index + 1));
             }
-            return Ok(());
         }
-        if target_type == SEXPTYPE::RAWSXP {
-            for index in 0..LENGTH(target) as usize {
-                if *RAW(target).add(index) != *RAW(current).add(index) {
-                    return Err(format!("{} raw mismatch", index + 1));
-                }
+        return Ok(());
+    }
+    if target_type == SEXPTYPE::RAWSXP {
+        for index in 0..LENGTH(target) {
+            if RAW_ELT(target, index) != RAW_ELT(current, index) {
+                return Err(format!("{} raw mismatch", index + 1));
             }
-            return Ok(());
         }
-        if target_type == SEXPTYPE::VECSXP || target_type == SEXPTYPE::EXPRSXP {
-            for index in 0..LENGTH(target) as usize {
-                compare(
-                    VECTOR_ELT(target, index as i64),
-                    VECTOR_ELT(current, index as i64),
-                    tolerance,
-                    None,
-                    check_attributes,
-                    depth + 1,
-                )
-                .map_err(|message| format!("Component {}: {message}", index + 1))?;
-            }
-            return Ok(());
+        return Ok(());
+    }
+    if target_type == SEXPTYPE::VECSXP || target_type == SEXPTYPE::EXPRSXP {
+        for index in 0..LENGTH(target) as usize {
+            compare(
+                VECTOR_ELT(target, index as i64),
+                VECTOR_ELT(current, index as i64),
+                tolerance,
+                None,
+                check_attributes,
+                depth + 1,
+            )
+            .map_err(|message| format!("Component {}: {message}", index + 1))?;
         }
+        return Ok(());
+    }
 
-        if R_compute_identical(target, current, 0) != 0 {
-            Ok(())
-        } else {
-            Err("target and current differ".into())
-        }
+    if R_compute_identical(target, current, 0) != 0 {
+        Ok(())
+    } else {
+        Err("target and current differ".into())
     }
 }
 
@@ -331,100 +324,98 @@ fn deparse_joined(x: SEXP) -> String {
     text
 }
 
-unsafe fn compare_attributes(
+fn compare_attributes(
     target: SEXP,
     current: SEXP,
     tolerance: f64,
     depth: usize,
 ) -> Result<(), String> {
-    unsafe {
-        let target_attrs = attributes(ATTRIB(target));
-        let current_attrs = attributes(ATTRIB(current));
-        if target_attrs.len() != current_attrs.len() {
-            return Err(format!(
-                "Attributes: target has {}, current has {}",
-                target_attrs.len(),
-                current_attrs.len()
-            ));
-        }
-        for (name, target_value) in target_attrs {
-            let Some((_, current_value)) = current_attrs.iter().find(|(other, _)| *other == name)
-            else {
-                return Err(format!("Attributes: current is missing {name}"));
-            };
-            compare(
-                target_value,
-                *current_value,
-                tolerance,
-                None,
-                true,
-                depth + 1,
-            )
-            .map_err(|message| format!("Attributes: <{name}>: {message}"))?;
-        }
-        Ok(())
+    let target_attrs = attributes(ATTRIB(target));
+    let current_attrs = attributes(ATTRIB(current));
+    if target_attrs.len() != current_attrs.len() {
+        return Err(format!(
+            "Attributes: target has {}, current has {}",
+            target_attrs.len(),
+            current_attrs.len()
+        ));
     }
+    for (name, target_value) in target_attrs {
+        let Some((_, current_value)) = current_attrs.iter().find(|(other, _)| *other == name)
+        else {
+            return Err(format!("Attributes: current is missing {name}"));
+        };
+        compare(
+            target_value,
+            *current_value,
+            tolerance,
+            None,
+            true,
+            depth + 1,
+        )
+        .map_err(|message| format!("Attributes: <{name}>: {message}"))?;
+    }
+    Ok(())
 }
 
-unsafe fn attributes(mut attrs: SEXP) -> Vec<(String, SEXP)> {
-    unsafe {
-        let mut result = Vec::new();
-        while !is_nil(attrs) {
-            let name = tag_name(TAG(attrs)).unwrap_or_else(|| "<unnamed>".into());
-            result.push((name, CAR(attrs)));
-            attrs = CDR(attrs);
-        }
-        result
+fn attributes(mut attrs: SEXP) -> Vec<(String, SEXP)> {
+    let mut result = Vec::new();
+    while !is_nil(attrs) {
+        let name = tag_name(TAG(attrs)).unwrap_or_else(|| "<unnamed>".into());
+        result.push((name, CAR(attrs)));
+        attrs = CDR(attrs);
     }
+    result
 }
 
-unsafe fn compare_numeric(
+fn compare_numeric(
     target: SEXP,
     current: SEXP,
     tolerance: f64,
     explicit_scale: Option<f64>,
 ) -> Result<(), String> {
-    unsafe {
-        let len = LENGTH(target) as usize;
-        let mut absolute_error = 0.0;
-        let mut target_magnitude = 0.0;
-        let mut compared = 0usize;
+    let len = LENGTH(target);
+    let current_len = LENGTH(current);
+    if len != current_len {
+        return Err(format!("Lengths ({len}, {current_len}) differ"));
+    }
+    let mut absolute_error = 0.0;
+    let mut target_magnitude = 0.0;
+    let mut compared = 0usize;
 
-        for index in 0..len {
-            let left = numeric_components(target, index);
-            let right = numeric_components(current, index);
-            match (left, right) {
-                (Numeric::Missing, Numeric::Missing) | (Numeric::Nan, Numeric::Nan) => continue,
-                (Numeric::Finite(lr, li), Numeric::Finite(rr, ri)) => {
-                    if lr == rr && li == ri {
-                        continue;
-                    }
-                    if !lr.is_finite() || !li.is_finite() || !rr.is_finite() || !ri.is_finite() {
-                        return Err(format!("{} non-finite value mismatch", index + 1));
-                    }
-                    absolute_error += (lr - rr).hypot(li - ri);
-                    target_magnitude += lr.hypot(li);
-                    compared += 1;
+    for index in 0..len {
+        let left = numeric_components(target, index);
+        let right = numeric_components(current, index);
+        match (left, right) {
+            (Numeric::Missing, Numeric::Missing) | (Numeric::Nan, Numeric::Nan) => continue,
+            (Numeric::Finite(lr, li), Numeric::Finite(rr, ri)) => {
+                if lr == rr && li == ri {
+                    continue;
                 }
-                _ => return Err(format!("{} value has different missingness", index + 1)),
+                if !lr.is_finite() || !li.is_finite() || !rr.is_finite() || !ri.is_finite() {
+                    return Err(format!("{} non-finite value mismatch", index + 1));
+                }
+                absolute_error += (lr - rr).hypot(li - ri);
+                target_magnitude += lr.hypot(li);
+                compared += 1;
             }
+            _ => return Err(format!("{} value has different missingness", index + 1)),
         }
-        if compared == 0 {
-            return Ok(());
-        }
+    }
+    if compared == 0 {
+        return Ok(());
+    }
 
-        let mean_error = absolute_error / compared as f64;
-        let scale = explicit_scale.unwrap_or(target_magnitude / compared as f64);
-        let (error, kind) = if scale.is_finite() && scale > tolerance {
-            (mean_error / scale, "relative")
-        } else {
-            (mean_error, "absolute")
-        };
-        if error <= tolerance {
-            Ok(())
-        } else {
-            Err(format!("Mean {kind} difference: {error}"))
-        }
+    let mean_error = absolute_error / compared as f64;
+    let scale = explicit_scale.unwrap_or(target_magnitude / compared as f64);
+    let (error, kind) = if scale.is_finite() && scale > tolerance {
+        (mean_error / scale, "relative")
+    } else {
+        (mean_error, "absolute")
+    };
+    if error <= tolerance {
+        Ok(())
+    } else {
+        Err(format!("Mean {kind} difference: {error}"))
     }
 }
 
@@ -434,39 +425,37 @@ enum Numeric {
     Finite(f64, f64),
 }
 
-unsafe fn numeric_components(value: SEXP, index: usize) -> Numeric {
-    unsafe {
-        let (real, imaginary) = match TYPEOF(value) {
-            t if t == SEXPTYPE::LGLSXP => {
-                let value = *LOGICAL(value).add(index);
-                if value == NA_INTEGER {
-                    return Numeric::Missing;
-                }
-                (value as f64, 0.0)
+fn numeric_components(value: SEXP, index: i32) -> Numeric {
+    let (real, imaginary) = match TYPEOF(value) {
+        t if t == SEXPTYPE::LGLSXP => {
+            let value = LOGICAL_ELT(value, index);
+            if value == NA_INTEGER {
+                return Numeric::Missing;
             }
-            t if t == SEXPTYPE::INTSXP => {
-                // Element access computes compact values without requesting
-                // a full buffer (and works for ordinary vectors as well).
-                let value = INTEGER_ELT(value, index as c_int);
-                if value == NA_INTEGER {
-                    return Numeric::Missing;
-                }
-                (value as f64, 0.0)
-            }
-            t if t == SEXPTYPE::REALSXP => (REAL_ELT(value, index as c_int), 0.0),
-            t if t == SEXPTYPE::CPLXSXP => {
-                let value = *COMPLEX(value).add(index);
-                (value.r, value.i)
-            }
-            _ => unreachable!("numeric_components requires a numeric SEXP"),
-        };
-        if R_IsNA(real) || R_IsNA(imaginary) {
-            Numeric::Missing
-        } else if real.is_nan() || imaginary.is_nan() {
-            Numeric::Nan
-        } else {
-            Numeric::Finite(real, imaginary)
+            (value as f64, 0.0)
         }
+        t if t == SEXPTYPE::INTSXP => {
+            // Element access computes compact values without requesting
+            // a full buffer (and works for ordinary vectors as well).
+            let value = INTEGER_ELT(value, index);
+            if value == NA_INTEGER {
+                return Numeric::Missing;
+            }
+            (value as f64, 0.0)
+        }
+        t if t == SEXPTYPE::REALSXP => (REAL_ELT(value, index), 0.0),
+        t if t == SEXPTYPE::CPLXSXP => {
+            let value = COMPLEX_ELT(value, index);
+            (value.r, value.i)
+        }
+        _ => unreachable!("numeric_components requires a numeric SEXP"),
+    };
+    if R_IsNA(real) || R_IsNA(imaginary) {
+        Numeric::Missing
+    } else if real.is_nan() || imaginary.is_nan() {
+        Numeric::Nan
+    } else {
+        Numeric::Finite(real, imaginary)
     }
 }
 
@@ -477,20 +466,18 @@ fn is_numeric_type(value: i32) -> bool {
         || value == SEXPTYPE::CPLXSXP
 }
 
-unsafe fn scalar_number(value: SEXP) -> Option<f64> {
-    unsafe {
-        if value.is_null() || LENGTH(value) < 1 || !is_numeric_type(TYPEOF(value)) {
-            return None;
-        }
-        match numeric_components(value, 0) {
-            Numeric::Finite(real, imaginary) if imaginary == 0.0 && real.is_finite() => Some(real),
-            _ => None,
-        }
+fn scalar_number(value: SEXP) -> Option<f64> {
+    if value.is_null() || LENGTH(value) < 1 || !is_numeric_type(TYPEOF(value)) {
+        return None;
+    }
+    match numeric_components(value, 0) {
+        Numeric::Finite(real, imaginary) if imaginary == 0.0 && real.is_finite() => Some(real),
+        _ => None,
     }
 }
 
-unsafe fn scalar_logical(value: SEXP) -> Option<bool> {
-    unsafe { scalar_number(value).map(|number| number != FALSE as f64) }
+fn scalar_logical(value: SEXP) -> Option<bool> {
+    scalar_number(value).map(|number| number != FALSE as f64)
 }
 
 fn strings_equal(left: SEXP, right: SEXP) -> bool {
@@ -504,14 +491,11 @@ fn strings_equal(left: SEXP, right: SEXP) -> bool {
         == &crate::sexp::accessors::char_cstr_bytes(right)[..]
 }
 
-unsafe fn tag_name(tag: SEXP) -> Option<String> {
-    unsafe {
-        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        let chars = CHAR(PRINTNAME(tag));
-        (!chars.is_null()).then(|| CStr::from_ptr(chars).to_string_lossy().into_owned())
+fn tag_name(tag: SEXP) -> Option<String> {
+    if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    char_cstr_bytes_opt(PRINTNAME(tag)).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn type_name(value: i32) -> &'static str {

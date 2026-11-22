@@ -605,9 +605,7 @@ fn relop_lang_option() -> c_int {
 
 /// `identical(x, y)` with the language-comparison flags (ignore srcref).
 fn identical_lang(x: SEXP, y: SEXP) -> bool {
-    // SAFETY: `x` and `y` are live operands rooted by the relop caller for the
-    // duration of the comparison.
-    unsafe { R_compute_identical(x, y, 16) != 0 }
+    R_compute_identical(x, y, 16) != 0
 }
 
 /// Compute language equality for `==` and `!=` operators.

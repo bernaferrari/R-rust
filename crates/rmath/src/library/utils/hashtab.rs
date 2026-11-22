@@ -138,9 +138,7 @@ fn hash_values(h: R_hashtab_type) -> SEXP {
 fn keys_match(hash_type: c_int, stored: SEXP, key: SEXP) -> bool {
     match hash_type {
         HT_TYPE_ADDRESS => stored == key,
-        // SAFETY: both operands are canonical live SEXP values under the
-        // runtime lock; the raw comparison contract is satisfied.
-        HT_TYPE_IDENTICAL => unsafe { R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0 },
+        HT_TYPE_IDENTICAL => R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0,
         _ => false,
     }
 }

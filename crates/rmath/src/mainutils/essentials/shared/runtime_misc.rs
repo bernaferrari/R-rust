@@ -1227,8 +1227,7 @@ pub(crate) fn is_factor(x: SEXP) -> c_int {
 
 /// `R_compute_identical(x, y, flags)` on live SEXPs.
 pub(crate) fn compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
-    // SAFETY: both values are live SEXPs; the comparison only reads them.
-    unsafe { crate::mainutils::identical::R_compute_identical(x, y, flags) }
+    crate::mainutils::identical::R_compute_identical(x, y, flags)
 }
 
 /// Unwrap a checked object result, raising the error as an R error.

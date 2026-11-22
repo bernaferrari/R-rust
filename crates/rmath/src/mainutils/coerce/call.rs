@@ -185,78 +185,76 @@ pub fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::{R_GlobalEnv, R_NilValue, R_UnboundValue};
 
-    unsafe {
-        match TYPEOF(lang) {
-            t if t == SEXPTYPE::BCODESXP => {
-                let source = crate::eval::bc_eval::BCODE_EXPR(lang);
-                if source.is_null() || source == R_NilValue() {
-                    lang
-                } else {
-                    substitute(source, rho)
-                }
+    match TYPEOF(lang) {
+        t if t == SEXPTYPE::BCODESXP => {
+            let source = crate::eval::bc_eval::BCODE_EXPR(lang);
+            if source.is_null() || source == R_NilValue() {
+                lang
+            } else {
+                substitute(source, rho)
             }
-            t if t == SEXPTYPE::PROMSXP => substitute(PRCODE(lang), rho),
-            t if t == SEXPTYPE::SYMSXP => {
-                if rho != R_NilValue() {
-                    let t = R_findVarInFrame(rho, lang);
-                    if t != R_UnboundValue() {
-                        if TYPEOF(t) == SEXPTYPE::PROMSXP {
-                            let mut expr = PRCODE(t);
-                            let mut hops = 0;
-                            loop {
-                                if TYPEOF(expr) == SEXPTYPE::PROMSXP {
-                                    if hops >= 64 {
-                                        break;
-                                    }
-                                    let next = PRCODE(expr);
-                                    if next.is_null() || next == expr {
-                                        break;
-                                    }
-                                    expr = next;
-                                    hops += 1;
-                                    continue;
+        }
+        t if t == SEXPTYPE::PROMSXP => substitute(PRCODE(lang), rho),
+        t if t == SEXPTYPE::SYMSXP => {
+            if rho != R_NilValue() {
+                let t = R_findVarInFrame(rho, lang);
+                if t != R_UnboundValue() {
+                    if TYPEOF(t) == SEXPTYPE::PROMSXP {
+                        let mut expr = PRCODE(t);
+                        let mut hops = 0;
+                        loop {
+                            if TYPEOF(expr) == SEXPTYPE::PROMSXP {
+                                if hops >= 64 {
+                                    break;
                                 }
-                                if TYPEOF(expr) == SEXPTYPE::BCODESXP {
-                                    let source = crate::eval::bc_eval::BCODE_EXPR(expr);
-                                    if source.is_null() || source == R_NilValue() || source == expr
-                                    {
-                                        break;
-                                    }
-                                    expr = source;
-                                    continue;
+                                let next = PRCODE(expr);
+                                if next.is_null() || next == expr {
+                                    break;
                                 }
-                                break;
+                                expr = next;
+                                hops += 1;
+                                continue;
                             }
-                            if !expr.is_null() && NAMED(expr) < 2 {
-                                SET_NAMED(expr, 2);
+                            if TYPEOF(expr) == SEXPTYPE::BCODESXP {
+                                let source = crate::eval::bc_eval::BCODE_EXPR(expr);
+                                if source.is_null() || source == R_NilValue() || source == expr
+                                {
+                                    break;
+                                }
+                                expr = source;
+                                continue;
                             }
-                            return expr;
-                        } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
-                            Rf_error_cstr(c"'...' used in an incorrect context");
+                            break;
                         }
-                        if rho != R_GlobalEnv() {
-                            let value = if TYPEOF(t) == SEXPTYPE::BCODESXP {
-                                let source = crate::eval::bc_eval::BCODE_EXPR(t);
-                                if source.is_null() || source == R_NilValue() {
-                                    t
-                                } else {
-                                    source
-                                }
-                            } else {
+                        if !expr.is_null() && NAMED(expr) < 2 {
+                            SET_NAMED(expr, 2);
+                        }
+                        return expr;
+                    } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
+                        Rf_error_cstr(c"'...' used in an incorrect context");
+                    }
+                    if rho != R_GlobalEnv() {
+                        let value = if TYPEOF(t) == SEXPTYPE::BCODESXP {
+                            let source = crate::eval::bc_eval::BCODE_EXPR(t);
+                            if source.is_null() || source == R_NilValue() {
                                 t
-                            };
-                            if !value.is_null() && NAMED(value) < 2 {
-                                SET_NAMED(value, 2);
+                            } else {
+                                source
                             }
-                            return value;
+                        } else {
+                            t
+                        };
+                        if !value.is_null() && NAMED(value) < 2 {
+                            SET_NAMED(value, 2);
                         }
+                        return value;
                     }
                 }
-                lang
             }
-            t if t == SEXPTYPE::LANGSXP => substitute_list(lang, rho),
-            _ => lang,
+            lang
         }
+        t if t == SEXPTYPE::LANGSXP => substitute_list(lang, rho),
+        _ => lang,
     }
 }
 

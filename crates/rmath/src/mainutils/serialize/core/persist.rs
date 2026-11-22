@@ -163,7 +163,7 @@ pub(crate) fn write_gnu_bc_payload(
         }
         let code = VECTOR_ELT(s, 0);
         let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
-        if XLENGTH(s) != 5
+        if crate::eval::bc_eval::bytecode_slot_count(s) != 5
             || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
             || code.is_null()
             || TYPEOF(code) != SEXPTYPE::INTSXP

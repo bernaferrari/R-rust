@@ -339,8 +339,7 @@ pub fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
 
 /// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.
 pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
-    // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
-    let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
+    let data = R_ExternalPtrAddr(sp) as SEXP;
     if data.is_null() {
         let msg = c"grid grob object is empty";
         // SAFETY: static NUL-terminated literals.
@@ -354,8 +353,7 @@ pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
 
 /// Set the SEXP stored in an external pointer created by L_CreateSEXPPtr.
 pub fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
-    // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
-    let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
+    let data = R_ExternalPtrAddr(sp) as SEXP;
     if data.is_null() {
         let msg = c"grid grob object is empty";
         // SAFETY: static NUL-terminated literals.

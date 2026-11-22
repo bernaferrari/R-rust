@@ -30,39 +30,46 @@ pub fn BCODE_CONSTS(x: SEXP) -> SEXP {
     crate::sexp::accessors::VECTOR_ELT(x, 1)
 }
 
+/// Number of internal slots, distinct from R-level length (one for bytecode).
+pub(crate) fn bytecode_slot_count(x: SEXP) -> i64 {
+    crate::sexp::memory::checked_header(x).map_or(0, |(_, _, header)| {
+        if header.sxpinfo.type_of() == SEXPTYPE::BCODESXP {
+            header.vecsxp_length()
+        } else {
+            0
+        }
+    })
+}
+
 /// Whether this BCODESXP was built by the GNU R deserialization adapter.
 /// The marker is an owned internal payload slot, never a guessed opcode.
 pub fn BCODE_IS_GNU(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP || (*x).data.vector().length < 4 {
-            return false;
-        }
-        let marker = VECTOR_ELT(x, 3);
-        !marker.is_null()
-            && TYPEOF(marker) == SEXPTYPE::INTSXP
-            && LENGTH(marker) == 1
-            && INTEGER_ELT(marker, 0) == super::super::bytecode::GNU_BC_DIALECT_MARKER
+    if bytecode_slot_count(x) < 4 {
+        return false;
     }
+    let marker = VECTOR_ELT(x, 3);
+    !marker.is_null()
+        && TYPEOF(marker) == SEXPTYPE::INTSXP
+        && LENGTH(marker) == 1
+        && INTEGER_ELT(marker, 0) == super::super::bytecode::GNU_BC_DIALECT_MARKER
 }
 
 /// Get the source expression stored in bytecode constant slot 0.
-pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP {
-            return R_NilValue();
-        }
-        if BCODE_IS_GNU(x) && (*x).data.vector().length >= 5 {
-            let source = VECTOR_ELT(x, 4);
-            if !source.is_null() {
-                return source;
-            }
-        }
-        let consts = BCODE_CONSTS(x);
-        if consts.is_null() || TYPEOF(consts) != SEXPTYPE::VECSXP || LENGTH(consts) == 0 {
-            return R_NilValue();
-        }
-        VECTOR_ELT(consts, 0)
+pub fn BCODE_EXPR(x: SEXP) -> SEXP {
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP {
+        return R_NilValue();
     }
+    if BCODE_IS_GNU(x) && bytecode_slot_count(x) >= 5 {
+        let source = VECTOR_ELT(x, 4);
+        if !source.is_null() {
+            return source;
+        }
+    }
+    let consts = BCODE_CONSTS(x);
+    if consts.is_null() || TYPEOF(consts) != SEXPTYPE::VECSXP || LENGTH(consts) == 0 {
+        return R_NilValue();
+    }
+    VECTOR_ELT(consts, 0)
 }
 
 pub(crate) fn gnu_plain_numeric(x: SEXP) -> bool {

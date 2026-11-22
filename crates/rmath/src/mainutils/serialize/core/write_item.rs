@@ -241,8 +241,6 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
         // but dispatch incorrectly.  Reject it at the boundary until the
         // adapter is complete.
         if stype == SEXPTYPE::BCODESXP {
-            // SAFETY: `s` is a caller-rooted live BCODESXP; the predicate
-            // reads its raw vector layout.
             if crate::eval::bc_eval::BCODE_IS_GNU(s) {
                 writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
                 writer.write_i32(1); // GNU WriteBC repetition table length.
