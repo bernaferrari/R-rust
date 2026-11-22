@@ -119,6 +119,42 @@ pub fn ccmp(x: Rcomplex, y: Rcomplex, nalast: bool) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
+// Shared kernels
+// ---------------------------------------------------------------------------
+
+/// Shell sort of `x` (NA last via `compare`), optionally carrying `indices`
+/// along with each element move.
+fn shell_sort<T: Copy>(
+    x: &mut [T],
+    mut indices: Option<&mut [c_int]>,
+    compare: impl Fn(T, T, bool) -> c_int,
+) {
+    let mut gap = 1;
+    while gap <= x.len() / 9 {
+        gap = 3 * gap + 1;
+    }
+    while gap > 0 {
+        for i in gap..x.len() {
+            let value = x[i];
+            let index = indices.as_deref().map(|idx| idx[i]);
+            let mut j = i;
+            while j >= gap && compare(x[j - gap], value, true) > 0 {
+                x[j] = x[j - gap];
+                if let Some(idx) = indices.as_deref_mut() {
+                    idx[j] = idx[j - gap];
+                }
+                j -= gap;
+            }
+            x[j] = value;
+            if let (Some(idx), Some(index)) = (indices.as_deref_mut(), index) {
+                idx[j] = index;
+            }
+        }
+        gap /= 3;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // R_isort — sort integer array (shell sort, NA last)
 // ---------------------------------------------------------------------------
 
@@ -127,33 +163,14 @@ pub fn ccmp(x: Rcomplex, y: Rcomplex, nalast: bool) -> c_int {
 /// NA_INTEGER values sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `c_int` values.
+/// `x` must point to at least `n` valid, exclusively writable `c_int` values
+/// for the duration of the call.
 pub unsafe fn R_isort(x: *mut c_int, n: c_int) {
-    unsafe {
-        if n <= 1 {
-            return;
-        }
-
-        let nalast = true;
-        let mut h: c_int = 1;
-        while h <= n / 9 {
-            h = 3 * h + 1;
-        }
-
-        while h > 0 {
-            let gap = h as isize;
-            for i in gap..n as isize {
-                let v = *x.add(i as usize);
-                let mut j = i;
-                while j >= gap && sort_icmp(*x.add((j - gap) as usize), v, nalast) > 0 {
-                    *x.add(j as usize) = *x.add((j - gap) as usize);
-                    j -= gap;
-                }
-                *x.add(j as usize) = v;
-            }
-            h /= 3;
-        }
+    if n <= 1 {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    isort_slice(unsafe { std::slice::from_raw_parts_mut(x, n as usize) });
 }
 
 // ---------------------------------------------------------------------------
@@ -165,33 +182,14 @@ pub unsafe fn R_isort(x: *mut c_int, n: c_int) {
 /// NaN values sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `f64` values.
+/// `x` must point to at least `n` valid, exclusively writable `f64` values
+/// for the duration of the call.
 pub unsafe fn R_rsort(x: *mut f64, n: c_int) {
-    unsafe {
-        if n <= 1 {
-            return;
-        }
-
-        let nalast = true;
-        let mut h: c_int = 1;
-        while h <= n / 9 {
-            h = 3 * h + 1;
-        }
-
-        while h > 0 {
-            let gap = h as isize;
-            for i in gap..n as isize {
-                let v = *x.add(i as usize);
-                let mut j = i;
-                while j >= gap && sort_rcmp(*x.add((j - gap) as usize), v, nalast) > 0 {
-                    *x.add(j as usize) = *x.add((j - gap) as usize);
-                    j -= gap;
-                }
-                *x.add(j as usize) = v;
-            }
-            h /= 3;
-        }
+    if n <= 1 {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    rsort_slice(unsafe { std::slice::from_raw_parts_mut(x, n as usize) });
 }
 
 // ---------------------------------------------------------------------------
@@ -203,33 +201,14 @@ pub unsafe fn R_rsort(x: *mut f64, n: c_int) {
 /// Sorts by real part first, then imaginary part. NaN parts sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `Rcomplex` values.
+/// `x` must point to at least `n` valid, exclusively writable `Rcomplex`
+/// values for the duration of the call.
 pub unsafe fn R_csort(x: *mut Rcomplex, n: c_int) {
-    unsafe {
-        if n <= 1 {
-            return;
-        }
-
-        let nalast = true;
-        let mut h: c_int = 1;
-        while h <= n / 9 {
-            h = 3 * h + 1;
-        }
-
-        while h > 0 {
-            let gap = h as isize;
-            for i in gap..n as isize {
-                let v = *x.add(i as usize);
-                let mut j = i;
-                while j >= gap && ccmp(*x.add((j - gap) as usize), v, nalast) > 0 {
-                    *x.add(j as usize) = *x.add((j - gap) as usize);
-                    j -= gap;
-                }
-                *x.add(j as usize) = v;
-            }
-            h /= 3;
-        }
+    if n <= 1 {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    csort_slice(unsafe { std::slice::from_raw_parts_mut(x, n as usize) });
 }
 
 // ---------------------------------------------------------------------------
@@ -241,42 +220,77 @@ pub unsafe fn R_csort(x: *mut Rcomplex, n: c_int) {
 /// Both `x` and `indx` are reordered. NaN values sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `f64` values.
-/// `indx` must point to at least `n` valid `c_int` values.
+/// `x` must point to at least `n` valid, exclusively writable `f64` values
+/// and `indx` to at least `n` valid, exclusively writable `c_int` values;
+/// the two buffers must not overlap and must stay live for the whole call.
 pub unsafe fn rsort_with_index(x: *mut f64, indx: *mut c_int, n: c_int) {
-    unsafe {
-        if n <= 1 {
-            return;
-        }
-
-        let nalast = true;
-        let mut h: c_int = 1;
-        while h <= n / 9 {
-            h = 3 * h + 1;
-        }
-
-        while h > 0 {
-            let gap = h as isize;
-            for i in gap..n as isize {
-                let v = *x.add(i as usize);
-                let iv = *indx.add(i as usize);
-                let mut j = i;
-                while j >= gap && sort_rcmp(*x.add((j - gap) as usize), v, nalast) > 0 {
-                    *x.add(j as usize) = *x.add((j - gap) as usize);
-                    *indx.add(j as usize) = *indx.add((j - gap) as usize);
-                    j -= gap;
-                }
-                *x.add(j as usize) = v;
-                *indx.add(j as usize) = iv;
-            }
-            h /= 3;
-        }
+    if n <= 1 {
+        return;
     }
+    // SAFETY: both callers supply n initialized elements per buffer, aligned
+    // one-to-one, live for the call, with disjoint exclusive write access.
+    let (values, indices) = unsafe {
+        (
+            std::slice::from_raw_parts_mut(x, n as usize),
+            std::slice::from_raw_parts_mut(indx, n as usize),
+        )
+    };
+    shell_sort(values, Some(indices), sort_rcmp);
 }
 
 // ---------------------------------------------------------------------------
 // revsort — reverse sort double array with index (heapsort, descending)
 // ---------------------------------------------------------------------------
+
+/// Stock revsort (r-source/src/main/sort.c:359): descending HEAPSORT of
+/// `p` with `perm` carried along. The heapsort (not a stable sort) is
+/// load-bearing: ProbSampleReplace/ProbSampleNoReplace stream parity
+/// depends on its exact permutation for tied probabilities.
+pub(crate) fn revsort_with_perm(p: &mut [f64], perm: &mut [c_int], n: usize) {
+    if n <= 1 {
+        return;
+    }
+    // Indices kept 1-based like the C (`a--; ib--;`), addressed via -1.
+    let mut l = (n >> 1) + 1;
+    let mut ir = n;
+    loop {
+        let ra;
+        let ii;
+        if l > 1 {
+            l -= 1;
+            ra = p[l - 1];
+            ii = perm[l - 1];
+        } else {
+            ra = p[ir - 1];
+            ii = perm[ir - 1];
+            p[ir - 1] = p[0];
+            perm[ir - 1] = perm[0];
+            ir -= 1;
+            if ir == 1 {
+                p[0] = ra;
+                perm[0] = ii;
+                return;
+            }
+        }
+        let mut i = l;
+        let mut j = l << 1;
+        while j <= ir {
+            if j < ir && p[j - 1] > p[j] {
+                j += 1;
+            }
+            if ra > p[j - 1] {
+                p[i - 1] = p[j - 1];
+                perm[i - 1] = perm[j - 1];
+                i = j;
+                j += i;
+            } else {
+                j = ir + 1;
+            }
+        }
+        p[i - 1] = ra;
+        perm[i - 1] = ii;
+    }
+}
 
 /// Sort a double array into descending order using heapsort.
 ///
@@ -286,82 +300,57 @@ pub unsafe fn rsort_with_index(x: *mut f64, indx: *mut c_int, n: c_int) {
 /// Uses 1-based indexing internally (R convention).
 ///
 /// # Safety
-/// `a` must point to at least `n` valid `f64` values.
-/// `ib` must point to at least `n` valid `c_int` values.
+/// `a` must point to at least `n` valid, exclusively writable `f64` values
+/// and `ib` to at least `n` valid, exclusively writable `c_int` values;
+/// the two buffers must not overlap and must stay live for the whole call.
 pub unsafe fn revsort(a: *mut f64, ib: *mut c_int, n: c_int) {
-    unsafe {
-        if n <= 1 {
-            return;
-        }
-
-        // Convert to 1-based indexing (matches C: a--; ib--;)
-        let a = a.sub(1);
-        let ib = ib.sub(1);
-
-        let mut l: c_int = (n >> 1) + 1;
-        let mut ir: c_int = n;
-
-        loop {
-            if l > 1 {
-                l -= 1;
-                let ra = *a.add(l as usize);
-                let ii = *ib.add(l as usize);
-
-                let mut i = l;
-                let mut j = l << 1;
-                while j <= ir {
-                    if j < ir && *a.add(j as usize) > *a.add((j + 1) as usize) {
-                        j += 1;
-                    }
-                    if ra > *a.add(j as usize) {
-                        *a.add(i as usize) = *a.add(j as usize);
-                        *ib.add(i as usize) = *ib.add(j as usize);
-                        i = j;
-                        j += i;
-                    } else {
-                        j = ir + 1;
-                    }
-                }
-                *a.add(i as usize) = ra;
-                *ib.add(i as usize) = ii;
-            } else {
-                let ra = *a.add(ir as usize);
-                let ii = *ib.add(ir as usize);
-                *a.add(ir as usize) = *a.add(1);
-                *ib.add(ir as usize) = *ib.add(1);
-
-                ir -= 1;
-                if ir == 1 {
-                    *a.add(1) = ra;
-                    *ib.add(1) = ii;
-                    return;
-                }
-
-                let mut i: c_int = 1;
-                let mut j: c_int = 2;
-                while j <= ir {
-                    if j < ir && *a.add(j as usize) > *a.add((j + 1) as usize) {
-                        j += 1;
-                    }
-                    if ra > *a.add(j as usize) {
-                        *a.add(i as usize) = *a.add(j as usize);
-                        *ib.add(i as usize) = *ib.add(j as usize);
-                        i = j;
-                        j += i;
-                    } else {
-                        j = ir + 1;
-                    }
-                }
-                *a.add(i as usize) = ra;
-                *ib.add(i as usize) = ii;
-            }
-        }
+    if n <= 1 {
+        return;
     }
+    // SAFETY: both buffers supply n initialized elements, aligned one-to-one,
+    // live for the call, with disjoint exclusive write access.
+    let (values, indices) = unsafe {
+        (
+            std::slice::from_raw_parts_mut(a, n as usize),
+            std::slice::from_raw_parts_mut(ib, n as usize),
+        )
+    };
+    revsort_with_perm(values, indices, n as usize);
 }
 
 // ---------------------------------------------------------------------------
 // Partial sort functions (find k-th smallest element)
 // ---------------------------------------------------------------------------
+
+/// Partition `x` around its `k`-th smallest element (quickselect).
+fn partial_sort<T: Copy>(x: &mut [T], k: usize, compare: impl Fn(T, T, bool) -> c_int) {
+    if k >= x.len() {
+        return;
+    }
+    let mut lo = 0isize;
+    let mut hi = (x.len() - 1) as isize;
+    let k = k as isize;
+    while lo < hi {
+        let value = x[k as usize];
+        let mut i = lo;
+        let mut j = hi;
+        while i <= j {
+            while compare(x[i as usize], value, true) < 0 {
+                i += 1;
+            }
+            while compare(value, x[j as usize], true) < 0 {
+                j -= 1;
+            }
+            if i <= j {
+                x.swap(i as usize, j as usize);
+                i += 1;
+                j -= 1;
+            }
+        }
+        if j < k { lo = i; }
+        if k < i { hi = j; }
+    }
+}
 
 /// Partial sort for integer arrays — partition around k-th smallest.
 ///
@@ -369,41 +358,14 @@ pub unsafe fn revsort(a: *mut f64, ib: *mut c_int, n: c_int) {
 /// Elements before k are <= x[k], elements after are >= x[k].
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `c_int` values.
+/// `x` must point to at least `n` valid, exclusively writable `c_int` values
+/// for the duration of the call.
 pub unsafe fn iPsort(x: *mut c_int, n: c_int, k: c_int) {
-    unsafe {
-        let mut lo: i64 = 0;
-        let mut hi: i64 = (n - 1) as i64;
-        let kk = k as i64;
-        let nalast = true;
-
-        while lo < hi {
-            let v = *x.add(kk as usize);
-            let mut i = lo;
-            let mut j = hi;
-            while i <= j {
-                while sort_icmp(*x.add(i as usize), v, nalast) < 0 {
-                    i += 1;
-                }
-                while sort_icmp(v, *x.add(j as usize), nalast) < 0 {
-                    j -= 1;
-                }
-                if i <= j {
-                    let w = *x.add(i as usize);
-                    *x.add(i as usize) = *x.add(j as usize);
-                    *x.add(j as usize) = w;
-                    i += 1;
-                    j -= 1;
-                }
-            }
-            if j < kk {
-                lo = i;
-            }
-            if kk < i {
-                hi = j;
-            }
-        }
+    if n <= 1 || !(0..n).contains(&k) {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    partial_sort(unsafe { std::slice::from_raw_parts_mut(x, n as usize) }, k as usize, sort_icmp);
 }
 
 /// Partial sort for double arrays — partition around k-th smallest.
@@ -412,41 +374,14 @@ pub unsafe fn iPsort(x: *mut c_int, n: c_int, k: c_int) {
 /// NaN values sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `f64` values.
+/// `x` must point to at least `n` valid, exclusively writable `f64` values
+/// for the duration of the call.
 pub unsafe fn rPsort(x: *mut f64, n: c_int, k: c_int) {
-    unsafe {
-        let mut lo: i64 = 0;
-        let mut hi: i64 = (n - 1) as i64;
-        let kk = k as i64;
-        let nalast = true;
-
-        while lo < hi {
-            let v = *x.add(kk as usize);
-            let mut i = lo;
-            let mut j = hi;
-            while i <= j {
-                while sort_rcmp(*x.add(i as usize), v, nalast) < 0 {
-                    i += 1;
-                }
-                while sort_rcmp(v, *x.add(j as usize), nalast) < 0 {
-                    j -= 1;
-                }
-                if i <= j {
-                    let w = *x.add(i as usize);
-                    *x.add(i as usize) = *x.add(j as usize);
-                    *x.add(j as usize) = w;
-                    i += 1;
-                    j -= 1;
-                }
-            }
-            if j < kk {
-                lo = i;
-            }
-            if kk < i {
-                hi = j;
-            }
-        }
+    if n <= 1 || !(0..n).contains(&k) {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    partial_sort(unsafe { std::slice::from_raw_parts_mut(x, n as usize) }, k as usize, sort_rcmp);
 }
 
 /// Partial sort for complex arrays — partition around k-th smallest.
@@ -455,78 +390,33 @@ pub unsafe fn rPsort(x: *mut f64, n: c_int, k: c_int) {
 /// NaN parts sort last.
 ///
 /// # Safety
-/// `x` must point to at least `n` valid `Rcomplex` values.
+/// `x` must point to at least `n` valid, exclusively writable `Rcomplex`
+/// values for the duration of the call.
 pub unsafe fn cPsort(x: *mut Rcomplex, n: c_int, k: c_int) {
-    unsafe {
-        let mut lo: i64 = 0;
-        let mut hi: i64 = (n - 1) as i64;
-        let kk = k as i64;
-        let nalast = true;
-
-        while lo < hi {
-            let v = *x.add(kk as usize);
-            let mut i = lo;
-            let mut j = hi;
-            while i <= j {
-                while ccmp(*x.add(i as usize), v, nalast) < 0 {
-                    i += 1;
-                }
-                while ccmp(v, *x.add(j as usize), nalast) < 0 {
-                    j -= 1;
-                }
-                if i <= j {
-                    let w = *x.add(i as usize);
-                    *x.add(i as usize) = *x.add(j as usize);
-                    *x.add(j as usize) = w;
-                    i += 1;
-                    j -= 1;
-                }
-            }
-            if j < kk {
-                lo = i;
-            }
-            if kk < i {
-                hi = j;
-            }
-        }
+    if n <= 1 || !(0..n).contains(&k) {
+        return;
     }
+    // SAFETY: the caller supplies n initialized elements and exclusive access.
+    partial_sort(unsafe { std::slice::from_raw_parts_mut(x, n as usize) }, k as usize, ccmp);
 }
 
 // ---------------------------------------------------------------------------
-// Safe Rust wrappers for testing
+// Rust slice APIs
 // ---------------------------------------------------------------------------
 
 /// Sort an integer slice in-place (NA_INTEGER last).
 pub fn isort_slice(x: &mut [c_int]) {
-    let n = x.len() as c_int;
-    if n <= 0 {
-        return;
-    }
-    unsafe {
-        R_isort(x.as_mut_ptr(), n);
-    }
+    shell_sort(x, None, sort_icmp);
 }
 
 /// Sort a double slice in-place (NaN last).
 pub fn rsort_slice(x: &mut [f64]) {
-    let n = x.len() as c_int;
-    if n <= 0 {
-        return;
-    }
-    unsafe {
-        R_rsort(x.as_mut_ptr(), n);
-    }
+    shell_sort(x, None, sort_rcmp);
 }
 
 /// Sort a complex slice in-place (NaN parts last).
 pub fn csort_slice(x: &mut [Rcomplex]) {
-    let n = x.len() as c_int;
-    if n <= 0 {
-        return;
-    }
-    unsafe {
-        R_csort(x.as_mut_ptr(), n);
-    }
+    shell_sort(x, None, ccmp);
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +503,7 @@ mod tests {
             revsort(a.as_mut_ptr(), ib.as_mut_ptr(), 5);
         }
         assert_eq!(a, vec![5.0, 4.0, 3.0, 2.0, 1.0]);
+        assert_eq!(ib, vec![2, 5, 3, 4, 1]);
     }
 
     #[test]

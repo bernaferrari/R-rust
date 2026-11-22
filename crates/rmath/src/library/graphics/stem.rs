@@ -30,7 +30,7 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::sort::R_rsort;
+use crate::main::sort::rsort_slice;
 
 fn Rprintf(msg: &str) -> c_int {
     crate::sexp::output::capture_stdout(msg);
@@ -77,9 +77,7 @@ fn stem_leaf(x: &mut [c_double], scale: c_double, width: c_int, atom: c_double) 
         let ndigits: c_int;
         let pdigits: c_int;
 
-        // SAFETY: the slice was projected from a live REALSXP payload held by
-        // the caller's protect guard; R_rsort writes only within its bounds.
-        unsafe { R_rsort(x.as_mut_ptr(), n) };
+        rsort_slice(x);
 
         Rprintf("\n");
         if x[(n - 1) as usize] > x[0] {

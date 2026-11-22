@@ -1,4 +1,5 @@
 use super::*;
+use crate::mainutils::sort::revsort_with_perm;
 use crate::sexp::RSession;
 #[test]
 fn test_FixupProb_basic() {
