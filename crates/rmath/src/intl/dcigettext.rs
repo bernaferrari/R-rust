@@ -173,7 +173,6 @@ unsafe fn lookup_in_language_list(
     n: c_ulong,
     domainname: *const c_char,
     category: c_int,
-    binding: *mut binding,
     dirname: *const c_char,
     language_list: *const c_char,
 ) -> *mut c_char {
@@ -201,16 +200,7 @@ unsafe fn lookup_in_language_list(
             // Try to find the message in this locale.
             // SAFETY: forwarded raw pointers satisfy `dcigettext_internal`'s contract per this function's own `# Safety` requirements.
             let result = unsafe {
-                dcigettext_internal(
-                    msgid,
-                    msgid_plural,
-                    n,
-                    domainname,
-                    category,
-                    binding,
-                    dirname,
-                    locale,
-                )
+                dcigettext_internal(msgid, msgid_plural, n, domainname, category, dirname, locale)
             };
             // SAFETY: forwarded raw pointers satisfy `c_streq`'s contract per this function's own `# Safety` requirements.
             if !result.is_null() && !unsafe { c_streq(result, msgid) } {
@@ -237,7 +227,6 @@ unsafe fn dcigettext_internal(
     n: c_ulong,
     domainname: *const c_char,
     _category: c_int,
-    binding: *mut binding,
     dirname: *const c_char,
     locale: *mut c_char,
 ) -> *mut c_char {
@@ -257,20 +246,16 @@ unsafe fn dcigettext_internal(
     }
 
     // Use the default dirname if none specified.
-    let effective_dirname = if !dirname.is_null() {
-        dirname
+    let effective_dirname = if dirname.is_null() {
+        _nl_default_dirname.as_ptr()
     } else {
-        // SAFETY: forwarded raw pointers satisfy `ptr_ref`'s contract per this function's own `# Safety` requirements.
-        unsafe { ptr_ref(binding) }
-            .map(|b| b.dirname as *const c_char)
-            .filter(|d| !d.is_null())
-            .unwrap_or(_nl_default_dirname.as_ptr())
+        dirname
     };
 
     // Find the message catalog for this domain and locale.
     let domain_file =
         // SAFETY: forwarded raw pointers satisfy `_nl_find_domain`'s contract per this function's own `# Safety` requirements.
-        unsafe { super::finddomain::_nl_find_domain(effective_dirname, locale, effective_domain, binding) };
+        unsafe { super::finddomain::_nl_find_domain(effective_dirname, locale, effective_domain) };
 
     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
     let domain_data = unsafe { ptr_ref(domain_file) }
@@ -520,23 +505,9 @@ pub unsafe fn libintl_dcigettext(
         return msgid as *mut c_char;
     }
 
-    // Find the binding for this domain.
-    let mut binding: *mut binding = with_intl_runtime(|intl| intl.domain_bindings);
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    while let Some(b) = unsafe { ptr_ref(binding) } {
-        // SAFETY: forwarded raw pointers satisfy `c_streq`'s contract per this function's own `# Safety` requirements.
-        if unsafe { c_streq(b.domainname.as_ptr(), effective_domain) } {
-            break;
-        }
-        binding = b.next;
-    }
-
-    // Get the dirname from the binding.
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    let dirname = unsafe { ptr_ref(binding) }
-        .map(|b| b.dirname as *const c_char)
-        .filter(|d| !d.is_null())
-        .unwrap_or(_nl_default_dirname.as_ptr());
+    // Get the dirname binding for this domain, or the default directory.
+    // SAFETY: `effective_domain` is non-null and NUL-terminated for the call.
+    let dirname = super::bindtextdom::bind_domain(unsafe { cstr(effective_domain) }, None);
 
     // Get the locale.
     let mut locale: *mut c_char = ptr::null_mut();
@@ -563,8 +534,9 @@ pub unsafe fn libintl_dcigettext(
             n,
             effective_domain,
             category,
-            binding,
-            dirname,
+            dirname
+                .as_deref()
+                .map_or(_nl_default_dirname.as_ptr(), std::ffi::CStr::as_ptr),
             locale,
         )
     };

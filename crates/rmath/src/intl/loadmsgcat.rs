@@ -122,8 +122,7 @@ fn get_sysdep_string_segments(
 ///
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
-/// `domainbinding` may be null.
-pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
+pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile) {
     // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
     let Some(df) = (unsafe { ptr_mut(domain_file) }) else {
         return;
@@ -303,7 +302,7 @@ mod tests {
             successor: [ptr::null_mut()],
         };
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { _nl_load_domain(&mut l10nfile, ptr::null_mut()) };
+        unsafe { _nl_load_domain(&mut l10nfile) };
         assert_eq!(l10nfile.decided, 1);
         assert!(l10nfile.data.is_null());
     }
@@ -324,7 +323,7 @@ mod tests {
                 next: ptr::null_mut(),
                 successor: [ptr::null_mut()],
             };
-            _nl_load_domain(&mut l10nfile, ptr::null_mut());
+            _nl_load_domain(&mut l10nfile);
             assert_eq!(l10nfile.decided, 1);
             assert!(l10nfile.data.is_null());
 

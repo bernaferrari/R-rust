@@ -104,7 +104,7 @@ unsafe fn successor_at(l: *const loaded_l10nfile, idx: usize) -> *mut loaded_l10
 /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
 /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
 /// the accompanying lengths) for the duration of the call.
-unsafe fn _nl_load_domain(domain: *mut loaded_l10nfile, _domainbinding: *mut binding) {
+unsafe fn _nl_load_domain(domain: *mut loaded_l10nfile) {
     // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
     if let Some(d) = unsafe { ptr_mut(domain) } {
         d.decided = 1;
@@ -171,7 +171,6 @@ pub unsafe fn _nl_find_domain(
     dirname: *const c_char,
     locale: *mut c_char,
     domainname: *const c_char,
-    domainbinding: *mut binding,
 ) -> *mut loaded_l10nfile {
     let mut language: *const c_char = ptr::null();
     let mut modifier: *const c_char = ptr::null();
@@ -205,7 +204,7 @@ pub unsafe fn _nl_find_domain(
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
         if unsafe { ptr_ref(retval) }.is_some_and(|r| r.decided <= 0) {
             // SAFETY: forwarded raw pointers satisfy `_nl_load_domain`'s contract per this function's own `# Safety` requirements.
-            unsafe { _nl_load_domain(retval, domainbinding) };
+            unsafe { _nl_load_domain(retval) };
         }
 
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
@@ -224,7 +223,7 @@ pub unsafe fn _nl_find_domain(
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             if unsafe { ptr_ref(succ) }.is_some_and(|s| s.decided <= 0) {
                 // SAFETY: forwarded raw pointers satisfy `_nl_load_domain`'s contract per this function's own `# Safety` requirements.
-                unsafe { _nl_load_domain(succ, domainbinding) };
+                unsafe { _nl_load_domain(succ) };
             }
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             if unsafe { ptr_ref(succ) }.is_some_and(|s| !s.data.is_null()) {
@@ -278,7 +277,7 @@ pub unsafe fn _nl_find_domain(
     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
     if unsafe { ptr_ref(retval) }.is_some_and(|r| r.decided <= 0) {
         // SAFETY: forwarded raw pointers satisfy `_nl_load_domain`'s contract per this function's own `# Safety` requirements.
-        unsafe { _nl_load_domain(retval, domainbinding) };
+        unsafe { _nl_load_domain(retval) };
     }
     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
     if unsafe { ptr_ref(retval) }.map_or(true, |r| r.data.is_null()) {
@@ -292,7 +291,7 @@ pub unsafe fn _nl_find_domain(
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             if unsafe { ptr_ref(succ) }.is_some_and(|s| s.decided <= 0) {
                 // SAFETY: forwarded raw pointers satisfy `_nl_load_domain`'s contract per this function's own `# Safety` requirements.
-                unsafe { _nl_load_domain(succ, domainbinding) };
+                unsafe { _nl_load_domain(succ) };
             }
             // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
             if unsafe { ptr_ref(succ) }.is_some_and(|s| !s.data.is_null()) {
@@ -326,7 +325,7 @@ mod tests {
         let dirname = b"/usr/share/locale\0".as_ptr() as *const c_char;
         let domain = b"messages\0".as_ptr() as *const c_char;
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { _nl_find_domain(dirname, ptr::null_mut(), domain, ptr::null_mut()) };
+        let result = unsafe { _nl_find_domain(dirname, ptr::null_mut(), domain) };
         // With a null locale, explode_name returns 0, and we should
         // get a non-null result when do_allocate is set.
         assert!(!result.is_null());

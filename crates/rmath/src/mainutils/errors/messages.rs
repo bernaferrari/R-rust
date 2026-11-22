@@ -146,43 +146,36 @@ pub fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_bindtextdomain — R's bindtextdomain() function (simplified, no i18n).
 pub fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+    checkArity(op, args);
 
-        let domain = CAR(args);
-        let dirname = CADR(args);
-        if isNull(domain) != 0 && isNull(dirname) != 0 {
-            return ScalarLogical(1);
-        }
+    let domain = CAR(args);
+    let dirname = CADR(args);
+    if isNull(domain) != 0 && isNull(dirname) != 0 {
+        return ScalarLogical(1);
+    }
 
-        let domain_cstr = sexp_string_cstr(domain);
-        let dirname_cstr = sexp_string_cstr(dirname);
-        let result = bindtextdomain_impl(domain_cstr.as_deref(), dirname_cstr.as_deref());
-        if result.is_null() {
-            return globals::R_NilValue();
-        }
-
-        Rf_mkString(result)
+    let domain_cstr = sexp_string_cstr(domain);
+    let dirname_cstr = sexp_string_cstr(dirname);
+    match bindtextdomain_impl(domain_cstr.as_deref(), dirname_cstr.as_deref()) {
+        Some(result) => crate::sexp::constructors::mk_string_bytes(result.to_bytes()),
+        None => globals::R_NilValue(),
     }
 }
 
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-fn bindtextdomain_impl(domain: Option<&CStr>, dirname: Option<&CStr>) -> *mut std::os::raw::c_char {
-    // SAFETY: each pointer is null or borrowed from a live `CStr` for the call.
-    unsafe {
-        crate::intl::bindtextdom::libintl_bindtextdomain(
-            domain.map_or(ptr::null(), CStr::as_ptr),
-            dirname.map_or(ptr::null(), CStr::as_ptr),
-        )
-    }
+fn bindtextdomain_impl(
+    domain: Option<&CStr>,
+    dirname: Option<&CStr>,
+) -> Option<std::ffi::CString> {
+    crate::intl::bindtextdom::bind_domain(domain, dirname)
 }
 
 #[cfg(any(target_os = "android", target_arch = "wasm32"))]
-fn bindtextdomain_impl(domain: Option<&CStr>, dirname: Option<&CStr>) -> *mut std::os::raw::c_char {
-    match (domain, dirname) {
-        (Some(_), Some(dirname)) => dirname.as_ptr() as *mut std::os::raw::c_char,
-        _ => ptr::null_mut(),
-    }
+fn bindtextdomain_impl(
+    domain: Option<&CStr>,
+    dirname: Option<&CStr>,
+) -> Option<std::ffi::CString> {
+    domain.and(dirname).map(CStr::to_owned)
 }
 
 fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {

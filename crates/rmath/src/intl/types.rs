@@ -183,20 +183,19 @@ pub(crate) struct loaded_domain {
 // Binding (from gettextP.h)
 // ---------------------------------------------------------------------------
 
-/// A binding of domain settings (dirname, codeset).
-///
-/// In C this uses a zero-length array `domainname[0]` at the end.
-/// In Rust we represent this with a flexible Vec for the domain name, stored
-/// separately via an allocated buffer. For FFI compatibility the struct layout
-/// is kept simple.
-#[repr(C)]
-pub(crate) struct binding {
-    pub next: *mut binding,
-    pub dirname: *mut c_char,
-    pub codeset: *mut c_char,
-    /// Zero-length array placeholder for the domain name string.
-    /// The actual allocation includes extra bytes after this struct.
-    pub domainname: [c_char; 0],
+/// Owned directory and encoding settings for one message domain.
+pub(crate) struct DomainBinding {
+    pub dirname: std::ffi::CString,
+    pub codeset: Option<std::ffi::CString>,
+}
+
+impl Default for DomainBinding {
+    fn default() -> Self {
+        Self {
+            dirname: c"/".to_owned(),
+            codeset: None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +287,7 @@ pub(crate) static _nl_default_default_domain: [c_char; 9] =
     [0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0];
 
 pub(crate) struct IntlRuntimeState {
-    pub domain_bindings: *mut binding,
+    pub domain_bindings: std::collections::HashMap<std::ffi::CString, DomainBinding>,
     pub msg_cat_cntr: c_int,
     pub current_default_domain: *const c_char,
     pub loaded_domains: *mut loaded_l10nfile,
@@ -297,7 +296,7 @@ pub(crate) struct IntlRuntimeState {
 impl Default for IntlRuntimeState {
     fn default() -> Self {
         Self {
-            domain_bindings: ptr::null_mut(),
+            domain_bindings: std::collections::HashMap::default(),
             msg_cat_cntr: 0,
             current_default_domain: _nl_default_default_domain.as_ptr(),
             loaded_domains: ptr::null_mut(),
