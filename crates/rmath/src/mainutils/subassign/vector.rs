@@ -550,6 +550,9 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
         if !isNull(ATTRIB(s)) {
             let dim = getAttrib(x, R_DimSymbol());
             if isMatrix(s) && isArray(x) && ncols(s) == Rf_length(dim) {
+                // Root dim: character conversion may allocate and detach
+                // the attribute before mat2indsub reads it.
+                let _dim_guard = protect(dim);
                 if isString(s) {
                     let dnames = GetArrayDimnames(x);
                     let dnames_guard = protect(dnames);

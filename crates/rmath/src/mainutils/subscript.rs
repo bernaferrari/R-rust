@@ -31,6 +31,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
+use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, getAttrib, setAttrib};
 use crate::sexp::protect::protect;
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
@@ -67,36 +68,34 @@ fn sexptype_name(x: SEXP) -> String {
 }
 
 fn subscript_index_name(sindex: SEXP) -> String {
-    unsafe {
-        if sindex.is_null() || sindex == R_NilValue() {
-            return "<missing>".to_string();
-        }
-
-        match TYPEOF(sindex) {
-            t if t == SEXPTYPE::STRSXP => {
-                let elt = STRING_ELT(sindex, 0);
-                if elt.is_null() || elt == R_NilValue() {
-                    "<NA>".to_string()
-                } else {
-                    let ptr = CHAR(elt);
-                    if ptr.is_null() {
-                        "<invalid string>".to_string()
-                    } else {
-                        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
-                    }
-                }
-            }
-            t if t == SEXPTYPE::SYMSXP => {
-                let ptr = CHAR(PRINTNAME(sindex));
-                if ptr.is_null() {
-                    "<invalid symbol>".to_string()
-                } else {
-                    std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
-                }
-            }
-            _ => format!("<{}>", sexptype_name(sindex)),
-        }
+    if sindex.is_null() || sindex == R_NilValue() {
+        return "<missing>".to_string();
     }
+    let kind = SEXPTYPE(TYPEOF(sindex));
+    let value = match kind {
+        SEXPTYPE::STRSXP => STRING_ELT(sindex, 0),
+        SEXPTYPE::CHARSXP => sindex,
+        SEXPTYPE::SYMSXP => PRINTNAME(sindex),
+        _ => return format!("<{}>", sexptype_name(sindex)),
+    };
+    if value.is_null() || value == R_NilValue() {
+        return if kind == SEXPTYPE::SYMSXP {
+            "<invalid symbol>"
+        } else {
+            "<NA>"
+        }
+        .into();
+    }
+    char_cstr_bytes_opt(value)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_else(|| {
+            if kind == SEXPTYPE::SYMSXP {
+                "<invalid symbol>"
+            } else {
+                "<invalid string>"
+            }
+            .into()
+        })
 }
 
 /// Report an out-of-bounds error.
@@ -550,136 +549,116 @@ pub unsafe fn vectorIndex(
 /// with n columns. Returns a vector of 1-based linear indices.
 ///
 /// Negative indices are not allowed. Zero/NA propagates to the result.
-pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
-    unsafe {
-        // Get the matrix shape from the dim attribute of s.
-        let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
-        if s_dim.is_null() || LENGTH(s_dim) < 2 {
-            error("subscript is not a matrix");
-        }
-        let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
-        let nc = INTEGER_ELT(s_dim, 1) as c_int;
-        let ndim = LENGTH(dims);
+pub fn mat2indsub(dims: SEXP, s: SEXP, call: SEXP, x: SEXP) -> SEXP {
+    checked_index(OwnerToken::with_current(|owner| {
+        // Root the operands before any read: attribute and element access
+        // may run providers that collect or detach attributes.
+        let dims = checked_index(owner.sexp(dims));
+        let matrix = checked_index(owner.sexp(s));
+        let _x = (!x.is_null()).then(|| checked_index(owner.sexp(x)));
+        let _call = (!call.is_null()).then(|| checked_index(owner.sexp(call)));
 
-        if nc != ndim {
+        let (_shape, rows, cols) =
+            matrix_subscript_shape(owner, &matrix, "subscript is not a matrix");
+        if cols != dims.len() {
             error("incorrect number of columns in matrix subscript");
         }
 
-        let mut strides: Vec<R_xlen_t> = Vec::with_capacity(ndim as usize);
-        strides.push(1);
-        for d in 0..(ndim - 1) as usize {
-            let dim_val = INTEGER_ELT(dims, d as c_int) as R_xlen_t;
-            strides.push(strides[d] * dim_val);
-        }
-
-        // Allocate result vector
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr);
-        let _ans_guard = protect(ans);
-        let ap = INTEGER(ans);
-
-        // Get dim attribute names for character matrix support
-        let s_type = TYPEOF(s);
-
-        for i in 0..nr as usize {
-            let mut idx: R_xlen_t = 0;
-            let mut has_zero = false;
-            let mut has_na = false;
-
-            for d in 0..ndim as usize {
-                let mut sub_val: R_xlen_t = 0;
-                let elt_index = (i as R_xlen_t + (d as R_xlen_t) * nr) as R_xlen_t;
-                if s_type == SEXPTYPE::STRSXP {
-                    // Character subscript — match against dimnames
-                    let elt = STRING_ELT(s, elt_index);
-                    if elt.is_null() || elt == R_NilValue() {
-                        has_na = true;
-                        break;
-                    }
-                    let pname = CHAR(elt);
-                    if pname.is_null() {
-                        has_na = true;
-                        break;
-                    }
-                    // Linear search through dimnames
-                    let dnames = crate::eval::attrib_core::getAttrib(
-                        _x,
-                        crate::eval::attrib_core::R_DimNamesSymbol(),
-                    );
-                    let mut found = false;
-                    if !dnames.is_null() {
-                        let dn_col = VECTOR_ELT(dnames, d as R_xlen_t);
-                        if !dn_col.is_null() {
-                            let target = std::ffi::CStr::from_ptr(pname);
-                            let target_bytes = target.to_bytes();
-                            for j in 0..XLENGTH(dn_col) as usize {
-                                let name_elt = STRING_ELT(dn_col, j as R_xlen_t);
-                                if name_elt.is_null() || name_elt == R_NilValue() {
-                                    continue;
-                                }
-                                let np = CHAR(name_elt);
-                                if np.is_null() {
-                                    continue;
-                                }
-                                let name_bytes = std::ffi::CStr::from_ptr(np).to_bytes();
-                                if name_bytes == target_bytes {
-                                    sub_val = (j + 1) as R_xlen_t;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if !found {
-                        ECALL_OutOfBoundsCHAR(_x, (d + 1) as c_int, elt, _call);
-                        break;
-                    }
-                } else {
-                    let val = if s_type == SEXPTYPE::REALSXP {
-                        let rval = *REAL(s).add(elt_index as usize);
-                        if rval.is_nan() {
-                            NA_INTEGER
-                        } else if !rval.is_finite() {
-                            ECALL_OutOfBounds(_x, (d + 1) as c_int, 0, _call);
-                            NA_INTEGER
-                        } else {
-                            rval as c_int
-                        }
-                    } else {
-                        INTEGER_ELT(s, elt_index as c_int)
-                    };
-                    if val == NA_INTEGER {
-                        has_na = true;
-                        break;
-                    }
-                    sub_val = val as R_xlen_t;
-
-                    if sub_val < 0 {
-                        error("negative subscripts are not allowed in matrix indexing");
-                    }
-                    if sub_val == 0 {
-                        has_zero = true;
-                        continue;
-                    }
-                    let dim_len = INTEGER_ELT(dims, d as c_int) as R_xlen_t;
-                    if sub_val > dim_len {
-                        ECALL_OutOfBounds(_x, (d + 1) as c_int, sub_val, _call);
-                        break;
-                    }
+        // Build (extent, stride) pairs once with overflow checking.
+        let mut length: i64 = 1;
+        let dimensions: Vec<(i64, i64)> = (0..cols)
+            .map(|j| {
+                let dim = i64::from(checked_index(dims.try_integer_elt(j)));
+                if dim < 0 {
+                    error("invalid array dimensions");
                 }
-                idx += (sub_val - 1) * strides[d];
-            }
+                let stride = length;
+                length = length
+                    .checked_mul(dim)
+                    .unwrap_or_else(|| error("array dimensions are too large"));
+                (dim, stride)
+            })
+            .collect();
+        checked_index(owner.require_active());
 
-            if has_na {
-                *ap.add(i) = NA_INTEGER;
-            } else if has_zero {
-                *ap.add(i) = 0;
+        let long = length > i64::from(c_int::MAX);
+        // The checked result exists before any coercion, so a warning
+        // handler cannot strand a raw destination pointer.
+        let mut ans = new_index(
+            owner,
+            if long {
+                SEXPTYPE::REALSXP
             } else {
-                *ap.add(i) = (idx + 1) as c_int;
+                SEXPTYPE::INTSXP
+            },
+            rows,
+        );
+
+        let source = match matrix.typeof_() {
+            SEXPTYPE::STRSXP => {
+                let names = getAttrib(x, R_DimNamesSymbol());
+                string_matrix_indices(owner, &matrix, names, call, x)
+            }
+            SEXPTYPE::INTSXP => matrix.clone(),
+            SEXPTYPE::REALSXP if long => matrix.clone(),
+            _ => {
+                let coerced = crate::mainutils::coerce::coerceToInteger(matrix.as_raw());
+                checked_index(owner.require_active());
+                checked_index(owner.sexp(coerced))
+            }
+        };
+
+        for i in 0..rows {
+            let mut index = Some(1i64);
+            for (j, &(dim, stride)) in dimensions.iter().enumerate() {
+                let off = i + j as i64 * rows;
+                let value = if source.typeof_() == SEXPTYPE::REALSXP {
+                    let raw = checked_index(source.try_real_elt(off));
+                    checked_index(owner.require_active());
+                    if raw.is_nan() {
+                        index = None;
+                        break;
+                    }
+                    let k = raw.trunc();
+                    if k >= 1.0 && k > dim as f64 {
+                        ECALL_OutOfBounds(x, (j + 1) as c_int, k as i64, call);
+                    }
+                    k as i64
+                } else {
+                    let k = checked_index(source.try_integer_elt(off));
+                    checked_index(owner.require_active());
+                    if k == NA_INTEGER {
+                        index = None;
+                        break;
+                    }
+                    i64::from(k)
+                };
+                if value < 0 {
+                    error("negative values are not allowed in a matrix subscript");
+                }
+                if value == 0 {
+                    index = Some(0);
+                    break;
+                }
+                if value > dim {
+                    ECALL_OutOfBounds(x, (j + 1) as c_int, value, call);
+                }
+                index = Some(index.unwrap() + (value - 1) * stride);
+            }
+            if long {
+                checked_index(ans.try_set_real_elt(i, index.map_or(NA_REAL, |v| v as f64)));
+            } else {
+                checked_index(ans.try_set_integer_elt(
+                    i,
+                    index.map_or(NA_INTEGER, |v| {
+                        c_int::try_from(v)
+                            .unwrap_or_else(|_| error("matrix subscript exceeds integer range"))
+                    }),
+                ));
             }
         }
-
-        ans
-    }
+        ans.freeze().as_raw()
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -691,89 +670,113 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
 /// For the case `x[i]` where `x` is an n-way array and `i` is a character
 /// matrix with n columns, this matches column values against dimnames of `x`.
 /// Unmatched entries result in an out-of-bounds error.
-pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> SEXP {
-    unsafe {
-        // Get dimensions of the subscript matrix
-        let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
-        if s_dim.is_null() || LENGTH(s_dim) < 2 {
-            error("no 'dimnames' attribute for array");
+pub fn strmat2intmat(s: SEXP, dnamelist: SEXP, call: SEXP, x: SEXP) -> SEXP {
+    checked_index(OwnerToken::with_current(|owner| {
+        let _x = (!x.is_null()).then(|| checked_index(owner.sexp(x)));
+        let _call = (!call.is_null()).then(|| checked_index(owner.sexp(call)));
+        let matrix = checked_index(owner.sexp(s));
+        string_matrix_indices(owner, &matrix, dnamelist, call, x).as_raw()
+    }))
+}
+
+/// Shared character-matrix matcher: resolves each entry of `matrix` against
+/// the corresponding column of `dnamelist`, returning a rooted integer
+/// matrix carrying the subscript's dim attribute.
+fn string_matrix_indices<'s>(
+    owner: OwnerToken<'s>,
+    matrix: &Sexp<'_>,
+    dnamelist: SEXP,
+    call: SEXP,
+    x: SEXP,
+) -> Sexp<'s> {
+    // Root the name list before the shape read: a dimension provider may
+    // allocate.
+    let names = if dnamelist.is_null() || dnamelist == R_NilValue() {
+        None
+    } else {
+        Some(checked_index(owner.sexp(dnamelist)))
+    };
+    let (shape, rows, cols) =
+        matrix_subscript_shape(owner, matrix, "no 'dimnames' attribute for array");
+    let Some(names) = names else {
+        if !call.is_null() {
+            crate::mainutils::errors::record_error_call(call, true);
         }
-        let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
-        let nc = INTEGER_ELT(s_dim, 1) as c_int;
-        if dnamelist.is_null() || dnamelist == R_NilValue() {
-            if !_call.is_null() {
-                crate::mainutils::errors::record_error_call(_call, true);
-            }
-            error("no 'dimnames' attribute for array");
-        }
+        error("no 'dimnames' attribute for array");
+    };
 
-        // Allocate integer result matrix
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr * nc as R_xlen_t);
-        let _ans_guard = protect(ans);
+    let mut ans = new_index(owner, SEXPTYPE::INTSXP, rows * cols);
+    setAttrib(ans.as_raw(), R_DimSymbol(), shape.as_raw());
+    checked_index(owner.require_active());
 
-        // Copy dim attribute to result
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_DimSymbol(), s_dim);
-
-        for i in 0..nr as usize {
-            for j in 0..nc as usize {
-                let col_idx = i + j * nr as usize;
-                let elt = STRING_ELT(s, col_idx as R_xlen_t);
-
-                if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString()
-                {
-                    *INTEGER(ans).add(col_idx) = NA_INTEGER;
-                    continue;
-                }
-
-                let pname = CHAR(elt);
-                if pname.is_null() {
-                    *INTEGER(ans).add(col_idx) = NA_INTEGER;
-                    continue;
-                }
-
-                // Get the dimnames column for this dimension
-                let dn_col = if !dnamelist.is_null() && j < LENGTH(dnamelist) as usize {
-                    VECTOR_ELT(dnamelist, j as R_xlen_t)
-                } else {
-                    R_NilValue()
-                };
-
-                // Search for matching name
-                let mut found: c_int = NA_INTEGER;
-                if !dn_col.is_null() {
-                    let target = std::ffi::CStr::from_ptr(pname);
-                    let target_bytes = target.to_bytes();
-                    for k in 0..XLENGTH(dn_col) as usize {
-                        let name_elt = STRING_ELT(dn_col, k as R_xlen_t);
-                        if name_elt.is_null()
-                            || name_elt == R_NilValue()
-                            || name_elt == crate::sexp::globals::R_NaString()
-                        {
-                            continue;
-                        }
-
-                        let np = CHAR(name_elt);
-                        if np.is_null() {
-                            continue;
-                        }
-                        let name_bytes = std::ffi::CStr::from_ptr(np).to_bytes();
-                        if name_bytes == target_bytes {
-                            found = (k + 1) as c_int;
-                            break;
+    for j in 0..cols {
+        let column = if j < names.len() {
+            Some(checked_index(names.try_vector_elt(j)))
+        } else {
+            None
+        };
+        checked_index(owner.require_active());
+        for i in 0..rows {
+            let k = i + j * rows;
+            let target = checked_index(matrix.try_string_elt(k));
+            checked_index(owner.require_active());
+            let value = if target.is_na_string() {
+                NA_INTEGER
+            } else {
+                let mut found = 0;
+                // A literal empty string never matches, even an empty name.
+                if !checked_index(target.try_char_cstr_eq(b"")) {
+                    if let Some(ref column) = column {
+                        for n in 0..column.len() {
+                            let entry = checked_index(column.try_string_elt(n));
+                            checked_index(owner.require_active());
+                            if !entry.is_na_string()
+                                && crate::mainutils::relop::Seql(
+                                    target.as_raw(),
+                                    entry.as_raw(),
+                                ) != 0
+                            {
+                                found = c_int::try_from(n + 1).unwrap_or_else(|_| {
+                                    error("matrix subscript exceeds integer range")
+                                });
+                                break;
+                            }
                         }
                     }
                 }
-
-                if found == NA_INTEGER {
-                    ECALL_OutOfBoundsCHAR(x, (j + 1) as c_int, elt, _call);
-                } else {
-                    *INTEGER(ans).add(col_idx) = found;
+                if found == 0 {
+                    ECALL_OutOfBoundsCHAR(x, (j + 1) as c_int, target.as_raw(), call);
                 }
-            }
+                found
+            };
+            checked_index(ans.try_set_integer_elt(k, value));
         }
-
-        ans
     }
+    ans.freeze()
+}
+
+/// Read and root the dim attribute of a subscript matrix, returning the
+/// rooted dim vector plus its (rows, cols) extents.
+fn matrix_subscript_shape<'s>(
+    owner: OwnerToken<'s>,
+    matrix: &Sexp<'_>,
+    missing: &str,
+) -> (Sexp<'s>, R_xlen_t, R_xlen_t) {
+    let dim = getAttrib(matrix.as_raw(), R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() {
+        error(missing);
+    }
+    let dim = checked_index(owner.sexp(dim));
+    if dim.len() < 2 {
+        error(missing);
+    }
+    let rows = i64::from(checked_index(dim.try_integer_elt(0)));
+    let cols = i64::from(checked_index(dim.try_integer_elt(1)));
+    checked_index(owner.require_active());
+    if rows < 0 || cols < 0 || rows * cols != matrix.len() {
+        error("invalid matrix subscript dimensions");
+    }
+    (dim, rows, cols)
 }
 
 fn checked_index<T>(result: SexpResult<T>) -> T {
@@ -1662,15 +1665,13 @@ mod tests {
     #[test]
     fn test_mat2indsub_converts_matrix_subscripts() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let dims = make_int_vector(&[2, 3]);
-            let s = make_dim_matrix(&[1, 2, 1, 3], 2, 2);
-            let result = mat2indsub(dims, s, ptr::null_mut(), ptr::null_mut());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(LENGTH(result), 2);
-            assert_eq!(INTEGER_ELT(result, 0), 1);
-            assert_eq!(INTEGER_ELT(result, 1), 6);
-        }
+        let dims = make_int_vector(&[2, 3]);
+        let s = make_dim_matrix(&[1, 2, 1, 3], 2, 2);
+        let result = mat2indsub(dims, s, ptr::null_mut(), ptr::null_mut());
+        assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+        assert_eq!(LENGTH(result), 2);
+        assert_eq!(INTEGER_ELT(result, 0), 1);
+        assert_eq!(INTEGER_ELT(result, 1), 6);
     }
 
     #[test]
@@ -1861,6 +1862,72 @@ mod tests {
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(INTEGER_ELT(result, 0), 1);
             assert_eq!(INTEGER_ELT(result, 1), NA_INTEGER);
+        });
+    }
+
+    /// Matrix subscript reads stay lazy: each cell is fetched on demand and
+    /// the typed destination survives a collection mid-scan.
+    #[test]
+    fn matrix_subscript_keeps_altrep_lazy_during_collection() {
+        use crate::sexp::{
+            RSession,
+            altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
+        };
+        use std::{cell::Cell, rc::Rc};
+
+        struct CollectInteger(Rc<Cell<usize>>);
+        impl AltrepClass for CollectInteger {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::INTSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(4)
+            }
+            fn element<'s>(
+                &self,
+                _: &AltrepContext<'s>,
+                i: i64,
+            ) -> SexpResult<AltrepElement<'s>> {
+                let calls = self.0.get() + 1;
+                self.0.set(calls);
+                if calls == 2 {
+                    crate::sexp::gengc::full_gc();
+                }
+                Ok(AltrepElement::Integer([1, 2, 1, 3][i as usize]))
+            }
+        }
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let reads = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class("subscript-matrix-gc", CollectInteger(reads.clone()))
+                .unwrap();
+            let source = AltrepBuilder::new(class).build().unwrap();
+            let owner = session.owner_token().unwrap();
+
+            let mut sdim = new_index(owner, SEXPTYPE::INTSXP, 2);
+            checked_index(sdim.try_set_integer_elt(0, 2));
+            checked_index(sdim.try_set_integer_elt(1, 2));
+            let sdim = sdim.freeze();
+            setAttrib(source.as_raw(), R_DimSymbol(), sdim.as_raw());
+
+            let mut dims = new_index(owner, SEXPTYPE::INTSXP, 2);
+            checked_index(dims.try_set_integer_elt(0, 2));
+            checked_index(dims.try_set_integer_elt(1, 3));
+            let dims = dims.freeze();
+
+            reads.set(0);
+            let result = mat2indsub(
+                dims.as_raw(),
+                source.as_raw(),
+                R_NilValue(),
+                ptr::null_mut(),
+            );
+            assert_eq!(reads.get(), 4);
+            let result = owner.sexp(result).unwrap();
+            assert_eq!(result.try_integer_elt(0).unwrap(), 1);
+            assert_eq!(result.try_integer_elt(1).unwrap(), 6);
         });
     }
 

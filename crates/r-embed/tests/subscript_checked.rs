@@ -21,3 +21,59 @@ cat('subscript-checked: PASS\n')"#
         "subscript-checked: PASS\n"
     );
 }
+
+#[test]
+fn matrix_subscripts_match_gnu_early_exit_and_name_rules() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"x <- matrix(1:6, 2L, dimnames=list(c('a','b'),c('c','d','e')))
+stopifnot(
+  identical(
+    x[rbind(c(0,NA),c(NA,0),c(0,99),c(2,3))],
+    c(NA_integer_,6L)
+  ),
+  identical(
+    x[rbind(c(NA,99),c(1,1))],
+    c(NA_integer_,1L)
+  ),
+  identical(
+    x[rbind(c(NA,'c'),c('b','e'))],
+    c(NA_integer_,6L)
+  )
+)
+y <- x
+dimnames(y) <- list(NULL,c('c','d','e'))
+stopifnot(identical(y[rbind(c(NA,'c'))],NA_integer_))
+z <- x
+dimnames(z) <- list(c('','b'),c('c','d','e'))
+stopifnot(
+  grepl(
+    'subscript out of bounds',
+    tryCatch(z[rbind(c('','c'))],error=conditionMessage),
+    fixed=TRUE
+  )
+)
+warning_text <- ''
+value <- withCallingHandlers(
+  x[rbind(c(Inf,1),c(1.9,2.9))],
+  warning=function(w) {
+    warning_text <<- conditionMessage(w)
+    invokeRestart('muffleWarning')
+  }
+)
+stopifnot(
+  identical(value,c(NA_integer_,3L)),
+  identical(warning_text,'NAs introduced by coercion to integer range')
+)
+x[rbind(c('b','e'),c('a','c'))] <- c(9L,8L)
+stopifnot(
+  identical(unname(x),matrix(c(8L,2L,3L,4L,5L,9L),2L))
+)
+cat('matrix-subscript-checked: PASS\n')"#
+            )
+            .unwrap(),
+        "matrix-subscript-checked: PASS\n"
+    );
+}

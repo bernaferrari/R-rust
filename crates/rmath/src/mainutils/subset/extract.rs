@@ -171,97 +171,98 @@ pub fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
 /// Subset a vector by a single index. Handles special matrix subscripting
 /// when the index has the same number of columns as the dimension of x.
 pub(crate) fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        // If s is R_MissingArg, duplicate x
-        // R_MissingArg has mark bit set; we check via a special approach
-        // If s looks like a symbol with empty name, treat as missing.
-        // The simpler approach: check if the symbol's printname is empty.
-        let is_missing = s == R_MissingArg()
-            || if isSymbol(s) {
-                let pn = PRINTNAME(s);
-                if isNull(pn) {
-                    false
-                } else {
-                    char_bytes(pn).is_empty()
-                }
-            } else {
+    // If s is R_MissingArg, duplicate x
+    // R_MissingArg has mark bit set; we check via a special approach
+    // If s looks like a symbol with empty name, treat as missing.
+    // The simpler approach: check if the symbol's printname is empty.
+    let is_missing = s == R_MissingArg()
+        || if isSymbol(s) {
+            let pn = PRINTNAME(s);
+            if isNull(pn) {
                 false
-            };
-
-        if is_missing {
-            return crate::mainutils::duplicate::duplicate(x);
-        }
-
-        /* Protect s */
-        let mut s = s;
-        let mut s_guard = protect(s);
-
-        /* Check for special matrix subscripting. */
-        if !isNull(ATTRIB(s)) {
-            let dim = getAttrib(x, sym_Dim());
-            if isMatrix(s) && isArray(x) && ncols(s) == length_int(dim) {
-                if isString(s) {
-                    let dnames = GetArrayDimnames(x);
-                    let _dnames_guard = protect(dnames);
-                    s = strmat2intmat(s, dnames, call, x);
-                    drop(s_guard);
-                    s_guard = protect(s);
-                }
-                if TYPEOF(s) == SEXPTYPE::INTSXP || TYPEOF(s) == SEXPTYPE::REALSXP {
-                    s = mat2indsub(dim, s, call, x);
-                    drop(s_guard);
-                    s_guard = protect(s);
-                }
+            } else {
+                char_bytes(pn).is_empty()
             }
-        }
+        } else {
+            false
+        };
 
-        /* Convert to a vector of integer subscripts in the range 1:length(x). */
-        let mut stretch: R_xlen_t = 1;
-        let indx = make_subscript(x, s, &mut stretch, call);
-        let _indx_guard = protect(indx);
-
-        /* Allocate the result. */
-        let mode = TYPEOF(x);
-        let result = ExtractSubset(x, indx, call);
-        let _result_guard = protect(result);
-        if mode == SEXPTYPE::VECSXP || mode == SEXPTYPE::EXPRSXP {
-            /* we do not duplicate the values when extracting the subset,
-            so to be conservative mark the result as NAMED = NAMEDMAX */
-            ENSURE_NAMEDMAX(result);
-        }
-
-        if !isNull(result) {
-            /* Handle names attribute */
-            let mut attrib = getAttrib(x, sym_Names());
-            let mut has_names = !isNull(attrib);
-
-            /* Here we might have an array. Use row names if 1D */
-            if !has_names && isArray(x) {
-                let dimnames = getAttrib(x, sym_DimNames());
-                if !isNull(dimnames) && length_int(dimnames) == 1 {
-                    attrib = GetRowNames(dimnames);
-                    has_names = !isNull(attrib);
-                }
-            }
-
-            if has_names {
-                let _attrib_guard = protect(attrib);
-                let nattrib = ExtractSubset(attrib, indx, call);
-                let _nattrib_guard = protect(nattrib);
-                setAttrib(result, sym_Names(), nattrib);
-            }
-
-            /* Handle srcref attribute */
-            let srcref = getAttrib(x, sym_Srcref());
-            if !isNull(srcref) && TYPEOF(srcref) == SEXPTYPE::VECSXP {
-                let nattrib = ExtractSubset(srcref, indx, call);
-                let _nattrib_guard = protect(nattrib);
-                setAttrib(result, sym_Srcref(), nattrib);
-            }
-        }
-
-        result
+    if is_missing {
+        return crate::mainutils::duplicate::duplicate(x);
     }
+
+    /* Protect s */
+    let mut s = s;
+    let mut s_guard = protect(s);
+
+    /* Check for special matrix subscripting. */
+    if !isNull(ATTRIB(s)) {
+        let dim = getAttrib(x, sym_Dim());
+        if isMatrix(s) && isArray(x) && ncols(s) == length_int(dim) {
+            // Root dim: character conversion may allocate and detach
+            // the attribute before mat2indsub reads it.
+            let _dim_guard = protect(dim);
+            if isString(s) {
+                let dnames = GetArrayDimnames(x);
+                let _dnames_guard = protect(dnames);
+                s = strmat2intmat(s, dnames, call, x);
+                drop(s_guard);
+                s_guard = protect(s);
+            }
+            if TYPEOF(s) == SEXPTYPE::INTSXP || TYPEOF(s) == SEXPTYPE::REALSXP {
+                s = mat2indsub(dim, s, call, x);
+                drop(s_guard);
+                s_guard = protect(s);
+            }
+        }
+    }
+
+    /* Convert to a vector of integer subscripts in the range 1:length(x). */
+    let mut stretch: R_xlen_t = 1;
+    let indx = make_subscript(x, s, &mut stretch, call);
+    let _indx_guard = protect(indx);
+
+    /* Allocate the result. */
+    let mode = TYPEOF(x);
+    let result = ExtractSubset(x, indx, call);
+    let _result_guard = protect(result);
+    if mode == SEXPTYPE::VECSXP || mode == SEXPTYPE::EXPRSXP {
+        /* we do not duplicate the values when extracting the subset,
+        so to be conservative mark the result as NAMED = NAMEDMAX */
+        ENSURE_NAMEDMAX(result);
+    }
+
+    if !isNull(result) {
+        /* Handle names attribute */
+        let mut attrib = getAttrib(x, sym_Names());
+        let mut has_names = !isNull(attrib);
+
+        /* Here we might have an array. Use row names if 1D */
+        if !has_names && isArray(x) {
+            let dimnames = getAttrib(x, sym_DimNames());
+            if !isNull(dimnames) && length_int(dimnames) == 1 {
+                attrib = GetRowNames(dimnames);
+                has_names = !isNull(attrib);
+            }
+        }
+
+        if has_names {
+            let _attrib_guard = protect(attrib);
+            let nattrib = ExtractSubset(attrib, indx, call);
+            let _nattrib_guard = protect(nattrib);
+            setAttrib(result, sym_Names(), nattrib);
+        }
+
+        /* Handle srcref attribute */
+        let srcref = getAttrib(x, sym_Srcref());
+        if !isNull(srcref) && TYPEOF(srcref) == SEXPTYPE::VECSXP {
+            let nattrib = ExtractSubset(srcref, indx, call);
+            let _nattrib_guard = protect(nattrib);
+            setAttrib(result, sym_Srcref(), nattrib);
+        }
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
