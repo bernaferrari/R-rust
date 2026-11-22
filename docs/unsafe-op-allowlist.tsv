@@ -10,7 +10,6 @@ crates/rmath/src/library/utils/io.rs	668	legacy-module-allow	Temporary audited C
 crates/rmath/src/modules/lapack/backend/rust_impl.rs	562	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/colors.rs	561	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/devpictex.rs	458	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
-crates/rmath/src/library/stats/fft.rs	452	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/stats/starma.rs	429	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/parallel/fork.rs	418	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grid/unit.rs	351	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.

@@ -493,8 +493,6 @@ pub struct RInstance {
     pub(crate) bspline_state: crate::library::stats::bspline::BsplineState,
     /// Per-instance stats::fexact traversal continuation state.
     pub(crate) fexact_state: crate::library::stats::fexact::FexactState,
-    /// Per-instance stats::fft factorization plan state.
-    pub(crate) fft_state: crate::library::stats::fft::FftState,
     /// Per-instance dynamic loader and native package registry state.
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table and sink state.
@@ -677,7 +675,6 @@ impl RInstance {
 
             loading_package_dir: None,
             namespace_loads_in_progress: Vec::new(),
-            fft_state: crate::library::stats::fft::FftState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
