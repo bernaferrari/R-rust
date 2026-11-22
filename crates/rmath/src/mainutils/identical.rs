@@ -979,11 +979,9 @@ mod tests {
         session.with_active(|| {
             let nil = R_NilValue();
             let address = std::ptr::dangling_mut::<u64>().cast();
-            // SAFETY: the opaque address is never dereferenced; both nodes
-            // stay protected for the duration of the comparisons.
-            let a = unsafe { crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil) };
+            let a = crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil);
             let _a = protect(a);
-            let b = unsafe { crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil) };
+            let b = crate::mainutils::memory_main::R_MakeExternalPtr(address, nil, nil);
             let _b = protect(b);
             assert_eq!(R_compute_identical(a, b, 0), 1);
             assert_eq!(R_compute_identical(a, b, IDENT_EXTPTR_AS_REF), 0);

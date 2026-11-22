@@ -947,14 +947,11 @@ pub fn do_address(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     } else {
         CAR(args)
     };
-    // SAFETY: audited boundary — stores the object's address verbatim.
-    unsafe {
-        crate::mainutils::memory_main::R_MakeExternalPtr(
-            x as *mut std::ffi::c_void,
-            crate::sexp::globals::R_NilValue(),
-            crate::sexp::globals::R_NilValue(),
-        )
-    }
+    crate::mainutils::memory_main::R_MakeExternalPtr(
+        x as *mut std::ffi::c_void,
+        crate::sexp::globals::R_NilValue(),
+        crate::sexp::globals::R_NilValue(),
+    )
 }
 
 /// `.Internal(named(x))` reports the same NAMED level as `refcnt`.

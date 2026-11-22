@@ -65,13 +65,11 @@ fn identity_and_graph_lifetime(deep: bool) {
     let attributes = builder.finish().unwrap();
     let attribute_node = attributes.allocation().unwrap().clone();
     let source = factory
-        .wrap(unsafe {
-            crate::mainutils::memory_main::R_MakeExternalPtr(
-                std::ptr::null_mut(),
-                children[1].as_raw(),
-                children[0].as_raw(),
-            )
-        })
+        .wrap(crate::mainutils::memory_main::R_MakeExternalPtr(
+            std::ptr::null_mut(),
+            children[1].as_raw(),
+            children[0].as_raw(),
+        ))
         .unwrap();
     unsafe {
         SET_ATTRIB(source.as_raw(), attributes.as_raw());
@@ -230,9 +228,7 @@ fn external_identity_explicit_resource_close_revokes_every_alias_once() {
             heap.resource::<Resource>(alias.allocation().unwrap())
                 .is_some()
         );
-        unsafe {
-            crate::mainutils::memory_main::R_ClearExternalPtr(alias.as_raw());
-        }
+        crate::mainutils::memory_main::R_ClearExternalPtr(alias.as_raw());
         assert!(source.try_extptr_ptr().unwrap().is_null());
         drop(heap.take_resource(alias.allocation().unwrap()).unwrap());
         assert_eq!(drops.get(), 1);

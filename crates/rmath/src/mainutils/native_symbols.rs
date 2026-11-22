@@ -3,7 +3,7 @@
 //! Display metadata and external-pointer address bits grant no authority.
 use super::native_routines::{NativeRoutine, PayloadArity};
 use crate::sexp::{
-    ffi::{SEXP, SEXPTYPE},
+    ffi::SEXPTYPE,
     memory::WorkspaceReservation,
     object::{SessionNodeFactory, Sexp, SexpError, SexpMut, SexpResult},
     owner::OwnerToken,
@@ -133,26 +133,16 @@ pub(crate) fn library(owner: OwnerToken<'_>, value: &Sexp<'_>) -> SexpResult<Lib
     Ok(authority)
 }
 
-/// Compatibility entry already owns the raw argument; this performs no R
-/// allocation, callback, or collection and never changes unrelated resources.
-pub(crate) fn invalidate(owner: OwnerToken<'_>, value: SEXP) -> SexpResult<()> {
-    let handles = owner.with_arena(|arena| {
-        let node = arena.node_token(value)?;
-        let heap = arena.heap_identity();
-        Some((
-            heap.resource::<LibraryHandle>(&node),
-            heap.resource::<SymbolHandle>(&node),
-        ))
-    })?;
-    if let Some((library, symbol)) = handles {
-        if let Some(handle) = library {
-            handle.active.set(false);
-        }
-        if let Some(handle) = symbol {
-            handle.active.set(false);
-        }
+/// Revoke native authority on an already validated allocation without
+/// changing other resources.
+pub(crate) fn invalidate(node: &crate::sexp::heap::CheckedNode) {
+    let heap = node.heap_identity();
+    if let Some(handle) = heap.resource::<LibraryHandle>(node) {
+        handle.active.set(false);
     }
-    Ok(())
+    if let Some(handle) = heap.resource::<SymbolHandle>(node) {
+        handle.active.set(false);
+    }
 }
 pub(crate) fn lookup(
     name: &str,

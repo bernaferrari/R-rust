@@ -27,8 +27,9 @@ use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{ExtPtrBody, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::heap::NodeLink;
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
 #[cfg(test)]
@@ -939,27 +940,34 @@ fn set_external_pointer_child(s: SEXP, field: crate::sexp::ffi::EdgeField, child
 /// Create an external pointer.
 ///
 /// This is the equivalent of R's `R_MakeExternalPtr()`.
-pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::memory::with_arena(|arena| {
-            let protected = arena
-                .link_from_projection(prot)
-                .expect("external pointer protected child");
-            let tag = arena
-                .link_from_projection(tag)
-                .expect("external pointer tag child");
-            let node = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-            if node.is_null() {
-                error("could not allocate external pointer");
-            }
-            (*node).data = crate::sexp::ffi::NodeBody::ExtPtr(crate::sexp::ffi::ExtPtrBody {
-                address: p,
-                protected,
-                tag,
-            });
-            node
-        })
-    }
+/// The address is stored opaquely and never dereferenced.
+pub fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
+    checked_memory(OwnerToken::with_current(|owner| {
+        let factory = owner.node_factory();
+        let tag = (!tag.is_null()).then(|| checked_memory(factory.wrap(tag)));
+        let protected = (!prot.is_null()).then(|| checked_memory(factory.wrap(prot)));
+        let link = |value: &Option<Sexp<'_>>| match value {
+            Some(value) => checked_memory(factory.link(value)),
+            None => NodeLink::NULL,
+        };
+        let body = ExtPtrBody {
+            address: p,
+            protected: link(&protected),
+            tag: link(&tag),
+        };
+        // tag/prot are lexical roots across this deferred allocation; the
+        // initialized header is published before collection can observe it.
+        let result = checked_memory(factory.allocate(|arena| {
+            let raw = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            let node = arena.node_token(raw)?;
+            let heap = arena.heap_identity();
+            let mut header = heap.node_snapshot(&node)?;
+            header.data = NodeBody::ExtPtr(body);
+            heap.replace_node(&node, header)?;
+            Some(raw)
+        }));
+        result.as_raw()
+    }))
 }
 
 /// Get the address stored in an external pointer.
@@ -1006,28 +1014,35 @@ pub fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `R_ClearExternalPtr()`.
 pub fn R_ClearExternalPtr(s: SEXP) {
-    unsafe {
-        if let Ok(owner) = crate::sexp::owner::OwnerToken::current() {
-            let _ = crate::mainutils::native_symbols::invalidate(owner, s);
-        }
-        if !s.is_null() {
-            (*s).data.extptr_mut().address = ptr::null_mut();
-        }
-    }
+    R_SetExternalPtrAddr(s, ptr::null_mut());
 }
 
 /// Set the address stored in an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrAddr()`.
-pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
-    unsafe {
-        if let Ok(owner) = crate::sexp::owner::OwnerToken::current() {
-            let _ = crate::mainutils::native_symbols::invalidate(owner, s);
-        }
-        if !s.is_null() {
-            (*s).data.extptr_mut().address = p;
-        }
+pub fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
+    if s.is_null() {
+        return;
     }
+    checked_memory(OwnerToken::with_current(|owner| {
+        let value = checked_memory(owner.sexp(s));
+        if value.typeof_() != SEXPTYPE::EXTPTRSXP {
+            error("expected external pointer");
+        }
+        let node = checked_memory(value.allocation());
+        let heap = node.heap_identity();
+        let mut header = heap
+            .node_snapshot(node)
+            .unwrap_or_else(|| error("unowned external pointer"));
+        let NodeBody::ExtPtr(ref mut body) = header.data else {
+            error("expected external pointer");
+        };
+        body.address = p;
+        heap.replace_node(node, header)
+            .unwrap_or_else(|| error("could not set external pointer address"));
+        // No callback or arena lend between publication and revocation.
+        crate::mainutils::native_symbols::invalidate(node);
+    }));
 }
 
 /// Set the tag of an external pointer.
@@ -1875,7 +1890,7 @@ mod tests {
     #[test]
     fn test_external_ptr_null_roundtrip() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             // Create with null values
             let p = R_MakeExternalPtr(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             assert!(!p.is_null()); // Should allocate something
@@ -1919,7 +1934,7 @@ mod tests {
     #[test]
     fn test_external_ptr_setters() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let p = R_MakeExternalPtr(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             assert!(!p.is_null());
 
@@ -1947,7 +1962,7 @@ mod tests {
     #[test]
     fn test_external_ptr_null_args() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             // Null input should not crash
             assert!(R_ExternalPtrAddr(ptr::null_mut()).is_null());
             assert_eq!(R_ExternalPtrTag(ptr::null_mut()), R_NilValue());
@@ -2531,6 +2546,81 @@ mod owned_gc_operation_tests {
             assert_eq!(R_isResizable(source.as_raw()), 0);
             assert_eq!(R_isResizable(dup), 1);
             assert_eq!(XLENGTH(dup), 3);
+        });
+    }
+
+    #[test]
+    fn external_pointer_checked_publication_survives_gc_and_rejects_foreign_inputs() {
+        let session = RSession::new_for_gc_tests();
+        let other = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            // tag/prot stay raw with no checked roots; only the lexical root
+            // inside R_MakeExternalPtr covers them across the collection.
+            let tag = Rf_ScalarInteger(406);
+            let prot = {
+                let tag_guard = crate::sexp::protect::protect(tag);
+                let prot = Rf_ScalarInteger(407);
+                drop(tag_guard);
+                prot
+            };
+            let fired = Rc::new(Cell::new(false));
+            {
+                let seen = fired.clone();
+                register_gc_callback(Box::new(move |_| {
+                    if !seen.replace(true) {
+                        R_gc_torture(0, 0, 0);
+                    }
+                }));
+            }
+            R_gc_torture(1, 1, 0);
+            // The address is opaque to the runtime and never dereferenced.
+            let address = std::ptr::without_provenance_mut::<c_void>(7);
+            let ptr = owner.sexp(R_MakeExternalPtr(address, tag, prot)).unwrap();
+            R_gc_torture(0, 0, 0);
+            assert!(fired.get());
+
+            crate::sexp::gengc::full_gc();
+            assert_eq!(R_ExternalPtrAddr(ptr.as_raw()), address);
+            assert_eq!(R_ExternalPtrTag(ptr.as_raw()), tag);
+            assert_eq!(R_ExternalPtrProtected(ptr.as_raw()), prot);
+            assert_eq!(INTEGER_ELT(R_ExternalPtrTag(ptr.as_raw()), 0), 406);
+            assert_eq!(INTEGER_ELT(R_ExternalPtrProtected(ptr.as_raw()), 0), 407);
+
+            let nine = std::ptr::without_provenance_mut::<c_void>(9);
+            R_SetExternalPtrAddr(ptr.as_raw(), nine);
+            assert_eq!(R_ExternalPtrTag(ptr.as_raw()), tag);
+            assert_eq!(R_ExternalPtrProtected(ptr.as_raw()), prot);
+            assert_eq!(R_ExternalPtrAddr(ptr.as_raw()), nine);
+            R_ClearExternalPtr(ptr.as_raw());
+            assert!(R_ExternalPtrAddr(ptr.as_raw()).is_null());
+            assert_eq!(R_ExternalPtrTag(ptr.as_raw()), tag);
+            assert_eq!(R_ExternalPtrProtected(ptr.as_raw()), prot);
+
+            let raw = ptr.as_raw();
+            other.with_active(|| {
+                let foreign = std::ptr::without_provenance_mut::<c_void>(11);
+                let set = catch_unwind(AssertUnwindSafe(|| {
+                    R_SetExternalPtrAddr(raw, foreign);
+                }));
+                assert!(set.is_err());
+                let made = catch_unwind(AssertUnwindSafe(|| {
+                    R_MakeExternalPtr(foreign, tag, R_NilValue());
+                }));
+                assert!(made.is_err());
+            });
+            assert!(R_ExternalPtrAddr(raw).is_null());
+            assert_eq!(R_ExternalPtrTag(raw), tag);
+
+            // A collected node is rejected by the checked path rather than
+            // mutated through a stale raw pointer. No allocation between the
+            // collection and the setter so the slot cannot be reused.
+            let stale = R_MakeExternalPtr(address, R_NilValue(), R_NilValue());
+            let stale_node = crate::sexp::memory::checked_node(stale).unwrap();
+            crate::sexp::gengc::full_gc();
+            assert!(!stale_node.is_live());
+            let cleared = catch_unwind(AssertUnwindSafe(|| R_ClearExternalPtr(stale)));
+            assert!(cleared.is_err());
         });
     }
 }

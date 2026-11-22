@@ -332,9 +332,7 @@ pub fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
     let data = alloc_vector(SEXPTYPE::VECSXP, 1);
     let _guard = protect(data);
     set_vector_elt(data, 0, s);
-    // SAFETY: `data` is a live, protected VECSXP owned by this session; it
-    // outlives the external pointer by virtue of the `prot` field.
-    unsafe { R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data) }
+    R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data)
 }
 
 /// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.

@@ -27,3 +27,18 @@ fn serialize_explicit_null_roundtrips_and_missing_arguments_still_error() {
         .unwrap();
     assert_eq!(value.trim(), "[1] TRUE");
 }
+
+#[test]
+fn gnu_external_pointer_stream_reads() {
+    let mut session = RSession::new().unwrap();
+    let value = session
+        .eval(
+            r#"local({
+  x <- unserialize(charToRaw("A\n2\n263682\n131840\n22\n254\n1\n262153\n24\nregistered\\040native\\040symbol\n"))
+  stopifnot(identical(typeof(x), 'externalptr'))
+  cat('external-pointer-wire: PASS\n')
+})"#,
+        )
+        .unwrap();
+    assert_eq!(value.trim(), "external-pointer-wire: PASS");
+}

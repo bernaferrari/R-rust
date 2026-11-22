@@ -51,12 +51,10 @@ fn typed_native_symbol_handle_is_exactly_bound_and_roots_its_original_allocation
         let mut mutable = SexpMut::try_from_checked(fake.clone()).unwrap();
         mutable.try_set_attribute(&attributes).unwrap();
         drop(mutable);
-        unsafe {
-            crate::mainutils::memory_main::R_SetExternalPtrAddr(
-                fake.as_raw(),
-                std::ptr::without_provenance_mut(1),
-            );
-        }
+        crate::mainutils::memory_main::R_SetExternalPtrAddr(
+            fake.as_raw(),
+            std::ptr::without_provenance_mut(1),
+        );
         assert!(
             native_symbols::symbol(owner, &fake).is_err(),
             "pointer bits cannot authenticate a handle"
@@ -77,15 +75,13 @@ fn typed_native_symbol_clear_and_address_replacement_revoke_retained_authority()
             let address = object.try_vector_elt(1).unwrap();
             let authority = native_symbols::symbol(owner, &address).unwrap();
             let before = owner.with_arena(|a| a.workspace_bytes()).unwrap();
-            unsafe {
-                if replace {
-                    crate::mainutils::memory_main::R_SetExternalPtrAddr(
-                        address.as_raw(),
-                        std::ptr::without_provenance_mut(1),
-                    );
-                } else {
-                    crate::mainutils::memory_main::R_ClearExternalPtr(address.as_raw());
-                }
+            if replace {
+                crate::mainutils::memory_main::R_SetExternalPtrAddr(
+                    address.as_raw(),
+                    std::ptr::without_provenance_mut(1),
+                );
+            } else {
+                crate::mainutils::memory_main::R_ClearExternalPtr(address.as_raw());
             }
             assert!(authority.routine().is_err());
             assert!(native_symbols::symbol(owner, &address).is_err());
@@ -114,13 +110,11 @@ fn typed_native_symbol_invalidation_does_not_remove_unrelated_resources() {
                 Some(pointer)
             })
             .unwrap();
-        unsafe {
-            crate::mainutils::memory_main::R_SetExternalPtrAddr(
-                object.as_raw(),
-                std::ptr::without_provenance_mut(1),
-            );
-            crate::mainutils::memory_main::R_ClearExternalPtr(object.as_raw());
-        }
+        crate::mainutils::memory_main::R_SetExternalPtrAddr(
+            object.as_raw(),
+            std::ptr::without_provenance_mut(1),
+        );
+        crate::mainutils::memory_main::R_ClearExternalPtr(object.as_raw());
         let node = object.allocation().unwrap();
         assert_eq!(node.heap_identity().resource::<Other>(node).unwrap().0, 713);
         assert!(native_symbols::symbol(owner, &object).is_err());
@@ -412,9 +406,7 @@ fn typed_native_symbol_lookup_rejects_library_clear_or_owner_replacement_from_na
                     Some(RSession::new_for_gc_tests());
             } else {
                 let reference = context.data1()?;
-                unsafe {
-                    crate::mainutils::memory_main::R_ClearExternalPtr(reference.as_raw());
-                }
+                crate::mainutils::memory_main::R_ClearExternalPtr(reference.as_raw());
             }
             Ok(AltrepElement::String(name))
         }

@@ -1111,11 +1111,6 @@ pub(crate) fn read_external_item(
         let s = allocSExp(SEXPTYPE::EXTPTRSXP);
         let _s_guard = protect(s);
         ref_table.add(s);
-        // SAFETY: `s` is a freshly allocated external pointer node; the
-        // raw address slot is cleared to null.
-        unsafe {
-            crate::mainutils::memory_main::R_SetExternalPtrAddr(s, std::ptr::null_mut());
-        }
         let prot = ReadItemInternal(reader, ref_table)?;
         crate::mainutils::memory_main::R_SetExternalPtrProtected(s, prot);
         let tag = ReadItemInternal(reader, ref_table)?;

@@ -22,13 +22,11 @@ pub fn R_dummy_extern_place() -> SEXP {
 
 /// R_externalptr_prototype_object - create the prototype for externalptr objects.
 pub fn R_externalptr_prototype_object() -> SEXP {
-    unsafe {
-        R_MakeExternalPtr(
-            R_dummy_extern_place as *mut c_void,
-            R_NilValue(),
-            R_NilValue(),
-        )
-    }
+    R_MakeExternalPtr(
+        R_dummy_extern_place as *mut c_void,
+        R_NilValue(),
+        R_NilValue(),
+    )
 }
 
 #[cfg(test)]

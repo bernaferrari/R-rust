@@ -276,28 +276,26 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
 }
 
 fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: &CStr) {
-    unsafe {
-        let cname_str = cname.to_bytes();
-        let name = crate::sexp::constructors::mk_string_bytes(
-            std::ffi::CString::new(cname_str)
-                .unwrap_or_default()
-                .to_bytes(),
-        );
-        let _name_guard = protect(name);
-        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _entry_guard = protect(entry);
-        crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
-        let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
-            cptr as *mut c_void,
-            globals::R_NilValue(),
-            globals::R_NilValue(),
-        );
-        crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
-        crate::eval::attrib_core::setAttrib(entry, R_ClassSymbol(), mk_string("restart"));
-        let old_stack = restart_stack();
-        let new_top = Rf_cons(entry, old_stack);
-        set_restart_stack(new_top);
-    }
+    let cname_str = cname.to_bytes();
+    let name = crate::sexp::constructors::mk_string_bytes(
+        std::ffi::CString::new(cname_str)
+            .unwrap_or_default()
+            .to_bytes(),
+    );
+    let _name_guard = protect(name);
+    let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _entry_guard = protect(entry);
+    crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
+    let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
+        cptr as *mut c_void,
+        globals::R_NilValue(),
+        globals::R_NilValue(),
+    );
+    crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
+    crate::eval::attrib_core::setAttrib(entry, R_ClassSymbol(), mk_string("restart"));
+    let old_stack = restart_stack();
+    let new_top = Rf_cons(entry, old_stack);
+    set_restart_stack(new_top);
 }
 
 // ---------------------------------------------------------------------------
