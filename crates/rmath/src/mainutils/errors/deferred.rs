@@ -49,7 +49,7 @@ struct WarningEntry {
 /// wraps with `\n ` before the one-space-indented message.
 pub(crate) fn take_warnings_block() -> Option<String> {
     let pin = super::state::error_scope_pin();
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pin.as_ptr()) };
+    let owner = warning_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     warning_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
         let pointer = pin.as_ptr();
@@ -233,7 +233,7 @@ pub(crate) fn warning_dcall(call: SEXP) -> String {
         return "<call>".into();
     }
     let pin = super::state::error_scope_pin();
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pin.as_ptr()) };
+    let owner = warning_checked(pin.token());
     let call = warning_checked(
         owner
             .sexp(call)

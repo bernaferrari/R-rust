@@ -154,7 +154,7 @@ pub fn nmath_warning_hook(message: &str) {
     let pointer = pin.as_ptr();
     // Immutable sibling ledger cells need no arena lend. Every in-tree emitter
     // supplies static, stack, or Rust-owned text, valid through host callbacks.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let owner = nmath_bridge_checked(pin.token());
     nmath_bridge_checked(owner.require_active());
     let ledger = unsafe { (*pointer).heap_identity.byte_ledger() };
     // Ordinary warningcall chooses attribution before its first allocation/GC.

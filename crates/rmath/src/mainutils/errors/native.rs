@@ -241,10 +241,12 @@ pub fn try_catch_owned(
     // Raw managed evaluation may enter without RSession's activation guard.
     // This catcher publishes exiting transfers, so retain their original
     // scope through handler/finally execution. Nested activations reuse it.
-    let owner = checked(OwnerToken::current())
+    let owner = checked(pin.token())
         .weak_owner()
         .expect("pinned managed condition owner");
-    let _transfers = checked(crate::sexp::transfer::TransferScopeGuard::enter(owner));
+    let _transfers = checked(crate::sexp::transfer::TransferScopeGuard::enter(
+        owner.clone(),
+    ));
     checked(factory.link(classes));
     if classes.typeof_() != SEXPTYPE::STRSXP {
         context::r_error("condition classes must be a character vector");
@@ -260,8 +262,7 @@ pub fn try_catch_owned(
         .iter()
         .any(|s| matches!(s.as_str(), "error" | "simpleError" | "condition"));
     checked(pin.require_live());
-    let scope_pin = checked(unsafe { OwnerToken::from_raw(pin.as_ptr()).pin() })
-        .expect("original managed condition owner");
+    let scope_pin = checked(owner.pin());
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let mut scope = ExitingScope::install(&factory, scope_pin, &names);
         let outcome = catch_unwind(AssertUnwindSafe(body));
@@ -478,9 +479,7 @@ mod tests {
         fn collect(&self, event: &'static str) {
             self.events.borrow_mut().push(event);
             let pin = self.owner.pin().unwrap();
-            unsafe { OwnerToken::from_raw(pin.as_ptr()) }
-                .full_gc()
-                .unwrap();
+            pin.token().unwrap().full_gc().unwrap();
         }
     }
     extern "C-unwind" fn body_error(_: *mut c_void) -> SEXP {

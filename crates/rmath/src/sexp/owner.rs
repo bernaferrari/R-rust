@@ -130,6 +130,13 @@ impl OwnerPin {
         }
     }
 
+    /// Reborrow this pin's original owner, even if a different runtime is active.
+    pub(crate) fn token(&self) -> SexpResult<OwnerToken<'_>> {
+        self.require_live()?;
+        // SAFETY: the pin retains this allocation and just checked availability.
+        Ok(unsafe { OwnerToken::from_raw(self.as_ptr()) })
+    }
+
     /// Lend this owner's output-capture cell for a strictly-local update.
     ///
     /// P1/P2: `f` must not run any ambient-capable call (allocation, protect,
@@ -245,7 +252,7 @@ impl RuntimeAccess {
         operation: impl for<'operation> FnOnce(OwnerToken<'operation>) -> SexpResult<T>,
     ) -> SexpResult<T> {
         self.require_active()?;
-        let result = operation(unsafe { OwnerToken::from_raw(self.pin.as_ptr()) });
+        let result = operation(self.pin.token()?);
         self.require_active()?;
         result
     }
@@ -532,11 +539,7 @@ impl<'session> OwnerToken<'session> {
     pub(crate) fn with_current<T>(
         operation: impl for<'operation> FnOnce(OwnerToken<'operation>) -> T,
     ) -> SexpResult<T> {
-        let pointer = super::instance::current_instance_ptr().ok_or(SexpError::OwnerNotActive)?;
-        // SAFETY: `pointer` is the registered active runtime. The token is only
-        // handed to a callback generic over its lifetime, and `_pin` keeps the
-        // owner allocation alive for the whole call.
-        let token = unsafe { Self::from_raw(pointer) };
+        let token = Self::current()?;
         let _pin = token.pin()?;
         token.require_active()?;
         Ok(operation(token))
@@ -982,6 +985,21 @@ mod tests {
         assert!(matches!(token.pin(), Err(SexpError::RootUnavailable)));
         drop(session);
         assert!(!token.is_live());
+    }
+
+    #[test]
+    fn pinned_token_preserves_original_owner_and_rejects_revocation() {
+        let mut first = RSession::new_for_gc_tests();
+        let second = RSession::new_for_gc_tests();
+        let pin = first.with_active(|| OwnerToken::current().unwrap().pin().unwrap().unwrap());
+        second.with_active(|| {
+            let token = pin.token().unwrap();
+            assert_eq!(token.as_ptr(), pin.as_ptr());
+            assert_ne!(token.as_ptr(), OwnerToken::current().unwrap().as_ptr());
+            assert!(matches!(token.require_active(), Err(SexpError::OwnerNotActive)));
+        });
+        first.close();
+        assert!(matches!(pin.token(), Err(SexpError::RootUnavailable)));
     }
 
     #[test]

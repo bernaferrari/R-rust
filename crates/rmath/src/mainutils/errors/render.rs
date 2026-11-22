@@ -142,8 +142,9 @@ impl Drop for RestoreInError {
 
 impl RestoreInError {
     fn require_active(&self) {
-        unsafe { crate::sexp::owner::OwnerToken::from_raw(self.owner.as_ptr()) }
-            .require_active()
+        self.owner
+            .token()
+            .and_then(|owner| owner.require_active())
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
 }
@@ -344,7 +345,7 @@ pub(super) fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer::Snapsh
         // the payload stays clean; the rendered errbuf above keeps the full
         // attribution for stderr.
         let payload_message = Snapshot::host_text(tmp.bare_bytes());
-        let cache_owner = crate::sexp::owner::OwnerToken::from_raw(_guard.owner.as_ptr())
+        let cache_owner = collection_checked(_guard.owner.token())
             .weak_owner()
             .expect("managed renderer owner");
         let err_msg = err_msg.normalized(utf8);
@@ -786,7 +787,7 @@ pub fn WrongArgCount(s: &CStr) {
 pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let owner = collection_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     // The incoming call may be rooted solely by a mutable runtime override.
     // Retain the actual value before even the first option-symbol allocation.
@@ -971,7 +972,7 @@ fn collection_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 fn collect_warning_owned(call: SEXP, message: &str) {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let owner = collection_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     let _cleanup = WarningCollectionScope { owner: pin };
     collection_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
@@ -1050,7 +1051,7 @@ fn collect_warning_owned(call: SEXP, message: &str) {
 pub(super) fn setup_warnings() {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    let owner = collection_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     collection_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
         let capacity = unsafe { (*pointer).error_state.nwarnings };

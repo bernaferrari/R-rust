@@ -666,7 +666,9 @@ pub(crate) unsafe fn init_exec_token_in(inst: *mut RInstance) {
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     unsafe {
         crate::sexp::session::with_instance_active(inst, || {
-            let owner = crate::sexp::owner::OwnerToken::from_raw(inst);
+            let owner = pin
+                .token()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let factory = owner.node_factory();
             let symbol = owner
                 .sexp(Rf_install_in(inst, c".__EXEC__.".as_ptr()))

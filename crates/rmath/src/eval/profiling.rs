@@ -435,7 +435,10 @@ impl ProfileEpoch {
         Ok(Self { pin, generation })
     }
     fn unchanged(&self) -> bool {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(self.pin.as_ptr()) };
+        let owner = self
+            .pin
+            .token()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         owner
             .require_active()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

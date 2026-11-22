@@ -239,10 +239,10 @@ enum SignalMode<'a> {
 
 fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMode<'_>) -> bool {
     let operation_pin = super::state::error_scope_pin();
-    let authority = unsafe { crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr()) };
     let active = || {
-        authority
-            .require_active()
+        operation_pin
+            .token()
+            .and_then(|owner| owner.require_active())
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     };
     let condition = crate::sexp::context::own_control_value(cond);
@@ -449,10 +449,10 @@ pub(crate) fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
 fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected: Option<SEXP>) {
     unsafe {
         let operation_pin = super::state::error_scope_pin();
-        let authority = crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr());
         let active = || {
-            authority
-                .require_active()
+            operation_pin
+                .token()
+                .and_then(|owner| owner.require_active())
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         };
         let condition = crate::sexp::context::own_control_value(cond);
