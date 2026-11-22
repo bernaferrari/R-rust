@@ -84,3 +84,26 @@ cat('radix-order: PASS\n')"#
         "radix-order: PASS\n"
     );
 }
+
+#[test]
+fn real_radix_order_matches_gnu_for_nonfinite_values_and_groups() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"x <- c(NaN, NA, Inf, -Inf, -0, 0, 3, 3, -2, NA, NaN)
+stopifnot(identical(order(x, method='radix'), c(4L,9L,5L,6L,7L,8L,3L,1L,2L,10L,11L)))
+stopifnot(identical(order(x, method='radix', decreasing=TRUE, na.last=FALSE),
+                    c(1L,2L,10L,11L,3L,7L,8L,5L,6L,9L,4L)))
+stopifnot(identical(order(x, method='radix', na.last=NA), c(4L,9L,5L,6L,7L,8L,3L)))
+g <- grouping(x)
+stopifnot(identical(attr(g, 'ends'), c(1L,2L,4L,6L,7L,11L)))
+stopifnot(identical(attr(g, 'maxgrpn'), 4L))
+stopifnot(identical(order(c(2.0, NA, 2.0, -1.0, NA, -1.0), c(2L,1L,1L,2L,2L,1L),
+                          method='radix', na.last=NA), c(6L,4L,3L,1L)))
+cat('real-radix-order: PASS\n')"#,
+            )
+            .unwrap(),
+        "real-radix-order: PASS\n"
+    );
+}

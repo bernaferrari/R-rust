@@ -12,7 +12,6 @@
 
 use std::ffi::CStr;
 use std::os::raw::{c_int, c_void};
-use std::ptr;
 
 use crate::eval::attrib_core::setAttrib;
 use crate::sexp::accessors::*;
@@ -82,7 +81,6 @@ struct RadixSortState {
     radix_xsub: Vec<c_int>,
     otmp: Vec<c_int>,
     xtmp_int: Vec<c_int>,
-    xtmp_double: Vec<u64>,
 }
 
 impl Default for RadixSortState {
@@ -103,7 +101,6 @@ impl Default for RadixSortState {
             radix_xsub: Vec::new(),
             otmp: Vec::new(),
             xtmp_int: Vec::new(),
-            xtmp_double: Vec::new(),
         }
     }
 }
@@ -965,74 +962,70 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             *first = -1;
         }
         let xtype = TYPEOF(x);
-        let mut keys = if matches!(SEXPTYPE(xtype), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) {
-            integer_keys(x, n as usize)
-        } else {
-            Vec::new()
-        };
-        let xd: *mut c_void = if xtype == SEXPTYPE::REALSXP {
-            DATAPTR(x)
-        } else {
-            ptr::null_mut()
-        };
 
         state.stackgrps = narg > 1 || retGrp;
 
         // Dispatch on first arg type
-        match xtype {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                tmp = isorted(&mut state, &keys);
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                tmp = dsorted(&mut state, xd, n);
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                tmp = csorted(x as *mut c_void, n);
-            }
-            _ => {
-                error(&format!("First arg is type '{}', not yet supported", xtype));
-            }
-        }
-
-        let nalast = state.nalast;
-        if tmp != 0 {
-            // -1, 1, or -2
-            if tmp == 1 {
-                // Sorted as expected
-                isSorted = true;
-                for i in 0..o.len() {
-                    o[i] = (i + 1) as c_int;
-                }
-            } else if tmp == -1 {
-                // Strictly opposite order
-                isSorted = false;
-                for i in 0..o.len() {
-                    o[i] = n - i as c_int;
-                }
-            } else if nalast == 0 && tmp == -2 {
-                // All NAs, nalast=NA
-                isSorted = false;
-                o.fill(0);
-            }
+        if xtype == SEXPTYPE::REALSXP {
+            let input = wrapped(x);
+            let keys: Vec<_> = (0..nl)
+                .map(|i| real_radix_key(checked(input.try_real_elt(i)), state.order, state.nalast))
+                .collect();
+            isSorted = sort_real_keys(&mut state, &keys, &mut o);
         } else {
-            isSorted = false;
-            let xtype = TYPEOF(x);
+            let mut keys = if matches!(SEXPTYPE(xtype), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) {
+                integer_keys(x, n as usize)
+            } else {
+                Vec::new()
+            };
+
             match xtype {
                 t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                    isort(&mut state, &mut keys, &mut o, &mut []);
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    dsort(&mut state, xd, o.as_mut_ptr(), n);
+                    tmp = isorted(&mut state, &keys);
                 }
                 t if t == SEXPTYPE::STRSXP => {
-                    csort(&mut state, x as *mut c_void, o.as_mut_ptr(), n);
+                    tmp = csorted(x as *mut c_void, n);
                 }
                 _ => {
-                    error(&format!("unsupported type in sort: {}", xtype));
+                    error(&format!("First arg is type '{}', not yet supported", xtype));
+                }
+            }
+
+            let nalast = state.nalast;
+            if tmp != 0 {
+                // -1, 1, or -2
+                if tmp == 1 {
+                    // Sorted as expected
+                    isSorted = true;
+                    for i in 0..o.len() {
+                        o[i] = (i + 1) as c_int;
+                    }
+                } else if tmp == -1 {
+                    // Strictly opposite order
+                    isSorted = false;
+                    for i in 0..o.len() {
+                        o[i] = n - i as c_int;
+                    }
+                } else if nalast == 0 && tmp == -2 {
+                    // All NAs, nalast=NA
+                    isSorted = false;
+                    o.fill(0);
+                }
+            } else {
+                isSorted = false;
+                match xtype {
+                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                        isort(&mut state, &mut keys, &mut o, &mut []);
+                    }
+                    t if t == SEXPTYPE::STRSXP => {
+                        csort(&mut state, x as *mut c_void, o.as_mut_ptr(), n);
+                    }
+                    _ => {
+                        error(&format!("unsupported type in sort: {}", xtype));
+                    }
                 }
             }
         }
-        drop(keys);
 
         // --- Multi-column sort (col >= 2) ---
         let maxgrpn_first: c_int = state.gsmax[state.flip];
@@ -1257,266 +1250,80 @@ fn asBool_local(x: SEXP) -> c_int {
     }
 }
 
-/// 8-pass LSD radix sort for doubles.
-///
-/// Based on R's `dradix` from radixsort.c (donated from data.table).
-/// Uses 1-byte radix passes from MSB to LSB, treating doubles as
-/// unsigned 64-bit integers for comparison purposes.
-///
-/// NaN handling: R's NA_REAL (a specific NaN bit pattern) sorts to the
-/// end by default (nalast=TRUE) or beginning (nalast=FALSE).
-/// Other NaN values are treated as R_NaN.
-///
-/// # Safety
-/// - `x` must point to at least `n` valid f64 values (modified in-place).
-/// - `o` must point to at least `n` valid i32 values (written to).
-/// - Module-level NALAST and ORDER must be configured.
-unsafe fn dradix(state: &mut RadixSortState, x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        if n <= 1 {
-            if n == 1 {
-                *o = 1;
-            }
-            return x;
-        }
-
-        let xd = x as *mut f64;
-
-        // Check for trivially sorted cases first
-        let sorted = dsorted(state, x, n);
-        if sorted == 1 {
-            // Already sorted in expected order
-            for i in 0..n as usize {
-                *o.add(i) = (i + 1) as c_int;
-            }
-            return x;
-        } else if sorted == -1 {
-            // Strictly opposite order
-            for i in 0..n as usize {
-                *o.add(i) = (n - i as c_int) as c_int;
-            }
-            return x;
-        }
-
-        // Transform doubles to unsigned 64-bit for radix sort.
-        // IEEE 754 doubles can be compared as integers if we flip the sign bit
-        // for negative numbers and flip all bits for positive numbers.
-        // This maps: -Inf -> 0, ..., -0.0, NaN, ..., +0.0, ..., +Inf -> u64::MAX
-        let mut tmp: Vec<u64> = Vec::with_capacity(n as usize);
-        for i in 0..n as usize {
-            let v = *xd.add(i);
-            let bits = v.to_bits();
-            let mapped = if bits >> 63 != 0 {
-                // Negative: flip sign bit only
-                bits ^ 0x8000_0000_0000_0000
-            } else {
-                // Non-negative: flip all bits
-                !bits
-            };
-            tmp.push(mapped);
-        }
-
-        // Allocate working memory
-        grow_scratch(&mut state.otmp, n as usize);
-        grow_scratch(&mut state.xtmp_double, n as usize);
-
-        // 8-pass LSD radix sort (from MSB to LSB)
-        let mut src = tmp.as_mut_ptr();
-        let mut dst = state.xtmp_double.as_mut_ptr();
-        let mut src_o = o;
-        let mut dst_o = state.otmp.as_mut_ptr();
-
-        for pass in (0..8).rev() {
-            // Counting pass
-            let mut counts: [usize; 257] = [0; 257];
-            for i in 0..n as usize {
-                let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
-                counts[byte + 1] += 1;
-            }
-            // Cumulate
-            for i in 1..257 {
-                counts[i] += counts[i - 1];
-            }
-            // Scatter
-            for i in 0..n as usize {
-                let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
-                let pos = counts[byte];
-                *dst.add(pos) = *src.add(i);
-                *dst_o.add(pos) = *src_o.add(i);
-                counts[byte] += 1;
-            }
-            // Swap src/dst
-            let t = src;
-            src = dst;
-            dst = t;
-            let t_o = src_o;
-            src_o = dst_o;
-            dst_o = t_o;
-        }
-
-        // If final result is in XTMP (not tmp), copy back to o
-        if src_o != o {
-            ptr::copy_nonoverlapping(src_o, o, n as usize);
-        }
-
-        // Push group sizes
-        if state.stackgrps {
-            let mut tt: c_int = 1;
-            for i in 1..n as usize {
-                if *xd.add(*o.add(i) as usize - 1) == *xd.add(*o.add(i - 1) as usize - 1) {
-                    tt += 1;
-                } else {
-                    push(state, tt);
-                    tt = 1;
-                }
-            }
-            push(state, tt);
-        }
-
-        x
+/// Map a real key to its GNU radix ordering, including missing values.
+fn real_radix_key(value: f64, order: c_int, nalast: c_int) -> u64 {
+    if value.is_nan() {
+        return if nalast == 1 { u64::MAX } else { 0 };
     }
+    // Signed zeros are ties; they keep their input order.
+    let bits = if value == 0.0 { 0 } else { value.to_bits() };
+    let sign = 1u64 << 63;
+    let key = if bits & sign != 0 { !bits } else { bits ^ sign };
+    if order < 0 { !key } else { key }
 }
 
-/// Sort dispatcher for doubles.
-///
-/// Tests sortedness first, then dispatches to counting sort (small range)
-/// or radix sort (large range).
-///
-/// # Safety
-/// - `x` must point to at least `n` valid f64 values (read-only for the
-///   caller, but internally modified and restored).
-/// - `o` must point to at least `n` valid i32 values.
-unsafe fn dsort(state: &mut RadixSortState, x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        if n <= 1 {
-            if n == 1 {
-                *o = 1;
-            }
-            return x;
-        }
-
-        let sorted = dsorted(state, x, n);
-        if sorted == 1 {
-            for i in 0..n as usize {
-                *o.add(i) = (i + 1) as c_int;
-            }
-        } else if sorted == -1 {
-            for i in 0..n as usize {
-                *o.add(i) = (n - i as c_int) as c_int;
-            }
+/// Write one-based indices with stable ties, or zero for rows being dropped.
+/// Returns true if the input was already ordered and no rows were dropped.
+fn sort_real_keys(state: &mut RadixSortState, keys: &[u64], o: &mut [c_int]) -> bool {
+    debug_assert_eq!(keys.len(), o.len());
+    let n = keys.len();
+    let sorted = keys.windows(2).all(|pair| pair[0] <= pair[1]);
+    for (i, index) in o.iter_mut().enumerate() {
+        *index = (i + 1) as c_int;
+    }
+    if !sorted {
+        if keys.windows(2).all(|pair| pair[0] > pair[1]) {
+            o.reverse();
         } else {
-            // Use dradix for the actual sort
-            dradix(state, x, o, n);
-        }
-        x
-    }
-}
-
-/// Test whether a double vector is already sorted.
-///
-/// Returns:
-/// - `1` if sorted in the expected ORDER direction
-/// - `-1` if sorted in strictly the opposite direction (no ties)
-/// - `-2` if nalast==0 and all values are NA/NaN
-/// - `0` if unsorted
-///
-/// Also pushes group sizes onto the group stack.
-///
-/// # Safety
-/// - `x` must point to at least `n` valid f64 values.
-unsafe fn dsorted(state: &mut RadixSortState, x: *mut c_void, n: c_int) -> c_int {
-    unsafe {
-        let xd = x as *const f64;
-
-        if n <= 1 {
-            push(state, n);
-            return 1;
-        }
-
-        // Helper: transform double for comparison based on ORDER and NALAST
-        let nalast = state.nalast;
-        let order = state.order;
-        let dcheck = |v: f64| -> f64 {
-            if v.is_nan() {
-                // NA_REAL or NaN
-                if nalast == 1 {
-                    // NAs last: map to +Inf for ascending, -Inf for descending
-                    if order == 1 {
-                        f64::INFINITY
-                    } else {
-                        f64::NEG_INFINITY
-                    }
-                } else if nalast == -1 {
-                    // NAs first
-                    if order == 1 {
-                        f64::NEG_INFINITY
-                    } else {
-                        f64::INFINITY
-                    }
+            grow_scratch(&mut state.otmp, n);
+            let scratch = &mut state.otmp[..n];
+            // Least significant byte first; each scatter preserves input order.
+            for pass in 0..8 {
+                let (source, target) = if pass % 2 == 0 {
+                    (&*o, &mut *scratch)
                 } else {
-                    // nalast = 0 (NA): NAs are removed, but for sortedness check
-                    // treat as very negative
-                    f64::NEG_INFINITY
+                    (&*scratch, &mut *o)
+                };
+                let bucket =
+                    |index: c_int| ((keys[index as usize - 1] >> (pass * 8)) & 0xff) as usize;
+                let mut offsets = [0usize; 257];
+                for &index in source {
+                    offsets[bucket(index) + 1] += 1;
                 }
-            } else {
-                v * order as f64
-            }
-        };
-
-        // Check if all NA/NaN (for nalast==0)
-        if nalast == 0 {
-            let mut all_na = true;
-            for i in 0..n as usize {
-                if !(*xd.add(i)).is_nan() {
-                    all_na = false;
-                    break;
+                for i in 1..offsets.len() {
+                    offsets[i] += offsets[i - 1];
                 }
-            }
-            if all_na {
-                push(state, n);
-                return -2;
-            }
-        }
-
-        let v0 = dcheck(*xd.add(0));
-        let v1 = dcheck(*xd.add(1));
-
-        // Check if possibly in opposite order
-        if v1 < v0 {
-            let mut all_opp = true;
-            for i in 2..n as usize {
-                if dcheck(*xd.add(i)) >= dcheck(*xd.add(i - 1)) {
-                    all_opp = false;
-                    break;
+                for &index in source {
+                    let b = bucket(index);
+                    target[offsets[b]] = index;
+                    offsets[b] += 1;
                 }
             }
-            if all_opp {
-                mpush(state, 1, n);
-                return -1;
-            }
-            return 0;
         }
-
-        // Check if sorted in expected order
-        let old = state.gs[state.flip].len();
-        let mut tt: c_int = 1;
-        for i in 1..n as usize {
-            let vi = dcheck(*xd.add(i));
-            let vi_prev = dcheck(*xd.add(i - 1));
-            if vi < vi_prev {
-                state.gs[state.flip].truncate(old);
-                return 0;
-            }
-            if (*xd.add(i)).to_bits() == (*xd.add(i - 1)).to_bits() {
-                tt += 1;
-            } else {
-                push(state, tt);
-                tt = 1;
-            }
-        }
-        push(state, tt);
-        1
     }
+    if state.stackgrps {
+        let mut start = 0;
+        while start < n {
+            let key = keys[o[start] as usize - 1];
+            let mut end = start + 1;
+            while end < n && keys[o[end] as usize - 1] == key {
+                end += 1;
+            }
+            push(state, (end - start) as c_int);
+            start = end;
+        }
+    }
+    let mut removed = false;
+    if state.nalast == 0 {
+        for index in o {
+            // Zero is reserved for missing keys; even infinities map above it.
+            if keys[*index as usize - 1] == 0 {
+                *index = 0;
+                removed = true;
+            }
+        }
+    }
+    sorted && !removed
 }
 
 /// Recursive radix sort for character strings (STRSXP vectors).
@@ -1956,5 +1763,35 @@ mod tests {
         let result = integer_radixsort(&data, false, Some(false));
         let sorted: Vec<i32> = result.iter().map(|&i| data[i as usize - 1]).collect();
         assert_eq!(sorted, vec![-5, -3, -1, 0, 2, 3]);
+    }
+
+    #[test]
+    fn real_radix_preserves_stable_groups_and_missing_values() {
+        let values = [
+            f64::NAN,
+            NA_REAL,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            -0.0,
+            0.0,
+            3.0,
+            3.0,
+            -2.0,
+            NA_REAL,
+            f64::NAN,
+        ];
+        let mut state = RadixSortState {
+            gsmaxalloc: values.len() as c_int,
+            nalast: 1,
+            ..Default::default()
+        };
+        let keys: Vec<_> = values
+            .iter()
+            .map(|&value| real_radix_key(value, state.order, state.nalast))
+            .collect();
+        let mut order = [0; 11];
+        assert!(!sort_real_keys(&mut state, &keys, &mut order));
+        assert_eq!(order, [4, 9, 5, 6, 7, 8, 3, 1, 2, 10, 11]);
+        assert_eq!(state.gs[state.flip], [1, 1, 2, 2, 1, 4]);
     }
 }
