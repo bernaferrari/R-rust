@@ -96,45 +96,21 @@ pub(crate) fn persistent_hook_eligible(s: SEXP) -> bool {
 }
 
 pub(crate) fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
-    invoke_persist_hook(s, None, hook)
-}
-
-pub(crate) fn invoke_persist_hook(
-    s: SEXP,
-    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    hook_data: SEXP,
-) -> SEXP {
-    // SAFETY: `func` is the stream's installed persist hook, invoked with
-    // its own hook data; `s` and `hook_data` are live caller SEXPs.
-    unsafe {
-        if !persistent_hook_eligible(s) {
-            return R_NilValue();
-        }
-        let name = if let Some(func) = hook_func {
-            func(s, hook_data)
-        } else if hook_data.is_null() || hook_data == R_NilValue() {
-            return R_NilValue();
-        } else {
-            CallHook(s, hook_data)
-        };
-        if name == R_NilValue() || name.is_null() {
-            return R_NilValue();
-        }
-        if TYPEOF(name) != SEXPTYPE::STRSXP || XLENGTH(name) == 0 {
-            error("persistent hook must return a nonempty character vector");
-        }
-        name
+    if !persistent_hook_eligible(s) || hook.is_null() || hook == R_NilValue() {
+        return R_NilValue();
     }
+    let name = CallHook(s, hook);
+    if name == R_NilValue() || name.is_null() {
+        return R_NilValue();
+    }
+    if TYPEOF(name) != SEXPTYPE::STRSXP || XLENGTH(name) == 0 {
+        error("persistent hook must return a nonempty character vector");
+    }
+    name
 }
 
 pub(crate) fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
-    {
-        if writer.persist_hook_func.is_some() {
-            invoke_persist_hook(s, writer.persist_hook_func, writer.persist_hook_data)
-        } else {
-            persistent_name(s, writer.persist_hook)
-        }
-    }
+    persistent_name(s, writer.persist_hook)
 }
 
 // ---------------------------------------------------------------------------

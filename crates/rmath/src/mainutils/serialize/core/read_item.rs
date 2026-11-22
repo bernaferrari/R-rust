@@ -717,10 +717,6 @@ pub(crate) fn read_persistent_item(
         };
         let restored = if let Some(restore) = reader.lazy_restore.clone() {
             restore.restore(names)?
-        } else if let Some(func) = reader.persist_hook_func {
-            // SAFETY: `func` is the stream's installed C persist hook,
-            // invoked with its own hook data and the live `names` vector.
-            unsafe { func(names, reader.persist_hook_data) }
         } else if reader.persist_hook.is_null() || reader.persist_hook == R_NilValue() {
             return Err("no restore method available".into());
         } else {

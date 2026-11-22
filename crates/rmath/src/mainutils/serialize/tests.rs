@@ -4,17 +4,14 @@ use super::*;
 // Tests
 // ---------------------------------------------------------------------------
 
-use crate::mainutils::rfile::{SEEK_END, r_fclose, r_fflush, r_fseek, r_ftell, r_rewind};
 use crate::sexp::envir::R_NewHashedEnv;
 use crate::sexp::envir::defineVar;
 use crate::sexp::globals::{
     R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_UnboundValue,
 };
-use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
 use std::ffi::CString;
-use std::mem;
-use std::os::raw::c_void;
 use std::path::PathBuf;
+use std::slice;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
@@ -49,36 +46,6 @@ fn make_string_vector(value: &str) -> SEXP {
         );
     }
     vec
-}
-
-#[test]
-fn serialize_runtime_state_is_session_local() {
-    let mut first = RInstance::new();
-    unsafe {
-        set_current_instance(&mut first);
-    }
-    increment_read_item_depth();
-    assert_eq!(read_item_depth_for_test(), 1);
-
-    let mut second = RInstance::new();
-    unsafe {
-        set_current_instance(&mut second);
-    }
-    assert_eq!(read_item_depth_for_test(), 0);
-    decrement_read_item_depth();
-    assert_eq!(read_item_depth_for_test(), 0);
-    increment_read_item_depth();
-    increment_read_item_depth();
-    assert_eq!(read_item_depth_for_test(), 2);
-
-    unsafe {
-        set_current_instance(&mut first);
-    }
-    assert_eq!(read_item_depth_for_test(), 1);
-    decrement_read_item_depth();
-    assert_eq!(read_item_depth_for_test(), 0);
-
-    clear_current_instance();
 }
 
 fn make_na_string_vector() -> SEXP {
@@ -308,78 +275,6 @@ fn test_read_ref_table() {
     assert!(rt.get(i32::MIN).is_err());
 }
 
-#[test]
-fn test_c_read_ref_table_helpers() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let table = MakeReadRefTable();
-        let a = Rf_ScalarInteger(11);
-        let b = Rf_ScalarReal(2.5);
-        AddReadRef(table, a);
-        AddReadRef(table, b);
-        assert_eq!(GetReadRef(table, 1), a);
-        assert_eq!(GetReadRef(table, 2), b);
-    }
-}
-
-#[test]
-fn test_c_hash_table_helpers() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let ht = MakeHashTable();
-        let a = Rf_ScalarInteger(1);
-        let b = Rf_ScalarInteger(2);
-        assert_eq!(HashGet(a, ht), 0);
-        HashAdd(a, ht);
-        HashAdd(b, ht);
-        assert!(HashGet(a, ht) > 0);
-        assert!(HashGet(b, ht) > 0);
-    }
-}
-
-#[test]
-fn test_writebc_readbc_round_trip() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let mut out_stream: R_outpstream_st = mem::zeroed();
-        let mut out_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemOutPStream(
-            &mut out_stream,
-            &mut out_buf,
-            R_pstream_format_t::R_pstream_binary_format,
-            3,
-            None,
-            R_NilValue(),
-        );
-        let value = Rf_ScalarInteger(77);
-        WriteBC(value, ptr::null_mut(), &mut out_stream);
-        let raw = CloseMemOutPStream(&mut out_stream);
-
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            None,
-            R_NilValue(),
-        );
-        let got = ReadBC(ptr::null_mut(), &mut in_stream);
-        assert_eq!(TYPEOF(got), SEXPTYPE::INTSXP);
-        assert_eq!(LENGTH(got), 1);
-        assert_eq!(*INTEGER(got), 77);
-    }
-}
-
 fn gnu_bc_item_bytes(code: &[i32]) -> Vec<u8> {
     let mut writer = BinaryWriter::new();
     writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
@@ -419,149 +314,6 @@ fn test_gnu_bytecode_stream_is_validated_before_adapter_rejection() {
     assert!(err.contains("truncated GNU R bytecode opcode 2"));
 }
 
-/// Open a fresh read/write temp file (replaces libc tmpfile in tests):
-/// returns the path (for cleanup) and an RFile opened in "wb+" mode.
-unsafe fn tmp_rfile() -> (std::path::PathBuf, *mut crate::mainutils::rfile::RFile) {
-    let path = std::env::temp_dir().join(format!(
-        "rport-serialize-test-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-    let fp = unsafe {
-        crate::mainutils::rfile::r_fopen(c_path.as_ptr(), b"wb+\0".as_ptr() as *const c_char)
-    };
-    (path, fp)
-}
-
-#[test]
-fn test_conn_stream_file_callbacks() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let (path, fp) = tmp_rfile();
-        assert!(!fp.is_null());
-
-        let mut out_stream: R_outpstream_st = mem::zeroed();
-        R_InitConnOutPStream(
-            &mut out_stream,
-            fp as *mut c_void,
-            R_pstream_format_t::R_pstream_binary_format,
-            3,
-            None,
-            R_NilValue(),
-        );
-        assert!(out_stream.OutBytes.is_some());
-        let bytes = [1u8, 2, 3, 4];
-        out_stream.OutBytes.unwrap()(
-            &mut out_stream,
-            bytes.as_ptr() as *const c_void,
-            bytes.len() as c_int,
-        );
-        r_fflush(fp);
-        r_rewind(fp);
-
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        R_InitConnInPStream(
-            &mut in_stream,
-            fp as *mut c_void,
-            R_pstream_format_t::R_pstream_binary_format,
-            None,
-            R_NilValue(),
-        );
-        assert!(in_stream.InBytes.is_some());
-        let mut got = [0u8; 4];
-        in_stream.InBytes.unwrap()(
-            &mut in_stream,
-            got.as_mut_ptr() as *mut c_void,
-            got.len() as c_int,
-        );
-        assert_eq!(got, bytes);
-
-        r_fclose(fp);
-        let _ = std::fs::remove_file(path);
-    }
-}
-
-#[test]
-fn test_r_write_connection_file_round_trip() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let (path, fp) = tmp_rfile();
-        assert!(!fp.is_null());
-        let bytes = b"hello";
-        let wrote = R_WriteConnection(
-            fp as *mut c_void,
-            bytes.as_ptr() as *const c_void,
-            bytes.len(),
-        );
-        assert_eq!(wrote, bytes.len());
-        r_fflush(fp);
-        r_fseek(fp, 0, SEEK_END);
-        let size = r_ftell(fp);
-        assert_eq!(size, bytes.len() as i64);
-        r_fclose(fp);
-        let _ = std::fs::remove_file(path);
-    }
-}
-
-#[test]
-fn test_instringvec_round_trip() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let src = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        SET_STRING_ELT(src, 0, crate::sexp::constructors::mk_char_str("foo"));
-        SET_STRING_ELT(src, 1, R_NaString());
-        SET_STRING_ELT(src, 2, crate::sexp::constructors::mk_char_str("bar"));
-
-        let mut out_stream: R_outpstream_st = mem::zeroed();
-        let mut out_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemOutPStream(
-            &mut out_stream,
-            &mut out_buf,
-            R_pstream_format_t::R_pstream_binary_format,
-            3,
-            None,
-            R_NilValue(),
-        );
-        let write_ref_table = MakeHashTable();
-        OutStringVec(&mut out_stream, src, write_ref_table);
-        let raw = CloseMemOutPStream(&mut out_stream);
-
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            None,
-            R_NilValue(),
-        );
-        in_stream.type_ = R_pstream_format_t::R_pstream_binary_format;
-
-        let read_ref_table = MakeReadRefTable();
-        let got = InStringVec(&mut in_stream, read_ref_table);
-        assert_eq!(TYPEOF(got), SEXPTYPE::STRSXP);
-        assert_eq!(LENGTH(got), 3);
-        let g0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(got, 0)));
-        let g2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(got, 2)));
-        assert_eq!(g0.to_bytes(), b"foo");
-        assert_eq!(STRING_ELT(got, 1), R_NaString());
-        assert_eq!(g2.to_bytes(), b"bar");
-    }
-}
-
 #[test]
 fn test_ref_index_packing() {
     let _session = crate::sexp::session::RSession::new();
@@ -581,11 +333,8 @@ fn test_ref_index_packing() {
 fn test_constants() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(HASHSIZE, 1009);
-    assert_eq!(INITIAL_REFREAD_TABLE_SIZE, 128);
     assert_eq!(REFSXP, 255);
     assert_eq!(NC, 100);
-    assert_eq!(R_CODESET_MAX, 256);
-    assert_eq!(CHUNK_SIZE, 512);
     assert_eq!(R_DEFAULT_SERIALIZE_VERSION, 3);
     assert_eq!(NILVALUE_SXP, 254);
     assert_eq!(GLOBALENV_SXP, 253);
@@ -641,127 +390,22 @@ fn test_r_unserialize_returns_nil_for_non_raw() {
 }
 
 #[test]
-#[should_panic]
-fn test_r_serialize_info_returns_nil() {
+fn serialize_xdr_writes_the_versioned_wire_header() {
     let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let result = R_SerializeInfo(ptr::null_mut());
-        assert_eq!(result, R_NilValue());
-    }
-}
-
-#[test]
-fn test_r_serialize_info_reports_header() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
+    for (version, min_reader) in [(2, R_VERSION_230), (3, R_VERSION_350)] {
         let value = Rf_ScalarInteger(123);
-        let raw = R_serialize(
-            value,
-            R_NilValue(),
-            R_NilValue(),
-            R_NilValue(),
-            R_NilValue(),
-        );
-        assert_eq!(TYPEOF(raw), SEXPTYPE::RAWSXP);
-
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            None,
-            R_NilValue(),
-        );
-
-        let info = R_SerializeInfo(&mut in_stream);
-        assert_eq!(TYPEOF(info), SEXPTYPE::VECSXP);
-        assert_eq!(LENGTH(info), 5);
-
-        let names = crate::eval::attrib_core::getAttrib(info, R_NamesSymbol());
-        assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
-        assert_eq!(LENGTH(names), 5);
-        let n0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
-        let n1 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)));
-        let n2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 2)));
-        let n3 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 3)));
-        let n4 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 4)));
-        assert_eq!(n0.to_bytes(), b"version");
-        assert_eq!(n1.to_bytes(), b"writer_version");
-        assert_eq!(n2.to_bytes(), b"min_reader_version");
-        assert_eq!(n3.to_bytes(), b"format");
-        assert_eq!(n4.to_bytes(), b"native_encoding");
-
-        let version = VECTOR_ELT(info, 0);
-        assert_eq!(TYPEOF(version), SEXPTYPE::INTSXP);
-        assert_eq!(*INTEGER(version), 3);
-
-        let writer = VECTOR_ELT(info, 1);
-        assert_eq!(TYPEOF(writer), SEXPTYPE::STRSXP);
-        let writer_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(writer, 0)));
-        assert!(writer_s.to_bytes().contains(&b'.'));
-
-        let min_reader = VECTOR_ELT(info, 2);
-        assert_eq!(TYPEOF(min_reader), SEXPTYPE::STRSXP);
-        let min_reader_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(min_reader, 0)));
-        assert!(min_reader_s.to_bytes().contains(&b'.'));
-
-        let fmt = VECTOR_ELT(info, 3);
-        let fmt_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(fmt, 0)));
-        assert_eq!(fmt_s.to_bytes(), b"xdr");
-
-        let enc = VECTOR_ELT(info, 4);
-        let enc_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(enc, 0)));
-        // GNU v3 streams carry the native encoding; we report UTF-8.
-        assert_eq!(enc_s.to_bytes(), b"UTF-8");
-    }
-}
-
-#[test]
-fn test_r_serialize_honors_requested_version_2() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let value = Rf_ScalarInteger(123);
-        let version = Rf_ScalarInteger(2);
-        let raw = R_serialize(value, R_NilValue(), R_NilValue(), version, R_NilValue());
-        assert_eq!(TYPEOF(raw), SEXPTYPE::RAWSXP);
-
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            None,
-            R_NilValue(),
-        );
-
-        let info = R_SerializeInfo(&mut in_stream);
-        assert_eq!(TYPEOF(info), SEXPTYPE::VECSXP);
-        assert_eq!(LENGTH(info), 4);
-        assert_eq!(*INTEGER(VECTOR_ELT(info, 0)), 2);
-
-        let names = crate::eval::attrib_core::getAttrib(info, R_NamesSymbol());
-        assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
-        assert_eq!(LENGTH(names), 4);
-        let n0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
-        let n1 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)));
-        let n2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 2)));
-        let n3 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 3)));
-        assert_eq!(n0.to_bytes(), b"version");
-        assert_eq!(n1.to_bytes(), b"writer_version");
-        assert_eq!(n2.to_bytes(), b"min_reader_version");
-        assert_eq!(n3.to_bytes(), b"format");
+        let _value = protect(value);
+        let requested = Rf_ScalarInteger(version);
+        let _requested = protect(requested);
+        let raw = R_serialize(value, R_NilValue(), R_NilValue(), requested, R_NilValue());
+        let bytes = raw_to_bytes(raw);
+        assert_eq!(&bytes[..2], b"X\n");
+        assert_eq!(i32::from_be_bytes(bytes[2..6].try_into().unwrap()), version);
+        assert_eq!(i32::from_be_bytes(bytes[6..10].try_into().unwrap()), R_VERSION);
+        assert_eq!(i32::from_be_bytes(bytes[10..14].try_into().unwrap()), min_reader);
+        if version == 3 {
+            assert_eq!(&bytes[14..23], b"\0\0\0\x05UTF-8");
+        }
     }
 }
 
@@ -1000,15 +644,6 @@ fn test_r_decompress2_3_reject_unknown_marker() {
         err = 0;
         assert_eq!(R_decompress3(raw, &mut err), R_NilValue());
         assert_eq!(err, 1);
-    }
-}
-
-#[test]
-fn test_r_write_connection_returns_zero() {
-    let _session = crate::sexp::session::RSession::new();
-    unsafe {
-        let n = R_WriteConnection(ptr::null_mut(), ptr::null(), 42);
-        assert_eq!(n, 0);
     }
 }
 
@@ -1547,183 +1182,6 @@ fn test_roundtrip_pairlist_with_attributes() {
         let restored = R_unserialize(raw, R_NilValue());
         let _g2 = protect(restored);
         assert_eq!(R_compute_identical(list, restored, 4), 1);
-    }
-}
-
-fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
-    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
-        .expect_err("expected RError panic");
-    payload
-        .downcast_ref::<crate::sexp::context::RError>()
-        .expect("expected RError payload")
-        .clone()
-}
-
-unsafe extern "C" fn persist_token_hook(s: SEXP, data: SEXP) -> SEXP {
-    unsafe {
-        PERSIST_HOOK_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        PERSIST_LAST_SEEN.store(s as usize, std::sync::atomic::Ordering::SeqCst);
-        PERSIST_LAST_DATA.store(data as usize, std::sync::atomic::Ordering::SeqCst);
-        make_string_vector("token")
-    }
-}
-
-unsafe extern "C" fn persist_restore_hook(names: SEXP, data: SEXP) -> SEXP {
-    unsafe {
-        PERSIST_RESTORE_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        PERSIST_RESTORE_NAMES.store(names as usize, std::sync::atomic::Ordering::SeqCst);
-        PERSIST_RESTORE_DATA.store(data as usize, std::sync::atomic::Ordering::SeqCst);
-        PERSIST_RESTORE_VALUE.load(std::sync::atomic::Ordering::SeqCst) as SEXP
-    }
-}
-
-static PERSIST_HOOK_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_LAST_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_LAST_DATA: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_HITS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_NAMES: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_DATA: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-static PERSIST_RESTORE_VALUE: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-fn reset_c_persist_hook_state() {
-    PERSIST_HOOK_HITS.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_LAST_SEEN.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_LAST_DATA.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_RESTORE_HITS.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_RESTORE_NAMES.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_RESTORE_DATA.store(0, std::sync::atomic::Ordering::SeqCst);
-    PERSIST_RESTORE_VALUE.store(0, std::sync::atomic::Ordering::SeqCst);
-}
-
-unsafe fn serialize_env_with_c_hook(env: SEXP, hook_data: SEXP) -> SEXP {
-    unsafe {
-        let mut out_stream: R_outpstream_st = mem::zeroed();
-        let mut out_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemOutPStream(
-            &mut out_stream,
-            &mut out_buf,
-            R_pstream_format_t::R_pstream_binary_format,
-            3,
-            Some(persist_token_hook),
-            hook_data,
-        );
-        R_Serialize(env, &mut out_stream);
-        CloseMemOutPStream(&mut out_stream)
-    }
-}
-
-unsafe fn persist_payload_after_version3_header(raw: SEXP) -> &'static [u8] {
-    unsafe {
-        let bytes = slice::from_raw_parts(RAW(raw), XLENGTH(raw) as usize);
-        assert!(bytes.len() >= 18, "serialized payload too short");
-        assert_eq!(&bytes[..2], b"B\n");
-        let encoding_len = i32::from_ne_bytes(bytes[14..18].try_into().unwrap()) as usize;
-        &bytes[18 + encoding_len..]
-    }
-}
-
-#[test]
-fn c_persist_hook_serializes_an_ordinary_environment_as_persistsxp() {
-    let _session = crate::sexp::session::RSession::new();
-    reset_c_persist_hook_state();
-    unsafe {
-        let env = R_NewHashedEnv(R_BaseEnv(), 29);
-        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
-        let _raw_guard = protect(raw);
-        assert_eq!(
-            PERSIST_HOOK_HITS.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
-        assert_eq!(
-            PERSIST_LAST_SEEN.load(std::sync::atomic::Ordering::SeqCst),
-            env as usize
-        );
-        assert_eq!(
-            PERSIST_LAST_DATA.load(std::sync::atomic::Ordering::SeqCst),
-            0
-        );
-        let payload = persist_payload_after_version3_header(raw);
-        let tag = i32::from_ne_bytes(payload[..4].try_into().unwrap());
-        assert_eq!(tag, PERSISTSXP);
-    }
-}
-
-#[test]
-fn c_persist_hook_unserialize_without_restore_reports_gnu_error() {
-    let _session = crate::sexp::session::RSession::new();
-    reset_c_persist_hook_state();
-    unsafe {
-        let env = R_NewHashedEnv(R_BaseEnv(), 29);
-        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
-        let _raw_guard = protect(raw);
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            None,
-            R_NilValue(),
-        );
-        let err = assert_r_error(|| {
-            let _ = R_Unserialize(&mut in_stream);
-        });
-        assert_eq!(err.message, "no restore method available");
-    }
-}
-
-#[test]
-fn c_persist_hook_unserialize_with_restore_returns_replacement() {
-    let _session = crate::sexp::session::RSession::new();
-    reset_c_persist_hook_state();
-    unsafe {
-        let env = R_NewHashedEnv(R_BaseEnv(), 29);
-        let raw = serialize_env_with_c_hook(env, ptr::null_mut());
-        let _raw_guard = protect(raw);
-        let replacement = R_NewHashedEnv(R_BaseEnv(), 29);
-        PERSIST_RESTORE_VALUE.store(replacement as usize, std::sync::atomic::Ordering::SeqCst);
-        let mut in_stream: R_inpstream_st = mem::zeroed();
-        let mut in_buf = membuf_st {
-            size: 0,
-            count: 0,
-            buf: ptr::null_mut(),
-        };
-        InitMemInPStream(
-            &mut in_stream,
-            &mut in_buf,
-            RAW(raw) as *mut c_void,
-            XLENGTH(raw) as R_size_t,
-            Some(persist_restore_hook),
-            ptr::null_mut(),
-        );
-        let restored = R_Unserialize(&mut in_stream);
-        assert_eq!(restored, replacement);
-        assert_eq!(
-            PERSIST_RESTORE_HITS.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
-        assert_eq!(
-            PERSIST_RESTORE_DATA.load(std::sync::atomic::Ordering::SeqCst),
-            0
-        );
-        let names = PERSIST_RESTORE_NAMES.load(std::sync::atomic::Ordering::SeqCst) as SEXP;
-        assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
-        assert_eq!(XLENGTH(names), 1);
-        let token = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
-        assert_eq!(token.to_bytes(), b"token");
     }
 }
 

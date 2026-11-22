@@ -9,9 +9,6 @@ pub struct BinaryReader<'a> {
     pub(crate) item_depth: usize,
     pub(crate) bc_source_depth: usize,
     pub(crate) persist_hook: SEXP,
-    pub(crate) persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-
-    pub(crate) persist_hook_data: SEXP,
     pub(crate) lazy_restore: Option<super::api::LazyLoadRestore>,
     pub(super) persist_cache: Option<
         super::super::workspace::WorkspaceVec<(super::super::owned_input::InputBytes, SEXP)>,

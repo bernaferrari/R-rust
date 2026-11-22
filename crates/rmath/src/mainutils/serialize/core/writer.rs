@@ -45,8 +45,6 @@ pub struct BinaryWriter {
     pub(crate) item_depth: usize,
     pub(crate) strict_workspace: bool,
     pub(crate) persist_hook: SEXP,
-    pub(crate) persist_hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pub(crate) persist_hook_data: SEXP,
 }
 
 impl BinaryWriter {
@@ -63,8 +61,6 @@ impl BinaryWriter {
             item_depth: 0,
             strict_workspace: false,
             persist_hook: ptr::null_mut(),
-            persist_hook_func: None,
-            persist_hook_data: ptr::null_mut(),
         }
     }
 
@@ -96,15 +92,6 @@ impl BinaryWriter {
 
     pub fn set_persist_hook(&mut self, hook: SEXP) {
         self.persist_hook = hook;
-    }
-
-    pub fn set_c_persist_hook(
-        &mut self,
-        func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-        data: SEXP,
-    ) {
-        self.persist_hook_func = func;
-        self.persist_hook_data = data;
     }
 
     pub fn write_i32(&mut self, val: i32) {
@@ -144,43 +131,31 @@ impl BinaryWriter {
         self.buf.extend_from_slice(data);
     }
 
-    /// # Safety
-    ///
-    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-    /// the accompanying lengths) for the duration of the call.
-    pub unsafe fn write_string_bytes(&mut self, s: *const c_char, len: i32) {
-        if self.ascii_body && len == 0 {
-            self.buf.push(b'\n');
-        }
-        if len > 0 && !s.is_null() {
-            // SAFETY: Caller ensures s points to at least `len` valid bytes.
-            let slice = unsafe { slice::from_raw_parts(s as *const u8, len as usize) };
-            if self.ascii_body {
-                for &byte in slice {
-                    match byte {
-                        b'\n' => self.buf.extend_from_slice(b"\\n"),
-                        b'\t' => self.buf.extend_from_slice(b"\\t"),
-                        0x0b => self.buf.extend_from_slice(b"\\v"),
-                        0x08 => self.buf.extend_from_slice(b"\\b"),
-                        b'\r' => self.buf.extend_from_slice(b"\\r"),
-                        0x0c => self.buf.extend_from_slice(b"\\f"),
-                        0x07 => self.buf.extend_from_slice(b"\\a"),
-                        b'\\' => self.buf.extend_from_slice(b"\\\\"),
-                        b'?' => self.buf.extend_from_slice(b"\\?"),
-                        b'\'' => self.buf.extend_from_slice(b"\\'"),
-                        b'"' => self.buf.extend_from_slice(b"\\\""),
-                        0..=32 | 127..=255 => {
-                            self.buf
-                                .extend_from_slice(format!("\\{byte:03o}").as_bytes());
-                        }
-                        _ => self.buf.push(byte),
+    pub fn write_string_bytes(&mut self, bytes: &[u8]) {
+        if self.ascii_body {
+            for &byte in bytes {
+                match byte {
+                    b'\n' => self.buf.extend_from_slice(b"\\n"),
+                    b'\t' => self.buf.extend_from_slice(b"\\t"),
+                    0x0b => self.buf.extend_from_slice(b"\\v"),
+                    0x08 => self.buf.extend_from_slice(b"\\b"),
+                    b'\r' => self.buf.extend_from_slice(b"\\r"),
+                    0x0c => self.buf.extend_from_slice(b"\\f"),
+                    0x07 => self.buf.extend_from_slice(b"\\a"),
+                    b'\\' => self.buf.extend_from_slice(b"\\\\"),
+                    b'?' => self.buf.extend_from_slice(b"\\?"),
+                    b'\'' => self.buf.extend_from_slice(b"\\'"),
+                    b'"' => self.buf.extend_from_slice(b"\\\""),
+                    0..=32 | 127..=255 => {
+                        self.buf
+                            .extend_from_slice(format!("\\{byte:03o}").as_bytes());
                     }
+                    _ => self.buf.push(byte),
                 }
-                self.buf.push(b'\n');
-            } else {
-                self.buf.extend_from_slice(slice);
             }
+            self.buf.push(b'\n');
+        } else {
+            self.buf.extend_from_slice(bytes);
         }
     }
 

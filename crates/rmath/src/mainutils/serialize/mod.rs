@@ -14,12 +14,11 @@
 use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr;
-use std::slice;
 
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::coerce::{asInteger, asLogical};
@@ -27,7 +26,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::sexp::constructors::*;
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, Rboolean, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{
     R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_NilValue, R_UnboundValue,
 };
@@ -266,11 +265,9 @@ mod ascii_numbers;
 mod compress;
 mod core;
 mod lazyload;
-mod membuf;
 mod owned_input;
 mod owned_output;
 mod raw_codecs;
-mod stream;
 mod stream_values;
 mod workspace;
 
@@ -280,9 +277,7 @@ pub use self::api::*;
 pub use self::compress::*;
 pub use self::core::*;
 pub use self::lazyload::*;
-pub use self::membuf::*;
 pub(crate) use self::raw_codecs::DecodeError as LazyRecordDecodeError;
-pub use self::stream::*;
 #[cfg(test)]
 mod tests;
 

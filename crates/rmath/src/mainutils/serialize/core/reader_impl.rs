@@ -10,8 +10,6 @@ impl<'a> BinaryReader<'a> {
             item_depth: 0,
             bc_source_depth: 0,
             persist_hook: ptr::null_mut(),
-            persist_hook_func: None,
-            persist_hook_data: ptr::null_mut(),
             lazy_restore: None,
             persist_cache: None,
             pull: None,
@@ -33,8 +31,6 @@ impl<'a> BinaryReader<'a> {
             item_depth: 0,
             bc_source_depth: 0,
             persist_hook: ptr::null_mut(),
-            persist_hook_func: None,
-            persist_hook_data: ptr::null_mut(),
             lazy_restore: None,
             persist_cache: None,
             pull: Some(PullInput {
@@ -59,16 +55,6 @@ impl<'a> BinaryReader<'a> {
 
     pub fn set_persist_hook(&mut self, hook: SEXP) {
         self.persist_hook = hook;
-    }
-
-    pub fn set_c_persist_hook(
-        &mut self,
-        func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-
-        data: SEXP,
-    ) {
-        self.persist_hook_func = func;
-        self.persist_hook_data = data;
     }
 
     pub fn remaining(&self) -> usize {

@@ -1,521 +1,6 @@
 use super::*;
 
 // ---------------------------------------------------------------------------
-// R_Serialize -- serialize an R object to a stream (C API)
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
-    // SAFETY: `stream` is a caller-owned output stream that outlives this
-    // call; the null check guards every field access, and each callback
-    // receives only read-only views of buffers owned by this function.
-    unsafe {
-        if stream.is_null() {
-            return;
-        }
-        let owner = current_owner();
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        let out_ref = &mut *stream;
-        // Use OutFormat
-        match out_ref.type_ {
-            R_pstream_format_t::R_pstream_binary_format => {
-                if let Some(out_bytes) = out_ref.OutBytes {
-                    out_bytes(stream, b"B\n".as_ptr() as *const c_void, 2);
-                }
-            }
-            R_pstream_format_t::R_pstream_xdr_format => {
-                if let Some(out_bytes) = out_ref.OutBytes {
-                    out_bytes(stream, b"X\n".as_ptr() as *const c_void, 2);
-                }
-            }
-            R_pstream_format_t::R_pstream_ascii_format
-            | R_pstream_format_t::R_pstream_asciihex_format => {
-                if let Some(out_bytes) = out_ref.OutBytes {
-                    out_bytes(stream, b"A\n".as_ptr() as *const c_void, 2);
-                }
-            }
-            _ => {} // intentionally unhandled: unknown serialization format
-        }
-
-        // Write version info (version 3)
-        let version = out_ref.version;
-        let write_i32_to_stream = |val: i32, stream: R_outpstream_t| {
-            let bytes = val.to_ne_bytes();
-            if let Some(out_bytes) = (*stream).OutBytes {
-                out_bytes(stream, bytes.as_ptr() as *const c_void, 4);
-            }
-        };
-
-        write_i32_to_stream(3, stream); // version
-        write_i32_to_stream(R_VERSION, stream); // writer version
-        write_i32_to_stream(R_VERSION_350, stream); // min reader version
-
-        // Write native encoding (empty string for our purposes)
-        write_i32_to_stream(0, stream); // encoding name length = 0
-
-        // Write the object using a temporary buffer, then stream it out.
-        // GNU R_Serialize calls stream->OutPersistHookFunc for eligible
-        // reference objects even when hook data is not an R function.
-        // Keep the R-function path when only hook data is a closure.
-        let mut writer = BinaryWriter::admitted(&owner);
-        let hook_data = out_ref.OutPersistHookData;
-        if let Some(func) = out_ref.OutPersistHookFunc {
-            writer.set_c_persist_hook(Some(func), hook_data);
-        } else if persist_hook_is_r_function(hook_data) {
-            writer.set_persist_hook(hook_data);
-        }
-        let mut ref_table = WriteHashTable::for_owner(&owner);
-        WriteItemInternal(s, &mut ref_table, &mut writer);
-
-        // Stream out the serialized bytes
-        let data = writer.into_output();
-        if !data.is_empty()
-            && let Some(out_bytes) = (*stream).OutBytes
-        {
-            // Write in chunks to avoid c_int overflow
-            let mut offset = 0usize;
-            while offset < data.len() {
-                let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
-                let chunk_len_int = chunk_len as c_int;
-                if chunk_len_int < 0 {
-                    break;
-                }
-                out_bytes(
-                    stream,
-                    data[offset..].as_ptr() as *const c_void,
-                    chunk_len_int,
-                );
-                offset += chunk_len;
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_Unserialize -- unserialize an R object from a stream (C API)
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
-    let owner = current_owner();
-    let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-    if stream.is_null() {
-        error("read error");
-    }
-    // SAFETY: forwarded raw pointers satisfy `read_stream_bytes_via_inchar`'s contract per this function's own `# Safety` requirements.
-    let bytes = unsafe { read_stream_bytes_via_inchar(stream, &owner) };
-    if bytes.is_empty() {
-        error("read error");
-    }
-    let raw = raw_from_bytes(&bytes);
-    // SAFETY: `stream` is the caller-owned input stream, checked for null
-    // above; only its hook fields are read.
-    let (hook_func, hook_data) =
-        unsafe { ((*stream).InPersistHookFunc, (*stream).InPersistHookData) };
-    R_unserialize_from_stream_hooks(raw, hook_func, hook_data, None)
-}
-
-// ---------------------------------------------------------------------------
-// R_SerializeInfo
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
-    {
-        if stream.is_null() {
-            error("read error");
-        }
-        // SAFETY: forwarded raw pointers satisfy `InFormat`'s contract per this function's own `# Safety` requirements.
-        unsafe { InFormat(stream) };
-
-        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
-        let version = unsafe { InInteger(stream) };
-        let anslen = if version == 3 { 5 } else { 4 };
-        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
-        let writer_version = unsafe { InInteger(stream) };
-        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
-        let min_reader_version = unsafe { InInteger(stream) };
-
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, anslen as R_xlen_t);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, anslen as R_xlen_t);
-        let _ans_guard = protect(ans);
-        let _names_guard = protect(names);
-
-        SET_STRING_ELT(names, 0, mk_char("version"));
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(version));
-
-        SET_STRING_ELT(names, 1, mk_char("writer_version"));
-        let mut vv = 0;
-        let mut vp = 0;
-        let mut vs = 0;
-        DecodeVersion(writer_version, &mut vv, &mut vp, &mut vs);
-        let writer_s = format!("{vv}.{vp}.{vs}");
-        SET_VECTOR_ELT(ans, 1, mk_string(&writer_s));
-
-        SET_STRING_ELT(names, 2, mk_char("min_reader_version"));
-        if min_reader_version < 0 {
-            SET_VECTOR_ELT(ans, 2, Rf_ScalarString(R_NaString()));
-        } else {
-            DecodeVersion(min_reader_version, &mut vv, &mut vp, &mut vs);
-            let min_reader_s = format!("{vv}.{vp}.{vs}");
-            SET_VECTOR_ELT(ans, 2, mk_string(&min_reader_s));
-        }
-
-        SET_STRING_ELT(names, 3, mk_char("format"));
-        // SAFETY: `stream` is the caller-owned input stream, checked for
-        // null above; only its format field is read.
-        match unsafe { (*stream).type_ } {
-            R_pstream_format_t::R_pstream_ascii_format
-            | R_pstream_format_t::R_pstream_asciihex_format => {
-                SET_VECTOR_ELT(ans, 3, mk_string("ascii"));
-            }
-            R_pstream_format_t::R_pstream_binary_format => {
-                SET_VECTOR_ELT(ans, 3, mk_string("binary"));
-            }
-            R_pstream_format_t::R_pstream_xdr_format => {
-                SET_VECTOR_ELT(ans, 3, mk_string("xdr"));
-            }
-            _ => error("unknown input format"),
-        }
-
-        if version == 3 {
-            SET_STRING_ELT(names, 4, mk_char("native_encoding"));
-            // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
-            let nelen = unsafe { InInteger(stream) };
-            if !(0..=R_CODESET_MAX).contains(&nelen) {
-                error("invalid length of encoding name");
-            }
-            if nelen == 0 {
-                SET_VECTOR_ELT(ans, 4, mk_string(""));
-            } else {
-                let mut bytes = vec![0u8; nelen as usize];
-                // SAFETY: forwarded raw pointers satisfy `InString`'s contract per this function's own `# Safety` requirements.
-                unsafe { InString(stream, bytes.as_mut_ptr() as *mut c_char, nelen) };
-                let enc_ch = mk_chars(&bytes);
-                SET_VECTOR_ELT(ans, 4, Rf_ScalarString(enc_ch));
-            }
-        }
-
-        setAttrib(ans, R_NamesSymbol(), names);
-        ans
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_ReadItem / R_WriteItem (C stream API)
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
-    {
-        let owner = current_owner();
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        if stream.is_null() {
-            error("read error");
-        }
-        // SAFETY: forwarded raw pointers satisfy `read_stream_bytes_via_inchar`'s contract per this function's own `# Safety` requirements.
-        let bytes = unsafe { read_stream_bytes_via_inchar(stream, &owner) };
-        if bytes.is_empty() {
-            error("read error");
-        }
-        let mut reader = BinaryReader::new(&bytes);
-        let mut ref_table = ReadRefTable::for_owner(&owner);
-        match ReadItemInternal(&mut reader, &mut ref_table) {
-            Ok(v) => v,
-            Err(_) => error("read error"),
-        }
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
-    {
-        if stream.is_null() {
-            return;
-        }
-        let owner = current_owner();
-        let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
-        let mut writer = BinaryWriter::admitted(&owner);
-        let mut ref_table = WriteHashTable::for_owner(&owner);
-        WriteItemInternal(s, &mut ref_table, &mut writer);
-        let data = writer.into_output();
-        // SAFETY: `stream` is the caller-owned output stream, checked for
-        // null above; the callback only reads each immutable chunk.
-        unsafe {
-            if !data.is_empty()
-                && let Some(out_bytes) = (*stream).OutBytes
-            {
-                let mut offset = 0usize;
-                while offset < data.len() {
-                    let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
-                    let chunk_len_int = chunk_len as c_int;
-                    if chunk_len_int < 0 {
-                        break;
-                    }
-                    out_bytes(
-                        stream,
-                        data[offset..].as_ptr() as *const c_void,
-                        chunk_len_int,
-                    );
-                    offset += chunk_len;
-                }
-            }
-        }
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn read_stream_bytes_via_inchar(
-    stream: R_inpstream_t,
-    owner: &crate::sexp::owner::OwnerToken<'_>,
-) -> super::owned_input::InputBytes {
-    {
-        let mut out = super::owned_input::InputBytes::new(
-            super::workspace::reserve(owner, 0).unwrap_or_else(|e| error(&e)),
-            0,
-        )
-        .unwrap_or_else(|e| error(&e.to_string()));
-        if stream.is_null() {
-            return out;
-        }
-        // SAFETY: `stream` is the caller-owned input stream, checked for
-        // null above; only its InChar callback field is read.
-        let Some(in_char) = (unsafe { (*stream).InChar }) else {
-            return out;
-        };
-        loop {
-            let read = out
-                .push_from(|| {
-                    // SAFETY: `in_char` is the stream's installed read
-                    // callback, invoked with its owning stream pointer.
-                    let ch = unsafe { in_char(stream) };
-                    owner
-                        .require_active()
-                        .unwrap_or_else(|e| error(&e.to_string()));
-                    (ch >= 0).then_some(ch as u8)
-                })
-                .unwrap_or_else(|e| error(&e.to_string()));
-            if !read {
-                break;
-            }
-        }
-        out
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Stream initializers
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitInPStream(
-    stream: R_inpstream_t,
-    data: R_pstream_data_t,
-    type_: R_pstream_format_t,
-    inchar: Option<unsafe extern "C" fn(R_inpstream_t) -> c_int>,
-    inbytes: Option<unsafe extern "C" fn(R_inpstream_t, *mut c_void, c_int)>,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    // SAFETY: `stream` is a caller-owned input stream struct; the null
-    // check precedes plain field stores that stay inside its layout.
-    unsafe {
-        if stream.is_null() {
-            return;
-        }
-        (*stream).data = data;
-        (*stream).type_ = type_;
-        (*stream).InChar = inchar;
-        (*stream).InBytes = inbytes;
-        (*stream).InPersistHookFunc = phook;
-        (*stream).InPersistHookData = pdata;
-        (*stream).native_encoding[0] = 0;
-        (*stream).nat2nat_obj = ptr::null_mut();
-        (*stream).nat2utf8_obj = ptr::null_mut();
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitOutPStream(
-    stream: R_outpstream_t,
-    data: R_pstream_data_t,
-    type_: R_pstream_format_t,
-    version: c_int,
-    outchar: Option<unsafe extern "C" fn(R_outpstream_t, c_int)>,
-    outbytes: Option<unsafe extern "C" fn(R_outpstream_t, *const c_void, c_int)>,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    // SAFETY: `stream` is a caller-owned output stream struct; the null
-    // check precedes plain field stores that stay inside its layout.
-    unsafe {
-        if stream.is_null() {
-            return;
-        }
-        let ver = if version != 0 {
-            version
-        } else {
-            R_DEFAULT_SERIALIZE_VERSION
-        };
-        (*stream).data = data;
-        (*stream).type_ = type_;
-        (*stream).version = ver;
-        (*stream).OutChar = outchar;
-        (*stream).OutBytes = outbytes;
-        (*stream).OutPersistHookFunc = phook;
-        (*stream).OutPersistHookData = pdata;
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitFileOutPStream(
-    stream: R_outpstream_t,
-    fp: *mut c_void,
-    type_: R_pstream_format_t,
-    version: c_int,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    {
-        // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            R_InitOutPStream(
-                stream,
-                fp,
-                type_,
-                version,
-                Some(OutCharFile),
-                Some(OutBytesFile),
-                phook,
-                pdata,
-            )
-        };
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitFileInPStream(
-    stream: R_inpstream_t,
-    fp: *mut c_void,
-    type_: R_pstream_format_t,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    {
-        // SAFETY: forwarded raw pointers satisfy `R_InitInPStream`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            R_InitInPStream(
-                stream,
-                fp,
-                type_,
-                Some(InCharFile),
-                Some(InBytesFile),
-                phook,
-                pdata,
-            )
-        };
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitConnOutPStream(
-    stream: R_outpstream_t,
-    con: *mut c_void,
-    type_: R_pstream_format_t,
-    version: c_int,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    {
-        // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            R_InitOutPStream(
-                stream,
-                con,
-                type_,
-                version,
-                Some(OutCharFile),
-                Some(OutBytesFile),
-                phook,
-                pdata,
-            )
-        };
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn R_InitConnInPStream(
-    stream: R_inpstream_t,
-    con: *mut c_void,
-    type_: R_pstream_format_t,
-    phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pdata: SEXP,
-) {
-    {
-        // SAFETY: forwarded raw pointers satisfy `R_InitInPStream`'s contract per this function's own `# Safety` requirements.
-        unsafe {
-            R_InitInPStream(
-                stream,
-                con,
-                type_,
-                Some(InCharFile),
-                Some(InBytesFile),
-                phook,
-                pdata,
-            )
-        };
-    }
-}
-
-// ---------------------------------------------------------------------------
 // R_serialize / R_unserialize (R-level entry points, memory-based)
 // ---------------------------------------------------------------------------
 
@@ -644,13 +129,7 @@ fn serialize_snapshot(
         // is UTF-8-native like Unix GNU R.
         const NATIVE_ENCODING: &[u8] = b"UTF-8";
         writer.write_i32(NATIVE_ENCODING.len() as c_int);
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe {
-            writer.write_string_bytes(
-                NATIVE_ENCODING.as_ptr() as *const c_char,
-                NATIVE_ENCODING.len() as c_int,
-            )
-        };
+        writer.write_string_bytes(NATIVE_ENCODING);
     }
 
     // Serialize the object
@@ -676,20 +155,15 @@ pub fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
                 .sexp(fun)
                 .and_then(|s| s.into_owned())
                 .unwrap_or_else(|e| error(&e.to_string()));
-            R_unserialize_from_stream_hooks(
-                icon,
-                None,
-                R_NilValue(),
-                Some(LazyLoadRestore { data }),
-            )
+            unserialize_raw(icon, R_NilValue(), Some(LazyLoadRestore { data }))
         } else {
-            R_unserialize_from_stream_hooks(icon, None, fun, None)
+            unserialize_raw(icon, fun, None)
         }
     }
 }
 
 /// The runtime's lazy-load hook is Rust control flow with an actual owning
-/// environment. External C stream callbacks keep their separate ABI contract.
+/// environment.
 #[derive(Clone)]
 pub(crate) struct LazyLoadRestore {
     data: crate::sexp::object::Sexp<'static>,
@@ -1043,19 +517,8 @@ fn persist_restore_inner(
     }
 }
 
-fn persist_hook_is_r_function(hook: SEXP) -> bool {
-    {
-        !hook.is_null()
-            && hook != R_NilValue()
-            && (TYPEOF(hook) == SEXPTYPE::CLOSXP
-                || TYPEOF(hook) == SEXPTYPE::BUILTINSXP
-                || TYPEOF(hook) == SEXPTYPE::SPECIALSXP)
-    }
-}
-
-fn R_unserialize_from_stream_hooks(
+fn unserialize_raw(
     icon: SEXP,
-    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
     lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
@@ -1125,7 +588,7 @@ fn R_unserialize_from_stream_hooks(
             )
             .unwrap_or_else(|failure| error(&failure.to_string()));
         }
-        unserialize_owned_input(&owner, &data, hook_func, hook_data, lazy_restore)
+        unserialize_owned_input(&owner, &data, hook_data, lazy_restore)
     }
 }
 
@@ -1135,7 +598,6 @@ fn R_unserialize_from_stream_hooks(
 fn unserialize_owned_input(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     data: &[u8],
-    hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
     lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
@@ -1162,11 +624,7 @@ fn unserialize_owned_input(
         let payload = decompressed.as_deref().unwrap_or(data);
         let mut reader = BinaryReader::new(payload);
         reader.lazy_restore = lazy_restore;
-        if hook_func.is_some() {
-            reader.set_c_persist_hook(hook_func, hook_data);
-        } else {
-            reader.set_persist_hook(hook_data);
-        }
+        reader.set_persist_hook(hook_data);
         decode_stream_object(owner, &mut reader)
     }
 }
@@ -1192,7 +650,7 @@ pub(crate) fn unserialize_native_snapshot(
     };
     // SAFETY: the native slice is immutable and its caller owns its complete
     // backing across callbacks. The original hook graph is owned above.
-    let result = { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
+    let result = { unserialize_owned_input(owner, data, hook_data, lazy_restore) };
     owner.require_active()?;
     owner.sexp(result)?.into_owned()
 }

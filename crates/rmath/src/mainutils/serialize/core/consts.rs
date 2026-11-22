@@ -22,15 +22,6 @@ pub const R_VERSION_350: c_int = (3 << 16) | (5 << 8);
 /// Writer R version in packed form.
 pub const R_VERSION: c_int = crate::mainutils::compatibility_target::PACKED_VERSION;
 
-/// Chunk size for vector I/O.
-pub const CHUNK_SIZE: usize = 512;
-
-/// Maximum codeset name length.
-pub const R_CODESET_MAX: c_int = 256;
-
-/// Initial reference read table size.
-pub const INITIAL_REFREAD_TABLE_SIZE: c_int = 128;
-
 /// REFSXP type for reference markers.
 pub const REFSXP: c_int = 255;
 
@@ -70,49 +61,6 @@ pub const GROWABLE_MASK: c_int = 1 << 5;
 /// Maximum packed reference index.
 pub const MAX_PACKED_INDEX: c_int = c_int::MAX >> 8;
 
-/// Serialization format types.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum R_pstream_format_t {
-    R_pstream_any_format = 0,
-    R_pstream_ascii_format = 1,
-    R_pstream_binary_format = 2,
-    R_pstream_xdr_format = 3,
-    R_pstream_asciihex_format = 4,
-}
-
-/// Opaque pointer for stream data.
-pub type R_pstream_data_t = *mut c_void;
-
-/// Structure for the R output persistent stream.
-#[repr(C)]
-pub struct R_outpstream_st {
-    pub data: R_pstream_data_t,
-    pub type_: R_pstream_format_t,
-    pub version: c_int,
-    pub OutChar: Option<unsafe extern "C" fn(*mut R_outpstream_st, c_int)>,
-    pub OutBytes: Option<unsafe extern "C" fn(*mut R_outpstream_st, *const c_void, c_int)>,
-    pub OutPersistHookFunc: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pub OutPersistHookData: SEXP,
-}
-
-/// Structure for the R input persistent stream.
-#[repr(C)]
-pub struct R_inpstream_st {
-    pub data: R_pstream_data_t,
-    pub type_: R_pstream_format_t,
-    pub InChar: Option<unsafe extern "C" fn(*mut R_inpstream_st) -> c_int>,
-    pub InBytes: Option<unsafe extern "C" fn(*mut R_inpstream_st, *mut c_void, c_int)>,
-    pub InPersistHookFunc: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
-    pub InPersistHookData: SEXP,
-    pub native_encoding: [c_char; R_CODESET_MAX as usize],
-    pub nat2nat_obj: *mut c_void,
-    pub nat2utf8_obj: *mut c_void,
-}
-
-pub type R_outpstream_t = *mut R_outpstream_st;
-pub type R_inpstream_t = *mut R_inpstream_st;
-
 // ---------------------------------------------------------------------------
 // Per-session lazy-load/read state
 // ---------------------------------------------------------------------------
@@ -121,7 +69,6 @@ pub struct SerializeRuntimeState {
     pub used: usize,
     pub cache_names: [*mut c_char; NC],
     pub cache_ptrs: [*mut c_char; NC],
-    pub read_item_depth: c_int,
     pub(crate) imported_bytecode_metadata: [crate::sexp::instance::RuntimeValue; 2],
 }
 
@@ -131,43 +78,11 @@ impl Default for SerializeRuntimeState {
             used: 0,
             cache_names: [ptr::null_mut(); NC],
             cache_ptrs: [ptr::null_mut(); NC],
-            read_item_depth: 0,
             imported_bytecode_metadata: std::array::from_fn(|_| {
                 crate::sexp::instance::RuntimeValue::empty()
             }),
         }
     }
-}
-
-pub fn increment_read_item_depth() {
-    with_required_current_instance(|instance| {
-        // SAFETY: `instance` is the live current RInstance; this strictly
-        // local counter update runs no callback inside the borrow.
-        unsafe {
-            (*instance).serialize_state.read_item_depth += 1;
-        }
-    });
-}
-
-pub fn decrement_read_item_depth() {
-    with_required_current_instance(|instance| {
-        // SAFETY: `instance` is the live current RInstance; this strictly
-        // local counter update runs no callback inside the borrow.
-        unsafe {
-            if (*instance).serialize_state.read_item_depth > 0 {
-                (*instance).serialize_state.read_item_depth -= 1;
-            }
-        }
-    });
-}
-
-#[cfg(test)]
-pub fn read_item_depth_for_test() -> c_int {
-    with_required_current_instance(|instance| {
-        // SAFETY: `instance` is the live current RInstance; this strictly
-        // local field read runs no callback inside the borrow.
-        unsafe { (*instance).serialize_state.read_item_depth }
-    })
 }
 
 // ---------------------------------------------------------------------------
