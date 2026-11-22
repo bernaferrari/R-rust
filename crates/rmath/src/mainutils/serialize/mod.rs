@@ -247,19 +247,6 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
     Some(u32::from_ne_bytes(bytes).swap_bytes() as usize)
 }
 
-#[inline]
-fn clear_lazy_load_cache() {
-    with_required_current_instance(|instance| {
-        // SAFETY: `instance` is the live current RInstance for this
-        // strictly-local cache reset; no callback runs inside the borrow.
-        unsafe {
-            (*instance).serialize_state.used = 0;
-            (*instance).serialize_state.cache_names = [ptr::null_mut(); NC];
-            (*instance).serialize_state.cache_ptrs = [ptr::null_mut(); NC];
-        }
-    });
-}
-
 mod api;
 mod ascii_numbers;
 mod compress;

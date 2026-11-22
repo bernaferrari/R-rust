@@ -41,6 +41,8 @@ use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::memory::RArena;
+use super::object::{Sexp, SexpResult};
+use super::owner::OwnerPin;
 #[path = "persistent.rs"]
 pub(crate) mod persistent;
 use persistent::PersistentHeap;
@@ -342,6 +344,8 @@ impl Default for EvalControlState {
     }
 }
 
+pub(crate) type ImportedBytecodeMetadata = [Sexp<'static>; 2];
+
 /// All per-instance state for one independent R session.
 ///
 /// Each `RInstance` has its own arena, environments, and protection stack,
@@ -412,8 +416,8 @@ pub struct RInstance {
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
     /// Per-instance ALTREP class-method registry.
     pub(crate) altrep_state: crate::sexp::altrep::AltrepRuntimeState,
-    /// Per-instance serialization lazy-load cache and read-depth state.
-    pub(crate) serialize_state: crate::mainutils::serialize::SerializeRuntimeState,
+    /// Rooted metadata shared by imported GNU bytecode in this instance.
+    imported_bytecode_metadata: RefCell<Option<ImportedBytecodeMetadata>>,
     /// Per-instance LAPACK module dispatcher.
     pub(crate) lapack_state: crate::mainutils::lapack::LapackRuntimeState,
     /// Per-instance internet module state.
@@ -635,7 +639,7 @@ impl RInstance {
             objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
             altrep_state: crate::sexp::altrep::AltrepRuntimeState::default(),
-            serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
+            imported_bytecode_metadata: RefCell::new(None),
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
             #[cfg(not(target_arch = "wasm32"))]
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
@@ -866,6 +870,7 @@ impl Drop for RInstance {
         self.eval_state.profiling.srcfiles_reservation = None;
         self.eval_state.profiling.srcfile_bytes_used = 0;
         self.eval_state.profiling.srcfiles_buffer = RuntimeValue::empty();
+        drop(self.imported_bytecode_metadata.get_mut().take());
         // Persistent headers and character bytes are owned Rust fields; their
         // pages invalidate outstanding checked identities during normal Drop.
         self.vmax.clear();
@@ -878,6 +883,31 @@ impl Drop for RInstance {
             }
             self.eval_state.profiling.profile_outfile = -1;
         }
+    }
+}
+
+impl OwnerPin {
+    fn imported_bytecode_cache(&self) -> SexpResult<&RefCell<Option<ImportedBytecodeMetadata>>> {
+        self.require_live()?;
+        // SAFETY: this pin retains the original allocation. Only this shared
+        // projection accesses the private cell while the owner is live.
+        Ok(unsafe { &(*self.as_ptr()).imported_bytecode_metadata })
+    }
+
+    pub(crate) fn imported_bytecode_metadata(&self) -> SexpResult<Option<ImportedBytecodeMetadata>> {
+        Ok(self.imported_bytecode_cache()?.borrow().clone())
+    }
+
+    pub(crate) fn publish_imported_bytecode_metadata(
+        &self,
+        values: ImportedBytecodeMetadata,
+    ) -> SexpResult<ImportedBytecodeMetadata> {
+        let mut cache = self.imported_bytecode_cache()?.borrow_mut();
+        if let Some(published) = cache.as_ref() {
+            return Ok(published.clone());
+        }
+        *cache = Some(values.clone());
+        Ok(values)
     }
 }
 

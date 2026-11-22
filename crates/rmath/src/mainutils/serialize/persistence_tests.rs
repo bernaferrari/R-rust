@@ -275,8 +275,9 @@ fn bounded_small_decodes_do_not_retrace_an_unchanged_high_live_heap() {
 #[test]
 fn imported_bytecode_reuses_private_metadata_within_one_original_owner() {
     use crate::sexp::{object::SexpMut, session::RSession};
-    let session = RSession::new_for_gc_tests();
+    let mut session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
+    let pin = owner.pin().unwrap().unwrap();
     let factory = owner.node_factory();
     let bytes = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -317,6 +318,16 @@ fn imported_bytecode_reuses_private_metadata_within_one_original_owner() {
             Some(crate::eval::bytecode::GNU_BC_DIALECT_MARKER)
         );
     }
+    assert!(pin.imported_bytecode_metadata().unwrap().is_some());
+    let other = RSession::new_for_gc_tests();
+    let other_pin = other.owner_token().unwrap().pin().unwrap().unwrap();
+    assert!(other_pin.imported_bytecode_metadata().unwrap().is_none());
+    drop(other);
+    session.close();
+    assert!(matches!(
+        pin.imported_bytecode_metadata(),
+        Err(crate::sexp::object::SexpError::RootUnavailable)
+    ));
 }
 
 // Independently accepted by pinned GNU R's unserialize(refhook = identity):

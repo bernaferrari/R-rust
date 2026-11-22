@@ -334,7 +334,6 @@ fn test_constants() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(HASHSIZE, 1009);
     assert_eq!(REFSXP, 255);
-    assert_eq!(NC, 100);
     assert_eq!(R_DEFAULT_SERIALIZE_VERSION, 3);
     assert_eq!(NILVALUE_SXP, 254);
     assert_eq!(GLOBALENV_SXP, 253);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::sexp::instance::ImportedBytecodeMetadata;
 
 // ---------------------------------------------------------------------------
 // Internal ReadItem (recursive, reads from BinaryReader)
@@ -37,27 +38,14 @@ pub(crate) fn read_item_in_context(
 /// These two values describe the port's imported bytecode representation,
 /// not user constants. Share their owned original-session cells rather than
 /// allocating two additional R nodes for every imported closure.
-type ImportedMetadata = [crate::sexp::object::Sexp<'static>; 2];
-
-fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
-    use crate::sexp::{instance::RuntimeValue, object::SexpError, owner::OwnerToken};
+fn imported_bytecode_metadata() -> Result<Option<ImportedBytecodeMetadata>, String> {
+    use crate::sexp::{object::SexpError, owner::OwnerToken};
     OwnerToken::with_current(|owner| {
-        if owner.weak_owner().is_none() {
-            return Ok(None); // Explicitly borrowed native fixtures retain their old path.
-        }
-        let _pin = owner.pin().map_err(|e| e.to_string())?;
-        let pointer = owner.as_ptr();
-        // No state loan crosses allocation, collection, or provider callbacks.
-        // SAFETY: `pointer` is the pinned current owner; the cache field read
-        // is strictly local with no callback inside the borrow.
-        let cached = unsafe {
-            (*pointer)
-                .serialize_state
-                .imported_bytecode_metadata
-                .clone()
+        let Some(pin) = owner.pin().map_err(|e| e.to_string())? else {
+            return Ok(None); // Borrowed fixtures retain their uncached path.
         };
-        if let [Some(marker), Some(hint)] = cached.map(|value| value.owned()) {
-            return Ok(Some([marker, hint]));
+        if let Some(cached) = pin.imported_bytecode_metadata().map_err(|e| e.to_string())? {
+            return Ok(Some(cached));
         }
         let factory = owner.node_factory();
         let make = |number| {
@@ -81,26 +69,9 @@ fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
         owner.require_active().map_err(|e| e.to_string())?;
         // Allocation callbacks may have initialized this same owner's cache.
         // Preserve that publication and release our redundant temporary cells.
-        // SAFETY: `pointer` is the pinned current owner; the cache field read
-        // is strictly local with no callback inside the borrow.
-        let published = unsafe {
-            (*pointer)
-                .serialize_state
-                .imported_bytecode_metadata
-                .clone()
-        };
-        if let [Some(marker), Some(hint)] = published.map(|value| value.owned()) {
-            return Ok(Some([marker, hint]));
-        }
-        // SAFETY: `pointer` is the pinned current owner; the cache publish is
-        // a strictly local field store with no callback inside the borrow.
-        unsafe {
-            (*pointer).serialize_state.imported_bytecode_metadata = [
-                RuntimeValue::from_owned(marker.clone()),
-                RuntimeValue::from_owned(hint.clone()),
-            ];
-        }
-        Ok(Some([marker, hint]))
+        pin.publish_imported_bytecode_metadata([marker, hint])
+            .map(Some)
+            .map_err(|e| e.to_string())
     })
     .map_err(|e| e.to_string())?
 }

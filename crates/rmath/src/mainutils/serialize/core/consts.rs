@@ -28,15 +28,6 @@ pub const REFSXP: c_int = 255;
 /// Reference index packing macros.
 pub const PACK_REF_INDEX_BIT: c_int = 0x40000000;
 
-/// Cache size for lazy-load databases.
-pub const NC: usize = 100;
-
-/// Limit for lazy-load file caching.
-pub const LEN_LIMIT: usize = 10 * 1048576;
-
-/// Maximum element size for serialization.
-pub const MAXELTSIZE: usize = 131072;
-
 // Administrative SXP values used in the serialization protocol.
 pub const NILVALUE_SXP: c_int = 254;
 pub const GLOBALENV_SXP: c_int = 253;
@@ -60,31 +51,3 @@ pub const GROWABLE_MASK: c_int = 1 << 5;
 
 /// Maximum packed reference index.
 pub const MAX_PACKED_INDEX: c_int = c_int::MAX >> 8;
-
-// ---------------------------------------------------------------------------
-// Per-session lazy-load/read state
-// ---------------------------------------------------------------------------
-
-pub struct SerializeRuntimeState {
-    pub used: usize,
-    pub cache_names: [*mut c_char; NC],
-    pub cache_ptrs: [*mut c_char; NC],
-    pub(crate) imported_bytecode_metadata: [crate::sexp::instance::RuntimeValue; 2],
-}
-
-impl Default for SerializeRuntimeState {
-    fn default() -> Self {
-        Self {
-            used: 0,
-            cache_names: [ptr::null_mut(); NC],
-            cache_ptrs: [ptr::null_mut(); NC],
-            imported_bytecode_metadata: std::array::from_fn(|_| {
-                crate::sexp::instance::RuntimeValue::empty()
-            }),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Internal binary writer/reader (Vec<u8> based)
-// ---------------------------------------------------------------------------

@@ -1022,7 +1022,6 @@ pub fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let _ = (call, op, env);
         let file = require_arg(args, 0);
         let _ = sexp_to_path(file);
-        clear_lazy_load_cache();
         R_NilValue()
     }
 }
