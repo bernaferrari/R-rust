@@ -36,21 +36,6 @@ pub(crate) const XPG_CODESET: c_int = 2;
 pub(crate) const XPG_TERRITORY: c_int = 4;
 pub(crate) const XPG_MODIFIER: c_int = 8;
 
-/// An entry in the list of already loaded locale files.
-///
-/// Corresponds to `struct loaded_l10nfile` in loadinfo.h.
-/// The `successor` field is a flexible array member in C (size 1 minimum).
-#[repr(C)]
-pub(crate) struct loaded_l10nfile {
-    pub filename: *const c_char,
-    pub decided: c_int,
-    pub data: *const c_void,
-    pub next: *mut loaded_l10nfile,
-    /// Flexible array: successors[0] in C. We store just one pointer here;
-    /// callers that need more must allocate extra space after this struct.
-    pub successor: [*mut loaded_l10nfile; 1],
-}
-
 // ---------------------------------------------------------------------------
 // Message catalog constants (from gmo.h)
 // ---------------------------------------------------------------------------
@@ -173,7 +158,6 @@ pub(crate) struct IntlRuntimeState {
     pub domain_bindings: std::collections::HashMap<std::ffi::CString, DomainBinding>,
     pub msg_cat_cntr: c_int,
     pub current_default_domain: *const c_char,
-    pub loaded_domains: *mut loaded_l10nfile,
 }
 
 impl Default for IntlRuntimeState {
@@ -182,7 +166,6 @@ impl Default for IntlRuntimeState {
             domain_bindings: std::collections::HashMap::default(),
             msg_cat_cntr: 0,
             current_default_domain: _nl_default_default_domain.as_ptr(),
-            loaded_domains: ptr::null_mut(),
         }
     }
 }

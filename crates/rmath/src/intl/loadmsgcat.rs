@@ -1,18 +1,12 @@
 #![warn(unused_unsafe)]
-//! Message catalog loading for GNU gettext.
-//!
-//! Safe .mo (Machine Object) parser producing an owned `Catalog` with
-//! byte-range entry references and a bounded linear lookup. The portable
-//! `_nl_load_domain` adapter boxes the catalog behind the legacy raw
-//! `loaded_l10nfile` cache slot.
+//! Bounds-checked .mo parser. Catalogs own their bytes and plural rules.
 
 use std::ffi::CStr;
 use std::ops::Range;
 use std::os::raw::c_ulong;
-use std::ptr;
 
 use super::plural_exp::PluralForms;
-use super::types::{MO_MAGIC, MO_MAGIC_SWAPPED, cstr, loaded_l10nfile, ptr_mut};
+use super::types::{MO_MAGIC, MO_MAGIC_SWAPPED};
 
 pub(super) struct Catalog {
     bytes: Vec<u8>,
@@ -88,27 +82,6 @@ pub(super) fn parse_catalog(bytes: Vec<u8>) -> Option<Catalog> {
     })
 }
 
-/// Load the catalog into an owned value. The legacy cache holds a raw owning pointer.
-///
-/// # Safety
-/// `domain_file` must be null or point to a live writable node with no loaded data,
-/// and its filename must be null or a valid NUL-terminated path for the call.
-pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile) {
-    // SAFETY: the caller supplies a live, exclusively writable node.
-    let Some(file) = (unsafe { ptr_mut(domain_file) }) else {
-        return;
-    };
-    // SAFETY: the node's filename satisfies the caller's C-string contract.
-    let catalog = unsafe { cstr(file.filename) }
-        .and_then(|path| path.to_str().ok())
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(parse_catalog);
-    file.data = catalog.map_or(ptr::null(), |catalog| {
-        Box::into_raw(Box::new(catalog)).cast_const().cast()
-    });
-    file.decided = 1;
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -116,7 +89,6 @@ pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::raw::c_char;
 
     /// Build a minimal two-entry catalog: metadata entry plus one message
     /// with three plural translations, optionally padded to unaligned tables.
@@ -204,35 +176,5 @@ mod tests {
         // Translation descriptor 1 offset field: table at 45, entry 0 offset at +4.
         bytes[49..53].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(parse_catalog(bytes).is_none());
-    }
-
-    #[test]
-    fn test_load_domain_null_file() {
-        let mut l10nfile = loaded_l10nfile {
-            filename: ptr::null(),
-            decided: 0,
-            data: ptr::null(),
-            next: ptr::null_mut(),
-            successor: [ptr::null_mut()],
-        };
-        // SAFETY: stack-owned node is live and exclusively writable for the call.
-        unsafe { _nl_load_domain(&mut l10nfile) };
-        assert_eq!(l10nfile.decided, 1);
-        assert!(l10nfile.data.is_null());
-    }
-
-    #[test]
-    fn test_load_domain_missing_file() {
-        let mut l10nfile = loaded_l10nfile {
-            filename: b"/nonexistent/path/messages.mo\0".as_ptr() as *const c_char,
-            decided: 0,
-            data: ptr::null(),
-            next: ptr::null_mut(),
-            successor: [ptr::null_mut()],
-        };
-        // SAFETY: stack-owned node and literal NUL-terminated path for the call.
-        unsafe { _nl_load_domain(&mut l10nfile) };
-        assert_eq!(l10nfile.decided, 1);
-        assert!(l10nfile.data.is_null());
     }
 }

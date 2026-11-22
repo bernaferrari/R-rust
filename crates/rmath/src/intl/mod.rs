@@ -4,11 +4,9 @@
 //! This module provides a Rust port of the GNU gettext `intl/` library,
 //! used internally by R's message catalog system.
 //!
-//! The public API (`gettext`, `dgettext`, `dcgettext`, `ngettext`, `textdomain`,
-//! `bindtextdomain`) is fully wired through to the `dcigettext` implementation.
-//! Internal helper functions are ported from C and marked with `allow(dead_code)`
-//! until the full gettext pipeline (MO file loading, plural forms) is exercised
-//! by integration tests.
+//! The runtime preserves untranslated message fallback. The owned catalog
+//! parser can be used independently; catalog loading is not wired to R's
+//! translation functions.
 
 #![allow(dead_code)]
 

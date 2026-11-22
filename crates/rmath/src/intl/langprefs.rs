@@ -80,7 +80,7 @@ mod macos {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(test, target_os = "macos"))]
 pub use macos::_nl_language_preferences_default;
 
 // ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ mod fallback {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(test, not(target_os = "macos")))]
 pub use fallback::_nl_language_preferences_default;
 
 // ---------------------------------------------------------------------------
