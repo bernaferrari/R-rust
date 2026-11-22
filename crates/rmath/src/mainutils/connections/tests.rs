@@ -77,7 +77,7 @@ where
 fn reset_connections() -> ConnectionTestGuard {
     let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let session = RSession::new();
-    with_connections_state(|state| state.table.clear());
+    current_owner().connection_table().borrow_mut().clear();
     *current_owner().sink_state().borrow_mut() = SinkState::default();
     ConnectionTestGuard {
         _lock: lock,
@@ -90,7 +90,8 @@ fn test_init_connections() {
     let _lock = reset_connections();
     unsafe {
         R_InitConnections();
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         assert!(table.len() >= 3);
         assert!(table[0].is_some()); // stdin
         assert!(table[1].is_some()); // stdout
@@ -252,7 +253,8 @@ fn test_do_text_connection() {
         assert!(idx >= 3);
 
         // Verify the connection was created
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let Some(conn) = table[idx as usize].as_ref() else {
             panic!("expected connection to exist");
         };
@@ -478,7 +480,8 @@ fn test_writebin_to_raw_connection() {
         assert_eq!(result, R_NilValue());
 
         // Verify the raw data was written
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let Some(conn) = table[conn_idx as usize].as_ref() else {
             panic!("expected connection to exist");
         };
@@ -511,10 +514,10 @@ fn test_conn_new_api() {
         let idx = next_connection();
         assert!(idx >= 3);
 
-        // Test that get_connection works for standard connections
-        drop(get_connection(0));
-        drop(get_connection(1));
-        drop(get_connection(2));
+        // Test that checked_connection_index works for standard connections
+        assert_eq!(checked_connection_index(0), 0);
+        assert_eq!(checked_connection_index(1), 1);
+        assert_eq!(checked_connection_index(2), 2);
     }
 }
 
@@ -522,16 +525,18 @@ fn test_conn_new_api() {
 fn test_next_connection_reports_r_error_when_table_is_full() {
     let _lock = reset_connections();
     init_connections_table();
-    with_connections_state(|state| {
+    {
+        let state = current_owner().connection_table();
+        let mut table = state.borrow_mut();
         for i in 3..NCONNECTIONS {
-            state.table[i] = Some(Box::new(RConn::new(
+            table[i] = Some(Box::new(RConn::new(
                 "textConnection",
                 "test-full-table",
                 "w",
                 ConnKind::TextConnection,
             )));
         }
-    });
+    }
 
     let message = expect_r_error(|| {
         let _ = next_connection();
@@ -546,7 +551,7 @@ fn test_get_connection_reports_r_error_for_invalid_slot() {
     init_connections_table();
 
     let message = expect_r_error(|| {
-        drop(get_connection(NCONNECTIONS));
+        let _ = checked_connection_index(NCONNECTIONS as c_int);
     });
 
     assert_eq!(message, "invalid connection");
@@ -560,35 +565,58 @@ fn test_connection_state_is_session_local_on_same_thread() {
 
     left.with_protected(|| {
         init_connections_table();
-        with_connections_state(|state| {
-            state.table[3] = Some(Box::new(RConn::new(
+        {
+            let state = current_owner().connection_table();
+            let mut table = state.borrow_mut();
+            table[3] = Some(Box::new(RConn::new(
                 "textConnection",
                 "left-only",
                 "w",
                 ConnKind::TextConnection,
             )));
-            assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 4);
-        });
+            assert_eq!(table.iter().filter(|conn| conn.is_some()).count(), 4);
+        }
         current_owner().sink_state().borrow_mut().output_con = 3;
     });
 
     right.with_protected(|| {
-        with_connections_state(|state| {
-            assert!(state.table.is_empty());
-        });
+        assert!(current_owner().connection_table().borrow().is_empty());
         assert_eq!(current_owner().sink_state().borrow().output_con, 1);
         init_connections_table();
-        with_connections_state(|state| {
-            assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 3);
-            assert!(state.table[3].is_none());
-        });
+        let state = current_owner().connection_table();
+        let table = state.borrow();
+        assert_eq!(table.iter().filter(|conn| conn.is_some()).count(), 3);
+        assert!(table[3].is_none());
     });
 
     left.with_protected(|| {
-        with_connections_state(|state| {
-            assert!(state.table[3].is_some());
-        });
+        assert!(current_owner().connection_table().borrow()[3].is_some());
         assert_eq!(current_owner().sink_state().borrow().output_con, 3);
+    });
+}
+
+#[test]
+fn connection_table_keeps_original_borrow_across_nested_activation() {
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
+
+    left.with_active(|| {
+        let table = connection_table();
+        let mut left_table = table.borrow_mut();
+        left_table[3] = Some(Box::new(RConn::new(
+            "rawConnection",
+            "left",
+            "w",
+            ConnKind::RawConnection,
+        )));
+        right.with_active(|| {
+            let state = connection_table();
+            assert!(state.borrow()[3].is_none());
+        });
+        assert!(table.try_borrow_mut().is_err());
+        assert_eq!(left_table[3].as_ref().unwrap().description, "left");
+        drop(left_table);
+        assert!(table.try_borrow_mut().is_ok());
     });
 }
 
@@ -796,7 +824,7 @@ fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() 
     let session = RSession::new_for_gc_tests();
     session.with_active_in(|instance| unsafe {
         init_connections_table();
-        connection_table()[3] = Some(Box::new(RConn::new(
+        connection_table().borrow_mut()[3] = Some(Box::new(RConn::new(
             "textConnection",
             "before",
             "w",
@@ -816,7 +844,7 @@ fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() 
             crate::sexp::instance::with_required_current_instance(|instance| {
                 (*instance).memory_state.gc_force_gap = 0;
             });
-            connection_table()[3] = Some(Box::new(RConn::new(
+            connection_table().borrow_mut()[3] = Some(Box::new(RConn::new(
                 "textConnection",
                 "after",
                 "w",
@@ -838,7 +866,7 @@ fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() 
             b"3 before w"
         );
         assert_eq!(
-            connection_table()[3].as_ref().unwrap().description,
+            connection_table().borrow()[3].as_ref().unwrap().description,
             "after"
         );
     });

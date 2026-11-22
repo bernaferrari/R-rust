@@ -123,7 +123,7 @@ fn text_publication_callback(action: u8) {
                 .try_char_eq(b"outer")
                 .unwrap()
         );
-        assert!(connection_table()[index as usize].as_ref().unwrap().isopen);
+        assert!(connection_table().borrow()[index as usize].as_ref().unwrap().isopen);
     });
 }
 #[test]

@@ -406,7 +406,8 @@ fn binary_connection_index(
         let index = as_integer(con.as_raw());
         let slot = checked_connection_index(index);
         let (text, open, permitted) = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             let connection = table[slot].as_ref().unwrap();
             (
                 connection.text,

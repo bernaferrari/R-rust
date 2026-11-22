@@ -82,7 +82,9 @@ pub fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
         }
     }
 
-    let mut table = connection_table();
+    let state = connection_table();
+
+    let mut table = state.borrow_mut();
     table[ncon] = Some(Box::new(conn));
     drop(table);
 
@@ -150,7 +152,9 @@ pub fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         }
         conn.raw_data = raw_data;
 
-        let mut table = connection_table();
+        let state = connection_table();
+
+        let mut table = state.borrow_mut();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -273,7 +277,8 @@ pub fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> S
         }
 
         let ncon = next_connection();
-        let mut table = connection_table();
+        let state = connection_table();
+        let mut table = state.borrow_mut();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -359,8 +364,8 @@ pub fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
     let sn = CAR(args);
     let n = as_integer(sn) as usize;
 
-    init_connections_table();
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
 
     if n >= table.len() || table[n].is_none() {
         r_error("invalid connection");
@@ -384,6 +389,7 @@ pub fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     let _all = check_logical_arg(CAR(args), "all");
 
     let descriptions: Vec<_> = connection_table()
+        .borrow()
         .iter()
         .enumerate()
         .filter_map(|(i, slot)| {
@@ -416,7 +422,8 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
         let i = as_integer(scon) as usize;
         let values = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             let conn = table
                 .get(i)
                 .and_then(Option::as_ref)
@@ -455,7 +462,8 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 }
 
 pub fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     let mut ids = Vec::new();
     for (i, slot) in table.iter().enumerate() {
         if slot.is_some() {
@@ -595,7 +603,8 @@ pub fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         r_error("'con' is not a connection");
     }
     let i = as_integer(con) as usize;
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[i].as_mut() else {
         r_error("invalid connection");
     };
@@ -613,7 +622,8 @@ pub fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         r_error("'con' is not a connection");
     }
     let i = as_integer(con) as usize;
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     let Some(conn) = table[i].as_ref() else {
         r_error("invalid connection");
     };

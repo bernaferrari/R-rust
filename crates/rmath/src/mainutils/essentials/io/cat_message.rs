@@ -137,7 +137,8 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             let index = connection_index(file_value);
             let slot = crate::mainutils::connections::checked_connection_index(index);
             let is_open = {
-                let table = crate::mainutils::connections::connection_table();
+                let state = crate::mainutils::connections::connection_table();
+                let table = state.borrow();
                 table[slot].as_ref().expect("validated connection").isopen
             };
             if !is_open {

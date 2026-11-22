@@ -185,7 +185,7 @@ fn construct_file(
         }
         conn.canseek = !raw;
         conn.text = !open_mode.contains('b');
-        connection_table()[ncon] = Some(Box::new(conn));
+        connection_table().borrow_mut()[ncon] = Some(Box::new(conn));
         Ok(ans.freeze())
     }
 }
@@ -274,7 +274,8 @@ pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
 /// GNU `countfields` opens a connection that R left closed, then reads it.
 pub fn ensure_connection_readable(n: core::ffi::c_int) {
     let index = checked_connection_index(n);
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
     };
@@ -569,7 +570,9 @@ pub fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        let mut table = connection_table();
+        let state = connection_table();
+
+        let mut table = state.borrow_mut();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -603,7 +606,9 @@ pub fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     let mut conn = RConn::new("fifo", &description, &open_mode, ConnKind::Fifo);
     conn.canseek = false;
 
-    let mut table = connection_table();
+    let state = connection_table();
+
+    let mut table = state.borrow_mut();
     table[ncon] = Some(Box::new(conn));
     drop(table);
 
@@ -651,7 +656,8 @@ pub fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     }
 
     let ncon = next_connection();
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     table[ncon] = Some(Box::new(conn));
     drop(table);
 
@@ -679,7 +685,7 @@ fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SE
         if open_now && let Err(error) = open_browser_file(&mut conn, mode) {
             r_error(&format!("cannot open file '{description}': {error}"));
         }
-        connection_table()[ncon] = Some(Box::new(conn));
+        connection_table().borrow_mut()[ncon] = Some(Box::new(conn));
         Ok(ans.freeze().as_raw())
     })
     .and_then(|result| result)
@@ -692,7 +698,8 @@ pub fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         r_error("invalid connection");
     }
     let i = checked_connection_index(as_integer(scon));
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[i].as_mut() else {
         r_error("invalid connection");
     };
@@ -753,7 +760,8 @@ pub fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 
     let ncon = next_connection();
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     table[ncon] = Some(Box::new(conn));
     drop(table);
 
@@ -793,7 +801,8 @@ pub fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 
     let ncon = next_connection();
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     table[ncon] = Some(Box::new(conn));
     drop(table);
 
@@ -833,7 +842,9 @@ pub fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
         check_string_arg(sopen, "open")
     };
 
-    let mut table = connection_table();
+    let state = connection_table();
+
+    let mut table = state.borrow_mut();
     let Some(conn) = table[i].as_mut() else {
         r_error("invalid connection");
     };
@@ -960,7 +971,8 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         close_connection_at_owned(owner, i as c_int);
         let status = {
-            let mut table = connection_table();
+            let state = connection_table();
+            let mut table = state.borrow_mut();
             let status = table[i]
                 .as_ref()
                 .and_then(|conn| matches!(conn.kind, ConnKind::Pipe).then_some(conn.status));
@@ -984,7 +996,8 @@ pub(crate) fn close_connection_at_owned(owner: crate::sexp::owner::OwnerToken<'_
         .unwrap_or_else(|e| r_error(&e.to_string()));
     let token = connection_token(index).unwrap_or_else(|e| r_error(&e));
     let publish = {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let conn = table[index as usize].as_ref().unwrap();
         if conn.text_busy {
             r_error(super::text_publication::BUSY);
@@ -999,7 +1012,8 @@ pub(crate) fn close_connection_at_owned(owner: crate::sexp::owner::OwnerToken<'_
         .require_active()
         .unwrap_or_else(|e| r_error(&e.to_string()));
     let index = token.require_current().unwrap_or_else(|e| r_error(&e));
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     close_connection_inner(table[index as usize].as_mut().unwrap());
 }
 
@@ -1072,8 +1086,8 @@ pub fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let rw = connection_rw_mode(arg_by_name_or_position(args, 1, &["rw"], R_NilValue()));
 
     let i = as_integer(scon) as usize;
-    init_connections_table();
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     if i >= table.len() || table[i].is_none() {
         r_error("invalid connection");
     }
@@ -1094,6 +1108,7 @@ pub fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
         _ => {} // intentionally unhandled: unknown connection open mode
     }
+    drop(table);
     Rf_ScalarLogical(res)
 }
 
@@ -1108,14 +1123,19 @@ pub fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         r_error("'con' is not a connection");
     }
     let i = as_integer(scon) as usize;
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     if i >= table.len() || table[i].is_none() {
+        drop(table);
         return Rf_ScalarLogical(0);
     }
     let Some(conn) = table[i].as_ref() else {
+        drop(table);
         return Rf_ScalarLogical(0);
     };
-    Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
+    let incomplete = conn.incomplete;
+    drop(table);
+    Rf_ScalarLogical(if incomplete { 1 } else { 0 })
 }
 
 // ---------------------------------------------------------------------------
@@ -1129,14 +1149,19 @@ pub fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         r_error("'con' is not a connection");
     }
     let i = as_integer(scon) as usize;
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     if i >= table.len() || table[i].is_none() {
+        drop(table);
         return Rf_ScalarLogical(0);
     }
     let Some(conn) = table[i].as_ref() else {
+        drop(table);
         return Rf_ScalarLogical(0);
     };
-    Rf_ScalarLogical(if conn.canseek { 1 } else { 0 })
+    let canseek = conn.canseek;
+    drop(table);
+    Rf_ScalarLogical(if canseek { 1 } else { 0 })
 }
 
 // ---------------------------------------------------------------------------
@@ -1285,7 +1310,8 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let i = token
             .require_current()
             .unwrap_or_else(|message| r_error(&message)) as usize;
-        let mut table = connection_table();
+        let state = connection_table();
+        let mut table = state.borrow_mut();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1346,6 +1372,7 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                         let _ = reader.seek(seek_from);
                     }
                 }
+                drop(table);
                 return Rf_ScalarReal(old_pos);
             }
             ConnKind::RawConnection | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
@@ -1358,6 +1385,7 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     };
                     conn.raw_pos = new_pos.min(conn.raw_data.len());
                 }
+                drop(table);
                 return Rf_ScalarReal(old_pos);
             }
             ConnKind::TextConnection => {
@@ -1370,6 +1398,7 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     };
                     conn.text_pos = new_pos.min(conn.text_data.len());
                 }
+                drop(table);
                 return Rf_ScalarReal(old_pos);
             }
             _ => {
@@ -1390,7 +1419,8 @@ pub fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         r_error("'con' is not a connection");
     }
     let i = as_integer(scon) as usize;
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[i].as_mut() else {
         r_error("invalid connection");
     };

@@ -1410,9 +1410,9 @@ mod tests {
         let session = crate::sexp::RSession::new_for_gc_tests();
         session.with_active(|| {
             use crate::mainutils::connections::{self, ConnKind, RConn};
-            connections::init_connections_table();
             let index = {
-                let mut table = connections::connection_table();
+                let state = connections::connection_table();
+                let mut table = state.borrow_mut();
                 let index = table.len();
                 let mut connection = RConn::new(
                     "rawConnection",
@@ -1432,7 +1432,7 @@ mod tests {
             }
             assert!(capture.finish().stdout.is_empty());
             assert_eq!(
-                connections::connection_table()[index as usize]
+                connections::connection_table().borrow()[index as usize]
                     .as_ref()
                     .unwrap()
                     .raw_data,

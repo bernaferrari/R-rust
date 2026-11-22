@@ -74,6 +74,7 @@ fn owner_exit(close: bool) {
     replacement.with_active(|| {
         assert_eq!(
             connection_table()
+                .borrow()
                 .iter()
                 .filter(|entry| entry.is_some())
                 .count(),

@@ -72,7 +72,7 @@ impl ConnectionCleanup {
                         let index = connection
                             .require_current()
                             .map_err(|message| SexpError::EvaluationFailed { message })?;
-                        connection_table()[index as usize] = None;
+                        connection_table().borrow_mut()[index as usize] = None;
                     }
                     Ok(())
                 })

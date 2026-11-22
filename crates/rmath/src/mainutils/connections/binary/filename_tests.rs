@@ -76,12 +76,13 @@ fn replace_connection(index: usize) {
     replacement.canread = true;
     replacement.canwrite = true;
     replacement.raw_data = vec![71, 72];
-    connection_table()[index] = Some(Box::new(replacement));
+    connection_table().borrow_mut()[index] = Some(Box::new(replacement));
 }
 
 fn assert_replacement_untouched(session: &RSession, index: usize) {
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let replacement = table[index].as_ref().unwrap();
         assert_eq!(replacement.raw_data, [71, 72]);
         assert_eq!(replacement.raw_pos, 0);
@@ -252,6 +253,53 @@ fn owned_anonymous_write_lines_token_rejects_slot_reuse_from_character_provider(
         error.contains("original connection is no longer available"),
         "{error}"
     );
+    assert_replacement_untouched(&session, index);
+}
+
+#[test]
+fn write_lines_provider_reuses_slot_without_writing_to_replacement() {
+    let mut session = session();
+    let con = session
+        .eval_script_with_output_capture("file('binary/output.txt', 'w')")
+        .0
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let index = con.try_integer_elt(0).unwrap() as usize;
+    let calls = Rc::new(Cell::new(0));
+    let seen = calls.clone();
+    let class = session
+        .register_altrep_class(
+            "write.lines.connection.replace",
+            ConnectionProvider {
+                kind: SEXPTYPE::STRSXP,
+                callback: Rc::new(move || {
+                    seen.set(seen.get() + 1);
+                    replace_connection(index);
+                    crate::sexp::gengc::full_gc();
+                }),
+            },
+        )
+        .unwrap();
+    let text = AltrepBuilder::new(class).build().unwrap().into_owned().unwrap();
+    let factory = session.owner_token().unwrap().node_factory();
+    let sep = factory.strings(&["\n"]).unwrap().into_owned().unwrap();
+    let use_bytes = factory.domain().logical(false).into_owned().unwrap();
+    let args = arguments(&session, &[text, con, sep, use_bytes]);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        do_writeLines(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            args.as_raw(),
+            ptr::null_mut(),
+        )
+    }));
+    let err = result.expect_err("retired connection must reject write");
+    assert_eq!(
+        err.downcast_ref::<RError>().unwrap().message,
+        "original connection is no longer available"
+    );
+    assert_eq!(calls.get(), 1);
     assert_replacement_untouched(&session, index);
 }
 

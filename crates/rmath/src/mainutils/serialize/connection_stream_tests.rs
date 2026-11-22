@@ -54,7 +54,7 @@ fn hook_reentry(action: u8) {
         .into_owned()
         .unwrap();
     let index = next_connection();
-    connection_table()[index] = Some(raw_connection(payload()));
+    connection_table().borrow_mut()[index] = Some(raw_connection(payload()));
     let calls = Rc::new(Cell::new(0));
     let observed = calls.clone();
     let closed = Rc::downgrade(&facade);
@@ -70,8 +70,8 @@ fn hook_reentry(action: u8) {
             return;
         }
         match action {
-            0 => connection_table()[index] = Some(raw_connection(replacement_bytes.clone())),
-            1 => connection_table()[index] = None,
+            0 => connection_table().borrow_mut()[index] = Some(raw_connection(replacement_bytes.clone())),
+            1 => connection_table().borrow_mut()[index] = None,
             2 => std::panic::panic_any(682_u32),
             3 => {
                 drop(closed.upgrade().unwrap().borrow_mut().take());
@@ -107,7 +107,8 @@ fn hook_reentry(action: u8) {
     }
     if action == 0 {
         facade.borrow().as_ref().unwrap().with_active(|| {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             let conn = table[index].as_ref().unwrap();
             assert_eq!(conn.raw_pos, 0, "replacement stream must never be consumed");
             assert_eq!(conn.raw_data, saved_bytes);
@@ -115,7 +116,7 @@ fn hook_reentry(action: u8) {
         });
     }
     if let Some(session) = replacement_runtime.borrow().as_ref() {
-        session.with_active(|| assert!(connection_table().iter().skip(3).all(Option::is_none)));
+        session.with_active(|| assert!(connection_table().borrow().iter().skip(3).all(Option::is_none)));
     }
 }
 
@@ -175,7 +176,7 @@ fn connection_stream_owns_hook_before_collecting_connection_operand_provider() {
         .unwrap();
     let f = session.owner_token().unwrap().node_factory();
     let index = next_connection();
-    connection_table()[index] = Some(raw_connection(payload()));
+    connection_table().borrow_mut()[index] = Some(raw_connection(payload()));
     let head: Rc<Cell<SEXP>> = Rc::new(Cell::new(ptr::null_mut()));
     let calls = Rc::new(Cell::new(0));
     let class = session
@@ -250,7 +251,7 @@ fn connection_stream_truncated_huge_collection_never_allocates_its_declared_exte
             bytes.extend_from_slice(&word.to_be_bytes());
         }
         let index = next_connection();
-        connection_table()[index] = Some(raw_connection(bytes));
+        connection_table().borrow_mut()[index] = Some(raw_connection(bytes));
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             R_unserialize_from_conn(index as c_int, R_NilValue())
         }))
@@ -268,7 +269,7 @@ fn connection_stream_truncated_huge_collection_never_allocates_its_declared_exte
                 .unwrap(),
             before
         );
-        connection_table()[index] = None;
+        connection_table().borrow_mut()[index] = None;
     }
 }
 
@@ -329,11 +330,11 @@ fn connection_stream_compiled_constants_keep_both_gnu_hook_cursors_through_gc() 
     let index = next_connection();
     let bytes =
         include_bytes!("../../../../r-embed/tests/fixtures/gnu-bytecode-stream-hooks-v2.rds");
-    connection_table()[index] = Some(raw_connection(bytes.to_vec()));
+    connection_table().borrow_mut()[index] = Some(raw_connection(bytes.to_vec()));
     let observed = Rc::new(RefCell::new(Vec::new()));
     let cursors = observed.clone();
     crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-        let position = connection_table()[index].as_ref().unwrap().raw_pos;
+        let position = connection_table().borrow()[index].as_ref().unwrap().raw_pos;
         cursors.borrow_mut().push(position);
     }));
     let value = unsafe { R_unserialize_from_conn(index as c_int, hook.as_raw()) };
@@ -341,7 +342,7 @@ fn connection_stream_compiled_constants_keep_both_gnu_hook_cursors_through_gc() 
     assert_eq!(value.typeof_(), SEXPTYPE::CLOSXP);
     assert_eq!(*observed.borrow(), [1324, 3761]);
     assert_eq!(
-        connection_table()[index].as_ref().unwrap().raw_pos,
+        connection_table().borrow()[index].as_ref().unwrap().raw_pos,
         bytes.len()
     );
 }

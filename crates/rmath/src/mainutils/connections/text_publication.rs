@@ -6,6 +6,8 @@ use crate::sexp::{
     object::SexpMut,
     owner::{OwnerPin, OwnerToken},
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(super) const BUSY: &str = "text connection is busy publishing output";
 
@@ -39,6 +41,7 @@ pub(super) struct TextWriter<'owner> {
     owner: OwnerToken<'owner>,
     connection: ConnectionToken,
     data: Option<TextOutput>,
+    table: Rc<RefCell<ConnectionTable>>,
     _pin: Option<OwnerPin>,
 }
 impl<'owner> TextWriter<'owner> {
@@ -46,9 +49,10 @@ impl<'owner> TextWriter<'owner> {
         let pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
         check(owner, None);
         let connection = connection_token(index).unwrap_or_else(|e| r_error(&e));
+        let table = connection_table();
         let data = {
-            let mut table = connection_table();
-            let conn = table[index as usize].as_mut().unwrap();
+            let mut entries = table.borrow_mut();
+            let conn = entries[index as usize].as_mut().unwrap();
             if !matches!(conn.kind, ConnKind::TextConnection) {
                 return None;
             }
@@ -65,6 +69,7 @@ impl<'owner> TextWriter<'owner> {
             owner,
             connection,
             data: Some(data),
+            table,
             _pin: pin,
         })
     }
@@ -104,19 +109,15 @@ impl Drop for TextWriter<'_> {
     fn drop(&mut self) {
         // No callbacks: the operation pin still retains this physical runtime.
         // Restore only the exact original connection, never a reused slot.
-        // SAFETY: `self.owner` pins its live runtime for the guard's whole
-        // lifetime, so the instance pointer stays valid for this field borrow.
-        unsafe {
-            let table = &mut (*self.owner.as_ptr()).connections_state.table;
-            if let Some(conn) = table
-                .get_mut(self.connection.index as usize)
-                .and_then(Option::as_mut)
-                && self.connection.matches(conn)
-            {
-                debug_assert!(conn.text_busy && conn.text_output.is_none());
-                conn.text_output = self.data.take();
-                conn.text_busy = false;
-            }
+        let mut table = self.table.borrow_mut();
+        if let Some(conn) = table
+            .get_mut(self.connection.index as usize)
+            .and_then(Option::as_mut)
+            && self.connection.matches(conn)
+        {
+            debug_assert!(conn.text_busy && conn.text_output.is_none());
+            conn.text_output = self.data.take();
+            conn.text_busy = false;
         }
     }
 }

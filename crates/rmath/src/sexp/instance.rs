@@ -494,7 +494,8 @@ pub struct RInstance {
     /// Per-instance dynamic loader and native package registry state.
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table.
-    pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
+    pub(crate) connection_table:
+        Rc<RefCell<crate::mainutils::connections::ConnectionTable>>,
     /// Session-local output routing. Capture cleanup retains this state independently.
     pub(crate) sink_state: Rc<RefCell<crate::mainutils::connections::SinkState>>,
     pub(crate) browser_files: crate::mainutils::browser_files::BrowserFileStore,
@@ -675,7 +676,7 @@ impl RInstance {
             loading_package_dir: None,
             namespace_loads_in_progress: Vec::new(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
-            connections_state: crate::mainutils::connections::ConnectionsState::default(),
+            connection_table: Rc::default(),
             sink_state: Rc::default(),
             browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
             browser_files_enabled: false,

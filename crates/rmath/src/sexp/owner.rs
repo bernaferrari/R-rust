@@ -630,6 +630,17 @@ impl<'session> OwnerToken<'session> {
         unsafe { f(&(*self.as_ptr()).output_capture) }
     }
 
+    /// Clone the owner's session-local connection-table handle. The `Rc` keeps
+    /// borrows valid even when this owner is later closed.
+    pub(crate) fn connection_table(
+        self,
+    ) -> Rc<std::cell::RefCell<crate::mainutils::connections::ConnectionTable>> {
+        self.require_live_or_r_error();
+        // SAFETY: the generation is live and we only clone the
+        // connection-table handle.
+        unsafe { (*self.as_ptr()).connection_table.clone() }
+    }
+
     /// Clone the owner's session-local sink-state handle. The `Rc` keeps
     /// cleanup valid even when this owner is later closed.
     pub(crate) fn sink_state(

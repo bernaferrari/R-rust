@@ -186,7 +186,8 @@ impl ConnectionToken {
 
     pub(crate) fn require_current(&self) -> Result<c_int, String> {
         let matches = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             usize::try_from(self.index)
                 .ok()
                 .and_then(|index| table.get(index))
@@ -202,7 +203,8 @@ impl ConnectionToken {
 }
 
 pub(crate) fn connection_token(index: c_int) -> Result<ConnectionToken, String> {
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     let connection = usize::try_from(index)
         .ok()
         .and_then(|index| table.get(index))
@@ -247,55 +249,17 @@ impl Default for SinkState {
     }
 }
 
-/// Connection state owned by one `RInstance`.
-pub struct ConnectionsState {
-    pub table: Vec<Option<Box<RConn>>>,
-}
+/// Per-session connection table.
+pub(crate) type ConnectionTable = Vec<Option<Box<RConn>>>;
 
-impl Default for ConnectionsState {
-    fn default() -> Self {
-        ConnectionsState { table: Vec::new() }
+/// Session-local connection table, lazily initialized with the standard
+/// stdin/stdout/stderr slots.
+pub(crate) fn connection_table() -> Rc<RefCell<ConnectionTable>> {
+    let table = current_owner().connection_table();
+    if table.borrow().is_empty() {
+        init_table(&mut table.borrow_mut());
     }
-}
-
-pub struct ConnectionTableGuard {
-    pub table: *mut Vec<Option<Box<RConn>>>,
-}
-
-impl std::ops::Deref for ConnectionTableGuard {
-    type Target = Vec<Option<Box<RConn>>>;
-
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: the guard is only built inside with_connections_state,
-        // which holds the instance borrow for the guard's uses.
-        unsafe { &*self.table }
-    }
-}
-
-impl std::ops::DerefMut for ConnectionTableGuard {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: same as Deref; callers hold `&mut self` exclusively.
-        unsafe { &mut *self.table }
-    }
-}
-
-#[inline]
-pub fn with_connections_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut ConnectionsState) -> R,
-{
-    with_required_current_instance(|instance| {
-        // SAFETY: `instance` is the live current RInstance; the state borrow
-        // ends when the closure returns.
-        unsafe { f(&mut (*instance).connections_state) }
-    })
-}
-
-pub fn connection_table() -> ConnectionTableGuard {
-    init_connections_table();
-    with_connections_state(|state| ConnectionTableGuard {
-        table: &mut state.table,
-    })
+    table
 }
 
 pub(crate) fn output_sink_active(owner: OwnerToken<'_>) -> bool {
@@ -341,54 +305,55 @@ pub(crate) fn write_output_sinks_between(
     false
 }
 
+fn init_table(table: &mut ConnectionTable) {
+    if !table.is_empty() {
+        return;
+    }
+    table.clear();
+    // Slot 0: stdin
+    table.push(Some(Box::new(RConn::new(
+        "terminal",
+        "stdin",
+        "r",
+        ConnKind::Terminal("stdin".to_string()),
+    ))));
+    // Slot 1: stdout
+    table.push(Some(Box::new(RConn::new(
+        "terminal",
+        "stdout",
+        "w",
+        ConnKind::Terminal("stdout".to_string()),
+    ))));
+    // Slot 2: stderr
+    table.push(Some(Box::new(RConn::new(
+        "terminal",
+        "stderr",
+        "w",
+        ConnKind::Terminal("stderr".to_string()),
+    ))));
+    // Mark standard connections as open
+    for i in 0..3 {
+        if let Some(ref mut conn) = table[i] {
+            conn.isopen = true;
+            conn.canread = i == 0;
+            conn.canwrite = i != 0;
+        }
+    }
+    // Pre-allocate remaining slots as None
+    for _ in 3..NCONNECTIONS {
+        table.push(None);
+    }
+}
+
 /// Initialize the connection system with stdin/stdout/stderr.
 pub fn init_connections_table() {
-    with_connections_state(|state| {
-        let table = &mut state.table;
-        if !table.is_empty() {
-            return;
-        }
-        table.clear();
-        // Slot 0: stdin
-        table.push(Some(Box::new(RConn::new(
-            "terminal",
-            "stdin",
-            "r",
-            ConnKind::Terminal("stdin".to_string()),
-        ))));
-        // Slot 1: stdout
-        table.push(Some(Box::new(RConn::new(
-            "terminal",
-            "stdout",
-            "w",
-            ConnKind::Terminal("stdout".to_string()),
-        ))));
-        // Slot 2: stderr
-        table.push(Some(Box::new(RConn::new(
-            "terminal",
-            "stderr",
-            "w",
-            ConnKind::Terminal("stderr".to_string()),
-        ))));
-        // Mark standard connections as open
-        for i in 0..3 {
-            if let Some(ref mut conn) = table[i] {
-                conn.isopen = true;
-                conn.canread = i == 0;
-                conn.canwrite = i != 0;
-            }
-        }
-        // Pre-allocate remaining slots as None
-        for _ in 3..NCONNECTIONS {
-            table.push(None);
-        }
-    });
+    let _ = connection_table();
 }
 
 /// Find the next available connection slot.
 pub fn next_connection() -> usize {
-    init_connections_table();
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     for i in 3..table.len() {
         if table[i].is_none() {
             return i;
@@ -397,24 +362,15 @@ pub fn next_connection() -> usize {
     r_error("all connections are in use");
 }
 
-/// Get a connection by index. Returns a reference to the connection.
-pub fn get_connection(n: usize) -> ConnectionTableGuard {
-    init_connections_table();
-    let table = connection_table();
-    if n >= table.len() || table[n].is_none() {
-        r_error("invalid connection");
-    }
-    table
-}
-
-/// Get a mutable reference to a connection by index.
-pub fn get_connection_mut(n: usize) {
-    init_connections_table();
-    let _table = connection_table();
-    if n >= _table.len() || _table[n].is_none() {
-        r_error("invalid connection");
-    }
-    // The caller should use the table directly for mutation
+/// Clone the description of a live connection slot.
+pub(crate) fn connection_description(n: usize) -> String {
+    connection_table()
+        .borrow()
+        .get(n)
+        .and_then(Option::as_ref)
+        .unwrap_or_else(|| r_error("invalid connection"))
+        .description
+        .clone()
 }
 
 pub fn checked_connection_index(n: c_int) -> usize {
@@ -422,8 +378,8 @@ pub fn checked_connection_index(n: c_int) -> usize {
         r_error("invalid connection");
     }
     let index = n as usize;
-    init_connections_table();
-    let table = connection_table();
+    let state = connection_table();
+    let table = state.borrow();
     if index >= table.len() || table[index].is_none() {
         r_error("invalid connection");
     }
@@ -433,7 +389,8 @@ pub fn checked_connection_index(n: c_int) -> usize {
 /// Read one byte from a connection using the Rust connection table.
 pub(crate) fn connection_fgetc(n: c_int) -> c_int {
     let index = checked_connection_index(n);
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
     };
@@ -531,7 +488,8 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
 /// Push bytes back onto a connection so later reads see them first.
 pub(crate) fn connection_pushback(n: c_int, bytes: &[u8]) {
     let index = checked_connection_index(n);
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
     };
@@ -642,8 +600,9 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     owner
         .require_active()
         .unwrap_or_else(|e| r_error(&e.to_string()));
+    let state = connection_table();
     {
-        let table = connection_table();
+        let table = state.borrow();
         let conn = table[index].as_ref().unwrap();
         if !conn.isopen {
             r_error("connection is not open");
@@ -656,7 +615,7 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
         writer.append(bytes);
         return;
     }
-    let mut table = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
     };
@@ -674,7 +633,8 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
 pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
     use std::io::Read;
     let index = checked_connection_index(n);
-    let mut table = connection_table();
+    let state = connection_table();
+    let mut table = state.borrow_mut();
     let Some(conn) = table[index].as_mut() else {
         r_error("invalid connection");
     };

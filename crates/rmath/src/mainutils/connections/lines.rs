@@ -109,7 +109,8 @@ pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
         let i = checked_connection_index(as_integer(scon));
         let temporarily_open = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
         let mut auto_guard = temporarily_open.then(|| {
@@ -122,7 +123,9 @@ pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             auto_open_connection(scon, "r", guard);
         }
 
-        let mut table = connection_table();
+        let state = connection_table();
+
+        let mut table = state.borrow_mut();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -320,7 +323,8 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
 
         let i = checked_connection_index(as_integer(scon));
         let temporarily_open = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
         let mut auto_guard = temporarily_open.then(|| {
@@ -333,7 +337,8 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             auto_open_connection(scon, "w", guard);
         }
         {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             let Some(conn) = table[i].as_ref() else {
                 r_error("invalid connection");
             };
@@ -358,7 +363,8 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             }
         }
         let anonymous = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             table[i]
                 .as_ref()
                 .is_some_and(|conn| matches!(conn.kind, ConnKind::AnonymousFile(_)))
@@ -384,7 +390,8 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             return R_NilValue();
         }
         let text_output = {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             table[i]
                 .as_ref()
                 .is_some_and(|conn| matches!(conn.kind, ConnKind::TextConnection))
@@ -411,90 +418,121 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             }
             return R_NilValue();
         }
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-
-        if !conn.isopen {
-            r_error("connection is not open");
-        }
-        if !conn.canwrite {
-            r_error("cannot write to this connection");
-        }
-
-        match &conn.kind {
-            ConnKind::BrowserFile => {
-                for j in 0..text_len {
-                    let line = string_elt(text, j);
-                    append_browser_file(conn, line.as_bytes(), sep_str.as_bytes())
-                        .unwrap_or_else(|message| r_error(&message));
-                }
+        let owner = current_owner();
+        let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
+        let token = connection_token(i as c_int).unwrap_or_else(|e| r_error(&e));
+        let text = owner
+            .sexp(text)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|e| r_error(&e.to_string()));
+        let state = connection_table();
+        let has_sink = {
+            let mut table = state.borrow_mut();
+            let conn = writable_line_connection(&mut table[i]);
+            match &conn.kind {
+                ConnKind::File => conn.writer.is_some(),
+                ConnKind::Pipe => conn
+                    .child
+                    .as_ref()
+                    .is_some_and(|child| child.stdin.is_some()),
+                ConnKind::BrowserFile
+                | ConnKind::GzFile
+                | ConnKind::BzFile
+                | ConnKind::XzFile => true,
+                ConnKind::Terminal(name) if name == "stderr" => true,
+                _ => r_error("cannot write to this connection type"),
             }
-            ConnKind::File => {
-                if let Some(ref mut writer) = conn.writer {
-                    for j in 0..text_len {
-                        let line = string_elt(text, j);
-                        if let Err(e) = write!(writer, "{}{}", line, sep_str) {
+        };
+        if has_sink {
+            for j in 0..text_len {
+                let line = string_elt(text.as_raw(), j);
+                owner
+                    .require_active()
+                    .unwrap_or_else(|e| r_error(&e.to_string()));
+                let index = token.require_current().unwrap_or_else(|e| r_error(&e));
+                let mut table = state.borrow_mut();
+                let conn = writable_line_connection(&mut table[index as usize]);
+                match &mut conn.kind {
+                    ConnKind::File => {
+                        if let Some(writer) = conn.writer.as_mut()
+                            && let Err(e) = write!(writer, "{}{}", line, sep_str)
+                        {
                             r_error(&format!("error writing to connection: {}", e));
                         }
                     }
-                    let _ = writer.flush();
-                    if conn.mode.contains('+')
-                        && let Some(reader) = conn.reader.as_mut()
-                    {
-                        let _ = reader.seek(SeekFrom::Start(0));
-                        conn.raw_pos = 0;
+                    ConnKind::BrowserFile => {
+                        append_browser_file(conn, line.as_bytes(), sep_str.as_bytes())
+                            .unwrap_or_else(|message| r_error(&message));
                     }
-                }
-            }
-            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                for j in 0..text_len {
-                    let line = string_elt(text, j);
-                    conn.raw_data.extend_from_slice(line.as_bytes());
-                    conn.raw_data.extend_from_slice(sep_str.as_bytes());
-                }
-                conn.raw_pos = conn.raw_data.len();
-            }
-            ConnKind::Terminal(name) if name == "stdout" => {
-                unreachable!("stdout terminal writes take the capture path above");
-            }
-
-            ConnKind::Terminal(name) if name == "stderr" => {
-                let stderr = io::stderr();
-                let mut writer = stderr.lock();
-                for j in 0..text_len {
-                    let line = string_elt(text, j);
-                    if let Err(e) = write!(writer, "{}{}", line, sep_str) {
-                        r_error(&format!("error writing to stderr: {}", e));
+                    ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+                        conn.raw_data.extend_from_slice(line.as_bytes());
+                        conn.raw_data.extend_from_slice(sep_str.as_bytes());
                     }
-                }
-            }
-            ConnKind::TextConnection => {}
-            ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child
-                    && let Some(ref mut stdin) = child.stdin
-                {
-                    for j in 0..text_len {
-                        let line = string_elt(text, j);
-                        if let Err(e) = write!(stdin, "{}{}", line, sep_str) {
+                    ConnKind::Terminal(name) if name == "stderr" => {
+                        let stderr = io::stderr();
+                        let mut writer = stderr.lock();
+                        if let Err(e) = write!(writer, "{}{}", line, sep_str) {
+                            r_error(&format!("error writing to stderr: {}", e));
+                        }
+                    }
+                    ConnKind::Pipe => {
+                        if let Some(stdin) =
+                            conn.child.as_mut().and_then(|child| child.stdin.as_mut())
+                            && let Err(e) = write!(stdin, "{}{}", line, sep_str)
+                        {
                             r_error(&format!("error writing to pipe: {}", e));
                         }
                     }
-                    let _ = stdin.flush();
+                    _ => r_error("cannot write to this connection type"),
                 }
             }
-            _ => {
-                r_error("cannot write to this connection type");
+        }
+        {
+            let mut table = state.borrow_mut();
+            let conn = writable_line_connection(&mut table[i]);
+            match &mut conn.kind {
+                ConnKind::File => {
+                    if let Some(writer) = conn.writer.as_mut() {
+                        let _ = writer.flush();
+                        if conn.mode.contains('+')
+                            && let Some(reader) = conn.reader.as_mut()
+                        {
+                            let _ = reader.seek(SeekFrom::Start(0));
+                            conn.raw_pos = 0;
+                        }
+                    }
+                }
+                ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+                    conn.raw_pos = conn.raw_data.len();
+                }
+                ConnKind::Pipe => {
+                    if let Some(stdin) =
+                        conn.child.as_mut().and_then(|child| child.stdin.as_mut())
+                    {
+                        let _ = stdin.flush();
+                    }
+                }
+                _ => {}
             }
         }
-
-        drop(table);
         if let Some(guard) = auto_guard.as_mut() {
             guard.close();
         }
         R_NilValue()
     }
+}
+
+fn writable_line_connection(slot: &mut Option<Box<RConn>>) -> &mut RConn {
+    let conn = slot
+        .as_deref_mut()
+        .unwrap_or_else(|| r_error("invalid connection"));
+    if !conn.isopen {
+        r_error("connection is not open");
+    }
+    if !conn.canwrite {
+        r_error("cannot write to this connection");
+    }
+    conn
 }
 
 fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
@@ -642,7 +680,8 @@ mod cleanup_identity_tests {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| guard.close()));
             if action == 0 {
                 assert!(result.is_ok());
-                let table = connection_table();
+                let state = connection_table();
+                let table = state.borrow();
                 if remove {
                     assert!(table[index as usize].is_none());
                 } else {
@@ -655,7 +694,8 @@ mod cleanup_identity_tests {
                 );
                 if let Some(token) = replacement_token {
                     assert_eq!(token.require_current().unwrap(), index);
-                    let table = connection_table();
+                    let state = connection_table();
+                    let table = state.borrow();
                     let replacement = table[index as usize].as_ref().unwrap();
                     assert!(
                         replacement.isopen,
@@ -663,7 +703,7 @@ mod cleanup_identity_tests {
                     );
                     assert_eq!(replacement.description, "cleanup-replacement.txt");
                 } else {
-                    assert!(connection_table()[index as usize].is_none());
+                    assert!(connection_table().borrow()[index as usize].is_none());
                 }
             }
         });

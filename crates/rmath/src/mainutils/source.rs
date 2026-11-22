@@ -46,8 +46,10 @@ pub fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             );
             let mut content = String::new();
             {
-                let mut table = crate::mainutils::connections::connection_table();
+                let state = crate::mainutils::connections::connection_table();
+                let mut table = state.borrow_mut();
                 let Some(conn) = table[index].as_mut() else {
+                    drop(table);
                     parse_failure("invalid connection");
                 };
                 while let Some(line) =

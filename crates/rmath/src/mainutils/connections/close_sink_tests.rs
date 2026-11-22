@@ -80,7 +80,7 @@ fn sink_close_case(nested: bool, lower: bool, popped: bool, message: bool) {
                 result.is_ok(),
                 "GNU permits the top sink and a popped destination to close"
             );
-            assert!(connection_table()[index as usize].is_none());
+            assert!(connection_table().borrow()[index as usize].is_none());
         } else {
             let error = result.expect_err("every active sink destination must reject close");
             assert_eq!(
@@ -92,7 +92,7 @@ fn sink_close_case(nested: bool, lower: bool, popped: bool, message: bool) {
                 }
             );
             assert_eq!(original.require_current().unwrap(), index);
-            assert!(connection_table()[index as usize].as_ref().unwrap().isopen);
+            assert!(connection_table().borrow()[index as usize].as_ref().unwrap().isopen);
         }
     });
 }

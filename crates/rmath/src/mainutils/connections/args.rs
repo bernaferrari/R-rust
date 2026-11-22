@@ -214,8 +214,8 @@ pub fn inherits_class(x: SEXP, class_name: &str) -> bool {
         if class_name == "connection" {
             let idx = INTEGER_ELT(x, 0);
             if idx >= 0 && idx != NA_INTEGER {
-                init_connections_table();
-                let table = connection_table();
+                let state = connection_table();
+                let table = state.borrow();
                 let ui = idx as usize;
                 if ui < table.len() && table[ui].is_some() {
                     return true;

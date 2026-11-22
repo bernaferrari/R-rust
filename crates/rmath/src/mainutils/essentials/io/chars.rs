@@ -36,7 +36,8 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
         .unwrap_or_else(|e| base_error(e.to_string()));
     let opened_here = {
         let index = crate::mainutils::connections::checked_connection_index(connection);
-        let mut table = crate::mainutils::connections::connection_table();
+        let state = crate::mainutils::connections::connection_table();
+        let mut table = state.borrow_mut();
         let Some(conn) = table[index].as_mut() else {
             crate::mainutils::connections::r_error("invalid connection");
         };

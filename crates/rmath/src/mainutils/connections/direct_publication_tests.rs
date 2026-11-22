@@ -75,7 +75,7 @@ fn text_writer_callback(action: u8) {
             }
             (*instance).memory_state.gc_force_gap = 0;
             if action == 7 {
-                connection_table()[index as usize] = None;
+                connection_table().borrow_mut()[index as usize] = None;
                 let fresh = do_textConnection(
                     ptr::null_mut(),
                     ptr::null_mut(),
@@ -217,9 +217,10 @@ fn text_writer_callback(action: u8) {
             );
         }
         if action == 4 || action == 5 {
-            assert!(connection_table()[index as usize].is_none());
+            assert!(connection_table().borrow()[index as usize].is_none());
         } else {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             let conn = table[index as usize].as_ref().unwrap();
             assert!(conn.isopen && !conn.text_busy);
             if action == 7 {
@@ -363,7 +364,8 @@ fn text_writer_owner_exit(action: u8) {
     );
     if let Some(replacement) = replacement.borrow().as_ref() {
         replacement.with_active(|| {
-            let table = connection_table();
+            let state = connection_table();
+            let table = state.borrow();
             assert_eq!(table.iter().filter(|slot| slot.is_some()).count(), 3);
             assert!(!crate::sexp::output::is_capturing());
         });

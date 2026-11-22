@@ -949,8 +949,7 @@ pub fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             R_NilValue(),
         );
         let index = usize::try_from(INTEGER_ELT(conn, 0)).unwrap_or(0);
-        let guard = crate::mainutils::connections::get_connection(index);
-        let path = guard[index].as_ref().unwrap().description.clone();
+        let path = crate::mainutils::connections::connection_description(index);
         let bytes = raw_to_bytes(raw);
         if std::fs::write(&path, &bytes).is_err() {
             error("cannot write to connection");

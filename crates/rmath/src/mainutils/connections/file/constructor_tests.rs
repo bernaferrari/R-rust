@@ -67,7 +67,8 @@ fn constructor_roots_keep_detached_operands_through_real_provider_gc() {
     assert!(args.try_cdr().unwrap().is_nil());
     let index = result.try_integer_elt(0).unwrap() as usize;
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let conn = table[index].as_ref().unwrap();
         assert_eq!(conn.description, "constructor.txt");
         assert!(!conn.isopen);
@@ -97,7 +98,8 @@ fn constructor_roots_omitted_defaults_survive_every_allocation_gc() {
     assert_eq!(result.typeof_(), SEXPTYPE::INTSXP);
     let index = result.try_integer_elt(0).unwrap() as usize;
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let conn = table[index].as_ref().unwrap();
         assert!(conn.isopen && conn.canread && conn.canwrite);
     });
@@ -123,7 +125,8 @@ fn constructor_roots_missing_defaults_survive_every_allocation_gc() {
     });
     assert_eq!(result.typeof_(), SEXPTYPE::INTSXP);
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let conn = table[result.try_integer_elt(0).unwrap() as usize]
             .as_ref()
             .unwrap();
@@ -146,7 +149,7 @@ fn provider_exit(action: u8) {
         .weak_owner()
         .unwrap();
     let f = original.node_factory().unwrap();
-    let before = connection_table().iter().filter(|c| c.is_some()).count();
+    let before = connection_table().borrow().iter().filter(|c| c.is_some()).count();
     let dropped = Rc::downgrade(&facade);
     let replaced = replacement.clone();
     let calls = Rc::new(Cell::new(0));
@@ -201,7 +204,7 @@ fn provider_exit(action: u8) {
         assert_eq!(*payload.downcast::<u32>().unwrap(), 681);
         facade.borrow().as_ref().unwrap().with_active(|| {
             assert_eq!(
-                connection_table().iter().filter(|c| c.is_some()).count(),
+                connection_table().borrow().iter().filter(|c| c.is_some()).count(),
                 before
             );
         });
@@ -215,7 +218,7 @@ fn provider_exit(action: u8) {
     if let Some(new) = replacement.borrow().as_ref() {
         new.with_active(|| {
             assert_eq!(
-                connection_table().iter().filter(|c| c.is_some()).count(),
+                connection_table().borrow().iter().filter(|c| c.is_some()).count(),
                 before
             )
         });
@@ -295,7 +298,8 @@ fn constructor_roots_keep_encoding_through_collecting_logical_coercions() {
     assert_eq!(calls.get(), 2);
     assert!(block.try_cdr().unwrap().is_nil());
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let conn = table[result.try_integer_elt(0).unwrap() as usize]
             .as_ref()
             .unwrap();
@@ -367,7 +371,8 @@ fn named_pid_prefixed_host_file_stays_closed_and_preserves_contents() {
     let connection = construct(&session, &args);
     let index = connection.try_integer_elt(0).unwrap() as usize;
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let connection = table[index].as_ref().unwrap();
         assert!(
             !connection.isopen,
@@ -386,7 +391,8 @@ fn named_browser_file_is_deferred_without_creating_a_host_file() {
     let connection = construct(&session, &args);
     let index = connection.try_integer_elt(0).unwrap() as usize;
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let connection = table[index].as_ref().unwrap();
         assert!(matches!(connection.kind, ConnKind::BrowserFile));
         assert!(!connection.isopen);
@@ -587,7 +593,8 @@ fn anonymous_browser_file_is_owned_open_read_write_and_recovers_after_budget_rej
     let connection = construct(&session, &args);
     let index = connection.try_integer_elt(0).unwrap() as usize;
     session.with_active(|| {
-        let table = connection_table();
+        let state = connection_table();
+        let table = state.borrow();
         let connection = table[index].as_ref().unwrap();
         assert!(matches!(connection.kind, ConnKind::AnonymousFile(_)));
         assert!(
@@ -623,7 +630,7 @@ fn anonymous_browser_file_is_owned_open_read_write_and_recovers_after_budget_rej
     session.with_active(|| {
         crate::sexp::gengc::full_gc();
         assert_eq!(connection_read_all(index as c_int), [1, 2, 3]);
-        connection_table()[index] = None;
+        connection_table().borrow_mut()[index] = None;
     });
     assert!(session.list_browser_files().is_empty());
     let recovered = session.eval_code_with_output_capture("1+1").0.unwrap();
