@@ -29,16 +29,16 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::{protect, protect_with_index_raw};
+use crate::sexp::protect::protect;
 
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
-use crate::main::duplicate::{Rf_duplicate, copyVector};
+use crate::main::duplicate::Rf_duplicate;
 use crate::mainutils::connections::{
     connection_fgetc, connection_pushback, connection_token, connection_write_bytes,
 };
 use crate::mainutils::errors::{
-    R_CheckUserInterrupt, Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr,
+    R_CheckUserInterrupt, Rf_error_cstr, Rf_warning_cstr,
 };
 use crate::mainutils::print::PrintDefaults;
 use crate::mainutils::format::{
@@ -48,8 +48,8 @@ use crate::mainutils::printutils::{
     encode_complex_text, encode_integer_text, encode_logical_text, encode_raw_text,
     encode_real0_text,
 };
+use crate::sexp::memory::WorkspaceReservation;
 use crate::sexp::{Sexp, owner::OwnerToken};
-use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::mainutils::number_parse::{ParsedNumber, parse_number};
 
 /// Check if SEXP has a dim attribute (is an array)
@@ -63,14 +63,12 @@ fn isArray(x: SEXP) -> c_int {
 }
 
 /* Constants from R headers */
-const SCAN_BLOCKSIZE: c_int = 1000;
 const CONSOLE_PROMPT_SIZE: usize = 256;
 const CONSOLE_BUFFER_SIZE: usize = 1024;
 const MAXELTSIZE: usize = 8192;
 const NO_COMCHAR: c_int = 100000;
 const R_EOF_VAL: c_int = -1;
 const MAX_STRINGS: usize = 10000;
-const BUF_SIZE: usize = 1000;
 const DBL_DIG_VAL: c_int = 15;
 
 /* NA values matching R's C definitions */
@@ -87,10 +85,6 @@ fn NA_LOGICAL() -> c_int {
 #[inline]
 fn NA_REAL() -> c_double {
     crate::sexp::ffi::NA_REAL
-}
-
-fn translateChar(x: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
 fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
@@ -698,6 +692,90 @@ fn table_cell(
 
 /* ========== Exported functions ========== */
 
+fn scan_comment(value: SEXP) -> c_int {
+    if !isString(value) || LENGTH(value) != 1 {
+        r_error(c"invalid '%s' argument", Some(c"comment.char"));
+    }
+    match char_cstr_bytes(STRING_ELT(value, 0)).as_slice() {
+        [] => NO_COMCHAR,
+        [byte] => *byte as c_char as c_int,
+        _ => {
+            r_error(c"invalid '%s' argument", Some(c"comment.char"));
+            NO_COMCHAR
+        }
+    }
+}
+
+fn scan_separator(value: SEXP) -> c_int {
+    if !isString(value) && !isNull(value) {
+        r_error(c"invalid '%s' argument", Some(c"sep"));
+    }
+    if LENGTH(value) == 0 {
+        0
+    } else {
+        char_cstr_bytes(STRING_ELT(value, 0))
+            .first()
+            .copied()
+            .unwrap_or(0) as c_char as c_int
+    }
+}
+
+fn scan_quotes(value: SEXP) -> [c_char; 10] {
+    let mut quotes = [0; 10];
+    if isString(value) && LENGTH(value) > 0 {
+        for (slot, byte) in quotes[..9]
+            .iter_mut()
+            .zip(char_cstr_bytes(STRING_ELT(value, 0)))
+        {
+            *slot = byte as c_char;
+        }
+    } else if !isString(value) && !isNull(value) {
+        r_error(c"invalid quote symbol set", None);
+    }
+    quotes
+}
+
+fn scan_workspace(owner: OwnerToken<'_>) -> WorkspaceReservation {
+    table_checked(owner.with_arena(|arena| arena.reserve_workspace(0)))
+        .unwrap_or_else(|| {
+            crate::sexp::context::r_error("table scan buffer exceeds session memory limit")
+        })
+}
+
+fn push_scan_value<T>(out: &mut Vec<T>, value: T, workspace: &mut WorkspaceReservation) {
+    if out.len() == out.capacity() {
+        fn fail() -> ! {
+            crate::sexp::context::r_error("table scan buffer exceeds session memory limit")
+        }
+        let width = std::mem::size_of::<T>();
+        let size = |cap: usize| cap.checked_mul(width).unwrap_or_else(|| fail());
+        let target = out
+            .capacity()
+            .checked_mul(2)
+            .unwrap_or_else(|| fail())
+            .max(1000);
+        // Admit the new vector while the old one is still live.
+        let peak = workspace
+            .bytes()
+            .checked_add(size(target))
+            .unwrap_or_else(|| fail());
+        workspace.try_resize(peak).unwrap_or_else(|| fail());
+        let mut next = Vec::new();
+        next.try_reserve_exact(target).unwrap_or_else(|_| fail());
+        let used = size(next.capacity());
+        let peak = size(out.capacity())
+            .checked_add(used)
+            .unwrap_or_else(|| fail());
+        workspace.try_resize(peak).unwrap_or_else(|| fail());
+        next.append(out);
+        *out = next;
+        workspace
+            .try_resize(size(out.capacity()))
+            .unwrap_or_else(|| fail());
+    }
+    out.push(value);
+}
+
 /*
  * countfields(file, sep, quotes, nskip, blskip, comment.char)
  *
@@ -705,222 +783,155 @@ fn table_cell(
  * Ported from r-source/src/library/utils/src/io.c
  */
 pub fn countfields(args: SEXP) -> SEXP {
-    unsafe {
-        let mut data = LocalData::new();
+    let mut data = LocalData::new();
 
-        let mut args_cdr = CDR(args);
-        let file = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let sep = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let quotes = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let mut nskip = crate::main::coerce::asInteger(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let mut blskip = asLogical(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let comstr = CAR(args_cdr);
+    let owner = table_checked(OwnerToken::current());
+    let _pin = table_checked(owner.pin());
+    let roots = table_checked(owner.sexp(args));
+    let mut args_cdr = CDR(roots.as_raw());
+    let file = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let sep = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let quotes = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let mut nskip = crate::main::coerce::asInteger(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let mut blskip = asLogical(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let comstr = CAR(args_cdr);
 
-        // Validate comment.char
-        if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
-            r_error(c"invalid '%s' argument", Some(c"comment.char"));
-        }
-        let p = translateChar(STRING_ELT(comstr, 0));
-        data.comchar = NO_COMCHAR;
-        let plen = CStr::from_ptr(p).to_bytes().len();
-        if plen > 1 {
-            r_error(c"invalid '%s' argument", Some(c"comment.char"));
-        } else if plen == 1 {
-            data.comchar = *p as c_int;
-        }
+    data.comchar = scan_comment(comstr);
 
-        if nskip < 0 || nskip == NA_INTEGER() {
-            nskip = 0;
-        }
-        if blskip == NA_LOGICAL() {
-            blskip = 1;
-        }
+    if nskip < 0 || nskip == NA_INTEGER() {
+        nskip = 0;
+    }
+    if blskip == NA_LOGICAL() {
+        blskip = 1;
+    }
 
-        // Parse separator
-        if isString(sep) || isNull(sep) {
-            if LENGTH(sep) == 0 {
-                data.sepchar = 0;
-            } else {
-                data.sepchar = *translateChar(STRING_ELT(sep, 0)) as c_int;
+    data.sepchar = scan_separator(sep);
+    data.quoteset = scan_quotes(quotes);
+
+    // Metered scanner buffers; declared before the vectors so the ledger
+    // ticket outlives them.
+    let mut workspace = scan_workspace(owner);
+    let mut counts: Vec<c_int> = Vec::new();
+
+    // Set up connection
+    let i = crate::main::coerce::asInteger(file);
+    data.con = i;
+    // Coercion may have re-entered the interpreter; re-validate the session.
+    table_checked(owner.require_active());
+    if i == 0 {
+        data.ttyflag = 1;
+    } else {
+        data.ttyflag = 0;
+        crate::mainutils::connections::ensure_connection_readable(i);
+        // Skip nskip lines
+        for _ in 0..nskip {
+            loop {
+                let c = scanchar(false, &mut data);
+                if c == '\n' as c_int || c == R_EOF_VAL {
+                    break;
+                }
             }
-        } else {
-            r_error(c"invalid '%s' argument", Some(c"sep"));
         }
+    }
 
-        // Parse quotes
-        if isString(quotes) {
-            let sc = translateChar(STRING_ELT(quotes, 0));
-            let qbytes = CStr::from_ptr(sc).to_bytes();
-            if !qbytes.is_empty() {
-                // strcpy into the 10-byte quoteset, capped at 9 chars + NUL
-                // (a longer quote set overflows in C, which we do not reproduce)
-                let n = qbytes.len().min(data.quoteset.len() - 1);
-                ptr::copy_nonoverlapping(qbytes.as_ptr(), data.quoteset.as_mut_ptr() as *mut u8, n);
-                data.quoteset[n] = 0;
-            } else {
-                data.quoteset[0] = 0;
+    let mut nfields: c_int = 0;
+    let mut quote: c_int = 0;
+    data.save = 0;
+    let increment = |value: c_int| {
+        value
+            .checked_add(1)
+            .unwrap_or_else(|| crate::sexp::context::r_error("too many fields in line"))
+    };
+    loop {
+        let c = scanchar(quote != 0, &mut data);
+        if c == R_EOF_VAL {
+            if nfields != 0 {
+                push_scan_value(&mut counts, nfields, &mut workspace);
             }
-        } else if isNull(quotes) {
-            data.quoteset[0] = 0;
-        } else {
-            r_error(c"invalid quote symbol set", None);
+            break;
         }
-
-        // Set up connection
-        let mut i = crate::main::coerce::asInteger(file);
-        data.con = i;
-        if i == 0 {
-            data.ttyflag = 1;
-        } else {
-            data.ttyflag = 0;
-            crate::mainutils::connections::ensure_connection_readable(i);
-            // Skip nskip lines
-            for _ in 0..nskip {
+        if c == b'\n' as c_int {
+            if quote != 0 {
+                push_scan_value(&mut counts, NA_INTEGER(), &mut workspace);
+            } else if nfields != 0 || blskip == 0 {
+                push_scan_value(&mut counts, nfields, &mut workspace);
+                nfields = 0;
+            }
+            continue;
+        }
+        if data.sepchar != 0 {
+            // Non-whitespace separator
+            if nfields == 0 {
+                nfields = 1;
+            }
+            if quote != 0 && c == quote {
+                quote = 0;
+            } else if strchr_quoteset(&data.quoteset, c) {
+                quote = c;
+            }
+            if c == data.sepchar && quote == 0 {
+                nfields = increment(nfields);
+            }
+        } else if !Rspace(c as c_uint) {
+            // Whitespace separator
+            if strchr_quoteset(&data.quoteset, c) {
+                let opening_line = counts.len() + 1;
                 loop {
-                    let c = scanchar(false, &mut data);
-                    if c == '\n' as c_int || c == R_EOF_VAL {
+                    let c2 = scanchar(true, &mut data);
+                    if c2 == c {
+                        break;
+                    }
+                    if c2 == R_EOF_VAL {
+                        crate::sexp::context::r_error(format!(
+                            "quoted string on line {opening_line} terminated by EOF"
+                        ));
+                    }
+                    if c2 == b'\n' as c_int {
+                        push_scan_value(&mut counts, NA_INTEGER(), &mut workspace);
+                    }
+                }
+            } else {
+                // Consume the non-space token
+                loop {
+                    let c2 = scanchar(false, &mut data);
+                    if c2 == R_EOF_VAL {
+                        unscanchar(b'\n' as c_int, &mut data);
+                        break;
+                    }
+                    if Rspace(c2 as c_uint) {
+                        unscanchar(c2, &mut data);
                         break;
                     }
                 }
             }
+            nfields = increment(nfields);
         }
-
-        let mut blocksize = SCAN_BLOCKSIZE;
-        let mut ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-        let mut ans_guard = protect_with_index_raw(ans, "countfields ans");
-        let mut nlines: c_int = 0;
-        let mut nfields: c_int = 0;
-        let mut inquote: c_int = 0;
-        let mut quote: c_int = 0;
-        data.save = 0;
-
-        loop {
-            let c = scanchar(inquote > 0, &mut data);
-            if c == R_EOF_VAL {
-                if nfields != 0 {
-                    *INTEGER(ans).add(nlines as usize) = nfields;
-                } else {
-                    nlines -= 1;
-                }
-                break;
-            } else if c == '\n' as c_int {
-                if inquote != 0 {
-                    *INTEGER(ans).add(nlines as usize) = NA_INTEGER();
-                    nlines += 1;
-                } else if nfields != 0 || blskip == 0 {
-                    *INTEGER(ans).add(nlines as usize) = nfields;
-                    nlines += 1;
-                    nfields = 0;
-                    inquote = 0;
-                }
-                if nlines == blocksize {
-                    let bns = ans;
-                    blocksize = 2 * blocksize;
-                    ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                    ans_guard.reprotect_raw(ans);
-                    copyVector(ans, bns);
-                }
-                continue;
-            } else if data.sepchar != 0 {
-                // Non-whitespace separator
-                if nfields == 0 {
-                    nfields += 1;
-                }
-                if inquote != 0 && c == R_EOF_VAL {
-                    // quoted string terminated by EOF — error in full R, just record NA
-                    *INTEGER(ans).add(nlines as usize) = NA_INTEGER();
-                    nlines += 1;
-                }
-                if inquote != 0 && c == quote {
-                    inquote = 0;
-                } else if strchr_quoteset(&data.quoteset, c) {
-                    inquote = nlines + 1;
-                    quote = c;
-                }
-                if c == data.sepchar && inquote == 0 {
-                    nfields += 1;
-                }
-            } else if !Rspace(c as c_uint) {
-                // Whitespace separator
-                if strchr_quoteset(&data.quoteset, c) {
-                    quote = c;
-                    inquote = nlines + 1;
-                    loop {
-                        let c2 = scanchar(inquote > 0, &mut data);
-                        if c2 == quote {
-                            break;
-                        }
-                        if c2 == R_EOF_VAL {
-                            // quoted string terminated by EOF
-                            *INTEGER(ans).add(nlines as usize) = NA_INTEGER();
-                            nlines += 1;
-                            if nlines == blocksize {
-                                let bns = ans;
-                                blocksize = 2 * blocksize;
-                                ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                                ans_guard.reprotect_raw(ans);
-                                copyVector(ans, bns);
-                            }
-                        } else if c2 == '\n' as c_int {
-                            *INTEGER(ans).add(nlines as usize) = NA_INTEGER();
-                            nlines += 1;
-                            if nlines == blocksize {
-                                let bns = ans;
-                                blocksize = 2 * blocksize;
-                                ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                                ans_guard.reprotect_raw(ans);
-                                copyVector(ans, bns);
-                            }
-                        }
-                    }
-                    inquote = 0;
-                } else {
-                    // Consume the non-space token
-                    let mut c2;
-                    loop {
-                        c2 = scanchar(false, &mut data);
-                        if !Rspace(c2 as c_uint) && c2 != R_EOF_VAL {
-                            // DBCS handling would go here
-                        }
-                        if Rspace(c2 as c_uint) || c2 == R_EOF_VAL {
-                            break;
-                        }
-                    }
-                    if c2 == R_EOF_VAL {
-                        unscanchar('\n' as c_int, &mut data);
-                    } else {
-                        unscanchar(c2, &mut data);
-                    }
-                }
-                nfields += 1;
-            }
-        }
-
-        // Push back if possible
-        if data.save != 0 && data.ttyflag == 0 {
-            let line = [data.save as c_char, 0];
-            connection_pushback(data.con, CStr::from_ptr(line.as_ptr()).to_bytes());
-        }
-
-        if nlines < 0 {
-            return R_NilValue();
-        }
-        if nlines == blocksize {
-            return ans;
-        }
-
-        let bns = Rf_allocVector(SEXPTYPE::INTSXP, nlines + 1);
-        let _bns_guard = protect(bns);
-        for j in 0..=nlines {
-            *INTEGER(bns).add(j as usize) = *INTEGER(ans).add(j as usize);
-        }
-        bns
     }
+
+    // Push back if possible
+    if data.save != 0 && data.ttyflag == 0 {
+        connection_pushback(data.con, &[data.save as u8]);
+    }
+
+    if counts.is_empty() {
+        return R_NilValue();
+    }
+
+    let n = i32::try_from(counts.len())
+        .unwrap_or_else(|_| crate::sexp::context::r_error("too many lines in table"));
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
+    let _guard = protect(ans);
+    // Allocation may have collected; re-validate before writing.
+    table_checked(owner.require_active());
+    for (i, count) in counts.into_iter().enumerate() {
+        SET_INTEGER_ELT(ans, i as c_int, count);
+    }
+    ans
 }
 
 /*
@@ -1240,219 +1251,184 @@ pub fn menu(choices: SEXP) -> SEXP {
  * Ported from r-source/src/library/utils/src/io.c
  */
 pub fn readtablehead(args: SEXP) -> SEXP {
-    unsafe {
-        let mut data = LocalData::new();
+    let mut data = LocalData::new();
 
-        let mut args_cdr = CDR(args);
-        let file = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let nlines = crate::main::coerce::asInteger(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let comstr = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let mut blskip = asLogical(CAR(args_cdr));
-        args_cdr = CDR(args_cdr);
-        let quotes = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let sep = CAR(args_cdr);
-        args_cdr = CDR(args_cdr);
-        let skipNul = asLogical(CAR(args_cdr));
+    let owner = table_checked(OwnerToken::current());
+    let _pin = table_checked(owner.pin());
+    let roots = table_checked(owner.sexp(args));
+    let mut args_cdr = CDR(roots.as_raw());
+    let file = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let nlines = crate::main::coerce::asInteger(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let comstr = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let mut blskip = asLogical(CAR(args_cdr));
+    args_cdr = CDR(args_cdr);
+    let quotes = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let sep = CAR(args_cdr);
+    args_cdr = CDR(args_cdr);
+    let skipNul = asLogical(CAR(args_cdr));
 
-        if nlines <= 0 || nlines == NA_INTEGER() {
-            r_error(c"invalid '%s' argument", Some(c"nlines"));
-        }
-        if blskip == NA_LOGICAL() {
-            blskip = 1;
-        }
-
-        // Parse quotes
-        if isString(quotes) {
-            let sc = translateChar(STRING_ELT(quotes, 0));
-            let qbytes = CStr::from_ptr(sc).to_bytes();
-            if !qbytes.is_empty() {
-                // strcpy into the 10-byte quoteset, capped at 9 chars + NUL
-                // (a longer quote set overflows in C, which we do not reproduce)
-                let n = qbytes.len().min(data.quoteset.len() - 1);
-                ptr::copy_nonoverlapping(qbytes.as_ptr(), data.quoteset.as_mut_ptr() as *mut u8, n);
-                data.quoteset[n] = 0;
-            } else {
-                data.quoteset[0] = 0;
-            }
-        } else if isNull(quotes) {
-            data.quoteset[0] = 0;
-        } else {
-            r_error(c"invalid quote symbol set", None);
-        }
-
-        // Validate comment.char
-        if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
-            r_error(c"invalid '%s' argument", Some(c"comment.char"));
-        }
-        let p = translateChar(STRING_ELT(comstr, 0));
-        data.comchar = NO_COMCHAR;
-        let plen = CStr::from_ptr(p).to_bytes().len();
-        if plen > 1 {
-            r_error(c"invalid '%s' argument", Some(c"comment.char"));
-        } else if plen == 1 {
-            data.comchar = *p as c_int;
-        }
-
-        // Parse separator
-        if isString(sep) || isNull(sep) {
-            if LENGTH(sep) == 0 {
-                data.sepchar = 0;
-            } else {
-                data.sepchar = *translateChar(STRING_ELT(sep, 0)) as c_int;
-            }
-        } else {
-            r_error(c"invalid '%s' argument", Some(c"sep"));
-        }
-
-        if skipNul == NA_LOGICAL() {
-            r_error(c"invalid '%s' argument", Some(c"skipNul"));
-        }
-        data.skipNul = skipNul != 0;
-
-        // Set up connection
-        let i = crate::main::coerce::asInteger(file);
-        data.con = i;
-        data.ttyflag = if i == 0 { 1 } else { 0 };
-        if i != 0 {
-            crate::mainutils::connections::ensure_connection_readable(i);
-        }
-
-        let mut buf_size: usize = BUF_SIZE;
-        let mut buf: Vec<c_char> = vec![0; buf_size];
-
-        let mut ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
-        let _ans_guard = protect(ans);
-        let mut nread: c_int = 0;
-
-        while nread < nlines {
-            let mut nbuf: usize = 0;
-            let mut empty = true;
-            let mut skip = false;
-            let mut firstnonwhite = true;
-            let mut quote: c_int = 0;
-            let mut c: c_int = 0;
-            let mut last_c: c_int = 0;
-
-            loop {
-                c = scanchar(true, &mut data);
-                if c == R_EOF_VAL {
-                    last_c = c;
-                    break;
-                }
-
-                // Grow buffer if needed
-                if nbuf >= buf_size - 3 {
-                    buf_size *= 2;
-                    buf.resize(buf_size, 0);
-                }
-
-                // Handle quotes
-                if quote != 0 {
-                    if data.sepchar == 0 && c == '\\' as c_int {
-                        // all escapes should be passed through
-                        buf[nbuf] = c as c_char;
-                        nbuf += 1;
-                        let c2 = scanchar(true, &mut data);
-                        if c2 == R_EOF_VAL {
-                            r_error(c"\\ followed by EOF", None);
-                        }
-                        buf[nbuf] = c2 as c_char;
-                        nbuf += 1;
-                        continue;
-                    } else if c == quote {
-                        if data.sepchar == 0 {
-                            quote = 0;
-                        } else {
-                            // Check for doubled quote
-                            let c2 = scanchar(true, &mut data);
-                            if c2 == quote {
-                                buf[nbuf] = c as c_char;
-                                nbuf += 1;
-                            } else {
-                                unscanchar(c2, &mut data);
-                                quote = 0;
-                            }
-                        }
-                    }
-                } else if !skip
-                    && (firstnonwhite || data.sepchar != 0)
-                    && strchr_quoteset(&data.quoteset, c)
-                {
-                    quote = c;
-                } else if !skip && data.sepchar == 0 && Rspace(c as c_uint) {
-                    firstnonwhite = true;
-                } else if c != ' ' as c_int && c != '\t' as c_int {
-                    firstnonwhite = false;
-                }
-
-                // Check for empty line
-                if empty && !skip {
-                    if c != '\n' as c_int && c != data.comchar {
-                        empty = false;
-                    }
-                }
-                if quote == 0 && !skip && c == data.comchar {
-                    skip = true;
-                }
-                if quote != 0 || c != '\n' as c_int {
-                    buf[nbuf] = c as c_char;
-                    nbuf += 1;
-                } else {
-                    last_c = c;
-                    break;
-                }
-            }
-            buf[nbuf] = 0;
-
-            if data.ttyflag != 0 && empty {
-                // No more lines from tty
-                // Trim result to actual number read
-                if nread < nlines {
-                    let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
-                    let _ans2_guard = protect(ans2);
-                    for j in 0..nread {
-                        SET_STRING_ELT(ans2, j as R_xlen_t, STRING_ELT(ans, j as R_xlen_t));
-                    }
-                    return ans2;
-                }
-                return ans;
-            }
-
-            if !empty || (last_c != R_EOF_VAL && blskip == 0) {
-                SET_STRING_ELT(ans, nread as R_xlen_t, Rf_mkChar(buf.as_ptr()));
-                nread += 1;
-                // Check for embedded nulls (strlen < nbuf)
-                let strlen = buf.iter().take_while(|&&c| c != 0).count();
-                if strlen < nbuf {
-                    let mut warn_buf = [0 as core::ffi::c_char; 256];
-                    crate::mainutils::r_format::r_snprintf_c(
-                        &mut warn_buf,
-                        b"line %d appears to contain embedded nulls\0",
-                        &[nread.into()],
-                    );
-                    Rf_warning_cstr(crate::mainutils::errors::c_chars_until_nul(&warn_buf));
-                }
-            }
-            if last_c == R_EOF_VAL {
-                // Trim result to actual number read
-                if nread < nlines {
-                    let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
-                    let _ans2_guard = protect(ans2);
-                    for j in 0..nread {
-                        SET_STRING_ELT(ans2, j as R_xlen_t, STRING_ELT(ans, j as R_xlen_t));
-                    }
-                    return ans2;
-                }
-                return ans;
-            }
-        }
-
-        ans
+    if nlines <= 0 || nlines == NA_INTEGER() {
+        r_error(c"invalid '%s' argument", Some(c"nlines"));
     }
+    if blskip == NA_LOGICAL() {
+        blskip = 1;
+    }
+
+    data.quoteset = scan_quotes(quotes);
+    data.comchar = scan_comment(comstr);
+    data.sepchar = scan_separator(sep);
+
+    if skipNul == NA_LOGICAL() {
+        r_error(c"invalid '%s' argument", Some(c"skipNul"));
+    }
+    data.skipNul = skipNul != 0;
+
+    // Metered scanner buffer; declared before the vector so the ledger
+    // ticket outlives it.
+    let mut workspace = scan_workspace(owner);
+
+    // Set up connection
+    let i = crate::main::coerce::asInteger(file);
+    data.con = i;
+    data.ttyflag = if i == 0 { 1 } else { 0 };
+    // Coercion may have re-entered the interpreter; re-validate the session.
+    table_checked(owner.require_active());
+    if i != 0 {
+        crate::mainutils::connections::ensure_connection_readable(i);
+    }
+    // Bind the connection by identity before allocating the result: line
+    // publication and warnings may run callbacks between scans.
+    let token = (i != 0).then(|| {
+        connection_token(i).unwrap_or_else(|e| crate::sexp::context::r_error(e))
+    });
+
+    let mut buf: Vec<u8> = Vec::new();
+
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
+    let _ans_guard = protect(ans);
+    let mut nread: c_int = 0;
+
+    while nread < nlines {
+        table_checked(owner.require_active());
+        if let Some(token) = &token {
+            token
+                .require_current()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e));
+        }
+        buf.clear();
+        let mut empty = true;
+        let mut skip = false;
+        let mut firstnonwhite = true;
+        let mut quote: c_int = 0;
+        let mut c: c_int = 0;
+        let mut last_c: c_int = 0;
+
+        loop {
+            c = scanchar(true, &mut data);
+            if c == R_EOF_VAL {
+                last_c = c;
+                break;
+            }
+
+            // Handle quotes
+            if quote != 0 {
+                if data.sepchar == 0 && c == '\\' as c_int {
+                    // all escapes should be passed through
+                    push_scan_value(&mut buf, c as u8, &mut workspace);
+                    let c2 = scanchar(true, &mut data);
+                    if c2 == R_EOF_VAL {
+                        r_error(c"\\ followed by EOF", None);
+                    }
+                    push_scan_value(&mut buf, c2 as u8, &mut workspace);
+                    continue;
+                } else if c == quote {
+                    if data.sepchar == 0 {
+                        quote = 0;
+                    } else {
+                        // Check for doubled quote
+                        let c2 = scanchar(true, &mut data);
+                        if c2 == quote {
+                            push_scan_value(&mut buf, c as u8, &mut workspace);
+                        } else {
+                            unscanchar(c2, &mut data);
+                            quote = 0;
+                        }
+                    }
+                }
+            } else if !skip
+                && (firstnonwhite || data.sepchar != 0)
+                && strchr_quoteset(&data.quoteset, c)
+            {
+                quote = c;
+            } else if !skip && data.sepchar == 0 && Rspace(c as c_uint) {
+                firstnonwhite = true;
+            } else if c != ' ' as c_int && c != '\t' as c_int {
+                firstnonwhite = false;
+            }
+
+            // Check for empty line
+            if empty && !skip {
+                if c != '\n' as c_int && c != data.comchar {
+                    empty = false;
+                }
+            }
+            if quote == 0 && !skip && c == data.comchar {
+                skip = true;
+            }
+            if quote != 0 || c != '\n' as c_int {
+                push_scan_value(&mut buf, c as u8, &mut workspace);
+            } else {
+                last_c = c;
+                break;
+            }
+        }
+
+        if data.ttyflag != 0 && empty {
+            // No more lines from tty
+            break;
+        }
+
+        if !empty || (last_c != R_EOF_VAL && blskip == 0) {
+            // Publish at the first embedded NUL, like strlen() on the C buffer.
+            let prefix = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            let value = mk_char_bytes(&buf[..prefix]);
+            // CHAR allocation may collect; re-validate before writing.
+            table_checked(owner.require_active());
+            SET_STRING_ELT(ans, i64::from(nread), value);
+            nread += 1;
+            // Check for embedded nulls (strlen < nbuf)
+            if prefix < buf.len() {
+                let mut warn_buf = [0 as core::ffi::c_char; 256];
+                crate::mainutils::r_format::r_snprintf_c(
+                    &mut warn_buf,
+                    b"line %d appears to contain embedded nulls\0",
+                    &[nread.into()],
+                );
+                Rf_warning_cstr(crate::mainutils::errors::c_chars_until_nul(&warn_buf));
+            }
+        }
+        if last_c == R_EOF_VAL {
+            break;
+        }
+    }
+
+    // A warning callback above may have redirected the session; re-validate
+    // before the final shrink or return.
+    table_checked(owner.require_active());
+    if nread < nlines {
+        let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
+        let _ans2_guard = protect(ans2);
+        table_checked(owner.require_active());
+        for j in 0..nread {
+            SET_STRING_ELT(ans2, i64::from(j), STRING_ELT(ans, i64::from(j)));
+        }
+        return ans2;
+    }
+    ans
 }
 
 /*
@@ -1679,4 +1655,28 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     }
 
     R_NilValue()
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+
+    #[test]
+    fn scan_workspace_tracks_growth() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let mut workspace = scan_workspace(owner);
+            let mut vals = Vec::new();
+            for i in 0..1001 {
+                push_scan_value(&mut vals, i, &mut workspace);
+            }
+            assert_eq!(
+                workspace.bytes(),
+                vals.capacity() * std::mem::size_of::<i32>()
+            );
+            assert_eq!(vals[0], 0);
+            assert_eq!(vals[1000], 1000);
+        });
+    }
 }
