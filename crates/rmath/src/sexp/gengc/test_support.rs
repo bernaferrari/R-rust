@@ -53,8 +53,6 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).eval_state.profiling.srcfiles.clear();
         (*instance).eval_state.profiling.srcfile_bytes_used = 0;
         (*instance).eval_state.profiling.srcfiles_buffer = instance::RuntimeValue::empty();
-        (*instance).eval_state.printvector.na_string = nil;
-        (*instance).eval_state.printvector.na_string_noquote = nil;
         (*instance).eval_state.print.data.na_string = nil;
         (*instance).eval_state.print.data.na_string_noquote = nil;
         (*instance).eval_state.print.data.env = nil;

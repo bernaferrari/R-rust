@@ -110,7 +110,7 @@ fn set_current_print_data(data: &R_PrintData) {
     with_current_print_data_mut(|current| *current = data.clone());
 }
 
-fn current_print_data_clone() -> R_PrintData {
+pub(crate) fn get_R_print_data() -> R_PrintData {
     with_current_print_data_mut(|current| current.clone())
 }
 
@@ -206,26 +206,6 @@ const R_PRINT_INIT: R_PrintData = R_PrintData {
     env: ptr::null_mut(),
     callArgs: ptr::null_mut(),
 };
-
-#[repr(transparent)]
-pub struct MutPtr<T>(*mut T);
-
-impl<T> std::ops::Deref for MutPtr<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
-    }
-}
-
-impl<T> std::ops::DerefMut for MutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
-    }
-}
-
-pub fn get_R_print_data() -> MutPtr<R_PrintData> {
-    with_current_print_data_mut(|data| MutPtr(data as *mut R_PrintData))
-}
 
 // ---------------------------------------------------------------------------
 // Module-private helpers
@@ -366,19 +346,20 @@ fn NA_STRING_local() -> SEXP {
 }
 
 /// GNU `printMatrix(t, 0, dims, quote, right, rl, cl, rn, cn)` labelled with
-/// `GetMatrixDimnames(s, ...)`.
+/// `matrix_dimnames(s, ...)`.
 fn print_matrix_dimnamed(t: SEXP, s: SEXP, dims: SEXP, quote: c_int, right: c_int) {
-    let mut rl: SEXP = R_NilValue();
-    let mut cl: SEXP = R_NilValue();
-    let mut rn: *const c_char = ptr::null();
-    let mut cn: *const c_char = ptr::null();
-    // SAFETY: the out pointers reference live locals; `rn`/`cn` are null or
-    // CHAR data of `s`'s dimnames names, which stay attached (and alive)
-    // for the duration of the printMatrix call.
-    unsafe {
-        crate::mainutils::printvector::GetMatrixDimnames(s, &mut rl, &mut cl, &mut rn, &mut cn);
-        crate::mainutils::printarray::printMatrix(t, 0, dims, quote, right, rl, cl, rn, cn);
-    }
+    let labels = crate::mainutils::printvector::matrix_dimnames(s);
+    crate::mainutils::printarray::printMatrix(
+        t,
+        0,
+        dims,
+        quote,
+        right,
+        labels.rows,
+        labels.cols,
+        labels.row_title.as_deref(),
+        labels.col_title.as_deref(),
+    );
 }
 
 /// Single-frame variable lookup (GNU `findVarInFrame`).
@@ -1570,7 +1551,7 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
         let data = _data as *const R_PrintData;
         if data.is_null() {
             PrintDefaults();
-            let data = current_print_data_clone();
+            let data = get_R_print_data();
             PrintValueRec_inner(s, &data);
         } else {
             PrintValueRec_inner(s, &*data);
@@ -2113,20 +2094,17 @@ pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     let right_val = with_current_print_data_mut(|data| data.right);
-    // SAFETY: null row/column titles are admitted by printMatrix.
-    unsafe {
-        crate::mainutils::printarray::printMatrix(
-            x,
-            0,
-            dim,
-            quote,
-            right_val,
-            rowlab_use,
-            collab_use,
-            ptr::null(),
-            ptr::null(),
-        );
-    }
+    crate::mainutils::printarray::printMatrix(
+        x,
+        0,
+        dim,
+        quote,
+        right_val,
+        rowlab_use,
+        collab_use,
+        None,
+        None,
+    );
     PrintDefaults();
     crate::sexp::globals::set_R_Visible(0);
     x

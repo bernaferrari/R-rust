@@ -276,7 +276,6 @@ pub(crate) struct EvalControlState {
     /// GNU character coercion owns a print-defaults scope across callbacks.
     pub character_print_active: bool,
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
-    pub printvector: crate::mainutils::printvector::R_PrintData,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub deparse: crate::mainutils::deparse::DeparseRuntimeState,
     pub radixsort: crate::mainutils::radixsort::RadixSortState,
@@ -322,7 +321,6 @@ impl Default for EvalControlState {
             format_print: crate::mainutils::format::RPrint::default(),
             character_print_active: false,
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
-            printvector: crate::mainutils::printvector::R_PrintData::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
             deparse: crate::mainutils::deparse::DeparseRuntimeState::default(),
             radixsort: crate::mainutils::radixsort::RadixSortState::default(),
@@ -491,8 +489,6 @@ pub struct RInstance {
     pub(crate) signed_rank_cache: Option<crate::library::stats::distn::signrank::Cache>,
     /// Original-runtime projection-pursuit and spline smoother settings.
     pub(crate) ppr_settings: Cell<crate::library::stats::smart::Common>,
-    /// Per-instance stats::loess workspace buffers.
-    pub(crate) loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState,
     /// Per-instance stats::bspline recurrence continuation state.
     pub(crate) bspline_state: crate::library::stats::bspline::BsplineState,
     /// Per-instance stats::fexact traversal continuation state.
@@ -671,7 +667,6 @@ impl RInstance {
             math_state: rmath_nmath::MathState::default(),
             signed_rank_cache: None,
             ppr_settings: Cell::new(crate::library::stats::smart::Common::default()),
-            loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),
             package_namespace_cache: HashMap::new(),

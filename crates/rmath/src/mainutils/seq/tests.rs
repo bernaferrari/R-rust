@@ -1097,7 +1097,7 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
         assert!(still_lazy(lazy_r));
 
         let nil = R_NilValue();
-        let matrix_i_lazy = capture_stderr(|| unsafe {
+        let matrix_i_lazy = capture_stderr(|| {
             crate::mainutils::printarray::printMatrix(
                 lazy_i,
                 0,
@@ -1106,11 +1106,11 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
                 0,
                 nil,
                 nil,
-                ptr::null(),
-                ptr::null(),
+                None,
+                None,
             );
         });
-        let matrix_i_plain = capture_stderr(|| unsafe {
+        let matrix_i_plain = capture_stderr(|| {
             crate::mainutils::printarray::printMatrix(
                 plain_i,
                 0,
@@ -1119,8 +1119,8 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
                 0,
                 nil,
                 nil,
-                ptr::null(),
-                ptr::null(),
+                None,
+                None,
             );
         });
         assert_eq!(matrix_i_lazy, matrix_i_plain);
@@ -1130,7 +1130,7 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
         );
         assert!(still_lazy(lazy_i));
 
-        let matrix_r_lazy = capture_stderr(|| unsafe {
+        let matrix_r_lazy = capture_stderr(|| {
             crate::mainutils::printarray::printMatrix(
                 lazy_r,
                 0,
@@ -1139,11 +1139,11 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
                 0,
                 nil,
                 nil,
-                ptr::null(),
-                ptr::null(),
+                None,
+                None,
             );
         });
-        let matrix_r_plain = capture_stderr(|| unsafe {
+        let matrix_r_plain = capture_stderr(|| {
             crate::mainutils::printarray::printMatrix(
                 plain_r,
                 0,
@@ -1152,8 +1152,8 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
                 0,
                 nil,
                 nil,
-                ptr::null(),
-                ptr::null(),
+                None,
+                None,
             );
         });
         assert_eq!(matrix_r_lazy, matrix_r_plain);
@@ -1209,7 +1209,7 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
             );
             assert_eq!((wr, dr, er), (wr_l, dr_l, er_l));
             assert!(still_lazy(lazy_r));
-            let again = capture_stderr(|| unsafe {
+            let again = capture_stderr(|| {
                 crate::mainutils::printarray::printMatrix(
                     lazy_i,
                     0,
@@ -1218,8 +1218,8 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
                     0,
                     nil,
                     nil,
-                    ptr::null(),
-                    ptr::null(),
+                    None,
+                    None,
                 );
             });
             assert_eq!(again, matrix_i_plain);

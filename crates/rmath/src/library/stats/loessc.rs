@@ -20,7 +20,6 @@ use std::ffi::CStr;
 use std::os::raw::{c_double, c_int};
 
 use crate::mainutils::native_routines::buffers::{Args, BufferError, NativeBuffer};
-use crate::sexp::instance::with_required_current_instance;
 
 fn column_major_rows(x: &[c_double], n: usize, d: usize) -> Vec<Vec<f64>> {
     (0..n)
@@ -488,123 +487,6 @@ pub(crate) fn lowesp(b: &mut [NativeBuffer]) -> Result<(), BufferError> {
     write_fit(pseudo, &values);
     write_fit(iwork, &work);
     Ok(())
-}
-
-pub(crate) struct LoessWorkspaceState {
-    iv: Vec<c_int>,
-    v: Vec<c_double>,
-    liv: c_int,
-    lv: c_int,
-    tau: c_int,
-}
-
-impl Default for LoessWorkspaceState {
-    fn default() -> Self {
-        Self {
-            iv: Vec::new(),
-            v: Vec::new(),
-            liv: 0,
-            lv: 0,
-            tau: 0,
-        }
-    }
-}
-
-impl LoessWorkspaceState {
-    fn clear(&mut self) {
-        self.iv = Vec::new();
-        self.v = Vec::new();
-        self.liv = 0;
-        self.lv = 0;
-    }
-
-    fn allocate(&mut self, liv: c_int, lv: c_int) {
-        self.liv = liv;
-        self.lv = lv;
-        self.iv = vec![0; liv as usize];
-        self.v = vec![0.0; lv as usize];
-    }
-}
-
-fn with_loess_workspace_state<R>(f: impl FnOnce(&mut LoessWorkspaceState) -> R) -> R {
-    with_required_current_instance(|instance| f(unsafe { &mut (*instance).loess_workspace_state }))
-}
-
-
-#[cfg(test)]
-fn loess_free() {
-    with_loess_workspace_state(LoessWorkspaceState::clear);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn loess_legacy_workspaces_are_runtime_local() {
-        use crate::sexp::session::RSession;
-        let first = RSession::new_for_gc_tests();
-        let second = RSession::new_for_gc_tests();
-        first.with_active(|| {
-            with_loess_workspace_state(|state| {
-                state.allocate(64, 64);
-                state.iv[10] = 37;
-                state.v[10] = 2.5;
-            })
-        });
-        second.with_active(|| {
-            with_loess_workspace_state(|state| {
-                assert!(state.iv.is_empty());
-                state.allocate(64, 64);
-                state.iv[10] = 73;
-            })
-        });
-        first.with_active(|| {
-            with_loess_workspace_state(|state| {
-                assert_eq!(state.iv[10], 37);
-                assert_eq!(state.v[10], 2.5);
-            })
-        });
-        drop(first);
-        second.with_active(|| with_loess_workspace_state(|state| assert_eq!(state.iv[10], 73)));
-    }
-
-    #[test]
-    fn loess_workspace_is_session_local_and_owned() {
-        use crate::sexp::session::RSession;
-        let first = RSession::new_for_gc_tests();
-        let second = RSession::new_for_gc_tests();
-        first.with_active(|| {
-            with_loess_workspace_state(|state| {
-                state.allocate(100, 100);
-                state.tau = 6;
-                assert!(!state.iv.is_empty());
-                assert!(!state.v.is_empty());
-                assert_eq!(state.tau, 6);
-            });
-        });
-        second.with_active(|| {
-            with_loess_workspace_state(|state| {
-                assert!(state.iv.is_empty());
-                assert!(state.v.is_empty());
-                state.allocate(50, 50);
-                assert!(!state.iv.is_empty());
-                assert!(!state.v.is_empty());
-            });
-            loess_free();
-            with_loess_workspace_state(|state| {
-                assert!(state.iv.is_empty());
-                assert!(state.v.is_empty());
-            });
-        });
-        first.with_active(|| {
-            with_loess_workspace_state(|state| {
-                assert!(!state.iv.is_empty());
-                assert!(!state.v.is_empty());
-                assert_eq!(state.tau, 6);
-            });
-        });
-    }
 }
 
 #[cfg(test)]

@@ -233,14 +233,6 @@ pub(crate) unsafe fn update_instance_roots_in(
             update_preserve_stack_in(instance, old_to_new);
         }
 
-        update_field(
-            &mut (*instance).eval_state.printvector.na_string,
-            old_to_new,
-        );
-        update_field(
-            &mut (*instance).eval_state.printvector.na_string_noquote,
-            old_to_new,
-        );
         update_field(&mut (*instance).eval_state.print.data.na_string, old_to_new);
         update_field(
             &mut (*instance).eval_state.print.data.na_string_noquote,

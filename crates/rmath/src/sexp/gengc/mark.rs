@@ -173,8 +173,6 @@ pub(crate) unsafe fn mark_instance_roots(instance: *mut instance::RInstance) {
         // Error-state values own exact-generation automatic roots.
 
         MARK_WHERE.with(|w| w.set("eval_state"));
-        mark_reachable((*instance).eval_state.printvector.na_string);
-        mark_reachable((*instance).eval_state.printvector.na_string_noquote);
         mark_reachable((*instance).eval_state.print.data.na_string);
         mark_reachable((*instance).eval_state.print.data.na_string_noquote);
         mark_reachable((*instance).eval_state.print.data.env);

@@ -8,7 +8,6 @@
 //! along with type-specific vector printers (printIntegerVector, etc.).
 
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 use crate::mainutils::format::{compact_int_width, compact_real_field, integer_field_width};
 use crate::mainutils::printutils::Rprt_adj;
@@ -21,82 +20,29 @@ use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
-// ---------------------------------------------------------------------------
-// R_PrintData struct -- full R_print parameters for printvector.c
-//
-// Note: printutils.rs defines a smaller RPrint struct and get_R_print().
-// This module defines the full R_PrintData with all fields used by
-// printvector.c.  We use a distinct name (R_PrintData / get_R_PrintData)
-// to avoid symbol collisions.
-// ---------------------------------------------------------------------------
-
-/// Global print parameters matching R's `R_print` struct from Print.h.
-///
-/// This is the full set of fields used by printvector.c and related
-/// printing code.  The smaller `RPrint` struct in printutils.rs covers
-/// only the subset needed by encode functions.
-pub struct R_PrintData {
-    pub width: c_int,
-    pub gap: c_int,
-    pub digits: c_int,
-    pub scipen: c_int,
-    pub max: c_int,
-    pub right: c_int,
-    pub quote: c_int,
-    pub na_width: c_int,
-    pub na_width_noquote: c_int,
-    pub na_string: SEXP,
-    pub na_string_noquote: SEXP,
+// The legacy vector and matrix printers use these fixed defaults.
+pub(super) struct VectorPrintDefaults {
+    pub(super) width: c_int,
+    pub(super) gap: c_int,
+    pub(super) max: c_int,
+    pub(super) right: c_int,
+    pub(super) na_width: c_int,
+    pub(super) na_width_noquote: c_int,
 }
 
-impl Default for R_PrintData {
-    fn default() -> Self {
-        R_PrintData {
-            width: 80,
-            gap: 1,
-            digits: 4,
-            scipen: 0,
-            max: 99999,
-            right: 0,
-            quote: 1,
-            na_width: 2,
-            na_width_noquote: 4,
-            na_string: ptr::null_mut(),
-            na_string_noquote: ptr::null_mut(),
-        }
-    }
-}
+pub(super) const VECTOR_PRINT_DEFAULTS: VectorPrintDefaults = VectorPrintDefaults {
+    width: 80,
+    gap: 1,
+    max: 99999,
+    right: 0,
+    na_width: 2,
+    na_width_noquote: 4,
+};
 
 macro_rules! Rprintf {
     ($($arg:tt)*) => {
         crate::mainutils::printutils::console_emit(format_args!($($arg)*))
     };
-}
-
-#[repr(transparent)]
-pub struct MutPtr<T>(*mut T);
-
-impl<T> std::ops::Deref for MutPtr<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
-    }
-}
-
-impl<T> std::ops::DerefMut for MutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
-    }
-}
-
-/// Get the global print data (full R_print parameters).
-///
-/// Named `get_R_PrintData` to avoid collision with `get_R_print` in
-/// printutils.rs (which returns the smaller `RPrint` struct).
-pub fn get_R_PrintData() -> MutPtr<R_PrintData> {
-    crate::sexp::instance::with_required_current_instance(|inst|
-        // SAFETY: `inst` is the live current instance for the closure call.
-        unsafe { MutPtr(&mut (*inst).eval_state.printvector as *mut R_PrintData) })
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +152,7 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 /// GNU NUMVECTOR_TIGHTLOOP: print `n` cells of width `w` (gap included),
 /// wrapping at the print width and labelling lines when `indx` is set.
 fn print_cells(n: R_xlen_t, indx: c_int, w: c_int, mut cell: impl FnMut(R_xlen_t) -> String) {
-    let rp = get_R_PrintData();
+    let rp = VECTOR_PRINT_DEFAULTS;
     let mut labwidth: c_int = 0;
     let mut width: c_int;
 
@@ -243,7 +189,7 @@ fn print_integer_cells(n: R_xlen_t, indx: c_int, elt: impl Fn(R_xlen_t) -> c_int
         1
     } else {
         integer_field_width(n, &elt)
-    } + get_R_PrintData().gap;
+    } + VECTOR_PRINT_DEFAULTS.gap;
     print_cells(n, indx, w, |i| encode_integer(elt(i), w));
 }
 
@@ -255,13 +201,13 @@ fn print_real_cells(n: R_xlen_t, indx: c_int, elt: impl Fn(R_xlen_t) -> f64) {
     } else {
         crate::mainutils::format::real_field(n, 0, &elt)
     };
-    let w = f.w + get_R_PrintData().gap;
+    let w = f.w + VECTOR_PRINT_DEFAULTS.gap;
     print_cells(n, indx, w, |i| encode_real(elt(i), w, f.d, f.e));
 }
 
 /// Complex cells (GNU printComplexVector body).
 fn print_complex_cells(data: &[Rcomplex], n: R_xlen_t, indx: c_int) {
-    let rp = get_R_PrintData();
+    let rp = VECTOR_PRINT_DEFAULTS;
     let gap = rp.gap;
     let f = if data.is_empty() {
         crate::mainutils::format::ComplexField::default()
@@ -284,7 +230,7 @@ fn print_complex_cells(data: &[Rcomplex], n: R_xlen_t, indx: c_int) {
 
 /// Raw cells from `elt` (GNU printRawVector body).
 fn print_raw_cells(n: R_xlen_t, indx: c_int, elt: impl Fn(R_xlen_t) -> u8) {
-    let gap = get_R_PrintData().gap;
+    let gap = VECTOR_PRINT_DEFAULTS.gap;
     let w = 2 + gap;
     print_cells(n, indx, w, |i| {
         format!("{:width$}{}", "", encode_raw(elt(i)), width = gap as usize)
@@ -389,7 +335,7 @@ fn vector_index(i: R_xlen_t, w: c_int) {
 // ---------------------------------------------------------------------------
 
 fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
-    let w = format_logical_width(x, n) + get_R_PrintData().gap;
+    let w = format_logical_width(x, n) + VECTOR_PRINT_DEFAULTS.gap;
     let src = checked_vector(x);
     print_cells(n, indx, w, |i| {
         encode_logical(checked(src.try_logical_elt(i)), w)
@@ -409,7 +355,7 @@ pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
     };
     if data.is_empty() && n > 0 {
         // A null buffer formats as width 1 and prints NA cells.
-        let w = 1 + get_R_PrintData().gap;
+        let w = 1 + VECTOR_PRINT_DEFAULTS.gap;
         print_cells(n, indx, w, |_| encode_integer(NA_INTEGER, w));
         return;
     }
@@ -460,7 +406,7 @@ pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
     if data.is_empty() && n > 0 {
         // A null buffer formats as (0, 0, 0) and prints NA cells.
         warn_illegal_outdec();
-        let w = get_R_PrintData().gap;
+        let w = VECTOR_PRINT_DEFAULTS.gap;
         print_cells(n, indx, w, |_| encode_real(NA_REAL, w, 0, 0));
         return;
     }
@@ -502,7 +448,7 @@ pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
 fn printStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, indx: c_int) {
     {
         // Always use STRING_ELT path (DATAPTR_OR_NULL not available).
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -564,7 +510,7 @@ fn printRealVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 fn print_unexpanded_real_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
     {
         warn_illegal_outdec();
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -614,7 +560,7 @@ fn printIntegerVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 /// Same layout as [`printIntegerVector`], reading the formula instead of a buffer.
 fn print_unexpanded_integer_vector(seq: CompactSeq, n: R_xlen_t, indx: c_int) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut labwidth: c_int = 0;
         let mut width: c_int = 0;
 
@@ -669,7 +615,7 @@ pub fn printVector(x: SEXP, indx: c_int, quote: c_int) {
         if x.is_null() {
             return;
         }
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let n = XLENGTH(x);
 
         if n != 0 {
@@ -728,7 +674,7 @@ pub fn printVector(x: SEXP, indx: c_int, quote: c_int) {
 /// Helper: print the name row for named vectors.
 fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, start: R_xlen_t) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut j: R_xlen_t = 0;
         while j < nperline as R_xlen_t {
             let k = start + j;
@@ -745,7 +691,7 @@ fn print_name_row(names: SEXP, n: R_xlen_t, w: c_int, nperline: c_int, start: R_
 
 fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
@@ -791,7 +737,7 @@ fn printNamedLogicalVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 
 fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
@@ -835,7 +781,7 @@ fn printNamedIntegerVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 
 fn printNamedRealVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut wn: c_int = 0;
 
         let (mut w, d, e) = format_real_s_fields(x, n);
@@ -880,7 +826,7 @@ fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     {
         let mut w: c_int = 0;
 
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
 
         let (wr, dr, er, wi, di, ei) = format_complex_s_fields(x, n);
         w = wr + wi + 2;
@@ -954,7 +900,7 @@ fn printNamedComplexVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 
 fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEXP) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
@@ -998,7 +944,7 @@ fn printNamedStringVectorS(x: SEXP, n: R_xlen_t, quote: c_int, names: SEXP) {
 
 fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
     {
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let mut w: c_int = 0;
         let mut wn: c_int = 0;
 
@@ -1080,7 +1026,7 @@ pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const
             return;
         }
 
-        let rp = get_R_PrintData();
+        let rp = VECTOR_PRINT_DEFAULTS;
         let n = XLENGTH(x);
 
         if n != 0 {
@@ -1173,77 +1119,44 @@ pub fn type2str_nowarn(stype: c_int) -> *const c_char {
 }
 
 // ---------------------------------------------------------------------------
-// GetMatrixDimnames
+// matrix_dimnames
 // ---------------------------------------------------------------------------
 
-pub unsafe fn GetMatrixDimnames(
-    x: SEXP,
-    rl: *mut SEXP,
-    cl: *mut SEXP,
-    rn: *mut *const c_char,
-    cn: *mut *const c_char,
-) {
-    unsafe {
-        // Extract dimnames[[1]], dimnames[[2]], names(dimnames)[1], names(dimnames)[2]
-        // Initialize outputs to NilValue/null
-        if !rl.is_null() {
-            *rl = R_NilValue();
-        }
-        if !cl.is_null() {
-            *cl = R_NilValue();
-        }
-        if !rn.is_null() {
-            *rn = ptr::null();
-        }
-        if !cn.is_null() {
-            *cn = ptr::null();
-        }
+pub(super) struct MatrixDimnames {
+    pub(super) rows: SEXP,
+    pub(super) cols: SEXP,
+    pub(super) row_title: Option<Vec<u8>>,
+    pub(super) col_title: Option<Vec<u8>>,
+}
 
-        if x.is_null() {
-            return;
-        }
-
-        let dimnames_sym = crate::sexp::symbol::install_str("dimnames");
-        let dimnames = getAttrib(x, dimnames_sym);
-
-        if dimnames.is_null() || dimnames == R_NilValue() {
-            return;
-        }
-
-        // dimnames[[1]] = row names
-        if !rl.is_null() {
-            *rl = VECTOR_ELT(dimnames, 0);
-        }
-
-        // dimnames[[2]] = column names
-        if !cl.is_null() {
-            *cl = VECTOR_ELT(dimnames, 1);
-        }
-
-        // GNU GetMatrixDimnames: names(dimnames) is STRSXP; STRING_ELT
-        // then CHAR. Empty strings stay non-NULL so printarray emits the
-        // title row and R_MIN_LBLOFF indent.
-        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
-        let dn_names = getAttrib(dimnames, names_sym);
-
-        if dn_names.is_null() || dn_names == R_NilValue() {
-            return;
-        }
-
-        if !rn.is_null() && XLENGTH(dn_names) > 0 {
-            let s = STRING_ELT(dn_names, 0);
-            if !s.is_null() && s != R_NilValue() {
-                *rn = CHAR(s);
-            }
-        }
-
-        if !cn.is_null() && XLENGTH(dn_names) > 1 {
-            let s = STRING_ELT(dn_names, 1);
-            if !s.is_null() && s != R_NilValue() {
-                *cn = CHAR(s);
-            }
-        }
+pub(super) fn matrix_dimnames(x: SEXP) -> MatrixDimnames {
+    let nil = R_NilValue();
+    let dimnames = if x.is_null() {
+        nil
+    } else {
+        getAttrib(x, crate::sexp::symbol::install_str("dimnames"))
+    };
+    if dimnames.is_null() || dimnames == nil {
+        return MatrixDimnames { rows: nil, cols: nil, row_title: None, col_title: None };
     }
+    let rows = VECTOR_ELT(dimnames, 0);
+    let cols = VECTOR_ELT(dimnames, 1);
+    let names = getAttrib(dimnames, crate::sexp::attrib_core::R_NamesSymbol());
+    let title = |index| {
+        if names.is_null() || names == nil || XLENGTH(names) <= index {
+            return None;
+        }
+        let value = STRING_ELT(names, index);
+        if value.is_null() || value == nil {
+            return None;
+        }
+        let mut bytes = crate::mainutils::printutils::charsxp_bytes(value);
+        if let Some(end) = bytes.iter().position(|&byte| byte == 0) {
+            bytes.truncate(end);
+        }
+        Some(bytes)
+    };
+    MatrixDimnames { rows, cols, row_title: title(0), col_title: title(1) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1254,30 +1167,11 @@ pub unsafe fn GetMatrixDimnames(
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
+    use std::ptr;
 
     #[test]
     fn test_print_vector_null() {
         printVector(ptr::null_mut(), 0, 0);
-    }
-
-    #[test]
-    fn test_print_data_default() {
-        let _session = RSession::new();
-        unsafe {
-            let pd = get_R_PrintData();
-            assert_eq!(pd.width, 80);
-            assert_eq!(pd.digits, 4);
-            assert_eq!(pd.gap, 1);
-            assert_eq!(pd.max, 99999);
-        }
-    }
-
-    #[test]
-    fn test_print_data_impl_default() {
-        let pd = R_PrintData::default();
-        assert_eq!(pd.width, 80);
-        assert_eq!(pd.quote, 1);
-        assert_eq!(pd.scipen, 0);
     }
 
     #[test]
@@ -1326,14 +1220,22 @@ mod tests {
 
     #[test]
     fn test_get_matrix_dimnames() {
-        unsafe {
-            let mut rl: SEXP = ptr::null_mut();
-            let mut cl: SEXP = ptr::null_mut();
-            let mut rn: *const c_char = ptr::null();
-            let mut cn: *const c_char = ptr::null();
-            GetMatrixDimnames(ptr::null_mut(), &mut rl, &mut cl, &mut rn, &mut cn);
-            assert!(rl.is_null() || rl == R_NilValue());
-        }
+        let labels = matrix_dimnames(ptr::null_mut());
+        assert!(labels.rows.is_null() || labels.rows == R_NilValue());
+        assert!(labels.cols.is_null() || labels.cols == R_NilValue());
+        assert!(labels.row_title.is_none());
+        assert!(labels.col_title.is_none());
+    }
+
+    #[test]
+    fn matrix_dimnames_reads_dimnames_names_as_titles() {
+        let mut session = RSession::new();
+        let (value, _output, _visible) = session.eval_script_with_output_capture(
+            "d <- setNames(list('r', 'c'), c('', 'column')); matrix(1L, dimnames=d)",
+        );
+        let labels = matrix_dimnames(value.unwrap().as_raw());
+        assert_eq!(labels.row_title, Some(Vec::new()));
+        assert_eq!(labels.col_title.as_deref(), Some(b"column".as_slice()));
     }
 
     #[test]
