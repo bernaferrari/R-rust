@@ -22,7 +22,7 @@
 
 use crate::mainutils::r_format::CArg;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
+use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
 use crate::sexp::accessors::*;
@@ -44,153 +44,7 @@ use crate::mainutils::errors::{
 use crate::mainutils::print::PrintDefaults;
 use crate::mainutils::printutils::EncodeElement0;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
-
-/// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
-#[cfg(not(target_arch = "wasm32"))]
-#[inline]
-fn errno_ptr() -> *mut c_int {
-    unsafe {
-        #[cfg(target_os = "macos")]
-        {
-            libc::__error()
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            unsafe extern "C" {
-                fn __errno_location() -> *mut c_int;
-            }
-            __errno_location()
-        }
-    }
-}
-
-/// wasm32-only strtol(3) replacement with C-locale semantics (leading
-/// whitespace, optional sign, "0x" prefix under base 16/0, octal detection
-/// under base 0). Port of the former wasm-libc facade parser: no errno —
-/// the caller reports overflow through its range check.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-#[cfg(target_arch = "wasm32")]
-unsafe fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
-    unsafe {
-        let b = CStr::from_ptr(nptr).to_bytes();
-        let mut i = 0;
-        while i < b.len() && b[i].is_ascii_whitespace() {
-            i += 1;
-        }
-        let start_after_ws = i;
-        let mut neg = false;
-        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-            neg = b[i] == b'-';
-            i += 1;
-        }
-        let mut radix = base as u32;
-        if (radix == 16 || radix == 0)
-            && i + 1 < b.len()
-            && b[i] == b'0'
-            && (b[i + 1] | 0x20) == b'x'
-        {
-            i += 2;
-            radix = 16;
-        } else if radix == 0 {
-            radix = if i < b.len() && b[i] == b'0' { 8 } else { 10 };
-        }
-        let mut val: i128 = 0;
-        let mut any = false;
-        while i < b.len() {
-            let Some(d) = (b[i] as char).to_digit(radix) else {
-                break;
-            };
-            val = val * radix as i128 + i128::from(d);
-            any = true;
-            i += 1;
-        }
-        let end = if any {
-            b.as_ptr().add(i)
-        } else {
-            b.as_ptr().add(start_after_ws)
-        };
-        if !endptr.is_null() {
-            *endptr = end as *mut c_char;
-        }
-        let signed = if neg { -val } else { val };
-        signed as i64
-    }
-}
-
-/// C-locale isspace(3): libc on native targets, portable ASCII table on
-/// wasm32 (same six characters: space, \t, \n, \v, \f, \r).
-#[cfg(not(target_arch = "wasm32"))]
-#[inline]
-fn c_isspace(c: c_int) -> c_int {
-    unsafe { libc::isspace(c) }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[inline]
-fn c_isspace(c: c_int) -> c_int {
-    matches!(c, 0x20 | 0x09..=0x0d) as c_int
-}
-
-/// ASCII case-insensitive prefix compare: libc strncasecmp(3) on native
-/// targets, a portable eq_ignore_ascii_case on wasm32. `lit` is an ASCII
-/// literal without its NUL terminator.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-#[cfg(not(target_arch = "wasm32"))]
-#[inline]
-unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
-    unsafe { libc::strncasecmp(s, lit.as_ptr() as *const c_char, lit.len()) == 0 }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[inline]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
-    unsafe {
-        let bytes = CStr::from_ptr(s).to_bytes();
-        bytes.len() >= lit.len() && bytes[..lit.len()].eq_ignore_ascii_case(lit)
-    }
-}
-
-/// Check if string is blank (empty or whitespace-only)
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn isBlankString(s: *const core::ffi::c_char) -> c_int {
-    unsafe {
-        if *s == 0 {
-            return 1;
-        }
-        let mut p = s;
-        while *p != 0 {
-            if *p != b' ' as core::ffi::c_char
-                && *p != b'\t' as core::ffi::c_char
-                && *p != b'\n' as core::ffi::c_char
-                && *p != b'\r' as core::ffi::c_char
-            {
-                return 0;
-            }
-            p = p.add(1);
-        }
-        1
-    }
-}
+use crate::mainutils::number_parse::{ParsedNumber, parse_number};
 
 /// Check if SEXP has a dim attribute (is an array)
 fn isArray(x: SEXP) -> c_int {
@@ -229,11 +83,6 @@ fn NA_REAL() -> c_double {
     crate::sexp::ffi::NA_REAL
 }
 
-/* Platform boundary not yet represented as a Rust stdlib call. */
-unsafe extern "C" {
-    fn btowc(c: c_int) -> u32; // wint_t, WEOF sentinel
-}
-
 fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
@@ -243,45 +92,45 @@ fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
         if elt.is_null() || elt == NA_STRING() {
             None
         } else {
-        Some((&crate::sexp::accessors::char_cstr_bytes(elt)[..]).to_vec())
+        Some(char_cstr_bytes(elt))
     }
 }
 
 fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
-    unsafe {
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(c"duplicated() wrapper only supports character vectors");
-        }
-
-        let len = LENGTH(x);
-        let ans = Rf_allocVector(SEXPTYPE::LGLSXP, len);
-        if from_last != 0 {
-            for i in (0..len).rev() {
-                let key = string_elt_key(x, i as R_xlen_t);
-                let mut seen = false;
-                for j in (i + 1)..len {
-                    if string_elt_key(x, j as R_xlen_t) == key {
-                        seen = true;
-                        break;
-                    }
-                }
-                *LOGICAL(ans).add(i as usize) = seen as c_int;
-            }
-        } else {
-            for i in 0..len {
-                let key = string_elt_key(x, i as R_xlen_t);
-                let mut seen = false;
-                for j in 0..i {
-                    if string_elt_key(x, j as R_xlen_t) == key {
-                        seen = true;
-                        break;
-                    }
-                }
-                *LOGICAL(ans).add(i as usize) = seen as c_int;
-            }
-        }
-        ans
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        Rf_error_cstr(c"duplicated() wrapper only supports character vectors");
     }
+
+    let len = LENGTH(x);
+    let ans = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+    // ALTREP element reads may collect; keep the result rooted.
+    let _ans_guard = protect(ans);
+    if from_last != 0 {
+        for i in (0..len).rev() {
+            let key = string_elt_key(x, i64::from(i));
+            let mut seen = false;
+            for j in (i + 1)..len {
+                if string_elt_key(x, i64::from(j)) == key {
+                    seen = true;
+                    break;
+                }
+            }
+            SET_LOGICAL_ELT(ans, i, seen as c_int);
+        }
+    } else {
+        for i in 0..len {
+            let key = string_elt_key(x, i64::from(i));
+            let mut seen = false;
+            for j in 0..i {
+                if string_elt_key(x, i64::from(j)) == key {
+                    seen = true;
+                    break;
+                }
+            }
+            SET_LOGICAL_ELT(ans, i, seen as c_int);
+        }
+    }
+    ans
 }
 
 fn sortVector(x: SEXP, decreasing: c_int) {
@@ -311,43 +160,29 @@ fn sortVector(x: SEXP, decreasing: c_int) {
 }
 
 fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(c"matchE() wrapper only supports character vectors");
-        }
+    if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
+        Rf_error_cstr(c"matchE() wrapper only supports character vectors");
+    }
 
-        let x_len = LENGTH(x);
-        let table_len = LENGTH(table);
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP, x_len);
-        for i in 0..x_len {
-            let key = string_elt_key(x, i as R_xlen_t);
-            let mut matched = nomatch;
-            if key.is_some() {
-                for j in 0..table_len {
-                    if string_elt_key(table, j as R_xlen_t) == key {
-                        matched = j + 1;
-                        break;
-                    }
+    let x_len = LENGTH(x);
+    let table_len = LENGTH(table);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, x_len);
+    // ALTREP element reads may collect; keep the result rooted.
+    let _ans_guard = protect(ans);
+    for i in 0..x_len {
+        let key = string_elt_key(x, i64::from(i));
+        let mut matched = nomatch;
+        if key.is_some() {
+            for j in 0..table_len {
+                if string_elt_key(table, i64::from(j)) == key {
+                    matched = j + 1;
+                    break;
                 }
             }
-            *INTEGER(ans).add(i as usize) = matched;
         }
-        ans
+        SET_INTEGER_ELT(ans, i, matched);
     }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return (a == b) as c_int;
-        }
-        (CStr::from_ptr(a).to_bytes() == CStr::from_ptr(b).to_bytes()) as c_int
-    }
+    ans
 }
 
 /// # Safety
@@ -379,10 +214,8 @@ unsafe fn write_connection_cstr2(con: c_int, first: *const c_char, second: *cons
 /* LocalData struct — mirrors the C version */
 #[repr(C)]
 struct LocalData {
-    NAstrings: SEXP,
     quiet: c_int,
-    sepchar: c_int,  /* 0 = whitespace-separated */
-    decchar: c_char, /* '.' */
+    sepchar: c_int, /* 0 = whitespace-separated */
     quoteset: [c_char; 10],
     comchar: c_int, /* NO_COMCHAR */
     ttyflag: c_int, /* 0 */
@@ -399,10 +232,8 @@ struct LocalData {
 impl LocalData {
     fn new() -> Self {
         LocalData {
-            NAstrings: ptr::null_mut(),
             quiet: 0,
             sepchar: 0,
-            decchar: b'.' as c_char,
             quoteset: [0; 10],
             comchar: NO_COMCHAR,
             ttyflag: 0,
@@ -444,490 +275,68 @@ fn Rspace(c: c_uint) -> bool {
     c == b' ' as c_uint || c == b'\t' as c_uint || c == b'\n' as c_uint || c == b'\r' as c_uint
 }
 
-/* isNAstring — check if a string matches one of the NA strings */
-#[inline]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
-    unsafe {
-        if mode == 0 {
-            let len = CStr::from_ptr(buf).to_bytes().len();
-            if len == 0 {
-                return 1;
-            }
-        }
-        let n = LENGTH(d.NAstrings);
-        for i in 0..n {
-            let s = CHAR(STRING_ELT(d.NAstrings, i as R_xlen_t));
-            if CStr::from_ptr(buf).to_bytes() == CStr::from_ptr(s).to_bytes() {
-                return 1;
-            }
-        }
-        0
-    }
+fn blank(bytes: &[u8]) -> bool {
+    bytes.iter().all(|&byte| Rspace(c_uint::from(byte)))
 }
 
-/* Strtoi — strtol wrapper returning NA_INTEGER on overflow */
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
-    unsafe {
-        let mut endp: *mut c_char = ptr::null_mut();
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            *errno_ptr() = 0;
-            let res = libc::strtol(nptr, &mut endp, base) as i64;
-            if !endp.is_null() && *endp != 0 {
-                return NA_INTEGER();
-            }
-            if res > c_int::MAX as i64 || res < c_int::MIN as i64 {
-                return NA_INTEGER();
-            }
-            if *errno_ptr() != 0 {
-                return NA_INTEGER();
-            }
-            res as c_int
-        }
-        // wasm32: no libc; the portable parser reports bad input through
-        // the trailing-character check and overflow through the range check.
-        #[cfg(target_arch = "wasm32")]
-        {
-            let res = c_strtol(nptr, &mut endp, base);
-            if !endp.is_null() && *endp != 0 {
-                return NA_INTEGER();
-            }
-            if res > c_int::MAX as i64 || res < c_int::MIN as i64 {
-                return NA_INTEGER();
-            }
-            res as c_int
-        }
-    }
+fn is_na_string(bytes: &[u8], na_strings: SEXP) -> bool {
+    (0..XLENGTH(na_strings))
+        .any(|i| char_cstr_bytes(STRING_ELT(na_strings, i)) == bytes)
 }
 
-/* Strtod — ported from R_strtod5 in r-source/src/main/util.c
- * Handles decimal char substitution, NA/NaN/Inf, hex literals, exact mode.
- */
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn Strtod(
-    nptr: *const c_char,
-    endptr: *mut *mut c_char,
-    na: c_int,
-    d: &LocalData,
-    i_exact: c_int,
-) -> c_double {
-    unsafe {
-        if nptr.is_null() || *nptr == 0 {
-            if !endptr.is_null() {
-                *endptr = nptr as *mut c_char;
-            }
-            return 0.0;
-        }
-
-        let dec = d.decchar;
-        let exact = i_exact != 0;
-        let mut ans: c_double = 0.0;
-        let mut sign: c_int = 1;
-        let mut p = nptr;
-
-        /* skip whitespace */
-        while c_isspace(*p as c_int) != 0 {
-            p = p.add(1);
-        }
-
-        /* check for NA */
-        if na != 0 && CStr::from_ptr(p).to_bytes().starts_with(b"NA") {
-            ans = NA_REAL();
-            p = p.add(2);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return ans;
-        }
-
-        /* optional sign */
-        match *p as u8 {
-            b'-' => {
-                sign = -1;
-                p = p.add(1);
-            }
-            b'+' => {
-                p = p.add(1);
-            }
-            _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
-        }
-
-        /* check for NaN, Inf, infinity */
-        if c_strncasecmp_eq(p, b"NaN") {
-            ans = f64::NAN;
-            p = p.add(3);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        } else if c_strncasecmp_eq(p, b"infinity") {
-            ans = f64::INFINITY;
-            p = p.add(8);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        } else if c_strncasecmp_eq(p, b"Inf") {
-            ans = f64::INFINITY;
-            p = p.add(3);
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        }
-
-        let mut expn: c_int = 0;
-
-        /* Hexadecimal "0x..." */
-        if CStr::from_ptr(p).to_bytes().len() > 2
-            && *p == '0' as c_char
-            && (*p.add(1) == 'x' as c_char || *p.add(1) == 'X' as c_char)
-        {
-            let mut exph: c_int = -1;
-            p = p.add(2);
-            while *p != 0 {
-                let ch = *p as u8;
-                if ch >= b'0' && ch <= b'9' {
-                    ans = 16.0 * ans + (ch - b'0') as c_double;
-                } else if ch >= b'a' && ch <= b'f' {
-                    ans = 16.0 * ans + (ch - b'a' + 10) as c_double;
-                } else if ch >= b'A' && ch <= b'F' {
-                    ans = 16.0 * ans + (ch - b'A' + 10) as c_double;
-                } else if ch == dec as u8 {
-                    exph = 0;
-                    p = p.add(1);
-                    continue;
-                } else {
-                    break;
-                }
-                if exph >= 0 {
-                    exph += 4;
-                }
-                p = p.add(1);
-            }
-
-            /* exact clause for hex */
-            if exact && ans > ((1u64 << 53) - 1) as c_double {
-                if i_exact == NA_LOGICAL() {
-                    let msg = std::ffi::CString::new("accuracy loss in conversion to numeric")
-                        .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning_cstr(&msg);
-                } else {
-                    ans = NA_REAL();
-                    p = nptr;
-                    if !endptr.is_null() {
-                        *endptr = p as *mut c_char;
-                    }
-                    return ans;
-                }
-            }
-
-            /* Binary exponent, if any */
-            if *p == 'p' as c_char || *p == 'P' as c_char {
-                let mut expsign: c_int = 1;
-                p = p.add(1);
-                match *p as u8 {
-                    b'-' => {
-                        expsign = -1;
-                        p = p.add(1);
-                    }
-                    b'+' => {
-                        p = p.add(1);
-                    }
-                    _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
-                }
-                let mut n: c_int = 0;
-                let mut ndig: c_int = 0;
-                while *p >= '0' as c_char && *p <= '9' as c_char {
-                    if n < 9999 {
-                        n = n * 10 + (*p as c_int - '0' as c_int);
-                    }
-                    p = p.add(1);
-                    ndig += 1;
-                }
-                if ndig == 0 {
-                    ans = NA_REAL();
-                    p = nptr;
-                    if !endptr.is_null() {
-                        *endptr = p as *mut c_char;
-                    }
-                    return ans;
-                }
-                expn += expsign * n;
-            }
-
-            if ans != 0.0 {
-                if exph > 0 {
-                    if expn - exph < -122 {
-                        let mut fac: c_double = 1.0;
-                        let mut p2: c_double = 2.0;
-                        let mut n = exph;
-                        while n != 0 {
-                            if n & 1 != 0 {
-                                fac *= p2;
-                            }
-                            n >>= 1;
-                            p2 *= p2;
-                        }
-                        ans /= fac;
-                        p2 = 2.0;
-                        /* fall through to apply expn */
-                    } else {
-                        expn -= exph;
-                    }
-                }
-                if expn < 0 {
-                    let mut fac: c_double = 1.0;
-                    let mut p2: c_double = 2.0;
-                    let mut n = -expn;
-                    while n != 0 {
-                        if n & 1 != 0 {
-                            fac *= p2;
-                        }
-                        n >>= 1;
-                        p2 *= p2;
-                    }
-                    ans /= fac;
-                } else {
-                    let mut fac: c_double = 1.0;
-                    let mut p2: c_double = 2.0;
-                    let mut n = expn;
-                    while n != 0 {
-                        if n & 1 != 0 {
-                            fac *= p2;
-                        }
-                        n >>= 1;
-                        p2 *= p2;
-                    }
-                    ans *= fac;
-                }
-            }
-
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return sign as c_double * ans;
-        }
-
-        /* Decimal number */
-        let mut ndigits: c_int = 0;
-        while *p >= '0' as c_char && *p <= '9' as c_char {
-            ans = 10.0 * ans + (*p as c_int - '0' as c_int) as c_double;
-            p = p.add(1);
-            ndigits += 1;
-        }
-        if *p == dec {
-            p = p.add(1);
-            while *p >= '0' as c_char && *p <= '9' as c_char {
-                ans = 10.0 * ans + (*p as c_int - '0' as c_int) as c_double;
-                p = p.add(1);
-                ndigits += 1;
-                expn -= 1;
-            }
-        }
-        if ndigits == 0 {
-            ans = NA_REAL();
-            p = nptr;
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return ans;
-        }
-
-        /* exact clause */
-        if exact && ans > ((1u64 << 53) - 1) as c_double {
-            if i_exact == NA_LOGICAL() {
-                let msg = std::ffi::CString::new("accuracy loss in conversion to numeric")
-                    .unwrap_or_default();
-                crate::mainutils::errors::Rf_warning_cstr(&msg);
-            } else {
-                ans = NA_REAL();
-                p = nptr;
-                if !endptr.is_null() {
-                    *endptr = p as *mut c_char;
-                }
-                return ans;
-            }
-        }
-
-        /* Exponent */
-        if *p == 'e' as c_char || *p == 'E' as c_char {
-            let mut expsign: c_int = 1;
-            p = p.add(1);
-            match *p as u8 {
-                b'-' => {
-                    expsign = -1;
-                    p = p.add(1);
-                }
-                b'+' => {
-                    p = p.add(1);
-                }
-                _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
-            }
-            let mut n: c_int = 0;
-            let mut ndig2: c_int = 0;
-            while *p >= '0' as c_char && *p <= '9' as c_char {
-                if n < 9999 {
-                    n = n * 10 + (*p as c_int - '0' as c_int);
-                }
-                p = p.add(1);
-                ndig2 += 1;
-            }
-            if ndig2 == 0 {
-                ans = NA_REAL();
-                p = nptr;
-                if !endptr.is_null() {
-                    *endptr = p as *mut c_char;
-                }
-                return ans;
-            }
-            expn += expsign * n;
-        }
-
-        /* avoid unnecessary underflow for large negative exponents */
-        if expn + ndigits < -300 {
-            let mut n = ndigits;
-            while n > 0 {
-                ans /= 10.0;
-                n -= 1;
-            }
-            expn += ndigits;
-        }
-
-        if expn < -307 {
-            let mut fac: c_double = 1.0;
-            let mut p10: c_double = 10.0;
-            let mut n = -expn;
-            while n != 0 {
-                if n & 1 != 0 {
-                    fac /= p10;
-                }
-                n >>= 1;
-                p10 *= p10;
-            }
-            ans *= fac;
-        } else if expn < 0 {
-            let mut fac: c_double = 1.0;
-            let mut p10: c_double = 10.0;
-            let mut n = -expn;
-            while n != 0 {
-                if n & 1 != 0 {
-                    fac *= p10;
-                }
-                n >>= 1;
-                p10 *= p10;
-            }
-            ans /= fac;
-        } else if ans != 0.0 {
-            let mut fac: c_double = 1.0;
-            let mut p10: c_double = 10.0;
-            let mut n = expn;
-            while n != 0 {
-                if n & 1 != 0 {
-                    fac *= p10;
-                }
-                n >>= 1;
-                p10 *= p10;
-            }
-            ans *= fac;
-        }
-
-        /* explicit overflow to infinity */
-        if ans > f64::MAX {
-            if !endptr.is_null() {
-                *endptr = p as *mut c_char;
-            }
-            return if sign > 0 {
-                f64::INFINITY
-            } else {
-                f64::NEG_INFINITY
-            };
-        }
-
-        if !endptr.is_null() {
-            *endptr = p as *mut c_char;
-        }
-        sign as c_double * ans
+fn conversion_text(ch: SEXP, na_strings: SEXP) -> Option<Vec<u8>> {
+    if ch == NA_STRING() {
+        return None;
     }
+    let bytes = char_cstr_bytes(ch);
+    (!blank(&bytes) && !is_na_string(&bytes, na_strings)).then_some(bytes)
 }
 
-/* strtoc — parse a complex number from a string.
- * Forms: "3.5", "3.5i", "3+4i", "3-4i", "i", "2i"
- * Ported from r-source/src/library/utils/src/io.c
- */
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn strtoc(
-    nptr: *const c_char,
-    endptr: *mut *mut c_char,
-    na: c_int,
-    d: &LocalData,
-    i_exact: c_int,
-) -> Rcomplex {
-    unsafe {
-        let x = Strtod(nptr, endptr, na, d, i_exact);
-        let ep = if !endptr.is_null() {
-            *endptr
-        } else {
-            ptr::null_mut()
-        };
+fn parse_integer(bytes: &[u8]) -> c_int {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|text| {
+            text.trim_start_matches([' ', '\t', '\n', '\r', '\x0b', '\x0c'])
+                .parse()
+                .ok()
+        })
+        .unwrap_or_else(NA_INTEGER)
+}
 
-        if !ep.is_null() && isBlankString(ep) != 0 {
-            /* pure real number */
-            Rcomplex { r: x, i: 0.0 }
-        } else if !ep.is_null() && *ep == 'i' as c_char {
-            if ep == nptr as *mut c_char {
-                /* bare "i" — NA */
-                Rcomplex {
-                    r: NA_REAL(),
-                    i: NA_REAL(),
-                }
-            } else {
-                /* "Ni" form — pure imaginary */
-                if !endptr.is_null() {
-                    *endptr = ep.add(1);
-                }
-                Rcomplex { r: 0.0, i: x }
-            }
-        } else {
-            /* Try "real+imagi" or "real-imagi" form */
-            let s = ep;
-            let mut y_end: *mut c_char = ptr::null_mut();
-            let y = Strtod(s, &mut y_end, na, d, i_exact);
-            if !y_end.is_null() && *y_end == 'i' as c_char {
-                if !endptr.is_null() {
-                    *endptr = y_end.add(1);
-                }
-                Rcomplex { r: x, i: y }
-            } else {
-                /* parse failure — return NA */
-                if !endptr.is_null() {
-                    *endptr = nptr as *mut c_char;
-                }
-                Rcomplex {
-                    r: NA_REAL(),
-                    i: NA_REAL(),
-                }
-            }
-        }
+fn parse_real(bytes: &[u8], decimal: u8, allow_na: bool, exact: c_int) -> ParsedNumber {
+    let parsed = parse_number(bytes, decimal, allow_na, exact);
+    if parsed.accuracy_loss {
+        let message = CString::new(format!(
+            "accuracy loss in conversion from \"{}\" to numeric",
+            String::from_utf8_lossy(bytes)
+        ))
+        .expect("checked character bytes contain no NUL");
+        Rf_warning_cstr(&message);
     }
+    parsed
+}
+
+fn parse_complex(bytes: &[u8], decimal: u8, allow_na: bool, exact: c_int) -> Option<Rcomplex> {
+    let real = parse_real(bytes, decimal, allow_na, exact);
+    let rest = &bytes[real.consumed..];
+    if blank(rest) {
+        return Some(Rcomplex {
+            r: real.value,
+            i: 0.0,
+        });
+    }
+    if let Some(suffix) = rest.strip_prefix(b"i") {
+        return (real.consumed != 0 && blank(suffix)).then_some(Rcomplex {
+            r: 0.0,
+            i: real.value,
+        });
+    }
+    let imag = parse_real(rest, decimal, allow_na, exact);
+    let suffix = rest[imag.consumed..].strip_prefix(b"i")?;
+    blank(suffix).then_some(Rcomplex {
+        r: real.value,
+        i: imag.value,
+    })
 }
 
 /* ConsoleGetcharWithPushBack — read from console with pushback.
@@ -1052,58 +461,28 @@ fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
 }
 
 /* ruleout_types — determine possible types for a string */
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn ruleout_types(
-    s: *const c_char,
-    typeInfo: &mut Typecvt_Info,
-    data: &LocalData,
-    exact: c_int,
-) {
-    unsafe {
-        if s.is_null() {
-            return;
+fn ruleout_types(bytes: &[u8], typeInfo: &mut Typecvt_Info, decimal: u8, exact: c_int) {
+    if typeInfo.islogical {
+        if matches!(bytes, b"T" | b"F" | b"TRUE" | b"FALSE") {
+            typeInfo.isinteger = false;
+            typeInfo.isreal = false;
+            typeInfo.iscomplex = false;
+            return; // short cut
         }
-        let s_str = std::ffi::CStr::from_ptr(s);
-        let s_bytes = s_str.to_bytes();
+        typeInfo.islogical = false;
+    }
 
-        if typeInfo.islogical {
-            // Check for T/F/TRUE/FALSE
-            if s_bytes == b"T" || s_bytes == b"F" || s_bytes == b"TRUE" || s_bytes == b"FALSE" {
-                typeInfo.isinteger = false;
-                typeInfo.isreal = false;
-                typeInfo.iscomplex = false;
-                return; // short cut
-            } else {
-                typeInfo.islogical = false;
-            }
-        }
+    if typeInfo.isinteger && parse_integer(bytes) == NA_INTEGER() {
+        typeInfo.isinteger = false;
+    }
 
-        if typeInfo.isinteger {
-            let res = Strtoi(s, 10);
-            if res == NA_INTEGER() {
-                typeInfo.isinteger = false;
-            }
-        }
+    if typeInfo.isreal {
+        let parsed = parse_real(bytes, decimal, true, exact);
+        typeInfo.isreal = blank(&bytes[parsed.consumed..]);
+    }
 
-        if typeInfo.isreal {
-            let mut endp: *mut c_char = ptr::null_mut();
-            Strtod(s, &mut endp, 1, data, exact);
-            if isBlankString(endp as *const core::ffi::c_char) == 0 {
-                typeInfo.isreal = false;
-            }
-        }
-
-        if typeInfo.iscomplex {
-            let mut endp: *mut c_char = ptr::null_mut();
-            strtoc(s, &mut endp, 1, data, exact);
-            if isBlankString(endp as *const core::ffi::c_char) == 0 {
-                typeInfo.iscomplex = false;
-            }
-        }
+    if typeInfo.iscomplex {
+        typeInfo.iscomplex = parse_complex(bytes, decimal, true, exact).is_some();
     }
 }
 
@@ -1324,7 +703,6 @@ fn EncodeElement2(
 pub fn countfields(args: SEXP) -> SEXP {
     unsafe {
         let mut data = LocalData::new();
-        data.NAstrings = R_NilValue();
 
         let mut args_cdr = CDR(args);
         let file = CAR(args_cdr);
@@ -1551,336 +929,291 @@ pub fn countfields(args: SEXP) -> SEXP {
  * or factor. Full port from r-source/src/library/utils/src/io.c
  */
 pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
+    let _ = (call, op, env);
 
-        if args.is_null() {
-            return R_NilValue();
+    if args.is_null() {
+        return R_NilValue();
+    }
+
+    let args_cdr = CDR(args);
+    if args_cdr.is_null() {
+        return R_NilValue();
+    }
+
+    if !isString(CAR(args_cdr)) {
+        Rf_error_cstr(c"the first argument must be of mode character");
+    }
+
+    let mut args_rest = args_cdr;
+
+    /* args[1] = cvec (already have via CAR(args_cdr)) */
+    /* args[2] = na.strings */
+    args_rest = CDR(args_rest);
+    let na_strings = CAR(args_rest);
+    if TYPEOF(na_strings) != SEXPTYPE::STRSXP {
+        Rf_error_cstr(c"invalid 'na.strings' argument");
+    }
+
+    /* args[3] = as.is */
+    args_rest = CDR(args_rest);
+    let as_is = asLogical(CAR(args_rest));
+    let as_is_flag = if as_is == NA_LOGICAL() {
+        false
+    } else {
+        as_is != 0
+    };
+
+    /* args[4] = dec */
+    args_rest = CDR(args_rest);
+    let dec = CAR(args_rest);
+    let decimal = if isString(dec) && LENGTH(dec) > 0 {
+        char_cstr_bytes(STRING_ELT(dec, 0))
+            .first()
+            .copied()
+            .unwrap_or(0)
+    } else {
+        b'.'
+    };
+
+    /* args[5] = numerals */
+    args_rest = CDR(args_rest);
+    let numerals = CAR(args_rest);
+    let mut i_exact: c_int = 0; // false = allow.loss
+    if isString(numerals) && LENGTH(numerals) > 0 {
+        match char_cstr_bytes(STRING_ELT(numerals, 0)).as_slice() {
+            b"warn.loss" => i_exact = NA_LOGICAL(),
+            b"no.loss" => i_exact = 1,
+            _ => {}
         }
+    }
+    let screen_exact = i32::from(i_exact == 1);
 
-        let args_cdr = CDR(args);
-        if args_cdr.is_null() {
-            return R_NilValue();
-        }
+    /* args[6] = tryLogical */
+    args_rest = CDR(args_rest);
+    let try_logical = asLogical(CAR(args_rest));
+    let try_logical_flag = if try_logical == NA_LOGICAL() {
+        false
+    } else {
+        try_logical != 0
+    };
 
-        if !isString(CAR(args_cdr)) {
-            Rf_error_cstr(c"the first argument must be of mode character");
-        }
+    let cvec = CAR(args_cdr);
+    let len = LENGTH(cvec);
 
-        let mut data = LocalData::new();
-        data.NAstrings = R_NilValue();
+    /* Save dim/dimnames attributes */
+    let dims = attrib_core::getAttrib(cvec, attrib_core::R_DimSymbol());
+    let _dims_guard = protect(dims);
+    let names = if isArray(cvec) != 0 {
+        attrib_core::getAttrib(cvec, attrib_core::R_DimNamesSymbol())
+    } else {
+        attrib_core::getAttrib(cvec, attrib_core::R_NamesSymbol())
+    };
+    let _names_guard = protect(names);
 
-        let mut args_rest = args_cdr;
+    /* Find the first non-NA entry (empty => NA) */
+    let mut typeInfo = Typecvt_Info::new();
+    typeInfo.islogical = try_logical_flag;
 
-        /* args[1] = cvec (already have via CAR(args_cdr)) */
-        /* args[2] = na.strings */
-        args_rest = CDR(args_rest);
-        let na_strings_arg = CAR(args_rest);
-        if TYPEOF(na_strings_arg) != SEXPTYPE::STRSXP {
-            Rf_error_cstr(c"invalid 'na.strings' argument");
-        }
-        data.NAstrings = na_strings_arg;
+    /* Use first non-NA entry to screen types */
+    if let Some(bytes) = (0..i64::from(len))
+        .find_map(|i| conversion_text(STRING_ELT(cvec, i), na_strings))
+    {
+        ruleout_types(&bytes, &mut typeInfo, decimal, screen_exact);
+    }
 
-        /* args[3] = as.is */
-        args_rest = CDR(args_rest);
-        let as_is = asLogical(CAR(args_rest));
-        let as_is_flag = if as_is == NA_LOGICAL() {
-            false
-        } else {
-            as_is != 0
-        };
+    let mut done = false;
+    let mut rval: SEXP = ptr::null_mut();
+    let mut rval_guard = None;
 
-        /* args[4] = dec */
-        args_rest = CDR(args_rest);
-        let dec = CAR(args_rest);
-        if isString(dec) || isNull(dec) {
-            if LENGTH(dec) == 0 {
-                data.decchar = b'.' as c_char;
-            } else {
-                data.decchar = *translateChar(STRING_ELT(dec, 0));
-            }
-        }
-
-        /* args[5] = numerals */
-        args_rest = CDR(args_rest);
-        let numerals = CAR(args_rest);
-        let mut i_exact: c_int = 0; // false = allow.loss
-        let mut exact = false;
-        if isString(numerals) {
-            let tmp = CHAR(STRING_ELT(numerals, 0));
-            if CStr::from_ptr(tmp).to_bytes() == b"allow.loss".as_slice() {
-                i_exact = 0;
-                exact = false;
-            } else if CStr::from_ptr(tmp).to_bytes() == b"warn.loss".as_slice() {
-                i_exact = NA_LOGICAL();
-                exact = false;
-            } else if CStr::from_ptr(tmp).to_bytes() == b"no.loss".as_slice() {
-                i_exact = 1;
-                exact = true;
-            }
-        }
-
-        /* args[6] = tryLogical */
-        args_rest = CDR(args_rest);
-        let try_logical = asLogical(CAR(args_rest));
-        let try_logical_flag = if try_logical == NA_LOGICAL() {
-            false
-        } else {
-            try_logical != 0
-        };
-
-        let cvec = CAR(args_cdr);
-        let len = LENGTH(cvec);
-
-        /* Save dim/dimnames attributes */
-        let dims = attrib_core::getAttrib(cvec, attrib_core::R_DimSymbol());
-        let _dims_guard = protect(dims);
-        let names = if isArray(cvec) != 0 {
-            attrib_core::getAttrib(cvec, attrib_core::R_DimNamesSymbol())
-        } else {
-            attrib_core::getAttrib(cvec, attrib_core::R_NamesSymbol())
-        };
-        let _names_guard = protect(names);
-
-        /* Find the first non-NA entry (empty => NA) */
-        let mut typeInfo = Typecvt_Info::new();
-        typeInfo.islogical = try_logical_flag;
-
-        let mut first_non_na_idx: c_int = -1;
-        let mut first_non_na_tmp: *const c_char = ptr::null();
+    /* Try logical conversion */
+    if typeInfo.islogical {
+        rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+        rval_guard = Some(protect(rval));
+        let mut all_logical = true;
         for i in 0..len {
-            let tmp = CHAR(STRING_ELT(cvec, i as R_xlen_t));
-            let is_na = STRING_ELT(cvec, i as R_xlen_t) == NA_STRING()
-                || CStr::from_ptr(tmp).to_bytes().is_empty()
-                || isBlankString(tmp) != 0
-                || isNAstring(tmp, 1, &data) != 0;
-            if !is_na {
-                first_non_na_idx = i;
-                first_non_na_tmp = tmp;
+            let Some(bytes) = conversion_text(STRING_ELT(cvec, i64::from(i)), na_strings) else {
+                SET_LOGICAL_ELT(rval, i, NA_LOGICAL());
+                continue;
+            };
+            let value = match bytes.as_slice() {
+                b"F" | b"FALSE" => 0,
+                b"T" | b"TRUE" => 1,
+                _ => {
+                    all_logical = false;
+                    typeInfo.islogical = false;
+                    ruleout_types(&bytes, &mut typeInfo, decimal, screen_exact);
+                    break;
+                }
+            };
+            SET_LOGICAL_ELT(rval, i, value);
+        }
+        if all_logical {
+            done = true;
+        } else {
+            drop(rval_guard.take());
+        }
+    }
+
+    /* Try integer conversion */
+    if !done && typeInfo.isinteger {
+        rval = Rf_allocVector(SEXPTYPE::INTSXP, len);
+        rval_guard = Some(protect(rval));
+        let mut all_integer = true;
+        for i in 0..len {
+            let Some(bytes) = conversion_text(STRING_ELT(cvec, i64::from(i)), na_strings) else {
+                SET_INTEGER_ELT(rval, i, NA_INTEGER());
+                continue;
+            };
+            let value = parse_integer(&bytes);
+            if value == NA_INTEGER() {
+                all_integer = false;
+                typeInfo.isinteger = false;
+                ruleout_types(&bytes, &mut typeInfo, decimal, screen_exact);
                 break;
             }
+            SET_INTEGER_ELT(rval, i, value);
         }
-
-        /* Use first non-NA entry to screen types */
-        if first_non_na_idx >= 0 {
-            ruleout_types(
-                first_non_na_tmp,
-                &mut typeInfo,
-                &data,
-                if exact { 1 } else { 0 },
-            );
-        }
-
-        let mut done = false;
-        let mut rval: SEXP = ptr::null_mut();
-        let mut rval_guard = None;
-
-        /* Try logical conversion */
-        if typeInfo.islogical {
-            rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
-            rval_guard = Some(protect(rval));
-            let mut all_logical = true;
-            for i in 0..len as R_xlen_t {
-                let tmp = CHAR(STRING_ELT(cvec, i));
-                if STRING_ELT(cvec, i) == NA_STRING()
-                    || CStr::from_ptr(tmp).to_bytes().is_empty()
-                    || isBlankString(tmp) != 0
-                    || isNAstring(tmp, 1, &data) != 0
-                {
-                    *LOGICAL(rval).add(i as usize) = NA_LOGICAL();
-                } else {
-                    let s = CStr::from_ptr(tmp).to_str().unwrap_or("");
-                    if s == "F" || s == "FALSE" {
-                        *LOGICAL(rval).add(i as usize) = 0;
-                    } else if s == "T" || s == "TRUE" {
-                        *LOGICAL(rval).add(i as usize) = 1;
-                    } else {
-                        all_logical = false;
-                        typeInfo.islogical = false;
-                        ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
-                        break;
-                    }
-                }
-            }
-            if all_logical {
-                done = true;
-            } else {
-                drop(rval_guard.take());
-            }
-        }
-
-        /* Try integer conversion */
-        if !done && typeInfo.isinteger {
-            rval = Rf_allocVector(SEXPTYPE::INTSXP, len);
-            rval_guard = Some(protect(rval));
-            let mut all_integer = true;
-            for i in 0..len as R_xlen_t {
-                let tmp = CHAR(STRING_ELT(cvec, i));
-                if STRING_ELT(cvec, i) == NA_STRING()
-                    || CStr::from_ptr(tmp).to_bytes().is_empty()
-                    || isBlankString(tmp) != 0
-                    || isNAstring(tmp, 1, &data) != 0
-                {
-                    *INTEGER(rval).add(i as usize) = NA_INTEGER();
-                } else {
-                    let val = Strtoi(tmp, 10);
-                    if val == NA_INTEGER() {
-                        all_integer = false;
-                        typeInfo.isinteger = false;
-                        ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
-                        break;
-                    }
-                    *INTEGER(rval).add(i as usize) = val;
-                }
-            }
-            if all_integer {
-                done = true;
-            } else {
-                drop(rval_guard.take());
-            }
-        }
-
-        /* Try real conversion */
-        if !done && typeInfo.isreal {
-            rval = Rf_allocVector(SEXPTYPE::REALSXP, len);
-            rval_guard = Some(protect(rval));
-            let mut all_real = true;
-            for i in 0..len as R_xlen_t {
-                let tmp = CHAR(STRING_ELT(cvec, i));
-                if STRING_ELT(cvec, i) == NA_STRING()
-                    || CStr::from_ptr(tmp).to_bytes().is_empty()
-                    || isBlankString(tmp) != 0
-                    || isNAstring(tmp, 1, &data) != 0
-                {
-                    *REAL(rval).add(i as usize) = NA_REAL();
-                } else {
-                    let mut endp: *mut c_char = ptr::null_mut();
-                    let val = Strtod(tmp, &mut endp, 0, &data, i_exact);
-                    if isBlankString(endp as *const core::ffi::c_char) == 0 {
-                        all_real = false;
-                        typeInfo.isreal = false;
-                        ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
-                        break;
-                    }
-                    *REAL(rval).add(i as usize) = val;
-                }
-            }
-            if all_real {
-                done = true;
-            } else {
-                drop(rval_guard.take());
-            }
-        }
-
-        /* Try complex conversion */
-        if !done && typeInfo.iscomplex {
-            rval = Rf_allocVector(SEXPTYPE::CPLXSXP, len);
-            rval_guard = Some(protect(rval));
-            let mut all_complex = true;
-            for i in 0..len as R_xlen_t {
-                let tmp = CHAR(STRING_ELT(cvec, i));
-                if STRING_ELT(cvec, i) == NA_STRING()
-                    || CStr::from_ptr(tmp).to_bytes().is_empty()
-                    || isBlankString(tmp) != 0
-                    || isNAstring(tmp, 1, &data) != 0
-                {
-                    let z = COMPLEX(rval).add(i as usize);
-                    (*z).r = NA_REAL();
-                    (*z).i = NA_REAL();
-                } else {
-                    let mut endp: *mut c_char = ptr::null_mut();
-                    let z = strtoc(tmp, &mut endp, 0, &data, i_exact);
-                    if isBlankString(endp as *const core::ffi::c_char) == 0 {
-                        all_complex = false;
-                        typeInfo.iscomplex = false;
-                        ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
-                        break;
-                    }
-                    let zp = COMPLEX(rval).add(i as usize);
-                    (*zp).r = z.r;
-                    (*zp).i = z.i;
-                }
-            }
-            if all_complex {
-                done = true;
-            } else {
-                drop(rval_guard.take());
-            }
-        }
-
-        /* Fallback: character or factor */
-        if !done {
-            if as_is_flag {
-                rval = Rf_duplicate(cvec);
-                rval_guard = Some(protect(rval));
-                /* Replace NA strings with NA_STRING */
-                for i in 0..len as R_xlen_t {
-                    let tmp = CHAR(STRING_ELT(rval, i));
-                    if isNAstring(tmp, 1, &data) != 0 {
-                        SET_STRING_ELT(rval, i, NA_STRING());
-                    }
-                }
-            } else {
-                /* Factor conversion */
-                let dup = duplicated(cvec, 0);
-                rval_guard = Some(protect(dup));
-                let mut j: c_int = 0;
-                for i in 0..len {
-                    if STRING_ELT(cvec, i as R_xlen_t) == NA_STRING() {
-                        continue;
-                    }
-                    if *LOGICAL(dup).add(i as usize) == 0
-                        && isNAstring(CHAR(STRING_ELT(cvec, i as R_xlen_t)), 1, &data) == 0
-                    {
-                        j += 1;
-                    }
-                }
-
-                let levs = Rf_allocVector(SEXPTYPE::STRSXP, j);
-                let _levs_guard = protect(levs);
-                j = 0;
-                for i in 0..len {
-                    if STRING_ELT(cvec, i as R_xlen_t) == NA_STRING() {
-                        continue;
-                    }
-                    if *LOGICAL(dup).add(i as usize) == 0
-                        && isNAstring(CHAR(STRING_ELT(cvec, i as R_xlen_t)), 1, &data) == 0
-                    {
-                        SET_STRING_ELT(levs, j as R_xlen_t, STRING_ELT(cvec, i as R_xlen_t));
-                        j += 1;
-                    }
-                }
-
-                /* Reuse dup (LGLSXP of right length) as integer vector */
-                rval = dup;
-                SET_TYPEOF(rval, SEXPTYPE::INTSXP);
-
-                /* Sort levels lexicographically */
-                sortVector(levs, 0);
-
-                let a = matchE(levs, cvec, NA_INTEGER(), env);
-                let _a_guard = protect(a);
-                for i in 0..len {
-                    *INTEGER(rval).add(i as usize) = *INTEGER(a).add(i as usize);
-                }
-
-                attrib_core::setAttrib(rval, attrib_core::R_LevelsSymbol(), levs);
-                let class_str = crate::sexp::constructors::mk_string_str("factor");
-                let _class_guard = protect(class_str);
-                attrib_core::setAttrib(rval, attrib_core::R_ClassSymbol(), class_str);
-            }
-        }
-
-        /* Restore attributes */
-        attrib_core::setAttrib(rval, attrib_core::R_DimSymbol(), dims);
-        if isArray(cvec) != 0 {
-            attrib_core::setAttrib(rval, attrib_core::R_DimNamesSymbol(), names);
+        if all_integer {
+            done = true;
         } else {
-            attrib_core::setAttrib(rval, attrib_core::R_NamesSymbol(), names);
+            drop(rval_guard.take());
         }
-
-        rval
     }
+
+    /* Try real conversion */
+    if !done && typeInfo.isreal {
+        rval = Rf_allocVector(SEXPTYPE::REALSXP, len);
+        rval_guard = Some(protect(rval));
+        let mut all_real = true;
+        for i in 0..len {
+            let Some(bytes) = conversion_text(STRING_ELT(cvec, i64::from(i)), na_strings) else {
+                SET_REAL_ELT(rval, i, NA_REAL());
+                continue;
+            };
+            let parsed = parse_real(&bytes, decimal, false, i_exact);
+            if !blank(&bytes[parsed.consumed..]) {
+                all_real = false;
+                typeInfo.isreal = false;
+                ruleout_types(&bytes, &mut typeInfo, decimal, screen_exact);
+                break;
+            }
+            SET_REAL_ELT(rval, i, parsed.value);
+        }
+        if all_real {
+            done = true;
+        } else {
+            drop(rval_guard.take());
+        }
+    }
+
+    /* Try complex conversion */
+    if !done && typeInfo.iscomplex {
+        rval = Rf_allocVector(SEXPTYPE::CPLXSXP, len);
+        rval_guard = Some(protect(rval));
+        let mut all_complex = true;
+        for i in 0..len {
+            let Some(bytes) = conversion_text(STRING_ELT(cvec, i64::from(i)), na_strings) else {
+                SET_COMPLEX_ELT(
+                    rval,
+                    i,
+                    Rcomplex {
+                        r: NA_REAL(),
+                        i: NA_REAL(),
+                    },
+                );
+                continue;
+            };
+            let Some(value) = parse_complex(&bytes, decimal, false, i_exact) else {
+                all_complex = false;
+                typeInfo.iscomplex = false;
+                ruleout_types(&bytes, &mut typeInfo, decimal, screen_exact);
+                break;
+            };
+            SET_COMPLEX_ELT(rval, i, value);
+        }
+        if all_complex {
+            done = true;
+        } else {
+            drop(rval_guard.take());
+        }
+    }
+
+    /* Fallback: character or factor */
+    if !done {
+        if as_is_flag {
+            rval = Rf_duplicate(cvec);
+            rval_guard = Some(protect(rval));
+            /* Replace NA strings with NA_STRING */
+            for i in 0..len {
+                if is_na_string(
+                    &char_cstr_bytes(STRING_ELT(rval, i64::from(i))),
+                    na_strings,
+                ) {
+                    SET_STRING_ELT(rval, i64::from(i), NA_STRING());
+                }
+            }
+        } else {
+            /* Factor conversion */
+            let dup = duplicated(cvec, 0);
+            rval_guard = Some(protect(dup));
+            let mut j: c_int = 0;
+            for i in 0..len {
+                let ch = STRING_ELT(cvec, i64::from(i));
+                if ch == NA_STRING() {
+                    continue;
+                }
+                if LOGICAL_ELT(dup, i) == 0
+                    && !is_na_string(&char_cstr_bytes(ch), na_strings)
+                {
+                    j += 1;
+                }
+            }
+
+            let levs = Rf_allocVector(SEXPTYPE::STRSXP, j);
+            let _levs_guard = protect(levs);
+            j = 0;
+            for i in 0..len {
+                let ch = STRING_ELT(cvec, i64::from(i));
+                if ch == NA_STRING() {
+                    continue;
+                }
+                if LOGICAL_ELT(dup, i) == 0
+                    && !is_na_string(&char_cstr_bytes(ch), na_strings)
+                {
+                    SET_STRING_ELT(levs, i64::from(j), ch);
+                    j += 1;
+                }
+            }
+
+            /* Reuse dup (LGLSXP of right length) as integer vector */
+            rval = dup;
+            SET_TYPEOF(rval, SEXPTYPE::INTSXP);
+
+            /* Sort levels lexicographically */
+            sortVector(levs, 0);
+
+            let a = matchE(levs, cvec, NA_INTEGER(), env);
+            let _a_guard = protect(a);
+            for i in 0..len {
+                SET_INTEGER_ELT(rval, i, INTEGER_ELT(a, i));
+            }
+
+            attrib_core::setAttrib(rval, attrib_core::R_LevelsSymbol(), levs);
+            let class_str = crate::sexp::constructors::mk_string_str("factor");
+            let _class_guard = protect(class_str);
+            attrib_core::setAttrib(rval, attrib_core::R_ClassSymbol(), class_str);
+        }
+    }
+
+    /* Restore attributes */
+    attrib_core::setAttrib(rval, attrib_core::R_DimSymbol(), dims);
+    if isArray(cvec) != 0 {
+        attrib_core::setAttrib(rval, attrib_core::R_DimNamesSymbol(), names);
+    } else {
+        attrib_core::setAttrib(rval, attrib_core::R_NamesSymbol(), names);
+    }
+
+    rval
 }
 
 /*
@@ -1905,7 +1238,6 @@ pub fn menu(choices: SEXP) -> SEXP {
 pub fn readtablehead(args: SEXP) -> SEXP {
     unsafe {
         let mut data = LocalData::new();
-        data.NAstrings = R_NilValue();
 
         let mut args_cdr = CDR(args);
         let file = CAR(args_cdr);

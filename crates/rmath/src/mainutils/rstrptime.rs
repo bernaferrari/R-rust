@@ -172,34 +172,14 @@ fn get_number(rp: &[char], pos: &mut usize, from: c_int, to: c_int, n: c_int) ->
     Some(val)
 }
 
-/// `R_strtod()` on the remaining input: parse a C99 double prefix.
-///
-/// Reuses the crate's `R_strtod` port (util_main.rs), which reads "Inf" and
-/// "NaN" like R's version. Returns the value and the number of chars
-/// consumed (0 on parse failure).
+/// Parse a GNU numeric prefix and return the number of characters consumed.
 fn r_strtod_chars(rp: &[char], pos: usize) -> (c_double, usize) {
     let tail: String = rp[pos..].iter().collect();
-    let Ok(cbuf) = std::ffi::CString::new(tail) else {
+    if tail.contains('\0') {
         return (NA_REAL, 0);
-    };
-    unsafe {
-        let mut end: *mut std::os::raw::c_char = std::ptr::null_mut();
-        let val = crate::mainutils::util_main::R_strtod(cbuf.as_ptr(), &mut end);
-        let consumed = if end.is_null() {
-            0
-        } else {
-            end as usize - cbuf.as_ptr() as usize
-        };
-        // Chars are 1..4 UTF-8 bytes; count how many code points the byte
-        // offset covers.
-        let mut used = 0usize;
-        let mut off = 0usize;
-        while off < consumed && pos + used < rp.len() {
-            off += rp[pos + used].len_utf8();
-            used += 1;
-        }
-        (val, used)
     }
+    let parsed = crate::mainutils::number_parse::parse_number(tail.as_bytes(), b'.', false, 0);
+    (parsed.value, tail[..parsed.consumed].chars().count())
 }
 
 // ---------------------------------------------------------------------------

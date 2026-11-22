@@ -869,23 +869,23 @@ pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let text = v.try_string_value_elt(0).map_err(|e| e.to_string())?;
             access.require_active().map_err(|e| e.to_string())?;
             let text = text.ok_or("NA/NaN/Inf in foreign function call (arg 6)")?;
-            let text = std::ffi::CString::new(text).map_err(|e| e.to_string())?;
+            if let Some(position) = text.bytes().position(|byte| byte == 0) {
+                return Err(format!("nul byte found in provided data at position: {position}"));
+            }
             let value = access
                 .with_native(|_| {
-                    // SAFETY: the canonical parser receives a live owned CString;
-                    // its end pointer stays within that same NUL-terminated buffer.
-                    let (value, complete) = unsafe {
-                        let mut end = std::ptr::null_mut();
-                        let value = crate::mainutils::util_main::R_strtod(text.as_ptr(), &mut end);
-                        let tail = std::ffi::CStr::from_ptr(end).to_bytes();
-                        (value, tail.iter().all(u8::is_ascii_whitespace))
-                    };
+                    let bytes = text.as_bytes();
+                    let parsed =
+                        crate::mainutils::number_parse::parse_number(bytes, b'.', false, 0);
+                    let complete = bytes[parsed.consumed..]
+                        .iter()
+                        .all(u8::is_ascii_whitespace);
                     if !complete {
                         crate::mainutils::errors::Rf_warning1(c"NAs introduced by coercion");
 
                         Ok(f64::NAN)
                     } else {
-                        Ok(value)
+                        Ok(parsed.value)
                     }
                 })
                 .map_err(|e| e.to_string())?;
