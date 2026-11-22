@@ -1,8 +1,7 @@
-use core::ffi::{c_char, c_double, c_int};
-use std::ptr;
-use std::slice;
+use core::ffi::c_int;
 
 use crate::main::errors::{Rf_error, Rf_error_cstr};
+use crate::mainutils::native_routines::buffers::{Args, BufferError, NativeBuffer};
 
 /*
  * Port of R's src/library/stats/src/mAR.c
@@ -430,19 +429,17 @@ fn qr_solve(x: &Array, y: &Array, coef: &mut Array, ier: &mut i32) {
 
     // QR decomposition
     let mut rank: c_int = 0;
-    unsafe {
-        crate::appl::linpack_qr::dqrdc2(
-            xt.vec.as_mut_ptr(),
-            n,
-            n,
-            p,
-            1e-7,
-            &mut rank,
-            qraux.as_mut_ptr(),
-            pivot.as_mut_ptr(),
-            work.as_mut_ptr(),
-        );
-    }
+    crate::appl::linpack_qr::dqrdc2_impl(
+        &mut xt.vec,
+        n as usize,
+        n as usize,
+        p as usize,
+        1e-7,
+        &mut rank,
+        &mut qraux,
+        &mut pivot,
+        &mut work,
+    );
 
     if rank != p {
         *ier = 1;
@@ -460,23 +457,21 @@ fn qr_solve(x: &Array, y: &Array, coef: &mut Array, ier: &mut i32) {
     let mut b = vec![0.0f64; k];
     for col in 0..nrhs {
         let mut info: c_int = 0;
-        unsafe {
-            crate::appl::linpack_qr::dqrsl(
-                xt.vec.as_mut_ptr(),
-                n,
-                n,
-                rank,
-                qraux.as_ptr(),
-                yt.vec.as_ptr().add(col * n as usize),
-                std::ptr::null_mut(),
-                qty.as_mut_ptr(),
-                b.as_mut_ptr(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                100,
-                &mut info,
-            );
-        }
+        crate::appl::linpack_qr::dqrsl_impl(
+            &mut xt.vec,
+            n as usize,
+            n as usize,
+            k,
+            &qraux,
+            Some(&yt.vec[col * n as usize..(col + 1) * n as usize]),
+            &mut [],
+            &mut qty,
+            &mut b,
+            &mut [],
+            &mut [],
+            [false, true, true, false, false],
+            &mut info,
+        );
         coeft[col * k..(col + 1) * k].copy_from_slice(&b);
     }
 
@@ -509,19 +504,17 @@ fn ldet(x: &Array) -> f64 {
     copy_array(x, &mut xtmp);
 
     let mut rank: c_int = 0;
-    unsafe {
-        crate::appl::linpack_qr::dqrdc2(
-            xtmp.vec.as_mut_ptr(),
-            n,
-            n,
-            p,
-            1e-7,
-            &mut rank,
-            qraux.as_mut_ptr(),
-            pivot.as_mut_ptr(),
-            work.as_mut_ptr(),
-        );
-    }
+    crate::appl::linpack_qr::dqrdc2_impl(
+        &mut xtmp.vec,
+        n as usize,
+        n as usize,
+        p as usize,
+        1e-7,
+        &mut rank,
+        &mut qraux,
+        &mut pivot,
+        &mut work,
+    );
 
     if rank != p {
         Rf_error_cstr(c"Singular matrix in ldet");
@@ -532,9 +525,7 @@ fn ldet(x: &Array) -> f64 {
     // xtmp is column-major (ldx=n), diagonal at j + j*n
     let mut ll = 0.0f64;
     for j in 0..p as usize {
-        unsafe {
-            ll += (*xtmp.vec.as_ptr().add(j + j * n as usize)).abs().ln();
-        }
+        ll += xtmp.vec[j + j * n as usize].abs().ln();
     }
     ll
 }
@@ -715,124 +706,113 @@ fn whittle(
 
 /// multi_yw - Whittle's algorithm for multivariate autoregression.
 /// Interface to R, also handles model selection using AIC.
-pub unsafe fn multi_yw(
-    acf: *mut f64,
-    pn: *mut c_int,
-    pomax: *mut c_int,
-    pnser: *mut c_int,
-    coef: *mut f64,
-    pacf: *mut f64,
-    var: *mut f64,
-    aic: *mut f64,
-    porder: *mut c_int,
-    useaic: *mut c_int,
-) {
-    unsafe {
-        let omax = *pomax as usize;
-        let n = *pn as usize;
-        let nser = *pnser as usize;
-        let mut order = *porder as usize;
-        let useaic_flag = *useaic != 0;
-
-        let dim = [(omax + 1) as i32, nser as i32, nser as i32];
-        let total_len = (omax + 1) * nser * nser;
-
-        let acf_slice = slice::from_raw_parts(acf, total_len);
-        let acf_array = make_array(acf_slice, &dim, 3);
-
-        let pacf_slice = slice::from_raw_parts(pacf, total_len);
-        let mut p_forward = make_array(pacf_slice, &dim, 3);
-
-        let var_slice = slice::from_raw_parts(var, total_len);
-        let mut v_forward = make_array(var_slice, &dim, 3);
-
-        // Backward equations (discarded but needed by algorithm)
-        let mut p_back = make_zero_array(&dim, 3);
-        let mut v_back = make_zero_array(&dim, 3);
-
-        // Allocate A and B arrays
-        let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 2);
-        let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 2);
-        for _ in 0..=omax {
-            a_vec.push(make_zero_array(&dim, 3));
-            b_vec.push(make_zero_array(&dim, 3));
-        }
-
-        whittle(
-            &acf_array,
-            omax,
-            &mut a_vec,
-            &mut b_vec,
-            &mut p_forward,
-            &mut v_forward,
-            &mut p_back,
-            &mut v_back,
-        );
-
-        // Model order selection
-        let aic_slice = slice::from_raw_parts_mut(aic, omax + 1);
-        for m in 0..=omax {
-            let v_sub = subarray(&v_forward, m);
-            let ld = ldet(&v_sub);
-            aic_slice[m] = (n as f64) * ld + 2.0 * (m as f64) * (nser as f64) * (nser as f64);
-        }
-
-        if useaic_flag {
-            order = 0;
-            let mut aicmin = aic_slice[0];
-            for m in 0..=omax {
-                if aic_slice[m] < aicmin {
-                    aicmin = aic_slice[m];
-                    order = m;
-                }
-            }
-        } else {
-            order = omax;
-        }
-        *porder = order as c_int;
-
-        // Copy coefficients
-        let coef_slice = slice::from_raw_parts_mut(coef, a_vec[order].vector_length());
-        for i in 0..coef_slice.len() {
-            coef_slice[i] = a_vec[order].vec[i];
-        }
-
-        // Write back pacf and var
-        let pacf_out = slice::from_raw_parts_mut(pacf, p_forward.vector_length());
-        for i in 0..pacf_out.len() {
-            pacf_out[i] = p_forward.vec[i];
-        }
-        let var_out = slice::from_raw_parts_mut(var, v_forward.vector_length());
-        for i in 0..var_out.len() {
-            var_out[i] = v_forward.vec[i];
-        }
-    }
+///
+/// `.C(C_multi_yw, acf, n, omax, nser, coef, pacf, var, aic, order, useaic)`.
+pub(crate) fn multi_yw_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut args = Args::new(buffers);
+    let acf = &*args.real();
+    let pn = args.int()[0];
+    let pomax = args.int()[0];
+    let pnser = args.int()[0];
+    let coef = args.real();
+    let pacf = args.real();
+    let var = args.real();
+    let aic = args.real();
+    let porder = &mut args.int()[0];
+    let useaic = args.int()[0];
+    multi_yw(acf, pn, pomax, pnser, coef, pacf, var, aic, porder, useaic);
+    Ok(())
 }
 
-pub unsafe extern "C-unwind" fn c_multi_yw(
-    acf: *mut std::ffi::c_void,
-    n: *mut std::ffi::c_void,
-    omax: *mut std::ffi::c_void,
-    nser: *mut std::ffi::c_void,
-    coef: *mut std::ffi::c_void,
-    pacf: *mut std::ffi::c_void,
-    var: *mut std::ffi::c_void,
-    aic: *mut std::ffi::c_void,
-    order: *mut std::ffi::c_void,
-    useaic: *mut std::ffi::c_void,
+#[allow(clippy::too_many_arguments)]
+fn multi_yw(
+    acf: &[f64],
+    pn: c_int,
+    pomax: c_int,
+    pnser: c_int,
+    coef: &mut [f64],
+    pacf: &mut [f64],
+    var: &mut [f64],
+    aic: &mut [f64],
+    porder: &mut c_int,
+    useaic: c_int,
 ) {
-    unsafe {
-        multi_yw(
-            acf as *mut f64,
-            n as *mut c_int,
-            omax as *mut c_int,
-            nser as *mut c_int,
-            coef as *mut f64,
-            pacf as *mut f64,
-            var as *mut f64,
-            aic as *mut f64,
-            order as *mut c_int,
-            useaic as *mut c_int,
-        );
+    let omax = pomax as usize;
+    let n = pn as usize;
+    let nser = pnser as usize;
+    let useaic_flag = useaic != 0;
+
+    let dim = [(omax + 1) as i32, nser as i32, nser as i32];
+    let total_len = (omax + 1) * nser * nser;
+
+    let acf_slice = &acf[..total_len];
+    let acf_array = make_array(acf_slice, &dim, 3);
+
+    let pacf_slice = &pacf[..total_len];
+    let mut p_forward = make_array(pacf_slice, &dim, 3);
+
+    let var_slice = &var[..total_len];
+    let mut v_forward = make_array(var_slice, &dim, 3);
+
+    // Backward equations (discarded but needed by algorithm)
+    let mut p_back = make_zero_array(&dim, 3);
+    let mut v_back = make_zero_array(&dim, 3);
+
+    // Allocate A and B arrays
+    let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 2);
+    let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 2);
+    for _ in 0..=omax {
+        a_vec.push(make_zero_array(&dim, 3));
+        b_vec.push(make_zero_array(&dim, 3));
+    }
+
+    whittle(
+        &acf_array,
+        omax,
+        &mut a_vec,
+        &mut b_vec,
+        &mut p_forward,
+        &mut v_forward,
+        &mut p_back,
+        &mut v_back,
+    );
+
+    // Model order selection
+    let aic_slice = &mut aic[..omax + 1];
+    for m in 0..=omax {
+        let v_sub = subarray(&v_forward, m);
+        let ld = ldet(&v_sub);
+        aic_slice[m] = (n as f64) * ld + 2.0 * (m as f64) * (nser as f64) * (nser as f64);
+    }
+
+    let order = if useaic_flag {
+        let mut order = 0;
+        let mut aicmin = aic_slice[0];
+        for m in 0..=omax {
+            if aic_slice[m] < aicmin {
+                aicmin = aic_slice[m];
+                order = m;
+            }
+        }
+        order
+    } else {
+        omax
+    };
+    *porder = order as c_int;
+
+    // Copy coefficients
+    let coef_slice = &mut coef[..a_vec[order].vector_length()];
+    for i in 0..coef_slice.len() {
+        coef_slice[i] = a_vec[order].vec[i];
+    }
+
+    // Write back pacf and var
+    let pacf_out = &mut pacf[..p_forward.vector_length()];
+    for i in 0..pacf_out.len() {
+        pacf_out[i] = p_forward.vec[i];
+    }
+    let var_out = &mut var[..v_forward.vector_length()];
+    for i in 0..var_out.len() {
+        var_out[i] = v_forward.vec[i];
     }
 }

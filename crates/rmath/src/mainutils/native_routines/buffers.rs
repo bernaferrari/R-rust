@@ -1,10 +1,7 @@
-//! Owned buffers and checked admission for the bundled C/Fortran kernels.
-//!
-//! All pointers are derived only after interface, arity, element types and
-//! kernel-specific buffer bounds have been checked. Distinct Rust vectors keep
-//! aliased R arguments independent. Foreign loader addresses never enter here.
-
-use std::ffi::{c_char, c_void};
+//! Kernels run only after interface, arity, element types and kernel-specific
+//! buffer bounds have been checked. Distinct Rust vectors keep aliased R
+//! arguments independent; neither foreign loader addresses nor borrowed SEXP
+//! storage enter this registry.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BufferInterface {
@@ -64,20 +61,6 @@ impl NativeBuffer {
             _ => Err(BufferError::new("expected double buffer")),
         }
     }
-    fn pointer(&mut self, string_arrays: &mut Vec<Vec<*mut c_char>>) -> *mut c_void {
-        match self {
-            Self::Integer(x) => x.as_mut_ptr().cast(),
-            Self::Real(x) => x.as_mut_ptr().cast(),
-            Self::Character(x) => {
-                string_arrays.push(x.iter_mut().map(|s| s.as_mut_ptr().cast()).collect());
-                string_arrays
-                    .last_mut()
-                    .expect("just inserted")
-                    .as_mut_ptr()
-                    .cast()
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -93,65 +76,16 @@ impl std::fmt::Display for BufferError {
     }
 }
 
-macro_rules! void_kernels {
-    ($($variant:ident($n:literal; $($arg:ident),*)),* $(,)?) => {
-        #[derive(Clone, Copy)]
-        pub(crate) enum VoidKernel {
-            $($variant(unsafe extern "C-unwind" fn($(void_kernels!(@type $arg)),*))),*
-        }
-        impl VoidKernel {
-            fn arity(self) -> usize { match self { $(Self::$variant(_) => $n),* } }
-            unsafe fn invoke(self, pointers: &[*mut c_void]) {
-                match self { $(Self::$variant(function) => {
-                    let [$($arg),*] = pointers else { unreachable!("admitted exact kernel arity") };
-                    unsafe { function($(*$arg),*) };
-                }),* }
-            }
-        }
-    };
-    (@type $arg:ident) => { *mut c_void };
-}
-void_kernels! {
-    Args1(1; a), Args2(2; a,b), Args4(4; a,b,c,d), Args6(6; a,b,c,d,e,f),
-    Args7(7; a,b,c,d,e,f,g), Args8(8; a,b,c,d,e,f,g,h), Args9(9; a,b,c,d,e,f,g,h,i),
-    Args10(10; a,b,c,d,e,f,g,h,i,j), Args17(17; a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q),
-    Args20(20; a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t),
-}
-
-#[derive(Clone, Copy)]
-enum Kernel {
-    Void(VoidKernel),
-    Owned(fn(&mut [NativeBuffer]) -> Result<(), BufferError>),
-}
-
 #[derive(Clone, Copy)]
 pub(crate) struct BufferRoutine {
     package: &'static str,
     interface: BufferInterface,
     types: &'static [BufferType],
     shape: fn(&[NativeBuffer]) -> Result<(), BufferError>,
-    kernel: Kernel,
+    kernel: fn(&mut [NativeBuffer]) -> Result<(), BufferError>,
 }
 
 impl BufferRoutine {
-    /// # Safety
-    /// `types` describes the void-pointer kernel's real element types; `shape`
-    /// proves every dereference/index/workspace bound and scalar constraint.
-    pub(crate) const unsafe fn void(
-        package: &'static str,
-        interface: BufferInterface,
-        types: &'static [BufferType],
-        shape: fn(&[NativeBuffer]) -> Result<(), BufferError>,
-        kernel: VoidKernel,
-    ) -> Self {
-        Self {
-            package,
-            interface,
-            types,
-            shape,
-            kernel: Kernel::Void(kernel),
-        }
-    }
     pub(crate) const fn owned(
         package: &'static str,
         interface: BufferInterface,
@@ -164,7 +98,7 @@ impl BufferRoutine {
             interface,
             types,
             shape,
-            kernel: Kernel::Owned(kernel),
+            kernel,
         }
     }
 
@@ -178,10 +112,7 @@ impl BufferRoutine {
         self.types
     }
     pub(crate) fn arity(self) -> usize {
-        match self.kernel {
-            Kernel::Void(k) => k.arity(),
-            Kernel::Owned(_) => self.types.len(),
-        }
+        self.types.len()
     }
     pub(crate) fn validate_request(
         self,
@@ -199,9 +130,6 @@ impl BufferRoutine {
                 "incorrect number of arguments: expected {}, received {count}",
                 self.arity()
             )));
-        }
-        if self.types.len() != self.arity() {
-            return Err(BufferError::new("inconsistent bundled native descriptor"));
         }
         Ok(())
     }
@@ -237,23 +165,7 @@ impl BufferRoutine {
         self.validate_buffers(interface, buffers)?;
         #[cfg(test)]
         INVOCATIONS.with(|count| count.set(count.get() + 1));
-        if let Kernel::Owned(function) = self.kernel {
-            return function(buffers);
-        }
-        let mut string_arrays = Vec::new();
-        let pointers: Vec<_> = buffers
-            .iter_mut()
-            .map(|x| x.pointer(&mut string_arrays))
-            .collect();
-        // SAFETY: exact ABI is retained, buffers are independently owned and
-        // live, and the authoritative descriptor just proved all access bounds.
-        unsafe {
-            match self.kernel {
-                Kernel::Void(k) => k.invoke(&pointers),
-                Kernel::Owned(_) => unreachable!("owned kernels dispatched without pointers"),
-            }
-        }
-        Ok(())
+        (self.kernel)(buffers)
     }
 }
 
@@ -328,27 +240,22 @@ mod tests {
     use std::cell::Cell;
 
     thread_local! { static CALLS: Cell<usize> = const { Cell::new(0) }; }
-    unsafe extern "C-unwind" fn increment(value: *mut c_void) {
+    fn increment(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
         CALLS.with(|n| n.set(n.get() + 1));
-        // Test descriptor requires one independently owned integer element.
-        unsafe {
-            *value.cast::<i32>() += 1;
-        }
+        Args::new(buffers).int()[0] += 1;
+        Ok(())
     }
     fn one_integer(buffers: &[NativeBuffer]) -> Result<(), BufferError> {
         minimum(buffers, 0, 1)
     }
     fn routine() -> BufferRoutine {
-        // The exact pointer type, element type and one-element access agree.
-        unsafe {
-            BufferRoutine::void(
-                "test",
-                BufferInterface::C,
-                &[BufferType::Integer],
-                one_integer,
-                VoidKernel::Args1(increment),
-            )
-        }
+        BufferRoutine::owned(
+            "test",
+            BufferInterface::C,
+            &[BufferType::Integer],
+            one_integer,
+            increment,
+        )
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! Bind ported tools C routines so GNU `.Call(C_doTabExpand, ...)` resolves.
 
-use std::ffi::{CString, c_char};
+use std::ffi::{CStr, CString, c_char};
 
+use crate::mainutils::native_routines::buffers::{Args, BufferError, NativeBuffer};
 use crate::sexp::accessors::TYPEOF;
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::envir::defineVar;
@@ -113,36 +114,23 @@ unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
     out
 }
 
-unsafe extern "C-unwind" fn c_renctest(x: *mut std::ffi::c_void) {
-    unsafe {
-        if x.is_null() {
-            return;
-        }
-        let p = x as *mut *const c_char;
-        let s = *p;
-        if s.is_null() {
-            return;
-        }
-        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        // GNU prints the native bytes verbatim; they need not be UTF-8.
-        let mut msg: Vec<u8> = Vec::with_capacity(bytes.len() + 24);
-        msg.push(b'\'');
-        msg.extend_from_slice(bytes);
-        msg.extend_from_slice(format!("', nbytes = {}\n", bytes.len()).as_bytes());
-        if let Ok(c) = CString::new(msg) {
-            crate::mainutils::printutils::Rprintf(c.as_ptr(), std::ptr::null_mut());
-        }
-    }
+fn renctest_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    let mut args = Args::new(buffers);
+    let bytes = CStr::from_bytes_with_nul(&args.chars()[0])
+        .map_err(|_| BufferError::new("invalid native character buffer"))?
+        .to_bytes();
+    // GNU prints the native bytes verbatim; they need not be UTF-8.
+    let mut msg = Vec::with_capacity(bytes.len() + 24);
+    msg.push(b'\'');
+    msg.extend_from_slice(bytes);
+    msg.extend_from_slice(format!("', nbytes = {}\n", bytes.len()).as_bytes());
+    crate::mainutils::printutils::rprintf_bytes(&msg);
+    Ok(())
 }
 
-unsafe extern "C-unwind" fn c_setsmu(iunit: *mut std::ffi::c_void) {
-    unsafe {
-        if iunit.is_null() {
-            return;
-        }
-        let unit = *(iunit as *mut i32);
-        crate::library::stats::smart::setsmu(unit);
-    }
+fn setsmu_owned(buffers: &mut [NativeBuffer]) -> Result<(), BufferError> {
+    crate::library::stats::smart::setsmu(Args::new(buffers).int()[0]);
+    Ok(())
 }
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
@@ -192,208 +180,203 @@ pub(crate) fn lookup_buffer(
     use crate::mainutils::native_routines::buffers::{
         self, BufferInterface, BufferRoutine,
         BufferType::{Character, Integer, Real},
-        VoidKernel,
     };
     let bare = name.strip_prefix("C_").unwrap_or(name);
-    // SAFETY: each adjacent type list and shape predicate describes the exact
-    // Rust kernel declaration below. Invocation rechecks all admission rules.
-    unsafe {
-        Some(match bare {
-            "HoltWinters" => buffers::holtwinters::ROUTINE,
-            "multi_burg" => buffers::multi_burg::ROUTINE,
-            "stl" => buffers::stl::ROUTINE,
-            "supsmu" => buffers::supsmu::ROUTINE,
-            "setsmu" => BufferRoutine::void(
-                "stats",
-                BufferInterface::Fortran,
-                &[Integer],
-                buffers::setsmu,
-                VoidKernel::Args1(c_setsmu),
-            ),
-            "pppred" => buffers::ppr_predict::ROUTINE,
-            "setppr" => buffers::smart::SETPPR_ROUTINE,
-            "smart" => buffers::smart::SMART_ROUTINE,
-            "dqrdc2" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[
-                    Real, Integer, Integer, Integer, Real, Integer, Real, Integer, Real,
-                ],
-                buffers::dqrutl::dqrdc2_shape,
-                buffers::dqrutl::dqrdc2,
-            ),
-            "dqrcf" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer, Real, Integer],
-                buffers::dqrutl::dqrcf_shape,
-                buffers::dqrutl::dqrcf,
-            ),
-            "dqrqy" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer, Real],
-                buffers::dqrutl::dqrqy_shape,
-                buffers::dqrutl::dqrqy,
-            ),
-            "dqrqty" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer, Real],
-                buffers::dqrutl::dqrqty_shape,
-                buffers::dqrutl::dqrqty,
-            ),
-            "dqrrsd" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer, Real],
-                buffers::dqrutl::dqrrsd_shape,
-                buffers::dqrutl::dqrrsd,
-            ),
-            "dqrxb" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer, Real],
-                buffers::dqrutl::dqrxb_shape,
-                buffers::dqrutl::dqrxb,
-            ),
-            "dtrco" => BufferRoutine::owned(
-                "base",
-                BufferInterface::Fortran,
-                &[Real, Integer, Integer, Real, Real, Integer],
-                buffers::dtrco_shape,
-                buffers::dtrco_owned,
-            ),
-            "Renctest" => BufferRoutine::void(
-                "tools",
-                BufferInterface::C,
-                &[Character],
-                buffers::renctest,
-                VoidKernel::Args1(c_renctest),
-            ),
-            "kmns" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[
-                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Real,
-                    Integer, Real, Integer, Integer, Integer, Real, Integer,
-                ],
-                buffers::kmns,
-                crate::library::stats::kmeans::kmns_owned,
-            ),
-            "eureka" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[Integer, Real, Real, Real, Real, Real],
-                buffers::eureka,
-                crate::library::stats::burg::eureka_owned,
-            ),
-            "multi_yw" => BufferRoutine::void(
-                "stats",
-                BufferInterface::C,
-                &[
-                    Real, Integer, Integer, Integer, Real, Real, Real, Real, Integer, Integer,
-                ],
-                buffers::multi_yw,
-                VoidKernel::Args10(crate::library::stats::mar::c_multi_yw),
-            ),
-            "kmeans_Lloyd" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[
-                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
-                ],
-                buffers::kmeans,
-                crate::library::stats::kmeans::kmeans_lloyd_owned,
-            ),
-            "kmeans_MacQueen" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[
-                    Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
-                ],
-                buffers::kmeans,
-                crate::library::stats::kmeans::kmeans_macqueen_owned,
-            ),
-            "hclust" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[
-                    Integer, Integer, Integer, Integer, Integer, Real, Real, Integer, Real, Real,
-                ],
-                buffers::hclust,
-                crate::library::stats::hclust_f::hclust_owned,
-            ),
-            "rbart" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[
-                    Real, Real, Real, Real, Real, Real, Integer, Real, Integer, Real, Real, Real,
-                    Real, Integer, Real, Real, Real, Integer, Integer, Integer,
-                ],
-                buffers::rbart,
-                crate::library::stats::sbart::rbart_owned,
-            ),
-            "bvalus" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[Integer, Real, Real, Integer, Real, Real, Integer],
-                buffers::bvalus,
-                crate::library::stats::sbart::bvalus_owned,
-            ),
-            "hcass2" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[Integer, Integer, Integer, Integer, Integer, Integer],
-                buffers::hcass2,
-                crate::library::stats::hclust_f::hcass2_owned,
-            ),
-            "loess_raw" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[Real, Real, Real, Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Character, Real, Integer, Integer, Real, Real, Real, Real, Real, Real, Real, Integer],
-                buffers::loess_raw,
-                crate::library::stats::loessc::loess_raw,
-            ),
-            "loess_dfit" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real],
-                buffers::loess_dfit,
-                crate::library::stats::loessc::loess_dfit,
-            ),
-            "loess_ifit" => buffers::loess_ifit::ROUTINE,
-            "loess_ise" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Real, Integer, Integer, Integer, Real, Real],
-                buffers::loess_ise,
-                crate::library::stats::loessc::loess_ise,
-            ),
-            "loess_dfitse" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::C,
-                &[Real, Real, Real, Real, Real, Integer, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real, Real],
-                buffers::loess_dfitse,
-                crate::library::stats::loessc::loess_dfitse,
-            ),
-            "lowesw" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[Real, Integer, Real, Integer],
-                buffers::lowesw,
-                crate::library::stats::loessc::lowesw,
-            ),
-            "lowesp" => BufferRoutine::owned(
-                "stats",
-                BufferInterface::Fortran,
-                &[Integer, Real, Real, Real, Real, Integer, Real],
-                buffers::lowesp,
-                crate::library::stats::loessc::lowesp,
-            ),
-            _ => return None,
-        })
-    }
+    Some(match bare {
+        "HoltWinters" => buffers::holtwinters::ROUTINE,
+        "multi_burg" => buffers::multi_burg::ROUTINE,
+        "stl" => buffers::stl::ROUTINE,
+        "supsmu" => buffers::supsmu::ROUTINE,
+        "setsmu" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Integer],
+            buffers::setsmu,
+            setsmu_owned,
+        ),
+        "pppred" => buffers::ppr_predict::ROUTINE,
+        "setppr" => buffers::smart::SETPPR_ROUTINE,
+        "smart" => buffers::smart::SMART_ROUTINE,
+        "dqrdc2" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[
+                Real, Integer, Integer, Integer, Real, Integer, Real, Integer, Real,
+            ],
+            buffers::dqrutl::dqrdc2_shape,
+            buffers::dqrutl::dqrdc2,
+        ),
+        "dqrcf" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer, Real, Integer],
+            buffers::dqrutl::dqrcf_shape,
+            buffers::dqrutl::dqrcf,
+        ),
+        "dqrqy" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer, Real],
+            buffers::dqrutl::dqrqy_shape,
+            buffers::dqrutl::dqrqy,
+        ),
+        "dqrqty" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer, Real],
+            buffers::dqrutl::dqrqty_shape,
+            buffers::dqrutl::dqrqty,
+        ),
+        "dqrrsd" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer, Real],
+            buffers::dqrutl::dqrrsd_shape,
+            buffers::dqrutl::dqrrsd,
+        ),
+        "dqrxb" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer, Real],
+            buffers::dqrutl::dqrxb_shape,
+            buffers::dqrutl::dqrxb,
+        ),
+        "dtrco" => BufferRoutine::owned(
+            "base",
+            BufferInterface::Fortran,
+            &[Real, Integer, Integer, Real, Real, Integer],
+            buffers::dtrco_shape,
+            buffers::dtrco_owned,
+        ),
+        "Renctest" => BufferRoutine::owned(
+            "tools",
+            BufferInterface::C,
+            &[Character],
+            buffers::renctest,
+            renctest_owned,
+        ),
+        "kmns" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[
+                Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Real,
+                Integer, Real, Integer, Integer, Integer, Real, Integer,
+            ],
+            buffers::kmns,
+            crate::library::stats::kmeans::kmns_owned,
+        ),
+        "eureka" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Integer, Real, Real, Real, Real, Real],
+            buffers::eureka,
+            crate::library::stats::burg::eureka_owned,
+        ),
+        "multi_yw" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[
+                Real, Integer, Integer, Integer, Real, Real, Real, Real, Integer, Integer,
+            ],
+            buffers::multi_yw,
+            crate::library::stats::mar::multi_yw_owned,
+        ),
+        "kmeans_Lloyd" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[
+                Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
+            ],
+            buffers::kmeans,
+            crate::library::stats::kmeans::kmeans_lloyd_owned,
+        ),
+        "kmeans_MacQueen" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[
+                Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real,
+            ],
+            buffers::kmeans,
+            crate::library::stats::kmeans::kmeans_macqueen_owned,
+        ),
+        "hclust" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[
+                Integer, Integer, Integer, Integer, Integer, Real, Real, Integer, Real, Real,
+            ],
+            buffers::hclust,
+            crate::library::stats::hclust_f::hclust_owned,
+        ),
+        "rbart" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[
+                Real, Real, Real, Real, Real, Real, Integer, Real, Integer, Real, Real, Real,
+                Real, Integer, Real, Real, Real, Integer, Integer, Integer,
+            ],
+            buffers::rbart,
+            crate::library::stats::sbart::rbart_owned,
+        ),
+        "bvalus" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Integer, Real, Real, Integer, Real, Real, Integer],
+            buffers::bvalus,
+            crate::library::stats::sbart::bvalus_owned,
+        ),
+        "hcass2" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Integer, Integer, Integer, Integer, Integer, Integer],
+            buffers::hcass2,
+            crate::library::stats::hclust_f::hcass2_owned,
+        ),
+        "loess_raw" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[Real, Real, Real, Real, Integer, Integer, Real, Integer, Integer, Integer, Integer, Real, Character, Real, Integer, Integer, Real, Real, Real, Real, Real, Real, Real, Integer],
+            buffers::loess_raw,
+            crate::library::stats::loessc::loess_raw,
+        ),
+        "loess_dfit" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real],
+            buffers::loess_dfit,
+            crate::library::stats::loessc::loess_dfit,
+        ),
+        "loess_ifit" => buffers::loess_ifit::ROUTINE,
+        "loess_ise" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[Real, Real, Real, Real, Real, Integer, Integer, Integer, Integer, Real, Integer, Integer, Integer, Real, Real],
+            buffers::loess_ise,
+            crate::library::stats::loessc::loess_ise,
+        ),
+        "loess_dfitse" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::C,
+            &[Real, Real, Real, Real, Real, Integer, Real, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Real, Real],
+            buffers::loess_dfitse,
+            crate::library::stats::loessc::loess_dfitse,
+        ),
+        "lowesw" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Real, Integer, Real, Integer],
+            buffers::lowesw,
+            crate::library::stats::loessc::lowesw,
+        ),
+        "lowesp" => BufferRoutine::owned(
+            "stats",
+            BufferInterface::Fortran,
+            &[Integer, Real, Real, Real, Real, Integer, Real],
+            buffers::lowesp,
+            crate::library::stats::loessc::lowesp,
+        ),
+        _ => return None,
+    })
 }
 
 pub fn install_tools_call_symbols(env: SEXP) {

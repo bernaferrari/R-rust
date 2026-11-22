@@ -19,24 +19,6 @@
  *  Ported from r-source/src/library/tools/src/init.c
  */
 
-use crate::mainutils::printutils::Rprintf;
-
-/* Test function used in tests/encodings.R */
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn Renctest(x: *mut *mut core::ffi::c_char) {
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(*x);
-        let len = s.to_bytes().len();
-        let msg = format!("'{}', nbytes = {}\n", s.to_string_lossy(), len);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        Rprintf(c_msg.as_ptr(), std::ptr::null_mut());
-    }
-}
-
 /* Stub: DllInfo registration */
 pub fn R_init_tools(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */

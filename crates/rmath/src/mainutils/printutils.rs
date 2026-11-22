@@ -1248,7 +1248,6 @@ pub fn EncodeChar(x: SEXP) -> *const c_char {
 /// processing variadic arguments, since Rust cannot represent C varargs).
 /// For format-string-only calls (no % args), this produces correct output.
 pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
-    use crate::sexp::{output::NativeOutputBytes, owner::OwnerToken};
     if format.is_null() {
         return;
     }
@@ -1256,6 +1255,11 @@ pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
     // copied. Snapshot admission reads only metadata, with no R callback or
     // new arena lend that could overwrite a formatter/TLS source buffer.
     let bytes = unsafe { CStr::from_ptr(format) }.to_bytes();
+    rprintf_bytes(bytes);
+}
+
+pub(crate) fn rprintf_bytes(bytes: &[u8]) {
+    use crate::sexp::{output::NativeOutputBytes, owner::OwnerToken};
     let Ok(owner) = OwnerToken::current() else {
         crate::sexp::output::emit_native_bytes(None, bytes);
         return;

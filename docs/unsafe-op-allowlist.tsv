@@ -84,7 +84,6 @@ crates/rmath/src/library/stats/hclust_utils.rs	32	legacy-module-allow	Temporary 
 crates/rmath/src/library/stats/massdist.rs	31	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/tools/rmd5.rs	29	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/eval/eval.rs	28	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
-crates/rmath/src/library/stats/mar.rs	28	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/stats/trunmed.rs	28	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/tools/rsha256.rs	27	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/parallel/rngstream.rs	26	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
@@ -109,7 +108,6 @@ crates/rmath/src/library/grdevices/devcairo.rs	4	legacy-module-allow	Temporary a
 crates/rmath/src/library/grdevices/init.rs	4	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/devquartz.rs	3	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/tools/gramrd.rs	3	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
-crates/rmath/src/library/tools/init.rs	3	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/clippath.rs	2	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/mask.rs	2	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/grdevices/patterns.rs	2	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
