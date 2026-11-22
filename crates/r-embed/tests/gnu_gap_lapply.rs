@@ -55,3 +55,17 @@ fn vapply_names_and_dropping_match_gnu() {
         "[1] TRUE"
     );
 }
+
+#[test]
+fn vapply_uses_checked_cells_for_scalar_and_column_results() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                "raw_ok <- identical(vapply(1:2, function(i) as.raw(c(i, i+1L)), raw(2)), matrix(as.raw(c(1,2,2,3)), 2)); complex_ok <- identical(vapply(1:2, function(i) c(i+1i, i+2i), complex(2)), matrix(c(1+1i,1+2i,2+1i,2+2i), 2)); logical_ok <- identical(vapply(1:2, function(i) c(TRUE, NA), logical(2)), matrix(rep(c(TRUE, NA), 2), 2)); scalar_ok <- identical(vapply(1:2, function(i) i+0i, complex(1)), c(1+0i,2+0i)); empty_ok <- identical(vapply(1:2,function(i) integer(0),integer(0)), matrix(integer(),0,2)); raw_ok && complex_ok && logical_ok && scalar_ok && empty_ok"
+            )
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}

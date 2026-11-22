@@ -1222,8 +1222,7 @@ pub(crate) fn copy_most_attrib(src: SEXP, dest: SEXP) {
 
 /// `isFactor(x)` on a live SEXP.
 pub(crate) fn is_factor(x: SEXP) -> c_int {
-    // SAFETY: `x` is a live SEXP; isFactor only reads its class attribute.
-    unsafe { crate::mainutils::apply::isFactor(x) }
+    crate::mainutils::apply::isFactor(x)
 }
 
 /// `R_compute_identical(x, y, flags)` on live SEXPs.

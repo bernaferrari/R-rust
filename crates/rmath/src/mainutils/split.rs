@@ -14,6 +14,7 @@
 use std::os::raw::c_int;
 
 use crate::eval::attrib_core::{R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::mainutils::apply::isFactor;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -37,19 +38,12 @@ fn warning(msg: &str) {
     eprintln!("Warning: {}", msg);
 }
 
-/// GNU `isFactor`: OBJECT with class "factor" (length-1 class is valid).
-unsafe fn isFactor(s: SEXP) -> c_int {
-    unsafe { crate::mainutils::apply::isFactor(s) }
-}
-
 /// Return the number of levels in a factor.
-unsafe fn nlevels(f: SEXP) -> c_int {
-    unsafe {
-        if isFactor(f) == 0 {
-            return 0;
-        }
-        LENGTH(getAttrib(f, R_LevelsSymbol()))
+fn nlevels(f: SEXP) -> c_int {
+    if isFactor(f) == 0 {
+        return 0;
     }
+    LENGTH(getAttrib(f, R_LevelsSymbol()))
 }
 
 /// Check if SEXP is a vector type (atomic or list).
