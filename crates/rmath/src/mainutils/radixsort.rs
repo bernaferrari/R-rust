@@ -10,7 +10,8 @@
 //! This module ports the core integer radix sort algorithm as standalone
 //! Rust functions, plus the full do_radixsort SEXP wrapper.
 
-use std::ffi::CStr;
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::os::raw::{c_int, c_void};
 
 use crate::eval::attrib_core::setAttrib;
@@ -866,319 +867,291 @@ fn integer_result(values: &[c_int]) -> SEXP {
 /// where `...` are the vectors to sort.
 ///
 /// Currently supports INTSXP, LGLSXP, REALSXP, and STRSXP vectors.
-pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     let mut state = RadixSortState::default();
-    unsafe {
-        let mut n: c_int = -1;
-        let mut narg: c_int = 0;
-        let mut ngrp: c_int;
-        let mut tmp: c_int;
-        let mut isSorted: bool = true;
-        let retGrp: bool;
+    let mut n: c_int = -1;
+    let mut narg: c_int = 0;
+    let mut ngrp: c_int;
+    let mut tmp: c_int;
+    let mut isSorted: bool;
+    let retGrp: bool;
 
-        // --- Parse first 4 fixed arguments ---
+    // --- Parse first 4 fixed arguments ---
 
-        // arg 1: nalast
-        let nalast_val = asLogical_local(CAR(args));
-        state.nalast = if nalast_val == NA_LOGICAL {
-            0 // NA -> 0
-        } else if nalast_val == 1 {
-            1 // TRUE -> 1
-        } else {
-            -1 // FALSE -> -1
-        };
-        args = CDR(args);
+    // arg 1: nalast
+    let nalast_val = asLogical_local(CAR(args));
+    state.nalast = if nalast_val == NA_LOGICAL {
+        0 // NA -> 0
+    } else if nalast_val == 1 {
+        1 // TRUE -> 1
+    } else {
+        -1 // FALSE -> -1
+    };
+    args = CDR(args);
 
-        // arg 2: decreasing
-        let decreasing = CAR(args);
-        args = CDR(args);
+    // arg 2: decreasing
+    let decreasing = CAR(args);
+    args = CDR(args);
 
-        // arg 3: retGrp
-        retGrp = asBool_local(CAR(args)) != 0;
-        args = CDR(args);
+    // arg 3: retGrp
+    retGrp = asBool_local(CAR(args)) != 0;
+    args = CDR(args);
 
-        // arg 4: sortStr (not used for integer sort, but parsed)
-        let _ = asBool_local(CAR(args));
-        args = CDR(args);
+    // arg 4: sortStr (sorted order vs first-seen grouping)
+    let sort_str = asBool_local(CAR(args)) != 0;
+    args = CDR(args);
 
-        // If no vectors to sort, return NULL
-        if args == R_NilValue() {
-            return R_NilValue();
+    // If no vectors to sort, return NULL
+    if args == R_NilValue() {
+        return R_NilValue();
+    }
+
+    // Get the length from the first vector
+    let nl: R_xlen_t = if crate::sexp::object::raw_is_atomic_vector(CAR(args)) {
+        XLENGTH(CAR(args))
+    } else {
+        LENGTH(CAR(args)) as R_xlen_t
+    };
+
+    // Validate all vector arguments
+    let mut ap = args;
+    while !ap.is_null() && ap != R_NilValue() {
+        if !crate::sexp::object::raw_is_atomic_vector(CAR(ap)) {
+            error(&format!("argument {} is not a vector", narg + 1));
         }
+        let this_len = XLENGTH(CAR(ap));
+        if this_len != nl {
+            error("argument lengths differ");
+        }
+        ap = CDR(ap);
+        narg += 1;
+    }
 
-        // Get the length from the first vector
-        let nl: R_xlen_t = if crate::sexp::object::raw_is_atomic_vector(CAR(args)) {
-            XLENGTH(CAR(args))
-        } else {
-            LENGTH(CAR(args)) as R_xlen_t
-        };
+    // Validate decreasing length
+    if narg != Rf_length(decreasing) {
+        error("length(decreasing) must match the number of order arguments");
+    }
+    for i in 0..narg {
+        if LOGICAL_ELT(decreasing, i) == NA_LOGICAL {
+            error("'decreasing' elements must be TRUE or FALSE");
+        }
+    }
 
-        // Validate all vector arguments
-        let mut ap = args;
-        while !ap.is_null() && ap != R_NilValue() {
-            if !crate::sexp::object::raw_is_atomic_vector(CAR(ap)) {
-                error(&format!("argument {} is not a vector", narg + 1));
+    state.order = if LOGICAL_ELT(decreasing, 0) != 0 {
+        -1
+    } else {
+        1
+    };
+
+    let mut x = CAR(args);
+    args = CDR(args);
+
+    // Long vector check
+    if nl > c_int::MAX as R_xlen_t {
+        error("long vectors not supported");
+    }
+    n = nl as c_int;
+
+    // Upper limit for group stack size
+    state.gsmaxalloc = n;
+
+    // Order output starts unassigned; the -1 sentinel in slot 0 tells
+    // isort to write the permutation directly instead of newo.
+    let mut o = vec![0; n as usize];
+    if let Some(first) = o.first_mut() {
+        *first = -1;
+    }
+    let xtype = TYPEOF(x);
+
+    state.stackgrps = narg > 1 || retGrp;
+
+    // Dispatch on first arg type
+    match SEXPTYPE(xtype) {
+        SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+            let mut keys = integer_keys(x, n as usize);
+            let sorted = isorted(&mut state, &keys);
+            isSorted = sorted == 1;
+            match sorted {
+                1 => {
+                    for (i, row) in o.iter_mut().enumerate() {
+                        *row = (i + 1) as c_int;
+                    }
+                }
+                -1 => {
+                    for (i, row) in o.iter_mut().enumerate() {
+                        *row = n - i as c_int;
+                    }
+                }
+                -2 => o.fill(0),
+                _ => isort(&mut state, &mut keys, &mut o, &mut []),
             }
-            let this_len = XLENGTH(CAR(ap));
-            if this_len != nl {
-                error("argument lengths differ");
-            }
-            ap = CDR(ap);
-            narg += 1;
         }
-
-        // Validate decreasing length
-        if narg != Rf_length(decreasing) {
-            error("length(decreasing) must match the number of order arguments");
-        }
-        for i in 0..narg {
-            if LOGICAL_ELT(decreasing, i) == NA_LOGICAL {
-                error("'decreasing' elements must be TRUE or FALSE");
-            }
-        }
-
-        state.order = if LOGICAL_ELT(decreasing, 0) != 0 {
-            -1
-        } else {
-            1
-        };
-
-        let mut x = CAR(args);
-        args = CDR(args);
-
-        // Long vector check
-        if nl > c_int::MAX as R_xlen_t {
-            error("long vectors not supported");
-        }
-        n = nl as c_int;
-
-        // Upper limit for group stack size
-        state.gsmaxalloc = n;
-
-        // Order output starts unassigned; the -1 sentinel in slot 0 tells
-        // isort to write the permutation directly instead of newo.
-        let mut o = vec![0; n as usize];
-        if let Some(first) = o.first_mut() {
-            *first = -1;
-        }
-        let xtype = TYPEOF(x);
-
-        state.stackgrps = narg > 1 || retGrp;
-
-        // Dispatch on first arg type
-        if xtype == SEXPTYPE::REALSXP {
+        SEXPTYPE::REALSXP => {
             let input = wrapped(x);
             let keys: Vec<_> = (0..nl)
                 .map(|i| real_radix_key(checked(input.try_real_elt(i)), state.order, state.nalast))
                 .collect();
             isSorted = sort_real_keys(&mut state, &keys, &mut o);
+        }
+        SEXPTYPE::STRSXP => {
+            let keys = character_keys(x, nl);
+            sort_character_keys(&mut state, &keys, sort_str, &mut o);
+            isSorted = false;
+        }
+        _ => error(&format!("First arg is type '{}', not yet supported", xtype)),
+    }
+
+    // --- Multi-column sort (col >= 2) ---
+    let maxgrpn_first: c_int = state.gsmax[state.flip];
+
+    // Allocate xsub and newo for multi-arg sorting
+    let mut xsub = Vec::<c_int>::new();
+    let mut newo = Vec::<c_int>::new();
+    let ngrp_val = state.gs[state.flip].len() as c_int;
+    if narg > 1 && ngrp_val < n {
+        grow_scratch(&mut xsub, maxgrpn_first as usize);
+        grow_scratch(&mut newo, maxgrpn_first as usize);
+    }
+
+    let mut col: c_int = 2;
+    while col <= narg {
+        x = CAR(args);
+        args = CDR(args);
+        ngrp = state.gs[state.flip].len() as c_int;
+        if ngrp == n && state.nalast != 0 {
+            break;
+        }
+        flipflop(&mut state);
+        state.stackgrps = col != narg || retGrp;
+        state.order = if LOGICAL_ELT(decreasing, col - 1) != 0 {
+            -1
         } else {
-            let mut keys = if matches!(SEXPTYPE(xtype), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) {
-                integer_keys(x, n as usize)
-            } else {
-                Vec::new()
-            };
+            1
+        };
 
-            match xtype {
-                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                    tmp = isorted(&mut state, &keys);
+        let xtype = TYPEOF(x);
+        // Only handle INTSXP/LGLSXP for multi-column
+        if xtype != SEXPTYPE::INTSXP && xtype != SEXPTYPE::LGLSXP {
+            eprintln!("Arg {} is type '{}', not yet supported", col, xtype);
+            break;
+        }
+
+        let column_keys = integer_keys(x, n as usize);
+        let mut idx: c_int = 0;
+        let mut grp: c_int = 0;
+        let cur_flip = state.flip;
+        while grp < ngrp {
+            let thisgrpn: c_int = state.gs[1 - cur_flip][grp as usize];
+            if thisgrpn == 1 {
+                // Single-element group: check NA for nalast==0
+                if state.nalast == 0 {
+                    let order_index = o[idx as usize];
+                    if order_index == 0
+                        || column_keys[order_index as usize - 1] == NA_INTEGER
+                    {
+                        isSorted = false;
+                        o[idx as usize] = 0;
+                    }
                 }
-                t if t == SEXPTYPE::STRSXP => {
-                    tmp = csorted(x as *mut c_void, n);
-                }
-                _ => {
-                    error(&format!("First arg is type '{}', not yet supported", xtype));
-                }
+                idx += 1;
+                push(&mut state, 1);
+                grp += 1;
+                continue;
             }
 
-            let nalast = state.nalast;
+            let start = idx as usize;
+            let len = thisgrpn as usize;
+            let osub = &mut o[start..start + len];
+            let xsub = &mut xsub[..len];
+
+            // Build xsub from the column keys using the order in osub
+            for (key, &row) in xsub.iter_mut().zip(osub.iter()) {
+                *key = if row == 0 {
+                    NA_INTEGER
+                } else {
+                    column_keys[row as usize - 1]
+                };
+            }
+            idx += thisgrpn;
+
+            // Check sortedness
+            tmp = isorted(&mut state, xsub);
+
             if tmp != 0 {
-                // -1, 1, or -2
-                if tmp == 1 {
-                    // Sorted as expected
-                    isSorted = true;
-                    for i in 0..o.len() {
-                        o[i] = (i + 1) as c_int;
-                    }
-                } else if tmp == -1 {
-                    // Strictly opposite order
+                // Already sorted
+                if tmp == -1 {
+                    // Strictly opposite: reverse in-place
                     isSorted = false;
-                    for i in 0..o.len() {
-                        o[i] = n - i as c_int;
-                    }
-                } else if nalast == 0 && tmp == -2 {
-                    // All NAs, nalast=NA
+                    osub.reverse();
+                } else if state.nalast == 0 && tmp == -2 {
+                    // All NAs
                     isSorted = false;
-                    o.fill(0);
-                }
-            } else {
-                isSorted = false;
-                match xtype {
-                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                        isort(&mut state, &mut keys, &mut o, &mut []);
-                    }
-                    t if t == SEXPTYPE::STRSXP => {
-                        csort(&mut state, x as *mut c_void, o.as_mut_ptr(), n);
-                    }
-                    _ => {
-                        error(&format!("unsupported type in sort: {}", xtype));
-                    }
-                }
-            }
-        }
-
-        // --- Multi-column sort (col >= 2) ---
-        let maxgrpn_first: c_int = state.gsmax[state.flip];
-
-        // Allocate xsub and newo for multi-arg sorting
-        let mut xsub = Vec::<c_int>::new();
-        let mut newo = Vec::<c_int>::new();
-        let ngrp_val = state.gs[state.flip].len() as c_int;
-        if narg > 1 && ngrp_val < n {
-            grow_scratch(&mut xsub, maxgrpn_first as usize);
-            grow_scratch(&mut newo, maxgrpn_first as usize);
-        }
-
-        let mut col: c_int = 2;
-        while col <= narg {
-            x = CAR(args);
-            args = CDR(args);
-            ngrp = state.gs[state.flip].len() as c_int;
-            if ngrp == n && state.nalast != 0 {
-                break;
-            }
-            flipflop(&mut state);
-            state.stackgrps = col != narg || retGrp;
-            state.order = if LOGICAL_ELT(decreasing, col - 1) != 0 {
-                -1
-            } else {
-                1
-            };
-
-            let xtype = TYPEOF(x);
-            // Only handle INTSXP/LGLSXP for multi-column
-            if xtype != SEXPTYPE::INTSXP && xtype != SEXPTYPE::LGLSXP {
-                eprintln!("Arg {} is type '{}', not yet supported", col, xtype);
-                break;
-            }
-
-            let column_keys = integer_keys(x, n as usize);
-            let mut idx: c_int = 0;
-            let mut grp: c_int = 0;
-            let cur_flip = state.flip;
-            while grp < ngrp {
-                let thisgrpn: c_int = state.gs[1 - cur_flip][grp as usize];
-                if thisgrpn == 1 {
-                    // Single-element group: check NA for nalast==0
-                    if state.nalast == 0 {
-                        let order_index = o[idx as usize];
-                        if order_index == 0
-                            || column_keys[order_index as usize - 1] == NA_INTEGER
-                        {
-                            isSorted = false;
-                            o[idx as usize] = 0;
-                        }
-                    }
-                    idx += 1;
-                    push(&mut state, 1);
-                    grp += 1;
-                    continue;
-                }
-
-                let start = idx as usize;
-                let len = thisgrpn as usize;
-                let osub = &mut o[start..start + len];
-                let xsub = &mut xsub[..len];
-
-                // Build xsub from the column keys using the order in osub
-                for (key, &row) in xsub.iter_mut().zip(osub.iter()) {
-                    *key = if row == 0 {
-                        NA_INTEGER
-                    } else {
-                        column_keys[row as usize - 1]
-                    };
-                }
-                idx += thisgrpn;
-
-                // Check sortedness
-                tmp = isorted(&mut state, xsub);
-
-                if tmp != 0 {
-                    // Already sorted
-                    if tmp == -1 {
-                        // Strictly opposite: reverse in-place
-                        isSorted = false;
-                        osub.reverse();
-                    } else if state.nalast == 0 && tmp == -2 {
-                        // All NAs
-                        isSorted = false;
-                        osub.fill(0);
-                    }
-                    grp += 1;
-                    continue;
-                }
-
-                isSorted = false;
-                newo[0] = -1;
-                isort(&mut state, xsub, osub, &mut newo);
-
-                if newo[0] != -1 {
-                    // Reorder osub using newo
-                    for (target, &index) in xsub.iter_mut().zip(&newo[..len]) {
-                        *target = if state.nalast == 0 && index == 0 {
-                            0
-                        } else {
-                            osub[index as usize - 1]
-                        };
-                    }
-                    osub.copy_from_slice(xsub);
+                    osub.fill(0);
                 }
                 grp += 1;
+                continue;
             }
-            col += 1;
-        }
 
-        // --- Handle nalast==0: drop zeros ---
-        if !retGrp && !isSorted && state.nalast == 0 && o.contains(&0) {
-            o.retain(|&row| row > 0);
-        }
-        let ans = integer_result(&o);
-        let _ans_guard = protect(ans);
+            isSorted = false;
+            newo[0] = -1;
+            isort(&mut state, xsub, osub, &mut newo);
 
-        // --- Build retGrp result if requested ---
-        if retGrp {
-            let s_ends = crate::sexp::symbol::install_str("ends");
-            let mut end = 0;
-            let ends: Vec<c_int> = state.gs[state.flip]
-                .iter()
-                .map(|&size| {
-                    end += size;
-                    end
-                })
-                .collect();
-            let maxgrpn = if ends.is_empty() {
-                NA_INTEGER
-            } else {
-                state.gsmax[state.flip]
-            };
-            let x_ends = integer_result(&ends);
-            let _x_ends_guard = protect(x_ends);
-            setAttrib(ans, s_ends, x_ends);
-            let s_maxgrpn = crate::sexp::symbol::install_str("maxgrpn");
-            let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
-            let _scalar_maxgrpn_guard = protect(scalar_maxgrpn);
-            setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
-            // Set class c("grouping", "integer")
-            let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            let _nms_guard = protect(nms);
-            SET_STRING_ELT(nms, 0, crate::sexp::constructors::mk_char_str("grouping"));
-            SET_STRING_ELT(nms, 1, crate::sexp::constructors::mk_char_str("integer"));
-            let class_sym = crate::sexp::symbol::install_str("class");
-            setAttrib(ans, class_sym, nms);
+            if newo[0] != -1 {
+                // Reorder osub using newo
+                for (target, &index) in xsub.iter_mut().zip(&newo[..len]) {
+                    *target = if state.nalast == 0 && index == 0 {
+                        0
+                    } else {
+                        osub[index as usize - 1]
+                    };
+                }
+                osub.copy_from_slice(xsub);
+            }
+            grp += 1;
         }
-
-        ans
+        col += 1;
     }
+
+    // --- Handle nalast==0: drop zeros ---
+    if !retGrp && !isSorted && state.nalast == 0 && o.contains(&0) {
+        o.retain(|&row| row > 0);
+    }
+    let ans = integer_result(&o);
+    let _ans_guard = protect(ans);
+
+    // --- Build retGrp result if requested ---
+    if retGrp {
+        let s_ends = crate::sexp::symbol::install_str("ends");
+        let mut end = 0;
+        let ends: Vec<c_int> = state.gs[state.flip]
+            .iter()
+            .map(|&size| {
+                end += size;
+                end
+            })
+            .collect();
+        let maxgrpn = if ends.is_empty() {
+            NA_INTEGER
+        } else {
+            state.gsmax[state.flip]
+        };
+        let x_ends = integer_result(&ends);
+        let _x_ends_guard = protect(x_ends);
+        setAttrib(ans, s_ends, x_ends);
+        let s_maxgrpn = crate::sexp::symbol::install_str("maxgrpn");
+        let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
+        let _scalar_maxgrpn_guard = protect(scalar_maxgrpn);
+        setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
+        // Set class c("grouping", "integer")
+        let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _nms_guard = protect(nms);
+        SET_STRING_ELT(nms, 0, crate::sexp::constructors::mk_char_str("grouping"));
+        SET_STRING_ELT(nms, 1, crate::sexp::constructors::mk_char_str("integer"));
+        let class_sym = crate::sexp::symbol::install_str("class");
+        setAttrib(ans, class_sym, nms);
+    }
+
+    ans
 }
 
 /// Local `asLogical` helper for do_radixsort.
@@ -1331,147 +1304,77 @@ pub fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
     _xsub
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CharacterSortKey<'a> {
-    Missing,
-    Value(&'a [u8]),
-}
-
-fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> {
-    {
-        let charsxp = STRING_ELT(x, index as R_xlen_t);
-        if charsxp.is_null() || charsxp == R_NaString() {
-            CharacterSortKey::Missing
-        } else {
-            // SAFETY: `charsxp` is a live CHARSXP element; CHAR returns its
-            // NUL-terminated contents valid for the borrow.
-            CharacterSortKey::Value(unsafe { CStr::from_ptr(CHAR(charsxp)) }.to_bytes())
-        }
-    }
-}
-
-fn compare_character_keys(state: &RadixSortState, a: CharacterSortKey<'_>, b: CharacterSortKey<'_>) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-
-    let nalast = { state.nalast };
-    let order = { state.order };
-    let ord = match (a, b) {
-        (CharacterSortKey::Missing, CharacterSortKey::Missing) => Ordering::Equal,
-        (CharacterSortKey::Missing, CharacterSortKey::Value(_)) => {
-            if nalast == 1 {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            }
-        }
-        (CharacterSortKey::Value(_), CharacterSortKey::Missing) => {
-            if nalast == 1 {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        }
-        (CharacterSortKey::Value(left), CharacterSortKey::Value(right)) => left.cmp(right),
-    };
-
-    if order < 0
-        && !matches!(
-            (a, b),
-            (CharacterSortKey::Missing, _) | (_, CharacterSortKey::Missing)
-        )
-    {
-        ord.reverse()
-    } else {
-        ord
-    }
-}
-
-fn same_character_group(a: CharacterSortKey<'_>, b: CharacterSortKey<'_>) -> bool {
-    match (a, b) {
-        (CharacterSortKey::Missing, CharacterSortKey::Missing) => true,
-        (CharacterSortKey::Value(left), CharacterSortKey::Value(right)) => left == right,
-        _ => false,
-    }
-}
-
-/// Sort dispatcher for character data (STRSXP vectors).
-unsafe fn csort(state: &mut RadixSortState, x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        let x = x as SEXP;
-        let nalast = state.nalast;
-        let mut indices: Vec<usize> = (0..n as usize).collect();
-        indices.sort_by(|&left, &right| {
-            let left_key = character_sort_key(x, left);
-            let right_key = character_sort_key(x, right);
-            compare_character_keys(state, left_key, right_key).then_with(|| left.cmp(&right))
-        });
-
-        for (out_index, &source_index) in indices.iter().enumerate() {
-            let key = character_sort_key(x, source_index);
-            *o.add(out_index) = if nalast == 0 && matches!(key, CharacterSortKey::Missing) {
-                0
-            } else {
-                source_index as c_int + 1
-            };
-        }
-
-        cgroup(state, x as *mut c_void, o, n)
-    }
-}
-
 /// Pre-processing for character sort. The Rust implementation sorts directly
 /// from STRSXP values, so no byte-offset side table is required.
 pub fn csort_pre(x: *mut c_void, _n: c_int) -> *mut c_void {
     x
 }
 
-/// Grouping for character data after sorting.
-unsafe fn cgroup(state: &mut RadixSortState, x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        if !state.stackgrps || n <= 0 {
-            return x;
-        }
-
-        let x = x as SEXP;
-        let mut current_group = 0;
-        let mut previous: Option<CharacterSortKey<'_>> = None;
-        for i in 0..n as usize {
-            let oi = *o.add(i);
-            if oi == 0 {
-                if current_group > 0 {
-                    push(state, current_group);
-                    current_group = 0;
-                }
-                push(state, 1);
-                previous = Some(CharacterSortKey::Missing);
-                continue;
+fn character_keys(x: SEXP, n: R_xlen_t) -> Vec<Option<Vec<u8>>> {
+    let input = wrapped(x);
+    let na = R_NaString();
+    (0..n)
+        .map(|i| {
+            let value = checked(input.try_string_elt(i));
+            let raw = value.as_raw();
+            if raw == na {
+                return None;
             }
-
-            let key = character_sort_key(x, oi as usize - 1);
-            if let Some(prev) = previous {
-                if same_character_group(prev, key) {
-                    current_group += 1;
-                } else {
-                    if current_group > 0 {
-                        push(state, current_group);
-                    }
-                    current_group = 1;
-                }
-            } else {
-                current_group = 1;
+            let mut bytes = crate::mainutils::printutils::charsxp_bytes(raw);
+            if let Some(end) = bytes.iter().position(|&byte| byte == 0) {
+                bytes.truncate(end);
             }
-            previous = Some(key);
-        }
-        if current_group > 0 {
-            push(state, current_group);
-        }
-        x as *mut c_void
-    }
+            Some(bytes)
+        })
+        .collect()
 }
 
-/// Sortedness test for character data (STRSXP vectors).
-fn csorted(x: *mut c_void, n: c_int) -> c_int {
-    if n <= 1 { 1 } else { 0 }
+fn sort_character_keys(
+    state: &mut RadixSortState,
+    keys: &[Option<Vec<u8>>],
+    sort_str: bool,
+    o: &mut [c_int],
+) {
+    for (i, row) in o.iter_mut().enumerate() {
+        *row = (i + 1) as c_int;
+    }
+    let key = |row: c_int| keys[row as usize - 1].as_deref();
+    if sort_str {
+        o.sort_unstable_by(|&left, &right| {
+            let a = key(left);
+            let b = key(right);
+            let comparison = match (a, b) {
+                (Some(a), Some(b)) if state.order < 0 => b.cmp(a),
+                (None, Some(_)) if state.nalast == 1 => Ordering::Greater,
+                (Some(_), None) if state.nalast == 1 => Ordering::Less,
+                _ => a.cmp(&b),
+            };
+            comparison.then_with(|| left.cmp(&right))
+        });
+    } else {
+        // GNU grouping numbers distinct keys by their first occurrence.
+        let mut first = HashMap::new();
+        let ranks: Vec<_> = o.iter().map(|&row| *first.entry(key(row)).or_insert(row)).collect();
+        o.sort_unstable_by_key(|&row| (ranks[row as usize - 1], row));
+    }
+    if state.stackgrps {
+        let mut start = 0;
+        while start < o.len() {
+            let mut end = start + 1;
+            while end < o.len() && key(o[start]) == key(o[end]) {
+                end += 1;
+            }
+            push(state, (end - start) as c_int);
+            start = end;
+        }
+    }
+    if state.nalast == 0 {
+        for row in o {
+            if key(*row).is_none() {
+                *row = 0;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

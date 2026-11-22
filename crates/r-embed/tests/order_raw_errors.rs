@@ -107,3 +107,25 @@ cat('real-radix-order: PASS\n')"#,
         "real-radix-order: PASS\n"
     );
 }
+
+#[test]
+fn character_radix_order_and_first_seen_grouping_match_gnu() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"x <- c('b', NA, 'a', 'b', '', NA, 'a', 'NA')
+g <- grouping(x)
+stopifnot(identical(order(x,method='radix'),c(5L,8L,3L,7L,1L,4L,2L,6L)),
+identical(order(x,method='radix',decreasing=TRUE,na.last=FALSE),c(2L,6L,1L,4L,3L,7L,8L,5L)),
+identical(order(x,method='radix',na.last=NA),c(5L,8L,3L,7L,1L,4L)),
+identical(as.integer(g),c(1L,4L,2L,6L,3L,7L,5L,8L)),
+identical(attr(g,'ends'),c(2L,4L,6L,7L,8L)),
+identical(order(NA_character_,method='radix',na.last=NA),integer()),
+identical(attr(grouping(NA_character_),'ends'),1L))
+cat('character-radix-order: PASS\n')"#
+            )
+            .unwrap(),
+        "character-radix-order: PASS\n"
+    );
+}
