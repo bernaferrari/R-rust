@@ -77,13 +77,8 @@ where
 fn reset_connections() -> ConnectionTestGuard {
     let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let session = RSession::new();
-    with_connections_state(|state| {
-        state.table.clear();
-        state.sink = SinkState::default();
-        state.sink.sink_cons = vec![1];
-        state.sink.sink_close = vec![false];
-        state.sink.sink_split = vec![false];
-    });
+    with_connections_state(|state| state.table.clear());
+    *current_owner().sink_state().borrow_mut() = SinkState::default();
     ConnectionTestGuard {
         _lock: lock,
         _session: session,
@@ -572,16 +567,16 @@ fn test_connection_state_is_session_local_on_same_thread() {
                 "w",
                 ConnKind::TextConnection,
             )));
-            state.sink.output_con = 3;
             assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 4);
         });
+        current_owner().sink_state().borrow_mut().output_con = 3;
     });
 
     right.with_protected(|| {
         with_connections_state(|state| {
             assert!(state.table.is_empty());
-            assert_eq!(state.sink.output_con, 1);
         });
+        assert_eq!(current_owner().sink_state().borrow().output_con, 1);
         init_connections_table();
         with_connections_state(|state| {
             assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 3);
@@ -592,8 +587,8 @@ fn test_connection_state_is_session_local_on_same_thread() {
     left.with_protected(|| {
         with_connections_state(|state| {
             assert!(state.table[3].is_some());
-            assert_eq!(state.sink.output_con, 3);
         });
+        assert_eq!(current_owner().sink_state().borrow().output_con, 3);
     });
 }
 

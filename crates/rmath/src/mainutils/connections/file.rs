@@ -954,7 +954,8 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Check if it's a sink connection
         {
-            let sink = sink_state();
+            let state = current_owner().sink_state();
+            let sink = state.borrow();
             for j in 0..sink.sink_number {
                 if i as c_int == sink.sink_cons[j] {
                     r_error("cannot close 'output' sink connection");

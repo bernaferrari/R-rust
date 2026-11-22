@@ -150,18 +150,6 @@ impl OwnerPin {
         unsafe { f(&(*self.as_ptr()).output_capture) }
     }
 
-    /// Lend this owner's connection-table state for a strictly-local update.
-    ///
-    /// Same strictly-local lend contract as [`Self::with_output_capture`].
-    pub(crate) fn with_connections_state<R>(
-        &self,
-        f: impl FnOnce(&crate::mainutils::connections::ConnectionsState) -> R,
-    ) -> R {
-        // SAFETY: the pin retains the original live allocation; this is a
-        // strictly-local single-field lend under the contract above.
-        unsafe { f(&(*self.as_ptr()).connections_state) }
-    }
-
     /// Lend this owner's error state for a strictly-local update.
     ///
     /// Same strictly-local lend contract as [`Self::with_output_capture`]. A
@@ -642,16 +630,14 @@ impl<'session> OwnerToken<'session> {
         unsafe { f(&(*self.as_ptr()).output_capture) }
     }
 
-    /// Lend the token owner's connection-table state for a strictly-local
-    /// update. Same contract as [`Self::with_output_capture`].
-    pub(crate) fn with_connections_state<R>(
+    /// Clone the owner's session-local sink-state handle. The `Rc` keeps
+    /// cleanup valid even when this owner is later closed.
+    pub(crate) fn sink_state(
         self,
-        f: impl FnOnce(&crate::mainutils::connections::ConnectionsState) -> R,
-    ) -> R {
+    ) -> Rc<std::cell::RefCell<crate::mainutils::connections::SinkState>> {
         self.require_live_or_r_error();
-        // SAFETY: the owner generation was just validated; this is a
-        // strictly-local shared lend (no `&mut` path to this field exists).
-        unsafe { f(&(*self.as_ptr()).connections_state) }
+        // SAFETY: the generation is live and we only clone the sink handle.
+        unsafe { (*self.as_ptr()).sink_state.clone() }
     }
 
     /// Collection callbacks use ambient R dispatch, so require this owner active.
@@ -924,7 +910,7 @@ mod tests {
             assert!(token.pin().unwrap().is_some());
             assert!(token.try_node_factory().is_ok());
             assert!(!token.with_output_capture(|capture| capture.borrow().is_capturing()));
-            let _ = token.with_connections_state(|state| state.sink.sink_number);
+            assert_eq!(token.sink_state().borrow().sink_number, 0);
             let pointer = token
                 .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
                 .unwrap();

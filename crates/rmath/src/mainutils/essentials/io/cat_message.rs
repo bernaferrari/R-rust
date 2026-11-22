@@ -47,28 +47,24 @@ pub fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// Restores `sink(type="message")` after `capture.output` evaluates its
-/// expressions, including when that evaluation unwinds.
+/// expressions, including when that evaluation unwinds. The `Rc` handle
+/// stays valid even if the session is dropped before the guard.
 struct MessageSinkGuard {
-    instance: *mut crate::sexp::instance::RInstance,
+    state: std::rc::Rc<std::cell::RefCell<crate::mainutils::connections::SinkState>>,
     previous: i32,
 }
 
 impl MessageSinkGuard {
-    fn push(index: i32) -> Self {
-        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
-        let previous = unsafe { (*instance).connections_state.sink.error_con };
-        unsafe {
-            (*instance).connections_state.sink.error_con = index;
-        }
-        Self { instance, previous }
+    fn push(owner: crate::sexp::owner::OwnerToken<'_>, index: i32) -> Self {
+        let state = owner.sink_state();
+        let previous = std::mem::replace(&mut state.borrow_mut().error_con, index);
+        Self { state, previous }
     }
 }
 
 impl Drop for MessageSinkGuard {
     fn drop(&mut self) {
-        unsafe {
-            (*self.instance).connections_state.sink.error_con = self.previous;
-        }
+        self.state.borrow_mut().error_con = self.previous;
     }
 }
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
@@ -173,6 +169,9 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         crate::mainutils::connections::connection_write_bytes(connection, b"");
         Some(connection)
     };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| base_error(e.to_string()));
     let mut capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
         capture_type == "output",
         capture_type == "message",
@@ -184,7 +183,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     // GNU capture.output(type="message", file=) is sink(file, type="message").
     // message() follows that connection rather than the output capture frame.
     let message_sink = if capture_type == "message" {
-        destination.map(MessageSinkGuard::push)
+        destination.map(|index| MessageSinkGuard::push(owner, index))
     } else {
         None
     };
@@ -470,5 +469,42 @@ pub fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         eprintln!("Warning: {}", output);
         R_NilValue()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_sink_cleanup_restores_original_state_after_session_drop() {
+        use crate::sexp::{owner::OwnerToken, session::RSession};
+        let original = RSession::new_for_gc_tests();
+        let replacement = RSession::new_for_gc_tests();
+        let (state, guard) = original.with_active(|| {
+            let owner = OwnerToken::current().unwrap();
+            let state = owner.sink_state();
+            state.borrow_mut().error_con = 3;
+            let guard = MessageSinkGuard::push(owner, 4);
+            assert_eq!(state.borrow().error_con, 4);
+            (state, guard)
+        });
+        drop(original);
+        replacement.with_active(|| {
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                let _guard = guard;
+                panic!("exercise unwind");
+            }));
+            assert!(outcome.is_err());
+            assert_eq!(state.borrow().error_con, 3);
+            assert_eq!(
+                OwnerToken::current()
+                    .unwrap()
+                    .sink_state()
+                    .borrow()
+                    .error_con,
+                2
+            );
+        });
     }
 }

@@ -24,7 +24,8 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
+use crate::sexp::instance::{RInstance, with_required_current_instance};
+use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
@@ -246,18 +247,14 @@ impl Default for SinkState {
     }
 }
 
-/// Connection and sink state owned by one `RInstance`.
+/// Connection state owned by one `RInstance`.
 pub struct ConnectionsState {
     pub table: Vec<Option<Box<RConn>>>,
-    pub sink: SinkState,
 }
 
 impl Default for ConnectionsState {
     fn default() -> Self {
-        ConnectionsState {
-            table: Vec::new(),
-            sink: SinkState::default(),
-        }
+        ConnectionsState { table: Vec::new() }
     }
 }
 
@@ -282,27 +279,6 @@ impl std::ops::DerefMut for ConnectionTableGuard {
     }
 }
 
-pub struct SinkStateGuard {
-    pub sink: *mut SinkState,
-}
-
-impl std::ops::Deref for SinkStateGuard {
-    type Target = SinkState;
-
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: the guard is only built inside with_connections_state,
-        // which holds the instance borrow for the guard's uses.
-        unsafe { &*self.sink }
-    }
-}
-
-impl std::ops::DerefMut for SinkStateGuard {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: same as Deref; callers hold `&mut self` exclusively.
-        unsafe { &mut *self.sink }
-    }
-}
-
 #[inline]
 pub fn with_connections_state<F, R>(f: F) -> R
 where
@@ -322,72 +298,42 @@ pub fn connection_table() -> ConnectionTableGuard {
     })
 }
 
-pub fn sink_state() -> SinkStateGuard {
-    with_connections_state(|state| SinkStateGuard {
-        sink: &mut state.sink,
-    })
-}
-
-pub(crate) fn output_sink_active() -> bool {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    with_current_instance(|inst| unsafe { output_sink_active_in(inst) }).unwrap_or(false)
-}
-
-// P1/P2: raw *mut — this path reenters (r_error unwinds, connection I/O); no &mut RInstance held.
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn output_sink_active_in(instance: *mut RInstance) -> bool {
-    // SAFETY: `instance` points at the live current RInstance; the field
-    // borrow is local to this statement.
-    let sink = unsafe { &(*instance).connections_state.sink };
+pub(crate) fn output_sink_active(owner: OwnerToken<'_>) -> bool {
+    let state = owner.sink_state();
+    let sink = state.borrow();
     sink.sink_number > 0 && sink.output_con != 1
 }
 
-pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    with_current_instance(|instance| unsafe { write_output_sink_in(instance, bytes) })
-        .unwrap_or(false)
-}
-// P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
-    // SAFETY: `instance` points at the live current RInstance.
-    let depth = unsafe { (*instance).connections_state.sink.sink_number };
-    // SAFETY: forwarded raw pointers satisfy `write_output_sinks_between`'s contract per this function's own `# Safety` requirements.
-    unsafe { write_output_sinks_between(instance, bytes, 0, depth) }
+pub(crate) fn write_output_sink(owner: OwnerToken<'_>, bytes: &[u8]) -> bool {
+    let depth = owner.sink_state().borrow().sink_number;
+    write_output_sinks_between(owner, bytes, 0, depth)
 }
 
 /// Write newest-to-oldest down to a capture boundary. Split sinks continue.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn write_output_sinks_between(
-    instance: *mut RInstance,
+pub(crate) fn write_output_sinks_between(
+    owner: OwnerToken<'_>,
     bytes: &[u8],
     floor: usize,
     ceiling: usize,
 ) -> bool {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(&e.to_string()));
+    let state = owner.sink_state();
     for depth in (floor + 1..=ceiling).rev() {
         let (connection, split) = {
-            // SAFETY: `instance` points at the live current RInstance; the
-            // field borrow ends before the connection write below reenters.
-            let sink = unsafe { &(*instance).connections_state.sink };
+            let sink = state.borrow();
             let Some(&connection) = sink.sink_cons.get(depth) else {
                 r_error("invalid sink stack");
             };
             (connection, sink.sink_split[depth])
         };
         connection_write_bytes(connection, bytes);
+        // Connection I/O can close or swap the runtime; re-validate before
+        // touching the sink state again.
+        owner
+            .require_active()
+            .unwrap_or_else(|e| r_error(&e.to_string()));
         if !split {
             return true;
         }

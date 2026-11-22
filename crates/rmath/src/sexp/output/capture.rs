@@ -338,7 +338,12 @@ impl OutputCaptureGuard {
     }
     pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
         let owner = Self::owner();
-        let depth = owner.with_connections_state(|state| state.sink.sink_number);
+        let depth = owner
+            .token()
+            .unwrap_or_else(|e| super::super::context::r_error(e.to_string()))
+            .sink_state()
+            .borrow()
+            .sink_number;
         owner.with_output_capture(|cell| {
             let mut capture = cell.borrow_mut();
             capture.start_with_options(stdout, stderr, split);
@@ -384,11 +389,14 @@ impl Drop for OutputCaptureGuard {
     }
 }
 
+fn is_capturing_owner(owner: super::super::owner::OwnerToken<'_>) -> bool {
+    owner.with_output_capture(|cell| cell.borrow().is_capturing())
+        || crate::mainutils::connections::output_sink_active(owner)
+}
+
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    super::super::instance::with_current_instance(|inst| unsafe { is_capturing_in(inst) })
-        .unwrap_or(false)
+    super::super::owner::OwnerToken::current().is_ok_and(is_capturing_owner)
 }
 
 /// # Safety
@@ -396,16 +404,16 @@ pub fn is_capturing() -> bool {
 /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
 /// no conflicting outstanding borrow of the fields touched here.
 pub unsafe fn is_capturing_in(inst: *mut RInstance) -> bool {
-    // P2: strictly-local RefCell read; no ambient write intervenes.
-    let capture_active = unsafe { (*inst).output_capture.borrow().is_capturing() };
-    // SAFETY: forwarded raw pointers satisfy `output_sink_active_in`'s contract per this function's own `# Safety` requirements.
-    capture_active || unsafe { crate::mainutils::connections::output_sink_active_in(inst) }
+    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+    let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
+    is_capturing_owner(owner)
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    super::super::instance::with_current_instance(|inst| unsafe { capture_stdout_in(inst, msg) });
+    if let Ok(owner) = super::super::owner::OwnerToken::current() {
+        capture_stdout_bytes(owner, msg.as_bytes());
+    }
 }
 
 /// # Safety
@@ -415,7 +423,10 @@ pub fn capture_stdout(msg: &str) {
 /// the accompanying lengths) for the duration of the call.
 pub unsafe fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
     // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { capture_stdout_bytes_in(inst, msg.as_bytes()) };
+    capture_stdout_bytes(
+        unsafe { super::super::owner::OwnerToken::from_raw(inst) },
+        msg.as_bytes(),
+    );
 }
 fn call_native<T>(owner: super::super::owner::OwnerToken<'_>, operation: impl FnOnce() -> T) -> T {
     owner
@@ -437,7 +448,7 @@ fn route_runtime(
 ) -> bool {
     let instance = owner.as_ptr();
     let mut id = owner.with_output_capture(|capture| capture.borrow().current.id);
-    let mut depth = owner.with_connections_state(|state| state.sink.sink_number);
+    let mut depth = owner.sink_state().borrow().sink_number;
     while id != 0 {
         let plan = owner
             .with_output_capture(|capture| capture.borrow().plan(id, stream, depth))
@@ -451,12 +462,9 @@ fn route_runtime(
         };
         if plan.floor < depth {
             let consumed = call_native(owner, || {
-                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-                unsafe {
-                    crate::mainutils::connections::write_output_sinks_between(
-                        instance, msg, plan.floor, depth,
-                    )
-                }
+                crate::mainutils::connections::write_output_sinks_between(
+                    owner, msg, plan.floor, depth,
+                )
             });
             still_present();
             depth = plan.floor;
@@ -498,19 +506,13 @@ fn route_runtime(
     }
     false
 }
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
-    let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
+fn capture_stdout_bytes(owner: super::super::owner::OwnerToken<'_>, msg: &[u8]) {
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
     if !route_runtime(owner, OutputStream::Stdout, msg)
         && !call_native(owner, || {
-            // SAFETY: forwarded raw pointers satisfy `write_output_sink_in`'s contract per this function's own `# Safety` requirements.
-            unsafe { crate::mainutils::connections::write_output_sink_in(inst, msg) }
+            crate::mainutils::connections::write_output_sink(owner, msg)
         })
     {
         write_native_stdout(msg);
@@ -537,8 +539,7 @@ pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_
         .require_active()
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { capture_stdout_bytes_in(owner.as_ptr(), msg) }
+        capture_stdout_bytes(owner, msg)
     }));
     owner
         .require_active()
@@ -555,14 +556,14 @@ pub(crate) fn emit_native_bytes(owner: Option<super::super::owner::OwnerToken<'_
 /// real stderr. The session keeps one ordered stream so the text lands
 /// between print() side effects, deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
-    super::super::instance::with_current_instance(|inst| {
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe { capture_error_bytes_in(inst, OutputStream::Message, msg) }
-    });
+    if let Ok(owner) = super::super::owner::OwnerToken::current() {
+        capture_error_bytes(owner, OutputStream::Message, msg);
+    }
 }
 pub fn capture_stderr(msg: &str) {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    super::super::instance::with_current_instance(|inst| unsafe { capture_stderr_in(inst, msg) });
+    if let Ok(owner) = super::super::owner::OwnerToken::current() {
+        capture_error_bytes(owner, OutputStream::Stderr, msg);
+    }
 }
 /// # Safety
 ///
@@ -571,18 +572,21 @@ pub fn capture_stderr(msg: &str) {
 /// the accompanying lengths) for the duration of the call.
 pub unsafe fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
     // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    unsafe { capture_error_bytes_in(inst, OutputStream::Stderr, msg) };
+    capture_error_bytes(
+        unsafe { super::super::owner::OwnerToken::from_raw(inst) },
+        OutputStream::Stderr,
+        msg,
+    );
 }
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn capture_error_bytes_in(inst: *mut RInstance, stream: OutputStream, msg: &str) {
-    let owner = unsafe { super::super::owner::OwnerToken::from_raw(inst) };
+fn capture_error_bytes(
+    owner: super::super::owner::OwnerToken<'_>,
+    stream: OutputStream,
+    msg: &str,
+) {
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
-    let error_con = owner.with_connections_state(|state| state.sink.error_con);
+    let error_con = owner.sink_state().borrow().error_con;
     if error_con != 2 {
         call_native(owner, || {
             crate::mainutils::connections::connection_write_bytes(error_con, msg.as_bytes())

@@ -487,7 +487,8 @@ pub fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 
     let icon = as_integer(sn);
 
-    let mut sink = sink_state();
+    let state = current_owner().sink_state();
+    let mut sink = state.borrow_mut();
 
     if errcon == 0 {
         // Output sink
@@ -532,12 +533,16 @@ pub fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 
 pub fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let errcon = check_logical_arg(CAR(args), "type");
-    let sink = sink_state();
-    if errcon != 0 {
-        Rf_ScalarInteger(sink.error_con)
-    } else {
-        Rf_ScalarInteger(sink.sink_number as c_int)
-    }
+    let index = {
+        let state = current_owner().sink_state();
+        let sink = state.borrow();
+        if errcon != 0 {
+            sink.error_con
+        } else {
+            sink.sink_number as c_int
+        }
+    };
+    Rf_ScalarInteger(index)
 }
 
 // ---------------------------------------------------------------------------
