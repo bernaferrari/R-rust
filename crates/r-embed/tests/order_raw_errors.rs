@@ -62,3 +62,25 @@ fn portable_order_and_rank_reject_raw_with_gnu_errors() {
     .unwrap();
     assert_raw_order_errors(&mut session);
 }
+
+#[test]
+fn integer_radix_order_preserves_ties_missing_values_and_group_ends() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"x <- c(3L, 1L, 3L, 2L, 1L, NA_integer_)
+stopifnot(identical(order(x, method='radix'), c(2L,5L,4L,1L,3L,6L)))
+stopifnot(identical(order(x, na.last=FALSE, method='radix'), c(6L,2L,5L,4L,1L,3L)))
+stopifnot(identical(order(x, na.last=NA, method='radix'), c(2L,5L,4L,1L,3L)))
+g <- grouping(x)
+stopifnot(identical(attr(g, 'ends'), c(2L,3L,5L,6L)))
+stopifnot(identical(attr(g, 'maxgrpn'), 2L))
+stopifnot(identical(order(c(TRUE,FALSE,TRUE,FALSE), c(2L,2L,1L,1L), method='radix'), c(4L,2L,3L,1L)))
+stopifnot(identical(order(c(NA_integer_,1L,NA_integer_,1L), c(3L,2L,1L,1L), na.last=NA, method='radix'), c(4L,2L)))
+cat('radix-order: PASS\n')"#
+            )
+            .unwrap(),
+        "radix-order: PASS\n"
+    );
+}
