@@ -381,7 +381,12 @@ pub unsafe fn rPsort(x: *mut f64, n: c_int, k: c_int) {
         return;
     }
     // SAFETY: the caller supplies n initialized elements and exclusive access.
-    partial_sort(unsafe { std::slice::from_raw_parts_mut(x, n as usize) }, k as usize, sort_rcmp);
+    partial_sort_reals(unsafe { std::slice::from_raw_parts_mut(x, n as usize) }, k as usize);
+}
+
+/// Partial sort for real slices — partition around the k-th smallest (0-based).
+pub(crate) fn partial_sort_reals(x: &mut [f64], k: usize) {
+    partial_sort(x, k, sort_rcmp);
 }
 
 /// Partial sort for complex arrays — partition around k-th smallest.

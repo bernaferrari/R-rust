@@ -6,8 +6,8 @@ use std::os::raw::{c_double, c_int};
 
 use crate::main::coerce::{asInteger, asReal};
 use crate::main::errors::{Rf_error, Rf_error_cstr};
-use crate::main::sort::rPsort;
-use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};
+use crate::main::sort::partial_sort_reals;
+use crate::sexp::accessors::{LENGTH, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -38,252 +38,235 @@ fn imax2(a: c_int, b: c_int) -> c_int {
     if a > b { a } else { b }
 }
 
-unsafe fn lowest(
-    x: *mut c_double,
-    y: *mut c_double,
-    n: c_int,
-    xs: *const c_double,
-    ys: *mut c_double,
+fn lowest(
+    x: &[c_double],
+    y: &[c_double],
+    xs: c_double,
     nleft: c_int,
     nright: c_int,
-    w: *mut c_double,
-    userw: bool,
-    rw: *const c_double,
-    ok: *mut bool,
-) {
-    unsafe {
-        let mut nrt: c_int;
-        let mut j: c_int;
-        let mut a: c_double;
-        let mut b: c_double;
-        let mut c: c_double;
-        let mut h: c_double;
-        let mut h1: c_double;
-        let mut h9: c_double;
-        let mut r: c_double;
-        let range: c_double;
+    w: &mut [c_double],
+    robust: Option<&[c_double]>,
+) -> Option<c_double> {
+    let n = x.len() as c_int;
+    let mut nrt: c_int;
+    let mut j: c_int;
+    let mut a: c_double;
+    let mut b: c_double;
+    let mut c: c_double;
+    let mut h: c_double;
+    let mut h1: c_double;
+    let mut h9: c_double;
+    let mut r: c_double;
+    let range: c_double;
 
-        range = *x.add((n - 1) as usize) - *x.add(0);
-        h = fmax2(
-            *xs - *x.add((nleft - 1) as usize),
-            *x.add((nright - 1) as usize) - *xs,
-        );
-        h9 = 0.999 * h;
-        h1 = 0.001 * h;
+    range = x[(n - 1) as usize] - x[0];
+    h = fmax2(
+        xs - x[(nleft - 1) as usize],
+        x[(nright - 1) as usize] - xs,
+    );
+    h9 = 0.999 * h;
+    h1 = 0.001 * h;
 
-        // sum of weights
-        a = 0.0;
-        j = nleft;
-        while j <= n {
-            *w.add((j - 1) as usize) = 0.0;
-            r = (*x.add((j - 1) as usize) - *xs).abs();
-            if r <= h9 {
-                if r <= h1 {
-                    *w.add((j - 1) as usize) = 1.0;
-                } else {
-                    *w.add((j - 1) as usize) = fcube(1.0 - fcube(r / h));
-                }
-                if userw {
-                    *w.add((j - 1) as usize) *= *rw.add((j - 1) as usize);
-                }
-                a += *w.add((j - 1) as usize);
-            } else if *x.add((j - 1) as usize) > *xs {
-                break;
+    // sum of weights
+    a = 0.0;
+    j = nleft;
+    while j <= n {
+        w[(j - 1) as usize] = 0.0;
+        r = (x[(j - 1) as usize] - xs).abs();
+        if r <= h9 {
+            if r <= h1 {
+                w[(j - 1) as usize] = 1.0;
+            } else {
+                w[(j - 1) as usize] = fcube(1.0 - fcube(r / h));
             }
+            if let Some(rw) = robust {
+                w[(j - 1) as usize] *= rw[(j - 1) as usize];
+            }
+            a += w[(j - 1) as usize];
+        } else if x[(j - 1) as usize] > xs {
+            break;
+        }
+        j += 1;
+    }
+
+    nrt = j - 1;
+    if a <= 0.0 {
+        return None;
+    }
+
+    // weighted least squares
+    // make sum of w[j] == 1
+    j = nleft;
+    while j <= nrt {
+        w[(j - 1) as usize] /= a;
+        j += 1;
+    }
+    if h > 0.0 {
+        a = 0.0;
+
+        // use linear fit
+        // weighted center of x values
+        j = nleft;
+        while j <= nrt {
+            a += w[(j - 1) as usize] * x[(j - 1) as usize];
             j += 1;
         }
+        b = xs - a;
+        c = 0.0;
+        j = nleft;
+        while j <= nrt {
+            c += w[(j - 1) as usize] * fsquare(x[(j - 1) as usize] - a);
+            j += 1;
+        }
+        if c.sqrt() > 0.001 * range {
+            b /= c;
 
-        nrt = j - 1;
-        if a <= 0.0 {
-            *ok = false;
-        } else {
-            *ok = true;
-
-            // weighted least squares
-            // make sum of w[j] == 1
+            // points are spread out enough to compute slope
             j = nleft;
             while j <= nrt {
-                *w.add((j - 1) as usize) /= a;
-                j += 1;
-            }
-            if h > 0.0 {
-                a = 0.0;
-
-                // use linear fit
-                // weighted center of x values
-                j = nleft;
-                while j <= nrt {
-                    a += *w.add((j - 1) as usize) * *x.add((j - 1) as usize);
-                    j += 1;
-                }
-                b = *xs - a;
-                c = 0.0;
-                j = nleft;
-                while j <= nrt {
-                    c += *w.add((j - 1) as usize) * fsquare(*x.add((j - 1) as usize) - a);
-                    j += 1;
-                }
-                if c.sqrt() > 0.001 * range {
-                    b /= c;
-
-                    // points are spread out enough to compute slope
-                    j = nleft;
-                    while j <= nrt {
-                        *w.add((j - 1) as usize) *= b * (*x.add((j - 1) as usize) - a) + 1.0;
-                        j += 1;
-                    }
-                }
-            }
-            *ys = 0.0;
-            j = nleft;
-            while j <= nrt {
-                *ys += *w.add((j - 1) as usize) * *y.add((j - 1) as usize);
+                w[(j - 1) as usize] *= b * (x[(j - 1) as usize] - a) + 1.0;
                 j += 1;
             }
         }
     }
+    let mut fitted = 0.0;
+    j = nleft;
+    while j <= nrt {
+        fitted += w[(j - 1) as usize] * y[(j - 1) as usize];
+        j += 1;
+    }
+    Some(fitted)
 }
 
-unsafe fn clowess(
-    x: *const c_double,
-    y: *const c_double,
-    n: c_int,
+fn clowess(
+    x: &[c_double],
+    y: &[c_double],
     f: c_double,
     nsteps: c_int,
     delta: c_double,
-    ys: *mut c_double,
-    rw: *mut c_double,
-    res: *mut c_double,
+    ys: &mut [c_double],
+    rw: &mut [c_double],
+    res: &mut [c_double],
 ) {
-    unsafe {
-        if n < 2 {
-            *ys = *y;
-            return;
-        }
+    let n = x.len() as c_int;
+    if n <= 1 {
+        ys.copy_from_slice(y);
+        return;
+    }
 
-        let ns = imax2(2, imin2(n, (f * n as c_double + 1e-7) as c_int));
+    let ns = imax2(2, imin2(n, (f * n as c_double + 1e-7) as c_int));
 
-        let mut iter: c_int = 1;
-        while iter <= nsteps + 1 {
-            let mut nleft: c_int = 1;
-            let mut nright: c_int = ns;
-            let mut last: c_int = 0;
-            let mut i: c_int = 1;
+    for iter in 0..=nsteps {
+        let mut nleft: c_int = 1;
+        let mut nright: c_int = ns;
+        let mut last: c_int = 0;
+        let mut i: c_int = 1;
 
-            loop {
-                if nright < n {
-                    let d1 = *x.add((i - 1) as usize) - *x.add((nleft - 1) as usize);
-                    let d2 = *x.add(nright as usize) - *x.add((i - 1) as usize);
+        loop {
+            if nright < n {
+                let d1 = x[(i - 1) as usize] - x[(nleft - 1) as usize];
+                let d2 = x[nright as usize] - x[(i - 1) as usize];
 
-                    if d1 > d2 {
-                        nleft += 1;
-                        nright += 1;
-                        continue;
-                    }
+                if d1 > d2 {
+                    nleft += 1;
+                    nright += 1;
+                    continue;
                 }
+            }
 
-                let mut ok = false;
-                lowest(
-                    x as *mut c_double,
-                    y as *mut c_double,
-                    n,
-                    &*x.add((i - 1) as usize),
-                    ys.add((i - 1) as usize),
-                    nleft,
-                    nright,
-                    res,
-                    iter > 1,
-                    rw,
-                    &mut ok,
-                );
-                if !ok {
-                    *ys.add((i - 1) as usize) = *y.add((i - 1) as usize);
+            let i0 = (i - 1) as usize;
+            ys[i0] = lowest(
+                x,
+                y,
+                x[i0],
+                nleft,
+                nright,
+                res,
+                (iter > 0).then_some(&*rw),
+            )
+            .unwrap_or(y[i0]);
+
+            if last < i - 1 {
+                let denom = x[i0] - x[(last - 1) as usize];
+                let mut j = last + 1;
+                while j < i {
+                    let alpha = (x[(j - 1) as usize] - x[(last - 1) as usize]) / denom;
+                    ys[(j - 1) as usize] =
+                        alpha * ys[i0] + (1.0 - alpha) * ys[(last - 1) as usize];
+                    j += 1;
                 }
+            }
 
-                if last < i - 1 {
-                    let denom = *x.add((i - 1) as usize) - *x.add((last - 1) as usize);
-                    let mut j = last + 1;
-                    while j < i {
-                        let alpha =
-                            (*x.add((j - 1) as usize) - *x.add((last - 1) as usize)) / denom;
-                        *ys.add((j - 1) as usize) = alpha * *ys.add((i - 1) as usize)
-                            + (1.0 - alpha) * *ys.add((last - 1) as usize);
-                        j += 1;
-                    }
-                }
+            last = i;
 
-                last = i;
-
-                let cut = *x.add((last - 1) as usize) + delta;
-                i = last + 1;
-                while i <= n {
-                    if *x.add((i - 1) as usize) > cut {
-                        break;
-                    }
-                    if *x.add((i - 1) as usize) == *x.add((last - 1) as usize) {
-                        *ys.add((i - 1) as usize) = *ys.add((last - 1) as usize);
-                        last = i;
-                    }
-                    i += 1;
-                }
-                i = imax2(last + 1, i - 1);
-                if last >= n {
+            let cut = x[(last - 1) as usize] + delta;
+            i = last + 1;
+            while i <= n {
+                if x[(i - 1) as usize] > cut {
                     break;
                 }
-            }
-
-            let mut i: c_int = 0;
-            while i < n {
-                *res.add(i as usize) = *y.add(i as usize) - *ys.add(i as usize);
-                i += 1;
-            }
-
-            let mut sc: c_double = 0.0;
-            let mut i: c_int = 0;
-            while i < n {
-                sc += (*res.add(i as usize)).abs();
-                i += 1;
-            }
-            sc /= n as c_double;
-
-            if iter > nsteps {
-                break;
-            }
-
-            let mut i: c_int = 0;
-            while i < n {
-                *rw.add(i as usize) = (*res.add(i as usize)).abs();
-                i += 1;
-            }
-
-            let m1 = n / 2;
-            rPsort(rw, n, m1);
-            let cmad = if n % 2 == 0 {
-                let m2 = n - m1 - 1;
-                rPsort(rw, n, m2);
-                3.0 * (*rw.add(m1 as usize) + *rw.add(m2 as usize))
-            } else {
-                6.0 * *rw.add(m1 as usize)
-            };
-
-            if cmad < 1e-7 * sc {
-                break;
-            }
-            let c9 = 0.999 * cmad;
-            let c1 = 0.001 * cmad;
-            let mut i: c_int = 0;
-            while i < n {
-                let r = (*res.add(i as usize)).abs();
-                if r <= c1 {
-                    *rw.add(i as usize) = 1.0;
-                } else if r <= c9 {
-                    *rw.add(i as usize) = fsquare(1.0 - fsquare(r / cmad));
-                } else {
-                    *rw.add(i as usize) = 0.0;
+                if x[(i - 1) as usize] == x[(last - 1) as usize] {
+                    ys[(i - 1) as usize] = ys[(last - 1) as usize];
+                    last = i;
                 }
                 i += 1;
             }
-            iter += 1;
+            i = imax2(last + 1, i - 1);
+            if last >= n {
+                break;
+            }
+        }
+
+        let mut i: c_int = 0;
+        while i < n {
+            res[i as usize] = y[i as usize] - ys[i as usize];
+            i += 1;
+        }
+
+        let mut sc: c_double = 0.0;
+        let mut i: c_int = 0;
+        while i < n {
+            sc += res[i as usize].abs();
+            i += 1;
+        }
+        sc /= n as c_double;
+
+        if iter == nsteps {
+            break;
+        }
+
+        let mut i: c_int = 0;
+        while i < n {
+            rw[i as usize] = res[i as usize].abs();
+            i += 1;
+        }
+
+        let m1 = n / 2;
+        partial_sort_reals(rw, m1 as usize);
+        let cmad = if n % 2 == 0 {
+            let m2 = n - m1 - 1;
+            partial_sort_reals(rw, m2 as usize);
+            3.0 * (rw[m1 as usize] + rw[m2 as usize])
+        } else {
+            6.0 * rw[m1 as usize]
+        };
+
+        if cmad < 1e-7 * sc {
+            break;
+        }
+        let c9 = 0.999 * cmad;
+        let c1 = 0.001 * cmad;
+        let mut i: c_int = 0;
+        while i < n {
+            let r = res[i as usize].abs();
+            if r <= c1 {
+                rw[i as usize] = 1.0;
+            } else if r <= c9 {
+                rw[i as usize] = fsquare(1.0 - fsquare(r / cmad));
+            } else {
+                rw[i as usize] = 0.0;
+            }
+            i += 1;
         }
     }
 }
@@ -293,6 +276,9 @@ pub fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
         Rf_error_cstr(c"invalid input");
     }
     let nx = LENGTH(x);
+    if nx != LENGTH(y) {
+        Rf_error_cstr(c"'x' and 'y' lengths differ");
+    }
     if nx == NA_INTEGER || nx == 0 {
         Rf_error_cstr(c"invalid input");
     }
@@ -309,25 +295,15 @@ pub fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
         Rf_error_cstr(c"'delta' must be finite and > 0");
     }
 
+    let x = super::checked::real_vec(x);
+    let y = super::checked::real_vec(y);
+    let mut ys = vec![0.0; nx as usize];
+    let mut rw = vec![0.0; nx as usize];
+    let mut res = vec![0.0; nx as usize];
+    clowess(&x, &y, f, iter, delta, &mut ys, &mut rw, &mut res);
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx);
     let _ans_guard = protect(ans);
-    let mut rw = vec![0.0f64; nx as usize];
-    let mut res = vec![0.0f64; nx as usize];
-    // SAFETY: `x`, `y` and the protected `ans` are live REALSXPs of length
-    // `nx`, and `rw`/`res` are `nx`-cell scratch buffers owned by this frame.
-    unsafe {
-        clowess(
-            REAL(x),
-            REAL(y),
-            nx,
-            f,
-            iter,
-            delta,
-            REAL(ans),
-            rw.as_mut_ptr(),
-            res.as_mut_ptr(),
-        );
-    }
+    super::checked::set_reals(ans, &ys);
     ans
 }
 pub unsafe extern "C-unwind" fn c_lowess(
@@ -381,6 +357,12 @@ pub fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         x0 = seq;
     }
     let n = crate::sexp::accessors::XLENGTH(x0);
+    if crate::sexp::accessors::XLENGTH(y0) != n {
+        crate::mainutils::errors::errorcall_str(call, "'x' and 'y' lengths differ");
+    }
+    if n > c_int::MAX as R_xlen_t {
+        crate::mainutils::errors::errorcall_str(call, "invalid input");
+    }
     let f = if absent(slots[2]) {
         2.0 / 3.0
     } else {
