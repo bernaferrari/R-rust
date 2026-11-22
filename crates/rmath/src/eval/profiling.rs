@@ -13,8 +13,8 @@
 //! - `doprof` -- render a sample on the owning execution thread
 //! - `ProfileSchedule` -- owner-local CPU/elapsed deadlines
 //! - `lineprof` / `getFilenum` -- line profiling helpers
-//! - `pb_str` / `pb_uint` / `pb_int` / `pb_dbl` -- profiling buffer writers
-//! - `pf_str` / `pf_int` -- profiling file writers
+//! - `ProfileBuffer` -- checked profiling output buffer
+//! - `write_profile_bytes` / `pf_int` -- profiling file writers
 //! - `findProfContext` -- context traversal for profiling
 //! - `do_bcprofstart` / `do_bcprofstop` / `do_bcprofcounts` -- BC profiling
 //! - `dobcprof` / `dobcprof_null` -- BC profiling signal handlers
@@ -23,19 +23,19 @@
 #![cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_double, c_int};
 use std::ptr;
 
 use crate::eval::attrib_core::getAttrib;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF, XLENGTH,
+    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::context::RCNTXT;
 use crate::sexp::context::ctxt_flags;
 use crate::sexp::envir::R_findVar;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_FINITE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, TRUE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{
@@ -46,7 +46,6 @@ use crate::sexp::instance::{
 mod schedule;
 mod workspace;
 pub(crate) use schedule::ProfileSchedule;
-use workspace::ProfileBuffer;
 
 /// Read only the caller's thread CPU counter; no runtime or process timer.
 #[cfg(all(unix, not(target_arch = "wasm32")))]
@@ -564,18 +563,17 @@ unsafe fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileS
     }
 }
 
-unsafe fn write_memory_profile_prefix(pb: *mut profbuf, snapshot: MemoryProfileSnapshot) {
-    unsafe {
-        pb_str(pb, b":\0".as_ptr() as *const c_char);
-        pb_uint(pb, snapshot.current_bytes);
-        pb_str(pb, b":\0".as_ptr() as *const c_char);
-        pb_uint(pb, snapshot.peak_bytes);
-        pb_str(pb, b":\0".as_ptr() as *const c_char);
-        pb_uint(pb, snapshot.active_nodes);
-        pb_str(pb, b":\0".as_ptr() as *const c_char);
-        pb_uint(pb, snapshot.gc_freed_nodes);
-        pb_str(pb, b":\0".as_ptr() as *const c_char);
+fn write_memory_profile_prefix(pb: &mut ProfileBuffer<'_>, snapshot: MemoryProfileSnapshot) {
+    for value in [
+        snapshot.current_bytes,
+        snapshot.peak_bytes,
+        snapshot.active_nodes,
+        snapshot.gc_freed_nodes,
+    ] {
+        pb.append(b":");
+        pb.append_integer(value, false);
     }
+    pb.append(b":");
 }
 
 // ---------------------------------------------------------------------------
@@ -615,210 +613,98 @@ pub(crate) unsafe fn R_isRprofiling_in(instance: *mut RInstance) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// profbuf -- profiling output buffer
+// ProfileBuffer -- profiling output buffer
 // ---------------------------------------------------------------------------
 
-/// Profiling output buffer structure.
+/// Checked profiling output buffer over a steady-state stack array.
 ///
-/// The `pb_*` functions write to this buffer, advancing `ptr` and
-/// maintaining `left`. If the write wouldn't fit leaving one more byte
-/// available for the terminator, `left` is set to zero.
-#[repr(C)]
-struct profbuf {
-    ptr: *mut c_char,
-    left: usize,
+/// Appends keep one byte reserved for the caller's terminator, as the old
+/// `pb_*` writers did. An append that cannot fit sets a sticky overflow flag;
+/// `as_bytes` then yields nothing so the whole sample is discarded.
+struct ProfileBuffer<'a> {
+    bytes: &'a mut [u8],
+    used: usize,
+    overflow: bool,
 }
-
-// ---------------------------------------------------------------------------
-// pb_str -- write string to profiling buffer
-// ---------------------------------------------------------------------------
-
-/// Write a string to the profiling buffer.
-///
-/// If the string fits (with room for terminator), add it excluding the
-/// terminator. If it doesn't fit, set `left` to 0.
-///
-/// Ported from R's `pb_str()` in eval.c.
-unsafe fn pb_str(pb: *mut profbuf, s: *const c_char) {
-    unsafe {
-        let mut len: usize = 0;
-        while *s.add(len) != 0 {
-            len += 1;
-        }
-        if len < (*pb).left {
-            for i in 0..len {
-                *(*pb).ptr.add(i) = *s.add(i);
-            }
-            (*pb).ptr = (*pb).ptr.add(len);
-            (*pb).left -= len;
-        } else {
-            (*pb).left = 0;
+impl<'a> ProfileBuffer<'a> {
+    fn new(bytes: &'a mut [u8]) -> Self {
+        Self {
+            bytes,
+            used: 0,
+            overflow: false,
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// pb_uint -- write uint64 to profiling buffer
-// ---------------------------------------------------------------------------
-
-/// Write an unsigned 64-bit integer to the profiling buffer.
-///
-/// Ported from R's `pb_uint()` in eval.c.
-unsafe fn pb_uint(pb: *mut profbuf, num: u64) {
-    unsafe {
-        let mut digits = [0u8; 20]; // 64-bit unsigned integers
-        let mut i: usize = 0;
-        let mut n = num;
-
-        loop {
-            digits[i] = (n % 10) as u8 + b'0';
-            i += 1;
-            n /= 10;
-            if n == 0 {
-                break;
-            }
-        }
-        if i < (*pb).left {
-            let mut j: usize = 0;
-            // Reverse digits
-            let mut k = i as isize - 1;
-            while k >= 0 {
-                *(*pb).ptr.add(j) = digits[k as usize] as c_char;
-                j += 1;
-                k -= 1;
-            }
-            (*pb).ptr = (*pb).ptr.add(j);
-            (*pb).left -= j;
-        } else {
-            (*pb).left = 0;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// pb_int -- write int64 to profiling buffer
-// ---------------------------------------------------------------------------
-
-/// Write a signed 64-bit integer to the profiling buffer.
-///
-/// Ported from R's `pb_int()` in eval.c.
-unsafe fn pb_int(pb: *mut profbuf, num: i64) {
-    unsafe {
-        let mut digits = [0u8; 19]; // 64-bit signed integers
-        let mut i: usize = 0;
-        let negative: bool;
-        let mut n = num;
-
-        if num < 0 {
-            negative = true;
-            n = -num;
-        } else {
-            negative = false;
-        }
-
-        loop {
-            digits[i] = (n % 10) as u8 + b'0';
-            i += 1;
-            n /= 10;
-            if n == 0 {
-                break;
-            }
-        }
-
-        let neg_flag: usize = if negative { 1 } else { 0 };
-        if neg_flag + i < (*pb).left {
-            if negative {
-                *(*pb).ptr = '-' as c_char;
-                (*pb).ptr = (*pb).ptr.add(1);
-                (*pb).left -= 1;
-            }
-            let mut j: usize = 0;
-            let mut k = i as isize - 1;
-            while k >= 0 {
-                *(*pb).ptr.add(j) = digits[k as usize] as c_char;
-                j += 1;
-                k -= 1;
-            }
-            (*pb).ptr = (*pb).ptr.add(j);
-            (*pb).left -= j;
-        } else {
-            (*pb).left = 0;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// pb_dbl -- write double (integer part) to profiling buffer
-// ---------------------------------------------------------------------------
-
-/// Write the integer part of a double to the profiling buffer.
-///
-/// Careful: this is very simplistic printing of the integer parts of doubles
-/// (like %0.f) used only for stack trace in profiling data.
-/// Not suitable for general re-use.
-///
-/// Ported from R's `pb_dbl()` in eval.c.
-unsafe fn pb_dbl(pb: *mut profbuf, num: c_double) {
-    unsafe {
-        // Handle non-finite values
-        if !R_FINITE(num) {
-            // Check NA first (NA is also NaN, so order matters)
-            // In R, ISNA checks for the specific NA pattern
-            if num.to_bits() == f64::NAN.to_bits() {
-                // Could be NA or NaN -- simplified check
-                pb_str(pb, b"NaN\0".as_ptr() as *const c_char);
-            } else if num > 0.0 {
-                pb_str(pb, b"Inf\0".as_ptr() as *const c_char);
-            } else {
-                pb_str(pb, b"-Inf\0".as_ptr() as *const c_char);
-            }
+    fn append(&mut self, bytes: &[u8]) {
+        if self.overflow {
             return;
         }
-
-        let mut digits = [0u8; PB_MAX_DBL_DIGITS];
-        let mut i: usize = 0;
-        let negative: bool;
-        let mut n = num;
-
-        if num < 0.0 {
-            negative = true;
-            n = -n;
-        } else {
-            negative = false;
+        let Some(end) = self
+            .used
+            .checked_add(bytes.len())
+            .filter(|&end| end < self.bytes.len())
+        else {
+            self.overflow = true;
+            return;
+        };
+        self.bytes[self.used..end].copy_from_slice(bytes);
+        self.used = end;
+    }
+    fn append_digits(&mut self, digits: &mut [u8], negative: bool) {
+        digits.reverse();
+        if negative {
+            self.append(b"-");
         }
-
+        self.append(digits);
+    }
+    fn append_integer(&mut self, mut num: u64, negative: bool) {
+        let mut digits = [0u8; 20];
+        let mut used = 0;
         loop {
-            digits[i] = (n % 10.0) as u8 + b'0';
-            i += 1;
+            digits[used] = (num % 10) as u8 + b'0';
+            used += 1;
+            num /= 10;
+            if num == 0 {
+                break;
+            }
+        }
+        self.append_digits(&mut digits[..used], negative);
+    }
+    fn append_int(&mut self, num: i64) {
+        self.append_integer(num.unsigned_abs(), num.is_negative());
+    }
+    /// Simplistic printing of the integer parts of doubles (like %0.f) used
+    /// only for stack traces in profiling data. Not suitable for general use.
+    fn append_double(&mut self, num: f64) {
+        if !num.is_finite() {
+            // Keep the existing profile spelling for non-finite values.
+            self.append(if num.to_bits() == f64::NAN.to_bits() {
+                b"NaN"
+            } else if num > 0.0 {
+                b"Inf"
+            } else {
+                b"-Inf"
+            });
+            return;
+        }
+        let mut digits = [0u8; PB_MAX_DBL_DIGITS];
+        let mut n = num.abs();
+        let mut used = 0;
+        loop {
+            digits[used] = (n % 10.0) as u8 + b'0';
+            used += 1;
             n /= 10.0;
             if n < 1.0 {
                 break;
             }
-            if i >= PB_MAX_DBL_DIGITS {
+            if used == digits.len() {
                 // Cannot happen with IEEE double
                 return;
             }
         }
-
-        let neg_flag: usize = if negative { 1 } else { 0 };
-        if neg_flag + i < (*pb).left {
-            if negative {
-                *(*pb).ptr = '-' as c_char;
-                (*pb).ptr = (*pb).ptr.add(1);
-                (*pb).left -= 1;
-            }
-            let mut j: usize = 0;
-            let mut k = i as isize - 1;
-            while k >= 0 {
-                *(*pb).ptr.add(j) = digits[k as usize] as c_char;
-                j += 1;
-                k -= 1;
-            }
-            (*pb).ptr = (*pb).ptr.add(j);
-            (*pb).left -= j;
-        } else {
-            (*pb).left = 0;
-        }
+        self.append_digits(&mut digits[..used], num < 0.0);
+    }
+    fn as_bytes(&self) -> Option<&[u8]> {
+        (!self.overflow).then(|| &self.bytes[..self.used])
     }
 }
 
@@ -849,7 +735,7 @@ fn ensure_source_slots(
     if length >= maximum || (capacity != 0 && !charged) {
         return Ok(false);
     }
-    let Some(mut replacement) = ProfileBuffer::with_capacity(owner, maximum)? else {
+    let Some(mut replacement) = workspace::ProfileBuffer::with_capacity(owner, maximum)? else {
         return Ok(false);
     };
     if !with_profiling_state(|state| replacement.copy_from_slice(&state.srcfiles)) {
@@ -991,72 +877,72 @@ fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
 /// Write line profiling data to the profiling output buffer.
 ///
 /// Ported from R's `lineprof()` in eval.c.
-unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
-    unsafe {
-        if srcref.is_null() || srcref == R_NilValue() {
-            return;
-        }
-        let instance = with_required_current_instance(|instance| instance);
-        let pin = crate::sexp::context::pin_context_owner_in(instance);
-        let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
-        let epoch = ProfileEpoch::capture(owner)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let srcref = crate::sexp::context::own_control_value(srcref);
-        let line = crate::mainutils::coerce::asInteger(srcref.as_raw());
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        if line == NA_INTEGER {
-            return;
-        }
-        let srcfile_sym = crate::sexp::symbol::install_str("srcfile");
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        let srcfile = getAttrib(srcref.as_raw(), srcfile_sym);
-        if !epoch.unchanged() {
-            return;
-        }
-        if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
-            return;
-        }
-        let srcfile = crate::sexp::context::own_control_value(srcfile);
-        let filename_sym = crate::sexp::symbol::install_str("filename");
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        let filename = R_findVar(filename_sym, srcfile.as_raw());
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        let filename = crate::sexp::context::own_control_value(filename);
-        if filename.typeof_() != SEXPTYPE::STRSXP {
-            return;
-        }
-        let length = filename.len();
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        if length == 0 {
-            return;
-        }
-        let chars = crate::sexp::context::own_control_value(STRING_ELT(filename.as_raw(), 0));
-        crate::sexp::context::require_context_owner_live(pin.as_ref());
-        if !epoch.unchanged() {
-            return;
-        }
-        let number = getFilenum(&chars);
-        if number != 0 {
-            pb_int(pb, number as i64);
-            pb_str(pb, c"#".as_ptr());
-            pb_int(pb, line as i64);
-            pb_str(pb, c" ".as_ptr());
-        }
+fn lineprof(pb: &mut ProfileBuffer<'_>, srcref: SEXP) {
+    if srcref.is_null() || srcref == R_NilValue() {
+        return;
+    }
+    let owner = crate::sexp::owner::OwnerToken::current()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let epoch = ProfileEpoch::capture(owner)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let srcref = crate::sexp::context::own_control_value(srcref);
+    let line = crate::mainutils::coerce::asInteger(srcref.as_raw());
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    if line == NA_INTEGER {
+        return;
+    }
+    let srcfile_sym = crate::sexp::symbol::install_str("srcfile");
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    let srcfile = getAttrib(srcref.as_raw(), srcfile_sym);
+    if !epoch.unchanged() {
+        return;
+    }
+    if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
+        return;
+    }
+    let srcfile = crate::sexp::context::own_control_value(srcfile);
+    let filename_sym = crate::sexp::symbol::install_str("filename");
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    let filename = R_findVar(filename_sym, srcfile.as_raw());
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    let filename = crate::sexp::context::own_control_value(filename);
+    if filename.typeof_() != SEXPTYPE::STRSXP {
+        return;
+    }
+    let length = filename.len();
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    if length == 0 {
+        return;
+    }
+    let chars = crate::sexp::context::own_control_value(STRING_ELT(filename.as_raw(), 0));
+    crate::sexp::context::require_context_owner_live(pin.as_ref());
+    if !epoch.unchanged() {
+        return;
+    }
+    let number = getFilenum(&chars);
+    if number != 0 {
+        pb.append_int(number as i64);
+        pb.append(b"#");
+        pb.append_int(line as i64);
+        pb.append(b" ");
     }
 }
 
@@ -1125,44 +1011,39 @@ unsafe fn findProfContext(cptr: *mut RCNTXT, eval_internal: SEXP) -> *mut RCNTXT
 }
 
 // ---------------------------------------------------------------------------
-// pf_str -- write string to profile file
+// write_profile_bytes -- write bytes to profile file
 // ---------------------------------------------------------------------------
 
-/// Write a string to the profile output file.
+/// Write a byte slice to the profile output file.
 ///
-/// On Unix, this avoids calling fprintf (signal-safe).
+/// On Unix, this avoids calling fprintf (signal-safe); EINTR retries.
 /// Ported from R's `pf_str()` in eval.c.
 #[cfg(not(target_arch = "wasm32"))]
-unsafe fn pf_str(s: *const c_char) -> isize {
-    unsafe {
-        let outfile = with_profiling_state(|state| state.profile_outfile);
-        if outfile < 0 {
-            return -1;
-        }
-
-        // Compute length
-        let mut nbyte: usize = 0;
-        while *s.add(nbyte) != 0 {
-            nbyte += 1;
-        }
-
-        let mut wbyte: usize = 0;
-        loop {
-            let w = libc::write(outfile, s.add(wbyte) as *const c_void, nbyte - wbyte);
-            if w == -1 {
-                let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if err == libc::EINTR {
-                    continue;
-                } else {
-                    return -1;
-                }
-            }
-            wbyte += w as usize;
-            if wbyte == nbyte || w == 0 {
-                return wbyte as isize;
-            }
-        }
+fn write_profile_bytes(mut bytes: &[u8]) -> isize {
+    let outfile = with_profiling_state(|state| state.profile_outfile);
+    if outfile < 0 {
+        return -1;
     }
+
+    let mut written = 0;
+    while !bytes.is_empty() {
+        // SAFETY: synchronous write borrows this valid readable slice; the
+        // current profiling owner supplies the fd. Returned count <= len.
+        let count = unsafe { libc::write(outfile, bytes.as_ptr().cast(), bytes.len()) };
+        if count < 0 {
+            match std::io::Error::last_os_error().kind() {
+                std::io::ErrorKind::Interrupted => continue,
+                _ => return -1,
+            }
+        }
+        if count == 0 {
+            break;
+        }
+        let count = count as usize;
+        written += count;
+        bytes = &bytes[count..];
+    }
+    written as isize
 }
 
 /// WASM M1 no-op stub: no file-descriptor profiling output on wasm.
@@ -1170,7 +1051,7 @@ unsafe fn pf_str(s: *const c_char) -> isize {
 /// 'not available on this platform' sentinel (-1) used when no
 /// profile output file is open.
 #[cfg(target_arch = "wasm32")]
-fn pf_str(_s: *const c_char) -> isize {
+fn write_profile_bytes(_bytes: &[u8]) -> isize {
     -1
 }
 
@@ -1182,20 +1063,11 @@ fn pf_str(_s: *const c_char) -> isize {
 ///
 /// Ported from R's `pf_int()` in eval.c.
 fn pf_int(num: c_int) {
-    unsafe {
-        let mut buf = [0u8; 32];
-        let mut pb = profbuf {
-            ptr: buf.as_mut_ptr() as *mut c_char,
-            left: 32,
-        };
-        pb_int(&mut pb, num as i64);
-        // Null-terminate
-        if pb.left > 0 {
-            *pb.ptr = 0;
-        } else {
-            buf[0] = 0;
-        }
-        pf_str(buf.as_ptr() as *const c_char);
+    let mut bytes = [0u8; 32];
+    let mut pb = ProfileBuffer::new(&mut bytes);
+    pb.append_int(num as i64);
+    if let Some(bytes) = pb.as_bytes() {
+        write_profile_bytes(bytes);
     }
 }
 
@@ -1238,10 +1110,7 @@ fn doprof(_sig: c_int) {
             let mut buf = [0u8; PROFBUFSIZ];
             let prevnum = with_profiling_state(|state| state.line_profiling);
 
-            let mut pb = profbuf {
-                ptr: buf.as_mut_ptr() as *mut c_char,
-                left: PROFBUFSIZ,
-            };
+            let mut pb = ProfileBuffer::new(&mut buf);
 
             // Memory profiling: record memory allocation sizes
             if with_profiling_state(|state| state.mem_profiling) != 0 {
@@ -1252,7 +1121,7 @@ fn doprof(_sig: c_int) {
             if with_profiling_state(|state| state.gc_profiling) != 0
                 && crate::mainutils::memory_main::R_gc_running() != 0
             {
-                pb_str(&mut pb, b"\"<GC>\" \0".as_ptr() as *const c_char);
+                pb.append(b"\"<GC>\" ");
             }
 
             let instance = with_required_current_instance(|instance| instance);
@@ -1283,7 +1152,7 @@ fn doprof(_sig: c_int) {
             }
             // Even an empty context stack uses one bounded snapshot slot before
             // line/source providers run. Failed admission skips this sample.
-            let Some(mut frames) = ProfileBuffer::with_capacity(owner, frame_count.max(1))
+            let Some(mut frames) = workspace::ProfileBuffer::with_capacity(owner, frame_count.max(1))
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
             else {
                 with_profiling_state(|state| state.profiling_error = 3);
@@ -1339,11 +1208,11 @@ fn doprof(_sig: c_int) {
                 {
                     let fun_owner = crate::sexp::context::own_control_value(CAR(call));
                     let fun = fun_owner.as_raw();
-                    pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
+                    pb.append(b"\"");
 
                     if TYPEOF(fun) == SEXPTYPE::SYMSXP {
                         // Simple symbol: just print its name
-                        pb_str(&mut pb, CHAR(PRINTNAME(fun)));
+                        pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(fun)));
                     } else if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::LANGSXP {
                         let fun_head = CAR(fun);
                         let arg1_owner = crate::sexp::context::own_control_value(CADR(fun));
@@ -1359,9 +1228,9 @@ fn doprof(_sig: c_int) {
                             && TYPEOF(arg2) == SEXPTYPE::SYMSXP
                         {
                             // Function accessed via ::, :::, or $
-                            pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
-                            pb_str(&mut pb, CHAR(PRINTNAME(CAR(fun))));
-                            pb_str(&mut pb, CHAR(PRINTNAME(arg2)));
+                            pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(arg1)));
+                            pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(CAR(fun))));
+                            pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(arg2)));
                         } else if fun_head == R_Bracket2Symbol()
                             && !arg1.is_null()
                             && TYPEOF(arg1) == SEXPTYPE::SYMSXP
@@ -1376,13 +1245,13 @@ fn doprof(_sig: c_int) {
                                 return;
                             }
                             // Function accessed via [[
-                            pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
-                            pb_str(&mut pb, b"[[\0".as_ptr() as *const c_char);
+                            pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(arg1)));
+                            pb.append(b"[[");
 
                             if TYPEOF(arg2) == SEXPTYPE::SYMSXP {
-                                pb_str(&mut pb, CHAR(PRINTNAME(arg2)));
+                                pb.append(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(arg2)));
                             } else if TYPEOF(arg2) == SEXPTYPE::STRSXP {
-                                pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
+                                pb.append(b"\"");
                                 let value = STRING_ELT(arg2, 0);
                                 if !epoch.unchanged() {
                                     return;
@@ -1390,31 +1259,37 @@ fn doprof(_sig: c_int) {
                                 let value = owner.node_factory().wrap(value).unwrap_or_else(|e| {
                                     crate::sexp::context::r_error(e.to_string())
                                 });
-                                pb_str(&mut pb, CHAR(value.as_raw()));
-                                pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
+                                pb.append(&crate::sexp::accessors::char_cstr_bytes(value.as_raw()));
+                                pb.append(b"\"");
                             } else if TYPEOF(arg2) == SEXPTYPE::INTSXP {
-                                let value = INTEGER(arg2);
+                                let value = arg2_owner
+                                    .try_integer_elt(0)
+                                    .unwrap_or_else(|e| {
+                                        crate::sexp::context::r_error(e.to_string())
+                                    });
                                 if !epoch.unchanged() {
                                     return;
                                 }
-                                pb_int(&mut pb, *value as i64);
+                                pb.append_int(value as i64);
                             } else if TYPEOF(arg2) == SEXPTYPE::REALSXP {
-                                let value = REAL(arg2);
+                                let value = arg2_owner.try_real_elt(0).unwrap_or_else(|e| {
+                                    crate::sexp::context::r_error(e.to_string())
+                                });
                                 if !epoch.unchanged() {
                                     return;
                                 }
-                                pb_dbl(&mut pb, *value); // %0.f
+                                pb.append_double(value); // %0.f
                             }
 
-                            pb_str(&mut pb, b"]]\0".as_ptr() as *const c_char);
+                            pb.append(b"]]");
                         } else {
-                            pb_str(&mut pb, b"<Anonymous>\0".as_ptr() as *const c_char);
+                            pb.append(b"<Anonymous>");
                         }
                     } else {
-                        pb_str(&mut pb, b"<Anonymous>\0".as_ptr() as *const c_char);
+                        pb.append(b"<Anonymous>");
                     }
 
-                    pb_str(&mut pb, b"\" \0".as_ptr() as *const c_char);
+                    pb.append(b"\" ");
 
                     // Line profiling for this context
                     if with_profiling_state(|state| state.line_profiling) != 0 {
@@ -1440,12 +1315,9 @@ fn doprof(_sig: c_int) {
             // IntoIter has released the actual frame backing and its roots.
             drop(frame_reservation);
 
-            // Null-terminate the buffer
-            if pb.left > 0 {
-                *pb.ptr = 0;
-            } else {
-                // Overflow
-                buf[0] = 0;
+            // Terminate: an overflowed buffer discards the whole sample.
+            let sample = pb.as_bytes();
+            if sample.is_none() {
                 with_profiling_state(|state| state.profiling_error = 3);
             }
 
@@ -1457,9 +1329,9 @@ fn doprof(_sig: c_int) {
             let source_buffer = with_profiling_state(|state| state.srcfiles_buffer.owned());
             let mut i = prevnum;
             while i < line_prof_val {
-                pf_str(b"#File \0".as_ptr() as *const c_char);
+                write_profile_bytes(b"#File ");
                 pf_int(i);
-                pf_str(b": \0".as_ptr() as *const c_char);
+                write_profile_bytes(b": ");
                 let offset =
                     with_profiling_state(|state| state.srcfiles.get((i - 1) as usize).copied());
                 if let (Some(buffer), Some(offset)) = (&source_buffer, offset) {
@@ -1473,21 +1345,26 @@ fn doprof(_sig: c_int) {
                         if !epoch.unchanged() {
                             return;
                         }
-                        pf_str(bytes.add(offset).cast());
+                        if !bytes.is_null() {
+                            // SAFETY: `tail` is bounded to this RAWSXP
+                            // allocation; this region runs no R callback or
+                            // collection.
+                            let tail =
+                                std::slice::from_raw_parts(bytes.add(offset), length - offset);
+                            if let Some(end) = tail.iter().position(|&byte| byte == 0) {
+                                write_profile_bytes(&tail[..end]);
+                            }
+                        }
                     }
                 }
-                pf_str(b"\n\0".as_ptr() as *const c_char);
+                write_profile_bytes(b"\n");
                 i += 1;
             }
 
             // Write the profile line
-            let mut len: usize = 0;
-            while len < PROFBUFSIZ && buf[len] != 0 {
-                len += 1;
-            }
-            if len > 0 {
-                pf_str(buf.as_ptr() as *const c_char);
-                pf_str(b"\n\0".as_ptr() as *const c_char);
+            if let Some(sample) = sample.filter(|bytes| !bytes.is_empty()) {
+                write_profile_bytes(sample);
+                write_profile_bytes(b"\n");
             }
         })
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
@@ -1664,17 +1541,17 @@ fn R_InitProfiling(
 
             // Write header line
             if mem_profiling != 0 {
-                pf_str(b"memory profiling: \0".as_ptr() as *const c_char);
+                write_profile_bytes(b"memory profiling: ");
             }
             if gc_profiling != 0 {
-                pf_str(b"GC profiling: \0".as_ptr() as *const c_char);
+                write_profile_bytes(b"GC profiling: ");
             }
             if line_profiling != 0 {
-                pf_str(b"line profiling: \0".as_ptr() as *const c_char);
+                write_profile_bytes(b"line profiling: ");
             }
-            pf_str(b"sample.interval=\0".as_ptr() as *const c_char);
+            write_profile_bytes(b"sample.interval=");
             pf_int(interval);
-            pf_str(b"\n\0".as_ptr() as *const c_char);
+            write_profile_bytes(b"\n");
 
             // Set profiling state
             with_profiling_state(|state| {
@@ -2409,15 +2286,12 @@ mod tests {
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
             let mut bytes = [0_u8; 32];
-            let mut output = profbuf {
-                ptr: bytes.as_mut_ptr().cast(),
-                left: bytes.len(),
-            };
+            let mut output = ProfileBuffer::new(&mut bytes);
             lineprof(&mut output, pointer);
             (*instance).memory_state.gc_force_gap = 0;
             assert!(observed.get());
             assert_eq!(
-                CStr::from_ptr(bytes.as_ptr().cast()).to_str().unwrap(),
+                std::str::from_utf8(output.as_bytes().unwrap()).unwrap(),
                 "1#71 "
             );
             assert_eq!(with_profiling_state(|state| state.srcfiles.len()), 1);
@@ -2590,17 +2464,10 @@ mod tests {
         let snapshot = memory_profile_snapshot();
 
         let mut buf = [0u8; 128];
-        let mut pb = profbuf {
-            ptr: buf.as_mut_ptr() as *mut c_char,
-            left: buf.len(),
-        };
-        unsafe {
-            write_memory_profile_prefix(&mut pb, snapshot);
-            *pb.ptr = 0;
-        }
+        let mut pb = ProfileBuffer::new(&mut buf);
+        write_memory_profile_prefix(&mut pb, snapshot);
 
-        let text = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
-            .to_str()
+        let text = std::str::from_utf8(pb.as_bytes().unwrap())
             .expect("profile prefix should be utf8");
         let fields: Vec<u64> = text
             .trim_matches(':')
@@ -2616,6 +2483,29 @@ mod tests {
         assert!(fields[0] > 0);
         assert!(fields[1] >= fields[0]);
         assert!(fields[2] > 0);
+    }
+
+    #[test]
+    fn profile_buffer_keeps_exact_bytes_and_discards_overflow() {
+        let mut storage = [0u8; 64];
+        let mut p = ProfileBuffer::new(&mut storage);
+        p.append_int(i64::MIN);
+        p.append(b" ");
+        p.append_integer(u64::MAX, false);
+        p.append(b" ");
+        p.append_double(-73.9);
+        assert_eq!(
+            p.as_bytes(),
+            Some(b"-9223372036854775808 18446744073709551615 -73".as_slice())
+        );
+
+        let mut storage = [0u8; 4];
+        let mut p = ProfileBuffer::new(&mut storage);
+        p.append(b"abc");
+        assert_eq!(p.as_bytes(), Some(b"abc".as_slice()));
+        p.append(b"d");
+        p.append(b"");
+        assert!(p.as_bytes().is_none());
     }
 
     #[test]
