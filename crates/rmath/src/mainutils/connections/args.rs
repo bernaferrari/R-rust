@@ -260,16 +260,9 @@ pub(crate) fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
     crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| r_error(&error.to_string()))
 }
 
-/// Audited boundary: copy UTF-8 text into a fresh CHARSXP node.
+/// Copy UTF-8 text into a fresh CHARSXP node.
 pub(crate) fn mk_char(text: &str) -> SEXP {
-    // SAFETY: `text` is a valid read-only buffer for the duration of the
-    // call; Rf_mkCharLen copies exactly `len` bytes into the new node.
-    unsafe {
-        Rf_mkCharLen(
-            text.as_ptr() as *const std::os::raw::c_char,
-            text.len() as c_int,
-        )
-    }
+    crate::sexp::constructors::mk_char_str(text)
 }
 
 /// Build a scalar STRSXP from UTF-8 text.

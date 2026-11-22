@@ -790,3 +790,56 @@ fn trunk_r90451_open_rejects_a_mode_longer_than_four_bytes() {
         assert!(message.contains("invalid 'open' argument"), "{message}");
     }
 }
+
+#[test]
+fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active_in(|instance| unsafe {
+        init_connections_table();
+        connection_table()[3] = Some(Box::new(RConn::new(
+            "textConnection",
+            "before",
+            "w",
+            ConnKind::TextConnection,
+        )));
+        let args = crate::sexp::constructors::Rf_cons(
+            crate::sexp::constructors::Rf_ScalarLogical(1),
+            crate::sexp::globals::R_NilValue(),
+        );
+        let _args = crate::sexp::protect::protect(args);
+        let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let fired = observed.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if observed.replace(true) {
+                return;
+            }
+            crate::sexp::instance::with_required_current_instance(|instance| {
+                (*instance).memory_state.gc_force_gap = 0;
+            });
+            connection_table()[3] = Some(Box::new(RConn::new(
+                "textConnection",
+                "after",
+                "w",
+                ConnKind::TextConnection,
+            )));
+        }));
+        (*instance).memory_state.gc_force_gap = 1;
+        (*instance).memory_state.gc_force_wait = 1;
+        let result = do_showConnections(
+            crate::sexp::globals::R_NilValue(),
+            crate::sexp::globals::R_NilValue(),
+            args,
+            crate::sexp::globals::R_NilValue(),
+        );
+        assert!(fired.get());
+        assert_eq!(
+            crate::sexp::accessors::char_cstr_bytes(crate::sexp::accessors::STRING_ELT(result, 3))
+                .as_slice(),
+            b"3 before w"
+        );
+        assert_eq!(
+            connection_table()[3].as_ref().unwrap().description,
+            "after"
+        );
+    });
+}

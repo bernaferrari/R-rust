@@ -288,14 +288,10 @@ fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
     } else {
         TextEncoding::Native
     };
-    // SAFETY: this helper is called only from the active readLines native
-    // operation, whose current runtime owns the allocation arena.
-    unsafe {
-        crate::sexp::memory::with_arena(|arena| {
-            encoding::allocate_character(arena, bytes, encoding)
-        })
-    }
-    .unwrap_or_else(|| crate::sexp::context::r_error("cannot allocate character string"))
+    current_owner()
+        .with_arena(|arena| encoding::allocate_character(arena, bytes, encoding))
+        .unwrap_or_else(|e| r_error(&e.to_string()))
+        .unwrap_or_else(|| crate::sexp::context::r_error("cannot allocate character string"))
 }
 
 // ---------------------------------------------------------------------------

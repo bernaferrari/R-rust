@@ -47,3 +47,16 @@ fn read_lines_auto_opens_and_closes_unopened_file_connection() {
         .unwrap();
     assert_eq!(result.trim(), "[1] TRUE");
 }
+
+#[test]
+fn read_char_closes_auto_opened_connection_when_warning_unwinds() {
+    let mut session = RSession::new().unwrap();
+    let result = session.eval("local({
+        p <- tempfile(); writeBin(as.raw(c(97, 0, 98)), p);
+        con <- file(p);
+        value <- tryCatch(readChar(con, 3L), warning=function(w) 'warning');
+        closed <- !isOpen(con); close(con); unlink(p);
+        identical(value, 'warning') && closed
+    })").unwrap();
+    assert_eq!(result.trim(), "[1] TRUE");
+}

@@ -30,6 +30,10 @@ pub fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
+    let owner = active_owner();
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| base_error(e.to_string()));
     let opened_here = {
         let index = crate::mainutils::connections::checked_connection_index(connection);
         let mut table = crate::mainutils::connections::connection_table();
@@ -62,6 +66,11 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
             true
         }
     };
+    let mut cleanup = opened_here.then(|| {
+        let mut cleanup = crate::mainutils::connections::ConnectionCleanup::new(owner, false);
+        cleanup.attach(connection);
+        cleanup
+    });
     let mut bytes = Vec::new();
     if nchars >= 0 {
         for _ in 0..nchars {
@@ -84,10 +93,11 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
             bytes.push(byte as u8);
         }
     }
-    if opened_here {
-        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        unsafe { crate::mainutils::connections::close_connection_at_in(instance, connection) };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| base_error(e.to_string()));
+    if let Some(cleanup) = &mut cleanup {
+        cleanup.close();
     }
     String::from_utf8_lossy(&bytes).into_owned()
 }

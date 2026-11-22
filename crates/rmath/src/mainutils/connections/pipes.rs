@@ -383,27 +383,20 @@ pub fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 pub fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let _all = check_logical_arg(CAR(args), "all");
 
-    init_connections_table();
-    let table = connection_table();
+    let descriptions: Vec<_> = connection_table()
+        .iter()
+        .enumerate()
+        .filter_map(|(i, slot)| {
+            slot.as_ref()
+                .map(|conn| format!("{} {} {}", i, conn.description, conn.mode))
+        })
+        .collect();
 
-    // Count active connections
-    let mut count = 0usize;
-    for i in 0..table.len() {
-        if table[i].is_some() {
-            count += 1;
-        }
-    }
-
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP, count as c_int);
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, descriptions.len() as c_int);
     if !ans.is_null() {
-        let mut idx = 0usize;
-        for i in 0..table.len() {
-            if let Some(ref conn) = table[i] {
-                let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                let charsxp = mk_char(&desc);
-                SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
-                idx += 1;
-            }
+        let _ans = protect(ans);
+        for (i, desc) in descriptions.iter().enumerate() {
+            SET_STRING_ELT(ans, i as R_xlen_t, mk_char(desc));
         }
     }
 
@@ -422,21 +415,23 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let table = connection_table();
-        let Some(conn) = table[i].as_ref() else {
-            r_error("invalid connection");
+        let values = {
+            let table = connection_table();
+            let conn = table
+                .get(i)
+                .and_then(Option::as_ref)
+                .unwrap_or_else(|| r_error("invalid connection"));
+            let yesno = |flag| if flag { "yes" } else { "no" };
+            [
+                conn.description.clone(),
+                conn.class.clone(),
+                conn.mode.clone(),
+                (if conn.text { "text" } else { "binary" }).to_owned(),
+                (if conn.isopen { "opened" } else { "closed" }).to_owned(),
+                yesno(conn.canread).to_owned(),
+                yesno(conn.canwrite).to_owned(),
+            ]
         };
-
-        let yesno = |flag: bool| if flag { "yes" } else { "no" };
-        let values = [
-            conn.description.as_str(),
-            conn.class.as_str(),
-            conn.mode.as_str(),
-            if conn.text { "text" } else { "binary" },
-            if conn.isopen { "opened" } else { "closed" },
-            yesno(conn.canread),
-            yesno(conn.canwrite),
-        ];
         let labels = [
             "description",
             "class",
@@ -447,7 +442,9 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             "can write",
         ];
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
+        let _ans = protect(ans);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
+        let _names = protect(names);
         for (idx, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
             SET_STRING_ELT(names, idx as R_xlen_t, mk_char(label));
             SET_VECTOR_ELT(ans, idx as R_xlen_t, mk_string(value));
@@ -465,10 +462,12 @@ pub fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> 
             ids.push(i as i32);
         }
     }
+    drop(table);
     let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as R_xlen_t);
     for (i, id) in ids.iter().enumerate() {
         SET_INTEGER_ELT(ans, i as c_int, *id);
     }
+
     ans
 }
 
@@ -618,5 +617,7 @@ pub fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
     let Some(conn) = table[i].as_ref() else {
         r_error("invalid connection");
     };
-    Rf_ScalarInteger(conn.pushback.len() as c_int)
+    let length = conn.pushback.len() as c_int;
+    drop(table);
+    Rf_ScalarInteger(length)
 }

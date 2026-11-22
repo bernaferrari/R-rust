@@ -22,7 +22,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
+use crate::sexp::instance::with_current_instance;
 use crate::sexp::protect::*;
 
 pub(super) mod anonymous;
@@ -938,23 +938,15 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             r_error("cannot close standard connections");
         }
 
-        let captured = crate::sexp::instance::with_required_current_instance(|instance| {
-            // SAFETY: `instance` is the live current RInstance for this call;
-            // the field borrow ends before the closure returns.
-            unsafe {
-                (*instance)
-                    .output_capture
-                    .borrow()
-                    .uses_connection(i as c_int)
-            }
-        });
+        let owner = current_owner();
+        let captured = owner.with_output_capture(|state| state.borrow().uses_connection(i as c_int));
         if captured {
             r_error("cannot close an active capture connection");
         }
 
         // Check if it's a sink connection
         {
-            let state = current_owner().sink_state();
+            let state = owner.sink_state();
             let sink = state.borrow();
             for j in 0..sink.sink_number {
                 if i as c_int == sink.sink_cons[j] {
@@ -966,14 +958,15 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        let instance = with_required_current_instance(|instance| instance);
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        unsafe { close_connection_at_in(instance, i as c_int) };
-        let mut table = connection_table();
-        let status = table[i]
-            .as_ref()
-            .and_then(|conn| matches!(conn.kind, ConnKind::Pipe).then_some(conn.status));
-        table[i] = None;
+        close_connection_at_owned(owner, i as c_int);
+        let status = {
+            let mut table = connection_table();
+            let status = table[i]
+                .as_ref()
+                .and_then(|conn| matches!(conn.kind, ConnKind::Pipe).then_some(conn.status));
+            table[i] = None;
+            status
+        };
         if let Some(code) = status {
             Rf_ScalarInteger(code)
         } else {
@@ -984,20 +977,6 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// Flush text output only after the original writer storage has moved out of
 /// the table. Every other backend close remains callback-free Rust I/O.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn close_connection_at_in(instance: *mut RInstance, index: c_int) {
-    // SAFETY: `instance` is a live RInstance pointer supplied by the
-    // connection teardown path; the owner is pinned immediately below.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(instance) };
-    close_connection_at_owned(owner, index);
-}
-
-/// Safe form of [`close_connection_at_in`] for callers holding an owner token.
 pub(crate) fn close_connection_at_owned(owner: crate::sexp::owner::OwnerToken<'_>, index: c_int) {
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
     owner
