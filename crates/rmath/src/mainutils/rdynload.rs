@@ -6,10 +6,10 @@
 //! symbol lookup (registered first, then dynamic), and the R-level interfaces
 //! `do_dynload`, `do_dynunload`, `getSymbolInfo`, `getLoadedDLLs`, etc.
 
+use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 mod registered;
@@ -79,28 +79,32 @@ const FILESEP: &[u8] = b"/\0";
 // DllInfo — tracks a loaded shared library and its registered symbols
 // ---------------------------------------------------------------------------
 
-/// Full DllInfo with all fields from the C implementation.
-/// This replaces the opaque stub in registration.rs.
+/// Native extension metadata behind the opaque C `DllInfo *` handle.
 #[repr(C)]
 pub struct DllInfo {
-    pub path: *mut c_char,
-    pub name: *mut c_char,
-    pub handle: *mut c_void,
-    pub use_dynamic_lookup: bool,
-    pub force_symbols: bool,
+    path: CString,
+    name: CString,
+    handle: *mut c_void,
+    use_dynamic_lookup: Cell<bool>,
+    force_symbols: Cell<bool>,
 
-    registrations: Registry,
+    registrations: RefCell<Registry>,
 }
 
 impl DllInfo {
-    fn new(path: *mut c_char, name: *mut c_char, handle: *mut c_void) -> Self {
+    fn new(
+        path: CString,
+        name: CString,
+        handle: *mut c_void,
+        use_dynamic_lookup: bool,
+    ) -> Self {
         DllInfo {
             path,
             name,
             handle,
-            use_dynamic_lookup: true,
-            force_symbols: false,
-            registrations: Registry::default(),
+            use_dynamic_lookup: Cell::new(use_dynamic_lookup),
+            force_symbols: Cell::new(false),
+            registrations: RefCell::default(),
         }
     }
 }
@@ -109,35 +113,30 @@ impl DllInfo {
 /// the visible registry does not invalidate its metadata or unmap executing
 /// code. Final destruction never calls an R unload hook.
 struct LoadedDll {
-    info: NonNull<DllInfo>,
+    info: DllInfo,
 }
 impl LoadedDll {
-    fn from_owned(info: *mut DllInfo) -> Rc<Self> {
-        Rc::new(Self {
-            info: NonNull::new(info).expect("owned DLL allocation"),
-        })
+    fn new(info: DllInfo) -> Rc<Self> {
+        Rc::new(Self { info })
     }
+    /// Stable `Rc`-owned address; the mutable spelling matches the opaque C
+    /// handle ABI. Mutation goes through the interior `Cell`/`RefCell` fields.
     fn pointer(&self) -> *mut DllInfo {
-        self.info.as_ptr()
+        ptr::from_ref(&self.info).cast_mut()
     }
 }
 impl Drop for LoadedDll {
     fn drop(&mut self) {
-        // SAFETY: this is the unique physical owner; every resolved invocation
-        // retains an Rc and copied declarations before callbacks are possible.
-        unsafe {
-            let handle = (*self.pointer()).handle;
-            if !handle.is_null() {
-                #[cfg(not(target_arch = "wasm32"))]
-                unsafe extern "C" {
-                    fn dlclose(handle: *mut c_void) -> c_int;
-                }
-                #[cfg(not(target_arch = "wasm32"))]
+        let handle = self.info.handle;
+        if !handle.is_null() {
+            // SAFETY: `handle` is owned by this record and this is its final
+            // lease; no unload hook runs at drop.
+            #[cfg(not(target_arch = "wasm32"))]
+            unsafe {
                 dlclose(handle);
-                #[cfg(target_arch = "wasm32")]
-                crate::unix::dynload::dlclose(handle);
             }
-            free_dll_info(self.pointer());
+            #[cfg(target_arch = "wasm32")]
+            crate::unix::dynload::dlclose(handle);
         }
     }
 }
@@ -278,180 +277,65 @@ fn init_loaded_dll() {
 
 /// Called at R startup to initialize dynamic loading.
 pub fn InitDynload() {
-    unsafe {
-        init_loaded_dll();
-
-        let base_path = b"base\0".as_ptr() as *const c_char;
-        let _idx = add_dll(base_path, base_path, ptr::null_mut());
-
-        let base = with_dynload_state(|state| state.loaded_dll.first().cloned());
-        if let Some(base) = base {
-            crate::mainutils::registration::R_init_base(base.pointer());
-        }
-
-        InitFunctionHashing();
-    }
+    init_loaded_dll();
+    let base = add_dll(c"base", c"base");
+    crate::mainutils::registration::R_init_base(base.pointer());
+    InitFunctionHashing();
 }
 
 // ---------------------------------------------------------------------------
-// addDLL — low-level insertion into the DLL table
+// add_dll — low-level insertion into the DLL table
 // ---------------------------------------------------------------------------
 
-/// Add a DLL entry. Returns its index, or -1 on failure.
-unsafe fn add_dll(dpath: *const c_char, dllname: *const c_char, handle: *mut c_void) -> isize {
-    unsafe {
-        // Duplicate strings
-        let path_copy = strdup(dpath);
-        if path_copy.is_null() {
-            return -1;
-        }
-        let name_copy = strdup(dllname);
-        if name_copy.is_null() {
-            libc_free(path_copy as *mut c_void);
-            return -1;
-        }
+fn find_by_path(path: &CStr) -> Option<Rc<LoadedDll>> {
+    with_dynload_state(|state| {
+        state
+            .loaded_dll
+            .iter()
+            .find(|dll| dll.info.path.as_c_str() == path)
+            .cloned()
+    })
+}
 
-        let info = Box::into_raw(Box::new(DllInfo::new(path_copy, name_copy, handle)));
-
-        with_dynload_state(|state| {
-            let idx = state.loaded_dll.len() as isize;
-            state.loaded_dll.push(LoadedDll::from_owned(info));
-            idx
-        })
-    }
+/// Add a DLL entry. For the base/embedding handles and tests only; real
+/// libraries enter through `AddDLL`.
+fn add_dll(path: &CStr, name: &CStr) -> Rc<LoadedDll> {
+    let dll = LoadedDll::new(DllInfo::new(
+        path.to_owned(),
+        name.to_owned(),
+        ptr::null_mut(),
+        true,
+    ));
+    with_dynload_state(|state| state.loaded_dll.push(dll.clone()));
+    dll
 }
 
 // ---------------------------------------------------------------------------
-// strdup / free helpers
+// Native loader FFI
 // ---------------------------------------------------------------------------
-
-unsafe fn strdup(s: *const c_char) -> *mut c_char {
-    unsafe {
-        if s.is_null() {
-            return ptr::null_mut();
-        }
-        let cstr = std::ffi::CStr::from_ptr(s);
-        let bytes = cstr.to_bytes_with_nul();
-        let len = bytes.len();
-        let buf = libc_malloc(len) as *mut c_char;
-        if buf.is_null() {
-            return ptr::null_mut();
-        }
-        ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, len);
-        buf
-    }
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
-    fn malloc(size: usize) -> *mut c_void;
-    fn calloc(nmemb: usize, size: usize) -> *mut c_void;
-    fn free(ptr: *mut c_void);
-    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-    fn strlen(s: *const c_char) -> usize;
-    fn strcmp(a: *const c_char, b: *const c_char) -> c_int;
-    fn strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int;
-    fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char;
-    fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-    fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void;
+    fn dlopen(path: *const c_char, flag: c_int) -> *mut c_void;
+    fn dlclose(handle: *mut c_void) -> c_int;
+    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
+    fn dlerror() -> *mut c_char;
 }
 
-// wasm32 has no libc to link these symbols against: route them through the
-// wasm-libc facade, with dlsym always failing (the dynload reject policy —
-// nothing is ever loaded, so nothing can be looked up).
-#[cfg(target_arch = "wasm32")]
-fn malloc(size: usize) -> *mut c_void {
-    unsafe { crate::mainutils::raw_heap::malloc(size) }
-}
-#[cfg(target_arch = "wasm32")]
-fn calloc(nmemb: usize, size: usize) -> *mut c_void {
-    unsafe { crate::mainutils::raw_heap::calloc(nmemb, size) }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn free(ptr: *mut c_void) {
-    unsafe { crate::mainutils::raw_heap::free(ptr) }
-}
-#[cfg(target_arch = "wasm32")]
-fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
-    std::ptr::null_mut()
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn strlen(s: *const c_char) -> usize {
-    unsafe {
-        let mut n = 0usize;
-        while *s.add(n) != 0 {
-            n += 1;
-        }
-        n
+/// Look up a raw symbol address in a loaded library.
+///
+/// # Safety
+/// `handle` must be a live `dlopen` handle for the call; `name` is a C string.
+unsafe fn lookup_address(handle: *mut c_void, name: &CStr) -> *mut c_void {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // SAFETY: caller supplies live non-null handle, name is a C string.
+        unsafe { dlsym(handle, name.as_ptr()) }
     }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn strcmp(a: *const c_char, b: *const c_char) -> c_int {
-    unsafe {
-        let ab = CStr::from_ptr(a).to_bytes();
-        let bb = CStr::from_ptr(b).to_bytes();
-        match ab.cmp(bb) {
-            std::cmp::Ordering::Less => -1,
-            std::cmp::Ordering::Equal => 0,
-            std::cmp::Ordering::Greater => 1,
-        }
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::unix::dynload::dlsym(handle, name.as_ptr())
     }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
-    unsafe {
-        let mut i = 0usize;
-        while i < n {
-            let ca = *a.add(i) as u8;
-            let cb = *b.add(i) as u8;
-            if ca != cb {
-                return ca as c_int - cb as c_int;
-            }
-            if ca == 0 {
-                return 0;
-            }
-            i += 1;
-        }
-        0
-    }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
-    unsafe {
-        let bytes = CStr::from_ptr(src).to_bytes_with_nul();
-        ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, dst, bytes.len());
-        dst
-    }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
-    unsafe {
-        ptr::copy(src as *const u8, dst as *mut u8, n);
-        dst
-    }
-}
-#[cfg(target_arch = "wasm32")]
-unsafe fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void {
-    unsafe {
-        ptr::write_bytes(dst as *mut u8, c as u8, n);
-        dst
-    }
-}
-
-fn libc_malloc(size: usize) -> *mut c_void {
-    unsafe { malloc(size) }
-}
-
-unsafe fn libc_free(ptr: *mut c_void) {
-    unsafe { free(ptr) }
-}
-
-fn libc_calloc(n: usize, size: usize) -> *mut c_void {
-    unsafe { calloc(n, size) }
-}
-
-unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
-    unsafe { dlsym(handle, name) }
 }
 
 // ---------------------------------------------------------------------------
@@ -459,18 +343,17 @@ unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
 // ---------------------------------------------------------------------------
 
 /// Find a DllInfo by its path.
+///
+/// # Safety
+/// `path` must be a live NUL-terminated string for the call. The result is a
+/// borrowed opaque handle that stays valid while the DLL remains loaded.
 pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
-    unsafe {
-        with_dynload_state(|state| {
-            for library in state.loaded_dll.iter() {
-                let dll = library.pointer();
-                if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
-                    return dll;
-                }
-            }
-            ptr::null_mut()
-        })
+    if path.is_null() {
+        return ptr::null_mut();
     }
+    // SAFETY: `path` is non-null and NUL-terminated for the call.
+    find_by_path(unsafe { CStr::from_ptr(path) })
+        .map_or(ptr::null_mut(), |dll| dll.pointer())
 }
 
 /// Find the index of a DllInfo in the table.
@@ -491,44 +374,36 @@ fn R_getDllIndex(info: *mut DllInfo) -> isize {
 // ---------------------------------------------------------------------------
 
 pub fn R_getEmbeddingDllInfo() -> *mut DllInfo {
-    unsafe {
-        let embed_path = b"(embedding)\0".as_ptr() as *const c_char;
-        let mut dll = R_getDllInfo(embed_path);
-        if dll.is_null() {
-            let _idx = add_dll(embed_path, embed_path, ptr::null_mut());
-            dll = R_getDllInfo(embed_path);
-            if !dll.is_null() {
-                (*dll).use_dynamic_lookup = false;
-            }
-        }
-        dll
+    let path = c"(embedding)";
+    if let Some(dll) = find_by_path(path) {
+        return dll.pointer();
     }
+    let dll = add_dll(path, path);
+    dll.info.use_dynamic_lookup.set(false);
+    dll.pointer()
 }
 
 // ---------------------------------------------------------------------------
 // R_useDynamicSymbols / R_forceSymbols
 // ---------------------------------------------------------------------------
 
+/// Toggle dynamic lookup for a DLL, returning the previous setting.
+///
+/// # Safety
+/// `info` must be null or a live `DllInfo` handle from the DLL table.
 pub unsafe fn R_useDynamicSymbols(info: *mut DllInfo, value: bool) -> bool {
-    unsafe {
-        if info.is_null() {
-            return false;
-        }
-        let old = (*info).use_dynamic_lookup;
-        (*info).use_dynamic_lookup = value;
-        old
-    }
+    // SAFETY: `info` satisfies this function's contract; null maps to `None`.
+    unsafe { info.as_ref() }.is_some_and(|info| info.use_dynamic_lookup.replace(value))
 }
 
+/// Toggle registered-symbol-only lookup for a DLL, returning the previous
+/// setting.
+///
+/// # Safety
+/// `info` must be null or a live `DllInfo` handle from the DLL table.
 pub unsafe fn R_forceSymbols(info: *mut DllInfo, value: bool) -> bool {
-    unsafe {
-        if info.is_null() {
-            return false;
-        }
-        let old = (*info).force_symbols;
-        (*info).force_symbols = value;
-        old
-    }
+    // SAFETY: `info` satisfies this function's contract; null maps to `None`.
+    unsafe { info.as_ref() }.is_some_and(|info| info.force_symbols.replace(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +418,10 @@ unsafe fn copy_types(types: *const c_int, count: c_int) -> Option<Vec<c_int>> {
     Some(unsafe { std::slice::from_raw_parts(types, count as usize) }.to_vec())
 }
 
+/// # Safety
+/// `info` must be a live DLL handle on this runtime's thread. Non-null tables
+/// must end with a null-name entry. Their strings and any argument type arrays
+/// must remain readable for the call.
 pub unsafe fn R_registerRoutines(
     info: *mut DllInfo,
     croutines: *const R_CMethodDef,
@@ -550,13 +429,16 @@ pub unsafe fn R_registerRoutines(
     fortran_routines: *const R_FortranMethodDef,
     external_routines: *const R_ExternalMethodDef,
 ) -> c_int {
+    // SAFETY: `info` satisfies this function's contract: null is rejected.
+    let Some(info) = (unsafe { info.as_ref() }) else {
+        error("R_registerRoutines called with invalid DllInfo object.");
+    };
+    // Capture every supplied table before publication. A replacement does
+    // not alter declarations already captured by an active invocation.
+    // SAFETY: the routine tables satisfy this function's contract: each is
+    // null or a NUL-terminated array of method definitions for the call.
+    let mut replacements = Vec::new();
     unsafe {
-        if info.is_null() {
-            error("R_registerRoutines called with invalid DllInfo object.");
-        }
-        // Capture every supplied table before publication. A replacement does
-        // not alter declarations already captured by an active invocation.
-        let mut replacements = Vec::new();
         macro_rules! table {
             ($table:expr, $interface:expr, $types:expr) => {
                 if !$table.is_null() {
@@ -591,25 +473,50 @@ pub unsafe fn R_registerRoutines(
             Interface::External,
             |_: &R_ExternalMethodDef| None
         );
-        for (interface, entries) in replacements {
-            (*info).registrations.replace(interface, entries);
-        }
-        (*info).use_dynamic_lookup = !(*info).handle.is_null();
-        (*info).force_symbols = false;
-        1
     }
+    let mut registry = info.registrations.borrow_mut();
+    for (interface, entries) in replacements {
+        registry.replace(interface, entries);
+    }
+    drop(registry);
+    info.use_dynamic_lookup.set(!info.handle.is_null());
+    info.force_symbols.set(false);
+    1
 }
 
+/// # Safety
+/// `info` must be null or a live `DllInfo` handle from the DLL table; `name`
+/// must be null or a live NUL-terminated string for the call.
 pub unsafe fn R_getDLLRegisteredSymbol(
     info: *const DllInfo,
     name: *const c_char,
     sym_type: c_int,
 ) -> DL_FUNC {
-    if info.is_null() || name.is_null() {
+    if name.is_null() {
         return None;
     }
-    unsafe { (*info).registrations.lookup(CStr::from_ptr(name), sym_type) }
+    // SAFETY: `info` satisfies this function's contract; null maps to `None`.
+    let info = unsafe { info.as_ref() }?;
+    // SAFETY: `name` is non-null and NUL-terminated for the call.
+    let name = unsafe { CStr::from_ptr(name) };
+    info.registrations
+        .borrow()
+        .lookup(name, sym_type)
         .and_then(|routine| routine.function)
+}
+
+/// Dynamic `dlsym` fallback after registered lookup misses.
+fn lookup_dynamic(info: &DllInfo, name: &CStr) -> DL_FUNC {
+    if !info.use_dynamic_lookup.get() || info.handle.is_null() {
+        return None;
+    }
+    // SAFETY: the DLL lease keeps the handle live and `name` is a C string.
+    let sym = unsafe { lookup_address(info.handle, name) };
+    if sym.is_null() {
+        return None;
+    }
+    // SAFETY: a POSIX `dlsym` address is used at the requested native ABI.
+    unsafe { std::mem::transmute::<*mut c_void, DL_FUNC>(sym) }
 }
 
 fn resolve_in_library(
@@ -617,31 +524,17 @@ fn resolve_in_library(
     name: &CStr,
     kind: c_int,
 ) -> Option<ResolvedForeignRoutine> {
-    // SAFETY: table ownership pins the DllInfo and its loader handle throughout
-    // this non-callback snapshot. Raw ABI registration is the only writer.
-    unsafe {
-        let info = library.pointer();
-        let declaration = (*info).registrations.lookup(name, kind);
-        let function = declaration
-            .as_ref()
-            .and_then(|routine| routine.function)
-            .or_else(|| {
-                if !(*info).use_dynamic_lookup || (*info).handle.is_null() {
-                    return None;
-                }
-                let pointer = libc_dlsym((*info).handle, name.as_ptr());
-                if pointer.is_null() {
-                    None
-                } else {
-                    std::mem::transmute::<*mut c_void, DL_FUNC>(pointer)
-                }
-            });
-        function.map(|_| ResolvedForeignRoutine {
-            function,
-            declaration,
-            _library: library,
-        })
-    }
+    let info = &library.info;
+    let declaration = info.registrations.borrow().lookup(name, kind);
+    let function = declaration
+        .as_ref()
+        .and_then(|routine| routine.function)
+        .or_else(|| lookup_dynamic(info, name));
+    function.map(|_| ResolvedForeignRoutine {
+        function,
+        declaration,
+        _library: library,
+    })
 }
 
 pub(crate) unsafe fn resolve_foreign_symbol(
@@ -661,19 +554,16 @@ pub(crate) unsafe fn resolve_foreign_symbol(
     };
     let libraries = with_dynload_state(|state| state.loaded_dll.clone());
     for library in libraries.into_iter().rev() {
-        let info = library.pointer();
-        // No raw DllInfo survives without the physical lease above.
-        let selected = unsafe {
-            if !handle.is_null() {
-                (*info).handle == handle
-            } else {
-                package.to_bytes().is_empty() || CStr::from_ptr((*info).name) == package
-            }
+        // No shared DllInfo access survives without the physical lease above.
+        let selected = if !handle.is_null() {
+            library.info.handle == handle
+        } else {
+            package.to_bytes().is_empty() || library.info.name.as_c_str() == package
         };
         if !selected {
             continue;
         }
-        if handle.is_null() && unsafe { (*info).force_symbols } {
+        if handle.is_null() && library.info.force_symbols.get() {
             continue;
         }
         let result = resolve_in_library(library, name, kind);
@@ -690,31 +580,24 @@ pub(crate) unsafe fn resolve_foreign_symbol(
 
 /// Look up a native symbol by name in a DLL.
 /// Checks registered symbols first, then falls back to dynamic lookup.
+///
+/// # Safety
+/// `info` must be null or a live `DllInfo` handle from the DLL table; `name`
+/// must be null or a live NUL-terminated string for the call.
 pub unsafe fn R_dlsym(info: *mut DllInfo, name: *const c_char, sym_type: c_int) -> DL_FUNC {
-    unsafe {
-        // Try registered symbols first
-        let f = R_getDLLRegisteredSymbol(info, name, sym_type);
-        if f.is_some() {
-            return f;
-        }
-
-        // If dynamic lookup is disabled, stop
-        if !(*info).use_dynamic_lookup {
-            return None;
-        }
-
-        // Try dynamic lookup via dlsym
-        if (*info).handle.is_null() {
-            return None;
-        }
-
-        let sym = libc_dlsym((*info).handle, name);
-        if sym.is_null() {
-            return None;
-        }
-
-        std::mem::transmute::<*mut c_void, DL_FUNC>(sym)
+    // SAFETY: `info` satisfies this function's contract; null maps to `None`.
+    let info = unsafe { info.as_ref() }?;
+    if name.is_null() {
+        return None;
     }
+    // SAFETY: `name` is non-null and NUL-terminated for the call.
+    let name = unsafe { CStr::from_ptr(name) };
+    let registered = info
+        .registrations
+        .borrow()
+        .lookup(name, sym_type)
+        .and_then(|routine| routine.function);
+    registered.or_else(|| lookup_dynamic(info, name))
 }
 
 // ---------------------------------------------------------------------------
@@ -722,296 +605,204 @@ pub unsafe fn R_dlsym(info: *mut DllInfo, name: *const c_char, sym_type: c_int) 
 // ---------------------------------------------------------------------------
 
 /// Find a loaded DLL by its native handle.
-pub(crate) unsafe fn R_findDllByHandle(handle: *mut c_void) -> *mut DllInfo {
-    unsafe {
-        if handle.is_null() {
-            return ptr::null_mut();
-        }
-        with_dynload_state(|state| {
-            for library in state.loaded_dll.iter() {
-                let dll = library.pointer();
-                if !dll.is_null() && (*dll).handle == handle {
-                    return dll;
-                }
-            }
-            ptr::null_mut()
-        })
+pub(crate) fn R_findDllByHandle(handle: *mut c_void) -> *mut DllInfo {
+    if handle.is_null() {
+        return ptr::null_mut();
     }
+    with_dynload_state(|state| {
+        state
+            .loaded_dll
+            .iter()
+            .find(|dll| dll.info.handle == handle)
+            .map_or(ptr::null_mut(), |dll| dll.pointer())
+    })
 }
 
 // ---------------------------------------------------------------------------
 // R_FindSymbol — search all loaded DLLs for a symbol
 // ---------------------------------------------------------------------------
 
+/// # Safety
+/// `name` must be null or a live NUL-terminated string for the call; `pkg`
+/// must be null or a live NUL-terminated string for the call.
 pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_int) -> DL_FUNC {
-    unsafe {
-        let pkg_cstr = if pkg.is_null() {
-            ""
-        } else {
-            std::ffi::CStr::from_ptr(pkg).to_str().unwrap_or("")
-        };
-        let all = pkg_cstr.is_empty();
+    if name.is_null() {
+        return None;
+    }
+    // SAFETY: `name` is non-null and NUL-terminated for the call.
+    let name = unsafe { CStr::from_ptr(name) };
+    // SAFETY: `pkg` is null or NUL-terminated for the call.
+    let pkg_cstr = if pkg.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(pkg) }.to_str().unwrap_or("")
+    };
+    let all = pkg_cstr.is_empty();
 
-        let dlls = with_dynload_state(|state| state.loaded_dll.clone());
-        {
-            // Search in reverse order (most recently loaded first)
-            let mut i = dlls.len();
-            while i > 0 {
-                i -= 1;
-                let dll = dlls[i].pointer();
-                if dll.is_null() {
-                    continue;
-                }
-
-                let mut doit = all;
-                if !doit {
-                    let dll_name = std::ffi::CStr::from_ptr((*dll).name);
-                    let dll_str = dll_name.to_str().unwrap_or("");
-                    if dll_str == pkg_cstr {
-                        doit = true;
-                    }
-                }
-                if doit && (*dll).force_symbols {
-                    doit = false;
-                }
-
-                if doit {
-                    let f = R_dlsym(dll, name, sym_type);
-                    if f.is_some() {
-                        return f;
-                    }
-                }
-
-                // If we found the right DLL but the symbol wasn't there, stop.
-                if doit && !all {
-                    return None;
-                }
-            }
-            None
+    // Search in reverse order (most recently loaded first).
+    let dlls = with_dynload_state(|state| state.loaded_dll.clone());
+    for dll in dlls.iter().rev() {
+        // Skip unless this is a global search or the DLL name matches.
+        if !(all || dll.info.name.to_str().unwrap_or("") == pkg_cstr) {
+            continue;
+        }
+        if dll.info.force_symbols.get() {
+            continue;
+        }
+        let f = dll
+            .info
+            .registrations
+            .borrow()
+            .lookup(name, sym_type)
+            .and_then(|routine| routine.function);
+        let f = f.or_else(|| lookup_dynamic(&dll.info, name));
+        if f.is_some() || !all {
+            return f;
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Free DllInfo
-// ---------------------------------------------------------------------------
-
-unsafe fn free_dll_info(info: *mut DllInfo) {
-    unsafe {
-        if info.is_null() {
-            return;
-        }
-        let info = &mut *info;
-
-        libc_free(info.path as *mut c_void);
-        libc_free(info.name as *mut c_void);
-        // Drop the Box
-        drop(Box::from_raw(info as *mut DllInfo));
-    }
+    None
 }
 
 // ---------------------------------------------------------------------------
 // DeleteDLL — remove a DLL from the table
 // ---------------------------------------------------------------------------
 
-unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
-    unsafe {
-        if (*dll_info).handle.is_null() {
-            return;
-        }
-        let name = CStr::from_ptr((*dll_info).name);
-        let mut buf = b"R_unload_".to_vec();
-        buf.extend_from_slice(name.to_bytes_with_nul());
-        #[cfg(not(target_arch = "wasm32"))]
-        unsafe extern "C" {
-            fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        let sym = dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
-        #[cfg(target_arch = "wasm32")]
-        let sym = crate::unix::dynload::dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
-        if !sym.is_null() {
-            let unload_fn: Option<unsafe extern "C" fn(*mut DllInfo)> = std::mem::transmute(sym);
-            if let Some(f) = unload_fn {
-                f(dll_info);
-            }
-        }
+/// Invoke `R_init_`/`R_unload_` style loader hooks for a loaded DLL.
+fn call_dll_hook(library: &Rc<LoadedDll>, prefix: &[u8]) {
+    let info = &library.info;
+    if info.handle.is_null() {
+        return;
+    }
+    let mut symbol = prefix.to_vec();
+    symbol.extend_from_slice(info.name.to_bytes_with_nul());
+    let Ok(symbol) = CStr::from_bytes_with_nul(&symbol) else {
+        return;
+    };
+    // SAFETY: the library lease keeps the handle live; `symbol` is a C string.
+    let sym = unsafe { lookup_address(info.handle, symbol) };
+    if !sym.is_null() {
+        // SAFETY: the R native loader hook has the C signature fn(DllInfo*);
+        // the physical lease survives for the duration of the callback.
+        let hook: unsafe extern "C" fn(*mut DllInfo) = unsafe { std::mem::transmute(sym) };
+        unsafe { hook(library.pointer()) };
     }
 }
 
-unsafe fn delete_dll(path: *const c_char) -> bool {
-    unsafe {
-        let dll = with_dynload_state(|state| {
-            let loc = {
-                let mut found = None;
-                for (i, library) in state.loaded_dll.iter().enumerate() {
-                    let dll = library.pointer();
-                    if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
-                        found = Some(i);
-                        break;
-                    }
-                }
-                found
-            };
+fn delete_dll(path: &CStr) -> bool {
+    let dll = with_dynload_state(|state| {
+        state
+            .loaded_dll
+            .iter()
+            .position(|dll| dll.info.path.as_c_str() == path)
+            .map(|index| state.loaded_dll.remove(index))
+    });
 
-            loc.map(|idx| state.loaded_dll.remove(idx))
-        });
-
-        let Some(dll) = dll else {
-            return false;
-        };
-        call_dll_unload(dll.pointer());
-        // Removing the table's ownership retires future lookup immediately.
-        // Active invocation leases delay dlclose and DllInfo destruction.
-        drop(dll);
-        true
-    }
+    let Some(dll) = dll else {
+        return false;
+    };
+    call_dll_hook(&dll, b"R_unload_");
+    // Removing the table's ownership retires future lookup immediately.
+    // Active invocation leases delay dlclose and DllInfo destruction.
+    drop(dll);
+    true
 }
 
 // ---------------------------------------------------------------------------
 // AddDLL — high-level DLL loading (with dlopen)
 // ---------------------------------------------------------------------------
 
-/// Load a shared library and register it. Returns the DllInfo, or null on failure.
-unsafe fn AddDLL(
-    path: *const c_char,
-    _as_local: c_int,
-    _now: c_int,
-    _search_path: *const c_char,
-) -> *mut DllInfo {
-    unsafe {
-        crate::mainutils::registration::retain_native_registration_exports();
-        // Check if already loaded — if so, move to end of list (most recent)
-        let already_loaded = with_dynload_state(|state| {
-            for i in 0..state.loaded_dll.len() {
-                let dll = state.loaded_dll[i].pointer();
-                if !dll.is_null() && CStr::from_ptr((*dll).path) == CStr::from_ptr(path) {
-                    let entry = state.loaded_dll.remove(i);
-                    let pointer = entry.pointer();
-                    state.loaded_dll.push(entry);
-                    return Some(pointer);
-                }
-            }
-            None
-        });
-        if let Some(dll) = already_loaded {
-            return dll;
-        }
-
-        let at_max = with_dynload_state(|state| state.loaded_dll.len() >= state.max_num_dlls);
-        if at_max {
-            return ptr::null_mut();
-        }
-
-        let handle = {
-            // Single source of truth for RTLD flags (macOS vs Linux values
-            // differ); see unix::dynload::compute_dlopen_flag.
-            let flag = crate::unix::dynload::compute_dlopen_flag(_as_local, _now);
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                unsafe extern "C" {
-                    fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
-                }
-                dlopen(path, flag)
-            }
-            #[cfg(target_arch = "wasm32")]
-            {
-                crate::unix::dynload::dlopen(path, flag)
-            }
-        };
-
-        if handle.is_null() {
-            #[cfg(not(target_arch = "wasm32"))]
-            unsafe extern "C" {
-                fn dlerror() -> *mut c_char;
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            let message = dlerror();
-            #[cfg(target_arch = "wasm32")]
-            let message = crate::unix::dynload::dlerror();
-            with_dynload_state(|state| {
-                state.dll_error.fill(0);
-                if !message.is_null() {
-                    let bytes = CStr::from_ptr(message).to_bytes();
-                    let copy_len = bytes.len().min(state.dll_error.len() - 1);
-                    state.dll_error[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                }
-            });
-            return ptr::null_mut();
-        }
-
-        let dpath = strdup(path);
-        if dpath.is_null() {
-            return ptr::null_mut();
-        }
-
-        let dllname = extract_dll_name(dpath);
-        let info = Box::into_raw(Box::new(DllInfo::new(dpath, dllname, handle)));
-        (*info).use_dynamic_lookup = !handle.is_null();
-        (*info).force_symbols = false;
-
-        let library = LoadedDll::from_owned(info);
-        with_dynload_state(|state| state.loaded_dll.push(library.clone()));
-
-        call_init_routine(info);
-        // An initialization hook can unload its own library. The local lease
-        // protects the hook, but a retired entry must not escape as DllInfo.
-        if with_dynload_state(|state| {
-            state
-                .loaded_dll
-                .iter()
-                .any(|entry| Rc::ptr_eq(entry, &library))
-        }) {
-            info
-        } else {
-            ptr::null_mut()
-        }
-    }
-}
-
-/// Extract the DLL name from a full path: basename minus SHLIB_EXT.
-unsafe fn extract_dll_name(path: *mut c_char) -> *mut c_char {
-    unsafe {
-        let path_str = std::ffi::CStr::from_ptr(path).to_bytes();
-        let path_str = std::str::from_utf8(path_str).unwrap_or("");
-
-        let basename = path_str.rsplit(['/', '\\']).next().unwrap_or(path_str);
-        let name = [".so", ".dylib", ".dll"]
+/// Load a shared library and register it.
+///
+/// # Safety
+/// The caller must be the trusted native-loader path (`dyn.load`, module
+/// cdynload); the loaded library can execute arbitrary native code during
+/// `R_init_` and later calls.
+unsafe fn AddDLL(path: &CStr, as_local: c_int, now: c_int) -> Option<Rc<LoadedDll>> {
+    crate::mainutils::registration::retain_native_registration_exports();
+    // Check if already loaded — if so, move to end of list (most recent)
+    let already_loaded = with_dynload_state(|state| {
+        let index = state
+            .loaded_dll
             .iter()
-            .find_map(|extension| basename.strip_suffix(extension))
-            .unwrap_or(basename);
-
-        strdup(CString::new(name).unwrap_or_default().as_ptr())
+            .position(|dll| dll.info.path.as_c_str() == path)?;
+        let dll = state.loaded_dll.remove(index);
+        state.loaded_dll.push(dll.clone());
+        Some(dll)
+    });
+    if already_loaded.is_some() {
+        return already_loaded;
     }
+
+    let at_max = with_dynload_state(|state| state.loaded_dll.len() >= state.max_num_dlls);
+    if at_max {
+        return None;
+    }
+
+    // Reduce fallible work after dlopen.
+    let name = extract_dll_name(path);
+    let stored_path = path.to_owned();
+
+    let handle = {
+        // Single source of truth for RTLD flags (macOS vs Linux values
+        // differ); see unix::dynload::compute_dlopen_flag.
+        let flag = crate::unix::dynload::compute_dlopen_flag(as_local, now);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // SAFETY: `path` is a NUL-terminated shared-object path.
+            unsafe { dlopen(path.as_ptr(), flag) }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::unix::dynload::dlopen(path.as_ptr(), flag)
+        }
+    };
+
+    if handle.is_null() {
+        #[cfg(not(target_arch = "wasm32"))]
+        // SAFETY: `dlerror` returns a live NUL-terminated message or null.
+        let message = unsafe { dlerror() };
+        #[cfg(target_arch = "wasm32")]
+        let message = crate::unix::dynload::dlerror();
+        // Take an owned copy promptly before mutating session state.
+        let bytes = if message.is_null() {
+            Vec::new()
+        } else {
+            // SAFETY: `message` is non-null and NUL-terminated for the call.
+            unsafe { CStr::from_ptr(message) }.to_bytes().to_vec()
+        };
+        with_dynload_state(|state| {
+            state.dll_error.fill(0);
+            let copy_len = bytes.len().min(state.dll_error.len() - 1);
+            state.dll_error[..copy_len].copy_from_slice(&bytes[..copy_len]);
+        });
+        return None;
+    }
+
+    let library = LoadedDll::new(DllInfo::new(stored_path, name, handle, true));
+    with_dynload_state(|state| state.loaded_dll.push(library.clone()));
+
+    call_dll_hook(&library, b"R_init_");
+    // An initialization hook can unload its own library. The local lease
+    // protects the hook, but a retired entry must not escape as DllInfo.
+    with_dynload_state(|state| {
+        state
+            .loaded_dll
+            .iter()
+            .any(|entry| Rc::ptr_eq(entry, &library))
+    })
+    .then_some(library)
 }
 
-/// Call the R_init_<name> routine if it exists in the DLL.
-unsafe fn call_init_routine(info: *mut DllInfo) {
-    unsafe {
-        if info.is_null() || (*info).handle.is_null() {
-            return;
-        }
-        let name = std::ffi::CStr::from_ptr((*info).name).to_bytes();
-        let name_str = std::str::from_utf8(name).unwrap_or("");
-
-        // R_init_<name>
-        let init_name = format!("R_init_{}\0", name_str);
-        let init_cstr = init_name.as_ptr() as *const c_char;
-
-        #[cfg(not(target_arch = "wasm32"))]
-        unsafe extern "C" {
-            fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let sym = dlsym((*info).handle, init_cstr);
-        #[cfg(target_arch = "wasm32")]
-        let sym = crate::unix::dynload::dlsym((*info).handle, init_cstr);
-        if !sym.is_null() {
-            let f: unsafe extern "C" fn(*mut DllInfo) = std::mem::transmute(sym);
-            f(info);
-        }
-    }
+/// Extract the DLL name from a full path: basename minus the shared-library
+/// extension. An invalid-UTF-8 path produces the empty name, as before.
+fn extract_dll_name(path: &CStr) -> CString {
+    let path = path.to_str().unwrap_or("");
+    let basename = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let name = [".so", ".dylib", ".dll"]
+        .iter()
+        .find_map(|extension| basename.strip_suffix(extension))
+        .unwrap_or(basename);
+    CString::new(name).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,97 +944,115 @@ fn bundled_dll_table_entry() -> SEXP {
 }
 
 fn legacy_foreign_dll_table() -> SEXP {
-    unsafe {
-        let dlls = with_dynload_state(|state| state.loaded_dll.clone());
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, dlls.len() as c_int);
-        for (index, dll) in dlls.iter().enumerate() {
-            let info = dll.pointer();
-            if !info.is_null() {
-                SET_VECTOR_ELT(ans, index as R_xlen_t, make_dll_info_sexp(info));
-            }
-        }
-        setAttrib(
-            ans,
-            R_ClassSymbol(),
-            crate::sexp::constructors::mk_string_str("DLLInfoList"),
+    let dlls = with_dynload_state(|state| state.loaded_dll.clone());
+    // Root `ans` across the per-entry allocations below.
+    let ans = crate::sexp::context::own_control_value(Rf_allocVector(
+        SEXPTYPE::VECSXP,
+        dlls.len() as c_int,
+    ));
+    for (index, dll) in dlls.iter().enumerate() {
+        SET_VECTOR_ELT(
+            ans.as_raw(),
+            index as R_xlen_t,
+            make_dll_info_sexp(&dll.info),
         );
-        ans
     }
+    setAttrib(
+        ans.as_raw(),
+        R_ClassSymbol(),
+        crate::sexp::constructors::mk_string_str("DLLInfoList"),
+    );
+    ans.as_raw()
 }
 
 use crate::sexp::ffi::R_xlen_t;
 
 /// Create an SEXP representing a DllInfo.
-unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
-    unsafe {
-        let ref_vec = Rf_allocVector(SEXPTYPE::VECSXP, 6);
-        let el_names = Rf_allocVector(SEXPTYPE::STRSXP, 6);
+fn make_dll_info_sexp(info: &DllInfo) -> SEXP {
+    // Root the pair across the element allocations below.
+    let ref_vec = crate::sexp::context::own_control_value(Rf_allocVector(SEXPTYPE::VECSXP, 6));
+    let el_names = crate::sexp::context::own_control_value(Rf_allocVector(SEXPTYPE::STRSXP, 6));
 
-        // name
-        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        if !(*info).name.is_null() {
-            SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).name));
-        }
-        SET_VECTOR_ELT(ref_vec, 0, tmp);
-        SET_STRING_ELT(el_names, 0, crate::sexp::constructors::mk_char_str("name"));
+    // name
+    SET_VECTOR_ELT(
+        ref_vec.as_raw(),
+        0,
+        crate::sexp::constructors::mk_string_bytes(info.name.to_bytes()),
+    );
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        0,
+        crate::sexp::constructors::mk_char_str("name"),
+    );
 
-        // path
-        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        if !(*info).path.is_null() {
-            SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).path));
-        }
-        SET_VECTOR_ELT(ref_vec, 1, tmp);
-        SET_STRING_ELT(el_names, 1, crate::sexp::constructors::mk_char_str("path"));
+    // path
+    SET_VECTOR_ELT(
+        ref_vec.as_raw(),
+        1,
+        crate::sexp::constructors::mk_string_bytes(info.path.to_bytes()),
+    );
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        1,
+        crate::sexp::constructors::mk_char_str("path"),
+    );
 
-        // dynamicLookup
-        SET_VECTOR_ELT(
-            ref_vec,
-            2,
-            Rf_ScalarLogical(if (*info).use_dynamic_lookup {
-                TRUE
-            } else {
-                FALSE
-            }),
-        );
-        SET_STRING_ELT(
-            el_names,
-            2,
-            crate::sexp::constructors::mk_char_str("dynamicLookup"),
-        );
+    // dynamicLookup
+    SET_VECTOR_ELT(
+        ref_vec.as_raw(),
+        2,
+        Rf_ScalarLogical(if info.use_dynamic_lookup.get() {
+            TRUE
+        } else {
+            FALSE
+        }),
+    );
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        2,
+        crate::sexp::constructors::mk_char_str("dynamicLookup"),
+    );
 
-        // handle (simplified as nil)
-        SET_VECTOR_ELT(ref_vec, 3, R_NilValue());
-        SET_STRING_ELT(
-            el_names,
-            3,
-            crate::sexp::constructors::mk_char_str("handle"),
-        );
+    // handle (simplified as nil)
+    SET_VECTOR_ELT(ref_vec.as_raw(), 3, R_NilValue());
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        3,
+        crate::sexp::constructors::mk_char_str("handle"),
+    );
 
-        // info (simplified as nil)
-        SET_VECTOR_ELT(ref_vec, 4, R_NilValue());
-        SET_STRING_ELT(el_names, 4, crate::sexp::constructors::mk_char_str("info"));
+    // info (simplified as nil)
+    SET_VECTOR_ELT(ref_vec.as_raw(), 4, R_NilValue());
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        4,
+        crate::sexp::constructors::mk_char_str("info"),
+    );
 
-        // forceSymbols
-        SET_VECTOR_ELT(
-            ref_vec,
-            5,
-            Rf_ScalarLogical(if (*info).force_symbols { TRUE } else { FALSE }),
-        );
-        SET_STRING_ELT(
-            el_names,
-            5,
-            crate::sexp::constructors::mk_char_str("forceSymbols"),
-        );
+    // forceSymbols
+    SET_VECTOR_ELT(
+        ref_vec.as_raw(),
+        5,
+        Rf_ScalarLogical(if info.force_symbols.get() {
+            TRUE
+        } else {
+            FALSE
+        }),
+    );
+    SET_STRING_ELT(
+        el_names.as_raw(),
+        5,
+        crate::sexp::constructors::mk_char_str("forceSymbols"),
+    );
 
-        setAttrib(ref_vec, R_NamesSymbol(), el_names);
-        setAttrib(
-            ref_vec,
-            R_ClassSymbol(),
-            crate::sexp::constructors::mk_string_str("DLLInfo"),
-        );
+    setAttrib(ref_vec.as_raw(), R_NamesSymbol(), el_names.as_raw());
+    setAttrib(
+        ref_vec.as_raw(),
+        R_ClassSymbol(),
+        crate::sexp::constructors::mk_string_str("DLLInfo"),
+    );
 
-        ref_vec
-    }
+    ref_vec.as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -1278,68 +1087,73 @@ pub fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
 
 /// `.Internal(dyn.load(...))` handler.
 pub fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if native_dynamic_loading_policy_enabled() {
-            native_dynamic_loading_policy_error("dyn.load()");
-        }
-
-        checkArity(op, args);
-        if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
-            error("character argument expected");
-        }
-        let path = translateChar(STRING_ELT(CAR(args), 0));
-        // asLocal, now, searchPath from remaining args (simplified)
-        let as_local = if !CAR(CDR(args)).is_null() {
-            let l = crate::mainutils::coerce::asLogical(CAR(CDR(args)));
-            if l != 0 { 1 } else { 0 }
-        } else {
-            1
-        };
-        let now = if !CAR(CDR(CDR(args))).is_null() {
-            let l = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args))));
-            if l != 0 { 1 } else { 0 }
-        } else {
-            1
-        };
-
-        let info = AddDLL(path, as_local, now, b"\0".as_ptr() as *const c_char);
-        if info.is_null() {
-            with_dynload_state(|state| {
-                let err_bytes = &state.dll_error;
-                let err_str = std::ffi::CStr::from_bytes_until_nul(err_bytes).unwrap_or(
-                    std::ffi::CStr::from_bytes_with_nul(b"unknown error\0").unwrap_or_default(),
-                );
-                error(&format!(
-                    "unable to load shared object '{}':\n  {}",
-                    std::ffi::CStr::from_ptr(path).to_str().unwrap_or("?"),
-                    err_str.to_str().unwrap_or("?")
-                ));
-            });
-        }
-        make_dll_info_sexp(info)
+    if native_dynamic_loading_policy_enabled() {
+        native_dynamic_loading_policy_error("dyn.load()");
     }
+
+    checkArity(op, args);
+    if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
+        error("character argument expected");
+    }
+    let path = CString::new(crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+        CAR(args),
+        0,
+    )))
+    .expect("checked CHAR bytes have no NUL");
+    // asLocal, now, searchPath from remaining args (simplified)
+    let as_local = if !CAR(CDR(args)).is_null() {
+        let l = crate::mainutils::coerce::asLogical(CAR(CDR(args)));
+        if l != 0 { 1 } else { 0 }
+    } else {
+        1
+    };
+    let now = if !CAR(CDR(CDR(args))).is_null() {
+        let l = crate::mainutils::coerce::asLogical(CAR(CDR(CDR(args))));
+        if l != 0 { 1 } else { 0 }
+    } else {
+        1
+    };
+
+    // SAFETY: `dyn.load` is the trusted native-loader policy seam; AddDLL may
+    // execute the library's `R_init_` hook and later native code.
+    let Some(dll) = (unsafe { AddDLL(&path, as_local, now) }) else {
+        let message = with_dynload_state(|state| {
+            let err_str = std::ffi::CStr::from_bytes_until_nul(&state.dll_error).unwrap_or(
+                std::ffi::CStr::from_bytes_with_nul(b"unknown error\0").unwrap_or_default(),
+            );
+            format!(
+                "unable to load shared object '{}':\n  {}",
+                path.to_str().unwrap_or("?"),
+                err_str.to_str().unwrap_or("?")
+            )
+        });
+        error(&message);
+    };
+    make_dll_info_sexp(&dll.info)
 }
 
 /// `.Internal(dyn.unload(...))` handler.
 pub fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if native_dynamic_loading_policy_enabled() {
-            native_dynamic_loading_policy_error("dyn.unload()");
-        }
-
-        checkArity(op, args);
-        if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
-            error("character argument expected");
-        }
-        let path = translateChar(STRING_ELT(CAR(args), 0));
-        if !delete_dll(path) {
-            error(&format!(
-                "shared object '{}' was not loaded",
-                std::ffi::CStr::from_ptr(path).to_str().unwrap_or("?")
-            ));
-        }
-        R_NilValue()
+    if native_dynamic_loading_policy_enabled() {
+        native_dynamic_loading_policy_error("dyn.unload()");
     }
+
+    checkArity(op, args);
+    if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
+        error("character argument expected");
+    }
+    let path = CString::new(crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+        CAR(args),
+        0,
+    )))
+    .expect("checked CHAR bytes have no NUL");
+    if !delete_dll(&path) {
+        error(&format!(
+            "shared object '{}' was not loaded",
+            path.to_str().unwrap_or("?")
+        ));
+    }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -1373,39 +1187,33 @@ pub fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // R_moduleCdynload / R_cairoCdynload
 // ---------------------------------------------------------------------------
 
+/// # Safety
+/// `module` must be null or a live NUL-terminated string for the call; the
+/// trusted module loader may execute native initializers.
 pub unsafe fn R_moduleCdynload(module: *const c_char, local: c_int, now: c_int) -> c_int {
-    unsafe {
-        let r_home = std::env::var("R_HOME").unwrap_or_default();
-        if r_home.is_empty() {
-            return 0;
-        }
-        let module_str = std::ffi::CStr::from_ptr(module).to_str().unwrap_or("");
-        let dllpath = format!("{}/modules/{}{}\0", r_home, module_str, ".so");
-        let info = AddDLL(
-            dllpath.as_ptr() as *const c_char,
-            local,
-            now,
-            b"\0".as_ptr() as *const c_char,
-        );
-        if info.is_null() { 0 } else { 1 }
+    let r_home = std::env::var("R_HOME").unwrap_or_default();
+    if r_home.is_empty() || module.is_null() {
+        return 0;
     }
+    // SAFETY: `module` is non-null and NUL-terminated for the call.
+    let module_str = unsafe { CStr::from_ptr(module) }.to_str().unwrap_or("");
+    let Ok(path) = CString::new(format!("{r_home}/modules/{module_str}.so")) else {
+        return 0;
+    };
+    // SAFETY: the trusted module loader may execute native initializers.
+    c_int::from(unsafe { AddDLL(&path, local, now) }.is_some())
 }
 
 pub fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
-    unsafe {
-        let r_home = std::env::var("R_HOME").unwrap_or_default();
-        if r_home.is_empty() {
-            return 0;
-        }
-        let dllpath = format!("{}/library/grDevices/libs/cairo{}\0", r_home, ".so");
-        let info = AddDLL(
-            dllpath.as_ptr() as *const c_char,
-            local,
-            now,
-            b"\0".as_ptr() as *const c_char,
-        );
-        if info.is_null() { 0 } else { 1 }
+    let r_home = std::env::var("R_HOME").unwrap_or_default();
+    if r_home.is_empty() {
+        return 0;
     }
+    let Ok(path) = CString::new(format!("{r_home}/library/grDevices/libs/cairo.so")) else {
+        return 0;
+    };
+    // SAFETY: the trusted module loader may execute native initializers.
+    c_int::from(unsafe { AddDLL(&path, local, now) }.is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -1525,25 +1333,41 @@ mod tests {
 
     #[test]
     fn test_add_dll() {
-        with_session(|| unsafe {
+        with_session(|| {
             init_loaded_dll();
-            let idx = add_dll(
-                b"test_path\0".as_ptr() as *const c_char,
-                b"test_name\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
-            assert_eq!(idx, 0);
+            let dll = add_dll(c"test_path", c"test_name");
             with_dynload_state(|state| {
                 assert_eq!(state.loaded_dll.len(), 1);
+                assert_eq!(dll.pointer(), state.loaded_dll[0].pointer());
             });
         });
+    }
+
+    #[test]
+    fn test_dll_metadata_lease_owns_sealed_names() {
+        // Session-free: the Rc lease alone owns the opaque DllInfo surface.
+        let library = LoadedDll::new(DllInfo::new(
+            CString::new("/tmp/sample.so").unwrap(),
+            c"sample".to_owned(),
+            ptr::null_mut(),
+            false,
+        ));
+        let pointer = library.pointer();
+        let lease = library.clone();
+        // SAFETY: `pointer` is a live DllInfo handle owned by the lease.
+        assert!(!unsafe { R_useDynamicSymbols(pointer, true) });
+        drop(library);
+        assert_eq!(pointer, lease.pointer());
+        assert_eq!(lease.info.name.as_c_str(), c"sample");
+        assert_eq!(lease.info.path.as_c_str().to_str(), Ok("/tmp/sample.so"));
+        assert!(lease.info.use_dynamic_lookup.get());
     }
 
     #[test]
     fn test_get_dll_info_not_found() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let result = R_getDllInfo(b"nonexistent\0".as_ptr() as *const c_char);
+            let result = R_getDllInfo(c"nonexistent".as_ptr());
             assert!(result.is_null());
         });
     }
@@ -1552,26 +1376,18 @@ mod tests {
     fn test_get_dll_info_found() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let _ = add_dll(
-                b"test_path\0".as_ptr() as *const c_char,
-                b"test_name\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
-            let result = R_getDllInfo(b"test_path\0".as_ptr() as *const c_char);
+            let _ = add_dll(c"test_path", c"test_name");
+            let result = R_getDllInfo(c"test_path".as_ptr());
             assert!(!result.is_null());
         });
     }
 
     #[test]
     fn test_delete_dll() {
-        with_session(|| unsafe {
+        with_session(|| {
             init_loaded_dll();
-            let _ = add_dll(
-                b"to_delete\0".as_ptr() as *const c_char,
-                b"del_name\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
-            assert!(delete_dll(b"to_delete\0".as_ptr() as *const c_char));
+            let _ = add_dll(c"to_delete", c"del_name");
+            assert!(delete_dll(c"to_delete"));
             with_dynload_state(|state| {
                 assert!(state.loaded_dll.is_empty());
             });
@@ -1580,9 +1396,9 @@ mod tests {
 
     #[test]
     fn test_delete_dll_not_found() {
-        with_session(|| unsafe {
+        with_session(|| {
             init_loaded_dll();
-            assert!(!delete_dll(b"nonexistent\0".as_ptr() as *const c_char));
+            assert!(!delete_dll(c"nonexistent"));
         });
     }
 
@@ -1590,16 +1406,12 @@ mod tests {
     fn test_use_dynamic_symbols() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let _ = add_dll(
-                b"path\0".as_ptr() as *const c_char,
-                b"name\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
-            let dll = R_getDllInfo(b"path\0".as_ptr() as *const c_char);
+            let _ = add_dll(c"path", c"name");
+            let dll = R_getDllInfo(c"path".as_ptr());
             assert!(!dll.is_null());
             let old = R_useDynamicSymbols(dll, false);
             assert!(old); // default is true
-            assert!(!(*dll).use_dynamic_lookup);
+            assert!(!(*dll).use_dynamic_lookup.get());
         });
     }
 
@@ -1607,16 +1419,12 @@ mod tests {
     fn test_force_symbols() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let _ = add_dll(
-                b"path2\0".as_ptr() as *const c_char,
-                b"name2\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
-            let dll = R_getDllInfo(b"path2\0".as_ptr() as *const c_char);
+            let _ = add_dll(c"path2", c"name2");
+            let dll = R_getDllInfo(c"path2".as_ptr());
             assert!(!dll.is_null());
             let old = R_forceSymbols(dll, true);
             assert!(!old); // default is false
-            assert!((*dll).force_symbols);
+            assert!((*dll).force_symbols.get());
         });
     }
 
@@ -1627,27 +1435,19 @@ mod tests {
             ("/usr/lib/libfoo.dylib", "libfoo"),
             (r"C:\\R\\library\\foo.dll", "foo"),
         ] {
-            unsafe {
-                let path = CString::new(path).expect("test path");
-                let owned_path = strdup(path.as_ptr());
-                let name = extract_dll_name(owned_path);
-                let name_str = CStr::from_ptr(name).to_str().unwrap_or("");
-                assert_eq!(name_str, expected);
-                libc_free(owned_path.cast());
-                libc_free(name.cast());
-            }
+            let path = CString::new(path).expect("test path");
+            assert_eq!(extract_dll_name(&path).to_str(), Ok(expected));
         }
+        // An invalid-UTF-8 path produces the empty name.
+        let path = CString::new([b'/', 0xff]).expect("test path");
+        assert_eq!(extract_dll_name(&path).as_c_str(), c"");
     }
 
     #[test]
     fn test_find_symbol_empty() {
         with_session(|| unsafe {
             init_loaded_dll();
-            let f = R_FindSymbol(
-                b"nonexistent\0".as_ptr() as *const c_char,
-                b"\0".as_ptr() as *const c_char,
-                R_ANY_SYM,
-            );
+            let f = R_FindSymbol(c"nonexistent".as_ptr(), c"".as_ptr(), R_ANY_SYM);
             assert!(f.is_none());
         });
     }
@@ -1658,11 +1458,7 @@ mod tests {
     fn test_find_symbol_registered_call() {
         with_session(|| unsafe {
             init_loaded_dll();
-            add_dll(
-                c"/tmp/test.so".as_ptr(),
-                c"testpkg".as_ptr(),
-                ptr::null_mut(),
-            );
+            add_dll(c"/tmp/test.so", c"testpkg");
             let info = R_getDllInfo(c"/tmp/test.so".as_ptr());
             let routines = [
                 R_CallMethodDef {
@@ -1684,22 +1480,14 @@ mod tests {
                 ptr::null(),
             );
 
-            let found = R_FindSymbol(
-                b"registered\0".as_ptr() as *const c_char,
-                b"testpkg\0".as_ptr() as *const c_char,
-                R_CALL_SYM,
-            );
+            let found = R_FindSymbol(c"registered".as_ptr(), c"testpkg".as_ptr(), R_CALL_SYM);
             assert!(found.is_some());
             assert_eq!(
                 found.unwrap() as *const (),
                 test_registered_call as *const ()
             );
 
-            let loaded = Rf_lookupCachedSymbol(
-                b"registered\0".as_ptr() as *const c_char,
-                b"testpkg\0".as_ptr() as *const c_char,
-                0,
-            );
+            let loaded = Rf_lookupCachedSymbol(c"registered".as_ptr(), c"testpkg".as_ptr(), 0);
             assert!(loaded.is_some());
             assert_eq!(
                 loaded.unwrap() as *const (),
@@ -1729,11 +1517,7 @@ mod tests {
 
         let (left_package_table, left_root_table) = left.with_protected(|| unsafe {
             init_loaded_dll();
-            let _ = add_dll(
-                b"left_path\0".as_ptr() as *const c_char,
-                b"left_name\0".as_ptr() as *const c_char,
-                ptr::null_mut(),
-            );
+            let _ = add_dll(c"left_path", c"left_name");
             R_RegisterCCallable(c"leftpkg".as_ptr(), c"leftonly".as_ptr(), Some(left_only));
             let table = get_package_centry_table(b"leftpkg\0".as_ptr() as *const c_char);
             let root = with_dynload_state(|state| {

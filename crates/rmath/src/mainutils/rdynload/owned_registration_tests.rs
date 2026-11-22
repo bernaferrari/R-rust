@@ -30,11 +30,7 @@ unsafe fn c_table(info: *mut DllInfo, count: c_int, types: &[c_int]) {
 fn declaration_and_library_survive_reregistration_and_unload() {
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
-        add_dll(
-            c"owned-path".as_ptr(),
-            c"owned-package".as_ptr(),
-            ptr::null_mut(),
-        );
+        add_dll(c"owned-path", c"owned-package");
         let info = R_getDllInfo(c"owned-path".as_ptr());
         c_table(info, 2, &[13, 14]);
         let original = resolve_foreign_symbol(
@@ -59,7 +55,7 @@ fn declaration_and_library_survive_reregistration_and_unload() {
         assert!(original.validate(R_CALL_SYM, 2).is_err());
         assert_eq!(replacement.argument_types(), Some([16].as_slice()));
         assert!(replacement.validate(R_C_SYM, 1).is_ok());
-        assert!(delete_dll(c"owned-path".as_ptr()));
+        assert!(delete_dll(c"owned-path"));
         assert!(
             resolve_foreign_symbol(
                 c"owned_registered".as_ptr(),
