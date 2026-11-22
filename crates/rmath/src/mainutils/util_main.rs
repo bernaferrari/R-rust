@@ -11,6 +11,7 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
+use std::{mem::MaybeUninit, slice};
 
 use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
@@ -50,26 +51,11 @@ fn r_error(message: impl Into<String>) -> ! {
 pub type R_wchar_t = u32;
 
 /// UTF-16 surrogate helpers
-const HIGH_SURROGATE_START: u32 = 0xD800;
 const LOW_SURROGATE_START: u32 = 0xDC00;
-const IS_HIGH_SURROGATE_MASK: u32 = 0xF800;
 
 // ---------------------------------------------------------------------------
 // Minimal libc helpers (avoiding the libc crate)
 // ---------------------------------------------------------------------------
-
-#[inline]
-unsafe fn libc_strlen(s: *const c_char) -> usize {
-    unsafe {
-        let mut len = 0usize;
-        let mut p = s;
-        while *p != 0 {
-            len += 1;
-            p = p.add(1);
-        }
-        len
-    }
-}
 
 #[inline]
 fn libc_isspace(c: c_char) -> bool {
@@ -85,15 +71,6 @@ fn libc_isspace(c: c_char) -> bool {
 #[inline]
 fn to_lower(c: u8) -> u8 {
     if c >= b'A' && c <= b'Z' { c + 32 } else { c }
-}
-
-#[inline]
-fn libc_malloc(size: usize) -> *mut c_void {
-    unsafe {
-        let layout = std::alloc::Layout::from_size_align(size, 1)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-        std::alloc::alloc(layout) as *mut c_void
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -160,20 +137,67 @@ fn utf16toucs(high: u32, low: u32) -> R_wchar_t {
 /// Port of R's static `utf8toutf16low` from util.c.
 /// Assumes all validation has been done already.
 #[inline]
-unsafe fn utf8toutf16low(s: *const c_char) -> u32 {
-    unsafe { LOW_SURROGATE_START | ((*s.add(2) as u32 & 0x0F) << 6) | (*s.add(3) as u32 & 0x3F) }
+fn utf8toutf16low(bytes: &[u8]) -> u32 {
+    LOW_SURROGATE_START | ((u32::from(bytes[2]) & 0x0f) << 6) | (u32::from(bytes[3]) & 0x3f)
 }
 
 /// Convert UTF-8 (high surrogate wchar + string pointer) to UCS-32.
 ///
 /// Port of R's `utf8toucs32` from util.c.
+///
+/// # Safety
+/// `s` must be readable for at least four bytes.
 pub unsafe fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_t {
-    unsafe { utf16toucs(high, utf8toutf16low(s)) }
+    // SAFETY: caller guarantees four readable bytes at `s`.
+    let bytes = unsafe { slice::from_raw_parts(s.cast::<u8>(), 4) };
+    utf16toucs(high, utf8toutf16low(bytes))
 }
 
 // ---------------------------------------------------------------------------
 // utf8toucs: convert a single UTF-8 character to wchar_t
 // ---------------------------------------------------------------------------
+
+const INVALID_UTF8: usize = usize::MAX;
+const INCOMPLETE_UTF8: usize = usize::MAX - 1;
+
+/// Decode one UTF-8 scalar from a bounded prefix.
+///
+/// Returns `(value, bytes consumed)`, or `Err(INVALID_UTF8)` / `Err(INCOMPLETE_UTF8)`.
+/// Keeps GNU's 32-bit wchar arithmetic, including the legacy 5- and 6-byte
+/// masks/shifts and the no-trail-validation rule for those sequences.
+fn decode_wide_prefix(input: &[u8]) -> Result<(u32, usize), usize> {
+    let Some(&lead) = input.first() else {
+        return Ok((0, 0));
+    };
+    if lead < 0x80 {
+        return Ok((u32::from(lead), 1));
+    }
+    if lead < 0xc0 {
+        return Err(INVALID_UTF8);
+    }
+    let n = utf8clen(lead as c_char) as usize;
+    let prefix = input.get(..n).ok_or(INCOMPLETE_UTF8)?;
+    let trail = &prefix[1..];
+    if n <= 4 && trail.iter().any(|byte| byte & 0xc0 != 0x80) {
+        return Err(INVALID_UTF8);
+    }
+    let b = |i: usize| u32::from(prefix[i] & 0x3f);
+    let lead = u32::from(lead);
+    let value = match n {
+        2 => ((lead & 0x1f) << 6) | b(1),
+        3 => ((lead & 0x0f) << 12) | (b(1) << 6) | b(2),
+        4 => ((lead & 0x0f) << 18) | (b(1) << 12) | (b(2) << 6) | b(3),
+        5 => ((lead & 0x0f) << 24) | (b(1) << 12) | (b(2) << 12) | (b(3) << 6) | b(4),
+        6 => {
+            ((lead & 0x0f) << 30) | (b(1) << 24) | (b(2) << 18) | (b(3) << 12) | (b(4) << 6) | b(5)
+        }
+        _ => return Err(INVALID_UTF8),
+    };
+    if n == 3 && ((0xd800..=0xdfff).contains(&value) || matches!(value, 0xfffe | 0xffff)) {
+        return Err(INVALID_UTF8);
+    }
+    Ok((value, n))
+}
 
 /// Convert a single UTF-8 character to a wide character.
 ///
@@ -183,110 +207,97 @@ pub unsafe fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_t {
 /// If `wc` is null, the result is discarded but the byte count is returned.
 ///
 /// Port of R's `utf8toucs` from util.c.
+///
+/// # Safety
+/// `s` must be a readable NUL-terminated string. If `wc` is non-null it must
+/// be writable for one `u32` (possibly uninitialized) and not overlap `s`.
 pub unsafe fn utf8toucs(wc: *mut u32, s: *const c_char) -> usize {
-    unsafe {
-        let byte = *s as u8;
-        let mut local: u32 = 0;
-        let w = if wc.is_null() { &mut local } else { &mut *wc };
-
-        if byte == 0 {
-            *w = 0;
-            return 0;
-        } else if byte < 0x80 {
-            *w = byte as u32;
-            return 1;
-        } else if byte < 0xC0 {
-            return usize::MAX; // -1
-        } else if byte < 0xE0 {
-            // 2-byte sequence
-            if libc_strlen(s) < 2 {
-                return usize::MAX - 1;
-            } // -2
-            if (*s.add(1) as u8 & 0xC0) == 0x80 {
-                *w = (((byte & 0x1F) as u32) << 6) | (*s.add(1) as u32 & 0x3F);
-                return 2;
-            } else {
-                return usize::MAX; // -1
-            }
-        } else if byte < 0xF0 {
-            // 3-byte sequence
-            if libc_strlen(s) < 3 {
-                return usize::MAX - 1;
-            } // -2
-            if (*s.add(1) as u8 & 0xC0) == 0x80 && (*s.add(2) as u8 & 0xC0) == 0x80 {
-                let cvalue = (((byte & 0x0F) as u32) << 12)
-                    | ((*s.add(1) as u32 & 0x3F) << 6)
-                    | (*s.add(2) as u32 & 0x3F);
-                // Surrogate range check
-                if cvalue >= 0xD800 && cvalue <= 0xDFFF {
-                    return usize::MAX;
-                }
-                if cvalue == 0xFFFE || cvalue == 0xFFFF {
-                    return usize::MAX;
-                }
-                *w = cvalue;
-                return 3;
-            } else {
-                return usize::MAX; // -1
-            }
-        } else if byte < 0xF8 {
-            // 4-byte sequence
-            if libc_strlen(s) < 4 {
-                return usize::MAX - 1;
-            } // -2
-            if (*s.add(1) as u8 & 0xC0) == 0x80
-                && (*s.add(2) as u8 & 0xC0) == 0x80
-                && (*s.add(3) as u8 & 0xC0) == 0x80
-            {
-                let cvalue = (((byte & 0x0F) as u32) << 18)
-                    | ((*s.add(1) as u32 & 0x3F) << 12)
-                    | ((*s.add(2) as u32 & 0x3F) << 6)
-                    | (*s.add(3) as u32 & 0x3F);
-                // On platforms where wchar_t < 4 (UTF-16), return high surrogate.
-                // In our Rust port, we always use u32, so we just store the value.
-                *w = cvalue;
-                return 4;
-            } else {
-                return usize::MAX; // -1
-            }
-        }
-
-        // 5-byte and 6-byte sequences (very rare, no validation)
-        if byte < 0xFC {
-            // 5-byte
-            if libc_strlen(s) < 5 {
-                return usize::MAX - 1;
-            }
-            *w = (((byte & 0x0F) as u32) << 24)
-                | ((*s.add(1) as u32 & 0x3F) << 12)
-                | ((*s.add(2) as u32 & 0x3F) << 12)
-                | ((*s.add(3) as u32 & 0x3F) << 6)
-                | (*s.add(4) as u32 & 0x3F);
-            return 5;
+    // Read at most one encoded character, without scanning the entire string.
+    let mut prefix = [0; 6];
+    let len = unsafe {
+        // SAFETY: `s` is a readable NUL-terminated string; the loop stops at
+        // the first NUL or after `bound` bytes.
+        let first = s.cast::<u8>().read();
+        let bound = if first < 0xc0 {
+            1
         } else {
-            // 6-byte
-            if libc_strlen(s) < 6 {
-                return usize::MAX - 1;
+            utf8clen(first as c_char) as usize
+        };
+        let mut len = 0;
+        for (i, slot) in prefix[..bound].iter_mut().enumerate() {
+            let byte = s.cast::<u8>().add(i).read();
+            if byte == 0 {
+                break;
             }
-            *w = (((byte & 0x0F) as u32) << 30)
-                | ((*s.add(1) as u32 & 0x3F) << 24)
-                | ((*s.add(2) as u32 & 0x3F) << 18)
-                | ((*s.add(3) as u32 & 0x3F) << 12)
-                | ((*s.add(4) as u32 & 0x3F) << 6)
-                | (*s.add(5) as u32 & 0x3F);
-            return 6;
+            *slot = byte;
+            len += 1;
         }
+        len
+    };
+    match decode_wide_prefix(&prefix[..len]) {
+        Ok((value, n)) => {
+            if !wc.is_null() {
+                // SAFETY: `wc` is a writable non-overlapping output slot.
+                unsafe { wc.write(value) };
+            }
+            n
+        }
+        Err(code) => code,
     }
 }
 
 // ---------------------------------------------------------------------------
-// utf8towcs: convert UTF-8 string to wide-char string
+// utf8towcs / utf8towcs4: convert UTF-8 strings to wide strings
 // ---------------------------------------------------------------------------
 
-/// Check if a wchar value is a high surrogate.
-#[inline]
-fn is_high_surrogate(w: u32) -> bool {
-    (w & IS_HIGH_SURROGATE_MASK) == HIGH_SURROGATE_START
+/// Shared decoder for `utf8towcs` (32-bit wide output, preserving the legacy
+/// handling of surrogate-valued inputs) and `utf8towcs4` (UCS-4 output).
+/// Writes at most `output.len()` units; a null output means count only.
+fn decode_wide_string(
+    mut input: &[u8],
+    mut output: Option<&mut [MaybeUninit<u32>]>,
+    ucs4: bool,
+) -> usize {
+    let limit = output.as_ref().map_or(usize::MAX, |out| out.len());
+    let mut written = 0;
+    while written < limit {
+        let (mut value, consumed) = match decode_wide_prefix(input) {
+            Ok(result) => result,
+            Err(_) => {
+                if ucs4 && let Some(out) = output.as_deref_mut() {
+                    out[written].write(0);
+                }
+                eprintln!(
+                    "invalid input in {}",
+                    if ucs4 { "utf8towcs4" } else { "utf8towcs" }
+                );
+                return 0;
+            }
+        };
+        let low =
+            (consumed >= 4 && (0xd800..=0xdbff).contains(&value)).then(|| utf8toutf16low(input));
+        if ucs4 && let Some(low) = low {
+            value = utf16toucs(value, low);
+        }
+        if let Some(out) = output.as_deref_mut() {
+            out[written].write(value);
+        }
+        if consumed == 0 {
+            break;
+        }
+        written += 1;
+        if !ucs4
+            && let Some(low) = low
+            && written < limit
+        {
+            if let Some(out) = output.as_deref_mut() {
+                out[written].write(low);
+            }
+            written += 1;
+        }
+        input = &input[consumed..];
+    }
+    written
 }
 
 /// Convert a UTF-8 string to a wide-character string.
@@ -296,112 +307,50 @@ fn is_high_surrogate(w: u32) -> bool {
 ///
 /// Returns the number of wide characters written (not including terminator).
 ///
-/// Port of R's `utf8towcs` from util.c.
+/// Port of R's `utf8towcs` from util.c. Reading the input as a `CStr` may
+/// inspect the full string even when conversion stops at capacity.
+///
+/// # Safety
+/// `s` must be a readable NUL-terminated string. If `wc` is non-null it must
+/// be writable for `n` `u32` values (possibly uninitialized) and must not
+/// overlap `s`.
 pub unsafe fn utf8towcs(wc: *mut u32, s: *const c_char, n: usize) -> usize {
-    unsafe {
-        let mut res: isize = 0;
-        let mut t = s;
-        let mut local: u32 = 0;
-
-        if !wc.is_null() {
-            let mut p = wc;
-            loop {
-                let m = utf8toucs(p, t) as isize;
-                if m < 0 {
-                    eprintln!("invalid input in utf8towcs");
-                    return 0;
-                }
-                if m == 0 {
-                    break;
-                }
-                res += 1;
-                if res as usize >= n {
-                    break;
-                }
-                if is_high_surrogate(*p) {
-                    p = p.add(1);
-                    *p = utf8toutf16low(t);
-                    res += 1;
-                    if res as usize >= n {
-                        break;
-                    }
-                }
-                p = p.add(1);
-                t = t.offset(m);
-            }
-        } else {
-            loop {
-                let m = utf8toucs(&mut local, t) as isize;
-                if m < 0 {
-                    eprintln!("invalid input in utf8towcs");
-                    return 0;
-                }
-                if m == 0 {
-                    break;
-                }
-                res += 1;
-                if is_high_surrogate(local) {
-                    res += 1;
-                }
-                t = t.offset(m);
-            }
-        }
-        res as usize
+    if !wc.is_null() && n == 0 {
+        return 0;
     }
+    // SAFETY: `s` is NUL-terminated and readable; `wc`, when non-null, is
+    // writable for `n` possibly-uninitialized values and disjoint from `s`.
+    let (input, output) = unsafe {
+        (
+            CStr::from_ptr(s).to_bytes(),
+            (!wc.is_null()).then(|| slice::from_raw_parts_mut(wc.cast::<MaybeUninit<u32>>(), n)),
+        )
+    };
+    decode_wide_string(input, output, false)
 }
-
-// ---------------------------------------------------------------------------
-// utf8towcs4: convert UTF-8 string to UCS-4 (R_wchar_t) string
-// ---------------------------------------------------------------------------
 
 /// Convert a UTF-8 string to a UCS-4 (R_wchar_t) string.
 ///
-/// Port of R's `utf8towcs4` from util.c.
+/// Port of R's `utf8towcs4` from util.c. Reading the input as a `CStr` may
+/// inspect the full string even when conversion stops at capacity.
+///
+/// # Safety
+/// `s` must be a readable NUL-terminated string. If `wc` is non-null it must
+/// be writable for `n` `u32` values (possibly uninitialized) and must not
+/// overlap `s`.
 pub unsafe fn utf8towcs4(wc: *mut R_wchar_t, s: *const c_char, n: usize) -> usize {
-    unsafe {
-        let mut res: isize = 0;
-        let mut t = s;
-
-        if !wc.is_null() {
-            let mut p = wc;
-            loop {
-                let mut local: u32 = 0;
-                let m = utf8toucs(&mut local, t) as isize;
-                *p = local as R_wchar_t;
-                if m < 0 {
-                    eprintln!("invalid input in utf8towcs4");
-                    return 0;
-                }
-                if m == 0 {
-                    break;
-                }
-                if is_high_surrogate(*p) {
-                    *p = Rf_utf8toucs32(*p, t);
-                }
-                res += 1;
-                if res as usize >= n {
-                    break;
-                }
-                p = p.add(1);
-                t = t.offset(m);
-            }
-        } else {
-            loop {
-                let mut local: u32 = 0;
-                let m = utf8toucs(&mut local, t) as isize;
-                if m < 0 {
-                    eprintln!("invalid input in utf8towcs4");
-                    return 0;
-                }
-                if m == 0 {
-                    break;
-                }
-                res += 1;
-                t = t.offset(m);
-            }
-        }
-        res as usize
+    if !wc.is_null() && n == 0 {
+        return 0;
     }
+    // SAFETY: `s` is NUL-terminated and readable; `wc`, when non-null, is
+    // writable for `n` possibly-uninitialized values and disjoint from `s`.
+    let (input, output) = unsafe {
+        (
+            CStr::from_ptr(s).to_bytes(),
+            (!wc.is_null()).then(|| slice::from_raw_parts_mut(wc.cast::<MaybeUninit<u32>>(), n)),
+        )
+    };
+    decode_wide_string(input, output, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -412,61 +361,127 @@ pub unsafe fn utf8towcs4(wc: *mut R_wchar_t, s: *const c_char, n: usize) -> usiz
 static UTF8_TABLE1: [u32; 6] = [0x7f, 0x7ff, 0xffff, 0x1fffff, 0x3ffffff, 0x7fffffff];
 static UTF8_TABLE2: [u8; 6] = [0, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc];
 
+/// Encode one wide scalar. Clears the first output byte so failure paths are
+/// well-defined, then writes the encoding only when it fits with room for a
+/// terminator. Returns the encoded byte count (no terminator), or 0.
+fn encode_wide_scalar(
+    mut output: Option<&mut [MaybeUninit<u8>]>,
+    mut value: u32,
+    capacity: usize,
+) -> usize {
+    if capacity == 0 {
+        return 0;
+    }
+    if let Some(out) = output.as_deref_mut() {
+        out[0].write(0);
+    }
+    if value == 0 {
+        return 0;
+    }
+    let Some(last) = UTF8_TABLE1.iter().position(|max| value <= *max) else {
+        return 0;
+    };
+    if last >= capacity - 1 {
+        return 0;
+    }
+    if let Some(out) = output {
+        for slot in out[1..last + 1].iter_mut().rev() {
+            slot.write(0x80 | (value & 0x3f) as u8);
+            value >>= 6;
+        }
+        out[0].write(UTF8_TABLE2[last] | value as u8);
+    }
+    last + 1
+}
+
 /// Convert a single UCS-4 codepoint to UTF-8.
 ///
-/// If `s` is null or `n` is 0, returns the number of bytes that would be needed.
-/// Otherwise writes the UTF-8 encoding into `s` (which must have room for `n` bytes).
-/// Returns the number of bytes written (not including the null terminator).
+/// Writes the UTF-8 encoding into `s` (no terminator is appended; the first
+/// byte is cleared on failure). Returns the number of bytes encoded, or 0.
+/// A null `s` counts respecting `n`.
 ///
 /// Port of R's static `Rwcrtomb32` from util.c.
-pub unsafe fn Rwcrtomb32(s: *mut c_char, mut cvalue: R_wchar_t, n: usize) -> usize {
-    unsafe {
-        if n == 0 {
-            return 0;
-        }
-        if !s.is_null() {
-            *s = 0;
-        } // simplify exit
-        if cvalue == 0 {
-            return 0;
-        }
-
-        let mut i: usize = 0;
-        while i < UTF8_TABLE1.len() {
-            if (cvalue as u32) <= UTF8_TABLE1[i] {
-                break;
-            }
-            i += 1;
-        }
-
-        if i >= n - 1 {
-            return 0;
-        } // need space for terminal null
-
-        if !s.is_null() {
-            let mut si = s.add(i);
-            let mut j = i;
-            while j > 0 {
-                j -= 1;
-                *si = (0x80 | (cvalue & 0x3F)) as c_char;
-                si = si.sub(1);
-                cvalue >>= 6;
-            }
-            *si = (UTF8_TABLE2[i] | (cvalue as u8)) as c_char;
-        }
-        i + 1
-    }
+///
+/// # Safety
+/// If `s` is non-null it must be writable for `n` bytes (possibly
+/// uninitialized).
+pub unsafe fn Rwcrtomb32(s: *mut c_char, cvalue: R_wchar_t, n: usize) -> usize {
+    // SAFETY: `s`, when non-null with n > 0, is writable for n bytes.
+    let output = unsafe {
+        (!s.is_null() && n > 0).then(|| slice::from_raw_parts_mut(s.cast::<MaybeUninit<u8>>(), n))
+    };
+    encode_wide_scalar(output, cvalue, n)
 }
 
 // ---------------------------------------------------------------------------
-// wcstoutf8: convert wide string (UTF-16/UCS-2/UCS-4) to UTF-8
+// wcstoutf8 / wcs4toutf8: convert wide strings to UTF-8
 // ---------------------------------------------------------------------------
 
-/// Check if two consecutive wide chars form a surrogate pair.
-#[allow(clippy::bad_bit_mask)]
-#[inline]
-fn is_surrogate_pair(high: u32, low: u32) -> bool {
-    is_high_surrogate(high) && (low & IS_HIGH_SURROGATE_MASK) == LOW_SURROGATE_START
+/// Encode a NUL-terminated wide stream, appending a terminator while there
+/// is room. Returns the number of bytes including the terminator.
+fn encode_wide_string(
+    input: impl Iterator<Item = u32>,
+    mut output: Option<&mut [MaybeUninit<u8>]>,
+    capacity: usize,
+    combine_surrogates: bool,
+) -> usize {
+    let mut input = input.peekable();
+    let mut written = 0;
+    while let Some(mut value) = input.next() {
+        if combine_surrogates
+            && (0xd800..=0xdbff).contains(&value)
+            && let Some(&low) = input.peek()
+            && (0xdc00..=0xdfff).contains(&low)
+        {
+            value = utf16toucs(value, low);
+            input.next();
+        } else if combine_surrogates && (0xd800..=0xdfff).contains(&value) {
+            eprintln!("unpaired surrogate Unicode point {value:x}");
+        }
+        let tail = output.as_deref_mut().map(|out| &mut out[written..]);
+        let used = encode_wide_scalar(tail, value, capacity - written);
+        if used == 0 {
+            break;
+        }
+        written += used;
+    }
+    if let Some(out) = output {
+        out[written].write(0);
+    }
+    written + 1
+}
+
+/// Shared raw adapter for `wcstoutf8` and `wcs4toutf8`.
+///
+/// # Safety
+/// `wc` must be a readable NUL-terminated `u32` string. If `s` is non-null it
+/// must be writable for `n` bytes (possibly uninitialized) and must not
+/// overlap `wc`.
+unsafe fn wide_to_utf8(s: *mut c_char, mut wc: *const u32, n: usize, combine: bool) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    // A lazy iterator keeps capacity-limited calls from scanning the full
+    // wide input; peeking after a checked high surrogate may read the
+    // terminator, which is in bounds.
+    let input = std::iter::from_fn(move || {
+        // SAFETY: each successful step advances to the next unit within the
+        // NUL-terminated input, and a zero is never advanced past.
+        unsafe {
+            let value = wc.read();
+            if value == 0 {
+                None
+            } else {
+                wc = wc.add(1);
+                Some(value)
+            }
+        }
+    });
+    // SAFETY: `s`, when non-null, is writable for n bytes and disjoint.
+    let output = unsafe {
+        (!s.is_null()).then(|| slice::from_raw_parts_mut(s.cast::<MaybeUninit<u8>>(), n))
+    };
+    encode_wide_string(input, output, n, combine)
 }
 
 /// Convert a wide-character string to UTF-8.
@@ -477,86 +492,27 @@ fn is_surrogate_pair(high: u32, low: u32) -> bool {
 /// still null-terminated.
 ///
 /// Port of R's `wcstoutf8` from util.c.
-#[allow(clippy::bad_bit_mask)]
+///
+/// # Safety
+/// `wc` must be a readable NUL-terminated `u32` string. If `s` is non-null it
+/// must be writable for `n` bytes (possibly uninitialized) and must not
+/// overlap `wc`.
 pub unsafe fn wcstoutf8(s: *mut c_char, wc: *const u32, n: usize) -> usize {
-    unsafe {
-        if n == 0 {
-            return 0;
-        }
-        let mut res: usize = 0;
-        let mut p = wc;
-        let mut t = s;
-
-        loop {
-            let ch = *p;
-            if ch == 0 {
-                break;
-            }
-
-            let m = if is_surrogate_pair(ch, *p.add(1)) {
-                let cvalue = ((ch & 0x3FF) << 10) + (*p.add(1) & 0x3FF) + 0x010000;
-                p = p.add(1); // skip low surrogate
-                Rwcrtomb32(t, cvalue, n - res)
-            } else {
-                if is_high_surrogate(ch) || (ch & IS_HIGH_SURROGATE_MASK) == LOW_SURROGATE_START {
-                    eprintln!("unpaired surrogate Unicode point {:x}", ch);
-                }
-                Rwcrtomb32(t, ch, n - res)
-            };
-
-            if m == 0 {
-                break;
-            }
-            res += m;
-            if !t.is_null() {
-                t = t.add(m);
-            }
-            p = p.add(1);
-        }
-        // Write null terminator
-        if !t.is_null() {
-            *t = 0;
-        }
-        res + 1
-    }
+    // SAFETY: forwarded contract; `wc` is NUL-terminated and `s` disjoint.
+    unsafe { wide_to_utf8(s, wc, n, true) }
 }
-
-// ---------------------------------------------------------------------------
-// wcs4toutf8: convert UCS-4 string to UTF-8
-// ---------------------------------------------------------------------------
 
 /// Convert a UCS-4 (R_wchar_t) string to UTF-8.
 ///
 /// Port of R's `wcs4toutf8` from util.c.
+///
+/// # Safety
+/// `wc` must be a readable NUL-terminated `u32` string. If `s` is non-null it
+/// must be writable for `n` bytes (possibly uninitialized) and must not
+/// overlap `wc`.
 pub unsafe fn wcs4toutf8(s: *mut c_char, wc: *const R_wchar_t, n: usize) -> usize {
-    unsafe {
-        if n == 0 {
-            return 0;
-        }
-        let mut res: usize = 0;
-        let mut p = wc;
-        let mut t = s;
-
-        loop {
-            let ch = *p;
-            if ch == 0 {
-                break;
-            }
-            let m = Rwcrtomb32(t, ch, n - res);
-            if m == 0 {
-                break;
-            }
-            res += m;
-            if !t.is_null() {
-                t = t.add(m);
-            }
-            p = p.add(1);
-        }
-        if !t.is_null() {
-            *t = 0;
-        }
-        res + 1
-    }
+    // SAFETY: forwarded contract; `wc` is NUL-terminated and `s` disjoint.
+    unsafe { wide_to_utf8(s, wc, n, false) }
 }
 
 // ---------------------------------------------------------------------------
@@ -812,20 +768,26 @@ pub unsafe fn R_atof(str: *const c_char) -> c_double {
 // Rstrdup: malloc-based string duplication
 // ---------------------------------------------------------------------------
 
-/// Return a newly allocated copy of a string using malloc.
+/// Allocate a NUL-terminated copy using Rust's global allocator, or return
+/// null if allocation fails.
 ///
-/// Port of R's `Rstrdup` from util.c. Uses `malloc` and calls `error()`
-/// (panics in Rust) on allocation failure.
+/// Port of R's `Rstrdup` from util.c.
+///
+/// # Safety
+/// `s` must be a readable NUL-terminated string. The result must be released
+/// with the same allocator and the original size.
 pub unsafe fn Rstrdup(s: *const c_char) -> *mut c_char {
     unsafe {
-        let nb = libc_strlen(s) + 1;
-        let cpy = libc_malloc(nb);
-        if cpy.is_null() {
+        let bytes = CStr::from_ptr(s).to_bytes_with_nul();
+        let layout =
+            std::alloc::Layout::array::<u8>(bytes.len()).expect("C string size is bounded");
+        let copy = std::alloc::alloc(layout);
+        if copy.is_null() {
             eprintln!("allocation error in Rstrdup");
             return ptr::null_mut();
         }
-        ptr::copy_nonoverlapping(s, cpy as *mut c_char, nb);
-        cpy as *mut c_char
+        ptr::copy_nonoverlapping(bytes.as_ptr(), copy, bytes.len());
+        copy.cast()
     }
 }
 
@@ -1267,75 +1229,66 @@ pub unsafe fn markKnown(s: *const c_char, r#ref: *const c_void) -> *const c_void
     }
 }
 
+/// Convert a multibyte string to UCS-2 (UTF-16) code units.
+///
+/// Intentionally limited: `enc == CE_UTF8` decodes 1- to 3-byte UTF-8 scalar
+/// values, skipping malformed chunks by their declared width and skipping
+/// 4-byte (astral) characters entirely; other encodings are treated as
+/// single-byte Latin-1/native. No terminator is written; returns the number
+/// of `u16` units copied.
+fn mbcs_to_ucs2(mut input: &[u8], output: &mut [MaybeUninit<u16>], utf8: bool) -> usize {
+    if !utf8 {
+        let mut written = 0;
+        for (&byte, out) in input.iter().zip(output.iter_mut()) {
+            out.write(u16::from(byte));
+            written += 1;
+        }
+        return written;
+    }
+    let mut written = 0;
+    while written < output.len() && !input.is_empty() {
+        let width = utf8clen(input[0] as c_char) as usize;
+        if width > 4 {
+            input = &input[1..];
+            continue;
+        }
+        let Some(prefix) = input.get(..width) else {
+            break;
+        };
+        if width <= 3
+            && let Ok(text) = std::str::from_utf8(prefix)
+            && let Some(ch) = text.chars().next()
+        {
+            output[written].write(ch as u16);
+            written += 1;
+        }
+        input = &input[width..];
+    }
+    written
+}
+
 /// Convert a multibyte string to UCS-2 (UTF-16).
 ///
-/// Simplified version that handles ASCII and basic UTF-8.
+/// Intentionally limited UTF-8/Latin-1 path (see `mbcs_to_ucs2`).
 /// GNU enc=0 is native; enc=1 is UTF-8.
+///
+/// # Safety
+/// `in_` must be a readable NUL-terminated string. `out` must be writable for
+/// `nout` `u16` values (possibly uninitialized) when `nout > 0` and must not
+/// overlap `in_`.
 pub unsafe fn mbcsToUcs2(in_: *const c_char, out: *mut u16, nout: c_int, enc: c_int) -> usize {
-    unsafe {
-        if in_.is_null() || out.is_null() || nout <= 0 {
-            return 0;
-        }
-        if enc == crate::sexp::encoding::CE_UTF8 {
-            // CE_UTF8: parse UTF-8 code points and emit as UCS-2
-            let mut si: usize = 0;
-            let mut oi: usize = 0;
-            while si < usize::MAX && oi < nout as usize {
-                let b0 = *in_.add(si) as u8;
-                if b0 == 0 {
-                    break;
-                }
-                let clen = utf8clen(b0 as c_char) as usize;
-                if clen == 1 {
-                    if b0 < 0x80 {
-                        *out.add(oi) = b0 as u16;
-                        oi += 1;
-                    }
-                    si += 1;
-                } else if clen == 2 && si + 1 < usize::MAX {
-                    let b1 = *in_.add(si + 1) as u8;
-                    let cp = (((b0 as u32) & 0x1F) << 6) | ((b1 as u32) & 0x3F);
-                    if cp >= 0x80 {
-                        *out.add(oi) = cp as u16;
-                        oi += 1;
-                    }
-                    si += 2;
-                } else if clen == 3 && si + 2 < usize::MAX {
-                    let b1 = *in_.add(si + 1) as u8;
-                    let b2 = *in_.add(si + 2) as u8;
-                    let cp = (((b0 as u32) & 0x0F) << 12)
-                        | (((b1 as u32) & 0x3F) << 6)
-                        | ((b2 as u32) & 0x3F);
-                    if cp >= 0x800 && (cp < 0xD800 || cp >= 0xE000) {
-                        *out.add(oi) = cp as u16;
-                        oi += 1;
-                    }
-                    // Surrogates would need special handling; skip for now
-                    si += 3;
-                } else if clen == 4 && si + 3 < usize::MAX {
-                    // 4-byte: code point > 0xFFFF, needs surrogate pair — skip
-                    si += 4;
-                } else {
-                    si += 1; // Invalid leading byte
-                }
-            }
-            oi
-        } else {
-            // CE_NATIVE: treat as single-byte / Latin-1
-            let mut si: usize = 0;
-            let mut oi: usize = 0;
-            while si < usize::MAX && oi < nout as usize {
-                let b = *in_.add(si) as u8;
-                if b == 0 {
-                    break;
-                }
-                *out.add(oi) = b as u16;
-                si += 1;
-                oi += 1;
-            }
-            oi
-        }
+    if in_.is_null() || out.is_null() || nout <= 0 {
+        return 0;
     }
+    // SAFETY: `in_` is a readable NUL-terminated string; `out` is writable
+    // for `nout` possibly-uninitialized u16 values and disjoint.
+    let (input, output) = unsafe {
+        (
+            CStr::from_ptr(in_).to_bytes(),
+            slice::from_raw_parts_mut(out.cast::<MaybeUninit<u16>>(), nout as usize),
+        )
+    };
+    mbcs_to_ucs2(input, output, enc == crate::sexp::encoding::CE_UTF8)
 }
 
 // ---------------------------------------------------------------------------
@@ -1790,5 +1743,276 @@ mod tests {
             bincode_impl(x.as_ptr(), 1, breaks.as_ptr(), 1, code.as_mut_ptr(), 1, 0);
         });
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn wide_conversion_utf8toucs_scalars_and_statuses() {
+        let mut slot = MaybeUninit::<u32>::uninit();
+        // ASCII scalar.
+        assert_eq!(unsafe { utf8toucs(slot.as_mut_ptr(), c"a".as_ptr()) }, 1);
+        assert_eq!(unsafe { slot.assume_init() }, u32::from(b'a'));
+        // Supplementary scalar U+1F600.
+        let mut slot = MaybeUninit::<u32>::uninit();
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), c"\xF0\x9F\x98\x80".as_ptr()) },
+            4
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0x1f600);
+        // Empty input yields zero and writes a NUL unit.
+        let mut slot = MaybeUninit::<u32>::uninit();
+        assert_eq!(unsafe { utf8toucs(slot.as_mut_ptr(), c"".as_ptr()) }, 0);
+        assert_eq!(unsafe { slot.assume_init() }, 0);
+        // Legacy 5- and 6-byte widths keep the GNU masks/shifts.
+        let mut slot = MaybeUninit::<u32>::uninit();
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), c"\xF8\x88\x81\x80\x80".as_ptr()) },
+            5
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0x0800_9000);
+        let mut slot = MaybeUninit::<u32>::uninit();
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), c"\xFC\x84\x80\x80\x80\x80".as_ptr(),) },
+            6
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0x0400_0000);
+    }
+
+    #[test]
+    fn wide_conversion_utf8toucs_errors_do_not_write() {
+        // Truncated multibyte prefix: -2 sentinel, output untouched.
+        let mut slot = MaybeUninit::<u32>::new(0xdead_beef);
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), b"\xE2\x00".as_ptr().cast()) },
+            usize::MAX - 1
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0xdead_beef);
+        // Bad continuation byte: -1 sentinel, output untouched.
+        let mut slot = MaybeUninit::<u32>::new(0xdead_beef);
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), b"\xC2A\x00".as_ptr().cast()) },
+            usize::MAX
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0xdead_beef);
+        // Three-byte encoding of a surrogate: -1 sentinel, output untouched.
+        let mut slot = MaybeUninit::<u32>::new(0xdead_beef);
+        assert_eq!(
+            unsafe { utf8toucs(slot.as_mut_ptr(), b"\xED\xA0\x80\x00".as_ptr().cast()) },
+            usize::MAX
+        );
+        assert_eq!(unsafe { slot.assume_init() }, 0xdead_beef);
+    }
+
+    #[test]
+    fn wide_conversion_utf8towcs_fills_and_terminates() {
+        let mut out = [MaybeUninit::<u32>::uninit(); 3];
+        let written =
+            unsafe { utf8towcs(out.as_mut_ptr().cast::<u32>(), c"a".as_ptr(), out.len()) };
+        assert_eq!(written, 1);
+        assert_eq!(unsafe { out[0].assume_init() }, u32::from(b'a'));
+        assert_eq!(unsafe { out[1].assume_init() }, 0);
+    }
+
+    #[test]
+    fn wide_conversion_utf8towcs_capacity_edges() {
+        // Count-only: null output counts the whole string.
+        assert_eq!(unsafe { utf8towcs(ptr::null_mut(), c"ab".as_ptr(), 0) }, 2);
+        // Non-null output with n = 0 returns early and writes nothing.
+        let mut out = [MaybeUninit::<u32>::new(0xdead_beef); 2];
+        assert_eq!(
+            unsafe { utf8towcs(out.as_mut_ptr().cast::<u32>(), c"ab".as_ptr(), 0) },
+            0
+        );
+        assert_eq!(unsafe { out[0].assume_init() }, 0xdead_beef);
+        // Short capacity leaves the next slot untouched (no terminator).
+        let mut out = [MaybeUninit::<u32>::new(0xdead_beef); 2];
+        let written = unsafe { utf8towcs(out.as_mut_ptr().cast::<u32>(), c"ab".as_ptr(), 2) };
+        assert_eq!(written, 2);
+        assert_eq!(unsafe { out[0].assume_init() }, u32::from(b'a'));
+        assert_eq!(unsafe { out[1].assume_init() }, u32::from(b'b'));
+        // Exact capacity ends the scan before a malformed suffix is read.
+        let mut out = [MaybeUninit::<u32>::new(0xdead_beef); 2];
+        let written = unsafe {
+            utf8towcs(
+                out.as_mut_ptr().cast::<u32>(),
+                b"ab\xFF\x00".as_ptr().cast(),
+                2,
+            )
+        };
+        assert_eq!(written, 2);
+        assert_eq!(unsafe { out[0].assume_init() }, u32::from(b'a'));
+        assert_eq!(unsafe { out[1].assume_init() }, u32::from(b'b'));
+    }
+
+    #[test]
+    fn wide_conversion_utf8towcs_invalid_returns_zero() {
+        let mut out = [MaybeUninit::<u32>::uninit(); 4];
+        assert_eq!(
+            unsafe {
+                utf8towcs(
+                    out.as_mut_ptr().cast::<u32>(),
+                    b"a\x80\x00".as_ptr().cast(),
+                    4,
+                )
+            },
+            0
+        );
+        let mut out = [MaybeUninit::<u32>::uninit(); 4];
+        assert_eq!(
+            unsafe {
+                utf8towcs4(
+                    out.as_mut_ptr().cast::<u32>(),
+                    b"a\x80\x00".as_ptr().cast(),
+                    4,
+                )
+            },
+            0
+        );
+        // utf8towcs4 keeps supplementary scalars as single UCS-4 units.
+        let mut out = [MaybeUninit::<u32>::uninit(); 4];
+        let written = unsafe {
+            utf8towcs4(
+                out.as_mut_ptr().cast::<u32>(),
+                c"\xF0\x9F\x98\x80".as_ptr(),
+                4,
+            )
+        };
+        assert_eq!(written, 1);
+        assert_eq!(unsafe { out[0].assume_init() }, 0x1f600);
+    }
+
+    #[test]
+    fn wide_conversion_wcstoutf8_combines_surrogates() {
+        let mut buf = [MaybeUninit::<u8>::uninit(); 8];
+        let wide = [0xd83d_u32, 0xde00, 0];
+        let n = unsafe { wcstoutf8(buf.as_mut_ptr().cast(), wide.as_ptr(), buf.len()) };
+        assert_eq!(n, 5);
+        let bytes = buf[..5]
+            .iter()
+            .map(|b| unsafe { b.assume_init() })
+            .collect::<Vec<u8>>();
+        assert_eq!(&bytes, b"\xF0\x9F\x98\x80\x00");
+        // Count-only agrees when the same capacity is offered.
+        assert_eq!(
+            unsafe { wcstoutf8(ptr::null_mut(), wide.as_ptr(), buf.len()) },
+            5
+        );
+        // Capacity 4 truncates the 4-byte encoding to a NUL per the guard.
+        let mut buf = [MaybeUninit::<u8>::uninit(); 4];
+        let n = unsafe { wcstoutf8(buf.as_mut_ptr().cast(), wide.as_ptr(), 4) };
+        assert_eq!(n, 1);
+        assert_eq!(unsafe { buf[0].assume_init() }, 0);
+    }
+
+    #[test]
+    fn wide_conversion_wcs4toutf8_keeps_ucs4() {
+        let mut buf = [MaybeUninit::<u8>::uninit(); 8];
+        let wide = [0x1f600_u32, 0];
+        let n = unsafe { wcs4toutf8(buf.as_mut_ptr().cast(), wide.as_ptr(), buf.len()) };
+        assert_eq!(n, 5);
+        let bytes = buf[..5]
+            .iter()
+            .map(|b| unsafe { b.assume_init() })
+            .collect::<Vec<u8>>();
+        assert_eq!(&bytes, b"\xF0\x9F\x98\x80\x00");
+        assert_eq!(
+            unsafe { wcs4toutf8(ptr::null_mut(), wide.as_ptr(), buf.len()) },
+            5
+        );
+    }
+
+    #[test]
+    fn wide_conversion_rwcrtomb32_bounds() {
+        // Supplementary scalar encodes as four bytes.
+        let mut buf = [MaybeUninit::<u8>::uninit(); 8];
+        assert_eq!(
+            unsafe { Rwcrtomb32(buf.as_mut_ptr().cast(), 0x1f600, buf.len()) },
+            4
+        );
+        let bytes = buf[..4]
+            .iter()
+            .map(|b| unsafe { b.assume_init() })
+            .collect::<Vec<u8>>();
+        assert_eq!(&bytes, b"\xF0\x9F\x98\x80");
+        // Values above 0x7fffffff return zero and clear the first byte.
+        let mut buf = [MaybeUninit::<u8>::new(b'x'); 2];
+        assert_eq!(
+            unsafe { Rwcrtomb32(buf.as_mut_ptr().cast(), 0x8000_0000, buf.len()) },
+            0
+        );
+        assert_eq!(unsafe { buf[0].assume_init() }, 0);
+        // n == 0 never indexes the output.
+        let mut buf = [MaybeUninit::<u8>::new(b'x'); 1];
+        assert_eq!(
+            unsafe { Rwcrtomb32(buf.as_mut_ptr().cast(), u32::from(b'a'), 0) },
+            0
+        );
+        assert_eq!(unsafe { buf[0].assume_init() }, b'x');
+    }
+
+    #[test]
+    fn wide_conversion_strdup_copies_terminator() {
+        let src = c"copy";
+        let raw = unsafe { Rstrdup(src.as_ptr()) };
+        assert!(!raw.is_null());
+        unsafe {
+            assert_eq!(CStr::from_ptr(raw), src);
+            std::alloc::dealloc(
+                raw.cast(),
+                std::alloc::Layout::array::<u8>(src.to_bytes_with_nul().len()).unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn wide_conversion_mbcs_to_ucs2_truncated() {
+        let utf8 = crate::sexp::encoding::CE_UTF8;
+        // Exactly truncated 3-byte character: leading byte kept, rest skipped.
+        let mut out = [MaybeUninit::<u16>::new(0xffff); 4];
+        let n = unsafe {
+            mbcsToUcs2(
+                b"a\xE2\x82\x00".as_ptr().cast(),
+                out.as_mut_ptr().cast::<u16>(),
+                4,
+                utf8,
+            )
+        };
+        assert_eq!(n, 1);
+        assert_eq!(unsafe { out[0].assume_init() }, u16::from(b'a'));
+        assert_eq!(unsafe { out[1].assume_init() }, 0xffff);
+        // Exactly truncated 4-byte character behaves the same.
+        let mut out = [MaybeUninit::<u16>::new(0xffff); 4];
+        let n = unsafe {
+            mbcsToUcs2(
+                b"a\xF0\x9F\x98\x00".as_ptr().cast(),
+                out.as_mut_ptr().cast::<u16>(),
+                4,
+                utf8,
+            )
+        };
+        assert_eq!(n, 1);
+        assert_eq!(unsafe { out[0].assume_init() }, u16::from(b'a'));
+        assert_eq!(unsafe { out[1].assume_init() }, 0xffff);
+        // Non-UTF-8 input copies single bytes up to capacity.
+        let mut out = [MaybeUninit::<u16>::new(0xffff); 4];
+        let n = unsafe {
+            mbcsToUcs2(
+                b"abc\x00".as_ptr().cast(),
+                out.as_mut_ptr().cast::<u16>(),
+                4,
+                0,
+            )
+        };
+        assert_eq!(n, 3);
+        assert_eq!(unsafe { out[2].assume_init() }, u16::from(b'c'));
+        assert_eq!(unsafe { out[3].assume_init() }, 0xffff);
+        // Unsupported 5-byte leads advance one byte; correctly encoded U+FFFF
+        // (rejected by the wide decoder) is preserved here as legacy did.
+        let input = c"\xF8a\xEF\xBF\xBF";
+        let mut out = [0u16; 3];
+        assert_eq!(
+            unsafe { mbcsToUcs2(input.as_ptr(), out.as_mut_ptr(), 3, utf8) },
+            2
+        );
+        assert_eq!(out, [u16::from(b'a'), 0xffff, 0]);
     }
 }
