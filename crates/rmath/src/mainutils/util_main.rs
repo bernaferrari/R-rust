@@ -621,52 +621,63 @@ static S2UNICODE: [u32; 224] = [
 /// Returns `work`.
 ///
 /// Port of R's `Rf_AdobeSymbol2utf8` from util.c.
+///
+/// When both pointers are non-null, a nonempty output buffer is
+/// NUL-terminated. Nothing is written if either pointer is null or `nwork`
+/// is zero.
+///
+/// # Safety
+/// For non-null pointers with `nwork > 0`, `c0` must be a readable
+/// NUL-terminated string and `work` must be writable for `nwork` bytes
+/// (possibly uninitialized) without overlapping `c0`.
 pub unsafe fn Rf_AdobeSymbol2utf8(
     work: *mut c_char,
     c0: *const c_char,
     nwork: usize,
     usePUA: Rboolean,
 ) -> *mut c_char {
-    unsafe {
-        if work.is_null() || c0.is_null() {
-            return work;
-        }
-        let table = if usePUA != 0 { &S2U } else { &S2UNICODE };
-        let mut c = c0 as *const u8;
-        let mut t = work as *mut u8;
-
-        while *c != 0 {
-            if *c < 32 {
-                *t = b' ';
-                t = t.add(1);
-            } else {
-                let u = table[(*c - 32) as usize];
-                if u < 128 {
-                    *t = u as u8;
-                    t = t.add(1);
-                } else if u < 0x800 {
-                    *t = (0xc0 | (u >> 6)) as u8;
-                    t = t.add(1);
-                    *t = (0x80 | (u & 0x3f)) as u8;
-                    t = t.add(1);
-                } else {
-                    *t = (0xe0 | (u >> 12)) as u8;
-                    t = t.add(1);
-                    *t = (0x80 | ((u >> 6) & 0x3f)) as u8;
-                    t = t.add(1);
-                    *t = (0x80 | (u & 0x3f)) as u8;
-                    t = t.add(1);
-                }
-            }
-            // Check buffer space: need room for 6 more bytes (max UTF-8 char)
-            if t.add(6) > (work.add(nwork) as *mut u8) {
-                break;
-            }
-            c = c.add(1);
-        }
-        *t = 0;
-        work
+    if work.is_null() || c0.is_null() || nwork == 0 {
+        return work;
     }
+    // SAFETY: the non-null input and writable output regions are disjoint.
+    let (input, output) = unsafe {
+        (
+            CStr::from_ptr(c0).to_bytes(),
+            slice::from_raw_parts_mut(work.cast::<MaybeUninit<u8>>(), nwork),
+        )
+    };
+    adobe_symbol_to_utf8(input, output, usePUA != 0);
+    work
+}
+
+fn adobe_symbol_to_utf8(input: &[u8], output: &mut [MaybeUninit<u8>], use_pua: bool) {
+    let Some(capacity) = output.len().checked_sub(1) else {
+        return;
+    };
+    let table = if use_pua { &S2U } else { &S2UNICODE };
+    let mut written = 0;
+    for &byte in input {
+        let codepoint = if byte < 32 {
+            u32::from(b' ')
+        } else {
+            table[usize::from(byte - 32)]
+        };
+        let ch = char::from_u32(codepoint).expect("Adobe Symbol mapping is a Unicode scalar");
+        let mut encoded = [0; 4];
+        let bytes = ch.encode_utf8(&mut encoded).as_bytes();
+        if bytes.len() > capacity - written {
+            break;
+        }
+        for (slot, &byte) in output[written..written + bytes.len()].iter_mut().zip(bytes) {
+            slot.write(byte);
+        }
+        written += bytes.len();
+        // Match GNU R's early stop after a complete character.
+        if output.len() - written < 6 {
+            break;
+        }
+    }
+    output[written].write(0);
 }
 
 /// Convert an Adobe Symbol byte to UCS-2 codepoint.
@@ -2014,5 +2025,57 @@ mod tests {
             2
         );
         assert_eq!(out, [u16::from(b'a'), 0xffff, 0]);
+    }
+
+    #[test]
+    fn adobe_symbol_matches_gnu_reference_for_all_nonzero_bytes() {
+        let input: Vec<u8> = (1..=255).chain(std::iter::once(0)).collect();
+        // (usePUA, expected len, expected FNV-1a-64 of bytes before NUL),
+        // verified against pinned GNU R 4.6.2.
+        for (use_pua, expected_len, expected_hash) in [
+            (0, 504, 0xc97c_922b_ab5e_a0d3_u64),
+            (1, 508, 0xa60c_eb08_7e02_cfbd_u64),
+        ] {
+            let mut out = [MaybeUninit::<u8>::uninit(); 1024];
+            let raw = unsafe {
+                Rf_AdobeSymbol2utf8(
+                    out.as_mut_ptr().cast(),
+                    input.as_ptr().cast(),
+                    out.len(),
+                    use_pua,
+                )
+            };
+            assert_eq!(raw, out.as_mut_ptr().cast());
+            let bytes = unsafe { CStr::from_ptr(raw) }.to_bytes();
+            assert_eq!(bytes.len(), expected_len);
+            let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &b| {
+                (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+            });
+            assert_eq!(hash, expected_hash);
+        }
+    }
+
+    #[test]
+    fn adobe_symbol_short_buffers_never_write_partial_codepoints() {
+        // '"' maps to forall (3 bytes), 'A' to alpha (2 bytes).
+        let input = c"\"A";
+        for n in 0..=9_usize {
+            let mut out = [0xcc_u8; 9];
+            let expected: &[u8] = match n {
+                0 => &[],
+                1..=3 => b"\x00",
+                4..=8 => b"\xe2\x88\x80\x00",
+                _ => b"\xe2\x88\x80\xce\x91\x00",
+            };
+            let raw = unsafe { Rf_AdobeSymbol2utf8(out.as_mut_ptr().cast(), input.as_ptr(), n, 0) };
+            assert_eq!(raw, out.as_mut_ptr().cast());
+            assert_eq!(&out[..expected.len()], expected);
+            assert!(out[expected.len()..].iter().all(|&b| b == 0xcc));
+        }
+        // Miri-exact two-byte allocation: only the NUL fits inside.
+        let mut short = [0xcc_u8; 2];
+        let raw = unsafe { Rf_AdobeSymbol2utf8(short.as_mut_ptr().cast(), input.as_ptr(), 2, 0) };
+        assert_eq!(raw, short.as_mut_ptr().cast());
+        assert_eq!(short, [0, 0xcc]);
     }
 }
