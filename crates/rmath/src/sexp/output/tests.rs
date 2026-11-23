@@ -412,6 +412,53 @@ fn test_numeric_vector_alignment_matches_r_simple_output() {
 }
 
 #[test]
+fn checked_matrix_printing_reads_dense_and_compact_values() {
+    use crate::sexp::altrep::is_materialized;
+    use crate::sexp::ffi::Rcomplex;
+    use crate::sexp::object::SexpMut;
+
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let factory = session.owner_token().unwrap().node_factory();
+        let mut real = SexpMut::try_from_checked(
+            factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, 2)))
+                .unwrap(),
+        )
+        .unwrap();
+        real.try_set_real_elt(0, 1.25).unwrap();
+        real.try_set_real_elt(1, 2.5).unwrap();
+        let dense = super::format_real_matrix_gnu(real.freeze(), 2, 1);
+        let lazy = session.compact_real_sequence(1.25, 1.25, 2).unwrap();
+        assert!(!is_materialized(&lazy));
+        assert_eq!(super::format_real_matrix_gnu(lazy.clone(), 2, 1), dense);
+        assert!(!is_materialized(&lazy));
+        let lines: Vec<_> = dense.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[1].ends_with("1.25"), "{dense:?}");
+        assert!(lines[2].ends_with("2.50"), "{dense:?}");
+
+        let mut complex = SexpMut::try_from_checked(
+            factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)))
+                .unwrap(),
+        )
+        .unwrap();
+        complex
+            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
+            .unwrap();
+        complex
+            .try_set_complex_elt(1, Rcomplex { r: 3.0, i: 4.0 })
+            .unwrap();
+        let output = super::format_complex_matrix_gnu(complex.freeze(), 2, 1);
+        let lines: Vec<_> = output.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[1].ends_with("1-2i"), "{output:?}");
+        assert!(lines[2].ends_with("3+4i"), "{output:?}");
+    });
+}
+
+#[test]
 fn test_real_vector_alignment_keeps_decimal_column() {
     let mut session = RSession::new();
     session
