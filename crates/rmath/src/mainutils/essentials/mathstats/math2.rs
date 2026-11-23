@@ -1,6 +1,7 @@
 //! Math2 builtins (log2, round, signif, trunc) and shared helpers — extracted verbatim from essentials/mathstats.rs.
 
 use super::*;
+use crate::sexp::SexpMut;
 
 // ---------------------------------------------------------------------------
 // R's math2 builtins (2-arg math): log2, round, signif, trunc
@@ -95,79 +96,73 @@ fn math2_complex(
     name: &str,
     f: fn(re: f64, im: f64, digits: f64) -> (f64, f64),
 ) -> SEXP {
-    unsafe {
-        // Trunk coerces CAR(args) (x) to complex first and CADR(args)
-        // (digits) second; x is already complex at this dispatch, so its
-        // coercion is the identity. `sa` stays the value operand and `sb`
-        // the digits operand, matching complex_math2's a/b roles.
-        let sa = x_arg;
-        let sb =
-            if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
-                // do_Math2 fills the digits default upstream.
-                let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-                set_complex_checked(
-                    s,
-                    0,
-                    Rcomplex {
-                        r: dflt_digits,
-                        i: 0.0,
-                    },
-                );
-                s
-            } else {
-                crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
-            };
-        let _sa_guard = protect(sa);
-        let _sb_guard = protect(sb);
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        if na == 0 || nb == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
-        }
-        let n = if na < nb { nb } else { na };
-        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        let _sy_guard = protect(sy);
-
-        let a = std::slice::from_raw_parts(COMPLEX(sa), na as usize);
-        let b = std::slice::from_raw_parts(COMPLEX(sb), nb as usize);
-        let y = std::slice::from_raw_parts_mut(COMPLEX(sy), n as usize);
-        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
-        let mut naflag = false;
-        // MOD_ITERATE2 recycling of x and digits.
-        for i in 0..n as usize {
-            let ai = a[i % na as usize];
-            let bi = b[i % nb as usize];
-            if ai.r.to_bits() == na_bit
-                && ai.i.to_bits() == na_bit
-                && bi.r.to_bits() == na_bit
-                && bi.i.to_bits() == na_bit
-            {
-                y[i].r = NA_REAL;
-                y[i].i = NA_REAL;
-            } else {
-                let (r, im) = f(ai.r, ai.i, bi.r);
-                y[i].r = r;
-                y[i].i = im;
-                if (r.is_nan() || im.is_nan())
-                    && !(ISNAN(ai.r) || ISNAN(ai.i) || ISNAN(bi.r) || ISNAN(bi.i))
-                {
-                    naflag = true;
-                }
-            }
-        }
-        if naflag {
-            let msg =
-                CString::new(format!("NaNs produced in function \"{name}\"")).unwrap_or_default();
-            crate::mainutils::errors::Rf_warningcall1(call, &msg);
-        }
-        if n == na {
-            copy_all_attribs(sy, sa);
-        } else if n == nb {
-            copy_all_attribs(sy, sb);
-        }
-        sy
+    let owner = active_owner();
+    // Retain x before coercion or allocation, and use its owner for all payload access.
+    let a = owner_sexp(owner, x_arg);
+    let b = if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
+        let raw = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+        let mut digits = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, raw)));
+        sexp_ok(digits.try_set_complex_elt(
+            0,
+            Rcomplex {
+                r: dflt_digits,
+                i: 0.0,
+            },
+        ));
+        digits.freeze()
+    } else {
+        let raw = crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int());
+        owner_sexp(owner, raw)
+    };
+    sexp_ok(owner.require_active());
+    let na = a.len();
+    let nb = b.len();
+    if na == 0 || nb == 0 {
+        return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
     }
+    let n = na.max(nb);
+    let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+    let mut y = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, sy)));
+    let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
+    let mut naflag = false;
+    // Copy elements: an ALTREP provider can allocate or collect during either read.
+    for i in 0..n {
+        let ai = sexp_ok(a.try_complex_elt(i % na));
+        let bi = sexp_ok(b.try_complex_elt(i % nb));
+        let value = if ai.r.to_bits() == na_bit
+            && ai.i.to_bits() == na_bit
+            && bi.r.to_bits() == na_bit
+            && bi.i.to_bits() == na_bit
+        {
+            Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            }
+        } else {
+            let (r, im) = f(ai.r, ai.i, bi.r);
+            if (r.is_nan() || im.is_nan())
+                && !(ISNAN(ai.r) || ISNAN(ai.i) || ISNAN(bi.r) || ISNAN(bi.i))
+            {
+                naflag = true;
+            }
+            Rcomplex { r, i: im }
+        };
+        sexp_ok(y.try_set_complex_elt(i, value));
+    }
+    sexp_ok(owner.require_active());
+    if naflag {
+        let msg = CString::new(format!("NaNs produced in function \"{name}\"")).unwrap_or_default();
+        crate::mainutils::errors::Rf_warningcall1(call, &msg);
+        sexp_ok(owner.require_active());
+    }
+    let sy = y.as_raw();
+    if n == na {
+        copy_all_attribs(sy, a.as_raw());
+    } else if n == nb {
+        copy_all_attribs(sy, b.as_raw());
+    }
+    sexp_ok(owner.require_active());
+    sy
 }
 
 /// Port of complex.c's `z_prec_r`: `signif()` for complex parts scales both
@@ -783,3 +778,65 @@ pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // Math/Statistics
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::altrep::{
+        AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,
+    };
+    use crate::sexp::{object::SexpResult, session::RSession};
+
+    struct CollectingComplex;
+
+    impl AltrepClass for CollectingComplex {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::CPLXSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+            Ok(2)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            index: R_xlen_t,
+        ) -> SexpResult<AltrepElement<'s>> {
+            context.gc()?;
+            Ok(AltrepElement::Complex(if index == 0 {
+                Rcomplex { r: 1.25, i: 2.5 }
+            } else {
+                Rcomplex { r: -3.75, i: 4.5 }
+            }))
+        }
+    }
+
+    #[test]
+    fn complex_math2_keeps_collecting_altrep_operands_lazy() {
+        let session = RSession::new_for_gc_tests();
+        let class = session
+            .register_altrep_class("collecting-complex", CollectingComplex)
+            .unwrap();
+        let x = AltrepBuilder::new(class).build().unwrap();
+        session.with_active(|| {
+            // Both operands alias the provider. It can collect on either read.
+            let result = math2_complex(
+                R_NilValue(),
+                x.as_raw(),
+                x.as_raw(),
+                0.0,
+                "round",
+                |re, im, digits| (re + digits, im - digits),
+            );
+            let y = session.sexp(result).unwrap();
+            assert_eq!(
+                y.try_complex_elt(0).unwrap(),
+                Rcomplex { r: 2.5, i: 1.25 }
+            );
+            assert_eq!(
+                y.try_complex_elt(1).unwrap(),
+                Rcomplex { r: -7.5, i: 8.25 }
+            );
+            assert!(!is_materialized(&x));
+        });
+    }
+}
