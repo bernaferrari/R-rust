@@ -407,9 +407,6 @@ pub struct RInstance {
     /// Per-instance internet module state.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) internet_state: crate::modules::internet::internet::InternetRuntimeState,
-    /// Per-instance libcurl module scratch/progress state.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
     /// Per-instance Unix platform scratch buffer and process timing state.
@@ -624,8 +621,6 @@ impl RInstance {
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
             #[cfg(not(target_arch = "wasm32"))]
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),

@@ -55,7 +55,7 @@ js-sys = "0.3"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # libc is native-only: the portable engine surface (types, printf, heap,
 # env, time, string/mem, stdio) is libc-free; the remaining libc users
-# (process control, sockets, real-libcurl FFI) are cfg-gated off wasm32.
+# (including process control and sockets) are cfg-gated off wasm32.
 libc = "0.2"
 
 
