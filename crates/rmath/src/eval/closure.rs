@@ -1365,12 +1365,15 @@ mod owned_matcher_tests {
         };
         let runtime_state = || {
             session.with_active_in(|instance| unsafe {
-                (
-                    (*instance).context_stack.len(),
-                    (*instance).error_state.handler_stack.as_raw(),
-                    (*instance).error_state.restart_stack.as_raw(),
-                    (*instance).error_state.in_warning,
-                )
+                let depth = (*instance).context_stack.len();
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    (
+                        depth,
+                        state.handler_stack.as_raw(),
+                        state.restart_stack.as_raw(),
+                        state.in_warning,
+                    )
+                })
             })
         };
         let handled_count = || unsafe {

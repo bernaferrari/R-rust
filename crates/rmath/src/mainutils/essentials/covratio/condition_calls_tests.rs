@@ -21,7 +21,7 @@ fn collected(f: &SessionNodeFactory<'_>) -> Vec<String> {
         .weak_owner()
         .unwrap();
     let pin = weak.pin().unwrap();
-    let entries = unsafe { (*pin.as_ptr()).error_state.warnings.owned() }.unwrap();
+    let entries = pin.with_error_state(|state| state.warnings.owned()).unwrap();
     let calls: Vec<_> = (0..count)
         .map(|i| {
             entries
@@ -178,7 +178,7 @@ fn covratio_condition_calls_warn_two_preserves_original_error_call() {
             .unwrap()
             .pin()
             .unwrap();
-        assert!(unsafe { (*pin.as_ptr()).error_state.warning_call.is_null() });
+        assert!(pin.with_error_state(|state| state.warning_call.is_null()));
         assert_eq!(
             super::call(&f, &[("", model(&f))]).len(),
             8,
@@ -263,7 +263,7 @@ fn warning_handler_stack(f: &SessionNodeFactory<'_>) -> Sexp<'static> {
 }
 fn warning_collection(trace: &WarningTrace, instance: *mut crate::sexp::instance::RInstance) {
     let f = trace.owner.node_factory().unwrap();
-    let call = unsafe { (*instance).error_state.warning_call.owned() }.unwrap();
+    let call = unsafe { crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.owned()) }.unwrap();
     let expected = if trace.calls.borrow().is_empty() {
         STUDENTIZED
     } else {
@@ -378,9 +378,11 @@ fn real_handler_case(action: u8) {
             let _original =
                 crate::mainutils::errors::warning_call_guard(trace.previous_call.as_raw());
             let stack = warning_handler_stack(&f);
-            let previous_handlers = (*instance).error_state.handler_stack.clone();
-            (*instance).error_state.handler_stack =
-                crate::sexp::instance::RuntimeValue::from_owned(stack);
+            let previous_handlers = crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack.clone());
+            let handler_stack = crate::sexp::instance::RuntimeValue::from_owned(stack);
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.handler_stack = handler_stack;
+            });
             let callback_trace = trace.clone();
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if callback_trace.calls.borrow().len() < 2 {
@@ -397,10 +399,10 @@ fn real_handler_case(action: u8) {
                 f.wrap(raw).unwrap().into_owned().unwrap()
             }));
             // Restore this fixture's exact physical stack even after closure.
-            (*instance).error_state.handler_stack = previous_handlers;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack = previous_handlers);
             // Physical cleanup remains valid even after revocation and unwind.
             assert_eq!(
-                (*instance).error_state.warning_call.as_raw(),
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.as_raw()),
                 trace.previous_call.as_raw()
             );
             assert_eq!((*instance).memory_state.in_gc, 0);
@@ -421,7 +423,7 @@ fn real_handler_case(action: u8) {
                             0.071999999999999981,
                         ],
                     );
-                    let warnings = (*instance).error_state.warnings.owned().unwrap();
+                    let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
                     let nodes: Vec<_> = (0..2)
                         .map(|i| {
                             warnings
@@ -444,7 +446,7 @@ fn real_handler_case(action: u8) {
                     );
                     assert_eq!(collected(&f), [STUDENTIZED, PRODUCT]);
                     crate::mainutils::errors::restore_collect_warnings(0);
-                    (*instance).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
+                    crate::sexp::instance::with_error_state_in(instance, |state| state.warnings = crate::sexp::instance::RuntimeValue::empty());
                     crate::sexp::gengc::full_gc();
                     assert!(
                         nodes.iter().all(|node| !node.is_live()),

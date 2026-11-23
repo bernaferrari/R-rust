@@ -10,7 +10,7 @@ fn nmath_bridge_actual_storage_is_admitted_through_unwind() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     session.with_active_in(|instance| unsafe {
-        (*instance).error_state.nwarnings = 3;
+        crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 3);
         nmath_warning_hook("warm bridge");
         let ledger = (*instance).heap_identity.byte_ledger();
         let before = ledger.workspace_bytes_for_test();
@@ -95,7 +95,7 @@ fn nmath_bridge_budget_denial_matches_allocation_and_same_cap_retry() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     session.with_active_in(|instance| unsafe {
-        (*instance).error_state.nwarnings = 3;
+        crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 3);
         nmath_warning_hook("warm bridge");
         let ledger = (*instance).heap_identity.byte_ledger();
         let limit = ledger.allocated_bytes() + 256 * 1024;
@@ -120,7 +120,7 @@ fn nmath_bridge_budget_denial_matches_allocation_and_same_cap_retry() {
             0,
             "admission precedes constructors/callbacks"
         );
-        assert_eq!((*instance).error_state.collect_warnings, 1);
+        assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
         assert_eq!(ledger.workspace_bytes_for_test(), held.bytes());
         let ordinary = catch_unwind(AssertUnwindSafe(|| {
             Rf_allocVector3(SEXPTYPE::RAWSXP, (limit + 1) as _)
@@ -136,7 +136,7 @@ fn nmath_bridge_budget_denial_matches_allocation_and_same_cap_retry() {
         (*instance).memory_state.gc_force_gap = 0;
         (*instance).memory_state.gc_force_wait = 0;
         nmath_warning_hook("denied bridge storage");
-        assert_eq!((*instance).error_state.collect_warnings, 2);
+        assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 2);
         assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
         assert_eq!(ledger.workspace_bytes_for_test(), 0);
     });
@@ -163,7 +163,7 @@ fn nmath_bridge_revocation_refunds_original_not_replacement() {
     let first = once.clone();
     unsafe {
         crate::sexp::session::with_instance_active(pointer, || {
-            (*pointer).error_state.nwarnings = 3;
+            crate::sexp::instance::with_error_state_in(pointer, |state| state.nwarnings = 3);
             nmath_warning_hook("warm bridge");
             let ledger = (*pointer).heap_identity.byte_ledger();
             let before = ledger.workspace_bytes_for_test();
@@ -227,7 +227,7 @@ fn nmath_bridge_text_attribution_and_warn2_match_legacy() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     session.with_active_in(|instance| unsafe {
-        (*instance).error_state.nwarnings = 3;
+        crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 3);
         let call = owner
             .sexp(Rf_lang2(
                 crate::sexp::symbol::install_str("attributed_warning"),
@@ -249,10 +249,10 @@ fn nmath_bridge_text_attribution_and_warn2_match_legacy() {
                 legacy_nmath_hook as fn(&str),
                 nmath_warning_hook as fn(&str),
             ] {
-                (*instance).error_state.collect_warnings = 0;
+                crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 0);
                 hook(source);
-                assert_eq!((*instance).error_state.collect_warnings, 1);
-                let warnings = (*instance).error_state.warnings.owned().unwrap();
+                assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
+                let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
                 assert_eq!(warnings.try_vector_elt(0).unwrap().as_raw(), call.as_raw());
                 let names = warnings.try_attrib().unwrap().try_car().unwrap();
                 assert_eq!(
@@ -285,10 +285,10 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     session.with_active_in(|instance| unsafe {
-        (*instance).error_state.nwarnings = 3;
+        crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 3);
         nmath_warning_hook("warm pressure bridge");
         owner.full_gc().unwrap();
-        (*instance).error_state.collect_warnings = 0;
+        crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 0);
         let f = owner.node_factory();
         let mathlib = owner
             .sexp(Rf_lang2(
@@ -330,8 +330,8 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
         let once = observed.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             if !once.replace(true) {
-                (*instance).error_state.mathlib_warning_call = RuntimeValue::empty();
-                (*instance).error_state.warning_call = RuntimeValue::empty();
+                crate::sexp::instance::with_error_state_in(instance, |state| state.mathlib_warning_call = RuntimeValue::empty());
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call = RuntimeValue::empty());
                 let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
                 let changed = owner
                     .sexp(Rf_lang2(
@@ -340,7 +340,10 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
                     ))
                     .and_then(Sexp::into_owned)
                     .unwrap();
-                (*instance).error_state.warning_call = RuntimeValue::from_owned(changed);
+                let warning_call = RuntimeValue::from_owned(changed);
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    state.warning_call = warning_call;
+                });
                 crate::sexp::gengc::full_gc_in(instance);
             }
         }));
@@ -355,7 +358,7 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
             "garbage was reclaimed at the unchanged cap"
         );
         assert_eq!(ledger.workspace_bytes_for_test(), 0);
-        let warnings = (*instance).error_state.warnings.owned().unwrap();
+        let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
         assert_eq!(
             warnings.try_vector_elt(0).unwrap().as_raw(),
             selected_pointer,

@@ -1132,8 +1132,11 @@ mod condition_construction_tests {
             drop(result);
             drop(condition);
             drop(environment);
-            (*instance).error_state.handler_stack =
+            let handler_stack =
                 crate::sexp::instance::RuntimeValue::from_raw_in(instance, nil);
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.handler_stack = handler_stack;
+            });
             (*instance).context_stack.clear();
             owner.full_gc().unwrap();
             assert!(result_node.is_live());

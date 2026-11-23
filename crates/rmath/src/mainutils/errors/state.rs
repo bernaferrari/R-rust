@@ -716,10 +716,8 @@ mod owned_error_scope_tests {
         let original_node = crate::sexp::memory::checked_projection(previous.as_raw())
             .unwrap()
             .1;
-        unsafe {
-            (*pin.as_ptr()).error_state.warning_call =
-                RuntimeValue::from_owned(previous.into_owned().unwrap());
-        }
+        let warning_call = RuntimeValue::from_owned(previous.into_owned().unwrap());
+        pin.with_error_state(|state| state.warning_call = warning_call);
         let next = factory.character("override").unwrap();
         let warning = warning_call_guard(next.as_raw());
         let mathlib = super::super::mathlib_warning_call_guard(next.as_raw());
@@ -737,9 +735,11 @@ mod owned_error_scope_tests {
         }));
         assert!(result.is_err());
         assert_eq!(warning_call_override(), other_before);
-        let restored = unsafe { (*pin.as_ptr()).error_state.warning_call.owned().unwrap() };
+        let restored = pin
+            .with_error_state(|state| state.warning_call.owned())
+            .unwrap();
         assert!(restored.try_char_eq(b"previous call").unwrap());
-        assert!(unsafe { (*pin.as_ptr()).error_state.mathlib_warning_call.is_null() });
+        assert!(pin.with_error_state(|state| state.mathlib_warning_call.is_null()));
         drop(pin);
         assert_eq!(weak.allocation_strong_count(), 0);
         assert!(restored.try_char_eq(b"previous call").unwrap());

@@ -409,7 +409,7 @@ pub struct RInstance {
     /// Per-instance generational GC state.
     pub(crate) gc_state: super::gengc::GcState,
     /// Per-instance error, warning, interrupt, and expression-limit state.
-    pub(crate) error_state: ErrorState,
+    error_state: RefCell<ErrorState>,
     // Legacy raw pointers to these bytes must not pass through an exclusive ErrorState lend.
     error_buffer: ErrorBuffer,
     /// Per-instance main memory/GC control state.
@@ -634,7 +634,7 @@ impl RInstance {
             context_stack: Vec::new(),
             in_error: false,
             gc_state: super::gengc::GcState::default(),
-            error_state: ErrorState::default(),
+            error_state: RefCell::default(),
             error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
             eval_state: EvalControlState::default(),
@@ -979,39 +979,14 @@ impl Drop for LivenessOwner {
     }
 }
 
-thread_local! {
-    /// Owners whose `error_state` is currently lent as `&mut ErrorState`.
-    /// `RInstance` is thread-confined, so a per-thread set sees every lend.
-    static LENT_ERROR_STATES: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
-}
-
-struct ErrorStateLend(usize);
-
-impl Drop for ErrorStateLend {
-    fn drop(&mut self) {
-        // `try_with`: a lend released during thread-local teardown must not abort.
-        let _ = LENT_ERROR_STATES.try_with(|lent| {
-            let mut lent = lent.borrow_mut();
-            if let Some(index) = lent.iter().rposition(|&address| address == self.0) {
-                lent.swap_remove(index);
-            }
-        });
-    }
-}
-
-/// Whether `instance`'s error state is currently lent exclusively.
-pub(crate) fn is_error_state_lent(instance: *mut RInstance) -> bool {
-    LENT_ERROR_STATES.with(|lent| lent.borrow().contains(&instance.addr()))
-}
-
 /// Lend `instance.error_state` exclusively for a strictly-local update.
 ///
 /// A nested lend of the same owner's error state (for example from a callback
 /// that re-enters an error-state accessor) panics instead of creating a second
 /// aliasing `&mut ErrorState`, mirroring the arena lend check.
 /// # Safety
-/// `instance` points to a live owner allocation for the duration of the call,
-/// and no whole-instance Rust reference overlaps the lend.
+/// `instance` points to a live owner allocation for the duration of the call.
+/// A mutable whole-instance reference must not overlap the lend.
 pub(crate) unsafe fn with_error_state_in<R>(
     instance: *mut RInstance,
     f: impl FnOnce(&mut ErrorState) -> R,
@@ -1028,20 +1003,14 @@ pub(crate) unsafe fn with_error_state_and_buffer_in<R>(
     instance: *mut RInstance,
     f: impl FnOnce(&mut ErrorState, &ErrorBuffer) -> R,
 ) -> R {
-    let address = instance.addr();
-    LENT_ERROR_STATES.with(|lent| {
-        let mut lent = lent.borrow_mut();
-        assert!(
-            !lent.contains(&address),
-            "reentrant error-state access; release the error state before re-entering it"
-        );
-        lent.push(address);
+    // SAFETY: the caller retains this allocation. Project only these
+    // fields; the RefCell checks overlapping state lends, and the sibling
+    // Cell does not invalidate previously returned raw buffer pointers.
+    let (cell, buffer) = unsafe { (&(*instance).error_state, &(*instance).error_buffer) };
+    let mut state = cell.try_borrow_mut().unwrap_or_else(|_| {
+        panic!("reentrant error-state access; release the error state before re-entering it")
     });
-    let _lend = ErrorStateLend(address);
-    // SAFETY: the caller guarantees a live owner. The lend set excludes
-    // other exclusive borrows of error_state; the sibling Cell stores bytes
-    // without invalidating previously returned raw buffer pointers.
-    unsafe { f(&mut (*instance).error_state, &(*instance).error_buffer) }
+    f(&mut state, buffer)
 }
 
 /// Recycled generation cells. A cell is only ever leaked once and then reused,
@@ -1716,19 +1685,17 @@ mod owned_error_root_tests {
     use super::*;
     use crate::sexp::session::RSession;
 
-    unsafe fn slot(instance: *mut RInstance, index: usize) -> *mut RuntimeValue {
-        unsafe {
-            match index {
-                0 => &raw mut (*instance).error_state.warnings,
-                1 => &raw mut (*instance).error_state.handler_stack,
-                2 => &raw mut (*instance).error_state.global_calling_handlers,
-                3 => &raw mut (*instance).error_state.restart_stack,
-                4 => &raw mut (*instance).error_state.warning_call,
-                5 => &raw mut (*instance).error_state.signalled_condition,
-                6 => &raw mut (*instance).error_state.mathlib_warning_call,
-                7 => &raw mut (*instance).error_state.last_error_call,
-                _ => unreachable!(),
-            }
+    fn slot(state: &mut ErrorState, index: usize) -> &mut RuntimeValue {
+        match index {
+            0 => &mut state.warnings,
+            1 => &mut state.handler_stack,
+            2 => &mut state.global_calling_handlers,
+            3 => &mut state.restart_stack,
+            4 => &mut state.warning_call,
+            5 => &mut state.signalled_condition,
+            6 => &mut state.mathlib_warning_call,
+            7 => &mut state.last_error_call,
+            _ => unreachable!(),
         }
     }
 
@@ -1753,25 +1720,39 @@ mod owned_error_root_tests {
                 let value = factory.character("sole field root").unwrap();
                 let pointer = value.as_raw();
                 let original = crate::sexp::memory::checked_projection(pointer).unwrap().1;
-                *slot(instance, index) = RuntimeValue::from_raw_in(instance, pointer);
+                let owned = RuntimeValue::from_raw_in(instance, pointer);
+                drop(with_error_state_in(instance, |state| {
+                    std::mem::replace(slot(state, index), owned)
+                }));
                 drop(value);
                 owner.full_gc().unwrap();
                 assert!(original.is_live());
                 let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    (*slot(instance, index)).replace_from_raw_in(instance, foreign_value.as_raw());
+                    let owned = RuntimeValue::from_raw_in(instance, foreign_value.as_raw());
+                    drop(with_error_state_in(instance, |state| {
+                        std::mem::replace(slot(state, index), owned)
+                    }));
                 }));
                 assert!(rejected.is_err());
-                assert_eq!((*slot(instance, index)).as_raw(), pointer);
+                assert_eq!(
+                    with_error_state_in(instance, |state| slot(state, index).as_raw()),
+                    pointer
+                );
                 let replacement = factory.character("replacement").unwrap();
                 let next = crate::sexp::memory::checked_projection(replacement.as_raw())
                     .unwrap()
                     .1;
-                (*slot(instance, index)).replace_from_raw_in(instance, replacement.as_raw());
+                let owned = RuntimeValue::from_raw_in(instance, replacement.as_raw());
+                drop(with_error_state_in(instance, |state| {
+                    std::mem::replace(slot(state, index), owned)
+                }));
                 drop(replacement);
                 owner.full_gc().unwrap();
                 assert!(!original.is_live());
                 assert!(next.is_live());
-                *slot(instance, index) = RuntimeValue::empty();
+                drop(with_error_state_in(instance, |state| {
+                    std::mem::take(slot(state, index))
+                }));
                 owner.full_gc().unwrap();
                 assert!(!next.is_live());
             }

@@ -140,8 +140,8 @@ mod owned_calling_handler_tests {
         }));
         let (handlers, restarts) = session.with_active_in(|instance| unsafe {
             (
-                (*instance).error_state.handler_stack.as_raw(),
-                (*instance).error_state.restart_stack.as_raw(),
+                crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack.as_raw()),
+                crate::sexp::instance::with_error_state_in(instance, |state| state.restart_stack.as_raw()),
             )
         });
         let protections = crate::sexp::protect::R_ProtectCount();
@@ -151,8 +151,8 @@ mod owned_calling_handler_tests {
         assert_eq!(result.integer_elt(0), Some(11));
         assert!(collections.get() > 0);
         session.with_active_in(|instance| unsafe {
-            assert_eq!((*instance).error_state.handler_stack.as_raw(), handlers);
-            assert_eq!((*instance).error_state.restart_stack.as_raw(), restarts);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack.as_raw()), handlers);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.restart_stack.as_raw()), restarts);
         });
         assert_eq!(crate::sexp::protect::R_ProtectCount(), protections);
     }
@@ -252,8 +252,7 @@ mod owned_error_trycatch_tests {
                     && entered != R_UnboundValue()
                     && LOGICAL_ELT(entered, 0) == TRUE
                 {
-                    (*instance).error_state.signalled_condition =
-                        crate::sexp::instance::RuntimeValue::empty();
+                    crate::sexp::instance::with_error_state_in(instance, |state| state.signalled_condition = crate::sexp::instance::RuntimeValue::empty());
                     crate::sexp::gengc::full_gc_in(instance);
                     observed.set(observed.get() + 1);
                 }
@@ -280,9 +279,9 @@ mod owned_error_trycatch_tests {
                 "{signal} must preserve its exact custom condition and run finally"
             );
             session.with_active_in(|instance| unsafe {
-                assert!((*instance).error_state.signalled_condition.is_null());
-                assert!((*instance).error_state.try_catch_handler_classes.is_empty());
-                assert!((*instance).error_state.try_catch_nframes.is_empty());
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.signalled_condition.is_null()));
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_handler_classes.is_empty()));
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_nframes.is_empty()));
             });
         }
         assert!(
@@ -306,9 +305,9 @@ mod owned_error_trycatch_tests {
             .unwrap();
         assert_eq!(result.logical_elt(0), Some(TRUE));
         session.with_active_in(|instance| unsafe {
-            assert!((*instance).error_state.signalled_condition.is_null());
-            assert!((*instance).error_state.try_catch_handler_classes.is_empty());
-            assert!((*instance).error_state.try_catch_nframes.is_empty());
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.signalled_condition.is_null()));
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_handler_classes.is_empty()));
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_nframes.is_empty()));
         });
     }
 
@@ -327,9 +326,9 @@ mod owned_error_trycatch_tests {
             .unwrap();
         assert_eq!(result.logical_elt(0), Some(TRUE));
         session.with_active_in(|instance| unsafe {
-            assert!((*instance).error_state.signalled_condition.is_null());
-            assert!((*instance).error_state.try_catch_handler_classes.is_empty());
-            assert!((*instance).error_state.try_catch_nframes.is_empty());
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.signalled_condition.is_null()));
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_handler_classes.is_empty()));
+            assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_nframes.is_empty()));
         });
     }
 
@@ -369,9 +368,9 @@ mod owned_error_trycatch_tests {
                 assert_eq!(result.integer_elt(0), Some(41));
             }
             session.with_active_in(|instance| unsafe {
-                assert!((*instance).error_state.try_catch_handler_classes.is_empty());
-                assert!((*instance).error_state.try_catch_nframes.is_empty());
-                assert!((*instance).error_state.signalled_condition.is_null());
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_handler_classes.is_empty()));
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.try_catch_nframes.is_empty()));
+                assert!(crate::sexp::instance::with_error_state_in(instance, |state| state.signalled_condition.is_null()));
             });
         }
         assert!(observed.get() > 0);

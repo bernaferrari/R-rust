@@ -1599,7 +1599,8 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
     };
 
     instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
+        let warning_call = instance::RuntimeValue::from_raw_in(inst, roots[0]);
+        instance::with_error_state_in(inst, |state| state.warning_call = warning_call);
         (*inst).objects_state.deferred_default_object =
             instance::RuntimeValue::from_raw_in(inst, roots[1]);
         unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
@@ -1644,7 +1645,7 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
 
     instance::with_required_current_instance(|inst| unsafe {
         assert_eq!(
-            (*inst).error_state.warning_call.as_raw(),
+            instance::with_error_state_in(inst, |state| state.warning_call.as_raw()),
             roots[0],
             "owning error fields preserve original allocation identity"
         );

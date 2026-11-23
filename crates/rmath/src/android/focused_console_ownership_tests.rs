@@ -25,12 +25,26 @@ fn focused_console_closed_error_preserves_live_owner_warning() {
     assert!(warning.is_ok(), "{warning:?}");
     drop(warning);
     other.core.with_active_in(|instance| {
-        assert_eq!(unsafe { (*instance).error_state.collect_warnings }, 1);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    state.collect_warnings
+                })
+            },
+            1
+        );
         let result = closed.eval_script("7L");
         assert!(matches!(result.typed, RValue::Error(_)), "{result:?}");
         assert_eq!(result.stdout, "");
         assert!(result.stderr.contains("session is closed"));
-        assert_eq!(unsafe { (*instance).error_state.collect_warnings }, 1);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    state.collect_warnings
+                })
+            },
+            1
+        );
         assert!(
             unsafe { crate::mainutils::errors::take_warnings_block() }
                 .unwrap()
@@ -67,7 +81,7 @@ fn focused_console_active_binding_stop_is_typed_and_recovers() {
         matches!(&read.typed, RValue::Error(message) if message.contains("last value failed")),
         "{read:?}"
     );
-    assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+    assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 0);
     assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     let (removed, _, _) = session
         .core
@@ -113,7 +127,7 @@ fn focused_console_revoked_print_keeps_prefix_and_original_cleanup() {
         );
         assert_eq!(subsequent.stdout, "");
         assert!(!subsequent.output.contains("must not run"));
-        assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+        assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 0);
         assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     }
 }
@@ -145,7 +159,7 @@ fn focused_console_live_print_panic_preserves_payload_and_cleanup() {
     let payload = outcome.expect_err("live-owner Rust panic must preserve its payload");
     assert_eq!(payload.downcast_ref::<u32>(), Some(&991));
     assert_eq!(notifications.get(), 1);
-    assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+    assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 0);
     assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     session
         .core

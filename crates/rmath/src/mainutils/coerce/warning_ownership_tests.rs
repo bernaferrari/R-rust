@@ -22,13 +22,12 @@ fn call(session: &mut RSession, name: &str) -> Sexp<'static> {
 }
 
 fn last_warning_call(session: &RSession) -> Sexp<'static> {
-    session.with_active_in(|instance| unsafe {
-        let state = &(*instance).error_state;
-        state
-            .warnings
-            .owned()
-            .unwrap()
-            .try_vector_elt(i64::from(state.collect_warnings - 1))
+    session.with_active(|| {
+        let (warnings, count) = crate::mainutils::errors::with_error_state(|state| {
+            (state.warnings.owned().unwrap(), state.collect_warnings)
+        });
+        warnings
+            .try_vector_elt(i64::from(count - 1))
             .unwrap()
             .into_owned()
             .unwrap()
@@ -108,14 +107,13 @@ fn coercion_warning_scope_unwind_restores_original_revoked_owner_only() {
     let owner = original.owner_token().unwrap();
     let weak = owner.weak_owner().unwrap();
     let pin = weak.pin().unwrap();
-    unsafe {
-        (*pin.as_ptr()).error_state.warning_call = RuntimeValue::from_owned(previous.clone());
-    }
+    let warning_call = RuntimeValue::from_owned(previous.clone());
+    pin.with_error_state(|state| state.warning_call = warning_call);
     let scope = original.with_active(|| coercion_scope(attributed.as_raw()));
     original.close();
     drop(original);
     let other = RSession::new_for_gc_tests();
-    other.with_active(|| unsafe {
+    other.with_active(|| {
         let other_owner = other.owner_token().unwrap();
         let sentinel = other_owner.node_factory().character("other root").unwrap();
         let before = R_ProtectCount();
@@ -131,7 +129,7 @@ fn coercion_warning_scope_unwind_restores_original_revoked_owner_only() {
             "other session's root survives"
         );
         assert!(crate::mainutils::errors::warning_call_override().is_null());
-        let restored = (*pin.as_ptr()).error_state.warning_call.owned().unwrap();
+        let restored = pin.with_error_state(|state| state.warning_call.owned()).unwrap();
         assert_eq!(restored.as_raw(), previous.as_raw());
         other_owner.full_gc().unwrap();
         assert!(sentinel.try_char_eq(b"other root").unwrap());

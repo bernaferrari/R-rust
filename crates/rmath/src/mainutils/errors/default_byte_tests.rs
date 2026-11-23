@@ -130,13 +130,14 @@ fn deparse_callback(action: u8, stop_condition: bool) {
                 "actual deparse character constructor reached"
             );
             assert_eq!((*instance).memory_state.in_gc, 0);
-            assert_eq!((*instance).error_state.in_error, 0);
-            assert_eq!((*instance).error_state.expressions, 503);
-            let cache_capacity = (*instance)
-                .error_state
-                .last_rendered_message
-                .as_ref()
-                .map_or(0, |message| message.capacity());
+            assert_eq!(pin.with_error_state(|state| state.in_error), 0);
+            assert_eq!(pin.with_error_state(|state| state.expressions), 503);
+            let cache_capacity = pin.with_error_state(|state| {
+                state
+                    .last_rendered_message
+                    .as_ref()
+                    .map_or(0, |message| message.capacity())
+            });
             assert_eq!(
                 heap.byte_ledger().workspace_bytes_for_test(),
                 cache_capacity

@@ -117,8 +117,8 @@ fn native_constructor(kind: u8, action: u8) {
                         4 => {
                             let session = RSession::new_for_gc_tests();
                             other_bytes.set(session.with_active_in(|other_instance| {
-                                (*other_instance).error_state.in_error = 73;
-                                (*other_instance).error_state.expressions = 812;
+                                crate::sexp::instance::with_error_state_in(other_instance, |state| state.in_error = 73);
+                                crate::sexp::instance::with_error_state_in(other_instance, |state| state.expressions = 812);
                                 session
                                     .owner_token()
                                     .unwrap()
@@ -157,8 +157,8 @@ fn native_constructor(kind: u8, action: u8) {
                 }
                 if let Some(other) = foreign.borrow().as_ref() {
                     other.with_active_in(|other_instance| {
-                        assert_eq!((*other_instance).error_state.in_error, 73);
-                        assert_eq!((*other_instance).error_state.expressions, 812);
+                        assert_eq!(crate::sexp::instance::with_error_state_in(other_instance, |state| state.in_error), 73);
+                        assert_eq!(crate::sexp::instance::with_error_state_in(other_instance, |state| state.expressions), 812);
                         assert_eq!(
                             other
                                 .owner_token()

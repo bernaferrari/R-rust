@@ -83,7 +83,7 @@ fn covratio_row_condition_calls_match_original_replacement_before_names_error() 
             .unwrap()
             .pin()
             .unwrap();
-        let warnings = unsafe { (*pin.as_ptr()).error_state.warnings.owned() }.unwrap();
+        let warnings = pin.with_error_state(|state| state.warnings.owned()).unwrap();
         let call = warnings.try_vector_elt(0).unwrap();
         assert_eq!(text(&f, &call), ROW_ASSIGNMENT);
         assert_eq!(
@@ -122,7 +122,7 @@ fn covratio_row_condition_calls_warn_two_preserves_original_assignment_call() {
             .unwrap()
             .pin()
             .unwrap();
-        assert!(unsafe { (*pin.as_ptr()).error_state.warning_call.is_null() });
+        assert!(pin.with_error_state(|state| state.warning_call.is_null()));
         assert_eq!(
             super::call(&f, &[("", model(&f))]).len(),
             8,
@@ -216,7 +216,7 @@ fn warning_handler_stack(f: &SessionNodeFactory<'_>) -> Sexp<'static> {
 fn collection(trace: &Trace, instance: *mut crate::sexp::instance::RInstance) {
     trace.notifications.set(trace.notifications.get() + 1);
     let f = trace.owner.node_factory().unwrap();
-    let call = unsafe { (*instance).error_state.warning_call.owned() }.unwrap();
+    let call = unsafe { crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.owned()) }.unwrap();
     assert_eq!(text(&f, &call), ROW_ASSIGNMENT);
     assert_ne!(call.as_raw(), trace.previous_call.as_raw());
     // The checked original objects are fixture-owned, and the operation has
@@ -365,9 +365,11 @@ fn real_handler_case(action: u8) {
             let _original =
                 crate::mainutils::errors::warning_call_guard(trace.previous_call.as_raw());
             let handlers = warning_handler_stack(&f);
-            let old_handlers = (*instance).error_state.handler_stack.clone();
-            (*instance).error_state.handler_stack =
-                crate::sexp::instance::RuntimeValue::from_owned(handlers);
+            let old_handlers = crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack.clone());
+            let handler_stack = crate::sexp::instance::RuntimeValue::from_owned(handlers);
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.handler_stack = handler_stack;
+            });
             let callback = trace.clone();
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if callback.notifications.get() == 0 {
@@ -382,14 +384,14 @@ fn real_handler_case(action: u8) {
                     f.nil().as_raw(),
                 )
             }));
-            (*instance).error_state.handler_stack = old_handlers;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack = old_handlers);
             assert_eq!(
                 trace.notifications.get(),
                 1,
                 "actual R warning handler reached gc()"
             );
             assert_eq!(
-                (*instance).error_state.warning_call.as_raw(),
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.as_raw()),
                 trace.previous_call.as_raw()
             );
             assert_eq!((*instance).memory_state.in_gc, 0);
@@ -427,7 +429,7 @@ fn real_handler_case(action: u8) {
                             .message,
                         "'names' attribute [10] must be the same length as the vector [9]"
                     );
-                    let warnings = (*instance).error_state.warnings.owned().unwrap();
+                    let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
                     let call = warnings.try_vector_elt(0).unwrap();
                     let node = call.allocation().unwrap().clone();
                     assert_eq!(text(&f, &call), ROW_ASSIGNMENT);
@@ -437,7 +439,7 @@ fn real_handler_case(action: u8) {
                     assert!(!trace.residual.is_live());
                     assert!(!trace.omitted.is_live());
                     assert!(node.is_live(), "actual deferred warning owns the syntax");
-                    (*instance).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
+                    crate::sexp::instance::with_error_state_in(instance, |state| state.warnings = crate::sexp::instance::RuntimeValue::empty());
                     crate::mainutils::errors::restore_collect_warnings(0);
                     crate::sexp::gengc::full_gc();
                     assert!(

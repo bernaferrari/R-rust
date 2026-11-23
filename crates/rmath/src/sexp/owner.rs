@@ -1079,12 +1079,29 @@ mod tests {
                 pin.with_error_state(|_outer| pin.with_error_state(|_inner| ()))
             }));
             assert!(nested.is_err(), "a second &mut ErrorState must not be lent");
-            assert!(!super::super::instance::is_error_state_lent(pin.as_ptr()));
             // The unwind released the outer lend; normal lends still work.
             pin.with_error_state(|state| state.toplevel_expr_no = 3);
             assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 3);
             pin.with_error_state(|state| state.toplevel_expr_no = 0);
         });
+    }
+
+    #[test]
+    fn error_state_borrows_are_independent_across_sessions() {
+        let first = RSession::new_for_gc_tests();
+        let second = RSession::new_for_gc_tests();
+        let first_pin = first.with_active(|| OwnerToken::current().unwrap().pin().unwrap().unwrap());
+        let second_pin = second.with_active(|| OwnerToken::current().unwrap().pin().unwrap().unwrap());
+        first_pin.with_error_state(|first_state| {
+            first_state.toplevel_expr_no = 5;
+            second_pin.with_error_state(|second_state| {
+                assert_eq!(second_state.toplevel_expr_no, 0);
+                second_state.toplevel_expr_no = 9;
+                assert_eq!(first_state.toplevel_expr_no, 5);
+            });
+        });
+        assert_eq!(first_pin.with_error_state(|state| state.toplevel_expr_no), 5);
+        assert_eq!(second_pin.with_error_state(|state| state.toplevel_expr_no), 9);
     }
 
     #[test]

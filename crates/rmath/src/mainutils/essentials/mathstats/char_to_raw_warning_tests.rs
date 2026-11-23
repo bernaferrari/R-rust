@@ -94,9 +94,9 @@ fn owned_char_to_raw_warning_matches_original_message_and_actual_call() {
             .unwrap()
             .pin()
             .unwrap();
-        let warnings = unsafe { (*pin.as_ptr()).error_state.warnings.owned() }.unwrap();
+        let warnings = pin.with_error_state(|state| state.warnings.owned()).unwrap();
         assert_eq!(text(&f, &warnings.try_vector_elt(0).unwrap()), CALL);
-        assert!(unsafe { (*pin.as_ptr()).error_state.warning_call.is_null() });
+        assert!(pin.with_error_state(|state| state.warning_call.is_null()));
         let call_node = call.allocation().unwrap().clone();
         drop(warnings);
         drop(call);
@@ -107,11 +107,11 @@ fn owned_char_to_raw_warning_matches_original_message_and_actual_call() {
             call_node.is_live(),
             "actual deferred warning owns the original call"
         );
-        unsafe {
-            (*pin.as_ptr()).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
-            crate::mainutils::errors::restore_collect_warnings(0);
-            crate::sexp::gengc::full_gc();
-        }
+        pin.with_error_state(|state| {
+            state.warnings = crate::sexp::instance::RuntimeValue::empty()
+        });
+        crate::mainutils::errors::restore_collect_warnings(0);
+        crate::sexp::gengc::full_gc();
         assert!(
             !call_node.is_live(),
             "removing the deferred warning releases syntax"
@@ -147,7 +147,7 @@ fn owned_char_to_raw_warning_warn_two_preserves_call_and_recovery() {
             .unwrap()
             .pin()
             .unwrap();
-        assert!(unsafe { (*pin.as_ptr()).error_state.warning_call.is_null() });
+        assert!(pin.with_error_state(|state| state.warning_call.is_null()));
         unsafe {
             crate::mainutils::options::R_SetOptionWarn(0);
         }
@@ -272,9 +272,11 @@ fn handler_case(action: u8) {
             crate::mainutils::options::R_SetOptionWarn(0);
             let _previous = crate::mainutils::errors::warning_call_guard(previous.as_raw());
             let handlers = collecting_handler(&f);
-            let old_handlers = (*instance).error_state.handler_stack.clone();
-            (*instance).error_state.handler_stack =
-                crate::sexp::instance::RuntimeValue::from_owned(handlers);
+            let old_handlers = crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack.clone());
+            let handler_stack = crate::sexp::instance::RuntimeValue::from_owned(handlers);
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.handler_stack = handler_stack;
+            });
             let callback_called = called.clone();
             let callback_args = args.clone();
             let callback_input = input.clone();
@@ -287,7 +289,7 @@ fn handler_case(action: u8) {
                 }
                 callback_called.set(1);
                 let f = callback_owner.node_factory().unwrap();
-                let actual = (*instance).error_state.warning_call.owned().unwrap();
+                let actual = crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.owned()).unwrap();
                 assert_eq!(
                     text(&f, &actual),
                     CALL,
@@ -307,10 +309,10 @@ fn handler_case(action: u8) {
                 }
             }));
             let result = catch_unwind(AssertUnwindSafe(|| native(&f, &call, &args)));
-            (*instance).error_state.handler_stack = old_handlers;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.handler_stack = old_handlers);
             assert_eq!(called.get(), 1, "actual warning closure evaluated gc()");
             assert_eq!(
-                (*instance).error_state.warning_call.as_raw(),
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.as_raw()),
                 previous.as_raw()
             );
             assert_eq!((*instance).memory_state.in_gc, 0);
@@ -332,7 +334,7 @@ fn handler_case(action: u8) {
                     drop(call);
                     drop(args);
                     drop(previous);
-                    (*instance).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
+                    crate::sexp::instance::with_error_state_in(instance, |state| state.warnings = crate::sexp::instance::RuntimeValue::empty());
                     crate::sexp::gengc::full_gc();
                     assert!(!input.is_live());
                     assert!(!child.is_live());
@@ -439,10 +441,10 @@ fn owned_char_to_raw_warning_actual_call_overrides_unrelated_mathlib_scope() {
             crate::mainutils::options::R_SetOptionWarn(0);
         }
         native(&f, &call, &args);
-        let warnings = unsafe { (*pin.as_ptr()).error_state.warnings.owned() }.unwrap();
+        let warnings = pin.with_error_state(|state| state.warnings.owned()).unwrap();
         assert_eq!(text(&f, &warnings.try_vector_elt(0).unwrap()), CALL);
         assert_eq!(
-            unsafe { (*pin.as_ptr()).error_state.mathlib_warning_call.as_raw() },
+            pin.with_error_state(|state| state.mathlib_warning_call.as_raw()),
             previous.as_raw()
         );
     });

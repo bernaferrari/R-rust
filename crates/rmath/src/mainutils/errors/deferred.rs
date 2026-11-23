@@ -298,7 +298,7 @@ mod owned_warning_snapshot_tests {
         // These ownership cases need at most two entries. A small real pool
         // keeps strict Miri focused on callback/root behavior rather than size.
         session.with_active_in(|instance| unsafe {
-            (*instance).error_state.nwarnings = 3;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 3);
         });
         session
     }
@@ -315,7 +315,7 @@ mod owned_warning_snapshot_tests {
             super::super::render::setup_warnings();
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let factory = owner.node_factory();
-            let warnings = (*instance).error_state.warnings.owned().unwrap();
+            let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
             let names = warnings.try_attrib().unwrap().try_car().unwrap();
             let call = owner
                 .sexp(Rf_lang2(
@@ -337,7 +337,7 @@ mod owned_warning_snapshot_tests {
                 crate::sexp::object::SexpMut::try_from_checked(names.clone()).unwrap();
             names_writer.try_set_string_elt(0, message).unwrap();
             names_writer.try_set_string_elt(1, second).unwrap();
-            (*instance).error_state.collect_warnings = 2;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 2);
             (warnings.as_raw(), names.as_raw(), call_node, message_node)
         })
     }
@@ -359,8 +359,8 @@ mod owned_warning_snapshot_tests {
                 if observed.replace(true) {
                     return;
                 }
-                (*instance).error_state.warnings = RuntimeValue::empty();
-                (*instance).error_state.collect_warnings = 0;
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warnings = RuntimeValue::empty());
+                crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 0);
                 SET_VECTOR_ELT(warnings, 0, globals::R_NilValue());
                 SET_VECTOR_ELT(warnings, 1, globals::R_NilValue());
                 SET_STRING_ELT(names, 0, replacement.as_raw());
@@ -410,8 +410,8 @@ mod owned_warning_snapshot_tests {
                     .unwrap(),
                 "second collected message"
             );
-            assert_eq!((*instance).error_state.collect_warnings, 0);
-            assert_eq!((*instance).error_state.in_print_warnings, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_print_warnings), 0);
         });
     }
 
@@ -422,8 +422,8 @@ mod owned_warning_snapshot_tests {
         let observed = collections.clone();
         session.with_active_in(|instance| unsafe {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                (*instance).error_state.warnings = RuntimeValue::empty();
-                (*instance).error_state.collect_warnings = 0;
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warnings = RuntimeValue::empty());
+                crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 0);
                 crate::sexp::gengc::full_gc_in(instance);
                 observed.set(observed.get() + 1);
             }));
@@ -438,9 +438,9 @@ mod owned_warning_snapshot_tests {
                 collections.get() >= 3,
                 "setup and message allocation must actually collect"
             );
-            assert_eq!((*instance).error_state.collect_warnings, 1);
-            assert_eq!((*instance).error_state.in_warning, 0);
-            let warnings = (*instance).error_state.warnings.owned().unwrap();
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
+            let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
             let names = warnings.try_attrib().unwrap().try_car().unwrap();
             assert_eq!(
                 names.try_string_elt(0).unwrap().try_as_string().unwrap(),
@@ -448,7 +448,7 @@ mod owned_warning_snapshot_tests {
             );
             let block = take_warnings_block().unwrap();
             assert_eq!(block, "Warning message:\ncollecting warning \n");
-            assert_eq!((*instance).error_state.in_print_warnings, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_print_warnings), 0);
         });
     }
 
@@ -469,9 +469,12 @@ mod owned_warning_snapshot_tests {
                 .unwrap();
             let node = call.allocation().unwrap().clone();
             let raw = call.as_raw();
-            (*instance).error_state.warning_call = RuntimeValue::from_owned(call);
+            let warning_call = RuntimeValue::from_owned(call);
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.warning_call = warning_call;
+            });
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                (*instance).error_state.warning_call = RuntimeValue::empty();
+                crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call = RuntimeValue::empty());
                 crate::sexp::gengc::full_gc_in(instance);
                 assert!(
                     node.is_live(),
@@ -490,9 +493,9 @@ mod owned_warning_snapshot_tests {
                 collected.get(),
                 "option/setup allocation must invoke collection"
             );
-            let warnings = (*instance).error_state.warnings.owned().unwrap();
+            let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
             assert_eq!(warnings.try_vector_elt(0).unwrap().as_raw(), raw);
-            assert_eq!((*instance).error_state.in_warning, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
         });
     }
 
@@ -511,14 +514,14 @@ mod owned_warning_snapshot_tests {
             let payload = outcome.expect_err("warn=2 must convert to an error");
             let error = payload.downcast_ref::<RError>().expect("typed R error");
             assert!(error.message.contains("converted from warning"));
-            assert_eq!((*instance).error_state.in_warning, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
             crate::mainutils::options::R_SetOptionWarn(crate::sexp::ffi::NA_INTEGER);
             super::super::render::vwarningcall_dflt(
                 globals::R_NilValue(),
                 c"NA collects".as_ptr(),
                 ptr::null_mut(),
             );
-            assert_eq!((*instance).error_state.collect_warnings, 1);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
             crate::mainutils::options::R_SetOptionWarn(-1);
             set_immediate_warning(true);
             super::super::render::vwarningcall_dflt(
@@ -527,8 +530,8 @@ mod owned_warning_snapshot_tests {
                 ptr::null_mut(),
             );
             set_immediate_warning(false);
-            assert_eq!((*instance).error_state.collect_warnings, 1);
-            assert_eq!((*instance).error_state.in_warning, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
         });
     }
 
@@ -577,8 +580,8 @@ mod owned_warning_snapshot_tests {
             );
             assert!(collected.get(), "option evaluation must actually collect");
             assert_eq!((*instance).eval_state.visible, crate::sexp::ffi::TRUE);
-            assert_eq!((*instance).error_state.in_warning, 0);
-            assert_eq!((*instance).error_state.collect_warnings, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 0);
             let result = owner
                 .sexp(crate::sexp::envir::R_findVar(
                     crate::sexp::symbol::install_str("warning_expression_result"),
@@ -599,7 +602,7 @@ mod owned_warning_snapshot_tests {
                 );
             }));
             assert!(invalid.is_err());
-            assert_eq!((*instance).error_state.in_warning, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
         });
     }
 
@@ -634,8 +637,8 @@ mod owned_warning_snapshot_tests {
                 ptr::null_mut(),
             );
             assert!(collected.get() > 0);
-            assert_eq!((*instance).error_state.in_warning, 0);
-            assert_eq!((*instance).error_state.collect_warnings, 1);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
             let block = take_warnings_block().unwrap();
             assert!(block.contains("nested expression warning"), "{block}");
             assert!(!block.contains("outer expression warning"), "{block}");
@@ -663,7 +666,7 @@ mod owned_warning_snapshot_tests {
                 outcome.is_err(),
                 "revoked execution cannot publish a warning block"
             );
-            assert_eq!((*instance).error_state.in_print_warnings, 0);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_print_warnings), 0);
         });
     }
 }

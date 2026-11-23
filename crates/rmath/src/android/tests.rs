@@ -17,15 +17,26 @@ fn owned_retained_console_closed_error_preserves_other_owner_warnings() {
     let other = console_owner_fixture();
     other.core.with_active_in(|instance| {
         unsafe {
-            (*instance).error_state.collect_warnings = 1;
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.collect_warnings = 1;
+            });
         }
         let result = closed.eval_script("7L");
         assert!(matches!(result.typed, RValue::Error(_)));
         assert_eq!(result.stdout, "");
         assert!(result.stderr.contains("session is closed"));
-        assert_eq!(unsafe { (*instance).error_state.collect_warnings }, 1);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    state.collect_warnings
+                })
+            },
+            1
+        );
         unsafe {
-            (*instance).error_state.collect_warnings = 0;
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.collect_warnings = 0;
+            });
         }
     });
 }
@@ -65,7 +76,7 @@ fn owned_retained_console_revoked_print_keeps_bytes_and_original_cleanup() {
         );
         assert_eq!(subsequent.stdout, "");
         assert!(!subsequent.output.contains("must not run"));
-        assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+        assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 0);
         assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     }
 }
@@ -119,7 +130,7 @@ fn owned_retained_console_live_print_panic_preserves_payload_and_cleanup() {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval("x; 7L")));
     let payload = outcome.expect_err("live-owner Rust panic must preserve its payload");
     assert_eq!(payload.downcast_ref::<u32>(), Some(&991));
-    assert_eq!(unsafe { (*pin.as_ptr()).error_state.toplevel_expr_no }, 0);
+    assert_eq!(pin.with_error_state(|state| state.toplevel_expr_no), 0);
     assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     session
         .core
@@ -795,14 +806,26 @@ fn bessel_warning_uses_its_detached_session_owner() {
     assert_eq!(
         session
             .core
-            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+            .with_active_in(|p| unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            }),
         1
     );
     other.core.with_active_in(|p| {
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
         let value = session.bessel(RBesselFunc::J, 1.0, 500.0, false);
         assert_eq!(value, 0.0);
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
         assert_eq!(
             unsafe {
                 crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap()
@@ -813,7 +836,9 @@ fn bessel_warning_uses_its_detached_session_owner() {
     assert_eq!(
         session
             .core
-            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+            .with_active_in(|p| unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            }),
         2
     );
     let setup = session.eval("options(warn=2)");
@@ -835,7 +860,12 @@ fn bessel_warning_uses_its_detached_session_owner() {
                 },
                 p
             );
-            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+            assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
         }
     });
     let reset = session.eval("options(warn=0)");
@@ -849,15 +879,24 @@ fn bessel_warning_uses_its_detached_session_owner() {
     ] {
         let before = session
             .core
-            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings });
+            .with_active_in(|p| unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            });
         other.core.with_active_in(|p| {
             assert!(session.bessel(func, -1.0, 0.0, false).is_nan());
-            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+            assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
         });
         assert_eq!(
             session
                 .core
-                .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+                .with_active_in(|p| unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            }),
             before + 1
         );
     }
@@ -931,7 +970,12 @@ fn bessel_warning_revocation_case(func: RBesselFunc, x: f64, alpha: f64) {
             },
             p
         );
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
     });
     assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
 }
@@ -1154,7 +1198,12 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
             },
             p
         );
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        assert_eq!(
+            unsafe {
+                crate::sexp::instance::with_error_state_in(p, |state| state.collect_warnings)
+            },
+            0
+        );
     });
     EVENTS.with(|events| {
         let events = events.borrow();

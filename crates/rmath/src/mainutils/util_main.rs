@@ -1482,7 +1482,7 @@ mod tests {
         };
         let session = crate::sexp::RSession::new_for_gc_tests();
         session.with_active_in(|instance| unsafe {
-            (*instance).error_state.nwarnings = 1;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 1);
             let mut cases = 0;
             for row in ORIGINAL.lines() {
                 let columns = row.split('|').collect::<Vec<_>>();
@@ -1494,7 +1494,7 @@ mod tests {
                 };
                 let expected = u64::from_le_bytes(decode(columns[3]).try_into().unwrap());
                 let mut end = ptr::null_mut();
-                (*instance).error_state.collect_warnings = 0;
+                crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings = 0);
                 let value = R_strtod5(
                     input.as_ptr(),
                     &mut end,
@@ -1510,10 +1510,10 @@ mod tests {
                 );
                 assert_eq!(crate::sexp::ffi::R_IsNA(value), columns[5] == "TRUE");
                 if columns[6].is_empty() {
-                    assert_eq!((*instance).error_state.collect_warnings, 0);
+                    assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 0);
                 } else {
-                    assert_eq!((*instance).error_state.collect_warnings, 1);
-                    let warnings = (*instance).error_state.warnings.owned().unwrap();
+                    assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
+                    let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
                     let names = warnings.try_attrib().unwrap().try_car().unwrap();
                     assert_eq!(
                         names.try_string_elt(0).unwrap().try_as_string().unwrap(),
@@ -1583,7 +1583,7 @@ mod tests {
         let collected = Rc::new(Cell::new(false));
         let observed = collected.clone();
         session.with_active_in(|instance| unsafe {
-            (*instance).error_state.nwarnings = 1;
+            crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 1);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 (*instance).memory_state.gc_force_gap = 0;
                 // Remove the sole source allocation while the warning is
@@ -1603,13 +1603,13 @@ mod tests {
             assert!(source.borrow().is_none());
             assert_eq!(value, 9_007_199_254_740_992.0);
             assert_eq!(end, expected_end);
-            let warnings = (*instance).error_state.warnings.owned().unwrap();
+            let warnings = crate::sexp::instance::with_error_state_in(instance, |state| state.warnings.owned()).unwrap();
             let names = warnings.try_attrib().unwrap().try_car().unwrap();
             assert_eq!(
                 names.try_string_elt(0).unwrap().try_as_string().unwrap(),
                 "accuracy loss in conversion from \"9007199254740993\" to numeric"
             );
-            assert_eq!((*instance).error_state.collect_warnings, 1);
+            assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 1);
         });
     }
 

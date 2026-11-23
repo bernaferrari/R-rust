@@ -485,7 +485,9 @@ mod eval_expression_tests {
         let captured_count = count.clone();
         let captured_expression = expression.clone();
         session.with_active_in(|instance| unsafe {
-            (*instance).error_state.current_srcref_location = Some(("outer.R".into(), 17));
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.current_srcref_location = Some(("outer.R".into(), 17));
+            });
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if captured_count.replace(1) == 0 {
                     SET_VECTOR_ELT(captured_expression.as_raw(), 0, R_NilValue());
@@ -512,7 +514,9 @@ mod eval_expression_tests {
         assert_eq!(result.try_vector_elt(0).unwrap().integer_elt(0), Some(7));
         session.with_active_in(|instance| unsafe {
             assert_eq!(
-                (*instance).error_state.current_srcref_location,
+                crate::sexp::instance::with_error_state_in(instance, |state| {
+                    state.current_srcref_location.clone()
+                }),
                 Some(("outer.R".into(), 17))
             );
         });
@@ -545,11 +549,15 @@ mod eval_expression_tests {
         let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
         let observed = revoked.clone();
         session.with_active_in(|instance| unsafe {
-            (*instance).error_state.current_srcref_location = Some(("caller.R".into(), 23));
+            crate::sexp::instance::with_error_state_in(instance, |state| {
+                state.current_srcref_location = Some(("caller.R".into(), 23));
+            });
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !observed.replace(true) {
                     assert!(!(*instance).context_stack.is_empty());
-                    assert!((*instance).error_state.current_srcref_location.is_none());
+                    assert!(crate::sexp::instance::with_error_state_in(instance, |state| {
+                        state.current_srcref_location.is_none()
+                    }));
                     crate::sexp::instance::revoke_instance_availability(instance);
                 }
             }));
@@ -573,11 +581,11 @@ mod eval_expression_tests {
             );
         });
         assert!(original.pin().is_err());
+        assert_eq!(
+            pin.with_error_state(|state| state.current_srcref_location.clone()),
+            Some(("caller.R".into(), 23))
+        );
         unsafe {
-            assert_eq!(
-                (*pin.as_ptr()).error_state.current_srcref_location,
-                Some(("caller.R".into(), 23))
-            );
             assert!((*pin.as_ptr()).context_stack.is_empty());
         }
     }
