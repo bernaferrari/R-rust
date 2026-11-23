@@ -560,8 +560,6 @@ pub struct RInstance {
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
     /// Per-instance graphics::plot3d scratch transformation state.
     pub(crate) plot3d_state: crate::library::graphics::plot3d::Plot3dState,
-    /// Per-instance graphics dendrogram scratch state.
-    pub(crate) dendrogram_state: crate::library::graphics::plot::DendrogramState,
     /// Per-instance methods package dispatch flags and cache counters.
     pub(crate) methods_dispatch_state:
         crate::library::methods::methods_list_dispatch::MethodsDispatchState,
@@ -698,7 +696,6 @@ impl RInstance {
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
-            dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
             methods_dispatch_state:
                 crate::library::methods::methods_list_dispatch::MethodsDispatchState::default(),
             raw_cons: Vec::new(),
