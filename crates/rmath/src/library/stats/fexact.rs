@@ -61,13 +61,11 @@ unsafe fn isort_wrapper(n: c_int, ix: *mut c_int) {
     }
 }
 
-unsafe fn fact_term(fact: *const c_double, idx: c_int, site: &str) -> c_double {
-    unsafe {
-        if idx < 0 {
-            prterr(2, &format!("negative count {idx} at {site}"));
-        }
-        *fact.add(idx as usize)
+fn fact_term(fact: &[c_double], idx: c_int, site: &str) -> c_double {
+    if idx < 0 {
+        prterr(2, &format!("negative count {idx} at {site}"));
     }
+    fact[idx as usize]
 }
 
 unsafe fn f2xact(
@@ -78,7 +76,7 @@ unsafe fn f2xact(
     percnt: c_double,
     emin: c_double,
     pre: &mut c_double,
-    fact: *mut c_double,
+    fact: &mut [c_double],
     ico: *mut c_int,
     iro: *mut c_int,
     kyy: *mut c_int,
@@ -146,14 +144,6 @@ unsafe fn f2xact(
         let i37: c_int;
         let i38: c_int;
         let i39: c_int;
-        let i41: c_int;
-        let i42: c_int;
-        let i43: c_int;
-        let i44: c_int;
-        let i45: c_int;
-        let i46: c_int;
-        let i47: c_int;
-        let i48: c_int;
         let i310: c_int;
         let i311: c_int;
 
@@ -258,18 +248,17 @@ unsafe fn f2xact(
         }
 
         // Compute log factorials (0-based for fact)
-        *fact.add(0) = 0.;
-        *fact.add(1) = 0.;
+        fact[0] = 0.;
+        fact[1] = 0.;
         if ntot >= 2 {
-            *fact.add(2) = (2.0f64).ln();
+            fact[2] = (2.0f64).ln();
         }
         let mut fi: usize = 3;
         while fi <= ntot as usize {
-            *fact.add(fi) = *fact.add(fi - 1) + (fi as c_double).ln();
+            fact[fi] = fact[fi - 1] + (fi as c_double).ln();
             let fj = fi + 1;
             if fj <= ntot as usize {
-                *fact.add(fj) =
-                    *fact.add(fi) + *fact.add(2) + *fact.add(fj / 2) - *fact.add(fj / 2 - 1);
+                fact[fj] = fact[fi] + fact[2] + fact[fj / 2] - fact[fj / 2 - 1];
             }
             fi += 2;
         }
@@ -281,22 +270,26 @@ unsafe fn f2xact(
             let mut dd: c_double = 0.;
             if nr_gt_nc {
                 for idx in 1..=nro as usize {
-                    dd += *fact.add(table[(jdx - 1) + (idx - 1) * nrow as usize] as usize);
+                    dd += fact[table[(jdx - 1) + (idx - 1) * nrow as usize] as usize];
                     ntot += table[(jdx - 1) + (idx - 1) * nrow as usize];
                 }
             } else {
                 let mut ii_us: usize = (jdx - 1) * nrow as usize;
                 for idx in 1..=nro as usize {
-                    dd += *fact.add(table[ii_us] as usize);
+                    dd += fact[table[ii_us] as usize];
                     ntot += table[ii_us];
                     ii_us += 1;
                 }
             }
-            obs += *fact.add(*ico.add(jdx) as usize) - dd;
+            obs += fact[*ico.add(jdx) as usize] - dd;
         }
 
         // Denominator of observed table: DRO
-        dro = f9xact(nro, ntot, iro.add(1), fact);
+        dro = f9xact(
+            ntot,
+            std::slice::from_raw_parts(iro.add(1), nro as usize),
+            fact,
+        );
         *pre = 0.;
         itop = 0;
 
@@ -313,16 +306,6 @@ unsafe fn f2xact(
         i39 = i38 + 2 * n2_stack;
         i310 = 1;
         i311 = 1 + 2 * n2_stack;
-        // f4xact
-        i = nrow + ncol + 1;
-        i41 = 1;
-        i42 = i41 + i;
-        i43 = i42 + i;
-        i44 = i43 + i;
-        i45 = i44 + i;
-        i46 = i45 + i;
-        i47 = i46 + i * nco;
-        i48 = 1;
 
         // Initialize pointers
         k = nco;
@@ -442,8 +425,17 @@ unsafe fn f2xact(
                 nro2 = nro - nrb + 1;
 
                 // Some table values
-                ddf = f9xact(nro, n, idif.add(1), fact);
-                drn = f9xact(nro2, ntot, irn.add(nrb as usize), fact) - dro + ddf;
+                ddf = f9xact(
+                    n,
+                    std::slice::from_raw_parts(idif.add(1), nro as usize),
+                    fact,
+                );
+                drn = f9xact(
+                    ntot,
+                    std::slice::from_raw_parts(irn.add(nrb as usize), nro2 as usize),
+                    fact,
+                ) - dro
+                    + ddf;
                 // Get hash value
                 if k1 > 1 {
                     kval = *irn.add(1);
@@ -545,21 +537,34 @@ unsafe fn f2xact(
                         }
 
                         // Compute shortest path -- using dspt as offset
+                        let depth = (nrow + ncol + 1) as usize;
+                        let stack_cells = depth * nco as usize;
+                        // SAFETY: iwork reserved at least 5*depth + 2*stack_cells
+                        // ints at iwk[1..] and depth doubles at rwk[1..]; each
+                        // reborrow ends when f4xact returns.
+                        let scratch = std::slice::from_raw_parts_mut(
+                            iwk.add(1),
+                            5 * depth + 2 * stack_cells,
+                        );
+                        let (ncstk, scratch) = scratch.split_at_mut(depth);
+                        let (lstk, scratch) = scratch.split_at_mut(depth);
+                        let (mstk, scratch) = scratch.split_at_mut(depth);
+                        let (nstk, scratch) = scratch.split_at_mut(depth);
+                        let (nrstk, scratch) = scratch.split_at_mut(depth);
+                        let (irstk, icstk) = scratch.split_at_mut(stack_cells);
                         *sp.add(itp as usize) = f4xact(
-                            nro2,
-                            irn.add(nrb as usize),
-                            k1,
-                            ico.add((kb + 1) as usize),
+                            std::slice::from_raw_parts(irn.add(nrb as usize), nro2 as usize),
+                            std::slice::from_raw_parts(ico.add((kb + 1) as usize), k1 as usize),
                             dspt,
                             fact,
-                            iwk.add(i47 as usize),
-                            iwk.add(i41 as usize),
-                            iwk.add(i42 as usize),
-                            iwk.add(i43 as usize),
-                            iwk.add(i44 as usize),
-                            iwk.add(i45 as usize),
-                            iwk.add(i46 as usize),
-                            rwk.add(i48 as usize),
+                            icstk,
+                            ncstk,
+                            lstk,
+                            mstk,
+                            nstk,
+                            nrstk,
+                            irstk,
+                            std::slice::from_raw_parts_mut(rwk.add(1), depth),
                             tol,
                         );
                         if *sp.add(itp as usize) > 0. {
@@ -597,17 +602,17 @@ unsafe fn f2xact(
                                 tmp *= (k1 - 1) as c_double;
                                 for idx_j in 1..=k1 as usize {
                                     tmp += (nro2 - 1) as c_double
-                                        * (*fact
-                                            .add(*ico.add((kb as usize + idx_j) as usize) as usize)
-                                            - *fact.add(
-                                                (*ico.add((kb as usize + idx_j) as usize) - 1)
-                                                    as usize,
+                                        * (fact[*ico.add((kb as usize + idx_j) as usize) as usize]
+                                            - fact_term(
+                                                fact,
+                                                *ico.add((kb as usize + idx_j) as usize) - 1,
+                                                "ico-1",
                                             ));
                                 }
                                 df = ((nro2 - 1) * (k1 - 1)) as c_double;
                                 tmp += df * 1.83787706640934548356065947281;
                                 tmp -= ((nro2 * k1 - 1) as c_double)
-                                    * (*fact.add(ntot as usize) - *fact.add((ntot - 1) as usize));
+                                    * (fact[ntot as usize] - fact[(ntot - 1) as usize]);
                                 *tm.add(itp as usize) = (obs - dro) * -2. - tmp;
                             } else {
                                 *tm.add(itp as usize) = -9876.;
@@ -731,7 +736,7 @@ unsafe fn f3xact(
     ncol: c_int,
     icol: *const c_int,
     ntot: c_int,
-    fact: *const c_double,
+    fact: &[c_double],
     ico: *mut c_int,
     iro: *mut c_int,
     it: *mut c_int,
@@ -765,7 +770,7 @@ unsafe fn f3xact(
             let mut lp: c_double = 0.;
             if nrow > 0 {
                 for idx in 1..=ncol as usize {
-                    lp -= *fact.add(*icol.add(idx) as usize);
+                    lp -= fact[*icol.add(idx) as usize];
                 }
             }
             return lp;
@@ -776,7 +781,7 @@ unsafe fn f3xact(
             let mut lp: c_double = 0.;
             if ncol > 0 {
                 for idx in 1..=nrow as usize {
-                    lp -= *fact.add(*irow.add(idx) as usize);
+                    lp -= fact[*irow.add(idx) as usize];
                 }
             }
             return lp;
@@ -786,10 +791,10 @@ unsafe fn f3xact(
         if nrow * ncol == 4 {
             let n11 = (*irow.add(1) + 1) * (*icol.add(1) + 1) / (ntot + 2);
             let n12 = *irow.add(1) - n11;
-            return -(*fact.add(n11 as usize)
-                + *fact.add(n12 as usize)
-                + *fact.add((*icol.add(1) - n11) as usize)
-                + *fact.add((*icol.add(2) - n12) as usize));
+            return -(fact[n11 as usize]
+                + fact[n12 as usize]
+                + fact[(*icol.add(1) - n11) as usize]
+                + fact[(*icol.add(2) - n12) as usize]);
         }
 
         // ELSE: larger than 2 x 2
@@ -1141,278 +1146,246 @@ unsafe fn f3xact(
     }
 }
 
-unsafe fn f4xact(
-    nrow: c_int,
-    irow: *mut c_int,
-    ncol: c_int,
-    icol: *mut c_int,
+fn f4xact(
+    irow: &[c_int],
+    icol: &[c_int],
     dspt: c_double,
-    fact: *const c_double,
-    icstk: *mut c_int,
-    ncstk: *mut c_int,
-    lstk: *mut c_int,
-    mstk: *mut c_int,
-    nstk: *mut c_int,
-    nrstk: *mut c_int,
-    irstk: *mut c_int,
-    ystk: *mut c_double,
+    fact: &[c_double],
+    icstk: &mut [c_int],
+    ncstk: &mut [c_int],
+    lstk: &mut [c_int],
+    mstk: &mut [c_int],
+    nstk: &mut [c_int],
+    nrstk: &mut [c_int],
+    irstk: &mut [c_int],
+    ystk: &mut [c_double],
     tol: c_double,
 ) -> c_double {
-    unsafe {
-        // Take care of the easy cases first
-        if nrow == 1 {
-            let mut sp: c_double = 0.;
-            for idx in 0..ncol as usize {
-                sp -= *fact.add(*icol.add(idx) as usize);
-            }
-            return sp;
+    let nrow = irow.len() as c_int;
+    let ncol = icol.len() as c_int;
+    if nrow == 0 || ncol == 0 {
+        return 0.0;
+    }
+    // Take care of the easy cases first
+    if nrow == 1 {
+        let mut sp: c_double = 0.;
+        for idx in 0..ncol as usize {
+            sp -= fact[icol[idx] as usize];
         }
-        if ncol == 1 {
-            let mut sp: c_double = 0.;
-            for idx in 0..nrow as usize {
-                sp -= *fact.add(*irow.add(idx) as usize);
-            }
-            return sp;
+        return sp;
+    }
+    if ncol == 1 {
+        let mut sp: c_double = 0.;
+        for idx in 0..nrow as usize {
+            sp -= fact[irow[idx] as usize];
         }
-        if nrow * ncol == 4 {
-            if *irow.add(1) <= *icol.add(1) {
-                return -(fact_term(fact, *irow.add(1), "f4-irow")
-                    + fact_term(fact, *icol.add(1), "f4-icol")
-                    + fact_term(fact, *icol.add(1) - *irow.add(1), "f4-diff"));
+        return sp;
+    }
+    if nrow * ncol == 4 {
+        if irow[1] <= icol[1] {
+            return -(fact_term(fact, irow[1], "f4-irow")
+                + fact_term(fact, icol[1], "f4-icol")
+                + fact_term(fact, icol[1] - irow[1], "f4-diff"));
+        } else {
+            return -(fact_term(fact, icol[1], "f4-icol")
+                + fact_term(fact, irow[1], "f4-irow")
+                + fact_term(fact, irow[1] - icol[1], "f4-diff"));
+        }
+    }
+
+    let mut i: c_int;
+    let mut j: c_int;
+    let mut l: c_int;
+    let mut m: c_int = 0;
+    let mut n: c_int = 0;
+    let mut ic1: c_int;
+    let mut ir1: c_int;
+    let mut ict: c_int;
+    let mut irt: c_int;
+    let mut istk: c_int;
+    let mut nco: c_int;
+    let mut nro: c_int;
+    let mut y: c_double;
+    let mut amx: c_double;
+    let mut sp: c_double;
+
+    for (dst, &src) in irstk[..nrow as usize].iter_mut().zip(irow.iter().rev()) {
+        *dst = src;
+    }
+    for (dst, &src) in icstk[..ncol as usize].iter_mut().zip(icol.iter().rev()) {
+        *dst = src;
+    }
+
+    nro = nrow;
+    nco = ncol;
+    nrstk[0] = nro;
+    ncstk[0] = nco;
+    ystk[0] = 0.;
+    y = 0.;
+    istk = 1;
+    l = 1;
+    amx = 0.;
+    sp = dspt;
+
+    // In the C code, the first do-while loop and the L100 do-while loop
+    // share goto L60 from inside L110. We restructure using a single
+    // encompassing loop with state flags.
+
+    let mut in_first_loop = true; // true = first loop, false = L100 loop
+
+    // Combined loop: both the first "do {} while(1)" and "L100: do {} while(1)"
+    // share the L60 code via goto. We use a state flag.
+    'main: loop {
+        if in_first_loop {
+            // irstk[(istk - 1) * nrow] and icstk[(istk - 1) * ncol]
+            ir1 = irstk[((istk - 1) * nrow) as usize];
+            ic1 = icstk[((istk - 1) * ncol) as usize];
+            if ir1 > ic1 {
+                if nro >= nco {
+                    m = nco - 1;
+                    n = 2;
+                } else {
+                    m = nro;
+                    n = 1;
+                }
+            } else if ir1 < ic1 {
+                if nro <= nco {
+                    m = nro - 1;
+                    n = 1;
+                } else {
+                    m = nco;
+                    n = 2;
+                }
             } else {
-                return -(fact_term(fact, *icol.add(1), "f4-icol")
-                    + fact_term(fact, *irow.add(1), "f4-irow")
-                    + fact_term(fact, *irow.add(1) - *icol.add(1), "f4-diff"));
+                if nro <= nco {
+                    m = nro - 1;
+                    n = 1;
+                } else {
+                    m = nco - 1;
+                    n = 2;
+                }
             }
         }
 
-        // GNU: irstk -= nrow + 1; icstk -= ncol + 1; then the stack decrements.
-        // irow/icol stay unshifted: irow[nrow - i] is 0-based.
-        let irstk = irstk.sub(nrow as usize + 1);
-        let icstk = icstk.sub(ncol as usize + 1);
-        let nrstk = nrstk.sub(1);
-        let ncstk = ncstk.sub(1);
-        let lstk = lstk.sub(1);
-        let mstk = mstk.sub(1);
-        let nstk = nstk.sub(1);
-        let ystk = ystk.sub(1);
-
-        let mut i: c_int;
-        let mut j: c_int;
-        let _k: c_int = 0; // unused
-        let mut l: c_int;
-        let mut m: c_int = 0;
-        let mut n: c_int = 0;
-        let mut ic1: c_int;
-        let mut ir1: c_int;
-        let mut ict: c_int;
-        let mut irt: c_int;
-        let mut istk: c_int;
-        let mut nco: c_int;
-        let mut nro: c_int;
-        let mut y: c_double;
-        let mut amx: c_double;
-        let mut sp: c_double;
-
-        for idx in 1..=nrow as usize {
-            *irstk.add(idx + nrow as usize) = *irow.add(nrow as usize - idx);
-        }
-
-        for idx in 1..=ncol as usize {
-            *icstk.add(idx + ncol as usize) = *icol.add(ncol as usize - idx);
-        }
-
-        nro = nrow;
-        nco = ncol;
-        *nrstk.add(1) = nro;
-        *ncstk.add(1) = nco;
-        *ystk.add(1) = 0.;
-        y = 0.;
-        istk = 1;
-        l = 1;
-        amx = 0.;
-        sp = dspt;
-
-        // In the C code, the first do-while loop and the L100 do-while loop
-        // share goto L60 from inside L110. We restructure using a single
-        // encompassing loop with state flags.
-
-        let mut in_first_loop = true; // true = first loop, false = L100 loop
-
-        // Combined loop: both the first "do {} while(1)" and "L100: do {} while(1)"
-        // share the L60 code via goto. We use a state flag.
-        'main: loop {
-            if in_first_loop {
-                // irstk[istk * nrow + 1] and icstk[istk * ncol + 1]
-                ir1 = *irstk.add((istk * nrow + 1) as usize);
-                ic1 = *icstk.add((istk * ncol + 1) as usize);
-                if ir1 > ic1 {
-                    if nro >= nco {
-                        m = nco - 1;
-                        n = 2;
-                    } else {
-                        m = nro;
-                        n = 1;
-                    }
-                } else if ir1 < ic1 {
-                    if nro <= nco {
-                        m = nro - 1;
-                        n = 1;
-                    } else {
-                        m = nco;
-                        n = 2;
-                    }
-                } else {
-                    if nro <= nco {
-                        m = nro - 1;
-                        n = 1;
-                    } else {
-                        m = nco - 1;
-                        n = 2;
-                    }
-                }
+        // L60:
+        'l60: loop {
+            if n == 1 {
+                i = l;
+                j = 1;
+            } else {
+                i = 1;
+                j = l;
             }
 
-            // L60:
-            'l60: loop {
-                if n == 1 {
-                    i = l;
-                    j = 1;
-                } else {
-                    i = 1;
-                    j = l;
-                }
+            irt = irstk[((istk - 1) * nrow + i - 1) as usize];
+            ict = icstk[((istk - 1) * ncol + j - 1) as usize];
+            y += fact_term(fact, std::cmp::min(irt, ict), "f4-min");
 
-                irt = *irstk.add((i + istk * nrow) as usize);
-                ict = *icstk.add((j + istk * ncol) as usize);
-                y += fact_term(fact, std::cmp::min(irt, ict), "f4-min");
-                if irt == ict {
-                    nro -= 1;
-                    nco -= 1;
-                    f11act(
-                        irstk.add((istk * nrow + 1) as usize),
-                        i,
-                        nro,
-                        irstk.add(((istk + 1) * nrow + 1) as usize),
-                    );
-                    f11act(
-                        icstk.add((istk * ncol + 1) as usize),
-                        j,
-                        nco,
-                        icstk.add(((istk + 1) * ncol + 1) as usize),
-                    );
-                } else if irt > ict {
-                    nco -= 1;
-                    f11act(
-                        icstk.add((istk * ncol + 1) as usize),
-                        j,
-                        nco,
-                        icstk.add(((istk + 1) * ncol + 1) as usize),
-                    );
-                    f8xact(
-                        irstk.add((istk * nrow + 1) as usize),
-                        irt - ict,
-                        i,
-                        nro,
-                        irstk.add(((istk + 1) * nrow + 1) as usize),
-                    );
-                } else {
-                    nro -= 1;
-                    f11act(
-                        irstk.add((istk * nrow + 1) as usize),
-                        i,
-                        nro,
-                        irstk.add(((istk + 1) * nrow + 1) as usize),
-                    );
-                    f8xact(
-                        icstk.add((istk * ncol + 1) as usize),
-                        ict - irt,
-                        j,
-                        nco,
-                        icstk.add(((istk + 1) * ncol + 1) as usize),
-                    );
-                }
+            // Split the stack into the current and next frames so each
+            // helper borrows disjoint rows/columns.
+            let row_width = nrow as usize;
+            let col_width = ncol as usize;
+            let row_next = istk as usize * row_width;
+            let col_next = istk as usize * col_width;
+            let (row_frames, row_tail) = irstk.split_at_mut(row_next);
+            let (col_frames, col_tail) = icstk.split_at_mut(col_next);
+            let rows = &row_frames[row_next - row_width..];
+            let cols = &col_frames[col_next - col_width..];
+            let next_rows = &mut row_tail[..row_width];
+            let next_cols = &mut col_tail[..col_width];
 
-                if nro == 1 {
-                    for idx in 1..=nco as usize {
-                        y += *fact
-                            .add(*icstk.add(idx + (istk as usize + 1) * ncol as usize) as usize);
-                    }
-                    // goto L90
-                    break 'l60;
-                }
-                if nco == 1 {
-                    for idx in 1..=nro as usize {
-                        y += *fact
-                            .add(*irstk.add(idx + (istk as usize + 1) * nrow as usize) as usize);
-                    }
-                    // goto L90
-                    break 'l60;
-                }
-
-                *lstk.add(istk as usize) = l;
-                *mstk.add(istk as usize) = m;
-                *nstk.add(istk as usize) = n;
-                istk += 1;
-                *nrstk.add(istk as usize) = nro;
-                *ncstk.add(istk as usize) = nco;
-                *ystk.add(istk as usize) = y;
-                l = 1;
-                continue 'main;
+            if irt == ict {
+                nro -= 1;
+                nco -= 1;
+                f11act(rows, i, nro, next_rows);
+                f11act(cols, j, nco, next_cols);
+            } else if irt > ict {
+                nco -= 1;
+                f11act(cols, j, nco, next_cols);
+                f8xact(rows, irt - ict, i, nro, next_rows);
+            } else {
+                nro -= 1;
+                f11act(rows, i, nro, next_rows);
+                f8xact(cols, ict - irt, j, nco, next_cols);
             }
 
-            // L90:
-            if y > amx {
-                amx = y;
+            if nro == 1 {
+                for &count in &next_cols[..nco as usize] {
+                    y += fact[count as usize];
+                }
+                // goto L90
+                break 'l60;
+            }
+            if nco == 1 {
+                for &count in &next_rows[..nro as usize] {
+                    y += fact[count as usize];
+                }
+                // goto L90
+                break 'l60;
+            }
+
+            lstk[(istk - 1) as usize] = l;
+            mstk[(istk - 1) as usize] = m;
+            nstk[(istk - 1) as usize] = n;
+            istk += 1;
+            nrstk[(istk - 1) as usize] = nro;
+            ncstk[(istk - 1) as usize] = nco;
+            ystk[(istk - 1) as usize] = y;
+            l = 1;
+            continue 'main;
+        }
+
+        // L90:
+        if y > amx {
+            amx = y;
+            if sp - amx <= tol {
+                return -dspt;
+            }
+        }
+
+        // L100:
+        'l100: loop {
+            istk -= 1;
+            if istk == 0 {
+                sp -= amx;
                 if sp - amx <= tol {
                     return -dspt;
+                } else {
+                    return sp - dspt;
                 }
             }
+            l = lstk[(istk - 1) as usize] + 1;
 
-            // L100:
-            'l100: loop {
-                istk -= 1;
-                if istk == 0 {
-                    sp -= amx;
-                    if sp - amx <= tol {
-                        return -dspt;
-                    } else {
-                        return sp - dspt;
+            // L110:
+            'l110: loop {
+                if l > mstk[(istk - 1) as usize] {
+                    // no match found, continue L100
+                    continue 'l100;
+                }
+
+                n = nstk[(istk - 1) as usize];
+                nro = nrstk[(istk - 1) as usize];
+                nco = ncstk[(istk - 1) as usize];
+                y = ystk[(istk - 1) as usize];
+                if n == 1 {
+                    if irstk[((istk - 1) * nrow + l - 1) as usize]
+                        < irstk[((istk - 1) * nrow + l - 2) as usize]
+                    {
+                        // goto L60
+                        in_first_loop = false;
+                        continue 'main;
+                    }
+                } else if n == 2 {
+                    if icstk[((istk - 1) * ncol + l - 1) as usize]
+                        < icstk[((istk - 1) * ncol + l - 2) as usize]
+                    {
+                        // goto L60
+                        in_first_loop = false;
+                        continue 'main;
                     }
                 }
-                l = *lstk.add(istk as usize) + 1;
-
-                // L110:
-                'l110: loop {
-                    if l > *mstk.add(istk as usize) {
-                        // no match found, continue L100
-                        continue 'l100;
-                    }
-
-                    n = *nstk.add(istk as usize);
-                    nro = *nrstk.add(istk as usize);
-                    nco = *ncstk.add(istk as usize);
-                    y = *ystk.add(istk as usize);
-                    if n == 1 {
-                        if *irstk.add((l + istk * nrow) as usize)
-                            < *irstk.add((l - 1 + istk * nrow) as usize)
-                        {
-                            // goto L60
-                            in_first_loop = false;
-                            continue 'main;
-                        }
-                    } else if n == 2 {
-                        if *icstk.add((l + istk * ncol) as usize)
-                            < *icstk.add((l - 1 + istk * ncol) as usize)
-                        {
-                            // goto L60
-                            in_first_loop = false;
-                            continue 'main;
-                        }
-                    }
-                    l += 1;
-                    continue 'l110;
-                }
+                l += 1;
+                continue 'l110;
             }
         }
     }
@@ -1721,47 +1694,24 @@ unsafe fn f7xact(
     }
 }
 
-unsafe fn f8xact(irow: *const c_int, is: c_int, i1: c_int, izero: c_int, new: *mut c_int) {
-    unsafe {
-        let irow = irow.sub(1);
-        let new = new.sub(1);
-
-        let mut i: c_int = 1;
-
-        while i < i1 {
-            *new.add(i as usize) = *irow.add(i as usize);
-            i += 1;
-        }
-
-        while i < izero {
-            if is >= *irow.add((i + 1) as usize) {
-                break;
-            }
-            *new.add(i as usize) = *irow.add((i + 1) as usize);
-            i += 1;
-        }
-
-        *new.add(i as usize) = is;
-
-        loop {
-            i += 1;
-            if i > izero {
-                return;
-            }
-            *new.add(i as usize) = *irow.add(i as usize);
-        }
+fn f8xact(irow: &[c_int], is: c_int, i1: c_int, izero: c_int, new: &mut [c_int]) {
+    let mut i = (i1 - 1) as usize;
+    let end = izero as usize;
+    new[..i].copy_from_slice(&irow[..i]);
+    while i + 1 < end && is < irow[i + 1] {
+        new[i] = irow[i + 1];
+        i += 1;
     }
+    new[i] = is;
+    new[i + 1..end].copy_from_slice(&irow[i + 1..end]);
 }
 
-unsafe fn f9xact(n: c_int, ntot: c_int, ir: *const c_int, fact: *const c_double) -> c_double {
-    unsafe {
-        // ir is 0-based
-        let mut d = *fact.add(ntot as usize);
-        for idx in 0..n as usize {
-            d -= *fact.add(*ir.add(idx) as usize);
-        }
-        d
+fn f9xact(ntot: c_int, ir: &[c_int], fact: &[c_double]) -> c_double {
+    let mut d = fact[ntot as usize];
+    for &count in ir {
+        d -= fact[count as usize];
     }
+    d
 }
 
 unsafe fn f10act(
@@ -1770,7 +1720,7 @@ unsafe fn f10act(
     ncol: c_int,
     icol: *const c_int,
     val: *mut c_double,
-    fact: *const c_double,
+    fact: &[c_double],
     nd: *mut c_int,
     ne: *mut c_int,
     m: *mut c_int,
@@ -1818,27 +1768,18 @@ unsafe fn f10act(
         for idx in 0..ncol as usize {
             ix = *ne.add(idx);
             is = *m.add(idx);
-            *val += is as c_double * *fact.add((ix + 1) as usize)
-                + (nrow - is) as c_double * *fact.add(ix as usize);
+            *val += is as c_double * fact[(ix + 1) as usize]
+                + (nrow - is) as c_double * fact[ix as usize];
         }
         true
     }
 }
 
-unsafe fn f11act(irow: *const c_int, i1: c_int, i2: c_int, new: *mut c_int) {
-    unsafe {
-        // All arrays are 0-based
-        let mut i: c_int = 0;
-        while i < i1 - 1 {
-            *new.add(i as usize) = *irow.add(i as usize);
-            i += 1;
-        }
-        i = i1;
-        while i <= i2 {
-            *new.add((i - 1) as usize) = *irow.add(i as usize);
-            i += 1;
-        }
-    }
+fn f11act(irow: &[c_int], i1: c_int, i2: c_int, new: &mut [c_int]) {
+    let removed = (i1 - 1) as usize;
+    let end = i2 as usize;
+    new[..removed].copy_from_slice(&irow[..removed]);
+    new[removed..end].copy_from_slice(&irow[removed + 1..end + 1]);
 }
 
 // ---- internal entry ----
@@ -1937,7 +1878,7 @@ fn fexact(
             percnt,
             emin,
             &mut pre,
-            dwrk.add(i1),
+            std::slice::from_raw_parts_mut(dwrk.add(i1), (total + 1) as usize),
             iwrk.add(i2),
             iwrk.add(i3),
             iwrk.add(i3a),
@@ -2002,6 +1943,44 @@ mod tests {
                     - 0.81103455368161226)
                     .abs()
                     < 1e-14
+            );
+        });
+    }
+
+    #[test]
+    fn fexact_matches_gnu_when_shortest_path_uses_stack() {
+        use super::fexact;
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            // GNU R 4.6.2 oracle: exercises the general f4xact stack path.
+            let p = fexact(
+                3,
+                4,
+                &[3, 2, 1, 1, 4, 2, 1, 2, 3, 1, 2, 0],
+                -1.0,
+                100.0,
+                0.0,
+                12_000,
+                30,
+            );
+            // Miri injects a few ULP of random error into each libm call, so
+            // under Miri the enumeration cannot reproduce the GNU oracle to
+            // 1e-14; native execution matches it bit-for-bit.
+            let tolerance = if cfg!(miri) { 1e-9 } else { 1e-14 };
+            assert!((p - 0.73720341015583335).abs() < tolerance);
+            assert!(
+                (fexact(
+                    4,
+                    3,
+                    &[3, 2, 1, 1, 1, 4, 2, 2, 1, 2, 3, 0],
+                    -1.0,
+                    100.0,
+                    0.0,
+                    12_000,
+                    30
+                ) - 0.69331540961148608)
+                    .abs()
+                    < tolerance
             );
         });
     }
