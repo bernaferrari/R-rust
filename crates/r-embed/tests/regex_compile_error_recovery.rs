@@ -82,3 +82,27 @@ local({
         "nullable-tre-ok\n"
     );
 }
+
+#[test]
+fn nested_tre_alternations_preserve_capture_order() {
+    let mut session = RSession::new().unwrap();
+    // Keep rport's existing -1/-1 for groups in an unvisited alternative.
+    // GNU R reports 0/0 for those groups.
+    assert_eq!(
+        session
+            .eval(
+                r#"local({
+    m <- regexec('^((a(b)?)|((c)?d?))$', c('a','ab','c','d','cd','ac'))
+    stopifnot(identical(lapply(m, as.integer),
+        list(c(1L,1L,1L,-1L,-1L,-1L), c(1L,1L,1L,2L,-1L,-1L), c(1L,1L,-1L,-1L,1L,1L),
+             c(1L,1L,-1L,-1L,1L,-1L), c(1L,1L,-1L,-1L,1L,1L), -1L)),
+        identical(lapply(m, attr, 'match.length'),
+        list(c(1L,1L,1L,-1L,-1L,-1L), c(2L,2L,2L,1L,-1L,-1L), c(1L,1L,-1L,-1L,1L,1L),
+             c(1L,1L,-1L,-1L,1L,-1L), c(2L,2L,-1L,-1L,2L,1L), -1L)))
+    cat('capture-order-ok\n')
+})"#
+            )
+            .unwrap(),
+        "capture-order-ok\n"
+    );
+}

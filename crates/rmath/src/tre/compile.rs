@@ -11,6 +11,8 @@
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
+use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
+
 use super::ast::*;
 use super::mem;
 use super::stack;
@@ -43,10 +45,71 @@ enum tre_addtags_symbol_t {
     ADDTAGS_SET_SUBMATCH_END,
 }
 
-#[repr(C)]
-struct tre_tag_states_t {
-    tag: c_int,
-    next_tag: c_int,
+struct PendingCaptures {
+    entries: WorkspaceBuffer<c_int>,
+    start: usize,
+    end: usize,
+}
+
+impl PendingCaptures {
+    fn new(workspace: &RegexWorkspace, submatches: usize) -> Result<Self, ()> {
+        let capacity = submatches.checked_mul(2).ok_or(())?;
+        let mut entries = workspace.try_buffer(capacity)?;
+        entries.try_resize(capacity, 0)?;
+        Ok(Self {
+            entries,
+            start: 0,
+            end: 0,
+        })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
+
+    fn push(&mut self, id: c_int, closing: bool) -> Result<(), ()> {
+        if usize::try_from(id).map_err(|_| ())? >= self.entries.len() / 2 {
+            return Err(());
+        }
+        let marker = id
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(c_int::from(closing)))
+            .ok_or(())?;
+        *self.entries.get_mut(self.end).ok_or(())? = marker;
+        self.end += 1;
+        Ok(())
+    }
+
+    fn clear(&mut self) {
+        self.end = self.start;
+    }
+
+    fn flush(&mut self, submatches: &mut [tre_submatch_data_t], tag: c_int) -> Result<(), ()> {
+        for &marker in self.entries.get(self.start..self.end).ok_or(())? {
+            let submatch = submatches.get_mut((marker / 2) as usize).ok_or(())?;
+            if marker % 2 == 0 {
+                submatch.so_tag = tag;
+            } else {
+                submatch.eo_tag = tag;
+            }
+        }
+        self.clear();
+        Ok(())
+    }
+
+    fn begin_right_branch(&mut self) {
+        // Keep the left branch's pending markers while visiting the right branch.
+        self.start = self.end;
+    }
+
+    fn restore_start(&mut self, start: c_int) -> Result<(), ()> {
+        let start = usize::try_from(start).map_err(|_| ())?;
+        if start > self.start {
+            return Err(());
+        }
+        self.start = start;
+        Ok(())
+    }
 }
 
 // Construct every field before publishing a child copied during tag insertion.
@@ -170,87 +233,47 @@ unsafe fn tre_add_tag_right(
 
 /// # Safety
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
-unsafe fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
-    unsafe {
-        let mut i = 0;
-        while *regset.offset(i) >= 0 {
-            let id = *regset.offset(i) / 2;
-            let start = if *regset.offset(i) % 2 != 0 { 0 } else { 1 };
-            if start != 0 {
-                (*(*tnfa).submatch_data.offset(id as isize)).so_tag = tag;
-            } else {
-                (*(*tnfa).submatch_data.offset(id as isize)).eo_tag = tag;
-            }
-            i += 1;
-        }
-        *regset = -1;
-    }
-}
-
-/// # Safety
-///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// `tnfa` must point to a live, writable `tre_tnfa_t` in both passes. If `mem`
+/// is non-null it must be a live AST arena, and `(*tnfa).submatch_data` must
+/// contain `num_submatches` initialized writable entries while `tag_directions`
+/// and `minimal_tags` are sized by the count pass. `tree` and `stack` must be
+/// live compiler objects.
 unsafe fn tre_add_tags(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
     tnfa: *mut tre_tnfa_t,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+    workspace: &RegexWorkspace,
 ) -> c_int {
     unsafe {
         let mut status: c_int = REG_OK as c_int;
         let mut node = tree;
         let bottom = stack::tre_stack_num_objects(stack);
-        let first_pass = mem.is_null() || tnfa.is_null();
-        let mut regset = mem::xmalloc(
-            std::mem::size_of::<c_int>() * (((*tnfa).num_submatches as usize + 1) * 2),
-        ) as *mut c_int;
-        if regset.is_null() {
-            return REG_ESPACE as c_int;
+        let first_pass = mem.is_null();
+        let Ok(submatch_count) = usize::try_from((*tnfa).num_submatches) else {
+            return REG_ESPACE;
+        };
+        let Ok(mut regset) = PendingCaptures::new(workspace, submatch_count) else {
+            return REG_ESPACE;
+        };
+        let Ok(mut parents) = workspace.try_buffer::<c_int>(submatch_count) else {
+            return REG_ESPACE;
+        };
+        if parents.try_resize(submatch_count, 0).is_err() {
+            return REG_ESPACE;
         }
-        *regset = -1;
-        let orig_regset = regset;
+        let mut parent_count = 0usize;
+        let submatches = if first_pass {
+            &mut []
+        } else {
+            // SAFETY: the second pass receives the initialized table allocated
+            // for exactly this many submatches; it is exclusive for this pass.
+            std::slice::from_raw_parts_mut((*tnfa).submatch_data, submatch_count)
+        };
 
-        let parents =
-            mem::xmalloc(std::mem::size_of::<c_int>() * ((*tnfa).num_submatches as usize + 1))
-                as *mut c_int;
-        if parents.is_null() {
-            mem::xfree(regset as *mut c_void);
-            return REG_ESPACE as c_int;
-        }
-        *parents = -1;
-
-        let saved_states = mem::xmalloc(
-            std::mem::size_of::<tre_tag_states_t>() * ((*tnfa).num_submatches as usize + 1),
-        ) as *mut tre_tag_states_t;
-        if saved_states.is_null() {
-            mem::xfree(regset as *mut c_void);
-            mem::xfree(parents as *mut c_void);
-            return REG_ESPACE as c_int;
-        }
-        for i in 0..=(*tnfa).num_submatches as isize {
-            (*saved_states.offset(i)).tag = -1;
-        }
-
-        // These scratch tables predate arena ownership; release them on a
-        // stack allocation failure just as on the ordinary exit path.
-        macro_rules! checked_tag_stack_push {
-            ($push:expr) => {
-                checked_stack_push!($push, {
-                    mem::xfree(orig_regset as *mut c_void);
-                    mem::xfree(parents as *mut c_void);
-                    mem::xfree(saved_states as *mut c_void);
-                })
-            };
-        }
-
-        checked_tag_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
-        checked_tag_stack_push!(stack::tre_stack_push_int(
+        checked_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
+        checked_stack_push!(stack::tre_stack_push_int(
             stack,
             tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int
         ));
@@ -276,62 +299,45 @@ unsafe fn tre_add_tags(
             match symbol {
                 x if x == tre_addtags_symbol_t::ADDTAGS_SET_SUBMATCH_END as c_int => {
                     let id = stack::tre_stack_pop_int(stack);
-                    let mut i = 0;
-                    while *regset.offset(i) >= 0 {
-                        i += 1;
+                    if regset.push(id, true).is_err() || parent_count == 0 {
+                        return REG_ESPACE;
                     }
-                    *regset.offset(i) = id * 2 + 1;
-                    *regset.offset(i + 1) = -1;
-
-                    let mut i = 0;
-                    while *parents.offset(i) >= 0 {
-                        i += 1;
-                    }
-                    *parents.offset(i - 1) = -1;
+                    parent_count -= 1;
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int => {
                     node = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
 
                     if (*node).submatch_id >= 0 {
                         let id = (*node).submatch_id;
-                        let mut i = 0;
-                        while *regset.offset(i) >= 0 {
-                            i += 1;
+                        if regset.push(id, false).is_err() {
+                            return REG_ESPACE;
                         }
-                        *regset.offset(i) = id * 2;
-                        *regset.offset(i + 1) = -1;
 
                         if !first_pass {
-                            let mut i = 0;
-                            while *parents.offset(i) >= 0 {
-                                i += 1;
-                            }
-                            (*(*tnfa).submatch_data.offset(id as isize)).parents = ptr::null_mut();
-                            if i > 0 {
-                                let p = usize::try_from(i)
-                                    .ok()
-                                    .and_then(|n| n.checked_add(1))
-                                    .map_or(ptr::null_mut(), |count| {
-                                        allocate_retained_ints(count, false, storage)
-                                    });
+                            let Some(submatch) = submatches.get_mut(id as usize) else {
+                                return REG_ESPACE;
+                            };
+                            if parent_count > 0 {
+                                let Some(count) = parent_count.checked_add(1) else {
+                                    return REG_ESPACE;
+                                };
+                                let p = allocate_retained_ints(count, false, storage);
                                 if p.is_null() {
-                                    status = REG_ESPACE as c_int;
-                                    // continue to break out of the loop
-                                    continue;
+                                    return REG_ESPACE;
                                 }
-                                for j in 0..i {
-                                    *p.offset(j as isize) = *parents.offset(j as isize);
-                                }
-                                *p.offset(i as isize) = -1;
-                                (*(*tnfa).submatch_data.offset(id as isize)).parents = p;
+                                p.copy_from_nonoverlapping(parents.as_ptr(), parent_count);
+                                p.add(parent_count).write(-1);
+                                submatch.parents = p;
+                            } else {
+                                submatch.parents = ptr::null_mut();
                             }
                         }
 
-                        checked_tag_stack_push!(stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             (*node).submatch_id
                         ));
-                        checked_tag_stack_push!(stack::tre_stack_push_int(
+                        checked_stack_push!(stack::tre_stack_push_int(
                             stack,
                             tre_addtags_symbol_t::ADDTAGS_SET_SUBMATCH_END as c_int,
                         ));
@@ -340,7 +346,7 @@ unsafe fn tre_add_tags(
                     match (*node).type_ {
                         tre_ast_type_t::LITERAL => {
                             let lit = (*node).obj as *mut tre_literal_t;
-                            if (!IS_SPECIAL(&*lit) || IS_BACKREF(&*lit)) && *regset >= 0 {
+                            if (!IS_SPECIAL(&*lit) || IS_BACKREF(&*lit)) && !regset.is_empty() {
                                 if !first_pass {
                                     status = tre_add_tag_left(mem, node, tag);
                                     *(*tnfa).tag_directions.offset(tag as isize) =
@@ -356,11 +362,13 @@ unsafe fn tre_add_tags(
                                         minimal_tag = -1;
                                         num_minimals += 1;
                                     }
-                                    tre_purge_regset(regset, tnfa, tag);
+                                    if regset.flush(submatches, tag).is_err() {
+                                        return REG_ESPACE;
+                                    }
                                 } else {
                                     (*node).num_tags = 1;
                                 }
-                                *regset = -1;
+                                regset.clear();
                                 tag = next_tag;
                                 num_tags += 1;
                                 next_tag += 1;
@@ -372,25 +380,25 @@ unsafe fn tre_add_tags(
                             let right = (*cat).right;
                             let mut reserved_tag: c_int = -1;
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 node as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_CAT_RIGHT as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 right as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 next_tag + (*left).num_tags
                             ));
@@ -398,17 +406,17 @@ unsafe fn tre_add_tags(
                                 reserved_tag = next_tag;
                                 next_tag += 1;
                             }
-                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, reserved_tag));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(stack, reserved_tag));
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_CAT_LEFT as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 left as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
                             ));
@@ -417,40 +425,40 @@ unsafe fn tre_add_tags(
                             let iter = (*node).obj as *mut tre_iteration_t;
 
                             if first_pass {
-                                checked_tag_stack_push!(stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
-                                    if *regset >= 0 || (*iter).minimal != 0 {
+                                    if !regset.is_empty() || (*iter).minimal != 0 {
                                         1
                                     } else {
                                         0
                                     },
                                 ));
                             } else {
-                                checked_tag_stack_push!(stack::tre_stack_push_int(stack, tag));
-                                checked_tag_stack_push!(stack::tre_stack_push_int(
+                                checked_stack_push!(stack::tre_stack_push_int(stack, tag));
+                                checked_stack_push!(stack::tre_stack_push_int(
                                     stack,
                                     (*iter).minimal as c_int
                                 ));
                             }
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 node as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_ITERATION as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 (*iter).arg as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
                             ));
 
-                            if *regset >= 0 || (*iter).minimal != 0 {
+                            if !regset.is_empty() || (*iter).minimal != 0 {
                                 if !first_pass {
                                     status = tre_add_tag_left(mem, node, tag);
                                     if (*iter).minimal != 0 {
@@ -471,9 +479,11 @@ unsafe fn tre_add_tags(
                                         minimal_tag = -1;
                                         num_minimals += 1;
                                     }
-                                    tre_purge_regset(regset, tnfa, tag);
+                                    if regset.flush(submatches, tag).is_err() {
+                                        return REG_ESPACE;
+                                    }
                                 }
-                                *regset = -1;
+                                regset.clear();
                                 tag = next_tag;
                                 num_tags += 1;
                                 next_tag += 1;
@@ -484,63 +494,63 @@ unsafe fn tre_add_tags(
                             let uni = (*node).obj as *mut tre_union_t;
                             let left = (*uni).left;
                             let right = (*uni).right;
-                            let (left_tag, right_tag) = if *regset >= 0 {
+                            let (left_tag, right_tag) = if !regset.is_empty() {
                                 (next_tag, next_tag + 1)
                             } else {
                                 (tag, next_tag)
                             };
 
-                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, right_tag));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(stack, left_tag));
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_int(stack, right_tag));
+                            checked_stack_push!(stack::tre_stack_push_int(stack, left_tag));
+                            let Ok(regset_start) = c_int::try_from(regset.start) else {
+                                return REG_ESPACE;
+                            };
+                            checked_stack_push!(stack::tre_stack_push_int(stack, regset_start));
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
-                                regset as *mut c_void
+                                if !regset.is_empty() { 1 } else { 0 }
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
-                                stack,
-                                if *regset >= 0 { 1 } else { 0 }
-                            ));
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 node as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 right as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 left as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_RIGHT as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 right as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_LEFT as c_int,
                             ));
 
-                            checked_tag_stack_push!(stack::tre_stack_push_voidptr(
+                            checked_stack_push!(stack::tre_stack_push_voidptr(
                                 stack,
                                 left as *mut c_void
                             ));
-                            checked_tag_stack_push!(stack::tre_stack_push_int(
+                            checked_stack_push!(stack::tre_stack_push_int(
                                 stack,
                                 tre_addtags_symbol_t::ADDTAGS_RECURSE as c_int,
                             ));
 
-                            if *regset >= 0 {
+                            if !regset.is_empty() {
                                 if !first_pass {
                                     status = tre_add_tag_left(mem, node, tag);
                                     *(*tnfa).tag_directions.offset(tag as isize) =
@@ -556,9 +566,11 @@ unsafe fn tre_add_tags(
                                         minimal_tag = -1;
                                         num_minimals += 1;
                                     }
-                                    tre_purge_regset(regset, tnfa, tag);
+                                    if regset.flush(submatches, tag).is_err() {
+                                        return REG_ESPACE;
+                                    }
                                 }
-                                *regset = -1;
+                                regset.clear();
                                 tag = next_tag;
                                 num_tags += 1;
                                 next_tag += 1;
@@ -573,12 +585,11 @@ unsafe fn tre_add_tags(
                     }
 
                     if (*node).submatch_id >= 0 {
-                        let mut i = 0;
-                        while *parents.offset(i) >= 0 {
-                            i += 1;
-                        }
-                        *parents.offset(i) = (*node).submatch_id;
-                        *parents.offset(i + 1) = -1;
+                        let Some(parent) = parents.get_mut(parent_count) else {
+                            return REG_ESPACE;
+                        };
+                        *parent = (*node).submatch_id;
+                        parent_count += 1;
                     }
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_ITERATION as c_int => {
@@ -625,9 +636,7 @@ unsafe fn tre_add_tags(
                     }
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_LEFT as c_int => {
-                    while *regset >= 0 {
-                        regset = regset.add(1);
-                    }
+                    regset.begin_right_branch();
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_RIGHT as c_int => {
                     let _left = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
@@ -646,7 +655,12 @@ unsafe fn tre_add_tags(
                             + added_tags
                             + if (*node).num_submatches > 0 { 2 } else { 0 };
                     }
-                    regset = stack::tre_stack_pop_voidptr(stack) as *mut c_int;
+                    if regset
+                        .restore_start(stack::tre_stack_pop_int(stack))
+                        .is_err()
+                    {
+                        return REG_ESPACE;
+                    }
                     let _tag_left = stack::tre_stack_pop_int(stack);
                     let _tag_right = stack::tre_stack_pop_int(stack);
 
@@ -667,8 +681,8 @@ unsafe fn tre_add_tags(
             }
         }
 
-        if !first_pass {
-            tre_purge_regset(regset, tnfa, tag);
+        if !first_pass && regset.flush(submatches, tag).is_err() {
+            return REG_ESPACE;
         }
 
         if !first_pass && minimal_tag >= 0 {
@@ -686,9 +700,6 @@ unsafe fn tre_add_tags(
         (*tnfa).end_tag = num_tags;
         (*tnfa).num_tags = num_tags;
         (*tnfa).num_minimals = num_minimals;
-        mem::xfree(orig_regset as *mut c_void);
-        mem::xfree(parents as *mut c_void);
-        mem::xfree(saved_states as *mut c_void);
         status
     }
 }
@@ -2427,7 +2438,8 @@ unsafe fn tre_compile_tables(
 
         // Set up tags for submatch addressing
         if (*tnfa).have_backrefs != 0 || (cflags & REG_NOSUB) == 0 {
-            let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa, &mut storage);
+            let _errcode =
+                tre_add_tags(ptr::null_mut(), stack, tree, tnfa, &mut storage, &workspace);
             if _errcode != REG_OK {
                 return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
             }
@@ -2488,7 +2500,7 @@ unsafe fn tre_compile_tables(
             }
             (*tnfa).submatch_data = submatch_data;
 
-            let _errcode = tre_add_tags(mem, stack, tree, tnfa, &mut storage);
+            let _errcode = tre_add_tags(mem, stack, tree, tnfa, &mut storage, &workspace);
             if _errcode != REG_OK {
                 return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
             }
@@ -3912,7 +3924,14 @@ mod traversal_stack_tests {
                 let mut copy = ptr::null_mut();
                 let mut tnfa: tre_tnfa_t = std::mem::zeroed();
                 let status = match pass {
-                    Pass::Tags => tre_add_tags(ptr::null_mut(), stack, tree, &mut tnfa, &mut None),
+                    Pass::Tags => tre_add_tags(
+                        ptr::null_mut(),
+                        stack,
+                        tree,
+                        &mut tnfa,
+                        &mut None,
+                        &RegexWorkspace::unbounded(),
+                    ),
                     Pass::Copy => tre_copy_ast(
                         mem,
                         stack,
@@ -4023,5 +4042,69 @@ mod traversal_stack_tests {
             }
             assert_eq!(run(pass, None).0, REG_OK, "{pass:?} recovery");
         }
+    }
+
+    #[test]
+    fn capture_tag_scratch_releases_workspace_on_parent_denial() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let workspace = crate::mainutils::grep::regex_workspace();
+        let mut arena = mem::tre_mem_struct::new(RegexWorkspace::unbounded()).unwrap();
+        let count = 4;
+        let baseline = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        owner
+            .with_arena(|arena| {
+                // Enough for pending markers, one byte short of the parent stack.
+                let bytes = 3 * count * std::mem::size_of::<c_int>();
+                arena.set_budget(ArenaBudget::new(
+                    arena.total_bytes_allocated() + bytes - 1,
+                    0,
+                ));
+            })
+            .unwrap();
+        unsafe {
+            let ast = tre_ast_new_literal(&mut arena, EMPTY as c_int, -1, -1);
+            assert!(!ast.is_null());
+            let stack = stack::tre_stack_new(16, 1024, 16);
+            assert!(!stack.is_null());
+            let mut tnfa: tre_tnfa_t = std::mem::zeroed();
+            tnfa.num_submatches = count as u32;
+            assert_eq!(
+                tre_add_tags(
+                    ptr::null_mut(),
+                    stack,
+                    ast,
+                    &mut tnfa,
+                    &mut None,
+                    &workspace
+                ),
+                REG_ESPACE
+            );
+            assert_eq!(stack::tre_stack_num_objects(stack), 0);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                baseline
+            );
+            owner
+                .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+                .unwrap();
+            assert_eq!(
+                tre_add_tags(
+                    ptr::null_mut(),
+                    stack,
+                    ast,
+                    &mut tnfa,
+                    &mut None,
+                    &workspace
+                ),
+                REG_OK
+            );
+            stack::tre_stack_destroy(stack);
+        }
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            baseline
+        );
     }
 }
