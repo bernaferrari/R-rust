@@ -11,43 +11,25 @@ use std::os::raw::c_char;
 
 use crate::intl::types;
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn libintl_dcgettext(
+/// Pass through the input message pointer. Runtime catalog lookup is disabled.
+/// The returned pointer borrows the input; this function does not read either pointer.
+pub fn libintl_dcgettext(
     domainname: *const c_char,
     msgid: *const c_char,
     category: types::c_int,
 ) -> *mut c_char {
-    // SAFETY: forwarded raw pointers satisfy `libintl_dcigettext`'s contract per this function's own `# Safety` requirements.
-    unsafe {
-        crate::intl::dcigettext::libintl_dcigettext(
-            domainname,
-            msgid,
-            std::ptr::null(),
-            0,
-            category,
-        )
-    }
+    crate::intl::dcigettext::libintl_dcigettext(
+        domainname,
+        msgid,
+        std::ptr::null(),
+        0,
+        category,
+    )
 }
 
 /// Alias for `libintl_dcgettext` (unprefixed, for compatibility).
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn dcgettext(
-    domainname: *const c_char,
-    msgid: *const c_char,
-    category: types::c_int,
-) -> *mut c_char {
-    // SAFETY: forwarded raw pointers satisfy `libintl_dcgettext`'s contract per this function's own `# Safety` requirements.
-    unsafe { libintl_dcgettext(domainname, msgid, category) }
-}
+#[allow(unused_imports)]
+pub use self::libintl_dcgettext as dcgettext;
 
 #[cfg(test)]
 mod tests {
@@ -57,19 +39,21 @@ mod tests {
     fn test_returns_msgid() {
         let _session = crate::sexp::session::RSession::new();
 
-        let msgid = b"hello\0" as *const u8 as *const c_char;
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES) };
-        assert_eq!(result, msgid as *mut c_char);
+        let msgid = c"hello".as_ptr();
+        assert_eq!(
+            libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES),
+            msgid.cast_mut()
+        );
     }
 
     #[test]
     fn test_with_null_domain() {
         let _session = crate::sexp::session::RSession::new();
 
-        let msgid = b"world\0" as *const u8 as *const c_char;
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result = unsafe { libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES) };
-        assert_eq!(result, msgid as *mut c_char);
+        let msgid = c"world".as_ptr();
+        assert_eq!(
+            libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES),
+            msgid.cast_mut()
+        );
     }
 }

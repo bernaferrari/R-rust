@@ -151,13 +151,12 @@ pub(crate) struct arguments {
 pub(crate) static _nl_default_dirname: [c_char; 2] = [0x2f, 0];
 
 /// Default default text domain name ("messages").
-pub(crate) static _nl_default_default_domain: [c_char; 9] =
-    [0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0];
+pub(crate) const DEFAULT_TEXT_DOMAIN: &std::ffi::CStr = c"messages";
 
 pub(crate) struct IntlRuntimeState {
     pub domain_bindings: std::collections::HashMap<std::ffi::CString, DomainBinding>,
     pub msg_cat_cntr: c_int,
-    pub current_default_domain: *const c_char,
+    pub current_default_domain: std::ffi::CString,
 }
 
 impl Default for IntlRuntimeState {
@@ -165,7 +164,7 @@ impl Default for IntlRuntimeState {
         Self {
             domain_bindings: std::collections::HashMap::default(),
             msg_cat_cntr: 0,
-            current_default_domain: _nl_default_default_domain.as_ptr(),
+            current_default_domain: DEFAULT_TEXT_DOMAIN.to_owned(),
         }
     }
 }
