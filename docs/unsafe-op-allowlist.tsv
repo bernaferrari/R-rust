@@ -2,7 +2,6 @@
 # Generated from scripts/unsafe_op_report.sh on 2026-04-25 before moving the crate-level allow into module-level legacy allow entries.
 crates/rmath/src/library/grid/grid.rs	1558	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/modules/lapack/lapack_impl.rs	1059	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
-crates/rmath/src/library/stats/fexact.rs	1036	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/graphics/plot.rs	820	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/stats/splines.rs	791	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 crates/rmath/src/library/stats/optim.rs	711	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
