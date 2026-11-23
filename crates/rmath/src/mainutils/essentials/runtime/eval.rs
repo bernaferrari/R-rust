@@ -851,12 +851,9 @@ fn eval_body_owned(
     }
     if expr.typeof_() == SEXPTYPE::EXPRSXP {
         let _location = access.with_native(|owner| {
-            let instance = owner.as_ptr();
-            Ok(EvalSrcrefGuard {
-                instance,
-                previous: unsafe { (*instance).error_state.current_srcref_location.clone() },
-                _pin: owner.pin()?.ok_or(SexpError::RootUnavailable)?,
-            })
+            let pin = owner.pin()?.ok_or(SexpError::RootUnavailable)?;
+            let previous = pin.with_error_state(|state| state.current_srcref_location.clone());
+            Ok(EvalSrcrefGuard { pin, previous })
         })?;
         let mut result = domain.nil();
         access.with_native(|_| {
@@ -893,17 +890,17 @@ fn eval_body_owned(
 }
 
 struct EvalSrcrefGuard {
-    instance: *mut crate::sexp::instance::RInstance,
+    pin: crate::sexp::owner::OwnerPin,
     previous: Option<(String, i32)>,
-    _pin: crate::sexp::owner::OwnerPin,
 }
 
 impl Drop for EvalSrcrefGuard {
     fn drop(&mut self) {
         // Restore the original pinned runtime even after callback revocation.
-        unsafe {
-            (*self.instance).error_state.current_srcref_location = self.previous.take();
-        }
+        let previous = self.previous.take();
+        self.pin.with_error_state(|state| {
+            state.current_srcref_location = previous;
+        });
     }
 }
 

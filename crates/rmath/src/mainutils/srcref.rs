@@ -417,7 +417,9 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
             }
         };
         crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).error_state.current_srcref_location = loc;
+            crate::sexp::instance::with_error_state_in(inst, |state| {
+                state.current_srcref_location = loc;
+            });
             crate::eval::profiling::set_current_srcref_in(inst, active_srcref);
         });
     }
@@ -426,8 +428,8 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
 /// The `(from ...)` location for the error renderer: `(file, line)` of
 /// the current top-level expression when parsed with srcrefs.
 pub fn current_srcref_location() -> Option<(String, i32)> {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.current_srcref_location.clone()
+    crate::mainutils::errors::with_error_state(|state| {
+        state.current_srcref_location.clone()
     })
 }
 

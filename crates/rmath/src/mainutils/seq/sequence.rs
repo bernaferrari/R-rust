@@ -108,8 +108,8 @@ pub fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // is missing; the port sees R_MissingArg directly.
             let maybe_warn = recycle_1st_arg == R_MissingArg();
             let first_warning = maybe_warn
-                && crate::sexp::instance::with_required_current_instance(|inst| {
-                    !std::mem::replace(&mut (*inst).error_state.sequence_recycling_warned, true)
+                && crate::mainutils::errors::with_error_state(|state| {
+                    !std::mem::replace(&mut state.sequence_recycling_warned, true)
                 });
             if first_warning {
                 let msg = format!(
