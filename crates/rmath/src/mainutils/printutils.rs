@@ -6,7 +6,7 @@
 //! and R's Rprintf/REprintf output routines.
 //!
 //! Fully ported standalone functions:
-//!   R_Decode2Long, EncodeLogical, EncodeInteger, EncodeReal0, EncodeReal,
+//!   EncodeLogical, EncodeInteger, EncodeReal0, EncodeReal,
 //!   EncodeRealDrop0, EncodeReal2, EncodeComplex, EncodeRaw, Rstrwid,
 //!   IndexWidth
 //!
@@ -33,7 +33,7 @@ use crate::sexp::accessors::CHAR;
 use crate::sexp::accessors::{LENGTH, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::altseq::{unexpanded_int, unexpanded_real};
 use crate::sexp::ffi::{
-    NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
+    NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
 };
 
 use crate::mainutils::format::{integer_field_width, real_field, string_element_width};
@@ -310,91 +310,6 @@ const BUFSIZE: usize = 8192;
 
 /// R's NA_LOGICAL sentinel value.
 pub const NA_LOGICAL: c_int = c_int::MIN;
-
-// ---------------------------------------------------------------------------
-// Standalone utility: R_Decode2Long
-// ---------------------------------------------------------------------------
-
-/// Decode a string with an optional size suffix (G/M/K/k) to a `R_size_t`.
-///
-/// Suffixes:
-///   G -> * 1,073,741,824  (Giga, 2^30)
-///   M -> * 1,048,576      (Mega, 2^20)
-///   K -> * 1,024           (binary kilo)
-///   k -> * 1,000           (decimal kilo)
-///
-/// Returns the decoded value.  `ierr` is set to:
-///   0  = success (no suffix, or suffix applied)
-///   1  = overflow with M suffix
-///   2  = overflow with K suffix
-///   3  = overflow with k suffix
-///   4  = overflow with G suffix
-///  -1  = unrecognized suffix
-pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
-    unsafe {
-        let bytes = CStr::from_ptr(p).to_bytes();
-        let s = std::str::from_utf8_unchecked(bytes);
-
-        // Parse leading integer
-        let mut end = 0usize;
-        let mut v: i64 = 0;
-        for (i, ch) in s.as_bytes().iter().enumerate() {
-            if ch.is_ascii_digit() {
-                v = v * 10 + (*ch - b'0') as i64;
-                end = i + 1;
-            } else {
-                break;
-            }
-        }
-        *ierr = 0;
-
-        if end >= s.len() {
-            return v as R_size_t;
-        }
-
-        let suffix = s.as_bytes()[end] as char;
-        let R_SIZE_T_MAX: u64 = R_size_t::MAX as u64;
-
-        match suffix {
-            'G' => {
-                let giga: i64 = 1_073_741_824;
-                if (giga as f64 * v as f64) > R_SIZE_T_MAX as f64 {
-                    *ierr = 4;
-                    return v as R_size_t;
-                }
-                (giga * v) as R_size_t
-            }
-            'M' => {
-                let mega: i64 = 1_048_576;
-                if (mega as f64 * v as f64) > R_SIZE_T_MAX as f64 {
-                    *ierr = 1;
-                    return v as R_size_t;
-                }
-                (mega * v) as R_size_t
-            }
-            'K' => {
-                let kibi: i64 = 1024;
-                if (kibi as f64 * v as f64) > R_SIZE_T_MAX as f64 {
-                    *ierr = 2;
-                    return v as R_size_t;
-                }
-                (kibi * v) as R_size_t
-            }
-            'k' => {
-                let kilo: i64 = 1000;
-                if (kilo as f64 * v as f64) > R_SIZE_T_MAX as f64 {
-                    *ierr = 3;
-                    return v as R_size_t;
-                }
-                (kilo * v) as R_size_t
-            }
-            _ => {
-                *ierr = -1;
-                v as R_size_t
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Standalone utility: EncodeLogical

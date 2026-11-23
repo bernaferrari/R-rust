@@ -1,34 +1,12 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! Port of R's src/unix/system.c -- R initialization and system interface.
-//!
-//! Implements `Rf_initialize_R` (the main R initialization entry point),
-//! the function pointer dispatch table for system operations (console I/O,
-//! cleanup, file viewing), and FD limit utilities.
+//! Per-session Unix console callbacks and file descriptor limits.
 
 use std::env;
 use std::ffi::CString;
-use std::io::{self, Write};
-use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
+use std::os::raw::{c_char, c_int};
 
 use crate::sexp::instance::with_required_current_instance;
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const R_PATH_MAX: usize = 4096;
-const MSGSIZE: usize = R_PATH_MAX + 128;
-
-/// Save action types (from R_ext/Constants.h).
-const SA_SAVE: c_int = 1;
-const SA_NOSAVE: c_int = 2;
-const SA_DEFAULT: c_int = 0;
-const SA_SUICIDE: c_int = 3;
-
-/// C stack direction detection.
-const C_STACK_DIRECTION: c_int = -1;
 
 // ---------------------------------------------------------------------------
 // Function pointer types for system interface
@@ -87,38 +65,16 @@ pub(crate) struct UnixSystemCallbacks {
 }
 
 pub(crate) struct UnixSystemRuntimeState {
-    interactive: c_int,
-    using_readline: c_int,
-    running_as_main_program: c_int,
-    home: CString,
     history_file: CString,
     history_size: c_int,
-    restore_history: c_int,
-    gui_type: Option<CString>,
-    cstack_dir: c_int,
-    cstack_limit: usize,
-    cstack_start: usize,
-    global_context: *mut c_void,
-    num_initialized: c_int,
     callbacks: UnixSystemCallbacks,
 }
 
 impl Default for UnixSystemRuntimeState {
     fn default() -> Self {
         Self {
-            interactive: 1,
-            using_readline: 1,
-            running_as_main_program: 0,
-            home: CString::new("/usr/lib/R").unwrap(),
             history_file: CString::new(".Rhistory").unwrap(),
             history_size: 512,
-            restore_history: 1,
-            gui_type: None,
-            cstack_dir: -1,
-            cstack_limit: 0,
-            cstack_start: 0,
-            global_context: ptr::null_mut(),
-            num_initialized: 0,
             callbacks: UnixSystemCallbacks::default(),
         }
     }
@@ -139,103 +95,6 @@ pub(crate) fn set_read_console_callback_for_tests(
         state.callbacks.read_console = callback;
     });
 }
-
-// ---------------------------------------------------------------------------
-// Default implementations (Rstd_* equivalents)
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe extern "C" fn Rstd_Suicide(msg: *const c_char) {
-    // SAFETY: the dispatch contract passes a NUL-terminated message.
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(msg);
-        eprintln!("FATAL: {}", s.to_string_lossy());
-        std::process::exit(2);
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe extern "C" fn Rstd_ShowMessage(msg: *const c_char) {
-    // SAFETY: the dispatch contract passes a NUL-terminated message.
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(msg);
-        eprintln!("{}", s.to_string_lossy());
-    }
-}
-
-extern "C" fn Rstd_ReadConsole(
-    _prompt: *const c_char,
-    _buf: *mut u8,
-    _len: c_int,
-    _addtohistory: c_int,
-) -> c_int {
-    0
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
-    // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
-    unsafe {
-        let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
-        let _ = io::stdout().write_all(slice);
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, _otype: c_int) {
-    // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
-    unsafe {
-        let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
-        let _ = io::stdout().write_all(slice);
-    }
-}
-
-extern "C" fn Rstd_ResetConsole() {}
-extern "C" fn Rstd_FlushConsole() {
-    let _ = io::stdout().flush();
-}
-extern "C" fn Rstd_ClearerrConsole() {}
-extern "C" fn Rstd_Busy(_which: c_int) {}
-
-extern "C" fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
-    std::process::exit(status);
-}
-
-extern "C" fn Rstd_ShowFiles(
-    _nfile: c_int,
-    _file: *const *const c_char,
-    _headers: *const *const c_char,
-    _wtitle: *const c_char,
-    _del: c_int,
-    _pager: *const c_char,
-) -> c_int {
-    0
-}
-
-extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
-    0
-}
-
-extern "C" fn Rstd_loadhistory(_file: *const c_char) {}
-extern "C" fn Rstd_savehistory(_file: *const c_char) {}
-extern "C" fn Rstd_addhistory(_line: *const c_char) {}
-fn Rstd_read_history(_file: *const c_char) {}
 
 // ---------------------------------------------------------------------------
 // Public system interface functions (dispatch through pointers)
@@ -493,237 +352,6 @@ pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// Rf_initialize_R
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
-    // SAFETY: `src` is a NUL-terminated C string and `dst` has room for the
-    // unescaped result; the caller (Rf_initialize_R) owns both buffers.
-    unsafe {
-        let mut q = dst;
-        let mut p = src;
-        while *p != 0 {
-            if *p == b'~' as c_char && *p.add(1) == b'+' as c_char && *p.add(2) == b'~' as c_char {
-                p = p.add(2);
-                *q = b' ' as c_char;
-            } else if *p == b'~' as c_char
-                && *p.add(1) == b'n' as c_char
-                && *p.add(2) == b'~' as c_char
-            {
-                p = p.add(2);
-                *q = b'\n' as c_char;
-            } else if *p == b'~' as c_char
-                && *p.add(1) == b't' as c_char
-                && *p.add(2) == b'~' as c_char
-            {
-                p = p.add(2);
-                *q = b'\t' as c_char;
-            } else {
-                *q = *p;
-            }
-            q = q.add(1);
-            p = p.add(1);
-        }
-        *q = 0;
-        q
-    }
-}
-
-fn R_Decode2Long(_s: *const c_char, _ierr: *mut c_int) -> i64 {
-    0
-}
-
-fn R_HomeDir() -> CString {
-    CString::new("/usr/lib/R").unwrap()
-}
-
-fn BindDomain(_home: *const c_char) {}
-fn process_system_Renviron() {}
-fn process_site_Renviron() {}
-fn process_user_Renviron() {}
-fn R_set_command_line_arguments(_ac: c_int, _av: *mut *mut c_char) {}
-fn R_common_command_line(_ac: *const c_int, _av: *mut *mut c_char, _rp: *mut c_void) {}
-fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) {}
-fn R_SetParams(_rp: *mut c_void) {}
-fn R_SizeFromEnv(_rp: *mut c_void) {}
-fn R_isatty(_fd: c_int) -> c_int {
-    0
-}
-fn R_isWriteableDir(_path: *const c_char) -> c_int {
-    0
-}
-fn R_setStartTime() {}
-fn fpu_setup(_start: c_int) {}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
-    unsafe {
-        if with_system_state(|state| state.num_initialized) != 0 {
-            eprintln!("R is already initialized\n");
-            std::process::exit(1);
-        }
-        with_system_state(|state| state.num_initialized = 1);
-
-        // --- Stack detection ---
-        with_system_state(|state| state.cstack_dir = C_STACK_DIRECTION);
-
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            let mut rlim: libc::rlimit = std::mem::zeroed();
-            if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
-                let lim = rlim.rlim_cur;
-                if lim != libc::RLIM_INFINITY {
-                    with_system_state(|state| state.cstack_limit = lim as usize);
-                }
-            }
-            if with_system_state(|state| state.cstack_start) == 0 {
-                with_system_state(|state| state.cstack_start = 0);
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let mut base: usize = 0;
-            let mut len: usize = std::mem::size_of::<*const c_void>();
-            let KERN_USRSTACK: core::ffi::c_int = 33;
-            let mut mib: [core::ffi::c_int; 2] = [libc::CTL_KERN, KERN_USRSTACK];
-            if libc::sysctl(
-                mib.as_mut_ptr(),
-                2,
-                &mut base as *mut _ as *mut c_void,
-                &mut len,
-                ptr::null_mut(),
-                0,
-            ) == 0
-            {
-                with_system_state(|state| state.cstack_start = base);
-            }
-
-            let mut rlim: libc::rlimit = std::mem::zeroed();
-            if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
-                let lim = rlim.rlim_cur;
-                if lim != libc::RLIM_INFINITY {
-                    with_system_state(|state| state.cstack_limit = lim as usize);
-                }
-            }
-        }
-
-        if with_system_state(|state| state.cstack_start) == usize::MAX {
-            with_system_state(|state| state.cstack_limit = usize::MAX);
-        }
-
-        // --- Set up function pointer dispatch table ---
-        with_system_state(|state| {
-            state.callbacks = UnixSystemCallbacks {
-                suicide: Some(Rstd_Suicide),
-                show_message: Some(Rstd_ShowMessage),
-                read_console: Some(Rstd_ReadConsole),
-                write_console: Some(Rstd_WriteConsole),
-                write_console_ex: None,
-                reset_console: Some(Rstd_ResetConsole),
-                flush_console: Some(Rstd_FlushConsole),
-                clearerr_console: Some(Rstd_ClearerrConsole),
-                busy: Some(Rstd_Busy),
-                cleanup: Some(Rstd_CleanUp),
-                show_files: Some(Rstd_ShowFiles),
-                choose_file: Some(Rstd_ChooseFile),
-                load_history: Some(Rstd_loadhistory),
-                save_history: Some(Rstd_savehistory),
-                add_history: Some(Rstd_addhistory),
-                edit_files: None,
-            };
-            state.global_context = ptr::null_mut();
-        });
-
-        // --- R home and environment ---
-        let home = R_HomeDir();
-        let home_ptr = with_system_state(|state| {
-            state.home = home;
-            state.home.as_ptr()
-        });
-        if home_ptr.is_null() {
-            R_Suicide(b"R home directory is not defined\0".as_ptr() as *const c_char);
-        }
-        BindDomain(home_ptr);
-        process_system_Renviron();
-        R_setStartTime();
-
-        // --- Process command line ---
-        R_DefParamsEx(ptr::null_mut(), 0);
-        R_set_command_line_arguments(ac, av);
-        R_common_command_line(&ac, av, ptr::null_mut());
-
-        // Process remaining arguments
-        let argc = ac;
-        let mut argv = av;
-        let mut force_interactive: bool = false;
-        let mut save_action: c_int = SA_DEFAULT;
-
-        let mut remaining = argc;
-        while remaining > 0 {
-            remaining -= 1;
-            argv = argv.add(1);
-            let arg = *argv;
-            if arg.is_null() {
-                break;
-            }
-            if *arg == b'-' as c_char {
-                let arg_bytes = std::ffi::CStr::from_ptr(arg).to_bytes();
-                if arg_bytes == b"--no-readline" {
-                    with_system_state(|state| state.using_readline = 0);
-                } else if arg_bytes == b"--vanilla" {
-                    save_action = SA_NOSAVE;
-                } else if arg_bytes == b"--save" {
-                    save_action = SA_SAVE;
-                } else if arg_bytes == b"--nosave" {
-                    save_action = SA_NOSAVE;
-                } else if arg_bytes == b"--interactive" {
-                    force_interactive = true;
-                    break;
-                } else if arg_bytes == b"--args" {
-                    break;
-                }
-            }
-        }
-
-        // --- Interactive mode ---
-        if force_interactive || R_isatty(0) != 0 {
-            with_system_state(|state| state.interactive = 1);
-        } else {
-            with_system_state(|state| state.interactive = 0);
-        }
-
-        // --- Save action check ---
-        if with_system_state(|state| state.interactive) == 0
-            && save_action != SA_SAVE
-            && save_action != SA_NOSAVE
-        {
-            R_Suicide(
-                b"you must specify '--save', '--no-save' or '--vanilla'\0".as_ptr()
-                    as *const c_char,
-            );
-        }
-
-        // --- History ---
-        R_setupHistory();
-
-        // --- FPU setup ---
-        fpu_setup(1);
-
-        0
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -763,10 +391,13 @@ mod tests {
     }
 
     #[test]
-    fn test_system_dispatch_nulls() {
-        let _session = crate::sexp::session::RSession::new();
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { R_ShowMessage(b"test\0".as_ptr() as *const c_char) };
+    fn missing_show_message_callback_is_a_noop() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            assert!(with_system_state(|state| state.callbacks.show_message.is_none()));
+            // SAFETY: the static C string is valid for the call.
+            unsafe { R_ShowMessage(c"test".as_ptr()) };
+        });
     }
 
     #[test]
@@ -786,12 +417,12 @@ mod tests {
         let mut first = RInstance::new();
         let mut second = RInstance::new();
 
+        unsafe extern "C" fn show_message(_message: *const c_char) {}
         unsafe {
             let previous = replace_current_instance(Some(&mut first as *mut RInstance));
             R_setupHistory();
             first.unix_system_state.history_size = 1024;
-            first.unix_system_state.using_readline = 0;
-            first.unix_system_state.callbacks.show_message = Some(Rstd_ShowMessage);
+            first.unix_system_state.callbacks.show_message = Some(show_message);
             replace_current_instance(previous);
 
             let previous = replace_current_instance(Some(&mut second as *mut RInstance));
@@ -802,10 +433,8 @@ mod tests {
         }
 
         assert_eq!(first.unix_system_state.history_size, 1024);
-        assert_eq!(first.unix_system_state.using_readline, 0);
         assert!(first.unix_system_state.callbacks.show_message.is_some());
         assert_eq!(second.unix_system_state.history_size, 2048);
-        assert_eq!(second.unix_system_state.using_readline, 1);
         assert!(second.unix_system_state.callbacks.show_message.is_none());
     }
 
@@ -823,14 +452,4 @@ mod tests {
         assert!(result > 0 || result == -1);
     }
 
-    #[test]
-    fn test_unescape_arg() {
-        let src = b"hello~+~world\0";
-        let mut dst = [0i8; 16];
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let end = unsafe { unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr()) };
-        let written = (end as usize) - (dst.as_mut_ptr() as usize);
-        assert_eq!(written, 11);
-        assert_eq!(&dst[..11], b"hello world".map(|b| b as i8));
-    }
 }

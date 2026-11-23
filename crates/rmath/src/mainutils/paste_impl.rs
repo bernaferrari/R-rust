@@ -2,59 +2,26 @@
 #![allow(unused_assignments)]
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
-//! Port of R's src/main/paste.c (755 lines)
-//!
-//! Provides the full SEXP-dependent implementations of:
-//!   - do_paste()       -- paste() and paste0()
-//!   - do_filepath()    -- filepath()
-//!   - do_format()      -- format.default()
-//!   - do_formatinfo()  -- format.info()
-//!
-//! All public entry points are `#[unsafe(no_mangle)] pub unsafe extern "C"` for FFI.
-//! Functions that depend on R runtime features not yet ported are provided as
-//! stubs.
+//! Runtime handlers for paste(), paste0(), file.path(), and format.info().
 
-use super::printutils::EncodeComplex;
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_double, c_int};
 use std::ptr;
 
-use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
-    STRING_ELT, TYPEOF, XLENGTH,
-};
-use crate::sexp::constructors::{
-    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_mkChar, Rf_mkString,
-};
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
-
-// Import PRIMVAL/PRIMNAME from relop (they are stubs there).
 use crate::mainutils::relop::PRIMVAL;
+use crate::sexp::accessors::{CADDR, CADR, CAR, STRING_ELT, TYPEOF, XLENGTH};
+use crate::sexp::constructors::{Rf_allocVector, Rf_isNull};
+use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/// R encoding constants (from Rinternals.h).
-pub const CE_NATIVE: c_int = crate::sexp::encoding::CE_NATIVE;
-pub const CE_UTF8: c_int = crate::sexp::encoding::CE_UTF8;
-pub const CE_LATIN1: c_int = crate::sexp::encoding::CE_LATIN1;
-pub const CE_BYTES: c_int = crate::sexp::encoding::CE_BYTES;
-
-/// Maximum element size used in R's string buffers (from Defn.h).
-pub const MAXELTSIZE: usize = 8192;
 
 /// R_MIN_DIGITS_OPT: minimum value for the digits argument.
 const R_MIN_DIGITS_OPT: c_int = 1;
 
 /// R_MAX_DIGITS_OPT: maximum value for the digits argument.
 const R_MAX_DIGITS_OPT: c_int = 22;
-
-/// Justification constants (from R_ext/Print.h).
-const Rprt_adj_left: c_int = 0;
-const Rprt_adj_right: c_int = 1;
-const Rprt_adj_centre: c_int = 2;
-const Rprt_adj_none: c_int = 3;
 
 /// SEXPTYPE integer values for match patterns.
 const LGLSXP: c_int = 10;
@@ -63,50 +30,20 @@ const REALSXP: c_int = 14;
 const CPLXSXP: c_int = 15;
 const STRSXP: c_int = 16;
 const RAWSXP: c_int = 24;
-const EXTPTRSXP: c_int = 22;
-
-fn IS_ASCII(s: SEXP) -> bool {
-    crate::sexp::accessors::IS_ASCII(s) != 0
-}
-
-fn IS_UTF8(s: SEXP) -> bool {
-    crate::sexp::accessors::IS_UTF8(s) != 0
-}
-
-fn IS_BYTES(s: SEXP) -> bool {
-    crate::sexp::accessors::IS_BYTES(s) != 0
-}
-
-fn IS_LATIN1(s: SEXP) -> bool {
-    crate::sexp::accessors::IS_LATIN1(s) != 0
-}
-
-fn ENC_KNOWN(s: SEXP) -> c_int {
-    crate::sexp::accessors::ENC_KNOWN(s)
-}
 
 // ---------------------------------------------------------------------------
-// Local helpers for R runtime features
-//
-// These are plain unsafe fn (NOT #[unsafe(no_mangle)]) to avoid duplicate symbol
-// conflicts with other modules that define the same extern "C" stubs.
+// Local helpers for native R operations
 // ---------------------------------------------------------------------------
 
 fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
-fn asLogical(x: SEXP) -> c_int {
-    crate::mainutils::coerce::asLogical(x)
-}
 
 fn asInteger(x: SEXP) -> c_int {
     crate::mainutils::coerce::asInteger(x)
 }
 
-fn asReal(x: SEXP) -> c_double {
-    crate::mainutils::coerce::asReal(x)
-}
 
 fn asBool2(x: SEXP, call: SEXP) -> bool {
     crate::mainutils::coerce::asRbool(x, call) != 0
@@ -116,39 +53,15 @@ fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     crate::mainutils::coerce::coerceVector(s, t)
 }
 
-unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(s) }
-}
 
 fn PrintDefaults() {
     crate::mainutils::print::PrintDefaults();
 }
 
-unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
-    crate::mainutils::printutils::EncodeLogical(x, w)
-}
 
-unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
-    crate::mainutils::printutils::EncodeInteger(x, w)
-}
 
-unsafe fn EncodeReal0(
-    x: c_double,
-    w: c_int,
-    d: c_int,
-    e: c_int,
-    outdec: *const c_char,
-) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeReal0(x, w, d, e, outdec) }
-}
 
-unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
-    crate::mainutils::printutils::EncodeEnvironment(x)
-}
 
-unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
-    crate::mainutils::printutils::EncodeExtptr(x)
-}
 
 fn reconcile_fixed_real_width(
     x: &[c_double],
@@ -178,14 +91,6 @@ fn reconcile_fixed_real_width(
     }
 }
 
-fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    crate::sexp::attrib_core::getAttrib(x, what)
-}
-
-fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
-    crate::sexp::attrib_core::setAttrib(x, what, value);
-}
-
 fn eval(x: SEXP, env: SEXP) -> SEXP {
     crate::eval::eval::Rf_eval(x, env)
 }
@@ -197,173 +102,9 @@ fn R_strlen(s: SEXP, _type: c_int) -> c_int {
     crate::mainutils::printutils::charsxp_bytes(s).len() as c_int
 }
 
-fn isVectorList(x: SEXP) -> c_int {
-    {
-        if x.is_null() {
-            return 0;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
-            1
-        } else {
-            0
-        }
-    }
-}
-
-fn R_DimSymbol() -> SEXP {
-    crate::sexp::attrib_core::R_DimSymbol()
-}
-
-fn R_DimNamesSymbol() -> SEXP {
-    crate::sexp::attrib_core::R_DimNamesSymbol()
-}
-
-fn R_NamesSymbol() -> SEXP {
-    crate::sexp::attrib_core::R_NamesSymbol()
-}
-
 fn R_AsCharacterSymbol() -> SEXP {
     crate::sexp::symbol::install_str("as.character")
 }
-
-fn NA_STRING() -> SEXP {
-    crate::mainutils::relop::NA_STRING()
-}
-
-fn PRIMARITY(_op: SEXP) -> c_int {
-    0
-}
-
-/// Local stub for isNumeric (avoids cross-module dependency).
-fn isNumeric(x: SEXP) -> c_int {
-    {
-        if x.is_null() {
-            return 0;
-        }
-        let t = TYPEOF(x);
-        if t == LGLSXP || t == INTSXP || t == REALSXP || t == CPLXSXP {
-            1
-        } else {
-            0
-        }
-    }
-}
-
-/// Local wrapper for duplicate.
-fn duplicate(s: SEXP) -> SEXP {
-    crate::mainutils::duplicate::duplicate(s)
-}
-
-// ---------------------------------------------------------------------------
-// R_StringBuffer (Rust equivalent)
-// ---------------------------------------------------------------------------
-
-struct RStringBuffer {
-    buf: Vec<u8>,
-}
-
-impl RStringBuffer {
-    fn new() -> Self {
-        RStringBuffer { buf: Vec::new() }
-    }
-
-    /// Ensure the buffer has at least `len` bytes of capacity.
-    /// Returns a mutable pointer to the buffer.
-    fn ensure_capacity(&mut self, len: usize) -> *mut c_char {
-        if len > self.buf.len() {
-            self.buf.resize(len, 0);
-        }
-        self.buf.as_mut_ptr() as *mut c_char
-    }
-
-    fn as_ptr(&self) -> *const u8 {
-        self.buf.as_ptr()
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.buf.as_mut_ptr()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_stpcpy
-// ---------------------------------------------------------------------------
-
-/// Copy the C string `src` into `dest`, returning a pointer to the
-/// terminating NUL byte in `dest`.
-pub unsafe fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
-    unsafe {
-        if dest.is_null() || src.is_null() {
-            return dest;
-        }
-        let mut d = dest;
-        let mut s = src;
-        loop {
-            let c = *s;
-            *d = c;
-            d = d.add(1);
-            s = s.add(1);
-            if c == 0 {
-                break;
-            }
-        }
-        d.sub(1)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_AllocStringBuffer / R_FreeStringBufferL
-// ---------------------------------------------------------------------------
-
-/// Allocate or grow the string buffer to hold at least `buflen` characters.
-/// Returns a mutable pointer to the buffer.
-fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
-    let len = if buflen < 0 { 0 } else { buflen as usize + 1 };
-    buf.ensure_capacity(len)
-}
-
-/// Free the string buffer (no-op in our Rust implementation since Vec handles memory).
-fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {
-    // Rust's Vec handles memory automatically.
-}
-
-// ---------------------------------------------------------------------------
-// Helper: imax2
-// ---------------------------------------------------------------------------
-
-#[inline]
-fn imax2(x: i64, y: i64) -> i64 {
-    if x < y { y } else { x }
-}
-
-#[inline]
-fn imax2_int(x: c_int, y: c_int) -> c_int {
-    if x < y { y } else { x }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: C strlen
-// ---------------------------------------------------------------------------
-
-unsafe fn c_strlen(s: *const c_char) -> i64 {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let mut len: i64 = 0;
-        let mut p = s;
-        while *p != 0 {
-            len += 1;
-            p = p.add(1);
-        }
-        len
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: C strcpy
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // NA_STRING check
@@ -582,338 +323,6 @@ fn filepath_entry(args: SEXP, env: SEXP, public: bool) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// do_format
-// ---------------------------------------------------------------------------
-
-/// format.default(x, trim, digits, nsmall, width, justify, na.encode,
-///                scientific, decimal.mark)
-pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        PrintDefaults();
-
-        let x = CAR(args);
-        let y: SEXP;
-        let l: SEXP;
-
-        if Rf_isEnvironment(x) != 0 {
-            let s = EncodeEnvironment(x);
-            return Rf_mkString(s);
-        } else if TYPEOF(x) == EXTPTRSXP {
-            let s = EncodeExtptr(x);
-            return Rf_mkString(s);
-        } else if !crate::sexp::object::raw_is_atomic_vector(x) {
-            return ptr::null_mut();
-        }
-
-        let mut args_rest = CDR(args);
-
-        let trim = asLogical(CAR(args_rest));
-        args_rest = CDR(args_rest);
-
-        let mut restore_digits = None;
-        if Rf_isNull(CAR(args_rest)) == 0 {
-            let digits = asInteger(CAR(args_rest));
-            if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
-                return ptr::null_mut();
-            }
-            let old =
-                crate::mainutils::format::format_set_R_print(crate::mainutils::format::RPrint {
-                    digits,
-                    scipen: crate::mainutils::options::GetOptionScipen(),
-                    na_width: 2,
-                    na_width_noquote: 2,
-                });
-            restore_digits = Some(FormatInfoRestorePrint { old });
-        }
-        args_rest = CDR(args_rest);
-
-        let nsmall = asInteger(CAR(args_rest));
-        if nsmall == NA_INTEGER || nsmall < 0 || nsmall > 20 {
-            return ptr::null_mut();
-        }
-        args_rest = CDR(args_rest);
-
-        let wd = if Rf_isNull(CAR(args_rest)) != 0 {
-            0
-        } else {
-            asInteger(CAR(args_rest))
-        };
-        args_rest = CDR(args_rest);
-
-        let adj = asInteger(CAR(args_rest));
-        if adj == NA_INTEGER || adj < 0 || adj > 3 {
-            return ptr::null_mut();
-        }
-        args_rest = CDR(args_rest);
-
-        let na = asLogical(CAR(args_rest));
-        args_rest = CDR(args_rest);
-
-        let sci: c_int;
-        if LENGTH(CAR(args_rest)) != 1 {
-            return ptr::null_mut();
-        }
-        if Rf_isLogical(CAR(args_rest)) != 0 {
-            let tmp = LOGICAL(CAR(args_rest));
-            let tmp_val = if tmp.is_null() { NA_LOGICAL } else { *tmp };
-            if tmp_val == NA_LOGICAL {
-                sci = NA_INTEGER;
-            } else if tmp_val > 0 {
-                sci = -99;
-            } else {
-                sci = 310;
-            }
-        } else if isNumeric(CAR(args_rest)) != 0 {
-            sci = asInteger(CAR(args_rest));
-        } else {
-            return ptr::null_mut();
-        }
-        args_rest = CDR(args_rest);
-
-        // decimal.mark handling
-        if TYPEOF(CAR(args_rest)) != SEXPTYPE::STRSXP || LENGTH(CAR(args_rest)) != 1 {
-            return ptr::null_mut();
-        }
-        // Use default outdec (a dot)
-        let mut outdec: [c_char; 2] = [b'.' as c_char, 0];
-        let my_OutDec: *mut c_char = outdec.as_mut_ptr();
-
-        let n = XLENGTH(x);
-        let mut result_y: SEXP = ptr::null_mut();
-
-        if n <= 0 {
-            result_y = Rf_allocVector(SEXPTYPE::STRSXP, 0);
-        } else {
-            let mut w: c_int = 0;
-            let d: c_int = 0;
-            let e: c_int = 0;
-            let strp: *const c_char;
-
-            match TYPEOF(x) {
-                LGLSXP => {
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-                    let mut fmt_w: c_int = 0;
-                    if trim != 0 {
-                        fmt_w = 0;
-                    } else {
-                        // formatLogical would set fmt_w
-                    }
-                    w = imax2_int(fmt_w, wd);
-                    for i in 0..n {
-                        let val = if LOGICAL(x).is_null() {
-                            NA_INTEGER
-                        } else {
-                            *LOGICAL(x).add(i as usize)
-                        };
-                        let s = EncodeLogical(val, w);
-                        let ch = Rf_mkChar(s);
-                        SET_STRING_ELT(result_y, i, ch);
-                    }
-                }
-
-                INTSXP => {
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-                    let mut fmt_w: c_int = 0;
-                    if trim != 0 {
-                        fmt_w = 0;
-                    } else {
-                        // formatInteger would set fmt_w
-                    }
-                    w = imax2_int(fmt_w, wd);
-                    for i in 0..n {
-                        let val = if INTEGER(x).is_null() {
-                            NA_INTEGER
-                        } else {
-                            *INTEGER(x).add(i as usize)
-                        };
-                        let s = EncodeInteger(val, w);
-                        let ch = Rf_mkChar(s);
-                        SET_STRING_ELT(result_y, i, ch);
-                    }
-                }
-
-                REALSXP => {
-                    let mut fmt_w: c_int = 0;
-                    let fmt_d: c_int = 0;
-                    let fmt_e: c_int = 0;
-                    // formatReal(REAL(x), n, &mut fmt_w, &mut fmt_d, &mut fmt_e, nsmall);
-                    if trim != 0 {
-                        fmt_w = 0;
-                    }
-                    w = imax2_int(fmt_w, wd);
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-                    for i in 0..n {
-                        let val = if REAL(x).is_null() {
-                            NA_REAL
-                        } else {
-                            *REAL(x).add(i as usize)
-                        };
-                        let s = EncodeReal0(val, w, fmt_d, fmt_e, my_OutDec);
-                        let ch = Rf_mkChar(s);
-                        SET_STRING_ELT(result_y, i, ch);
-                    }
-                }
-
-                CPLXSXP => {
-                    let crate::mainutils::format::ComplexField {
-                        wr: _,
-                        dr,
-                        er,
-                        mut wi,
-                        di,
-                        ei,
-                    } = crate::mainutils::format::complex_field_s(x, n, nsmall);
-                    if trim != 0 {
-                        wi = 0;
-                        w = 0;
-                    }
-                    w = imax2_int(w, wd);
-                    wi = imax2_int(wi, wd);
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-                    for i in 0..n {
-                        let val = crate::sexp::accessors::COMPLEX_ELT(x, i as c_int);
-                        let s = EncodeComplex(val, w, dr, er, wi, di, ei, my_OutDec);
-                        let ch = Rf_mkChar(s);
-                        SET_STRING_ELT(result_y, i, ch);
-                    }
-                }
-
-                STRSXP => {
-                    // String formatting with justification
-                    let xx = duplicate(x);
-                    for i in 0..n {
-                        let x_i = STRING_ELT(xx, i);
-                        let s = if IS_BYTES(x_i) {
-                            CHAR(x_i)
-                        } else {
-                            translateChar(x_i)
-                        };
-                        if s != CHAR(x_i) {
-                            let ch = Rf_mkChar(s);
-                            SET_STRING_ELT(xx, i, ch);
-                        }
-                    }
-
-                    w = wd;
-                    if adj != Rprt_adj_none {
-                        for i in 0..n {
-                            if !isNA_STRING(STRING_ELT(xx, i)) {
-                                let il = R_strlen(STRING_ELT(xx, i), 0);
-                                w = imax2_int(w, il);
-                            } else if na != 0 {
-                                w = imax2_int(w, 2); // R_print.na_width
-                            }
-                        }
-                    } else {
-                        w = 0;
-                    }
-
-                    // Calculate buffer size needed
-                    let mut cnt: c_int = 0;
-                    for i in 0..n {
-                        if !isNA_STRING(STRING_ELT(xx, i)) {
-                            let il = R_strlen(STRING_ELT(xx, i), 0);
-                            let pad = imax2_int(0, w - il);
-                            let s_len = LENGTH(STRING_ELT(xx, i));
-                            let needed = s_len + pad;
-                            if needed > cnt {
-                                cnt = needed;
-                            }
-                        } else if na != 0 {
-                            let na_w = 2; // R_print.na_width
-                            let pad = imax2_int(0, w - na_w);
-                            let needed = na_w + pad;
-                            if needed > cnt {
-                                cnt = needed;
-                            }
-                        }
-                    }
-
-                    let mut buff = vec![0u8; (cnt + 1) as usize];
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-
-                    for i in 0..n {
-                        if na == 0 && isNA_STRING(STRING_ELT(xx, i)) {
-                            SET_STRING_ELT(result_y, i, ptr::null_mut());
-                        } else {
-                            let s0 = if isNA_STRING(STRING_ELT(xx, i)) {
-                                ptr::null_mut()
-                            } else {
-                                STRING_ELT(xx, i)
-                            };
-                            let s = if s0.is_null() { ptr::null() } else { CHAR(s0) };
-                            let il = if s0.is_null() { 0 } else { R_strlen(s0, 0) };
-                            let b = w - il;
-                            let mut pos: usize = 0;
-
-                            if b > 0 && adj != Rprt_adj_left {
-                                let b0 = if adj == Rprt_adj_centre { b / 2 } else { b };
-                                for _ in 0..b0 as usize {
-                                    if pos < buff.len() {
-                                        buff[pos] = b' ';
-                                        pos += 1;
-                                    }
-                                }
-                            }
-
-                            if !s.is_null() {
-                                let s_bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-                                for &byte in s_bytes.iter() {
-                                    if pos < buff.len() {
-                                        buff[pos] = byte;
-                                        pos += 1;
-                                    }
-                                }
-                            }
-
-                            if b > 0 && adj != Rprt_adj_right {
-                                let remaining =
-                                    (b - if adj == Rprt_adj_centre { b / 2 } else { 0 }) as usize;
-                                for _ in 0..remaining {
-                                    if pos < buff.len() {
-                                        buff[pos] = b' ';
-                                        pos += 1;
-                                    }
-                                }
-                            }
-
-                            let end = if pos < buff.len() { pos } else { buff.len() };
-                            buff[end] = 0;
-                            let ch = Rf_mkChar(buff.as_ptr() as *const c_char);
-                            SET_STRING_ELT(result_y, i, ch);
-                        }
-                    }
-                }
-
-                _ => {
-                    return ptr::null_mut();
-                }
-            }
-        }
-
-        // Handle attributes (dim, names)
-        if Rf_isNull(x) == 0 {
-            let dim = getAttrib(x, R_DimSymbol());
-            if Rf_isNull(dim) == 0 {
-                setAttrib(result_y, R_DimSymbol(), dim);
-                let dimnames = getAttrib(x, R_DimNamesSymbol());
-                if Rf_isNull(dimnames) == 0 {
-                    setAttrib(result_y, R_DimNamesSymbol(), dimnames);
-                }
-            } else {
-                let names = getAttrib(x, R_NamesSymbol());
-                if Rf_isNull(names) == 0 {
-                    setAttrib(result_y, R_NamesSymbol(), names);
-                }
-            }
-        }
-        let _ = restore_digits;
-        result_y
-    }
-}
-
-// ---------------------------------------------------------------------------
 // do_formatinfo
 // ---------------------------------------------------------------------------
 
@@ -1069,160 +478,16 @@ impl Drop for FormatInfoRestorePrint {
 mod tests {
     use super::*;
 
-    // --- R_stpcpy tests ---
-
-    #[test]
-    fn test_r_stpcpy_basic() {
-        unsafe {
-            let src = c"hello";
-            let mut dest = [0i8; 16];
-            let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
-            assert_eq!(*result, 0);
-            let pos = result.offset_from(dest.as_ptr());
-            assert_eq!(pos, 5);
-            let s = std::ffi::CStr::from_ptr(dest.as_ptr())
-                .to_str()
-                .unwrap_or("");
-            assert_eq!(s, "hello");
-        }
-    }
-
-    #[test]
-    fn test_r_stpcpy_empty() {
-        unsafe {
-            let src = c"";
-            let mut dest = [0i8; 8];
-            let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
-            assert_eq!(*result, 0);
-            let pos = result.offset_from(dest.as_ptr());
-            assert_eq!(pos, 0);
-        }
-    }
-
-    #[test]
-    fn test_r_stpcpy_null_pointers() {
-        unsafe {
-            let result = R_stpcpy(ptr::null_mut(), ptr::null());
-            assert!(result.is_null());
-        }
-    }
-
-    // --- imax2 tests ---
-
-    #[test]
-    fn test_imax2() {
-        assert_eq!(imax2(3, 5), 5);
-        assert_eq!(imax2(5, 3), 5);
-        assert_eq!(imax2(0, -1), 0);
-        assert_eq!(imax2(-5, -3), -3);
-    }
-
-    #[test]
-    fn test_imax2_int() {
-        assert_eq!(imax2_int(3, 5), 5);
-        assert_eq!(imax2_int(5, 3), 5);
-    }
-
-    // --- c_strlen tests ---
-
-    #[test]
-    fn test_c_strlen() {
-        unsafe {
-            let s = c"hello world";
-            assert_eq!(c_strlen(s.as_ptr()), 11);
-            let empty = c"";
-            assert_eq!(c_strlen(empty.as_ptr()), 0);
-            assert_eq!(c_strlen(ptr::null()), 0);
-        }
-    }
-
-    // --- Encoding constant tests ---
-
-    #[test]
-    fn test_encoding_constants() {
-        assert_eq!(CE_NATIVE, 0);
-        assert_eq!(CE_UTF8, 1);
-        assert_eq!(CE_LATIN1, 2);
-        assert_eq!(CE_BYTES, 3);
-    }
-
-    // --- RStringBuffer tests ---
-
-    #[test]
-    fn test_rstring_buffer_new() {
-        let buf = RStringBuffer::new();
-        assert_eq!(buf.buf.len(), 0);
-    }
-
-    #[test]
-    fn test_rstring_buffer_ensure_capacity() {
-        let mut buf = RStringBuffer::new();
-        buf.ensure_capacity(100);
-        assert!(buf.buf.len() >= 100);
-        // Ensure it grows
-        buf.ensure_capacity(200);
-        assert!(buf.buf.len() >= 200);
-    }
-
-    // --- isVectorList tests ---
-
-    #[test]
-    fn test_is_vector_list_null() {
-        {
-            assert_eq!(isVectorList(ptr::null_mut()), 0);
-        }
-    }
-
-    // --- do_paste zero-length tests ---
-
     #[test]
     fn test_do_paste_null_args() {
-        unsafe {
-            // Just verify it doesn't crash with null
-            let result = do_paste(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            // With null args, it should return null or an empty vector
-        }
+        let nil = ptr::null_mut();
+        assert!(do_paste(nil, nil, nil, nil).is_null());
     }
-
-    // --- do_formatinfo tests ---
 
     #[test]
     fn test_do_formatinfo_null_args() {
-        unsafe {
-            let result = do_formatinfo(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            // With null args, should return null
-        }
-    }
-
-    // --- Constant tests ---
-
-    #[test]
-    fn test_maxeltsize() {
-        assert_eq!(MAXELTSIZE, 8192);
-    }
-
-    #[test]
-    fn test_digit_bounds() {
-        assert_eq!(R_MIN_DIGITS_OPT, 1);
-        assert_eq!(R_MAX_DIGITS_OPT, 22);
-    }
-
-    #[test]
-    fn test_justification_constants() {
-        assert_eq!(Rprt_adj_left, 0);
-        assert_eq!(Rprt_adj_right, 1);
-        assert_eq!(Rprt_adj_centre, 2);
-        assert_eq!(Rprt_adj_none, 3);
+        let nil = ptr::null_mut();
+        assert!(do_formatinfo(nil, nil, nil, nil).is_null());
     }
 }
 
