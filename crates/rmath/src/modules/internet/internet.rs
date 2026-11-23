@@ -4,22 +4,20 @@
 // Windows-specific functions (wininet) remain as stubs.
 
 use crate::mainutils::rfile::open_file;
-use core::ffi::{c_char, c_double, c_int, c_void};
-use std::ffi::{CStr, CString};
+use core::ffi::{c_int, c_void};
+use std::ffi::CString;
 use std::io::{ErrorKind, Read, Write as IoWrite};
 use std::net::TcpStream;
-#[cfg(not(target_arch = "wasm32"))]
-use std::os::unix::io::IntoRawFd;
 use std::path::Path;
-use std::ptr;
 
-use crate::main::errors::{Rf_error, Rf_error_cstr};
-use crate::sexp::accessors::{CAR, CDR, CHAR, INTEGER, LENGTH, STRING_ELT, TYPEOF};
+use crate::main::errors::Rf_error_cstr;
+use crate::sexp::accessors::{
+    CAR, CDR, LENGTH, LOGICAL_ELT, STRING_ELT, TYPEOF, char_cstr_bytes_opt,
+};
 use crate::sexp::constructors::Rf_ScalarInteger;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::*;
+use crate::sexp::{owner::OwnerToken, protect::protect};
 
 // DLsize_t type alias (matches C: typedef int_fast64_t DLsize_t)
 type DLsize_t = i64;
@@ -76,41 +74,10 @@ fn is_string_len1(x: SEXP) -> bool {
 // Returns 0 for FALSE, 1 for TRUE, NA_LOGICAL for NA
 #[inline]
 fn asRbool(x: SEXP) -> c_int {
-    unsafe {
-        if x == R_NilValue() {
-            return NA_LOGICAL;
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::LGLSXP {
-            return NA_LOGICAL;
-        }
-        let v = INTEGER(x);
-        if v.is_null() {
-            return NA_LOGICAL;
-        }
-        *v
-    }
-}
-
-// Helper: convert a logical SEXP to asLogical-style result
-#[inline]
-fn asLogical_val(x: SEXP) -> c_int {
-    asRbool(x)
-}
-
-// Helper: safe CStr to Rust &str
-#[inline]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
-    unsafe {
-        if s.is_null() {
-            return "";
-        }
-        CStr::from_ptr(s).to_str().unwrap_or("")
+    if TYPEOF(x) != SEXPTYPE::LGLSXP || LENGTH(x) == 0 {
+        NA_LOGICAL
+    } else {
+        LOGICAL_ELT(x, 0)
     }
 }
 
@@ -156,21 +123,17 @@ fn putdashes(old_value: &mut c_int, new_val: c_int) {
 // HTTP download via raw sockets (Unix implementation)
 // =========================================================================
 
-/// inetconn - context for an internet connection (matches C struct)
-/// Used internally to track download state.
-#[repr(C)]
-struct inetconn {
-    /// Content length (-1 if unknown)
-    length: DLsize_t,
-    /// Content type string (allocated, must be freed)
-    content_type: *mut c_char,
-    /// Socket file descriptor (Unix) or handle (Windows)
-    fd: c_int,
+/// HttpResponse - an opened HTTP response stream.
+///
+/// `body` yields the response body: bytes already buffered while parsing the
+/// headers first, then the remainder of the socket stream.
+struct HttpResponse<R> {
+    body: std::io::Chain<std::io::Cursor<Vec<u8>>, R>,
+    length: Option<DLsize_t>,
+    content_type: String,
 }
 
 /// http_parse_url - parse a URL into host, port, and path components.
-/// Returns (host, port, path) as CString/String tuples.
-/// Returns None if the URL cannot be parsed.
 fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
     let url = url
         .trim_start_matches("http://")
@@ -216,50 +179,20 @@ fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
 
 /// http_open - open an HTTP connection to a URL using raw sockets.
 /// Sends an HTTP GET request and reads the response headers.
-/// Returns a boxed inetconn on success, null on failure.
+/// Returns the response stream on success, None on failure.
 ///
 /// This is the Unix equivalent of the Windows wininet-based in_R_HTTPOpen2.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn http_open(
-    url: *const c_char,
-    agent: *const c_char,
-    headers: *const c_char,
-    _cacheOK: c_int,
-) -> *mut c_void {
-    // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
-    let url_str = match unsafe { cstr_to_str(url) } {
-        "" => return ptr::null_mut(),
-        s => s,
-    };
-
+fn http_open(url: &str, headers: &str) -> Option<HttpResponse<TcpStream>> {
     // Only handle http:// (not https:// — that requires TLS)
-    if !url_str.starts_with("http://") {
-        return ptr::null_mut();
+    if !url.starts_with("http://") {
+        return None;
     }
-
-    let (host_cstr, port, path) = match http_parse_url(url_str) {
-        Some(parts) => parts,
-        None => return ptr::null_mut(),
-    };
-
-    let agent_str = if agent.is_null() {
-        "RMath-Rust/1.0"
-    } else {
-        // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
-        unsafe { cstr_to_str(agent) }
-    };
+    let (host, port, path) = http_parse_url(url)?;
+    let host = host.to_str().ok()?;
 
     // Open TCP connection
-    let addr = format!("{}:{}", host_cstr.to_str().unwrap_or(""), port);
-    let mut stream = match TcpStream::connect(&*addr) {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+    let addr = format!("{}:{}", host, port);
+    let mut stream = TcpStream::connect(&*addr).ok()?;
 
     // Set read timeout to avoid hanging forever
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
@@ -268,173 +201,61 @@ unsafe fn http_open(
     // Build HTTP GET request
     let mut request = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {}\r\nConnection: close\r\n",
-        path,
-        host_cstr.to_str().unwrap_or(""),
-        agent_str
+        path, host, "RMath-Rust/1.0"
     );
-
-    // Add custom headers if provided
-    if !headers.is_null() {
-        // SAFETY: raw pointers are forwarded unchanged under this function's own `# Safety` contract.
-        let headers_str = unsafe { cstr_to_str(headers) };
-        if !headers_str.is_empty() {
-            // Split on newlines and add each header
-            for line in headers_str.split('\n') {
-                let line = line.trim();
-                if !line.is_empty() {
-                    request.push_str(line);
-                    request.push_str("\r\n");
-                }
-            }
-        }
+    for line in headers.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        request.push_str(line);
+        request.push_str("\r\n");
     }
-
     request.push_str("\r\n");
 
     // Send request
-    if stream.write_all(request.as_bytes()).is_err() {
-        return ptr::null_mut();
-    }
+    stream.write_all(request.as_bytes()).ok()?;
 
-    // Read response - we need to parse headers to find content length
-    let mut response_buf = Vec::with_capacity(IBUFSIZE * 4);
-    let mut temp_buf = [0u8; IBUFSIZE];
+    read_http_response(stream)
+}
 
-    // Read until we find the end of headers (\r\n\r\n)
-    let mut header_end = None;
-    let mut total_read = 0usize;
-    let max_header_size = 64 * 1024; // 64KB max header size
-
-    while total_read < max_header_size {
-        match stream.read(&mut temp_buf) {
-            Ok(0) => break, // EOF
-            Ok(n) => {
-                response_buf.extend_from_slice(&temp_buf[..n]);
-                total_read += n;
-
-                // Check for end of headers
-                if let Some(pos) = find_header_end(&response_buf) {
-                    header_end = Some(pos);
-                    break;
-                }
-            }
-            Err(_) => return ptr::null_mut(),
+/// read_http_response - read response headers and return the body stream.
+///
+/// Bytes already fetched past the header terminator are kept at the front of
+/// `body` so no part of the response is lost. Returns None when the headers
+/// are malformed, oversized, or report a non-2xx status.
+fn read_http_response<R: Read>(mut stream: R) -> Option<HttpResponse<R>> {
+    const MAX_HEADER_SIZE: usize = 64 * 1024;
+    let mut response = Vec::with_capacity(IBUFSIZE * 4);
+    let mut buf = [0; IBUFSIZE];
+    let end = loop {
+        if response.len() >= MAX_HEADER_SIZE {
+            return None;
         }
-    }
-
-    let header_end_pos = match header_end {
-        Some(pos) => pos,
-        None => return ptr::null_mut(),
+        // Rescan a few bytes back so a terminator split across reads is found.
+        let start = response.len().saturating_sub(3);
+        match stream.read(&mut buf) {
+            Ok(0) => return None,
+            Ok(n) => response.extend_from_slice(&buf[..n]),
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        }
+        if let Some(end) = find_header_end(&response[start..]) {
+            let end = start + end;
+            if end + 4 > MAX_HEADER_SIZE {
+                return None;
+            }
+            break end;
+        }
     };
-
-    // Parse status code
-    let header_str = String::from_utf8_lossy(&response_buf[..header_end_pos]);
-    let status_code = parse_status_code(&header_str);
-    if status_code.is_none()
-        || status_code.unwrap_or_default() < 200
-        || status_code.unwrap_or_default() >= 300
-    {
-        // Non-2xx status
-        return ptr::null_mut();
+    let header = String::from_utf8_lossy(&response[..end]);
+    if !(200..300).contains(&parse_status_code(&header)?) {
+        return None;
     }
-
-    // Parse content length
-    let content_length = parse_content_length(&header_str);
-
-    // Parse content type
-    let content_type_cstr =
-        CString::new(parse_content_type(&header_str).unwrap_or_else(|| "unknown".to_string()))
-            .unwrap_or_default();
-
-    // Report content info if not quiet
-    if internet_quiet() == 0 {
-        eprint!(
-            "Content type '{}'",
-            content_type_cstr.to_str().unwrap_or("unknown")
-        );
-        if let Some(len) = content_length {
-            if len > 1024 * 1024 {
-                eprintln!(
-                    " length {} bytes ({:.1} MB)",
-                    len,
-                    len as f64 / 1024.0 / 1024.0
-                );
-            } else if len > 10240 {
-                eprintln!(" length {} bytes ({} KB)", len, len / 1024);
-            } else {
-                eprintln!(" length {} bytes", len);
-            }
-        } else {
-            eprintln!(" length unknown");
-        }
-    }
-
-    // Convert the TcpStream into a raw file descriptor that we own.
-    // wasm32 has no file descriptors (no sockets at all); http_open is
-    // unreachable there because every connect fails beforehand.
-    #[cfg(target_arch = "wasm32")]
-    let raw_fd: c_int = -1;
-    #[cfg(not(target_arch = "wasm32"))]
-    let raw_fd = stream.into_raw_fd();
-
-    // Allocate the inetconn context
-    let ctx = Box::new(inetconn {
-        length: content_length.unwrap_or(-1),
-        content_type: content_type_cstr.into_raw(),
-        fd: raw_fd,
-    });
-
-    Box::into_raw(ctx) as *mut c_void
-}
-
-/// http_read - read data from an open HTTP connection.
-/// Returns number of bytes read, 0 on EOF, -1 on error.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
-    unsafe {
-        let conn = ctx as *mut inetconn;
-        if conn.is_null() || (*conn).fd < 0 {
-            return -1;
-        }
-
-        let fd = (*conn).fd;
-        let nread = libc::read(fd, dest as *mut c_void, len);
-        nread
-    }
-}
-
-/// http_close - close an open HTTP connection and free resources.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn http_close(ctx: *mut c_void) {
-    unsafe {
-        let conn = ctx as *mut inetconn;
-        if conn.is_null() {
-            return;
-        }
-
-        // Close socket
-        if (*conn).fd >= 0 {
-            let _ = libc::close((*conn).fd);
-        }
-
-        // Free content type string
-        if !(*conn).content_type.is_null() {
-            let _ = CString::from_raw((*conn).content_type);
-        }
-
-        // Free the context
-        drop(Box::from_raw(conn));
-    }
+    let length = parse_content_length(&header);
+    let content_type = parse_content_type(&header).unwrap_or_else(|| "unknown".to_owned());
+    let buffered_body = response.split_off(end + 4);
+    Some(HttpResponse {
+        body: std::io::Cursor::new(buffered_body).chain(stream),
+        length,
+        content_type,
+    })
 }
 
 /// find_header_end - find the position of \r\n\r\n in a byte buffer
@@ -529,149 +350,128 @@ fn file_download(url: &str, file: &str, mode: &[u8]) -> c_int {
 /// http_download - download a file from an HTTP URL using raw sockets.
 /// This is the Unix implementation of the http:// branch in in_do_download.
 ///
-/// Returns 0 on success, 1 on failure.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn http_download(
-    url: *const c_char,
-    file: *const c_char,
-    mode: *const c_char,
-    quiet: c_int,
-    headers: SEXP,
-) -> c_int {
-    unsafe {
-        let url_str = cstr_to_str(url);
-        let file_str = cstr_to_str(file);
-        let mode_str = cstr_to_str(mode);
+/// Returns 0 on success; raises an R error on open or write failure.
+fn http_download(url: &str, file: &str, mode: &[u8], quiet: c_int, headers: &str) -> c_int {
+    // Open dest file
+    let mut dst_file = open_file(Path::new(file), mode).unwrap_or_else(|error| {
+        download_error(format!("cannot open destfile '{}', reason '{}'", file, error))
+    });
 
-        // Open dest file
-        let mode_bytes = if mode.is_null() {
-            &[][..]
-        } else {
-            CStr::from_ptr(mode).to_bytes()
-        };
-        let mut dst_file = open_file(Path::new(file_str), mode_bytes).unwrap_or_else(|error| {
-            download_error(format!(
-                "cannot open destfile '{}', reason '{}'",
-                file_str, error
-            ))
-        });
-
-        // Report URL being tried
-        if quiet == 0 {
-            eprintln!("trying URL '{}'", url_str);
-        }
-
-        // Build headers string from SEXP if provided
-        let headers_cstr: Option<CString> = if headers != R_NilValue()
-            && TYPEOF(headers) == SEXPTYPE::STRSXP
-            && LENGTH(headers) > 0
-        {
-            let h = CHAR(STRING_ELT(headers, 0));
-            if !h.is_null() {
-                Some(CString::from(CStr::from_ptr(h)))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let headers_ptr = match &headers_cstr {
-            Some(s) => s.as_ptr(),
-            None => ptr::null(),
-        };
-
-        // Open HTTP connection
-        let ctxt = http_open(url, ptr::null(), headers_ptr, 1);
-        if ctxt.is_null() {
-            drop(dst_file);
-            // Check if mode contains 'w' to clean up partial file
-            if mode_str.contains('w') {
-                let _ = std::fs::remove_file(file_str);
-            }
-            download_error(format!("cannot open URL '{}'", url_str));
-        }
-
-        // Get content length from context
-        let conn = ctxt as *const inetconn;
-        let total = (*conn).length;
-        let mut guess = if total > 0 { total } else { 100 * 1024 };
-
-        let mut nbytes: DLsize_t = 0;
-        let mut ndots: DLsize_t = 0;
-        let mut ndashes: c_int = 0;
-        let mut buf = [0u8; IBUFSIZE];
-
-        // Read loop
-        loop {
-            let nread = http_read(ctxt, buf.as_mut_ptr(), IBUFSIZE);
-            if nread <= 0 {
-                break;
-            }
-
-            if dst_file.write_all(&buf[..nread as usize]).is_err() {
-                http_close(ctxt);
-                download_error("write failed".to_owned());
-            }
-
-            nbytes += nread as DLsize_t;
-
-            // Progress reporting
-            if quiet == 0 {
-                if guess <= 0 {
-                    putdots(&mut ndots, nbytes / 1024);
-                } else {
-                    // Progress bar: 50 chars wide
-                    let dashes = (50 * nbytes / guess) as c_int;
-                    putdashes(&mut ndashes, dashes);
-                }
-            }
-        }
-
-        http_close(ctxt);
-
-        // Print completion summary
-        if quiet == 0 {
-            if guess > 0 {
-                eprintln!(); // newline after progress bar
-            }
-            if nbytes > 1024 * 1024 {
-                eprintln!("downloaded {:.1} MB\n", nbytes as f64 / 1024.0 / 1024.0);
-            } else if nbytes > 10240 {
-                eprintln!("downloaded {} KB\n", (nbytes / 1024) as i64);
-            } else {
-                eprintln!("downloaded {} bytes\n", nbytes);
-            }
-        }
-
-        drop(dst_file);
-
-        // Warn if downloaded length doesn't match reported length
-        if total > 0 && total != nbytes {
-            let msg = format!(
-                "downloaded length {:.0} != reported length {:.0}",
-                nbytes as f64, total as f64
-            );
-            let c_msg = CString::new(msg).unwrap_or_default();
-            crate::main::errors::Rf_warning_cstr(&c_msg);
-        }
-
-        0
+    // Report URL being tried
+    if quiet == 0 {
+        eprintln!("trying URL '{}'", url);
     }
+
+    let Some(mut response) = http_open(url, headers) else {
+        drop(dst_file);
+        // Check if mode contains 'w' to clean up partial file
+        if std::str::from_utf8(mode).is_ok_and(|mode| mode.contains('w')) {
+            let _ = std::fs::remove_file(file);
+        }
+        download_error(format!("cannot open URL '{}'", url));
+    };
+
+    // Report content info if not quiet
+    if quiet == 0 {
+        eprint!("Content type '{}'", response.content_type);
+        if let Some(len) = response.length {
+            if len > 1024 * 1024 {
+                eprintln!(" length {} bytes ({:.1} MB)", len, len as f64 / 1024.0 / 1024.0);
+            } else if len > 10240 {
+                eprintln!(" length {} bytes ({} KB)", len, len / 1024);
+            } else {
+                eprintln!(" length {} bytes", len);
+            }
+        } else {
+            eprintln!(" length unknown");
+        }
+    }
+
+    let total = response.length.unwrap_or(-1);
+    let guess = if total > 0 { total } else { 100 * 1024 };
+
+    let mut nbytes: DLsize_t = 0;
+    let mut ndots: DLsize_t = 0;
+    let mut ndashes: c_int = 0;
+    let mut buf = [0u8; IBUFSIZE];
+
+    // Read loop
+    loop {
+        let nread = match response.body.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+
+        if dst_file.write_all(&buf[..nread]).is_err() {
+            download_error("write failed".to_owned());
+        }
+
+        nbytes += nread as DLsize_t;
+
+        // Progress reporting
+        if quiet == 0 {
+            if guess <= 0 {
+                putdots(&mut ndots, nbytes / 1024);
+            } else {
+                // Progress bar: 50 chars wide
+                let dashes = (50 * nbytes / guess) as c_int;
+                putdashes(&mut ndashes, dashes);
+            }
+        }
+    }
+
+    drop(response);
+
+    // Print completion summary
+    if quiet == 0 {
+        if guess > 0 {
+            eprintln!(); // newline after progress bar
+        }
+        if nbytes > 1024 * 1024 {
+            eprintln!("downloaded {:.1} MB\n", nbytes as f64 / 1024.0 / 1024.0);
+        } else if nbytes > 10240 {
+            eprintln!("downloaded {} KB\n", (nbytes / 1024) as i64);
+        } else {
+            eprintln!("downloaded {} bytes\n", nbytes);
+        }
+    }
+
+    drop(dst_file);
+
+    // Warn if downloaded length doesn't match reported length
+    if total > 0 && total != nbytes {
+        let msg = format!(
+            "downloaded length {:.0} != reported length {:.0}",
+            nbytes as f64, total as f64
+        );
+        let c_msg = CString::new(msg).unwrap_or_default();
+        crate::main::errors::Rf_warning_cstr(&c_msg);
+    }
+
+    0
 }
 
 // =========================================================================
 // Unix implementation
 // =========================================================================
 
+fn require_download_owner(owner: OwnerToken<'_>) {
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+}
+
+fn string_bytes(owner: OwnerToken<'_>, vector: SEXP) -> Vec<u8> {
+    let value = STRING_ELT(vector, 0);
+    require_download_owner(owner);
+    char_cstr_bytes_opt(value).unwrap_or_default()
+}
+
 /// in_do_download - download.file() internal implementation.
 /// Signature: SEXP in_do_download(SEXP args)
-/// Expects args: url, destfile, quiet, mode, headers, cacheOK [, method]
+/// Expects args: url, destfile, quiet, mode, cacheOK, headers [, method]
 ///
 /// Supports:
 ///   file:// URLs — direct file copy (matches R behavior)
@@ -681,104 +481,106 @@ unsafe fn http_download(
 ///
 /// Returns: ScalarInteger with status code (0 = success, 1 = failure)
 pub(crate) fn in_do_download(args: SEXP) -> SEXP {
-    unsafe {
-        let mut args = args;
+    let owner = OwnerToken::current()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _root = protect(args);
+    let mut args = args;
 
-        // url
-        let scmd = CAR(args);
-        args = CDR(args);
-        if !is_single_string(scmd) {
-            let msg = c"invalid 'url' argument";
-            Rf_error_cstr(&msg);
-        }
-        let url = CHAR(STRING_ELT(scmd, 0));
-
-        // destfile
-        let sfile = CAR(args);
-        args = CDR(args);
-        if !is_single_string(sfile) {
-            let msg = c"invalid 'destfile' argument";
-            Rf_error_cstr(&msg);
-        }
-        // Use translateChar for destfile (may have encoded paths)
-        let file = crate::sexp::accessors::translateChar(STRING_ELT(sfile, 0));
-
-        // quiet
-        let squiet = CAR(args);
-        args = CDR(args);
-        let quiet = asRbool(squiet);
-        if quiet == NA_LOGICAL {
-            let msg = c"invalid 'quiet' argument";
-            Rf_error_cstr(&msg);
-        }
-        set_internet_quiet(quiet);
-
-        // mode
-        let smode = CAR(args);
-        args = CDR(args);
-        if !is_string_len1(smode) {
-            let msg = c"invalid 'mode' argument";
-            Rf_error_cstr(&msg);
-        }
-        let mode = CHAR(STRING_ELT(smode, 0));
-
-        // cacheOK
-        let scacheOK = CAR(args);
-        args = CDR(args);
-        let cacheOK = asLogical_val(scacheOK);
-        if cacheOK == NA_LOGICAL {
-            let msg = c"invalid 'cacheOK' argument";
-            Rf_error_cstr(&msg);
-        }
-        let _ = cacheOK; // Used only by Windows wininet code path
-
-        // Check if file:// URL
-        let url_rust = cstr_to_str(url);
-        let file_url = url_rust.starts_with("file://");
-
-        // headers (remaining arg before optional method)
-        let sheaders = CAR(args);
-
-        // method (optional, only present on Windows in R's code; we check for it)
-        // In R's C code, meth = asLogical(CADR(args)) is only under #ifdef Win32
-        // On Unix, there is no method argument in the args list.
-
-        let mut status: c_int = 0;
-
-        if file_url {
-            // ---- file:// download ----
-            let mode_bytes = if mode.is_null() {
-                &[][..]
-            } else {
-                CStr::from_ptr(mode).to_bytes()
-            };
-            status = file_download(url_rust, cstr_to_str(file), mode_bytes);
-        } else if url_rust.starts_with("http://") {
-            // ---- http:// download via raw sockets ----
-            // R 4.2+ made the "internal" method defunct for HTTP, but since we
-            // provide a real socket implementation, we use it here as the
-            // Unix-native HTTP download path.
-            status = http_download(url, file, mode, quiet, sheaders);
-        } else if url_rust.starts_with("https://") {
-            // HTTPS requires TLS — not supported by raw sockets
-            let msg = CString::new(format!(
-                "scheme not supported in URL '{}' (use method=\"libcurl\" for https://)",
-                url_rust
-            ))
-            .unwrap_or_default();
-            Rf_error_cstr(&msg);
-        } else if url_rust.starts_with("ftp://") {
-            // FTP is defunct in R 4.2+
-            let msg = c"the 'internal' method for ftp:// URLs is defunct";
-            Rf_error_cstr(&msg);
-        } else {
-            let msg = CString::new(format!("scheme not supported in URL '{}'", url_rust))
-                .unwrap_or_default();
-            Rf_error_cstr(&msg);
-        }
-
-        Rf_ScalarInteger(status)
+    // url
+    let scmd = CAR(args);
+    args = CDR(args);
+    if !is_single_string(scmd) {
+        let msg = c"invalid 'url' argument";
+        Rf_error_cstr(&msg);
     }
+    let url = String::from_utf8(string_bytes(owner, scmd)).unwrap_or_default();
+
+    // destfile
+    let sfile = CAR(args);
+    args = CDR(args);
+    if !is_single_string(sfile) {
+        let msg = c"invalid 'destfile' argument";
+        Rf_error_cstr(&msg);
+    }
+    // GNU R uses translateChar here; its first-NUL bytes are identical.
+    let file = String::from_utf8(string_bytes(owner, sfile)).unwrap_or_default();
+
+    // quiet
+    let squiet = CAR(args);
+    args = CDR(args);
+    let quiet = asRbool(squiet);
+    require_download_owner(owner);
+    if quiet == NA_LOGICAL {
+        let msg = c"invalid 'quiet' argument";
+        Rf_error_cstr(&msg);
+    }
+    set_internet_quiet(quiet);
+
+    // mode
+    let smode = CAR(args);
+    args = CDR(args);
+    if !is_string_len1(smode) {
+        let msg = c"invalid 'mode' argument";
+        Rf_error_cstr(&msg);
+    }
+    let mode = string_bytes(owner, smode);
+
+    // cacheOK
+    let scacheOK = CAR(args);
+    args = CDR(args);
+    let cacheOK = asRbool(scacheOK);
+    require_download_owner(owner);
+    if cacheOK == NA_LOGICAL {
+        let msg = c"invalid 'cacheOK' argument";
+        Rf_error_cstr(&msg);
+    }
+    let _ = cacheOK; // Used only by Windows wininet code path
+
+    // Check if file:// URL
+    let file_url = url.starts_with("file://");
+
+    // headers (remaining arg before optional method)
+    let sheaders = CAR(args);
+
+    // method (optional, only present on Windows in R's code; we check for it)
+    // In R's C code, meth = asLogical(CADR(args)) is only under #ifdef Win32
+    // On Unix, there is no method argument in the args list.
+
+    let mut status: c_int = 0;
+
+    if file_url {
+        // ---- file:// download ----
+        status = file_download(&url, &file, &mode);
+    } else if url.starts_with("http://") {
+        // ---- http:// download via raw sockets ----
+        // R 4.2+ made the "internal" method defunct for HTTP, but since we
+        // provide a real socket implementation, we use it here as the
+        // Unix-native HTTP download path.
+        let headers = if is_single_string(sheaders) {
+            String::from_utf8(string_bytes(owner, sheaders)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        status = http_download(&url, &file, &mode, quiet, &headers);
+    } else if url.starts_with("https://") {
+        // HTTPS requires TLS — not supported by raw sockets
+        let msg = CString::new(format!(
+            "scheme not supported in URL '{}' (use method=\"libcurl\" for https://)",
+            url
+        ))
+        .unwrap_or_default();
+        Rf_error_cstr(&msg);
+    } else if url.starts_with("ftp://") {
+        // FTP is defunct in R 4.2+
+        let msg = c"the 'internal' method for ftp:// URLs is defunct";
+        Rf_error_cstr(&msg);
+    } else {
+        let msg = CString::new(format!("scheme not supported in URL '{}'", url))
+            .unwrap_or_default();
+        Rf_error_cstr(&msg);
+    }
+
+    Rf_ScalarInteger(status)
 }
 
 // =========================================================================
@@ -856,5 +658,36 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), expected);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn http_response_keeps_body_already_read_with_headers() {
+        let bytes =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nContent-Type: application/octet-stream\r\n\r\n\x00\xffz";
+        let mut response =
+            read_http_response(std::io::Cursor::new(bytes.to_vec())).unwrap();
+        assert_eq!(response.length, Some(3));
+        assert_eq!(response.content_type, "application/octet-stream");
+        let mut body = Vec::new();
+        response.body.read_to_end(&mut body).unwrap();
+        assert_eq!(body, vec![0, 255, b'z']);
+    }
+
+    #[test]
+    fn http_response_handles_split_header_terminator() {
+        let stream = std::io::Cursor::new(b"HTTP/1.1 200 OK\r\n\r")
+            .chain(std::io::Cursor::new(b"\npayload"));
+        let mut response = read_http_response(stream).unwrap();
+        let mut body = Vec::new();
+        response.body.read_to_end(&mut body).unwrap();
+        assert_eq!(body, b"payload");
+    }
+
+    #[test]
+    fn http_response_rejects_oversized_headers() {
+        let mut bytes = b"HTTP/1.1 200 OK\r\nX-Long: ".to_vec();
+        bytes.resize(64 * 1024 - 1, b'x');
+        bytes.extend_from_slice(b"\r\n\r\n");
+        assert!(read_http_response(bytes.as_slice()).is_none());
     }
 }
