@@ -397,8 +397,7 @@ impl NativeTryCatchTrace {
         if !memory_profiling_enabled() {
             return Self(false);
         }
-        let depth =
-            unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) };
+        let depth = crate::sexp::context::current_frame_depth();
         NATIVE_TRY_CATCH_ENTRIES.with(|entries| entries.borrow_mut().push(depth));
         Self(true)
     }

@@ -385,29 +385,15 @@ pub fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// so later mutation cannot rewrite the stack; zeallot's error paths
 /// deparse these to attribute assignment-operator calls.
 pub fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // sys.calls is a builtin here, so (outside forced promises) the
-        // innermost context is its caller's frame already — no own closure
-        // frame to skip, unlike upstream's
-        // getLexicalContext(R_GlobalContext->sysparent).
-        let cptr = sys_query_context();
-        if cptr.is_null() {
-            return R_NilValue();
-        }
-        let nframe = crate::eval::context::framedepth(cptr);
-        let result = crate::sexp::constructors::Rf_allocList(nframe);
-        if result.is_null() || result == R_NilValue() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        let mut t = result;
-        let mut i = 1;
-        while i <= nframe {
-            SETCAR(t, crate::eval::context::R_syscall(i, cptr));
-            t = CDR(t);
-            i += 1;
-        }
-        result
+    // sys.calls is a builtin here, so (outside forced promises) the
+    // innermost context is its caller's frame already — no own closure
+    // frame to skip, unlike upstream's
+    // getLexicalContext(R_GlobalContext->sysparent).
+    let start = sys_query_context();
+    if start.is_null() {
+        R_NilValue()
+    } else {
+        crate::eval::context::frame_value_list(start, crate::sexp::context::FrameValues::Calls)
     }
 }
 

@@ -31,6 +31,29 @@ fn direct_sys_call_is_the_callee_not_an_internal_frame() {
 }
 
 #[test]
+fn frame_lists_keep_gnu_outermost_first_order() {
+    let mut session = RSession::new().unwrap();
+    // GNU R 4.6.2: outer(1L), inner(x); parents 0L/1L; frames contain both environments in that order.
+    assert_eq!(session.eval(r#"
+        outer <- function(x) {
+            inner <- function(y) {
+                calls <- sys.calls()
+                frames <- sys.frames()
+                parents <- sys.parents()
+                identical(calls[[1L]], quote(outer(1L))) &&
+                    identical(calls[[2L]], quote(inner(x))) &&
+                    identical(parents, c(0L, 1L)) &&
+                    length(frames) == 2L &&
+                    identical(frames[[1L]], parent.frame()) &&
+                    identical(frames[[2L]], environment())
+            }
+            inner(x)
+        }
+        outer(1L)
+    "#).unwrap().trim(), "[1] TRUE");
+}
+
+#[test]
 fn parent_frame_from_nested_function_sees_caller() {
     let mut session = RSession::new().unwrap();
     // `$` may be invisible; compare the value. GNU prints 123 for the

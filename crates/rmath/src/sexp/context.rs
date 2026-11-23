@@ -768,6 +768,55 @@ pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
     }
 }
 
+/// Count function contexts without exposing raw frame pointers.
+pub(crate) fn current_frame_depth() -> c_int {
+    instance::with_current_instance(|instance| {
+        // SAFETY: the active instance is pinned and the read cannot reenter R.
+        unsafe {
+            (*instance)
+                .context_stack
+                .iter()
+                .filter(|cell| (*cell.get()).callflag & ctxt_flags::CTXT_FUNCTION != 0)
+                .count() as c_int
+        }
+    })
+    .unwrap_or(0)
+}
+
+pub(crate) enum FrameValues {
+    Calls,
+    Environments,
+}
+
+/// Retain function-frame values, outermost first, before R allocations can
+/// run callbacks or remove frames. `start` is only an address lookup key.
+pub(crate) fn frame_values(start: *mut RCNTXT, values: FrameValues) -> Vec<ContextValue> {
+    instance::with_required_current_instance(|instance| {
+        // SAFETY: the active instance owns these cells. This block only reads
+        // the stack and clones leases; no interpreter callbacks can run here.
+        unsafe {
+            let stack = &(*instance).context_stack;
+            let end = stack.iter().rposition(|cell| cell.get() == start);
+            end.map(|end| {
+                stack[..=end]
+                    .iter()
+                    .filter_map(|cell| {
+                        let frame = &*cell.get();
+                        if frame.callflag & ctxt_flags::CTXT_FUNCTION == 0 {
+                            return None;
+                        }
+                        Some(match values {
+                            FrameValues::Calls => frame.call.clone(),
+                            FrameValues::Environments => frame.cloenv.clone(),
+                        })
+                    })
+                    .collect()
+            })
+        }
+        .unwrap_or_else(|| r_error("frame is no longer on the active context stack"))
+    })
+}
+
 /// Check whether any context on the stack has `cloenv == target_env`.
 /// Used by ExitingHandler signal handling to determine if the current
 /// catch_unwind frame is the intended target.

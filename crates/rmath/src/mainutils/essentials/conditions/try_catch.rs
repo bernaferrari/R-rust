@@ -1,7 +1,7 @@
 use super::*;
 
 fn current_framedepth() -> i32 {
-    unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) }
+    crate::sexp::context::current_frame_depth()
 }
 
 /// The native tryCatch evaluator replaces GNU's doTryCatch closure.

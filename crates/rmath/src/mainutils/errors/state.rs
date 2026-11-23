@@ -201,14 +201,11 @@ pub fn take_error_call_less() -> bool {
 /// `explicit = false` via `verrorcall_dflt` so tryCatch can still
 /// fabricate `doTryCatch` when the raise is in the tryCatch frame.
 pub fn record_error_call(call: SEXP, explicit: bool) {
-    let (nframe, stored) = unsafe {
-        let nframe = crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext());
-        let stored = if call.is_null() {
-            crate::sexp::globals::R_NilValue()
-        } else {
-            call
-        };
-        (nframe, stored)
+    let nframe = crate::sexp::context::current_frame_depth();
+    let stored = if call.is_null() {
+        crate::sexp::globals::R_NilValue()
+    } else {
+        call
     };
     let stored = error_value(stored);
     with_error_state(|state| {

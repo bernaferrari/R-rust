@@ -9,13 +9,14 @@ use crate::mainutils::relop::{PRIMVAL, checkArity};
 use crate::sexp::accessors::{CAR, CDR, SET_INTEGER_ELT, SETCAR};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::constructors::{Rf_allocVector, Rf_length};
-use crate::sexp::context::{R_GlobalContext_in, RCNTXT, ctxt_flags};
+use crate::sexp::context::{FrameValues, R_GlobalContext_in, RCNTXT, ctxt_flags, frame_values};
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::globals::R_GlobalEnv_in;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{RInstance, with_required_current_instance};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local error helper
@@ -55,23 +56,26 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
 /// GNU `getLexicalCall(rho)`: call of the first `CTXT_FUNCTION` context
 /// whose `cloenv` is `rho`. Top-level eval has no such frame, so `R_NilValue`.
 pub fn get_lexical_call(rho: SEXP) -> SEXP {
-    unsafe {
-        let mut c = crate::sexp::context::R_GlobalContext();
-        while !c.is_null() {
-            if (*c).callflag == ctxt_flags::CTXT_TOPLEVEL {
-                break;
-            }
-            if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv.as_raw() == rho {
-                return if (*c).call.is_null() {
-                    R_NilValue()
-                } else {
-                    (*c).call.as_raw()
-                };
-            }
-            c = (*c).nextcontext;
+    crate::sexp::instance::with_current_instance(|instance| {
+        // SAFETY: the active instance owns the stack. Only copy an address while
+        // reading its cells; this scan neither allocates R objects nor calls R.
+        unsafe {
+            (*instance)
+                .context_stack
+                .iter()
+                .rev()
+                .map(|cell| &*cell.get())
+                .take_while(|frame| frame.callflag != ctxt_flags::CTXT_TOPLEVEL)
+                .find(|frame| {
+                    frame.callflag & ctxt_flags::CTXT_FUNCTION != 0
+                        && frame.cloenv.as_raw() == rho
+                })
+                .map(|frame| frame.call.as_raw())
         }
-        R_NilValue()
-    }
+    })
+    .flatten()
+    .filter(|call| !call.is_null())
+    .unwrap_or_else(R_NilValue)
 }
 
 // ---------------------------------------------------------------------------
@@ -228,32 +232,6 @@ pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNT
 }
 
 // ---------------------------------------------------------------------------
-// countContexts — count contexts of a given type
-// ---------------------------------------------------------------------------
-
-pub fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
-    with_required_current_instance(|instance| unsafe {
-        countContexts_in(instance, ctxttype, browser)
-    })
-}
-
-pub unsafe fn countContexts_in(instance: *mut RInstance, ctxttype: c_int, browser: c_int) -> c_int {
-    unsafe {
-        let mut n: c_int = 0;
-        let mut c = R_GlobalContext_in(instance);
-        while !c.is_null() {
-            if (*c).callflag == ctxttype
-                || (browser != 0 && (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0)
-            {
-                n += 1;
-            }
-            c = (*c).nextcontext;
-        }
-        n
-    }
-}
-
-// ---------------------------------------------------------------------------
 // R_findExecContext — find context with matching cloenv
 // ---------------------------------------------------------------------------
 
@@ -318,6 +296,34 @@ pub unsafe fn getLexicalContext_in(instance: *mut RInstance, rho: SEXP) -> *mut 
         }
         R_GlobalContext_in(instance)
     }
+}
+
+/// Build the outermost-first pairlist sys.calls()/sys.frames() returns.
+///
+/// Frame values are retained before the list allocation can run GC
+/// callbacks that might pop or clear the stack.
+pub(crate) fn frame_value_list(start: *mut RCNTXT, values: FrameValues) -> SEXP {
+    let duplicate_calls = matches!(values, FrameValues::Calls);
+    let values = frame_values(start, values);
+    let result = crate::sexp::constructors::Rf_allocList(values.len() as c_int);
+    if values.is_empty() {
+        return result;
+    }
+    let _result = protect(result);
+    let mut cell = result;
+    for value in &values {
+        let value = value.as_raw();
+        SETCAR(
+            cell,
+            if duplicate_calls {
+                shallow_duplicate(value)
+            } else {
+                value
+            },
+        );
+        cell = CDR(cell);
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -387,28 +393,8 @@ pub unsafe fn do_sys_in(
                 // sys.nframe
                 crate::sexp::constructors::Rf_ScalarInteger(framedepth(cptr))
             }
-            5 => {
-                // sys.calls
-                let nframe = framedepth(cptr);
-                let rval = crate::sexp::constructors::Rf_allocList(nframe);
-                let mut t = rval;
-                for i in 1..=nframe {
-                    SETCAR(t, R_syscall(i, cptr));
-                    t = CDR(t);
-                }
-                rval
-            }
-            6 => {
-                // sys.frames
-                let nframe = framedepth(cptr);
-                let rval = crate::sexp::constructors::Rf_allocList(nframe);
-                let mut t = rval;
-                for i in 1..=nframe {
-                    SETCAR(t, R_sysframe_in(instance, i, cptr));
-                    t = CDR(t);
-                }
-                rval
-            }
+            5 => frame_value_list(cptr, FrameValues::Calls),
+            6 => frame_value_list(cptr, FrameValues::Environments),
             7 => {
                 // sys.on.exit
                 let conexit = (*cptr).conexit.as_raw();
@@ -423,9 +409,12 @@ pub unsafe fn do_sys_in(
             8 => {
                 // sys.parents
                 let nframe = framedepth(cptr);
+                let parents = (0..nframe)
+                    .map(|i| R_sysparent_in(instance, nframe - i, cptr))
+                    .collect::<Vec<_>>();
                 let rval = Rf_allocVector(SEXPTYPE::INTSXP, nframe);
-                for i in 0..nframe {
-                    SET_INTEGER_ELT(rval, i as i32, R_sysparent_in(instance, nframe - i, cptr));
+                for (i, parent) in parents.into_iter().enumerate() {
+                    SET_INTEGER_ELT(rval, i as c_int, parent);
                 }
                 rval
             }
@@ -443,85 +432,8 @@ pub unsafe fn do_sys_in(
     }
 }
 
-// ---------------------------------------------------------------------------
-// do_parentframe — parent.frame()
-// ---------------------------------------------------------------------------
-
-pub fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    with_required_current_instance(|instance| unsafe {
-        do_parentframe_in(instance, call, op, args, rho)
-    })
-}
-
-pub unsafe fn do_parentframe_in(
-    instance: *mut RInstance,
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let n = asInteger(CAR(args));
-        if n == NA_INTEGER || n < 1 {
-            error("invalid 'n' value");
-        }
-        let top = R_GlobalContext_in(instance);
-        if top.is_null() {
-            return R_GlobalEnv_in(instance);
-        }
-        let cptr = R_findParentContext(top, n);
-        if !cptr.is_null() {
-            (*cptr).sysparent.as_raw()
-        } else {
-            R_GlobalEnv_in(instance)
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// do_sysbrowser — browser context queries
-// ---------------------------------------------------------------------------
-
-pub fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    with_required_current_instance(|instance| unsafe {
-        do_sysbrowser_in(instance, call, op, args, rho)
-    })
-}
-
 pub fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     R_NilValue()
-}
-
-pub unsafe fn do_sysbrowser_in(
-    instance: *mut RInstance,
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let n = asInteger(CAR(args));
-        if n < 1 {
-            error("number of contexts must be positive");
-        }
-
-        let mut cptr = R_GlobalContext_in(instance);
-        while !cptr.is_null() {
-            if (*cptr).callflag == ctxt_flags::CTXT_BROWSER {
-                break;
-            }
-            cptr = (*cptr).nextcontext;
-        }
-
-        if cptr.is_null() || (*cptr).callflag != ctxt_flags::CTXT_BROWSER {
-            error("no browser context to query");
-        }
-
-        // Simplified: return nil for browser queries in embedded mode
-        R_NilValue()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -765,27 +677,6 @@ pub fn R_jump_to_top() {
 /// defaults remain incomplete versus GNU `R_InsertRestartHandlers`.
 pub fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
 
-// ---------------------------------------------------------------------------
-// R_GetCurrentEnv — get cloenv of current function context
-// ---------------------------------------------------------------------------
-
-pub fn R_GetCurrentEnv() -> SEXP {
-    with_required_current_instance(|instance| unsafe { R_GetCurrentEnv_in(instance) })
-}
-
-pub unsafe fn R_GetCurrentEnv_in(instance: *mut RInstance) -> SEXP {
-    unsafe {
-        let mut c = R_GlobalContext_in(instance);
-        while !c.is_null() {
-            if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
-                return (*c).cloenv.as_raw();
-            }
-            c = (*c).nextcontext;
-        }
-        R_GlobalEnv_in(instance)
-    }
-}
-
 unsafe fn context_or_top_in(instance: *mut RInstance, cptr: *mut RCNTXT) -> *mut RCNTXT {
     if cptr.is_null() {
         unsafe { R_GlobalContext_in(instance) }
@@ -798,6 +689,52 @@ unsafe fn context_or_top_in(instance: *mut RInstance, cptr: *mut RCNTXT) -> *mut
 mod owned_transfer_tests {
     use super::*;
     use crate::sexp::{context::RSignal, session::RSession, transfer::OwnedTransfer};
+
+    #[test]
+    fn frame_value_list_survives_stack_removal_during_allocation() {
+        use std::{cell::Cell, rc::Rc};
+        use crate::sexp::{constructors::Rf_lang2, context::Rf_begincontext_in, symbol::install_str};
+
+        for values in [FrameValues::Calls, FrameValues::Environments] {
+            let calls = matches!(values, FrameValues::Calls);
+            let session = RSession::new_for_gc_tests();
+            session.with_active_in(|instance| unsafe {
+                let nil = R_NilValue();
+                let global = crate::sexp::globals::R_GlobalEnv();
+                let mut top = ptr::null_mut();
+                let mut expected = Vec::new();
+                for name in ["outer", "inner"] {
+                    let symbol = install_str(name);
+                    let call = Rf_lang2(symbol, symbol);
+                    let root = protect(call);
+                    let env = crate::sexp::memory_ext::NewEnvironment(nil, global, nil);
+                    top = Rf_begincontext_in(instance, ctxt_flags::CTXT_FUNCTION, call, env, global, None, nil, nil);
+                    expected.push(if calls { symbol } else { env });
+                    drop(root);
+                }
+                let notified = Rc::new(Cell::new(false));
+                let observed = notified.clone();
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    if !observed.replace(true) {
+                        (*instance).context_stack.clear();
+                        crate::sexp::gengc::full_gc_in(instance);
+                    }
+                }));
+                (*instance).memory_state.gc_force_gap = 1;
+                (*instance).memory_state.gc_force_wait = 1;
+                let result = frame_value_list(top, values);
+                assert!(notified.get());
+                assert_eq!(crate::sexp::context::current_frame_depth(), 0);
+                let observed = [CAR(result), CAR(CDR(result))];
+                if calls {
+                    assert_eq!(observed.map(CAR).as_slice(), expected);
+                } else {
+                    assert_eq!(observed.as_slice(), expected);
+                }
+                assert_eq!(CDR(CDR(result)), nil);
+            });
+        }
+    }
 
     #[test]
     fn owned_jump_transfer_retains_value_and_target_through_collecting_cleanup() {
