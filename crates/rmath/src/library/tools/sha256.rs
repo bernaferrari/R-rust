@@ -13,8 +13,8 @@
  *  (at your option) any later version.
  */
 
-use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
-use core::ffi::{c_int, c_void};
+use core::ffi::c_void;
+use std::io::{self, Read};
 
 const BUF_SIZE: usize = 4096;
 
@@ -316,99 +316,44 @@ pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *m
     resbuf as *mut [u8; 32] as *mut c_void
 }
 
-/// Compute SHA256 message digest for bytes read from STREAM.
-/// Returns 0 on success, 1 on error.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn Rsha256_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
+/// Compute SHA-256 message digest of the contents read from `reader`.
+/// Digest words are written in big-endian byte order.
+pub fn Rsha256_stream(mut reader: impl Read) -> io::Result<[u8; 32]> {
     let mut ctx = Sha256Ctx {
         H: [0; 8],
         total: [0; 2],
         buflen: 0,
-        buffer: [0u8; 128],
+        buffer: [0; 128],
     };
-    let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
-    let mut sum: usize = 0;
-
     sha256_init_ctx(&mut ctx);
-
+    let mut buf = [0; BUF_SIZE];
     loop {
-        let mut n: usize = 0;
-        // Read next block
-        while sum < BUF_SIZE {
-            n = unsafe {
-                r_fread(
-                    buffer[sum..].as_mut_ptr() as *mut c_void,
-                    1,
-                    BUF_SIZE - sum,
-                    stream,
-                )
-            };
-            if n == 0 {
-                break;
-            }
-            sum += n;
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => sha256_process_bytes(&buf[..n], &mut ctx),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
         }
-
-        if n == 0 {
-            if unsafe { r_ferror(stream) } != 0 {
-                return 1;
-            }
-            if sum < BUF_SIZE {
-                break;
-            }
-        }
-
-        // Full block
-        sha256_process_block(&buffer[..BUF_SIZE], &mut ctx);
-        sum = 0;
     }
-
-    // Add any remaining bytes
-    if sum > 0 {
-        sha256_process_bytes(&buffer[..sum], &mut ctx);
-    }
-
-    let resbuf = unsafe { &mut *(resblock as *mut [u8; 32]) };
-    sha256_finish_ctx(&mut ctx, resbuf);
-    0
+    let mut digest = [0; 32];
+    sha256_finish_ctx(&mut ctx, &mut digest);
+    Ok(digest)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mainutils::rfile::r_fopen;
 
-    /// Rsha256_stream over an RFile must produce the FIPS 180-2 digest of
-    /// "abc" (guards the libc-free read path feeding the hash).
+    /// Rsha256_stream over a byte slice must produce the FIPS 180-2 digest of "abc"
+    /// (guards the buffered read path feeding the hash).
     #[test]
-    fn sha256_stream_golden_digest_over_rfile() {
-        let path = std::env::temp_dir().join(format!(
-            "rport-sha256-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::write(&path, b"abc").unwrap();
-        let cpath = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        unsafe {
-            let f = r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const core::ffi::c_char);
-            assert!(!f.is_null());
-            let mut digest = [0u8; 32];
-            assert_eq!(Rsha256_stream(f, digest.as_mut_ptr() as *mut c_void), 0);
-            crate::mainutils::rfile::r_fclose(f);
-            assert_eq!(
-                digest
-                    .iter()
-                    .fold(String::new(), |acc, b| acc + &format!("{b:02x}")),
-                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-            );
-        }
-        let _ = std::fs::remove_file(&path);
+    fn sha256_stream_golden_digest() {
+        let digest = Rsha256_stream(&b"abc"[..]).unwrap();
+        assert_eq!(
+            digest
+                .iter()
+                .fold(String::new(), |acc, b| acc + &format!("{b:02x}")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }

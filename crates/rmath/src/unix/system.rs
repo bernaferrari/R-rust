@@ -94,9 +94,6 @@ pub(crate) struct UnixSystemRuntimeState {
     history_file: CString,
     history_size: c_int,
     restore_history: c_int,
-    input_file: *mut crate::mainutils::rfile::RFile,
-    output_file: *mut crate::mainutils::rfile::RFile,
-    console_file: *mut crate::mainutils::rfile::RFile,
     gui_type: Option<CString>,
     cstack_dir: c_int,
     cstack_limit: usize,
@@ -116,9 +113,6 @@ impl Default for UnixSystemRuntimeState {
             history_file: CString::new(".Rhistory").unwrap(),
             history_size: 512,
             restore_history: 1,
-            input_file: ptr::null_mut(),
-            output_file: ptr::null_mut(),
-            console_file: ptr::null_mut(),
             gui_type: None,
             cstack_dir: -1,
             cstack_limit: 0,
@@ -563,9 +557,6 @@ fn R_isatty(_fd: c_int) -> c_int {
 fn R_isWriteableDir(_path: *const c_char) -> c_int {
     0
 }
-fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut crate::mainutils::rfile::RFile {
-    ptr::null_mut()
-}
 fn R_setStartTime() {}
 fn fpu_setup(_start: c_int) {}
 
@@ -710,11 +701,6 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
         } else {
             with_system_state(|state| state.interactive = 0);
         }
-
-        with_system_state(|state| {
-            state.output_file = ptr::null_mut();
-            state.console_file = ptr::null_mut();
-        });
 
         // --- Save action check ---
         if with_system_state(|state| state.interactive) == 0

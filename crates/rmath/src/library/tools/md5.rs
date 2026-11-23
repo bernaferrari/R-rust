@@ -11,8 +11,8 @@
    later version.
 */
 
-use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
-use core::ffi::{c_int, c_void};
+use core::ffi::c_void;
+use std::io::{self, Read};
 
 type md5_uint32 = u32;
 
@@ -289,16 +289,9 @@ fn md5_process_bytes(mut buffer: &[u8], ctx: &mut Md5Ctx) {
     }
 }
 
-/// Compute MD5 message digest for bytes read from STREAM.
-/// The resulting message digest will be written into the 16 bytes beginning at RESBLOCK.
-/// Returns 0 on success, 1 on error.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn md5_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
+/// Compute MD5 message digest of the contents read from `reader`.
+/// The result is always in little endian byte order.
+pub fn md5_stream(mut reader: impl Read) -> io::Result<[u8; 16]> {
     let mut ctx = Md5Ctx {
         A: 0,
         B: 0,
@@ -306,56 +299,21 @@ pub unsafe fn md5_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
         D: 0,
         total: [0; 2],
         buflen: 0,
-        buffer: [0u8; 128],
+        buffer: [0; 128],
     };
-    // buffer: BLOCKSIZE + 72
-    let mut buffer: [u8; BLOCKSIZE + 72] = [0; BLOCKSIZE + 72];
-
     md5_init_ctx(&mut ctx);
-
-    let mut sum: usize = 0;
+    let mut buf = [0; BLOCKSIZE];
     loop {
-        sum = 0;
-        let mut n: usize = 0;
-
-        // Read block. Take care for partial reads.
-        loop {
-            n = unsafe {
-                r_fread(
-                    buffer[sum..].as_mut_ptr() as *mut c_void,
-                    1,
-                    BLOCKSIZE - sum,
-                    stream,
-                )
-            };
-            sum += n;
-            if !(sum < BLOCKSIZE && n != 0) {
-                break;
-            }
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => md5_process_bytes(&buf[..n], &mut ctx),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
         }
-
-        if n == 0 && unsafe { r_ferror(stream) } != 0 {
-            return 1;
-        }
-
-        // If end of file is reached, end the loop
-        if n == 0 {
-            break;
-        }
-
-        // Process buffer with BLOCKSIZE bytes
-        md5_process_block(&buffer[..BLOCKSIZE], &mut ctx);
     }
-
-    // Add the last bytes if necessary
-    if sum > 0 {
-        md5_process_bytes(&buffer[..sum], &mut ctx);
-    }
-
-    // Construct result in desired memory
-    let resbuf = unsafe { &mut *(resblock as *mut [u8; 16]) };
-    md5_finish_ctx(&mut ctx, resbuf);
-    0
+    let mut digest = [0; 16];
+    md5_finish_ctx(&mut ctx, &mut digest);
+    Ok(digest)
 }
 
 /// Compute MD5 message digest for LEN bytes beginning at BUFFER.
@@ -397,34 +355,17 @@ pub unsafe fn md5_buffer(buffer: *const u8, len: usize, resblock: *mut c_void) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mainutils::rfile::r_fopen;
 
-    /// md5_stream over an RFile must produce the RFC 1321 digest of "abc"
-    /// (guards the libc-free read path feeding the hash).
+    /// md5_stream over a byte slice must produce the RFC 1321 digest of "abc"
+    /// (guards the buffered read path feeding the hash).
     #[test]
-    fn md5_stream_golden_digest_over_rfile() {
-        let path = std::env::temp_dir().join(format!(
-            "rport-md5-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::write(&path, b"abc").unwrap();
-        let cpath = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        unsafe {
-            let f = r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const core::ffi::c_char);
-            assert!(!f.is_null());
-            let mut digest = [0u8; 16];
-            assert_eq!(md5_stream(f, digest.as_mut_ptr() as *mut c_void), 0);
-            crate::mainutils::rfile::r_fclose(f);
-            assert_eq!(
-                digest
-                    .iter()
-                    .fold(String::new(), |acc, b| acc + &format!("{b:02x}")),
-                "900150983cd24fb0d6963f7d28e17f72"
-            );
-        }
-        let _ = std::fs::remove_file(&path);
+    fn md5_stream_golden_digest() {
+        let digest = md5_stream(&b"abc"[..]).unwrap();
+        assert_eq!(
+            digest
+                .iter()
+                .fold(String::new(), |acc, b| acc + &format!("{b:02x}")),
+            "900150983cd24fb0d6963f7d28e17f72"
+        );
     }
 }

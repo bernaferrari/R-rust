@@ -8,14 +8,12 @@
 //! - do_machine: returns "Unix" platform name
 //! - do_sysinfo: system information (uname, login, user)
 //! - fpu_setup: FPU initialization
-//! - R_OpenInitFile: open R initialization file (.Rprofile)
 
 use std::env;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::mainutils::rfile::{RFile, r_fopen};
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
@@ -476,58 +474,6 @@ pub fn fpu_setup(start: c_int) {
         {
             // fpsetmask(~0) -- enable all FP exceptions
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_OpenInitFile
-// ---------------------------------------------------------------------------
-
-/// Open the R initialization file (.Rprofile).
-/// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
-pub fn R_OpenInitFile() -> *mut RFile {
-    // SAFETY: instance-field reads and C-string paths stay in this block.
-    unsafe {
-        let load_init_file = with_required_current_instance(|instance| {
-            (*instance).startup_state.load_init_file != 0
-        });
-        if !load_init_file {
-            return ptr::null_mut();
-        }
-
-        // Check R_PROFILE_USER
-        if let Ok(profile) = env::var("R_PROFILE_USER") {
-            if profile.is_empty() {
-                return ptr::null_mut();
-            }
-            let expanded = R_ExpandFileName(CString::new(profile).unwrap_or_default().as_ptr());
-            let path = CStr::from_ptr(expanded);
-            let mode = b"r\0".as_ptr() as *const c_char;
-            let fp = r_fopen(path.as_ptr(), mode);
-            if !fp.is_null() {
-                return fp;
-            }
-            return ptr::null_mut();
-        }
-
-        // Try ./.Rprofile
-        let dot_path = b".Rprofile\0".as_ptr() as *const c_char;
-        let mode = b"r\0".as_ptr() as *const c_char;
-        let fp = r_fopen(dot_path, mode);
-        if !fp.is_null() {
-            return fp;
-        }
-
-        // Try ~/.Rprofile
-        if let Ok(home) = env::var("HOME") {
-            let full_path = format!("{}/.Rprofile\0", home);
-            let fp = r_fopen(full_path.as_ptr() as *const c_char, mode);
-            if !fp.is_null() {
-                return fp;
-            }
-        }
-
-        ptr::null_mut()
     }
 }
 

@@ -3,13 +3,14 @@
 // Unix implementation with real file:// download and raw socket HTTP GET.
 // Windows-specific functions (wininet) remain as stubs.
 
-use crate::mainutils::rfile::{r_fclose, r_fopen, r_fread, r_fwrite};
+use crate::mainutils::rfile::open_file;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use std::ffi::{CStr, CString};
-use std::io::{Read, Write as IoWrite};
+use std::io::{ErrorKind, Read, Write as IoWrite};
 use std::net::TcpStream;
 #[cfg(not(target_arch = "wasm32"))]
 use std::os::unix::io::IntoRawFd;
+use std::path::Path;
 use std::ptr;
 
 use crate::main::errors::{Rf_error, Rf_error_cstr};
@@ -490,77 +491,35 @@ fn parse_content_type(headers: &str) -> Option<String> {
 // file:// download implementation
 // =========================================================================
 
-/// file_download - copy a file:// URL to a local file.
-/// This is the Unix implementation of the file:// branch in in_do_download.
-///
-/// Returns 0 on success, 1 on failure.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -> c_int {
-    unsafe {
-        let url_str = cstr_to_str(url);
-        let file_str = cstr_to_str(file);
-        let mode_str = cstr_to_str(mode);
+fn download_error(message: String) -> ! {
+    let message = CString::new(message).unwrap_or_default();
+    Rf_error_cstr(&message);
+    unreachable!("Rf_error_cstr always unwinds")
+}
 
-        // Skip "file://" prefix
-        let path = url_str.strip_prefix("file://").unwrap_or(url_str);
-
-        // Determine if binary mode
-        let binary = mode_str.len() >= 2 && mode_str.ends_with('b');
-        let read_mode: *const c_char = if binary {
-            b"rb\0".as_ptr() as *const c_char
-        } else {
-            b"r\0".as_ptr() as *const c_char
-        };
-
-        // Open source file
-        let src_path = CString::new(path).unwrap_or_default();
-        let src_file = r_fopen(src_path.as_ptr(), read_mode);
-        if src_file.is_null() {
-            let errno_val = std::io::Error::last_os_error();
-            let msg = format!("cannot open URL '{}', reason '{}'", url_str, errno_val);
-            let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error_cstr(&c_msg);
-        }
-
-        // Open dest file
-        let dst_path = CString::new(file_str).unwrap_or_default();
-        let dst_file = r_fopen(dst_path.as_ptr(), mode);
-        if dst_file.is_null() {
-            r_fclose(src_file);
-            let errno_val = std::io::Error::last_os_error();
-            let msg = format!(
-                "cannot open destfile '{}', reason '{}'",
-                file_str, errno_val
-            );
-            let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error_cstr(&c_msg);
-        }
-
-        // Copy data
-        let mut buf = vec![0u8; CPBUFSIZE];
-        loop {
-            let nread = r_fread(buf.as_mut_ptr() as *mut c_void, 1, CPBUFSIZE, src_file);
-            if nread == 0 {
-                break;
+fn file_download(url: &str, file: &str, mode: &[u8]) -> c_int {
+    let path = url.strip_prefix("file://").unwrap_or(url);
+    // All file streams are byte mode in this port.
+    let mut src = open_file(Path::new(path), b"r").unwrap_or_else(|error| {
+        download_error(format!("cannot open URL '{}', reason '{}'", url, error))
+    });
+    let mut dst = open_file(Path::new(file), mode).unwrap_or_else(|error| {
+        download_error(format!("cannot open destfile '{}', reason '{}'", file, error))
+    });
+    let mut buf = vec![0; CPBUFSIZE];
+    loop {
+        match src.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                if dst.write_all(&buf[..n]).is_err() {
+                    download_error("write failed".to_owned());
+                }
             }
-            let nwritten = r_fwrite(buf.as_ptr() as *const c_void, 1, nread, dst_file);
-            if nwritten != nread {
-                r_fclose(dst_file);
-                r_fclose(src_file);
-                let msg = c"write failed";
-                Rf_error_cstr(&msg);
-            }
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => break, // preserve legacy read failure behavior
         }
-
-        r_fclose(dst_file);
-        r_fclose(src_file);
-        0
     }
+    0
 }
 
 // =========================================================================
@@ -590,17 +549,17 @@ unsafe fn http_download(
         let mode_str = cstr_to_str(mode);
 
         // Open dest file
-        let dst_path = CString::new(file_str).unwrap_or_default();
-        let dst_file = r_fopen(dst_path.as_ptr(), mode);
-        if dst_file.is_null() {
-            let errno_val = std::io::Error::last_os_error();
-            let msg = format!(
+        let mode_bytes = if mode.is_null() {
+            &[][..]
+        } else {
+            CStr::from_ptr(mode).to_bytes()
+        };
+        let mut dst_file = open_file(Path::new(file_str), mode_bytes).unwrap_or_else(|error| {
+            download_error(format!(
                 "cannot open destfile '{}', reason '{}'",
-                file_str, errno_val
-            );
-            let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error_cstr(&c_msg);
-        }
+                file_str, error
+            ))
+        });
 
         // Report URL being tried
         if quiet == 0 {
@@ -630,14 +589,12 @@ unsafe fn http_download(
         // Open HTTP connection
         let ctxt = http_open(url, ptr::null(), headers_ptr, 1);
         if ctxt.is_null() {
-            r_fclose(dst_file);
+            drop(dst_file);
             // Check if mode contains 'w' to clean up partial file
             if mode_str.contains('w') {
                 let _ = std::fs::remove_file(file_str);
             }
-            let msg = format!("cannot open URL '{}'", url_str);
-            let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error_cstr(&c_msg);
+            download_error(format!("cannot open URL '{}'", url_str));
         }
 
         // Get content length from context
@@ -657,12 +614,9 @@ unsafe fn http_download(
                 break;
             }
 
-            let nwritten = r_fwrite(buf.as_ptr() as *const c_void, 1, nread as usize, dst_file);
-            if nwritten as isize != nread {
+            if dst_file.write_all(&buf[..nread as usize]).is_err() {
                 http_close(ctxt);
-                r_fclose(dst_file);
-                let msg = c"write failed";
-                Rf_error_cstr(&msg);
+                download_error("write failed".to_owned());
             }
 
             nbytes += nread as DLsize_t;
@@ -695,7 +649,7 @@ unsafe fn http_download(
             }
         }
 
-        r_fclose(dst_file);
+        drop(dst_file);
 
         // Warn if downloaded length doesn't match reported length
         if total > 0 && total != nbytes {
@@ -793,7 +747,12 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
 
         if file_url {
             // ---- file:// download ----
-            status = file_download(url, file, mode);
+            let mode_bytes = if mode.is_null() {
+                &[][..]
+            } else {
+                CStr::from_ptr(mode).to_bytes()
+            };
+            status = file_download(url_rust, cstr_to_str(file), mode_bytes);
         } else if url_rust.starts_with("http://") {
             // ---- http:// download via raw sockets ----
             // R 4.2+ made the "internal" method defunct for HTTP, but since we
@@ -860,5 +819,42 @@ mod tests {
         assert_eq!(internet_quiet(), 0);
 
         clear_current_instance();
+    }
+
+    #[test]
+    fn file_download_copies_binary_bytes_and_appends() {
+        let dir = std::env::temp_dir().join(format!(
+            "rport-file-download-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.bin");
+        let dest = dir.join("dest.bin");
+        // CPBUFSIZE + 3 exercises the chunked copy; embedded NULs and
+        // non-UTF8 bytes keep this off any text path.
+        let data: Vec<u8> = (0..CPBUFSIZE + 3).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&source, &data).unwrap();
+
+        file_download(
+            &format!("file://{}", source.display()),
+            dest.to_str().unwrap(),
+            b"wb",
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), data);
+
+        file_download(
+            &format!("file://{}", source.display()),
+            dest.to_str().unwrap(),
+            b"ab",
+        );
+        let mut expected = data.clone();
+        expected.extend_from_slice(&data);
+        assert_eq!(std::fs::read(&dest).unwrap(), expected);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

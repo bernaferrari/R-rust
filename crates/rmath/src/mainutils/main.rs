@@ -7,10 +7,11 @@
 //! but top-level task callbacks are tracked per session.
 
 use std::ffi::CString;
+use std::fs::File;
 use std::os::raw::c_int;
 
 use crate::eval::eval::Rf_eval;
-use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
+use crate::mainutils::gram_ex::read_r_source;
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
@@ -191,53 +192,21 @@ fn main_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn read_c_file_to_string(fp: *mut RFile) -> Result<String, String> {
-    unsafe {
-        if fp.is_null() {
-            return Err("file pointer is NULL".to_string());
-        }
-        let mut bytes = Vec::new();
-        let mut buffer = [0u8; 8192];
-        loop {
-            let read = r_fread(buffer.as_mut_ptr().cast(), 1, buffer.len(), fp);
-            if read > 0 {
-                bytes.extend_from_slice(&buffer[..read]);
-            }
-            if read < buffer.len() {
-                if r_ferror(fp) != 0 {
-                    return Err("failed reading R source file".to_string());
-                }
-                break;
-            }
-        }
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
-    }
-}
-
-unsafe fn parse_source_to_exprs(source: &str, n: c_int, status: *mut c_int) -> SEXP {
-    unsafe {
-        let source = CString::new(source).unwrap_or_default();
-        let text = crate::sexp::constructors::mk_string_bytes(source.to_bytes());
-        let _text_guard = protect(text);
-        let mut parse_status = PARSE_NULL;
-        let status_ptr: *mut c_int = if status.is_null() {
-            &mut parse_status as *mut c_int
-        } else {
-            status
-        };
-        let exprs = crate::mainutils::gram_main::R_ParseVector(text, n, status_ptr, R_NilValue());
-        if !status.is_null() {
-            let gram_status = *status;
-            *status = match gram_status {
-                crate::mainutils::gram_main::PARSE_OK => PARSE_OK,
-                crate::mainutils::gram_main::PARSE_INCOMPLETE => PARSE_INCOMPLETE,
-                crate::mainutils::gram_main::PARSE_EOF => PARSE_EOF,
-                crate::mainutils::gram_main::PARSE_ERROR => PARSE_ERROR,
-                _ => PARSE_ERROR,
-            };
-        }
-        exprs
-    }
+fn parse_source_to_exprs(source: &str, n: c_int) -> (SEXP, c_int) {
+    let source = CString::new(source).unwrap_or_default();
+    let text = crate::sexp::constructors::mk_string_bytes(source.to_bytes());
+    let _text_guard = protect(text);
+    let mut status = PARSE_NULL;
+    // SAFETY: status is a writable local; the input is rooted through the call.
+    let exprs =
+        unsafe { crate::mainutils::gram_main::R_ParseVector(text, n, &mut status, R_NilValue()) };
+    let status = match status {
+        crate::mainutils::gram_main::PARSE_OK => PARSE_OK,
+        crate::mainutils::gram_main::PARSE_INCOMPLETE => PARSE_INCOMPLETE,
+        crate::mainutils::gram_main::PARSE_EOF => PARSE_EOF,
+        _ => PARSE_ERROR,
+    };
+    (exprs, status)
 }
 
 // ---------------------------------------------------------------------------
@@ -247,28 +216,26 @@ unsafe fn parse_source_to_exprs(source: &str, n: c_int, status: *mut c_int) -> S
 /// Run the REPL reading from a file.
 ///
 /// This is the equivalent of R's `R_ReplFile()` from main.c.
-pub unsafe fn R_ReplFile(fp: *mut RFile, rho: SEXP) {
-    unsafe {
-        let source = read_c_file_to_string(fp).unwrap_or_else(|message| main_error(message));
-        if source.trim().is_empty() {
-            return;
-        }
-        let mut status = PARSE_NULL;
-        let exprs = parse_source_to_exprs(&source, -1, &mut status);
-        let _exprs_guard = protect(exprs);
-        if status != PARSE_OK {
-            main_error("parse error while reading R source file");
-        }
-        let env = if rho.is_null() || rho == R_NilValue() {
-            with_required_current_instance(|inst| (*inst).global_env)
-        } else {
-            rho
-        };
-        for i in 0..XLENGTH(exprs) {
-            let expr = VECTOR_ELT(exprs, i);
-            let value = Rf_eval(expr, env);
-            Rf_callToplevelHandlers(expr, value, TRUE, R_GetVisible());
-        }
+pub fn R_ReplFile(file: &mut File, rho: SEXP) {
+    let source = read_r_source(file).unwrap_or_else(|message| main_error(message));
+    if source.trim().is_empty() {
+        return;
+    }
+    let (exprs, status) = parse_source_to_exprs(&source, -1);
+    let _exprs_guard = protect(exprs);
+    if status != PARSE_OK {
+        main_error("parse error while reading R source file");
+    }
+    let env = if rho.is_null() || rho == R_NilValue() {
+        crate::sexp::globals::R_GlobalEnv()
+    } else {
+        rho
+    };
+    for i in 0..XLENGTH(exprs) {
+        let expr = VECTOR_ELT(exprs, i);
+        let value = Rf_eval(expr, env);
+        // SAFETY: the checked handler receives expr and value from this evaluation.
+        unsafe { Rf_callToplevelHandlers(expr, value, TRUE, R_GetVisible()) };
     }
 }
 
@@ -315,34 +282,25 @@ pub fn Rf_mainloop() {
 // R_Parse1File — parse one expression from file
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_Parse1File(fp: *mut RFile, _prompt: c_int, status: *mut c_int) -> SEXP {
-    unsafe {
-        let source = match read_c_file_to_string(fp) {
-            Ok(source) => source,
-            Err(message) => {
-                if !status.is_null() {
-                    *status = PARSE_ERROR;
-                }
-                main_error(message);
-            }
-        };
-        if source.trim().is_empty() {
-            if !status.is_null() {
-                *status = PARSE_EOF;
-            }
-            return R_NilValue();
+pub fn R_Parse1File(file: &mut File, _prompt: c_int, status: &mut c_int) -> SEXP {
+    let source = match read_r_source(file) {
+        Ok(source) => source,
+        Err(message) => {
+            *status = PARSE_ERROR;
+            main_error(message);
         }
-        let mut parse_status = PARSE_NULL;
-        let exprs = parse_source_to_exprs(&source, 1, &mut parse_status);
-        let _exprs_guard = protect(exprs);
-        if !status.is_null() {
-            *status = parse_status;
-        }
-        if parse_status != PARSE_OK || exprs.is_null() || XLENGTH(exprs) == 0 {
-            return R_NilValue();
-        }
-        VECTOR_ELT(exprs, 0)
+    };
+    if source.trim().is_empty() {
+        *status = PARSE_EOF;
+        return R_NilValue();
     }
+    let (exprs, parse_status) = parse_source_to_exprs(&source, 1);
+    let _exprs_guard = protect(exprs);
+    *status = parse_status;
+    if parse_status != PARSE_OK || exprs.is_null() || XLENGTH(exprs) == 0 {
+        return R_NilValue();
+    }
+    VECTOR_ELT(exprs, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -772,7 +730,6 @@ mod tests {
     use crate::sexp::accessors::TYPEOF;
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons};
 
-    use crate::mainutils::rfile::{r_fclose, r_fopen};
     use std::path::PathBuf;
 
     use crate::sexp::session::RSession;
@@ -788,7 +745,7 @@ mod tests {
             .clone()
     }
 
-    fn open_c_source(contents: &str) -> (PathBuf, *mut RFile) {
+    fn open_c_source(contents: &str) -> (PathBuf, File) {
         let path = std::env::temp_dir().join(format!(
             "rport-main-test-{}-{}.R",
             std::process::id(),
@@ -798,16 +755,12 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::write(&path, contents).expect("write test source");
-        let c_path = CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        let fp = unsafe { r_fopen(c_path.as_ptr(), c"r".as_ptr()) };
-        assert!(!fp.is_null(), "failed to open source file");
-        (path, fp)
+        let file = File::open(&path).expect("open test source");
+        (path, file)
     }
 
-    unsafe fn close_c_source(path: PathBuf, fp: *mut RFile) {
-        unsafe {
-            r_fclose(fp);
-        }
+    fn close_c_source(path: PathBuf, file: File) {
+        drop(file);
         let _ = std::fs::remove_file(path);
     }
 
@@ -827,33 +780,28 @@ mod tests {
     #[test]
     fn test_parse_one_file_reads_and_parses_expression() {
         let _session = RSession::new();
-        let (path, fp) = open_c_source("1 + 2\n");
-        unsafe {
-            let mut status = -1;
-            let expr = R_Parse1File(fp, 0, &mut status);
-            assert_eq!(status, PARSE_OK);
-            assert!(!expr.is_null());
-            assert_ne!(expr, R_NilValue());
-            let value = Rf_eval(expr, crate::sexp::globals::R_GlobalEnv());
-            assert_eq!(TYPEOF(value), SEXPTYPE::REALSXP);
-            assert_eq!(*crate::sexp::accessors::REAL(value), 3.0);
-            close_c_source(path, fp);
-        }
+        let (path, mut file) = open_c_source("1 + 2\n");
+        let mut status = -1;
+        let expr = R_Parse1File(&mut file, 0, &mut status);
+        assert_eq!(status, PARSE_OK);
+        assert!(!expr.is_null());
+        assert_ne!(expr, R_NilValue());
+        let value = Rf_eval(expr, crate::sexp::globals::R_GlobalEnv());
+        assert_eq!(TYPEOF(value), SEXPTYPE::REALSXP);
+        assert_eq!(crate::sexp::accessors::REAL_ELT(value, 0), 3.0);
+        close_c_source(path, file);
     }
 
     #[test]
     fn test_repl_file_evaluates_source_in_environment() {
         let _session = RSession::new();
-        let (path, fp) = open_c_source("repl_file_value <- 41\n");
-        unsafe {
-            R_ReplFile(fp, crate::sexp::globals::R_GlobalEnv());
-            let sym = crate::sexp::symbol::install_str("repl_file_value");
-            let value =
-                crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym);
-            assert_eq!(TYPEOF(value), SEXPTYPE::REALSXP);
-            assert_eq!(*crate::sexp::accessors::REAL(value), 41.0);
-            close_c_source(path, fp);
-        }
+        let (path, mut file) = open_c_source("repl_file_value <- 41\n");
+        R_ReplFile(&mut file, crate::sexp::globals::R_GlobalEnv());
+        let sym = crate::sexp::symbol::install_str("repl_file_value");
+        let value = crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym);
+        assert_eq!(TYPEOF(value), SEXPTYPE::REALSXP);
+        assert_eq!(crate::sexp::accessors::REAL_ELT(value, 0), 41.0);
+        close_c_source(path, file);
     }
 
     #[test]

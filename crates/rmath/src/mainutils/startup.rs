@@ -1,25 +1,10 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! Portable translation of r-source/src/main/startup.c
-//! This module provides a Rust-idiomatic surface that mirrors a subset of
-//! R's startup initialisation helpers. The implementation here focuses on
-//! providing concrete, fully-implemented logic that is self-contained and
-//! does not depend on optional unwraps or panics driven by external input.
-//!
-//! The functions implemented below deliberately rely on existing helpers in
-//! this repository where possible (e.g. R_HomeDir() for locating the R
-//! home directory) and avoid any fallbacks that would require unwrap/expect.
-//!
-//! Note: this module is intended to be imported via `pub mod startup;` from
-//! the crate's mainutils module.
+//! Session-local workspace and startup settings from r-source/src/main/startup.c.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
 
-use crate::mainutils::rfile::{RFile, r_fopen};
-
-use crate::mainutils::sysutils::R_HomeDir;
 use crate::sexp::instance::with_current_instance;
 
 // ---------------------------------------------------------------------------
@@ -129,76 +114,6 @@ pub fn R_SaveGlobalEnv() {
     // Intentionally left as a no-op for this port.
 }
 
-// ---------------------------------------------------------------------------
-// File access helpers mirroring the C API
-// ---------------------------------------------------------------------------
-
-// Open a library file from the standard R library path.
-// Builds the path: <R_HOME>/library/base/R/<file> and opens it for reading.
-pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut RFile {
-    unsafe {
-        if file.is_null() {
-            return ptr::null_mut();
-        }
-        let file_str = match CStr::from_ptr(file).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
-
-        if let Some(home) = R_HomeDir() {
-            let path = format!("{}/library/base/R/{}", home, file_str);
-            if let Ok(cpath) = CString::new(path) {
-                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-            }
-        }
-        ptr::null_mut()
-    }
-}
-
-// Write a fully-qualified library file path into the provided buffer.
-pub unsafe fn R_LibraryFileName(
-    file: *const c_char,
-    buf: *mut c_char,
-    bsize: usize,
-) -> *mut c_char {
-    unsafe {
-        if file.is_null() || buf.is_null() {
-            return ptr::null_mut();
-        }
-        let file_str = match CStr::from_ptr(file).to_str() {
-            Ok(s) => s,
-            Err(_) => return buf,
-        };
-        let home = match R_HomeDir() {
-            Some(h) => h,
-            None => return buf,
-        };
-        let path = format!("{}/library/base/R/{}", home, file_str);
-        let bytes = path.as_bytes();
-        let max = if bytes.len() < bsize {
-            bytes.len()
-        } else {
-            bsize.saturating_sub(1)
-        };
-        ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, max);
-        *buf.add(max) = 0;
-        buf
-    }
-}
-
-// Open the R profile init file (Rprofile) in the system.
-pub unsafe fn R_OpenSysInitFile() -> *mut RFile {
-    unsafe {
-        if let Some(home) = R_HomeDir() {
-            let path = format!("{}/library/base/R/Rprofile", home);
-            if let Ok(cpath) = CString::new(path) {
-                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-            }
-        }
-        ptr::null_mut()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::ffi::CStr;
@@ -235,36 +150,6 @@ mod tests {
             assert_eq!(current_workspace_name(), "first.RData");
             clear_current_instance();
         }
-    }
-}
-
-// Open the site init file (Rprofile.site) if enabled.
-pub unsafe fn R_OpenSiteFile() -> *mut RFile {
-    unsafe {
-        // Simple, straightforward implementation mirroring the C logic but without
-        // complex expansion/ARCH handling.
-        // Check environment variable first, then fall back to R_HOME/etc.
-        let load_site =
-            with_current_instance(|inst| (*inst).startup_state.load_site_file != 0).unwrap_or(true);
-        if !load_site {
-            return ptr::null_mut();
-        }
-
-        if let Ok(p) = std::env::var("R_PROFILE") {
-            if p.is_empty() {
-                return ptr::null_mut();
-            }
-            if let Ok(cpath) = CString::new(p) {
-                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-            }
-        }
-        if let Some(home) = R_HomeDir() {
-            let path = format!("{}/etc/Rprofile.site", home);
-            if let Ok(cpath) = CString::new(path) {
-                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-            }
-        }
-        ptr::null_mut()
     }
 }
 
