@@ -405,8 +405,15 @@ pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
 /// Returns a pointer into the active session's print buffer. `x` is the logical
 /// value (NA_LOGICAL for NA), `w` is the minimum field width.
 pub fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
-    let text = encode_logical_text(x, w);
+    let text = encode_logical_cell(x, w);
     with_encode_buffers(|buffers| store_text(&mut buffers.encode_logical, &text))
+}
+
+/// Logical cell text with the legacy encoder's fixed-buffer limit.
+pub(crate) fn encode_logical_cell(x: c_int, w: c_int) -> Vec<u8> {
+    let mut text = encode_logical_text(x, w);
+    text.truncate(NB - 1);
+    text
 }
 
 /// Text of [`EncodeLogical`]: GNU right-justified `TRUE`/`FALSE`/NA cell.
@@ -1542,6 +1549,25 @@ mod tests {
             assert_eq!(quoted.to_bytes(), b"NA");
             let name = CStr::from_ptr(EncodeString(na, 0, 0, Rprt_adj::left));
             assert_eq!(name.to_bytes(), b"<NA>");
+        });
+    }
+
+    #[test]
+    fn logical_cell_keeps_the_fixed_buffer_limit_for_a_custom_na_label() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let label = vec![b'x'; NB + 5];
+            let ch = crate::sexp::constructors::mk_char_bytes(&label);
+            let _root = crate::sexp::protect::protect(ch);
+            set_R_print(RPrint {
+                na_string: ch.cast(),
+                na_width: label.len() as c_int,
+                ..RPrint::default()
+            });
+            assert_eq!(
+                encode_logical_cell(NA_LOGICAL, label.len() as c_int),
+                label[..NB - 1]
+            );
         });
     }
 }

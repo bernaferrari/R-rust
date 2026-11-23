@@ -177,14 +177,6 @@ pub(crate) fn real_index(index: usize) -> Option<R_xlen_t> {
     R_xlen_t::try_from(index).ok()
 }
 
-/// Cell text from an encoder byte buffer: the encoder output is
-/// NUL-terminated scratch storage, so only bytes before the first NUL
-/// are meaningful.
-fn encoded_matrix_cell(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes.split(|&byte| byte == 0).next().unwrap_or_default())
-        .into_owned()
-}
-
 pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
     use crate::mainutils::format::{compact_real_field, real_field};
     use crate::mainutils::printutils::encode_real0_text;
@@ -208,7 +200,7 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
             let val = real_index(r + c * nrow)
                 .map(|index| seq.real_or_na(index))
                 .unwrap_or(NA_REAL);
-            encoded_matrix_cell(&encode_real0_text(val, fmt.w, fmt.d, fmt.e, b"."))
+            encoded_cell_text(&encode_real0_text(val, fmt.w, fmt.d, fmt.e, b"."))
         });
     }
 
@@ -224,7 +216,7 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
         .collect();
     format_matrix_with(x.clone(), nrow, ncol, |r, c| {
         let fmt = col_fmt[c];
-        encoded_matrix_cell(&encode_real0_text(
+        encoded_cell_text(&encode_real0_text(
             read(r + c * nrow),
             fmt.w,
             fmt.d,
@@ -631,7 +623,7 @@ pub(crate) fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -
     }
     format_matrix_with(x.clone(), nrow, ncol, |r, c| {
         let f = col_fmt[c];
-        encoded_matrix_cell(&encode_complex_text(
+        encoded_cell_text(&encode_complex_text(
             read(r + c * nrow),
             f.wr,
             f.dr,

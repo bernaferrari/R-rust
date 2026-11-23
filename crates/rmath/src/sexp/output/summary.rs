@@ -45,10 +45,7 @@ pub(crate) fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Optio
         for &i in &finite {
             let bytes =
                 crate::mainutils::printutils::encode_real0_text(slice[i], f.w, f.d, f.e, b".");
-            values[i] = String::from_utf8_lossy(
-                bytes.split(|&b| b == 0).next().unwrap_or_default(),
-            )
-            .into_owned();
+            values[i] = encoded_cell_text(&bytes);
         }
         if let Some(i) = nas_at {
             values[i] = format!("{}", slice[i] as i64);

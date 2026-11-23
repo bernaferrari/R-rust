@@ -6,6 +6,11 @@ use crate::mainutils::format::{
     ComplexField, RAW_FIELD_WIDTH, complex_field_s, integer_width_s, logical_width_s,
     real_field_s, string_width_s,
 };
+use crate::mainutils::printutils::{
+    Rprt_adj, encode_complex_text, encode_integer_text, encode_logical_cell, encode_raw_text,
+    encode_real0_text, encode_string_bytes,
+};
+use crate::sexp::accessors::{COMPLEX_ELT, INTEGER_ELT, LOGICAL_ELT, RAW_ELT, REAL_ELT};
 
 // ---------------------------------------------------------------------------
 // Faithful ports of stock printvector.c: printVector / printNamedVector.
@@ -114,24 +119,15 @@ pub(crate) fn printed_string_element(x: Sexp<'_>, i: R_xlen_t, quote: bool) -> P
         Ok(Some(value)) => escape_printed_text(&value, false),
         Err(crate::sexp::object::SexpError::InvalidUtf8) => {
             if let Ok(value) = x.try_string_elt(i) {
-                // SAFETY: the checked element and parent retain the sealed
-                // character through these copy-only encoders. No R callback
-                // occurs while borrowing their per-runtime text buffer.
-                unsafe {
-                    let q = if quote { b'"' as i32 } else { 0 };
-                    let p = crate::mainutils::printutils::EncodeString(
-                        value.as_raw(),
-                        0,
-                        q,
-                        crate::mainutils::printutils::Rprt_adj::none,
-                    );
-                    if let Ok(text) = std::ffi::CStr::from_ptr(p).to_str() {
-                        return PrintedString {
-                            text: text.to_owned(),
-                            width: crate::mainutils::format::string_element_width(value.as_raw(), q)
-                                .max(0) as usize,
-                        };
-                    }
+                let q = if quote { i32::from(b'"') } else { 0 };
+                if let Some(text) = encode_string_bytes(value.as_raw(), 0, q, Rprt_adj::none)
+                    && let Ok(text) = String::from_utf8(text)
+                {
+                    return PrintedString {
+                        text,
+                        width: crate::mainutils::format::string_element_width(value.as_raw(), q)
+                            .max(0) as usize,
+                    };
                 }
             }
             if quote { "NA" } else { "<NA>" }.to_owned()
@@ -310,21 +306,6 @@ pub(crate) fn format_table(x: Sexp<'_>) -> Option<String> {
     }
 }
 
-pub(crate) const OUT_DEC: *const std::os::raw::c_char =
-    b".\0".as_ptr() as *const std::os::raw::c_char;
-
-pub(crate) unsafe fn encode_cstr(p: *const std::os::raw::c_char) -> String {
-    // SAFETY: this unsafe function requires `p` to be null or a live,
-    // NUL-terminated C string for the duration of the conversion.
-    unsafe {
-        if p.is_null() {
-            String::new()
-        } else {
-            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
-        }
-    }
-}
-
 /// (R_print.width, R_print.gap, R_print.max). Width comes from the
 /// active `print.default` data so `print(x, width = 120)` wraps like GNU.
 pub(crate) fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
@@ -385,8 +366,11 @@ pub(crate) fn part_is_nan(v: f64) -> bool {
     v.is_nan()
 }
 
-/// Encode element `i` at the common width, per stock print*Vector tight loops.
-pub(crate) unsafe fn encode_element_at(
+/// Encode element `i` at the common width, per stock print*Vector tight loops,
+/// with an explicit justification for STRSXP elements: stock printVector
+/// left-adjusts (R_print.right = FALSE by default), printNamedVector
+/// right-adjusts (Rprt_adj_right).
+fn encode_element_adj(
     raw: SEXP,
     tp: SEXPTYPE,
     i: R_xlen_t,
@@ -396,11 +380,75 @@ pub(crate) unsafe fn encode_element_at(
     quote: bool,
     gap: std::os::raw::c_int,
     cfmt: ComplexField,
+    str_adj: Rprt_adj,
 ) -> String {
-    // SAFETY: `encode_element_adj` inherits this function's live-SEXP,
-    // matching-tag, and in-bounds-index requirements.
-    unsafe {
-        encode_element_adj(
+    let i32i = i as std::os::raw::c_int;
+    let bytes = match tp {
+        SEXPTYPE::LGLSXP => encode_logical_cell(LOGICAL_ELT(raw, i32i), w),
+        SEXPTYPE::INTSXP => encode_integer_text(INTEGER_ELT(raw, i32i), w),
+        SEXPTYPE::REALSXP => encode_real0_text(REAL_ELT(raw, i32i), w, d, e, b"."),
+        SEXPTYPE::CPLXSXP => {
+            let c = COMPLEX_ELT(raw, i32i);
+            if part_is_na(c.r) || part_is_na(c.i) {
+                // stock: NA parts render as NA over the total width
+                encode_real0_text(crate::sexp::ffi::NA_REAL, w, 0, 0, b".")
+            } else {
+                encode_complex_text(c, cfmt.wr + gap, cfmt.dr, cfmt.er, cfmt.wi, cfmt.di, cfmt.ei)
+            }
+        }
+        SEXPTYPE::STRSXP => {
+            let q = if quote { i32::from(b'"') } else { 0 };
+            encode_string_bytes(STRING_ELT(raw, i), w, q, str_adj).unwrap_or_default()
+        }
+        SEXPTYPE::RAWSXP => encode_raw_text(RAW_ELT(raw, i32i), b""),
+        _ => return String::new(),
+    };
+    encoded_cell_text(&bytes)
+}
+
+/// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
+/// options("width"). Every element occupies the common field width.
+pub(crate) fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
+    if x.typeof_() == SEXPTYPE::REALSXP {
+        crate::mainutils::printvector::warn_illegal_outdec();
+    }
+    let raw = x.clone().as_raw();
+    let tp = x.typeof_();
+    let (print_width, gap, _max) = vector_print_settings();
+    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+    let mut out = String::new();
+    let labwidth = crate::mainutils::printutils::IndexWidth_xlen(n_pr) + 2;
+    let mut width = labwidth;
+    out.push_str(&vector_index(1, labwidth as usize));
+    if !matches!(tp, SEXPTYPE::STRSXP | SEXPTYPE::RAWSXP) {
+        w += gap;
+    }
+    let is_str = matches!(tp, SEXPTYPE::STRSXP);
+    let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
+    let cfmt = if tp == SEXPTYPE::CPLXSXP {
+        complex_field_s(raw, n_pr, 0)
+    } else {
+        ComplexField::default()
+    };
+    for i in 0..n_pr {
+        if i > 0 {
+            // stock wrap conditions: char adds the gap to the check and to
+            // the accumulated width; raw prefixes the gap but counts only w.
+            let wrap = if is_str {
+                width + w + gap > print_width
+            } else {
+                width + w > print_width
+            };
+            if wrap {
+                out.push('\n');
+                out.push_str(&vector_index(i + 1, labwidth as usize));
+                width = labwidth;
+            }
+        }
+        if gap_prefixed {
+            out.push_str(&" ".repeat(gap as usize));
+        }
+        out.push_str(&encode_element_adj(
             raw,
             tp,
             i,
@@ -410,155 +458,12 @@ pub(crate) unsafe fn encode_element_at(
             quote,
             gap,
             cfmt,
-            crate::mainutils::printutils::Rprt_adj::right,
-        )
+            Rprt_adj::left,
+        ));
+        width += if is_str { w + gap } else { w };
     }
-}
-
-/// Like encode_element_at, with an explicit justification for STRSXP
-/// elements: stock printVector left-adjusts (R_print.right = FALSE by
-/// default), printNamedVector right-adjusts (Rprt_adj_right).
-pub(crate) unsafe fn encode_element_adj(
-    raw: SEXP,
-    tp: SEXPTYPE,
-    i: R_xlen_t,
-    w: std::os::raw::c_int,
-    d: std::os::raw::c_int,
-    e: std::os::raw::c_int,
-    quote: bool,
-    gap: std::os::raw::c_int,
-    cfmt: ComplexField,
-    str_adj: crate::mainutils::printutils::Rprt_adj,
-) -> String {
-    // SAFETY: callers guarantee `raw` is live, `tp` is its actual runtime
-    // tag, and `i` is in bounds; formatter-returned C strings are borrowed
-    // only until the next formatter call and are copied immediately.
-    unsafe {
-        let i32i = i as std::os::raw::c_int;
-        match tp {
-            SEXPTYPE::LGLSXP => encode_cstr(crate::mainutils::printutils::EncodeLogical(
-                crate::sexp::accessors::LOGICAL_ELT(raw, i32i),
-                w,
-            )),
-            SEXPTYPE::INTSXP => encode_cstr(crate::mainutils::printutils::EncodeInteger(
-                crate::sexp::accessors::INTEGER_ELT(raw, i32i),
-                w,
-            )),
-            SEXPTYPE::REALSXP => encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                crate::sexp::accessors::REAL_ELT(raw, i32i),
-                w,
-                d,
-                e,
-                OUT_DEC,
-            )),
-            SEXPTYPE::CPLXSXP => {
-                let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32i);
-                if part_is_na(c.r) || part_is_na(c.i) {
-                    // stock: NA parts render as NA over the total width
-                    encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                        crate::sexp::ffi::NA_REAL,
-                        w,
-                        0,
-                        0,
-                        OUT_DEC,
-                    ))
-                } else {
-                    encode_cstr(crate::mainutils::printutils::EncodeComplex(
-                        c,
-                        cfmt.wr + gap,
-                        cfmt.dr,
-                        cfmt.er,
-                        cfmt.wi,
-                        cfmt.di,
-                        cfmt.ei,
-                        OUT_DEC,
-                    ))
-                }
-            }
-            SEXPTYPE::STRSXP => {
-                let quote_ch = if quote {
-                    b'"' as std::os::raw::c_int
-                } else {
-                    0
-                };
-                encode_cstr(crate::mainutils::printutils::EncodeString(
-                    crate::sexp::accessors::STRING_ELT(raw, i),
-                    w,
-                    quote_ch,
-                    str_adj,
-                ))
-            }
-            SEXPTYPE::RAWSXP => encode_cstr(crate::mainutils::printutils::EncodeRaw(
-                crate::sexp::accessors::RAW_ELT(raw, i32i),
-                std::ptr::null(),
-            )),
-            _ => String::new(),
-        }
-    }
-}
-
-/// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
-/// options("width"). Every element occupies the common field width.
-pub(crate) fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
-    // SAFETY: `x` is a rooted live SEXP and `n_pr` is bounded by its length;
-    // all raw access remains read-only for the duration of this call.
-    unsafe {
-        if x.typeof_() == SEXPTYPE::REALSXP {
-            crate::mainutils::printvector::warn_illegal_outdec();
-        }
-        let raw = x.clone().as_raw();
-        let tp = x.typeof_();
-        let (print_width, gap, _max) = vector_print_settings();
-        let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
-        let mut out = String::new();
-        let labwidth = crate::mainutils::printutils::IndexWidth_xlen(n_pr) + 2;
-        let mut width = labwidth;
-        out.push_str(&vector_index(1, labwidth as usize));
-        if !matches!(tp, SEXPTYPE::STRSXP | SEXPTYPE::RAWSXP) {
-            w += gap;
-        }
-        let is_str = matches!(tp, SEXPTYPE::STRSXP);
-        let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
-        let cfmt = if tp == SEXPTYPE::CPLXSXP {
-            complex_field_s(raw, n_pr, 0)
-        } else {
-            ComplexField::default()
-        };
-        for i in 0..n_pr {
-            if i > 0 {
-                // stock wrap conditions: char adds the gap to the check and to
-                // the accumulated width; raw prefixes the gap but counts only w.
-                let wrap = if is_str {
-                    width + w + gap > print_width
-                } else {
-                    width + w > print_width
-                };
-                if wrap {
-                    out.push('\n');
-                    out.push_str(&vector_index(i + 1, labwidth as usize));
-                    width = labwidth;
-                }
-            }
-            if gap_prefixed {
-                out.push_str(&" ".repeat(gap as usize));
-            }
-            out.push_str(&encode_element_adj(
-                raw,
-                tp,
-                i,
-                w,
-                d,
-                e,
-                quote,
-                gap,
-                cfmt,
-                crate::mainutils::printutils::Rprt_adj::left,
-            ));
-            width += if is_str { w + gap } else { w };
-        }
-        out.push('\n');
-        out
-    }
+    out.push('\n');
+    out
 }
 
 /// Stock printNamedVector: names line(s) right-justified over the value
@@ -569,113 +474,126 @@ pub(crate) fn print_named_vector_stock(
     quote: bool,
     n_pr: R_xlen_t,
 ) -> String {
-    // SAFETY: `x` and `names` are rooted live SEXPs with compatible lengths;
-    // element access is read-only and bounded by `n_pr`.
-    unsafe {
-        let raw = x.clone().as_raw();
-        let names_raw = names.as_raw();
-        let tp = x.typeof_();
-        let (print_width, gap, _max) = vector_print_settings();
-        let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
-        let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
-            complex_field_s(raw, n_pr, 0)
-        } else {
-            ComplexField::default()
-        };
-        let mut wn = string_width_s(names_raw, n_pr, 0);
-        // Names use the unquoted missing label from PrintInit (normally
-        // "<NA>"). The numeric-format settings can have a narrower NA width;
-        // measure against the same label that EncodeString will emit.
-        if (0..n_pr).any(|index| {
-            crate::sexp::accessors::STRING_ELT(names_raw, index)
-                == crate::sexp::globals::R_NaString()
-        }) {
-            wn = wn.max(crate::mainutils::print::get_R_print_data().na_width_noquote);
-        }
-        if w < wn {
-            w = wn;
-        }
-        let nperline = ((print_width / (w + gap)).max(1)) as R_xlen_t;
-        let nlines = n_pr / nperline + R_xlen_t::from(n_pr % nperline != 0);
-        let mut out = String::new();
-        for i in 0..nlines {
-            if i != 0 {
-                out.push('\n');
-            }
-            for j in 0..nperline {
-                let k = i * nperline + j;
-                if k >= n_pr {
-                    break;
-                }
-                out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeString(
-                    crate::sexp::accessors::STRING_ELT(names_raw, k),
-                    w,
-                    0,
-                    crate::mainutils::printutils::Rprt_adj::right,
-                )));
-                out.push_str(&" ".repeat(gap as usize));
-            }
+    let raw = x.clone().as_raw();
+    let names_raw = names.as_raw();
+    let tp = x.typeof_();
+    let (print_width, gap, _max) = vector_print_settings();
+    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+    let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
+        complex_field_s(raw, n_pr, 0)
+    } else {
+        ComplexField::default()
+    };
+    let mut wn = string_width_s(names_raw, n_pr, 0);
+    // Names use the unquoted missing label from PrintInit (normally
+    // "<NA>"). The numeric-format settings can have a narrower NA width;
+    // measure against the same label that EncodeString will emit.
+    if (0..n_pr).any(|index| {
+        crate::sexp::accessors::STRING_ELT(names_raw, index) == crate::sexp::globals::R_NaString()
+    }) {
+        wn = wn.max(crate::mainutils::print::get_R_print_data().na_width_noquote);
+    }
+    if w < wn {
+        w = wn;
+    }
+    let nperline = ((print_width / (w + gap)).max(1)) as R_xlen_t;
+    let nlines = n_pr / nperline + R_xlen_t::from(n_pr % nperline != 0);
+    let mut out = String::new();
+    for i in 0..nlines {
+        if i != 0 {
             out.push('\n');
-            for j in 0..nperline {
-                let k = i * nperline + j;
-                if k >= n_pr {
-                    break;
-                }
-                let i32k = k as std::os::raw::c_int;
-                if matches!(tp, SEXPTYPE::CPLXSXP) {
-                    if j != 0 {
-                        out.push_str(&" ".repeat(gap as usize));
-                    }
-                    let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32k);
-                    if part_is_na(c.r) || part_is_na(c.i) {
-                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                            crate::sexp::ffi::NA_REAL,
-                            w,
-                            0,
-                            0,
-                            OUT_DEC,
-                        )));
-                    } else {
-                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                            c.r, cfmt0.wr, cfmt0.dr, cfmt0.er, OUT_DEC,
-                        )));
-                        if part_is_nan(c.i) {
-                            out.push_str("+NaNi");
-                        } else if c.i >= 0.0 {
-                            out.push('+');
-                            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                                c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
-                            )));
-                            out.push('i');
-                        } else {
-                            out.push('-');
-                            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                                -c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
-                            )));
-                            out.push('i');
-                        }
-                    }
-                } else if matches!(tp, SEXPTYPE::RAWSXP) {
-                    // stock: "%*s%s%*s" with w-2, raw, gap
-                    out.push_str(&" ".repeat((w - 2).max(0) as usize));
-                    out.push_str(&encode_element_at(raw, tp, k, w, d, e, quote, gap, cfmt0));
-                    out.push_str(&" ".repeat(gap as usize));
-                } else {
-                    let str_quote = if matches!(tp, SEXPTYPE::STRSXP) {
-                        quote
-                    } else {
-                        false
-                    };
-                    out.push_str(&encode_element_at(
-                        raw, tp, k, w, d, e, str_quote, gap, cfmt0,
-                    ));
-                    out.push_str(&" ".repeat(gap as usize));
-                }
+        }
+        for j in 0..nperline {
+            let k = i * nperline + j;
+            if k >= n_pr {
+                break;
             }
+            out.push_str(&encoded_cell_text(
+                &encode_string_bytes(STRING_ELT(names_raw, k), w, 0, Rprt_adj::right)
+                    .unwrap_or_default(),
+            ));
+            out.push_str(&" ".repeat(gap as usize));
         }
         out.push('\n');
-        out
+        for j in 0..nperline {
+            let k = i * nperline + j;
+            if k >= n_pr {
+                break;
+            }
+            let i32k = k as std::os::raw::c_int;
+            if matches!(tp, SEXPTYPE::CPLXSXP) {
+                if j != 0 {
+                    out.push_str(&" ".repeat(gap as usize));
+                }
+                let c = COMPLEX_ELT(raw, i32k);
+                if part_is_na(c.r) || part_is_na(c.i) {
+                    out.push_str(&encoded_cell_text(&encode_real0_text(
+                        crate::sexp::ffi::NA_REAL,
+                        w,
+                        0,
+                        0,
+                        b".",
+                    )));
+                } else {
+                    out.push_str(&encoded_cell_text(&encode_real0_text(
+                        c.r, cfmt0.wr, cfmt0.dr, cfmt0.er, b".",
+                    )));
+                    if part_is_nan(c.i) {
+                        out.push_str("+NaNi");
+                    } else if c.i >= 0.0 {
+                        out.push('+');
+                        out.push_str(&encoded_cell_text(&encode_real0_text(
+                            c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, b".",
+                        )));
+                        out.push('i');
+                    } else {
+                        out.push('-');
+                        out.push_str(&encoded_cell_text(&encode_real0_text(
+                            -c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, b".",
+                        )));
+                        out.push('i');
+                    }
+                }
+            } else if matches!(tp, SEXPTYPE::RAWSXP) {
+                // stock: "%*s%s%*s" with w-2, raw, gap
+                out.push_str(&" ".repeat((w - 2).max(0) as usize));
+                out.push_str(&encode_element_adj(
+                    raw,
+                    tp,
+                    k,
+                    w,
+                    d,
+                    e,
+                    quote,
+                    gap,
+                    cfmt0,
+                    Rprt_adj::right,
+                ));
+                out.push_str(&" ".repeat(gap as usize));
+            } else {
+                let str_quote = if matches!(tp, SEXPTYPE::STRSXP) {
+                    quote
+                } else {
+                    false
+                };
+                out.push_str(&encode_element_adj(
+                    raw,
+                    tp,
+                    k,
+                    w,
+                    d,
+                    e,
+                    str_quote,
+                    gap,
+                    cfmt0,
+                    Rprt_adj::right,
+                ));
+                out.push_str(&" ".repeat(gap as usize));
+            }
+        }
     }
+    out.push('\n');
+    out
 }
 
 /// Render an atomic vector exactly like stock print.default: named vectors go

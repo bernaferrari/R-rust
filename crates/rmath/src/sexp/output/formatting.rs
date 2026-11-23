@@ -2,6 +2,12 @@
 
 use super::*;
 
+/// Decode an encoder result as its C-string consumers did, stopping at the first NUL.
+pub(crate) fn encoded_cell_text(bytes: &[u8]) -> String {
+    let bytes = bytes.split(|&byte| byte == 0).next().unwrap_or_default();
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
 pub(crate) fn format_sexp(x: SEXP) -> String {
     if x.is_null() {
         return "NULL".to_string();
