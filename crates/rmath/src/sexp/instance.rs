@@ -480,8 +480,7 @@ pub struct RInstance {
         Rc<RefCell<crate::mainutils::connections::ConnectionTable>>,
     /// Session-local output routing. Capture cleanup retains this state independently.
     pub(crate) sink_state: Rc<RefCell<crate::mainutils::connections::SinkState>>,
-    pub(crate) browser_files: crate::mainutils::browser_files::BrowserFileStore,
-    pub(crate) browser_files_enabled: bool,
+    pub(crate) browser_files: Rc<crate::mainutils::browser_files::BrowserFileState>,
     /// Per-instance library, cache, and temporary-directory policy.
     pub(crate) path_policy: crate::mainutils::paths::RuntimePathPolicy,
     /// Per-instance file creation mask used by `Sys.umask()`.
@@ -653,8 +652,7 @@ impl RInstance {
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connection_table: Rc::default(),
             sink_state: Rc::default(),
-            browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
-            browser_files_enabled: false,
+            browser_files: Rc::default(),
             path_policy,
             file_creation_umask: 0o022,
             graphics_device_registry:

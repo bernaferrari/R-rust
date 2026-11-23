@@ -12,7 +12,9 @@ fn browser_session() -> RSession {
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
     // Miri remains isolated from the native wall clock.
-    session.with_active_in(|owner| unsafe { (*owner).browser_files.set_test_clock(1.0) });
+    session.with_active(|| {
+        crate::mainutils::browser_files::set_test_clock_current(1.0);
+    });
     session
 }
 

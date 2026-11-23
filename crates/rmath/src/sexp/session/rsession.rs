@@ -334,32 +334,28 @@ impl RSession {
 
     pub fn enable_browser_files(&mut self) {
         let _guard = self.activate();
-        unsafe {
-            (*self.instance).browser_files_enabled = true;
-        }
+        crate::mainutils::browser_files::enable_current();
     }
 
     pub fn put_browser_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
         let _guard = self.activate();
         let result = crate::mainutils::browser_files::import_current(path, bytes);
         if result.is_ok() {
-            unsafe {
-                (*self.instance).browser_files_enabled = true;
-            }
+            crate::mainutils::browser_files::enable_current();
         }
         result
     }
     pub fn get_browser_file(&mut self, path: &str) -> Option<Vec<u8>> {
         let _guard = self.activate();
-        self.inst().browser_files.read(path).map(<[u8]>::to_vec)
+        crate::mainutils::browser_files::read_import(path)
     }
     pub fn list_browser_files(&mut self) -> Vec<String> {
         let _guard = self.activate();
-        self.inst().browser_files.names()
+        crate::mainutils::browser_files::list_current()
     }
     pub fn remove_browser_file(&mut self, path: &str) -> bool {
         let _guard = self.activate();
-        unsafe { (*self.instance).browser_files.remove(path) }
+        crate::mainutils::browser_files::remove_import(path)
     }
 
     pub(crate) fn with_active<F, T>(&self, f: F) -> T

@@ -22,7 +22,6 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::instance::with_current_instance;
 use crate::sexp::protect::*;
 
 pub(super) mod anonymous;
@@ -112,11 +111,7 @@ fn construct_file(
             description = crate::mainutils::essentials::resolve_package_relative_path(description);
         }
         let anonymous = description.is_empty();
-        let browser_mode = with_current_instance(|instance| {
-            // SAFETY: `instance` is the live current RInstance for this call.
-            unsafe { (*instance).browser_files_enabled }
-        })
-        .unwrap_or(false);
+        let browser_mode = crate::mainutils::browser_files::enabled();
         if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
                 crate::mainutils::errors::Rf_warning_cstr(

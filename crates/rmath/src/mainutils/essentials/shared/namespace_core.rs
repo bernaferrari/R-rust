@@ -214,13 +214,12 @@ pub(crate) fn cache_package_namespace(package: &str, package_dir: &Path, package
 }
 
 pub(crate) fn uncache_package_namespace(package: &str) {
+    let browser_files_enabled = crate::mainutils::browser_files::enabled();
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         let previous = (*inst).package_namespace_cache.remove(package);
         // Browser source files can be repaired after a failed load and
         // replaced after unload. A live namespace keeps its original exports.
-        if (*inst).browser_files_enabled
-            && let Some((directory, _)) = previous
-        {
+        if browser_files_enabled && let Some((directory, _)) = previous {
             (*inst).namespace_directives_cache.remove(&directory);
         }
     });

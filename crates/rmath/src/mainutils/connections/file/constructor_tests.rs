@@ -411,7 +411,9 @@ const GZIP_TABLE_ROWS: &[u8] = b"\x1f\x8b\x08\x08\0\0\0\0\0\xfftable.tsv\0\
 fn browser_gzip_text_detection_and_explicit_reads_preserve_raw_file_bytes() {
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
-    session.with_active_in(|owner| unsafe { (*owner).browser_files.set_test_clock(1.0) });
+    session.with_active(|| {
+        crate::mainutils::browser_files::set_test_clock_current(1.0);
+    });
     let wire = [GZIP_TABLE_HEADER, GZIP_TABLE_ROWS].concat();
     session.put_browser_file("table.tsv", &wire).unwrap();
     session.put_browser_file("plain.txt", b"plain\n").unwrap();
@@ -454,7 +456,9 @@ fn browser_gzip_denials_leave_connection_and_file_intact_and_release_workspace()
 
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
-    session.with_active_in(|owner| unsafe { (*owner).browser_files.set_test_clock(1.0) });
+    session.with_active(|| {
+        crate::mainutils::browser_files::set_test_clock_current(1.0);
+    });
     let wire = GZIP_TABLE_ROWS;
     session.put_browser_file("valid.tsv.gz", wire).unwrap();
     let truncated = &wire[..wire.len() - 4];
@@ -508,7 +512,7 @@ fn browser_connections_share_the_charge_and_release_replaced_versions_on_close()
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
     session.with_active_in(|owner| unsafe {
-        (*owner).browser_files.set_test_clock(1.0);
+        crate::mainutils::browser_files::set_test_clock_current(1.0);
         let arena = &mut (*owner).arena;
         let scratch = arena.workspace_bytes();
         // Two four-byte versions fit. Opening more readers of either file
@@ -556,7 +560,7 @@ fn browser_append_admits_one_candidate_and_keeps_the_old_file_on_refusal() {
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();
     session.with_active_in(|owner| unsafe {
-        (*owner).browser_files.set_test_clock(1.0);
+        crate::mainutils::browser_files::set_test_clock_current(1.0);
         let scratch = (*owner).arena.workspace_bytes();
         let baseline = (*owner).arena.total_bytes_allocated() + scratch;
         (*owner).arena.set_budget(ArenaBudget::new(baseline + 5, 0));

@@ -670,6 +670,27 @@ impl<'session> OwnerToken<'session> {
         unsafe { (*self.as_ptr()).sink_state.clone() }
     }
 
+    pub(crate) fn browser_file_state(
+        self,
+    ) -> SexpResult<Rc<crate::mainutils::browser_files::BrowserFileState>> {
+        self.require_live()?;
+        // SAFETY: the owner generation is live and this only clones its store handle.
+        Ok(unsafe { (*self.as_ptr()).browser_files.clone() })
+    }
+
+    pub(crate) fn reserve_file_bytes(
+        self,
+        bytes: usize,
+    ) -> Option<super::memory::TransientReservation> {
+        self.require_active().ok()?;
+        if super::memory::is_arena_lent(self.as_ptr()) {
+            return None;
+        }
+        // SAFETY: the owner is active and its arena is not lent. Admission only
+        // updates accounting and cannot collect or reenter the interpreter.
+        unsafe { super::memory::reserve_transient_in(self.as_ptr(), bytes) }
+    }
+
     /// Collection callbacks use ambient R dispatch, so require this owner active.
     pub(crate) fn require_active(self) -> SexpResult<()> {
         self.require_live()?;

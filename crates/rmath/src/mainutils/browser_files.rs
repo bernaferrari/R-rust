@@ -1,14 +1,15 @@
 //! Bounded files supplied by an embedding host.
 
-use crate::sexp::instance::with_current_instance;
-use crate::sexp::memory::{RArena, TransientReservation};
+use crate::sexp::memory::TransientReservation;
+use crate::sexp::owner::OwnerToken;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-
-mod paths;
 use std::io;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
+
+mod paths;
 
 pub const MAX_FILE_BYTES: usize = 1024 * 1024;
 pub const MAX_FILE_PATH_BYTES: usize = 255;
@@ -45,6 +46,49 @@ pub struct BrowserFileStore {
     test_clock: Option<f64>,
 }
 
+#[derive(Default)]
+pub(crate) struct BrowserFileState {
+    enabled: Cell<bool>,
+    store: RefCell<BrowserFileStore>,
+}
+
+fn current_state() -> Option<Rc<BrowserFileState>> {
+    OwnerToken::with_current(|owner| owner.browser_file_state())
+        .ok()?
+        .ok()
+}
+
+fn with_store<T>(operation: impl FnOnce(&BrowserFileStore) -> T) -> Option<T> {
+    current_state().map(|state| operation(&state.store.borrow()))
+}
+
+fn with_store_mut<T>(operation: impl FnOnce(&mut BrowserFileStore) -> T) -> Option<T> {
+    current_state().map(|state| operation(&mut state.store.borrow_mut()))
+}
+
+// File writes need quota admission for this same session. No R callbacks run
+// while the store is borrowed.
+fn with_write_store<T>(
+    operation: impl FnOnce(&mut BrowserFileStore, OwnerToken<'_>) -> T,
+) -> Option<T> {
+    OwnerToken::with_current(|owner| {
+        let state = owner.browser_file_state().ok()?;
+        Some(operation(&mut state.store.borrow_mut(), owner))
+    })
+    .ok()
+    .flatten()
+}
+
+fn admit_file_write(
+    owner: OwnerToken<'_>,
+    len: usize,
+) -> Result<Option<TransientReservation>, String> {
+    owner
+        .reserve_file_bytes(len)
+        .map(Some)
+        .ok_or_else(|| "browser file exceeds session memory limit".to_string())
+}
+
 /// Unix seconds, including a fraction.
 ///
 /// `SystemTime::now` panics on bare `wasm32-unknown-unknown` before
@@ -65,7 +109,26 @@ fn unix_now() -> f64 {
 }
 
 pub fn enabled() -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files_enabled }).unwrap_or(false)
+    current_state().is_some_and(|state| state.enabled.get())
+}
+
+pub(crate) fn enable_current() {
+    if let Some(state) = current_state() {
+        state.enabled.set(true);
+    }
+}
+
+pub(crate) fn read_import(path: &str) -> Option<Vec<u8>> {
+    with_store(|store| store.read(path).map(<[u8]>::to_vec)).flatten()
+}
+
+pub(crate) fn remove_import(path: &str) -> bool {
+    with_store_mut(|store| store.remove(path)).unwrap_or(false)
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_clock_current(seconds: f64) {
+    with_store_mut(|store| store.set_test_clock(seconds)).expect("active browser file store");
 }
 
 pub fn read_bytes_or_host(path: &str) -> io::Result<Vec<u8>> {
@@ -82,37 +145,25 @@ pub fn read_bytes_or_host(path: &str) -> io::Result<Vec<u8>> {
 }
 
 pub fn read_current(path: &str) -> Option<Vec<u8>> {
-    with_current_instance(|instance| unsafe {
-        {
-            let store = &(*instance).browser_files;
-            store
-                .resolve(path)
-                .ok()
-                .and_then(|key| store.read(&key).map(<[u8]>::to_vec))
-        }
+    with_store(|store| {
+        store
+            .resolve(path)
+            .ok()
+            .and_then(|key| store.read(&key).map(<[u8]>::to_vec))
     })
     .flatten()
 }
 
 pub fn contains_current(path: &str) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &(*instance).browser_files;
-        store.resolve(path).is_ok_and(|key| store.contains(&key))
-    })
-    .unwrap_or(false)
+    with_store(|store| store.resolve(path).is_ok_and(|key| store.contains(&key))).unwrap_or(false)
 }
 
 pub fn info_current(path: &str) -> Option<BrowserFileInfo> {
-    with_current_instance(|instance| unsafe {
-        let store = &(*instance).browser_files;
-        store.info(&store.resolve(path).ok()?)
-    })
-    .flatten()
+    with_store(|store| store.info(&store.resolve(path).ok()?)).flatten()
 }
 
 pub fn set_time_current(path: &str, secs: f64) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
+    with_store_mut(|store| {
         store
             .resolve(path)
             .is_ok_and(|key| store.set_file_time(&key, secs))
@@ -126,11 +177,10 @@ pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
 
 /// Write and return one admitted file version shared by the store and caller.
 pub(crate) fn write_snapshot_current(path: &str, parts: &[&[u8]]) -> Result<Rc<FileBytes>, String> {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
+    with_write_store(|store, owner| {
         let key = store.resolve(path)?;
         store.require_parent(&key)?;
-        store.put_with_arena(&key, parts, Some(&mut (*instance).arena))
+        store.put_with_admission(&key, parts, |len| admit_file_write(owner, len))
     })
     .ok_or_else(|| "no active R session".to_string())?
 }
@@ -152,47 +202,44 @@ pub(crate) fn publish_generated_current(
     path: &str,
     generate: impl FnOnce(&mut dyn io::Write) -> io::Result<()>,
 ) -> io::Result<()> {
-    let (owner, key) = with_current_instance(|instance| unsafe {
-        let store = &(*instance).browser_files;
-        let key = store.resolve(path)?;
-        store.require_parent(&key)?;
-        Ok::<_, String>(((*instance).heap_identity.clone(), key.into_owned()))
-    })
-    .ok_or_else(|| io::Error::other("no active R session"))?
-    .map_err(io::Error::other)?;
+    let owner = current_state().ok_or_else(|| io::Error::other("no active R session"))?;
+    let key = {
+        let store = owner.store.borrow();
+        let key = store.resolve(path).map_err(io::Error::other)?;
+        store.require_parent(&key).map_err(io::Error::other)?;
+        key.into_owned()
+    };
+    let original = Rc::downgrade(&owner);
+    drop(owner);
     // Generated output calls only the Rust serializer. It cannot evaluate R.
     let output = generate_admitted_bytes(MAX_FILE_BYTES, generate)?;
-    with_current_instance(|instance| unsafe {
-        if !owner.same_domain(&(*instance).heap_identity) {
-            return Err("original file session is no longer active".to_string());
-        }
-        let store = &mut (*instance).browser_files;
-        let total = store.total_after_write(&key, output.len())?;
-        store.publish(&key, Rc::new(output), total)
-    })
-    .ok_or_else(|| io::Error::other("no active R session"))?
-    .map_err(io::Error::other)
+    let current = current_state().ok_or_else(|| io::Error::other("no active R session"))?;
+    if !Weak::ptr_eq(&original, &Rc::downgrade(&current)) {
+        return Err(io::Error::other(
+            "original file session is no longer active",
+        ));
+    }
+    let mut store = current.store.borrow_mut();
+    let total = store
+        .total_after_write(&key, output.len())
+        .map_err(io::Error::other)?;
+    store
+        .publish(&key, Rc::new(output), total)
+        .map_err(io::Error::other)
 }
 
 /// Import keys are rooted at the embedding boundary, independently of R's cwd.
 pub(crate) fn import_current(path: &str, bytes: &[u8]) -> Result<(), String> {
     BrowserFileStore::validate_path(path)?;
-    with_current_instance(|instance| unsafe {
-        (*instance)
-            .browser_files
-            .put_import(path, bytes, Some(&mut (*instance).arena))
+    with_write_store(|store, owner| {
+        store.put_import(path, bytes, |len| admit_file_write(owner, len))
     })
     .ok_or_else(|| "no active R session".to_string())?
 }
 
 pub(crate) fn absolute_current(path: &str) -> Result<String, String> {
-    with_current_instance(|instance| unsafe {
-        (*instance)
-            .browser_files
-            .resolve(path)
-            .map(|key| format!("/{key}"))
-    })
-    .ok_or_else(|| "no active R session".to_string())?
+    with_store(|store| store.resolve(path).map(|key| format!("/{key}")))
+        .ok_or_else(|| "no active R session".to_string())?
 }
 
 pub(crate) enum BrowserOpenMode {
@@ -205,8 +252,7 @@ pub(crate) fn open_snapshot_current(
     path: &str,
     mode: BrowserOpenMode,
 ) -> Result<Rc<FileBytes>, String> {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
+    with_write_store(|store, owner| {
         let key = store.resolve(path)?;
         let path = key.as_ref();
         match mode {
@@ -225,7 +271,7 @@ pub(crate) fn open_snapshot_current(
                         return Ok(Rc::clone(&file.bytes));
                     }
                 }
-                store.put_with_arena(path, &[], Some(&mut (*instance).arena))
+                store.put_with_admission(path, &[], |len| admit_file_write(owner, len))
             }
         }
     })
@@ -249,21 +295,15 @@ pub(crate) fn gunzip_snapshot(source: Rc<FileBytes>) -> io::Result<Rc<FileBytes>
 }
 
 pub fn remove_current(path: &str) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
-        store.resolve(path).is_ok_and(|key| store.remove(&key))
-    })
-    .unwrap_or(false)
+    with_store_mut(|store| store.resolve(path).is_ok_and(|key| store.remove(&key))).unwrap_or(false)
 }
 
 pub fn list_current() -> Vec<String> {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.names() })
-        .unwrap_or_default()
+    with_store(|store| store.names()).unwrap_or_default()
 }
 
 pub(crate) fn append_current(destination: &str, source: &str) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
+    with_write_store(|store, owner| {
         let Ok(from) = store.resolve(source) else {
             return false;
         };
@@ -283,10 +323,10 @@ pub(crate) fn append_current(destination: &str, source: &str) -> bool {
             .map(|file| Rc::clone(&file.bytes));
         store.require_parent(&to).is_ok()
             && store
-                .put_with_arena(
+                .put_with_admission(
                     &to,
                     &[saved.as_deref().map_or(&[][..], |bytes| bytes), &input],
-                    Some(&mut (*instance).arena),
+                    |len| admit_file_write(owner, len),
                 )
                 .is_ok()
     })
@@ -294,8 +334,7 @@ pub(crate) fn append_current(destination: &str, source: &str) -> bool {
 }
 
 pub(crate) fn set_mode_current(path: &str, mode: u32) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
+    with_store_mut(|store| {
         let Ok(key) = store.resolve(path) else {
             return false;
         };
@@ -309,72 +348,63 @@ pub(crate) fn set_mode_current(path: &str, mode: u32) -> bool {
 }
 
 pub(crate) fn dir_exists_current(path: &str) -> bool {
-    with_current_instance(|instance| unsafe {
-        let store = &(*instance).browser_files;
-        (*instance).browser_files_enabled
-            && store.resolve(path).is_ok_and(|key| store.directory(&key))
-    })
-    .unwrap_or(false)
+    enabled()
+        && with_store(|store| store.resolve(path).is_ok_and(|key| store.directory(&key)))
+            .unwrap_or(false)
 }
 
 pub(crate) fn mkdir_current(path: &str, recursive: bool) -> Result<(), String> {
-    with_current_instance(|instance| unsafe {
-        (*instance).browser_files.create_directory(path, recursive)
-    })
-    .ok_or_else(|| "no active R session".to_string())?
+    with_store_mut(|store| store.create_directory(path, recursive))
+        .ok_or_else(|| "no active R session".to_string())?
 }
 
 pub(crate) fn getcwd_current() -> String {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.working_directory() })
-        .unwrap_or_default()
+    with_store(|store| store.working_directory()).unwrap_or_default()
 }
 
 pub(crate) fn chdir_current(path: &str) -> Result<String, String> {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.change_directory(path) })
+    with_store_mut(|store| store.change_directory(path))
         .ok_or_else(|| "no active R session".to_string())?
 }
 
 /// Restore the cwd in the original live session after R evaluation unwinds.
+/// The weak owner restores the original session's store even while another
+/// session is active, without extending that session's file lifetime.
 pub(crate) struct BrowserDirectoryGuard {
-    owner: crate::sexp::heap::HeapIdentity,
+    owner: Weak<BrowserFileState>,
     previous: String,
 }
 
 pub(crate) fn scoped_directory(path: &str) -> Result<BrowserDirectoryGuard, String> {
-    with_current_instance(|instance| unsafe {
-        let store = &mut (*instance).browser_files;
-        let previous = store.cwd.clone();
-        store.change_directory(path)?;
-        Ok(BrowserDirectoryGuard {
-            owner: (*instance).heap_identity.clone(),
-            previous,
-        })
+    let owner = current_state().ok_or_else(|| "no active R session".to_string())?;
+    let mut store = owner.store.borrow_mut();
+    let previous = store.cwd.clone();
+    store.change_directory(path)?;
+    Ok(BrowserDirectoryGuard {
+        owner: Rc::downgrade(&owner),
+        previous,
     })
-    .ok_or_else(|| "no active R session".to_string())?
 }
 
 impl Drop for BrowserDirectoryGuard {
     fn drop(&mut self) {
-        with_current_instance(|instance| unsafe {
-            if self.owner.same_domain(&(*instance).heap_identity) {
-                let store = &mut (*instance).browser_files;
-                store.cwd = if store.directory(&self.previous) {
-                    std::mem::take(&mut self.previous)
-                } else {
-                    String::new()
-                };
-            }
-        });
+        if let Some(owner) = self.owner.upgrade() {
+            let mut store = owner.store.borrow_mut();
+            store.cwd = if store.directory(&self.previous) {
+                std::mem::take(&mut self.previous)
+            } else {
+                String::new()
+            };
+        }
     }
 }
 
 pub(crate) fn entries_current(path: &str) -> Option<Vec<(String, bool)>> {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.entries(path) }).flatten()
+    with_store(|store| store.entries(path)).flatten()
 }
 
 pub(crate) fn unlink_current(path: &str, recursive: bool) -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.unlink(path, recursive) })
-        .unwrap_or(false)
+    with_store_mut(|store| store.unlink(path, recursive)).unwrap_or(false)
 }
 
 pub(crate) fn copy_current(
@@ -386,8 +416,8 @@ pub(crate) fn copy_current(
     copy_mode: bool,
     copy_date: bool,
 ) -> Result<(), String> {
-    with_current_instance(|instance| unsafe {
-        (*instance).browser_files.copy(
+    with_store_mut(|store| {
+        store.copy(
             from,
             to,
             into_directory,
@@ -402,9 +432,7 @@ pub(crate) fn copy_current(
 
 /// Write binary or text data using the current session's existing file policy.
 pub fn write_bytes_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
-    let enabled = with_current_instance(|instance| unsafe { (*instance).browser_files_enabled })
-        .unwrap_or(false);
-    if contains_current(path) || enabled {
+    if contains_current(path) || enabled() {
         return write_current(path, bytes).map_err(std::io::Error::other);
     }
     std::fs::write(path, bytes)
@@ -421,14 +449,11 @@ pub(crate) struct FileBytes {
 }
 
 impl FileBytes {
-    fn copy_parts(parts: &[&[u8]], len: usize, arena: Option<&mut RArena>) -> Result<Self, String> {
-        let _reservation = arena
-            .map(|arena| {
-                arena
-                    .try_reserve_transient(len)
-                    .ok_or_else(|| "browser file exceeds session memory limit".to_string())
-            })
-            .transpose()?;
+    fn copy_parts(
+        parts: &[&[u8]],
+        len: usize,
+        _reservation: Option<TransientReservation>,
+    ) -> Result<Self, String> {
         let mut data = Vec::new();
         data.try_reserve_exact(len)
             .map_err(|_| "could not allocate browser file data".to_string())?;
@@ -470,20 +495,12 @@ fn memory_error() -> io::Error {
     )
 }
 
-fn reserve(bytes: usize) -> io::Result<Option<crate::sexp::memory::TransientReservation>> {
-    with_current_instance(|instance| {
-        if crate::sexp::memory::is_arena_lent(instance) {
-            return Err(memory_error());
-        }
-        // This touches only the arena's workspace ledger. It cannot collect
-        // or call R while a sibling field (such as timezone state) is lent.
-        unsafe {
-            (*instance)
-                .arena
-                .try_reserve_transient(bytes)
-                .ok_or_else(memory_error)
-                .map(Some)
-        }
+fn reserve(bytes: usize) -> io::Result<Option<TransientReservation>> {
+    OwnerToken::with_current(|owner| {
+        owner
+            .reserve_file_bytes(bytes)
+            .map(Some)
+            .ok_or_else(memory_error)
     })
     .unwrap_or(Ok(None))
 }
@@ -640,28 +657,23 @@ fn read_buffer_or_host(path: &str) -> io::Result<FileBuffer> {
         usize::MAX
     };
     let mut input = FileBuffer::new(limit);
-    let stored = with_current_instance(|instance| unsafe {
-        let Some(key) = (*instance).browser_files.resolve(path).ok() else {
-            return Ok::<bool, io::Error>(false);
-        };
-        let path = key.as_ref();
-        let Some(len) = (*instance).browser_files.read(path).map(<[u8]>::len) else {
-            return Ok::<bool, io::Error>(false);
-        };
-        // Do not retain a file-store borrow while admission touches the arena.
-        let reservation = reserve(len)?;
-        input
-            .bytes
-            .try_reserve_exact(len)
-            .map_err(|_| memory_error())?;
-        input
-            .bytes
-            .extend_from_slice((*instance).browser_files.read(path).unwrap());
-        input.reservation = reservation;
-        Ok(true)
+    let snapshot = with_store(|store| {
+        let key = store.resolve(path).ok()?;
+        store
+            .files
+            .get(key.as_ref())
+            .map(|file| Rc::clone(&file.bytes))
     })
-    .unwrap_or(Ok(false))?;
-    if !stored {
+    .flatten();
+    if let Some(snapshot) = snapshot {
+        let reservation = reserve(snapshot.len())?;
+        input
+            .bytes
+            .try_reserve_exact(snapshot.len())
+            .map_err(|_| memory_error())?;
+        input.bytes.extend_from_slice(&snapshot);
+        input.reservation = reservation;
+    } else {
         if browser {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -835,29 +847,29 @@ impl BrowserFileStore {
     }
 
     pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
-        self.put_import(path, bytes, None)
+        self.put_import(path, bytes, |_| Ok(None))
     }
 
     fn put_import(
         &mut self,
         path: &str,
         bytes: &[u8],
-        arena: Option<&mut RArena>,
+        admit: impl FnOnce(usize) -> Result<Option<TransientReservation>, String>,
     ) -> Result<(), String> {
         Self::validate_path(path)?;
         let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
         let missing = self.missing_directories(parent)?;
         self.reserve_directories(missing.len())?;
-        self.put_with_arena(path, &[bytes], arena)?;
+        self.put_with_admission(path, &[bytes], admit)?;
         self.directories.extend(missing);
         Ok(())
     }
 
-    fn put_with_arena(
+    fn put_with_admission(
         &mut self,
         path: &str,
         parts: &[&[u8]],
-        arena: Option<&mut RArena>,
+        admit: impl FnOnce(usize) -> Result<Option<TransientReservation>, String>,
     ) -> Result<Rc<FileBytes>, String> {
         let len = parts
             .iter()
@@ -866,7 +878,7 @@ impl BrowserFileStore {
         let total = self.total_after_write(path, len)?;
         // The old version stays charged for as long as the store or an open
         // connection holds it. Failed admission leaves all versions intact.
-        let data = Rc::new(FileBytes::copy_parts(parts, len, arena)?);
+        let data = Rc::new(FileBytes::copy_parts(parts, len, admit(len)?)?);
         self.publish(path, Rc::clone(&data), total)?;
         Ok(data)
     }
@@ -1154,5 +1166,51 @@ mod tests {
         assert_eq!(store.read("source/0"), Some(full.as_slice()));
         assert!(store.put("source", b"would replace directory").is_err());
         assert!(store.put("source/0/child", b"would replace file").is_err());
+    }
+
+    #[test]
+    fn browser_directory_guard_restores_original_session_on_unwind() {
+        let original = RSession::new_for_gc_tests();
+        let replacement = RSession::new_for_gc_tests();
+        let guard = original.with_active(|| {
+            mkdir_current("home", false).unwrap();
+            mkdir_current("temp", false).unwrap();
+            chdir_current("home").unwrap();
+            scoped_directory("/temp").unwrap()
+        });
+        replacement.with_active(|| {
+            mkdir_current("other", false).unwrap();
+            chdir_current("other").unwrap();
+            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                let _guard = guard;
+                panic!("source interrupted");
+            }));
+            assert!(unwound.is_err());
+            assert_eq!(getcwd_current(), "/other");
+        });
+        original.with_active(|| {
+            assert_eq!(getcwd_current(), "/home");
+        });
+    }
+
+    #[test]
+    fn browser_write_refuses_lent_arena_without_replacing_file() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            set_test_clock_current(1.0);
+            write_current("scope.txt", b"original").unwrap();
+            OwnerToken::with_current(|owner| {
+                owner.with_arena(|_| {
+                    assert!(
+                        write_current("scope.txt", b"replacement")
+                            .unwrap_err()
+                            .contains("session memory limit")
+                    );
+                })
+            })
+            .unwrap()
+            .unwrap();
+            assert_eq!(read_current("scope.txt").unwrap(), b"original");
+        });
     }
 }

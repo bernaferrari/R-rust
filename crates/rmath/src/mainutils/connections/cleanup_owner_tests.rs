@@ -5,12 +5,9 @@ use crate::sexp::{RSession, object::PairlistBuilder};
 fn owner_exit(close: bool) {
     let mut original = Some(RSession::new_for_gc_tests());
     original.as_mut().unwrap().enable_browser_files();
-    original
-        .as_ref()
-        .unwrap()
-        .with_active_in(|instance| unsafe {
-            (*instance).browser_files.set_test_clock(0.0);
-        });
+    original.as_ref().unwrap().with_active(|| {
+        crate::mainutils::browser_files::set_test_clock_current(0.0);
+    });
     let weak = original
         .as_ref()
         .unwrap()

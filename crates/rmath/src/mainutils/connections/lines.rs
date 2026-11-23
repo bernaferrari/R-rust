@@ -648,8 +648,8 @@ mod cleanup_identity_tests {
     fn cleanup_identity(action: u8, remove: bool) {
         let mut session = RSession::new_for_gc_tests();
         session.enable_browser_files();
-        session.with_active_in(|instance| unsafe {
-            (*instance).browser_files.set_test_clock(0.0);
+        session.with_active(|| {
+            crate::mainutils::browser_files::set_test_clock_current(0.0);
         });
         session.with_active(|| {
             let f = session.owner_token().unwrap().node_factory();
