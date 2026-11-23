@@ -56,33 +56,33 @@ fn write_cstr(buf: &mut [c_char], s: &str) {
 // ---------------------------------------------------------------------------
 
 /// Deparse a name from a names vector to the buffer, with quoting as needed.
-pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: &mut LocalParseData) {
-    unsafe {
-        if isNull(nv) {
-            return;
-        }
-        let elt = STRING_ELT(nv, i as R_xlen_t);
-        if isNull(elt) {
-            return;
-        }
-        let name = CHAR(elt);
-        if name.is_null() || *name == 0 {
-            return;
-        } // length test
-
-        if !name.is_null() && isValidName(name) {
-            deparse2buff(elt, d);
-        } else if d.backtick != 0 {
-            append_line_bytes(b"`", d);
-            deparse2buff(elt, d);
-            append_line_bytes(b"`", d);
-        } else {
-            append_line_bytes(b"\"", d);
-            deparse2buff(elt, d);
-            append_line_bytes(b"\"", d);
-        }
-        append_line_bytes(b" = ", d);
+pub fn deparse2buf_name(nv: SEXP, i: c_int, d: &mut LocalParseData) {
+    if isNull(nv) {
+        return;
     }
+    let elt = STRING_ELT(nv, i as R_xlen_t);
+    if isNull(elt) {
+        return;
+    }
+    let Some(name) = char_cstr_bytes_opt(elt) else {
+        return;
+    };
+    if name.is_empty() {
+        return;
+    } // length test
+
+    if is_valid_r_name_bytes(&name) {
+        deparse2buff(elt, d);
+    } else if d.backtick != 0 {
+        append_line_bytes(b"`", d);
+        deparse2buff(elt, d);
+        append_line_bytes(b"`", d);
+    } else {
+        append_line_bytes(b"\"", d);
+        deparse2buff(elt, d);
+        append_line_bytes(b"\"", d);
+    }
+    append_line_bytes(b" = ", d);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,45 +647,43 @@ pub unsafe fn vector2buff(vector: SEXP, d: &mut LocalParseData) {
 // ---------------------------------------------------------------------------
 
 /// Deparse vectors of S-expressions (list() and expression() objects).
-pub unsafe fn vec2buff(v: SEXP, d: &mut LocalParseData, do_names: bool) {
-    unsafe {
-        let mut lbreak = false;
-        let n = LENGTH(v);
-        let names_sym = crate::sexp::symbol::install_str("names");
-        let srcref_sym = crate::sexp::symbol::install_str("srcref");
-        let mut nv = R_NilValue();
-        let mut do_names = do_names;
+pub fn vec2buff(v: SEXP, d: &mut LocalParseData, do_names: bool) {
+    let mut lbreak = false;
+    let n = LENGTH(v);
+    let names_sym = crate::sexp::symbol::install_str("names");
+    let srcref_sym = crate::sexp::symbol::install_str("srcref");
+    let mut nv = R_NilValue();
+    let mut do_names = do_names;
+    if do_names {
+        nv = getAttrib(v, names_sym);
+        if isNull(nv) {
+            do_names = false;
+        }
+    }
+    let _nv_guard = protect(nv);
+
+    let mut sv = R_NilValue();
+    if (d.opts & USESOURCE) != 0 {
+        sv = getAttrib(v, srcref_sym);
+        if TYPEOF(sv) != SEXPTYPE::VECSXP {
+            sv = R_NilValue();
+        }
+    }
+
+    for i in 0..n as usize {
+        if i > 0 {
+            append_line_bytes(b", ", d);
+        }
+        linebreak(&mut lbreak, d);
         if do_names {
-            nv = getAttrib(v, names_sym);
-            if isNull(nv) {
-                do_names = false;
-            }
+            deparse2buf_name(nv, i as c_int, d);
         }
-        let _nv_guard = protect(nv);
-
-        let mut sv = R_NilValue();
-        if (d.opts & USESOURCE) != 0 {
-            sv = getAttrib(v, srcref_sym);
-            if TYPEOF(sv) != SEXPTYPE::VECSXP {
-                sv = R_NilValue();
-            }
+        if !src2buff(sv, i as c_int, d) {
+            deparse2buff(VECTOR_ELT(v, i as R_xlen_t), d);
         }
-
-        for i in 0..n as usize {
-            if i > 0 {
-                append_line_bytes(b", ", d);
-            }
-            linebreak(&mut lbreak, d);
-            if do_names {
-                deparse2buf_name(nv, i as c_int, d);
-            }
-            if !src2buff(sv, i as c_int, d) {
-                deparse2buff(VECTOR_ELT(v, i as R_xlen_t), d);
-            }
-        }
-        if lbreak {
-            d.indent -= 1;
-        }
+    }
+    if lbreak {
+        d.indent -= 1;
     }
 }
 
@@ -697,61 +695,50 @@ pub unsafe fn vec2buff(v: SEXP, d: &mut LocalParseData, do_names: bool) {
 ///
 /// Handles named and unnamed arguments, default values for formals, and
 /// line breaking for long argument lists.
-pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: &mut LocalParseData) {
-    unsafe {
-        let mut lbreak = false;
-        let mut cur = arglist;
+pub fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: &mut LocalParseData) {
+    let mut lbreak = false;
+    let mut cur = arglist;
 
-        while !isNull(cur) {
-            if TYPEOF(cur) != SEXPTYPE::LISTSXP && TYPEOF(cur) != SEXPTYPE::LANGSXP {
-                break;
+    while !isNull(cur) {
+        if TYPEOF(cur) != SEXPTYPE::LISTSXP && TYPEOF(cur) != SEXPTYPE::LANGSXP {
+            break;
+        }
+        if !isNull(TAG(cur)) {
+            let s = TAG(cur);
+            if s == R_DotsSymbol() {
+                append_char_name(PRINTNAME(s), d);
+            } else if d.backtick != 0 {
+                append_quoted_name(PRINTNAME(s), b'`', d);
+            } else {
+                append_quoted_name(PRINTNAME(s), b'"', d);
             }
-            if !isNull(TAG(cur)) {
-                let s = TAG(cur);
-                if s == R_DotsSymbol() {
-                    let pn = CHAR(PRINTNAME(s));
-                    if !pn.is_null() {
-                        print2buff(pn, d);
-                    }
-                } else if d.backtick != 0 {
-                    let q = quotify(PRINTNAME(s), b'`' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                } else {
-                    let q = quotify(PRINTNAME(s), b'"' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                }
-                if formals != 0 {
-                    // GNU: only R_MissingArg means no default. `x = NULL` must
-                    // print as `x = NULL`, not as a missing formal.
-                    if CAR(cur) != R_MissingArg() {
-                        append_line_bytes(b" = ", d);
-                        d.fnarg = true;
-                        deparse2buff(CAR(cur), d);
-                    }
-                } else {
+            if formals != 0 {
+                // GNU: only R_MissingArg means no default. `x = NULL` must
+                // print as `x = NULL`, not as a missing formal.
+                if CAR(cur) != R_MissingArg() {
                     append_line_bytes(b" = ", d);
-                    if CAR(cur) != R_MissingArg() {
-                        d.fnarg = true;
-                        deparse2buff(CAR(cur), d);
-                    }
+                    d.fnarg = true;
+                    deparse2buff(CAR(cur), d);
                 }
             } else {
-                d.fnarg = true;
-                deparse2buff(CAR(cur), d);
+                append_line_bytes(b" = ", d);
+                if CAR(cur) != R_MissingArg() {
+                    d.fnarg = true;
+                    deparse2buff(CAR(cur), d);
+                }
             }
-            cur = CDR(cur);
-            if !isNull(cur) {
-                append_line_bytes(b", ", d);
-                linebreak(&mut lbreak, d);
-            }
+        } else {
+            d.fnarg = true;
+            deparse2buff(CAR(cur), d);
         }
-        if lbreak {
-            d.indent -= 1;
+        cur = CDR(cur);
+        if !isNull(cur) {
+            append_line_bytes(b", ", d);
+            linebreak(&mut lbreak, d);
         }
+    }
+    if lbreak {
+        d.indent -= 1;
     }
 }
 

@@ -258,7 +258,6 @@ pub const NB: usize = 1000;
 pub const NB2: usize = 2 * NB + 25;
 
 pub struct DeparseRuntimeState {
-    pub quote_buf: [u8; 1024],
     pub int_buf: [c_char; 32],
     pub logical_buf: [c_char; 8],
     pub real_buf: [c_char; 64],
@@ -276,7 +275,6 @@ pub struct DeparseRuntimeState {
 impl Default for DeparseRuntimeState {
     fn default() -> Self {
         DeparseRuntimeState {
-            quote_buf: [0; 1024],
             int_buf: [0; 32],
             logical_buf: [0; 8],
             real_buf: [0; 64],

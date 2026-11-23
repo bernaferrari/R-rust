@@ -124,37 +124,30 @@ pub fn needsparens(
 /// Check if the character vector x contains no NA_character_ or all "",
 /// or if isAtomic, does not contain "recursive" or "use.names".
 pub fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
-    unsafe {
-        if !isString(x) {
-            return true;
-        }
-        let n = XLENGTH(x) as usize;
-        let mut all_0 = true;
-        for i in 0..n {
-            let elt = STRING_ELT(x, i as R_xlen_t);
+    if !isString(x) {
+        return true;
+    }
+    let n = XLENGTH(x) as usize;
+    let mut all_0 = true;
+    for i in 0..n {
+        let elt = STRING_ELT(x, i as R_xlen_t);
 
-            if elt.is_null() || elt == R_NilValue() || elt == R_NaString() {
+        if elt.is_null() || elt == R_NilValue() || elt == R_NaString() {
+            return false;
+        }
+
+        if (isAtomic || all_0)
+            && let Some(name) = char_cstr_bytes_opt(elt)
+        {
+            if isAtomic && matches!(name.as_slice(), b"recursive" | b"use.names") {
                 return false;
             }
-
-            if isAtomic {
-                let name = char_cstring(elt);
-                if !name.is_none() {
-                    let bytes = name.as_deref().unwrap_or_default().to_bytes();
-                    if bytes == b"recursive" || bytes == b"use.names" {
-                        return false;
-                    }
-                }
-            }
-            if all_0 {
-                let name = CHAR(elt);
-                if !name.is_null() && *name != 0 {
-                    all_0 = false;
-                }
+            if !name.is_empty() {
+                all_0 = false;
             }
         }
-        !all_0
     }
+    !all_0
 }
 
 // ---------------------------------------------------------------------------

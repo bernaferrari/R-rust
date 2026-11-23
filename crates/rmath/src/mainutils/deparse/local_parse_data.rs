@@ -208,20 +208,7 @@ pub fn getPPinfo(symval: SEXP) -> PPinfo {
 }
 
 pub fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
-    unsafe {
-        if !isSymbol(sym) {
-            return None;
-        }
-        let name = CHAR(PRINTNAME(sym));
-        if name.is_null() {
-            return None;
-        }
-        let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes_with_nul();
-        crate::mainutils::names::R_FunTab
-            .iter()
-            .find(|entry| entry.name == name_bytes)
-            .map(|entry| entry.pp)
-    }
+    fun_tab_entry_for_symbol(sym).map(|entry| entry.pp)
 }
 
 /// Resolve the `[` vs `[[` discriminator for a PP_SUBSET call.
@@ -233,30 +220,13 @@ pub fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
 /// call-head name, mirroring the name-based PPinfo fallback in deparse2buff
 /// (the port's symbol value slots stay unbound unless InitNames ran).
 pub fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
-    unsafe {
-        let t = TYPEOF(symval);
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(PRIMOFFSET(symval)) {
-                return entry.offset;
-            }
+    let t = TYPEOF(symval);
+    if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(PRIMOFFSET(symval)) {
+            return entry.offset;
         }
-        if isSymbol(op) {
-            let pn = PRINTNAME(op);
-            if !pn.is_null() {
-                let name = CHAR(pn);
-                if !name.is_null() {
-                    let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes_with_nul();
-                    if let Some(entry) = crate::mainutils::names::R_FunTab
-                        .iter()
-                        .find(|entry| entry.name == name_bytes)
-                    {
-                        return entry.offset;
-                    }
-                }
-            }
-        }
-        0
     }
+    fun_tab_entry_for_symbol(op).map_or(0, |entry| entry.offset)
 }
 
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
@@ -276,34 +246,26 @@ pub fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     Some(getPPinfo(symval))
 }
 
-pub const S4_OBJECT_MASK: u16 = 1 << 4;
-
 /// Check if an SEXP has the S4 object bit set.
 pub fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (((*x).sxpinfo.gp() & S4_OBJECT_MASK) != 0) as c_int
-    }
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
-/// streql: compare two C strings for equality.
-pub unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(a) == std::ffi::CStr::from_ptr(b)
-    }
+/// Borrow the primitive name without its trailing NUL.
+pub(super) fn primitive_name_bytes(op: SEXP) -> &'static [u8] {
+    crate::eval::primitive::raw_primitive_entry(op).map_or(b"", |entry| {
+        entry.name.strip_suffix(&[0]).unwrap_or(entry.name)
+    })
 }
 
-/// Get PRIMNAME as a C string (avoids conflict with eval/builtin.rs version).
-pub fn primname_c(op: SEXP) -> *const c_char {
-    {
-        // Use the relop.rs version which returns *const c_char
-        crate::mainutils::relop::PRIMNAME(op)
+fn fun_tab_entry_for_symbol(sym: SEXP) -> Option<&'static crate::mainutils::names::FunTabEntry> {
+    if !isSymbol(sym) {
+        return None;
     }
+    let name = char_cstr_bytes_opt(PRINTNAME(sym))?;
+    crate::mainutils::names::R_FunTab
+        .iter()
+        .find(|entry| entry.name.strip_suffix(&[0]) == Some(name.as_slice()))
 }
 
 /// Extract integer from SEXP — delegates to canonical `coerce::asInteger`.

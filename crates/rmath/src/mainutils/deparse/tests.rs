@@ -242,22 +242,6 @@ fn utf8_name_validation_preserves_gnu_identifier_boundaries() {
 }
 
 #[test]
-fn test_streql() {
-    unsafe {
-        assert!(streql(
-            b"foo\0".as_ptr() as *const c_char,
-            b"foo\0".as_ptr() as *const c_char
-        ));
-        assert!(!streql(
-            b"foo\0".as_ptr() as *const c_char,
-            b"bar\0".as_ptr() as *const c_char
-        ));
-        assert!(!streql(ptr::null(), b"foo\0".as_ptr() as *const c_char));
-        assert!(!streql(b"foo\0".as_ptr() as *const c_char, ptr::null()));
-    }
-}
-
-#[test]
 fn test_ppinfo_values_from_names_rs() {
     // Verify our PPkind constants match names.rs
     assert_eq!(PP_BINARY, N_PP_BINARY);
@@ -526,4 +510,27 @@ fn bounded_deparse_reclaims_discarded_nodes_but_still_rejects_a_retained_full_he
         assert_eq!(owner.with_arena(|a| a.budget().max_nodes).unwrap(), cap);
         drop(retained);
     }
+}
+
+#[test]
+fn owned_deparse_quoted_name_preserves_legacy_bytes() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let mut data = LocalParseData::default();
+        let name = crate::sexp::constructors::mk_char_bytes(b"a`b\\c");
+        let _name = protect(name);
+        attrs::append_quoted_name(name, b'`', &mut data);
+        assert_eq!(data.buffer.bytes(), b"`a\\`b\\\\c`");
+
+        let mut data = LocalParseData::default();
+        let raw = vec![b' '; 1100];
+        let long = crate::sexp::constructors::mk_char_bytes(&raw);
+        let _long = protect(long);
+        attrs::append_quoted_name(long, b'\'', &mut data);
+        let bytes = data.buffer.bytes();
+        assert_eq!(bytes.len(), 1022);
+        assert_eq!(bytes[0], b'"');
+        assert_eq!(bytes[1021], b'"');
+        assert!(bytes[1..1021].iter().all(|&byte| byte == b' '));
+    });
 }

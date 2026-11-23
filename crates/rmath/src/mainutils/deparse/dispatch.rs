@@ -7,83 +7,81 @@ use super::*;
 // deparse2buff — recursive deparsing workhorse
 // ---------------------------------------------------------------------------
 
-pub unsafe fn deparse_s4_object(s: SEXP, d: &mut LocalParseData) -> bool {
-    unsafe {
-        let Some(class_name) = s4_class_name(s) else {
-            return false;
-        };
+pub fn deparse_s4_object(s: SEXP, d: &mut LocalParseData) -> bool {
+    let Some(class_name) = s4_class_name(s) else {
+        return false;
+    };
 
-        append_line_bytes(b"new(", d);
-        print_r_string_literal(&class_name, d);
-        append_line_bytes(b", ", d);
+    append_line_bytes(b"new(", d);
+    print_r_string_literal(&class_name, d);
+    append_line_bytes(b", ", d);
 
-        // GNU deparse.c: names(getClassDef(class)@slots), not the local
-        // fallback setClass table. .S3Class formula objects have no .Data
-        // slot; the language body is emitted via asS3() below.
-        let has_s3_class = {
-            let s3_sym = crate::sexp::symbol::install_str(".S3Class");
-            let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
-            !s3.is_null() && s3 != R_NilValue()
-        };
-        let mut slots = crate::mainutils::objects::gnu_s4_slot_names(&class_name)
-            .filter(|names| !names.is_empty())
-            .or_else(|| crate::mainutils::objects::s4_all_slots(&class_name))
-            .unwrap_or_else(|| s4_instance_slot_names(s));
-        // contains="list" (and other basic vectors) *are* the data part, so
-        // `.Data` is not an attribute. Class metadata can omit that name;
-        // formula subclasses carry `.S3Class` and must not grow a fake slot.
-        if TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int()
-            && !has_s3_class
-            && !slots
-                .iter()
-                .any(|slot| slot == ".Data" || slot == ".xData" || slot == ".S3Class")
-        {
-            slots.insert(0, ".Data".to_string());
-        }
-        let has_data = slots.iter().any(|slot| slot == ".Data");
-        let mut slot_values: Vec<(String, SEXP)> = Vec::new();
-        for slot_name in &slots {
-            if let Some(value) = s4_deparse_slot_value(s, slot_name) {
-                slot_values.push((slot_name.clone(), value));
-            }
-        }
-        if !slot_values.is_empty() {
-            let n = slot_values.len() as R_xlen_t;
-            let slotlist = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-            let _slotlist = protect(slotlist);
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _names = protect(names);
-            for (i, (slot_name, value)) in slot_values.iter().enumerate() {
-                SET_VECTOR_ELT(slotlist, i as R_xlen_t, *value);
-                if let Ok(c_name) = std::ffi::CString::new(slot_name.as_str()) {
-                    SET_STRING_ELT(
-                        names,
-                        i as R_xlen_t,
-                        crate::sexp::constructors::mk_char_bytes(c_name.to_bytes()),
-                    );
-                }
-            }
-            crate::sexp::attrib_core::setAttrib(
-                slotlist,
-                crate::sexp::symbol::install_str("names"),
-                names,
-            );
-            vec2buff(slotlist, d, true);
-        }
-
-        // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
-        // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
-        // do not grow a trailing empty argument.
-        if has_s3_class && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int() && !has_data {
-            if let Some(s3) = s4_as_s3_view(s) {
-                append_line_bytes(b", ", d);
-                deparse2buff(s3, d);
-            }
-        }
-
-        append_line_bytes(b")", d);
-        true
+    // GNU deparse.c: names(getClassDef(class)@slots), not the local
+    // fallback setClass table. .S3Class formula objects have no .Data
+    // slot; the language body is emitted via asS3() below.
+    let has_s3_class = {
+        let s3_sym = crate::sexp::symbol::install_str(".S3Class");
+        let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
+        !s3.is_null() && s3 != R_NilValue()
+    };
+    let mut slots = crate::mainutils::objects::gnu_s4_slot_names(&class_name)
+        .filter(|names| !names.is_empty())
+        .or_else(|| crate::mainutils::objects::s4_all_slots(&class_name))
+        .unwrap_or_else(|| s4_instance_slot_names(s));
+    // contains="list" (and other basic vectors) *are* the data part, so
+    // `.Data` is not an attribute. Class metadata can omit that name;
+    // formula subclasses carry `.S3Class` and must not grow a fake slot.
+    if TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int()
+        && !has_s3_class
+        && !slots
+            .iter()
+            .any(|slot| slot == ".Data" || slot == ".xData" || slot == ".S3Class")
+    {
+        slots.insert(0, ".Data".to_string());
     }
+    let has_data = slots.iter().any(|slot| slot == ".Data");
+    let mut slot_values: Vec<(String, SEXP)> = Vec::new();
+    for slot_name in &slots {
+        if let Some(value) = s4_deparse_slot_value(s, slot_name) {
+            slot_values.push((slot_name.clone(), value));
+        }
+    }
+    if !slot_values.is_empty() {
+        let n = slot_values.len() as R_xlen_t;
+        let slotlist = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _slotlist = protect(slotlist);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _names = protect(names);
+        for (i, (slot_name, value)) in slot_values.iter().enumerate() {
+            SET_VECTOR_ELT(slotlist, i as R_xlen_t, *value);
+            if let Ok(c_name) = std::ffi::CString::new(slot_name.as_str()) {
+                SET_STRING_ELT(
+                    names,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(c_name.to_bytes()),
+                );
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            slotlist,
+            crate::sexp::symbol::install_str("names"),
+            names,
+        );
+        vec2buff(slotlist, d, true);
+    }
+
+    // GNU: non-S4SXP objects without a .Data slot also deparse asS3(s).
+    // Restrict to `.S3Class` (formula/oldClass) so slot-only S4 objects
+    // do not grow a trailing empty argument.
+    if has_s3_class && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int() && !has_data {
+        if let Some(s3) = s4_as_s3_view(s) {
+            append_line_bytes(b", ", d);
+            deparse2buff(s3, d);
+        }
+    }
+
+    append_line_bytes(b")", d);
+    true
 }
 
 /// GNU `asS3(s)` for deparse: drop the S4 bit and restore `.S3Class`.
@@ -161,7 +159,7 @@ fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
 }
 
 pub fn s4_class_name(s: SEXP) -> Option<String> {
-    string_attribute_values(s, b"class\0")
+    string_attribute_values(s, "class")
         .into_iter()
         .next()
         .filter(|name| !name.is_empty())
@@ -191,36 +189,34 @@ fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
     slots
 }
 
-pub fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
-    unsafe {
-        let sym = Rf_install(attribute.as_ptr() as *const c_char);
-        let value = getAttrib(s, sym);
-        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
-            return Vec::new();
-        }
-
-        let mut out = Vec::with_capacity(LENGTH(value).max(0) as usize);
-        for i in 0..LENGTH(value) {
-            let elt = STRING_ELT(value, i as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                out.push(String::new());
-                continue;
-            }
-            let chars = char_cstring(elt);
-            if chars.is_none() {
-                out.push(String::new());
-            } else {
-                out.push(
-                    chars
-                        .as_deref()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-            }
-        }
-        out
+fn string_attribute_values(s: SEXP, attribute: &str) -> Vec<String> {
+    let sym = crate::sexp::symbol::install_str(attribute);
+    let value = getAttrib(s, sym);
+    if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
+        return Vec::new();
     }
+
+    let mut out = Vec::with_capacity(LENGTH(value).max(0) as usize);
+    for i in 0..LENGTH(value) {
+        let elt = STRING_ELT(value, i as R_xlen_t);
+        if elt.is_null() || elt == R_NilValue() {
+            out.push(String::new());
+            continue;
+        }
+        let chars = char_cstring(elt);
+        if chars.is_none() {
+            out.push(String::new());
+        } else {
+            out.push(
+                chars
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    out
 }
 
 pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
@@ -228,7 +224,7 @@ pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> 
         return None;
     }
 
-    let names = string_attribute_values(s, b"names\0");
+    let names = string_attribute_values(s, "names");
     for (i, name) in names.iter().enumerate() {
         if name == slot_name && (i as R_xlen_t) < XLENGTH(s) {
             return Some(VECTOR_ELT(s, i as R_xlen_t));
@@ -276,203 +272,168 @@ pub fn print_owned_string(value: String, d: &mut LocalParseData) {
 ///
 /// This is the main recursive function that dispatches based on the SEXPTYPE
 /// of the input and builds the deparsed string representation.
-pub unsafe fn deparse2buff(s: SEXP, d: &mut LocalParseData) {
-    unsafe {
-        let d_opts_in = d.opts;
-        let fnarg = d.fnarg;
-        d.fnarg = false;
+pub fn deparse2buff(s: SEXP, d: &mut LocalParseData) {
+    let d_opts_in = d.opts;
+    let fnarg = d.fnarg;
+    d.fnarg = false;
 
-        // This flag should only be set when recursing through the LHS
-        // of binary ops, so by default we reset to zero
-        let prev_left = d.left;
-        d.left = 0;
+    // This flag should only be set when recursing through the LHS
+    // of binary ops, so by default we reset to zero
+    let prev_left = d.left;
+    d.left = 0;
 
-        if !d.active {
-            d.left = prev_left;
-            return;
-        }
+    if !d.active {
+        d.left = prev_left;
+        return;
+    }
 
-        let s4_check = IS_S4_OBJECT(s);
-        if s4_check != 0 {
-            d.isS4 = 1;
-            if !deparse_s4_object(s, d) {
-                d.sourceable = 0;
-                append_line_bytes(b"<S4 object>", d);
-            }
-            d.left = prev_left;
-            return;
-        }
-
-        // non-S4 cases:
-        let sexp_type = TYPEOF(s);
-
-        if sexp_type == SEXPTYPE::NILSXP {
-            append_line_bytes(b"NULL", d);
-        } else if sexp_type == SEXPTYPE::SYMSXP {
-            let doquote = (d_opts_in & QUOTEEXPRESSIONS != 0) && {
-                let pn = CHAR(PRINTNAME(s));
-                !pn.is_null() && *pn != 0
-            };
-            if doquote {
-                let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                    attr1(s, d)
-                } else {
-                    ATTR_SIMPLE
-                };
-                append_line_bytes(b"quote(", d);
-                // Now print the name
-                if (d_opts_in & S_COMPAT) != 0 {
-                    let q = quotify(PRINTNAME(s), b'"' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                } else if d.backtick != 0 {
-                    let q = quotify(PRINTNAME(s), b'`' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                } else {
-                    let pn = CHAR(PRINTNAME(s));
-                    if !pn.is_null() {
-                        print2buff(pn, d);
-                    }
-                }
-                append_line_bytes(b")", d);
-                if attr >= ATTR_STRUC_ATTR {
-                    attr2(s, d, attr == ATTR_STRUC_ATTR);
-                }
-            } else {
-                if (d_opts_in & S_COMPAT) != 0 {
-                    let q = quotify(PRINTNAME(s), b'"' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                } else if d.backtick != 0 {
-                    let q = quotify(PRINTNAME(s), b'`' as c_int);
-                    if !q.is_null() {
-                        print2buff(q, d);
-                    }
-                } else {
-                    let pn = CHAR(PRINTNAME(s));
-                    if !pn.is_null() {
-                        print2buff(pn, d);
-                    }
-                }
-            }
-        } else if sexp_type == SEXPTYPE::CHARSXP {
-            let name = CHAR(s);
-            if !name.is_null() {
-                print2buff(name, d);
-            }
-        } else if sexp_type == SEXPTYPE::SPECIALSXP || sexp_type == SEXPTYPE::BUILTINSXP {
-            append_line_bytes(b".Primitive(\"", d);
-            let pname = primname_c(s);
-            print2buff(pname, d);
-            append_line_bytes(b"\")", d);
-        } else if sexp_type == SEXPTYPE::PROMSXP {
-            if (d.opts & DELAYPROMISES) != 0 {
-                d.sourceable = 0;
-                append_line_bytes(b"<promise: ", d);
-                d.opts &= !QUOTEEXPRESSIONS;
-                // PREXPR is not available, just print <promise>
-                append_line_bytes(b">", d);
-            } else {
-                append_line_bytes(b"<promise>", d);
-            }
-        } else if sexp_type == SEXPTYPE::CLOSXP {
-            let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                attr1(s, d)
-            } else {
-                ATTR_SIMPLE
-            };
-            let srcref_sym = crate::sexp::symbol::install_str("srcref");
-            let t = getAttrib(s, srcref_sym);
-            if (d.opts & USESOURCE != 0) && !isNull(t) {
-                src2buff1(t, d);
-            } else {
-                d.opts &= SIMPLE_OPTS & !USESOURCE;
-                append_line_bytes(b"function (", d);
-                args2buff(FORMALS(s), 0, 1, d);
-                append_line_bytes(b") ", d);
-                writeline(d);
-                deparse2buff(BODY(s), d);
-                d.opts = d_opts_in;
-            }
-            if attr >= ATTR_STRUC_ATTR {
-                attr2(s, d, attr == ATTR_STRUC_ATTR);
-            }
-        } else if sexp_type == SEXPTYPE::ENVSXP {
+    let s4_check = IS_S4_OBJECT(s);
+    if s4_check != 0 {
+        d.isS4 = 1;
+        if !deparse_s4_object(s, d) {
             d.sourceable = 0;
-            append_line_bytes(b"<environment>", d);
-        } else if sexp_type == SEXPTYPE::VECSXP {
+            append_line_bytes(b"<S4 object>", d);
+        }
+        d.left = prev_left;
+        return;
+    }
+
+    // non-S4 cases:
+    let sexp_type = TYPEOF(s);
+
+    if sexp_type == SEXPTYPE::NILSXP {
+        append_line_bytes(b"NULL", d);
+    } else if sexp_type == SEXPTYPE::SYMSXP {
+        let doquote = (d_opts_in & QUOTEEXPRESSIONS != 0)
+            && char_cstr_bytes_opt(PRINTNAME(s)).is_some_and(|name| !name.is_empty());
+        if doquote {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
                 ATTR_SIMPLE
             };
-            append_line_bytes(b"list(", d);
-            d.opts = d_opts_in;
-            vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
-            d.opts |= NICE_NAMES;
+            append_line_bytes(b"quote(", d);
+            // Now print the name
+            if (d_opts_in & S_COMPAT) != 0 {
+                append_quoted_name(PRINTNAME(s), b'"', d);
+            } else if d.backtick != 0 {
+                append_quoted_name(PRINTNAME(s), b'`', d);
+            } else {
+                append_char_name(PRINTNAME(s), d);
+            }
             append_line_bytes(b")", d);
             if attr >= ATTR_STRUC_ATTR {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
+        } else {
+            if (d_opts_in & S_COMPAT) != 0 {
+                append_quoted_name(PRINTNAME(s), b'"', d);
+            } else if d.backtick != 0 {
+                append_quoted_name(PRINTNAME(s), b'`', d);
+            } else {
+                append_char_name(PRINTNAME(s), d);
+            }
+        }
+    } else if sexp_type == SEXPTYPE::CHARSXP {
+        append_char_name(s, d);
+    } else if sexp_type == SEXPTYPE::SPECIALSXP || sexp_type == SEXPTYPE::BUILTINSXP {
+        append_line_bytes(b".Primitive(\"", d);
+        append_line_bytes(primitive_name_bytes(s), d);
+        append_line_bytes(b"\")", d);
+    } else if sexp_type == SEXPTYPE::PROMSXP {
+        if (d.opts & DELAYPROMISES) != 0 {
+            d.sourceable = 0;
+            append_line_bytes(b"<promise: ", d);
+            d.opts &= !QUOTEEXPRESSIONS;
+            // PREXPR is not available, just print <promise>
+            append_line_bytes(b">", d);
+        } else {
+            append_line_bytes(b"<promise>", d);
+        }
+    } else if sexp_type == SEXPTYPE::CLOSXP {
+        let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+            attr1(s, d)
+        } else {
+            ATTR_SIMPLE
+        };
+        let srcref_sym = crate::sexp::symbol::install_str("srcref");
+        let t = getAttrib(s, srcref_sym);
+        if (d.opts & USESOURCE != 0) && !isNull(t) {
+            src2buff1(t, d);
+        } else {
+            d.opts &= SIMPLE_OPTS & !USESOURCE;
+            append_line_bytes(b"function (", d);
+            args2buff(FORMALS(s), 0, 1, d);
+            append_line_bytes(b") ", d);
+            writeline(d);
+            deparse2buff(BODY(s), d);
             d.opts = d_opts_in;
-        } else if sexp_type == SEXPTYPE::EXPRSXP {
-            let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                attr1(s, d)
-            } else {
-                ATTR_SIMPLE
-            };
-            if LENGTH(s) <= 0 {
-                append_line_bytes(b"expression()", d);
-            } else {
-                let loc_opts = d.opts;
-                append_line_bytes(b"expression(", d);
-                d.opts &= SIMPLE_OPTS;
-                vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
-                d.opts = loc_opts;
-                append_line_bytes(b")", d);
+        }
+        if attr >= ATTR_STRUC_ATTR {
+            attr2(s, d, attr == ATTR_STRUC_ATTR);
+        }
+    } else if sexp_type == SEXPTYPE::ENVSXP {
+        d.sourceable = 0;
+        append_line_bytes(b"<environment>", d);
+    } else if sexp_type == SEXPTYPE::VECSXP {
+        let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+            attr1(s, d)
+        } else {
+            ATTR_SIMPLE
+        };
+        append_line_bytes(b"list(", d);
+        d.opts = d_opts_in;
+        vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
+        d.opts |= NICE_NAMES;
+        append_line_bytes(b")", d);
+        if attr >= ATTR_STRUC_ATTR {
+            attr2(s, d, attr == ATTR_STRUC_ATTR);
+        }
+        d.opts = d_opts_in;
+    } else if sexp_type == SEXPTYPE::EXPRSXP {
+        let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+            attr1(s, d)
+        } else {
+            ATTR_SIMPLE
+        };
+        if LENGTH(s) <= 0 {
+            append_line_bytes(b"expression()", d);
+        } else {
+            let loc_opts = d.opts;
+            append_line_bytes(b"expression(", d);
+            d.opts &= SIMPLE_OPTS;
+            vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
+            d.opts = loc_opts;
+            append_line_bytes(b")", d);
+        }
+        if attr >= ATTR_STRUC_ATTR {
+            attr2(s, d, attr == ATTR_STRUC_ATTR);
+        }
+        d.opts = d_opts_in;
+    } else if sexp_type == SEXPTYPE::LISTSXP {
+        let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+            attr1(s, d)
+        } else {
+            ATTR_SIMPLE
+        };
+        // Check for missing args
+        let mut missing = false;
+        let mut t = s;
+        while !isNull(t) {
+            if CAR(t) == R_MissingArg() {
+                missing = true;
+                break;
             }
-            if attr >= ATTR_STRUC_ATTR {
-                attr2(s, d, attr == ATTR_STRUC_ATTR);
-            }
-            d.opts = d_opts_in;
-        } else if sexp_type == SEXPTYPE::LISTSXP {
-            let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                attr1(s, d)
-            } else {
-                ATTR_SIMPLE
-            };
-            // Check for missing args
-            let mut missing = false;
-            let mut t = s;
-            while !isNull(t) {
-                if CAR(t) == R_MissingArg() {
-                    missing = true;
-                    break;
-                }
-                t = CDR(t);
-            }
-            if missing {
-                append_line_bytes(b"as.pairlist(alist(", d);
-            } else {
-                append_line_bytes(b"pairlist(", d);
-            }
-            d.inlist += 1;
-            let mut t = s;
-            while !isNull(CDR(t)) {
-                if !isNull(TAG(t)) {
-                    d.opts = SIMPLEDEPARSE;
-                    deparse2buff(TAG(t), d);
-                    d.opts = d_opts_in;
-                    append_line_bytes(b" = ", d);
-                }
-                deparse2buff(CAR(t), d);
-                append_line_bytes(b", ", d);
-                t = CDR(t);
-            }
+            t = CDR(t);
+        }
+        if missing {
+            append_line_bytes(b"as.pairlist(alist(", d);
+        } else {
+            append_line_bytes(b"pairlist(", d);
+        }
+        d.inlist += 1;
+        let mut t = s;
+        while !isNull(CDR(t)) {
             if !isNull(TAG(t)) {
                 d.opts = SIMPLEDEPARSE;
                 deparse2buff(TAG(t), d);
@@ -480,648 +441,616 @@ pub unsafe fn deparse2buff(s: SEXP, d: &mut LocalParseData) {
                 append_line_bytes(b" = ", d);
             }
             deparse2buff(CAR(t), d);
-            if missing {
-                append_line_bytes(b"))", d);
-            } else {
-                append_line_bytes(b")", d);
-            }
-            d.inlist -= 1;
-            if attr >= ATTR_STRUC_ATTR {
-                attr2(s, d, attr == ATTR_STRUC_ATTR);
-            }
-        } else if sexp_type == SEXPTYPE::LANGSXP {
-            if !isNull(ATTRIB(s)) {
-                d.sourceable = 0;
-            }
-            let op = CAR(s);
-            let mut doquote = false;
-            let maybe_quote = (d_opts_in & QUOTEEXPRESSIONS) != 0;
-            if maybe_quote {
-                // do *not* quote() formulas (tilde):
-                let is_tilde = isSymbol(op) && {
-                    let pn = CHAR(PRINTNAME(op));
-                    !pn.is_null() && streql(pn, b"~\0".as_ptr() as *const c_char)
-                };
-                doquote = !is_tilde;
-                if doquote {
-                    append_line_bytes(b"quote(", d);
-                    d.opts &= SIMPLE_OPTS;
-                } else {
-                    d.opts &= !QUOTEEXPRESSIONS;
-                }
-            }
-
-            if isSymbol(op) {
-                let mut userbinop = 0;
-                let symval = SYMVALUE(op);
-                let symval_type = TYPEOF(symval);
-                let is_builtin =
-                    symval_type == SEXPTYPE::BUILTINSXP || symval_type == SEXPTYPE::SPECIALSXP;
-                let bound_nonprim = !symval.is_null()
-                    && symval != R_NilValue()
-                    && symval != R_UnboundValue()
-                    && !is_builtin;
-                let syntax_pp = if is_builtin || bound_nonprim {
-                    None
-                } else {
-                    getPPinfo_for_symbol(op)
-                };
-
-                if is_builtin {
-                    userbinop = 0;
-                } else if isUserBinop(op) {
-                    userbinop = 1;
-                } else {
-                    userbinop = 0;
-                }
-
-                if is_builtin || userbinop != 0 || syntax_pp.is_some() {
-                    let mut fop: PPinfo;
-                    let s = CDR(s);
-                    if userbinop != 0 {
-                        let names_sym = crate::sexp::symbol::install_str("names");
-                        if isNull(getAttrib(s, names_sym)) {
-                            fop = PPinfo::new(PP_BINARY2, PREC_PERCENT, 0);
-                        } else {
-                            fop = PPinfo::new(PP_FUNCALL, 0, 0);
-                        }
-                    } else {
-                        fop = syntax_pp.unwrap_or_else(|| getPPinfo(symval));
-                    }
-
-                    // Adjust kind based on argument count
-                    match fop.kind {
-                        PP_BINARY => {
-                            let nargs = Rf_length(s);
-                            match nargs {
-                                1 => {
-                                    fop.kind = PP_UNARY;
-                                    if fop.prec == PREC_SUM {
-                                        fop.prec = PREC_SIGN;
-                                    }
-                                }
-                                2 => {}
-                                _ => {
-                                    fop.kind = PP_FUNCALL;
-                                }
-                            }
-                        }
-                        PP_BINARY2 => {
-                            if Rf_length(s) != 2 {
-                                fop.kind = PP_FUNCALL;
-                            } else if userbinop != 0 {
-                                fop.kind = PP_BINARY;
-                            }
-                        }
-                        PP_DOLLAR => {
-                            if Rf_length(s) != 2 {
-                                fop.kind = PP_FUNCALL;
-                            } else {
-                                let rhs = CADR(s);
-                                if !(isSymbol(rhs)
-                                    || (isValidString(rhs) && !isNull(STRING_ELT(rhs, 0))))
-                                {
-                                    fop.kind = PP_FUNCALL;
-                                }
-                            }
-                        }
-                        _ => {} // intentionally unhandled: SEXPTYPE not relevant for function op detection
-                    }
-
-                    // Dispatch on operator kind
-                    match fop.kind {
-                        PP_IF => {
-                            append_line_bytes(b"if (", d);
-                            deparse2buff(CAR(s), d);
-                            append_line_bytes(b") ", d);
-                            if d.incurly != 0 && d.inlist == 0 {
-                                let lookahead = curlyahead(CADR(s));
-                                if !lookahead {
-                                    writeline(d);
-                                    d.indent += 1;
-                                }
-                            }
-                            if Rf_length(s) > 2 {
-                                deparse2buff(CADR(s), d);
-                                if d.incurly != 0 && d.inlist == 0 {
-                                    writeline(d);
-                                    if !curlyahead(CADR(s)) {
-                                        d.indent -= 1;
-                                    }
-                                } else {
-                                    append_line_bytes(b" ", d);
-                                }
-                                append_line_bytes(b"else ", d);
-                                deparse2buff(CADDR(s), d);
-                            } else {
-                                deparse2buff(CADR(s), d);
-                                if d.incurly != 0 && !curlyahead(CADR(s)) && d.inlist == 0 {
-                                    d.indent -= 1;
-                                }
-                            }
-                        }
-                        PP_WHILE => {
-                            append_line_bytes(b"while (", d);
-                            deparse2buff(CAR(s), d);
-                            append_line_bytes(b") ", d);
-                            deparse2buff(CADR(s), d);
-                        }
-                        PP_FOR => {
-                            append_line_bytes(b"for (", d);
-                            deparse2buff(CAR(s), d);
-                            append_line_bytes(b" in ", d);
-                            deparse2buff(CADR(s), d);
-                            append_line_bytes(b") ", d);
-                            deparse2buff(CADDR(s), d);
-                        }
-                        PP_REPEAT => {
-                            append_line_bytes(b"repeat ", d);
-                            deparse2buff(CAR(s), d);
-                        }
-                        PP_CURLY => {
-                            append_line_bytes(b"{", d);
-                            d.incurly += 1;
-                            d.indent += 1;
-                            writeline(d);
-                            let mut cur = s;
-                            while !isNull(cur) {
-                                deparse2buff(CAR(cur), d);
-                                writeline(d);
-                                cur = CDR(cur);
-                            }
-                            d.indent -= 1;
-                            append_line_bytes(b"}", d);
-                            d.incurly -= 1;
-                        }
-                        PP_PAREN => {
-                            append_line_bytes(b"(", d);
-                            deparse2buff(CAR(s), d);
-                            append_line_bytes(b")", d);
-                        }
-                        PP_SUBSET => {
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                1,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            // Determine [ or [[
-                            let primval = subset_primval(op, symval);
-                            if primval == 1 {
-                                append_line_bytes(b"[", d);
-                            } else {
-                                append_line_bytes(b"[[", d);
-                            }
-                            args2buff(CDR(s), 0, 0, d);
-                            if primval == 1 {
-                                append_line_bytes(b"]", d);
-                            } else {
-                                append_line_bytes(b"]]", d);
-                            }
-                        }
-                        PP_FUNCALL | PP_RETURN => {
-                            if d.backtick != 0 {
-                                let q = quotify(PRINTNAME(op), b'`' as c_int);
-                                if !q.is_null() {
-                                    print2buff(q, d);
-                                }
-                            } else {
-                                let q = quotify(PRINTNAME(op), b'"' as c_int);
-                                if !q.is_null() {
-                                    print2buff(q, d);
-                                }
-                            }
-                            append_line_bytes(b"(", d);
-                            d.inlist += 1;
-                            args2buff(s, 0, 0, d);
-                            d.inlist -= 1;
-                            append_line_bytes(b")", d);
-                        }
-                        PP_FOREIGN => {
-                            let pn = CHAR(PRINTNAME(op));
-                            if !pn.is_null() {
-                                print2buff(pn, d);
-                            } // ASCII
-                            append_line_bytes(b"(", d);
-                            d.inlist += 1;
-                            args2buff(s, 1, 0, d);
-                            d.inlist -= 1;
-                            append_line_bytes(b")", d);
-                        }
-                        PP_FUNCTION => {
-                            if (d.opts & USESOURCE == 0) || !isString(CADDR(s)) {
-                                let pn = CHAR(PRINTNAME(op));
-                                if !pn.is_null() {
-                                    print2buff(pn, d);
-                                } // ASCII
-                                append_line_bytes(b"(", d);
-                                // Parsed function arguments are a pairlist, not a closure.
-                                // GNU's FORMALS macro aliases CAR through its C layout;
-                                // the checked Rust graph requires the actual pairlist field.
-                                args2buff(CAR(s), 0, 1, d);
-                                append_line_bytes(b") ", d);
-                                deparse2buff(CADR(s), d);
-                            } else {
-                                // Use source reference
-                                let src = CADDR(s);
-                                let n = LENGTH(src);
-                                for i in 0..n as usize {
-                                    let elt = STRING_ELT(src, i as R_xlen_t);
-                                    let name = CHAR(elt);
-                                    if !name.is_null() {
-                                        print2buff(name, d);
-                                    }
-                                    writeline(d);
-                                }
-                            }
-                        }
-                        PP_ASSIGN | PP_ASSIGN2 => {
-                            let op_name = CHAR(PRINTNAME(op));
-                            let is_eq = !op_name.is_null()
-                                && streql(op_name, b"=\0".as_ptr() as *const c_char);
-                            let outerparens = fnarg && is_eq;
-                            if outerparens {
-                                append_line_bytes(b"(", d);
-                            }
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                1,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { fop.prec };
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            append_line_bytes(b" ", d);
-                            if !op_name.is_null() {
-                                print2buff(op_name, d);
-                            } // ASCII
-                            append_line_bytes(b" ", d);
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CADR(s),
-                                0,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { prev_left };
-                            deparse2buff(CADR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            if outerparens {
-                                append_line_bytes(b")", d);
-                            }
-                            d.left = 0;
-                        }
-                        PP_DOLLAR => {
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                1,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { fop.prec };
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            let op_name = CHAR(PRINTNAME(op));
-                            if !op_name.is_null() {
-                                print2buff(op_name, d);
-                            } // ASCII ($)
-                            // Handle x$a's
-                            let rhs = CADR(s);
-                            if isString(rhs) {
-                                let elt = STRING_ELT(rhs, 0);
-                                if !elt.is_null() {
-                                    let name = CHAR(elt);
-                                    if !name.is_null() && isValidName(name) {
-                                        deparse2buff(elt, d);
-                                    } else {
-                                        let parens = needsparens(
-                                            fop.kind,
-                                            fop.prec,
-                                            fop.rightassoc,
-                                            rhs,
-                                            0,
-                                            prev_left,
-                                        );
-                                        if parens {
-                                            append_line_bytes(b"(", d);
-                                        }
-                                        d.left = if parens { 0 } else { prev_left };
-                                        deparse2buff(rhs, d);
-                                        if parens {
-                                            append_line_bytes(b")", d);
-                                        }
-                                    }
-                                }
-                            } else {
-                                let parens = needsparens(
-                                    fop.kind,
-                                    fop.prec,
-                                    fop.rightassoc,
-                                    rhs,
-                                    0,
-                                    prev_left,
-                                );
-                                if parens {
-                                    append_line_bytes(b"(", d);
-                                }
-                                d.left = if parens { 0 } else { prev_left };
-                                deparse2buff(rhs, d);
-                                if parens {
-                                    append_line_bytes(b")", d);
-                                }
-                            }
-                            d.left = 0;
-                        }
-                        PP_BINARY => {
-                            let mut lbreak = false;
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                1,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { fop.prec };
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            append_line_bytes(b" ", d);
-                            let op_name = CHAR(PRINTNAME(op));
-                            if !op_name.is_null() {
-                                print2buff(op_name, d);
-                            } // ASCII
-                            append_line_bytes(b" ", d);
-                            linebreak(&mut lbreak, d);
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CADR(s),
-                                0,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { prev_left };
-                            deparse2buff(CADR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            if lbreak {
-                                d.indent -= 1;
-                            }
-                            d.left = 0;
-                        }
-                        PP_BINARY2 => {
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                1,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { fop.prec };
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            let op_name = CHAR(PRINTNAME(op));
-                            if !op_name.is_null() {
-                                print2buff(op_name, d);
-                            } // ASCII
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CADR(s),
-                                0,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { prev_left };
-                            deparse2buff(CADR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            d.left = 0;
-                        }
-                        PP_UNARY => {
-                            let op_name = CHAR(PRINTNAME(op));
-                            if !op_name.is_null() {
-                                print2buff(op_name, d);
-                            } // ASCII
-                            let parens = needsparens(
-                                fop.kind,
-                                fop.prec,
-                                fop.rightassoc,
-                                CAR(s),
-                                0,
-                                prev_left,
-                            );
-                            if parens {
-                                append_line_bytes(b"(", d);
-                            }
-                            d.left = if parens { 0 } else { prev_left };
-                            deparse2buff(CAR(s), d);
-                            if parens {
-                                append_line_bytes(b")", d);
-                            }
-                            d.left = 0;
-                        }
-                        PP_BREAK => {
-                            append_line_bytes(b"break", d);
-                        }
-                        PP_NEXT => {
-                            append_line_bytes(b"next", d);
-                        }
-                        PP_SUBASS => {
-                            if (d.opts & S_COMPAT) != 0 {
-                                append_line_bytes(b"\"", d);
-                                let op_name = CHAR(PRINTNAME(op));
-                                if !op_name.is_null() {
-                                    print2buff(op_name, d);
-                                } // ASCII
-                                append_line_bytes(b"\'(", d);
-                            } else {
-                                append_line_bytes(b"`", d);
-                                let op_name = CHAR(PRINTNAME(op));
-                                if !op_name.is_null() {
-                                    print2buff(op_name, d);
-                                } // ASCII
-                                append_line_bytes(b"`(", d);
-                            }
-                            args2buff(s, 0, 0, d);
-                            append_line_bytes(b")", d);
-                        }
-                        _ => {
-                            d.sourceable = 0;
-                        }
-                    }
-                } else {
-                    // op is a symbol but not builtin/special/userbinop
-                    let op_name = CHAR(PRINTNAME(op));
-                    let val = if isSymbol(op) {
-                        SYMVALUE(op)
-                    } else {
-                        R_NilValue()
-                    };
-
-                    if isSymbol(op)
-                        && TYPEOF(val) == SEXPTYPE::CLOSXP
-                        && !op_name.is_null()
-                        && streql(op_name, b"::\0".as_ptr() as *const c_char)
-                    {
-                        deparse2buff(CADR(s), d);
-                        append_line_bytes(b"::", d);
-                        deparse2buff(CADDR(s), d);
-                    } else if isSymbol(op)
-                        && TYPEOF(val) == SEXPTYPE::CLOSXP
-                        && !op_name.is_null()
-                        && streql(op_name, b":::\0".as_ptr() as *const c_char)
-                    {
-                        deparse2buff(CADR(s), d);
-                        append_line_bytes(b":::", d);
-                        deparse2buff(CADDR(s), d);
-                    } else {
-                        if isSymbol(op) {
-                            if (d.opts & S_COMPAT) != 0 {
-                                let q = quotify(PRINTNAME(op), b'\'' as c_int);
-                                if !q.is_null() {
-                                    print2buff(q, d);
-                                }
-                            } else {
-                                let q = quotify(PRINTNAME(op), b'`' as c_int);
-                                if !q.is_null() {
-                                    print2buff(q, d);
-                                }
-                            }
-                        } else {
-                            deparse2buff(CAR(s), d);
-                        }
-                        append_line_bytes(b"(", d);
-                        args2buff(CDR(s), 0, 0, d);
-                        append_line_bytes(b")", d);
-                    }
-                }
-            } else if TYPEOF(op) == SEXPTYPE::CLOSXP
-                || TYPEOF(op) == SEXPTYPE::SPECIALSXP
-                || TYPEOF(op) == SEXPTYPE::BUILTINSXP
-            {
-                if parenthesizeCaller(op) {
-                    append_line_bytes(b"(", d);
-                    deparse2buff(op, d);
-                    append_line_bytes(b")", d);
-                } else {
-                    deparse2buff(op, d);
-                }
-                append_line_bytes(b"(", d);
-                args2buff(CDR(s), 0, 0, d);
-                append_line_bytes(b")", d);
-            } else {
-                // lambda expression or other
-                if parenthesizeCaller(op) {
-                    append_line_bytes(b"(", d);
-                    deparse2buff(op, d);
-                    append_line_bytes(b")", d);
-                } else {
-                    deparse2buff(op, d);
-                }
-                append_line_bytes(b"(", d);
-                args2buff(CDR(s), 0, 0, d);
-                append_line_bytes(b")", d);
-            }
-            if maybe_quote {
-                d.opts = d_opts_in;
-                if doquote {
-                    append_line_bytes(b")", d);
-                }
-            }
-        } else if sexp_type == SEXPTYPE::LGLSXP
-            || sexp_type == SEXPTYPE::INTSXP
-            || sexp_type == SEXPTYPE::REALSXP
-            || sexp_type == SEXPTYPE::CPLXSXP
-            || sexp_type == SEXPTYPE::STRSXP
-            || sexp_type == SEXPTYPE::RAWSXP
-        {
-            vector2buff(s, d);
-        } else if sexp_type == SEXPTYPE::EXTPTRSXP {
-            append_line_bytes(b"<pointer: 0x0>", d);
-        } else if sexp_type == SEXPTYPE::BCODESXP {
-            let source = crate::eval::bc_eval::BCODE_EXPR(s);
-            if !isNull(source) {
-                deparse2buff(source, d);
-            } else {
-                d.sourceable = 0;
-                append_line_bytes(b"<bytecode>", d);
-            }
-        } else if sexp_type == SEXPTYPE::WEAKREFSXP {
-            d.sourceable = 0;
-            append_line_bytes(b"<weak reference>", d);
-        } else if sexp_type == SEXPTYPE::OBJSXP {
-            // A bare OBJSXP, e.g. from S7; objects with the S4 bit are
-            // dealt with above.  Deparse to .OBJSXP() or
-            // structure(.OBJSXP(), <attrs>).
-            if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                let srcref_sym = crate::sexp::symbol::install_str("srcref");
-                let mut a = ATTRIB(s);
-                append_line_bytes(b"structure(.OBJSXP()", d);
-                while !isNull(a) {
-                    if TAG(a) != srcref_sym {
-                        append_line_bytes(b", ", d);
-                        attrEntry(a, d);
-                    }
-                    a = CDR(a);
-                }
-            }
-            append_line_bytes(b")", d);
+            append_line_bytes(b", ", d);
+            t = CDR(t);
+        }
+        if !isNull(TAG(t)) {
+            d.opts = SIMPLEDEPARSE;
+            deparse2buff(TAG(t), d);
+            d.opts = d_opts_in;
+            append_line_bytes(b" = ", d);
+        }
+        deparse2buff(CAR(t), d);
+        if missing {
+            append_line_bytes(b"))", d);
         } else {
+            append_line_bytes(b")", d);
+        }
+        d.inlist -= 1;
+        if attr >= ATTR_STRUC_ATTR {
+            attr2(s, d, attr == ATTR_STRUC_ATTR);
+        }
+    } else if sexp_type == SEXPTYPE::LANGSXP {
+        if !isNull(ATTRIB(s)) {
             d.sourceable = 0;
         }
+        let op = CAR(s);
+        let mut doquote = false;
+        let maybe_quote = (d_opts_in & QUOTEEXPRESSIONS) != 0;
+        if maybe_quote {
+            // do *not* quote() formulas (tilde):
+            let is_tilde =
+                isSymbol(op) && char_cstr_bytes_opt(PRINTNAME(op)).as_deref() == Some(b"~");
+            doquote = !is_tilde;
+            if doquote {
+                append_line_bytes(b"quote(", d);
+                d.opts &= SIMPLE_OPTS;
+            } else {
+                d.opts &= !QUOTEEXPRESSIONS;
+            }
+        }
 
-        d.left = prev_left;
+        if isSymbol(op) {
+            let mut userbinop = 0;
+            let symval = SYMVALUE(op);
+            let symval_type = TYPEOF(symval);
+            let is_builtin =
+                symval_type == SEXPTYPE::BUILTINSXP || symval_type == SEXPTYPE::SPECIALSXP;
+            let bound_nonprim = !symval.is_null()
+                && symval != R_NilValue()
+                && symval != R_UnboundValue()
+                && !is_builtin;
+            let syntax_pp = if is_builtin || bound_nonprim {
+                None
+            } else {
+                getPPinfo_for_symbol(op)
+            };
+
+            if is_builtin {
+                userbinop = 0;
+            } else if isUserBinop(op) {
+                userbinop = 1;
+            } else {
+                userbinop = 0;
+            }
+
+            if is_builtin || userbinop != 0 || syntax_pp.is_some() {
+                let mut fop: PPinfo;
+                let s = CDR(s);
+                if userbinop != 0 {
+                    let names_sym = crate::sexp::symbol::install_str("names");
+                    if isNull(getAttrib(s, names_sym)) {
+                        fop = PPinfo::new(PP_BINARY2, PREC_PERCENT, 0);
+                    } else {
+                        fop = PPinfo::new(PP_FUNCALL, 0, 0);
+                    }
+                } else {
+                    fop = syntax_pp.unwrap_or_else(|| getPPinfo(symval));
+                }
+
+                // Adjust kind based on argument count
+                match fop.kind {
+                    PP_BINARY => {
+                        let nargs = Rf_length(s);
+                        match nargs {
+                            1 => {
+                                fop.kind = PP_UNARY;
+                                if fop.prec == PREC_SUM {
+                                    fop.prec = PREC_SIGN;
+                                }
+                            }
+                            2 => {}
+                            _ => {
+                                fop.kind = PP_FUNCALL;
+                            }
+                        }
+                    }
+                    PP_BINARY2 => {
+                        if Rf_length(s) != 2 {
+                            fop.kind = PP_FUNCALL;
+                        } else if userbinop != 0 {
+                            fop.kind = PP_BINARY;
+                        }
+                    }
+                    PP_DOLLAR => {
+                        if Rf_length(s) != 2 {
+                            fop.kind = PP_FUNCALL;
+                        } else {
+                            let rhs = CADR(s);
+                            if !(isSymbol(rhs)
+                                || (isValidString(rhs) && !isNull(STRING_ELT(rhs, 0))))
+                            {
+                                fop.kind = PP_FUNCALL;
+                            }
+                        }
+                    }
+                    _ => {} // intentionally unhandled: SEXPTYPE not relevant for function op detection
+                }
+
+                // Dispatch on operator kind
+                match fop.kind {
+                    PP_IF => {
+                        append_line_bytes(b"if (", d);
+                        deparse2buff(CAR(s), d);
+                        append_line_bytes(b") ", d);
+                        if d.incurly != 0 && d.inlist == 0 {
+                            let lookahead = curlyahead(CADR(s));
+                            if !lookahead {
+                                writeline(d);
+                                d.indent += 1;
+                            }
+                        }
+                        if Rf_length(s) > 2 {
+                            deparse2buff(CADR(s), d);
+                            if d.incurly != 0 && d.inlist == 0 {
+                                writeline(d);
+                                if !curlyahead(CADR(s)) {
+                                    d.indent -= 1;
+                                }
+                            } else {
+                                append_line_bytes(b" ", d);
+                            }
+                            append_line_bytes(b"else ", d);
+                            deparse2buff(CADDR(s), d);
+                        } else {
+                            deparse2buff(CADR(s), d);
+                            if d.incurly != 0 && !curlyahead(CADR(s)) && d.inlist == 0 {
+                                d.indent -= 1;
+                            }
+                        }
+                    }
+                    PP_WHILE => {
+                        append_line_bytes(b"while (", d);
+                        deparse2buff(CAR(s), d);
+                        append_line_bytes(b") ", d);
+                        deparse2buff(CADR(s), d);
+                    }
+                    PP_FOR => {
+                        append_line_bytes(b"for (", d);
+                        deparse2buff(CAR(s), d);
+                        append_line_bytes(b" in ", d);
+                        deparse2buff(CADR(s), d);
+                        append_line_bytes(b") ", d);
+                        deparse2buff(CADDR(s), d);
+                    }
+                    PP_REPEAT => {
+                        append_line_bytes(b"repeat ", d);
+                        deparse2buff(CAR(s), d);
+                    }
+                    PP_CURLY => {
+                        append_line_bytes(b"{", d);
+                        d.incurly += 1;
+                        d.indent += 1;
+                        writeline(d);
+                        let mut cur = s;
+                        while !isNull(cur) {
+                            deparse2buff(CAR(cur), d);
+                            writeline(d);
+                            cur = CDR(cur);
+                        }
+                        d.indent -= 1;
+                        append_line_bytes(b"}", d);
+                        d.incurly -= 1;
+                    }
+                    PP_PAREN => {
+                        append_line_bytes(b"(", d);
+                        deparse2buff(CAR(s), d);
+                        append_line_bytes(b")", d);
+                    }
+                    PP_SUBSET => {
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            1,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        // Determine [ or [[
+                        let primval = subset_primval(op, symval);
+                        if primval == 1 {
+                            append_line_bytes(b"[", d);
+                        } else {
+                            append_line_bytes(b"[[", d);
+                        }
+                        args2buff(CDR(s), 0, 0, d);
+                        if primval == 1 {
+                            append_line_bytes(b"]", d);
+                        } else {
+                            append_line_bytes(b"]]", d);
+                        }
+                    }
+                    PP_FUNCALL | PP_RETURN => {
+                        if d.backtick != 0 {
+                            append_quoted_name(PRINTNAME(op), b'`', d);
+                        } else {
+                            append_quoted_name(PRINTNAME(op), b'"', d);
+                        }
+                        append_line_bytes(b"(", d);
+                        d.inlist += 1;
+                        args2buff(s, 0, 0, d);
+                        d.inlist -= 1;
+                        append_line_bytes(b")", d);
+                    }
+                    PP_FOREIGN => {
+                        append_char_name(PRINTNAME(op), d); // ASCII
+                        append_line_bytes(b"(", d);
+                        d.inlist += 1;
+                        args2buff(s, 1, 0, d);
+                        d.inlist -= 1;
+                        append_line_bytes(b")", d);
+                    }
+                    PP_FUNCTION => {
+                        if (d.opts & USESOURCE == 0) || !isString(CADDR(s)) {
+                            append_char_name(PRINTNAME(op), d); // ASCII
+                            append_line_bytes(b"(", d);
+                            // Parsed function arguments are a pairlist, not a closure.
+                            // GNU's FORMALS macro aliases CAR through its C layout;
+                            // the checked Rust graph requires the actual pairlist field.
+                            args2buff(CAR(s), 0, 1, d);
+                            append_line_bytes(b") ", d);
+                            deparse2buff(CADR(s), d);
+                        } else {
+                            // Use source reference
+                            let src = CADDR(s);
+                            let n = LENGTH(src);
+                            for i in 0..n as usize {
+                                let elt = STRING_ELT(src, i as R_xlen_t);
+                                append_char_name(elt, d);
+                                writeline(d);
+                            }
+                        }
+                    }
+                    PP_ASSIGN | PP_ASSIGN2 => {
+                        let op_name = char_cstr_bytes_opt(PRINTNAME(op));
+                        let is_eq = op_name.as_deref() == Some(b"=");
+                        let outerparens = fnarg && is_eq;
+                        if outerparens {
+                            append_line_bytes(b"(", d);
+                        }
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            1,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { fop.prec };
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        append_line_bytes(b" ", d);
+                        if let Some(name) = op_name {
+                            append_line_bytes(&name, d);
+                        } // ASCII
+                        append_line_bytes(b" ", d);
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CADR(s),
+                            0,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { prev_left };
+                        deparse2buff(CADR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        if outerparens {
+                            append_line_bytes(b")", d);
+                        }
+                        d.left = 0;
+                    }
+                    PP_DOLLAR => {
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            1,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { fop.prec };
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        append_char_name(PRINTNAME(op), d); // ASCII ($)
+                        // Handle x$a's
+                        let rhs = CADR(s);
+                        if isString(rhs) {
+                            let elt = STRING_ELT(rhs, 0);
+                            if !elt.is_null() {
+                                if char_cstr_bytes_opt(elt)
+                                    .as_deref()
+                                    .is_some_and(is_valid_r_name_bytes)
+                                {
+                                    deparse2buff(elt, d);
+                                } else {
+                                    let parens = needsparens(
+                                        fop.kind,
+                                        fop.prec,
+                                        fop.rightassoc,
+                                        rhs,
+                                        0,
+                                        prev_left,
+                                    );
+                                    if parens {
+                                        append_line_bytes(b"(", d);
+                                    }
+                                    d.left = if parens { 0 } else { prev_left };
+                                    deparse2buff(rhs, d);
+                                    if parens {
+                                        append_line_bytes(b")", d);
+                                    }
+                                }
+                            }
+                        } else {
+                            let parens = needsparens(
+                                fop.kind,
+                                fop.prec,
+                                fop.rightassoc,
+                                rhs,
+                                0,
+                                prev_left,
+                            );
+                            if parens {
+                                append_line_bytes(b"(", d);
+                            }
+                            d.left = if parens { 0 } else { prev_left };
+                            deparse2buff(rhs, d);
+                            if parens {
+                                append_line_bytes(b")", d);
+                            }
+                        }
+                        d.left = 0;
+                    }
+                    PP_BINARY => {
+                        let mut lbreak = false;
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            1,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { fop.prec };
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        append_line_bytes(b" ", d);
+                        append_char_name(PRINTNAME(op), d); // ASCII
+                        append_line_bytes(b" ", d);
+                        linebreak(&mut lbreak, d);
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CADR(s),
+                            0,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { prev_left };
+                        deparse2buff(CADR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        if lbreak {
+                            d.indent -= 1;
+                        }
+                        d.left = 0;
+                    }
+                    PP_BINARY2 => {
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            1,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { fop.prec };
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        append_char_name(PRINTNAME(op), d); // ASCII
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CADR(s),
+                            0,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { prev_left };
+                        deparse2buff(CADR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        d.left = 0;
+                    }
+                    PP_UNARY => {
+                        append_char_name(PRINTNAME(op), d); // ASCII
+                        let parens = needsparens(
+                            fop.kind,
+                            fop.prec,
+                            fop.rightassoc,
+                            CAR(s),
+                            0,
+                            prev_left,
+                        );
+                        if parens {
+                            append_line_bytes(b"(", d);
+                        }
+                        d.left = if parens { 0 } else { prev_left };
+                        deparse2buff(CAR(s), d);
+                        if parens {
+                            append_line_bytes(b")", d);
+                        }
+                        d.left = 0;
+                    }
+                    PP_BREAK => {
+                        append_line_bytes(b"break", d);
+                    }
+                    PP_NEXT => {
+                        append_line_bytes(b"next", d);
+                    }
+                    PP_SUBASS => {
+                        if (d.opts & S_COMPAT) != 0 {
+                            append_line_bytes(b"\"", d);
+                            append_char_name(PRINTNAME(op), d); // ASCII
+                            append_line_bytes(b"\'(", d);
+                        } else {
+                            append_line_bytes(b"`", d);
+                            append_char_name(PRINTNAME(op), d); // ASCII
+                            append_line_bytes(b"`(", d);
+                        }
+                        args2buff(s, 0, 0, d);
+                        append_line_bytes(b")", d);
+                    }
+                    _ => {
+                        d.sourceable = 0;
+                    }
+                }
+            } else {
+                // op is a symbol but not builtin/special/userbinop
+                let op_name = char_cstr_bytes_opt(PRINTNAME(op));
+                let val = if isSymbol(op) {
+                    SYMVALUE(op)
+                } else {
+                    R_NilValue()
+                };
+
+                if isSymbol(op)
+                    && TYPEOF(val) == SEXPTYPE::CLOSXP
+                    && op_name.as_deref() == Some(b"::")
+                {
+                    deparse2buff(CADR(s), d);
+                    append_line_bytes(b"::", d);
+                    deparse2buff(CADDR(s), d);
+                } else if isSymbol(op)
+                    && TYPEOF(val) == SEXPTYPE::CLOSXP
+                    && op_name.as_deref() == Some(b":::")
+                {
+                    deparse2buff(CADR(s), d);
+                    append_line_bytes(b":::", d);
+                    deparse2buff(CADDR(s), d);
+                } else {
+                    if isSymbol(op) {
+                        if (d.opts & S_COMPAT) != 0 {
+                            append_quoted_name(PRINTNAME(op), b'\'', d);
+                        } else {
+                            append_quoted_name(PRINTNAME(op), b'`', d);
+                        }
+                    } else {
+                        deparse2buff(CAR(s), d);
+                    }
+                    append_line_bytes(b"(", d);
+                    args2buff(CDR(s), 0, 0, d);
+                    append_line_bytes(b")", d);
+                }
+            }
+        } else if TYPEOF(op) == SEXPTYPE::CLOSXP
+            || TYPEOF(op) == SEXPTYPE::SPECIALSXP
+            || TYPEOF(op) == SEXPTYPE::BUILTINSXP
+        {
+            if parenthesizeCaller(op) {
+                append_line_bytes(b"(", d);
+                deparse2buff(op, d);
+                append_line_bytes(b")", d);
+            } else {
+                deparse2buff(op, d);
+            }
+            append_line_bytes(b"(", d);
+            args2buff(CDR(s), 0, 0, d);
+            append_line_bytes(b")", d);
+        } else {
+            // lambda expression or other
+            if parenthesizeCaller(op) {
+                append_line_bytes(b"(", d);
+                deparse2buff(op, d);
+                append_line_bytes(b")", d);
+            } else {
+                deparse2buff(op, d);
+            }
+            append_line_bytes(b"(", d);
+            args2buff(CDR(s), 0, 0, d);
+            append_line_bytes(b")", d);
+        }
+        if maybe_quote {
+            d.opts = d_opts_in;
+            if doquote {
+                append_line_bytes(b")", d);
+            }
+        }
+    } else if sexp_type == SEXPTYPE::LGLSXP
+        || sexp_type == SEXPTYPE::INTSXP
+        || sexp_type == SEXPTYPE::REALSXP
+        || sexp_type == SEXPTYPE::CPLXSXP
+        || sexp_type == SEXPTYPE::STRSXP
+        || sexp_type == SEXPTYPE::RAWSXP
+    {
+        // SAFETY: the checked type above selects the live atomic vector for this call.
+        unsafe { vector2buff(s, d) };
+    } else if sexp_type == SEXPTYPE::EXTPTRSXP {
+        append_line_bytes(b"<pointer: 0x0>", d);
+    } else if sexp_type == SEXPTYPE::BCODESXP {
+        let source = crate::eval::bc_eval::BCODE_EXPR(s);
+        if !isNull(source) {
+            deparse2buff(source, d);
+        } else {
+            d.sourceable = 0;
+            append_line_bytes(b"<bytecode>", d);
+        }
+    } else if sexp_type == SEXPTYPE::WEAKREFSXP {
+        d.sourceable = 0;
+        append_line_bytes(b"<weak reference>", d);
+    } else if sexp_type == SEXPTYPE::OBJSXP {
+        // A bare OBJSXP, e.g. from S7; objects with the S4 bit are
+        // dealt with above.  Deparse to .OBJSXP() or
+        // structure(.OBJSXP(), <attrs>).
+        if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+            let srcref_sym = crate::sexp::symbol::install_str("srcref");
+            let mut a = ATTRIB(s);
+            append_line_bytes(b"structure(.OBJSXP()", d);
+            while !isNull(a) {
+                if TAG(a) != srcref_sym {
+                    append_line_bytes(b", ", d);
+                    attrEntry(a, d);
+                }
+                a = CDR(a);
+            }
+        }
+        append_line_bytes(b")", d);
+    } else {
+        d.sourceable = 0;
     }
+
+    d.left = prev_left;
 }
 
 // ---------------------------------------------------------------------------

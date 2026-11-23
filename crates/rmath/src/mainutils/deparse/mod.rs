@@ -23,7 +23,7 @@
 //!   linebreak, args2buff, vector2buff, vec2buff.
 //! - deparse1WithCutoff, deparse1, deparse1w, deparse1line, deparse1s, deparse1m.
 //! - do_deparse with argument extraction.
-//! - Helper functions: curlyahead, needsparens, quotify, etc.
+//! - Helper functions for precedence, names, and quoting.
 //! - Source reference deparsing kept as a stub (needs eval/methods).
 //! - do_dput uses the owning portable connection boundary; do_dump retains its
 //!   separate implementation.
