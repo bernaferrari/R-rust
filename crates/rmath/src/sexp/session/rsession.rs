@@ -553,7 +553,7 @@ impl RSession {
         self.with_active(|| {
             self.inst().output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
-            let visible = self.inst().eval_state.visible != 0;
+            let visible = self.inst().visibility() != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
             (result, output, visible)
         })
@@ -771,7 +771,7 @@ impl RSession {
                     result = Err(error);
                     break;
                 }
-                let visible_flag = if self.inst().eval_state.visible != 0 {
+                let visible_flag = if self.inst().visibility() != 0 {
                     1
                 } else {
                     0
@@ -862,7 +862,7 @@ impl RSession {
             if let Err(error) = _toplevel_no_guard.require_active() {
                 result = Err(error);
             }
-            let visible = self.inst().eval_state.visible != 0;
+            let visible = self.inst().visibility() != 0;
             let output = capture.finish();
             f(result, output, visible)
         })
@@ -985,7 +985,7 @@ impl RSession {
                 // into the captured stream, preserving print()/auto-print
                 // interleaving; the final statement renders at result
                 // assembly. A print error is the same script error as eval.
-                let to_print = if index != last_index && self.inst().eval_state.visible != 0 {
+                let to_print = if index != last_index && self.inst().visibility() != 0 {
                     result.as_ref().ok().cloned()
                 } else {
                     None
@@ -1015,7 +1015,7 @@ impl RSession {
                     break;
                 }
                 if let Ok(value) = result.as_ref() {
-                    let visible_flag = if self.inst().eval_state.visible != 0 {
+                    let visible_flag = if self.inst().visibility() != 0 {
                         1
                     } else {
                         0
@@ -1065,7 +1065,7 @@ impl RSession {
             if let Err(error) = _toplevel_no_guard.require_active() {
                 result = Err(error);
             }
-            let visible = self.inst().eval_state.visible != 0;
+            let visible = self.inst().visibility() != 0;
             let output = capture.finish();
             f(result, output, visible)
         }
@@ -1132,7 +1132,7 @@ impl RSession {
             if let Err(error) = _toplevel_no_guard.require_active() {
                 result = Err(error);
             }
-            let visible = self.inst().eval_state.visible != 0;
+            let visible = self.inst().visibility() != 0;
             let output = capture.finish();
             f(result, output, visible)
         })

@@ -11,6 +11,9 @@ use super::ffi::SEXP;
 #[path = "singletons.rs"]
 mod singletons;
 use super::instance::{RInstance, with_required_current_instance};
+pub(crate) use super::instance::{
+    set_visibility_in as set_R_Visible_in, visibility_in as R_Visible_in,
+};
 pub(crate) use singletons::{SingletonKind, SingletonLease, SingletonPoolLease};
 
 // ---------------------------------------------------------------------------
@@ -205,26 +208,6 @@ pub fn set_R_EvalDepth(d: i32) {
 pub fn R_EvalDepthLimit() -> i32 {
     // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
     with_required_current_instance(|inst| unsafe { R_EvalDepthLimit_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn R_Visible_in(inst: *mut RInstance) -> i32 {
-    // P2: single-field read; no ambient write intervenes.
-    unsafe { (*inst).eval_state.visible }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_Visible_in(inst: *mut RInstance, v: i32) {
-    // P2: single-field write; no other raw path touches the instance here.
-    unsafe {
-        (*inst).eval_state.visible = v;
-    }
 }
 
 /// # Safety

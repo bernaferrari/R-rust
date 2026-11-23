@@ -15,7 +15,9 @@ use crate::mainutils::gram_ex::read_r_source;
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
+use crate::sexp::globals::{
+    R_NilValue, R_Visible, R_Visible_in, set_R_Visible, set_R_Visible_in,
+};
 use crate::sexp::instance::{with_parse_diagnostics, with_required_current_instance};
 use crate::sexp::protect::protect;
 
@@ -333,7 +335,7 @@ impl TaskHandlersGuard {
             if (*instance).main_state.running_toplevel_handlers {
                 return None;
             }
-            let visible = (*instance).eval_state.visible;
+            let visible = R_Visible_in(instance);
             (*instance).main_state.running_toplevel_handlers = true;
             Some(Self { owner, visible })
         }
@@ -344,7 +346,7 @@ impl Drop for TaskHandlersGuard {
         unsafe {
             let instance = self.owner.as_ptr();
             (*instance).main_state.running_toplevel_handlers = false;
-            (*instance).eval_state.visible = self.visible;
+            set_R_Visible_in(instance, self.visible);
         }
     }
 }
@@ -1117,7 +1119,7 @@ mod owned_task_callback_tests {
         let id = Rf_addTaskCallback(callback.as_raw(), R_NilValue());
 
         session.with_active_in(|instance| unsafe {
-            (*instance).eval_state.visible = FALSE;
+            set_R_Visible_in(instance, FALSE);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE)
             }));
@@ -1126,7 +1128,7 @@ mod owned_task_callback_tests {
                 "warn=2 must propagate the callback warning as an error"
             );
             assert!(!(*instance).main_state.running_toplevel_handlers);
-            assert_eq!((*instance).eval_state.visible, FALSE);
+            assert_eq!(R_Visible_in(instance), FALSE);
             assert_eq!(
                 (*instance).main_state.task_callbacks.len(),
                 1,
@@ -1306,7 +1308,7 @@ mod owned_task_callback_tests {
             crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             assert!(!(*instance).main_state.running_toplevel_handlers);
-            assert_eq!((*instance).eval_state.visible, FALSE);
+            assert_eq!(R_Visible_in(instance), FALSE);
         });
         assert!(fired.get());
     }
@@ -1335,7 +1337,7 @@ mod owned_task_callback_tests {
         let callback_facade = Rc::downgrade(&facade);
         unsafe {
             crate::sexp::session::with_instance_active(instance, || {
-                (*instance).eval_state.visible = FALSE;
+                set_R_Visible_in(instance, FALSE);
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     assert!((*instance).main_state.running_toplevel_handlers);
                     drop(callback_facade.upgrade().unwrap().borrow_mut().take());
@@ -1344,7 +1346,7 @@ mod owned_task_callback_tests {
                 Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             });
             assert!(!(*instance).main_state.running_toplevel_handlers);
-            assert_eq!((*instance).eval_state.visible, FALSE);
+            assert_eq!(R_Visible_in(instance), FALSE);
         }
         assert!(facade.borrow().is_none());
         assert!(!original.is_live());

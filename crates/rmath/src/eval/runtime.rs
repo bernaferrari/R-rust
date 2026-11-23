@@ -138,12 +138,19 @@ mod tests {
         set_visible(1 - saved);
         session.close();
         drop(session);
-        let result = catch_unwind(AssertUnwindSafe(|| {
-            let _guard = guard;
-            panic!("visibility unwind probe");
-        }));
-        assert!(result.is_err());
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
+        assert!(!crate::sexp::instance::has_current_instance());
+        let other = RSession::construct_detached(RSession::new_for_gc_tests);
+        other.with_active(|| {
+            // Use a distinct value to detect cleanup aimed at the active session.
+            set_visible(1 - saved);
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let _guard = guard;
+                panic!("visibility unwind probe");
+            }));
+            assert!(result.is_err());
+            assert_eq!(visible(), 1 - saved);
+        });
+        // SAFETY: the inspection pin still retains the original allocation.
         assert_eq!(unsafe { R_Visible_in(inspection_pin.as_ptr()) }, saved);
         assert!(!crate::sexp::instance::has_current_instance());
     }

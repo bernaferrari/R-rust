@@ -567,7 +567,7 @@ mod owned_warning_snapshot_tests {
                     );
                 }
             }));
-            (*instance).eval_state.visible = crate::sexp::ffi::TRUE;
+            globals::set_R_Visible_in(instance, crate::sexp::ffi::TRUE);
             crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             super::super::render::vwarningcall_dflt(
                 globals::R_NilValue(),
@@ -575,7 +575,7 @@ mod owned_warning_snapshot_tests {
                 ptr::null_mut(),
             );
             assert!(collected.get(), "option evaluation must actually collect");
-            assert_eq!((*instance).eval_state.visible, crate::sexp::ffi::TRUE);
+            assert_eq!(globals::R_Visible_in(instance), crate::sexp::ffi::TRUE);
             assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.in_warning), 0);
             assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 0);
             let result = owner

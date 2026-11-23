@@ -298,7 +298,6 @@ pub(crate) struct EvalControlState {
     pub quiet: c_int,
     pub interactive: c_int,
     pub verbose: c_int,
-    pub visible: c_int,
     pub pp_stack_top: c_int,
     pub collect_warnings: c_int,
     pub relop_lang_option: c_int,
@@ -323,7 +322,6 @@ impl Default for EvalControlState {
             quiet: 0,
             interactive: 1,
             verbose: 0,
-            visible: 1,
             pp_stack_top: 0,
             collect_warnings: 0,
             relop_lang_option: 0,
@@ -427,6 +425,8 @@ pub struct RInstance {
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Result visibility, copied without lending evaluator state.
+    visibility: Cell<c_int>,
     /// Evaluation limits and counters; borrows end before runtime reentry.
     execution_state: RefCell<ExecutionState>,
     /// Owning marker for tail-call continuations in this session.
@@ -594,6 +594,12 @@ pub struct RInstance {
 }
 
 impl RInstance {
+    /// Read the current result visibility for this instance.
+    #[inline]
+    pub(crate) fn visibility(&self) -> c_int {
+        self.visibility.get()
+    }
+
     /// Allocate independent runtime storage without executing R code.
     ///
     /// Initialized interpreters are constructed by RSession, which installs
@@ -659,6 +665,7 @@ impl RInstance {
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
+            visibility: Cell::new(super::ffi::TRUE),
             execution_state: RefCell::default(),
             exec_token: RefCell::default(),
             assignment_expr: RefCell::default(),
@@ -1031,6 +1038,28 @@ pub(crate) unsafe fn with_execution_state_in<R>(
     // SAFETY: the caller retains the allocation; project only this field.
     let cell = unsafe { &(*instance).execution_state };
     f(&mut cell.borrow_mut())
+}
+
+/// Copy the original instance's result visibility without lending its state.
+///
+/// # Safety
+/// `instance` must remain physically allocated for the access, with no
+/// overlapping exclusive borrow of the whole instance.
+#[inline]
+pub(crate) unsafe fn visibility_in(instance: *mut RInstance) -> c_int {
+    // SAFETY: the caller retains the allocation; project only the scalar cell.
+    unsafe { &(*instance).visibility }.get()
+}
+
+/// Update result visibility, including during cleanup of a revoked session.
+///
+/// # Safety
+/// `instance` must remain physically allocated for the access, with no
+/// overlapping exclusive borrow of the whole instance.
+#[inline]
+pub(crate) unsafe fn set_visibility_in(instance: *mut RInstance, value: c_int) {
+    // SAFETY: the caller retains the allocation; project only the scalar cell.
+    unsafe { &(*instance).visibility }.set(value);
 }
 
 /// Retain the token independently of its slot across allocation and callbacks.
