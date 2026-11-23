@@ -1,150 +1,126 @@
 //! Brent's root-finding method (zeroin).
 //! Port of r-source/src/library/stats/src/zeroin.c
 
-use core::ffi::{c_double, c_int, c_void};
-
-/// Function pointer type for the objective function passed to R_zeroin2.
-pub type R_zeroin2_fn = unsafe extern "C-unwind" fn(f64, *mut c_void) -> f64;
+use core::ffi::{c_double, c_int};
 
 /// Brent's method for finding a root of a function in a given interval.
 ///
 /// Port of `R_zeroin2` from R's `src/library/stats/src/zeroin.c`.
-///
-/// # Safety
-/// - `f` must be a valid function pointer.
-/// - `info` must be a valid pointer (or null) as expected by `f`.
-/// - `Tol` and `Maxit` must be valid pointers to a `c_double` and `c_int` respectively.
-pub unsafe fn R_zeroin2(
-    mut ax: c_double,
-    mut bx: c_double,
-    mut fa: c_double,
-    mut fb: c_double,
-    f: R_zeroin2_fn,
-    info: *mut c_void,
-    Tol: *mut c_double,
-    Maxit: *mut c_int,
-) -> c_double {
-    unsafe {
-        let mut a: c_double;
-        let mut b: c_double;
-        let mut c: c_double;
-        let mut fc: c_double;
-        let tol: c_double;
-        let mut maxit: c_int;
+/// Return the root estimate, iteration count (-1 on exhaustion), and final
+/// bracket width.
+fn brent_root(
+    ax: f64,
+    bx: f64,
+    mut fa: f64,
+    mut fb: f64,
+    tol: f64,
+    max_iterations: c_int,
+    mut evaluate: impl FnMut(f64) -> f64,
+) -> (f64, c_int, f64) {
+    let mut a = ax;
+    let mut b = bx;
+    let mut c = a;
+    let mut fc = fa;
+    let mut remaining = i64::from(max_iterations) + 1;
 
-        a = ax;
-        b = bx;
-        c = a;
-        fc = fa;
-        maxit = *Maxit + 1;
-        let tol = *Tol;
+    if fa == 0.0 {
+        return (a, 0, 0.0);
+    }
+    if fb == 0.0 {
+        return (b, 0, 0.0);
+    }
 
-        if fa == 0.0 {
-            *Tol = 0.0;
-            *Maxit = 0;
-            return a;
-        }
-        if fb == 0.0 {
-            *Tol = 0.0;
-            *Maxit = 0;
-            return b;
-        }
+    while remaining > 0 {
+        remaining -= 1;
 
-        while maxit > 0 {
-            maxit -= 1;
+        let prev_step = b - a;
+        let tol_act;
+        let mut new_step: c_double;
 
-            let prev_step = b - a;
-            let tol_act;
-            let p: c_double;
-            let q: c_double;
-            let mut new_step: c_double;
-
-            if libm::fabs(fc) < libm::fabs(fb) {
-                a = b;
-                fa = fb;
-                b = c;
-                fb = fc;
-                c = a;
-                fc = fa;
-            }
-            tol_act = 2.0 * f64::EPSILON * libm::fabs(b) + tol / 2.0;
-            new_step = (c - b) / 2.0;
-
-            if libm::fabs(new_step) <= tol_act || fb == 0.0 {
-                *Maxit -= maxit;
-                *Tol = libm::fabs(c - b);
-                return b;
-            }
-
-            if libm::fabs(prev_step) >= tol_act && libm::fabs(fa) > libm::fabs(fb) {
-                let t1: c_double;
-                let cb: c_double;
-                let t2: c_double;
-
-                cb = c - b;
-                if a == c {
-                    t1 = fb / fa;
-                    let p_val = cb * t1;
-                    let q_val = 1.0 - t1;
-
-                    let mut p_local = p_val;
-                    let mut q_local = q_val;
-
-                    if p_local > 0.0 {
-                        q_local = -q_local;
-                    } else {
-                        p_local = -p_local;
-                    }
-
-                    if p_local < (0.75 * cb * q_local - libm::fabs(tol_act * q_local) / 2.0)
-                        && p_local < libm::fabs(prev_step * q_local / 2.0)
-                    {
-                        new_step = p_local / q_local;
-                    }
-                } else {
-                    let q_val = fa / fc;
-                    let t1_val = fb / fc;
-                    let t2_val = fb / fa;
-                    let p_val = t2_val * (cb * q_val * (q_val - t1_val) - (b - a) * (t1_val - 1.0));
-                    let q_val = (q_val - 1.0) * (t1_val - 1.0) * (t2_val - 1.0);
-
-                    let mut p_local = p_val;
-                    let mut q_local = q_val;
-
-                    if p_local > 0.0 {
-                        q_local = -q_local;
-                    } else {
-                        p_local = -p_local;
-                    }
-
-                    if p_local < (0.75 * cb * q_local - libm::fabs(tol_act * q_local) / 2.0)
-                        && p_local < libm::fabs(prev_step * q_local / 2.0)
-                    {
-                        new_step = p_local / q_local;
-                    }
-                }
-            }
-
-            if libm::fabs(new_step) < tol_act {
-                if new_step > 0.0 {
-                    new_step = tol_act;
-                } else {
-                    new_step = -tol_act;
-                }
-            }
+        if libm::fabs(fc) < libm::fabs(fb) {
             a = b;
             fa = fb;
-            b += new_step;
-            fb = f(b, info);
-            if (fb > 0.0 && fc > 0.0) || (fb < 0.0 && fc < 0.0) {
-                c = a;
-                fc = fa;
+            b = c;
+            fb = fc;
+            c = a;
+            fc = fa;
+        }
+        tol_act = 2.0 * f64::EPSILON * libm::fabs(b) + tol / 2.0;
+        new_step = (c - b) / 2.0;
+
+        if libm::fabs(new_step) <= tol_act || fb == 0.0 {
+            return (
+                b,
+                (i64::from(max_iterations) - remaining) as c_int,
+                libm::fabs(c - b),
+            );
+        }
+
+        if libm::fabs(prev_step) >= tol_act && libm::fabs(fa) > libm::fabs(fb) {
+            let t1: c_double;
+            let cb: c_double;
+
+            cb = c - b;
+            if a == c {
+                t1 = fb / fa;
+                let p_val = cb * t1;
+                let q_val = 1.0 - t1;
+
+                let mut p_local = p_val;
+                let mut q_local = q_val;
+
+                if p_local > 0.0 {
+                    q_local = -q_local;
+                } else {
+                    p_local = -p_local;
+                }
+
+                if p_local < (0.75 * cb * q_local - libm::fabs(tol_act * q_local) / 2.0)
+                    && p_local < libm::fabs(prev_step * q_local / 2.0)
+                {
+                    new_step = p_local / q_local;
+                }
+            } else {
+                let q_val = fa / fc;
+                let t1_val = fb / fc;
+                let t2_val = fb / fa;
+                let p_val = t2_val * (cb * q_val * (q_val - t1_val) - (b - a) * (t1_val - 1.0));
+                let q_val = (q_val - 1.0) * (t1_val - 1.0) * (t2_val - 1.0);
+
+                let mut p_local = p_val;
+                let mut q_local = q_val;
+
+                if p_local > 0.0 {
+                    q_local = -q_local;
+                } else {
+                    p_local = -p_local;
+                }
+
+                if p_local < (0.75 * cb * q_local - libm::fabs(tol_act * q_local) / 2.0)
+                    && p_local < libm::fabs(prev_step * q_local / 2.0)
+                {
+                    new_step = p_local / q_local;
+                }
             }
         }
-        *Tol = libm::fabs(c - b);
-        *Maxit = -1;
-        b
+
+        if libm::fabs(new_step) < tol_act {
+            if new_step > 0.0 {
+                new_step = tol_act;
+            } else {
+                new_step = -tol_act;
+            }
+        }
+        a = b;
+        fa = fb;
+        b += new_step;
+        fb = evaluate(b);
+        if (fb > 0.0 && fc > 0.0) || (fb < 0.0 && fc < 0.0) {
+            c = a;
+            fc = fa;
+        }
     }
+    (b, -1, libm::fabs(c - b))
 }
 
 #[derive(Clone, Copy)]
@@ -187,8 +163,10 @@ impl<'session> ZeroinCtx<'session> {
             self.owner.with_projection(|pointer| {
                 // The stored owner retains the exact originating interpreter during
                 // evaluation, ALTREP element access, and warning handlers.
-                let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
-                owner.require_active()?;
+                let owner = crate::sexp::owner::OwnerToken::current()?;
+                if owner.as_ptr() != pointer {
+                    return Err(crate::sexp::object::SexpError::OwnerNotActive);
+                }
                 let xv = crate::sexp::constructors::Rf_ScalarReal(x);
                 owner.require_active()?;
                 let _xv = crate::sexp::protect::protect(xv);
@@ -249,12 +227,6 @@ impl<'session> ZeroinCtx<'session> {
     }
 }
 
-unsafe extern "C-unwind" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
-    // SAFETY: `info` is the live ZeroinCtx reference installed by the caller
-    // for the duration of the Brent iteration.
-    let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
-    ctx.evaluate(x)
-}
 fn finite_uniroot(v: f64) -> f64 {
     let (message, replacement) = if v.is_nan() {
         (c"NA/NaN replaced by maximum positive value", f64::MAX)
@@ -297,15 +269,10 @@ pub fn do_uniroot(
         INTEGER_ELT(interval, 1) as f64
     };
     let ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Zeroin);
-    let info = &ctx as *const ZeroinCtx<'_> as *mut core::ffi::c_void;
     let eval = |z: f64| ctx.evaluate(z);
     let fa = eval(ax);
     let fb = eval(bx);
-    let mut tol = 1e-8;
-    let mut maxit: core::ffi::c_int = 1000;
-    // SAFETY: `info` points to the live `ctx` above; `tol`/`maxit` are
-    // valid out-parameters for the duration of the call.
-    let root = unsafe { R_zeroin2(ax, bx, fa, fb, zeroin_call, info, &mut tol, &mut maxit) };
+    let (root, _, _) = brent_root(ax, bx, fa, fb, 1e-8, 1000, eval);
     let froot = eval(root);
     let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
     let _r = protect(result);
@@ -1142,13 +1109,6 @@ pub fn do_nlminb(
     result
 }
 
-unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
-    // SAFETY: `info` is the live ZeroinCtx reference installed by the caller
-    // for the duration of the Brent iteration.
-    let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
-    ctx.evaluate(x)
-}
-
 /// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
 pub fn zeroin2(
     _call: crate::sexp::ffi::SEXP,
@@ -1171,28 +1131,16 @@ pub fn zeroin2(
         a = CDR(a);
         let fb = crate::mainutils::coerce::asReal(CAR(a));
         a = CDR(a);
-        let mut tol = crate::mainutils::coerce::asReal(CAR(a));
+        let tol = crate::mainutils::coerce::asReal(CAR(a));
         a = CDR(a);
-        let mut maxit = crate::mainutils::coerce::asInteger(CAR(a));
-        let info = ZeroinCtx::new(f, env, ScalarCallbackKind::Zeroin);
-        // SAFETY: `info` is a live ZeroinCtx on this stack frame; `tol` and
-        // `maxit` are valid out-parameters for the duration of the call.
-        let root = unsafe {
-            R_zeroin2(
-                lower,
-                upper,
-                fa,
-                fb,
-                zeroin_r_fn,
-                &info as *const ZeroinCtx<'_> as *mut c_void,
-                &mut tol,
-                &mut maxit,
-            )
-        };
+        let maxit = crate::mainutils::coerce::asInteger(CAR(a));
+        let ctx = ZeroinCtx::new(f, env, ScalarCallbackKind::Zeroin);
+        let (root, iterations, precision) =
+            brent_root(lower, upper, fa, fb, tol, maxit, |x| ctx.evaluate(x));
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         SET_REAL_ELT(out, 0, root);
-        SET_REAL_ELT(out, 1, maxit as f64);
-        SET_REAL_ELT(out, 2, tol);
+        SET_REAL_ELT(out, 1, iterations as f64);
+        SET_REAL_ELT(out, 2, precision);
         out
     }
 }

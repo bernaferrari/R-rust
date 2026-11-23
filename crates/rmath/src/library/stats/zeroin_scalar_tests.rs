@@ -1,10 +1,11 @@
-use super::{ScalarCallbackKind, ZeroinCtx};
+use super::{brent_root, ScalarCallbackKind, ZeroinCtx};
 use crate::sexp::{
-    RSession,
     altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement},
     ffi::SEXPTYPE,
     object::SexpResult,
+    RSession,
 };
+use core::ffi::c_int;
 use std::{cell::Cell, rc::Rc};
 
 struct ScalarProvider {
@@ -169,5 +170,42 @@ fn compatibility_entry_points_reject_non_numeric_scalar() {
             };
             assert_eq!(error.message, expected);
         });
+    }
+}
+
+#[test]
+fn brent_root_keeps_gnu_callback_order_and_reporting() {
+    // GNU R 4.6.2 oracle: .External2(stats:::C_zeroin2, f, 0, 2, -2, 2, 1e-8, maxiter)
+    // where f records its inputs and returns x*x - 2.
+    const CALLBACKS: [u64; 7] = [
+        0x3ff0_0000_0000_0000,
+        0x3ff5_5555_5555_5555,
+        0x3ff6_b46b_46b4_6b46,
+        0x3ff6_a009_72dc_45af,
+        0x3ff6_a09e_256f_2c19,
+        0x3ff6_a09e_667f_3c87,
+        0x3ff6_a09e_6527_a396,
+    ];
+    for (max_iterations, root, iterations, precision, calls) in [
+        (1000, 0x3ff6_a09e_667f_3c87, 7, 0x3e35_798f_1000_0000, 7),
+        (1, 0x3ff5_5555_5555_5555, -1, 0x3fe5_5555_5555_5556, 2),
+    ] {
+        let mut recorded = Vec::new();
+        let (estimate, count, width) = brent_root(0.0, 2.0, -2.0, 2.0, 1e-8, max_iterations, |x| {
+            recorded.push(x.to_bits());
+            x * x - 2.0
+        });
+        assert_eq!(estimate.to_bits(), root);
+        assert_eq!(count, iterations);
+        assert_eq!(width.to_bits(), precision);
+        assert_eq!(recorded, CALLBACKS[..calls]);
+    }
+
+    for (fa, fb, expected, max_iterations) in [(0.0, 2.0, 0.0, 1000), (-2.0, 0.0, 2.0, c_int::MAX)]
+    {
+        let result = brent_root(0.0, 2.0, fa, fb, 1e-8, max_iterations, |_: f64| {
+            panic!("endpoint root should not evaluate the callback")
+        });
+        assert_eq!(result, (expected, 0, 0.0));
     }
 }
