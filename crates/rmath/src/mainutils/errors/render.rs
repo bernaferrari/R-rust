@@ -872,7 +872,7 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
 
             // GNU permits a warning.expression to remove itself and signal a
             // nested warning. Guard only the default rendering/collection path.
-            (*pointer).error_state.in_warning = 1;
+            pin.with_error_state(|state| state.in_warning = 1);
             let _cleanup = WarningCollectionScope { owner: pin };
 
             // Format the variadic message into a string
@@ -888,7 +888,7 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
 
             if w >= 2 {
                 // Convert warning to error
-                (*pointer).error_state.in_warning = 0;
+                _cleanup.owner.with_error_state(|state| state.in_warning = 0);
                 let full_msg = format!("(converted from warning) {}", fmt_str);
                 let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
                 errorcall_cstr(call, &c_msg);
@@ -959,9 +959,7 @@ struct WarningCollectionScope {
 }
 impl Drop for WarningCollectionScope {
     fn drop(&mut self) {
-        unsafe {
-            (*self.owner.as_ptr()).error_state.in_warning = 0;
-        }
+        self.owner.with_error_state(|state| state.in_warning = 0);
     }
 }
 
@@ -971,7 +969,6 @@ fn collection_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 
 fn collect_warning_owned(call: SEXP, message: &str) {
     let pin = super::state::error_scope_pin();
-    let pointer = pin.as_ptr();
     let owner = collection_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     let _cleanup = WarningCollectionScope { owner: pin };
@@ -982,19 +979,19 @@ fn collect_warning_owned(call: SEXP, message: &str) {
         } else {
             collection_checked(domain.wrap(call))
         };
-        if unsafe { (*pointer).error_state.collect_warnings } == 0 {
+        if _cleanup.owner.with_error_state(|state| state.collect_warnings) == 0 {
             {
                 setup_warnings();
             }
         }
         collection_checked(access.require_active());
-        let (count, capacity, warnings) = unsafe {
+        let (count, capacity, warnings) = _cleanup.owner.with_error_state(|state| {
             (
-                (*pointer).error_state.collect_warnings,
-                (*pointer).error_state.nwarnings,
-                (*pointer).error_state.warnings.owned(),
+                state.collect_warnings,
+                state.nwarnings,
+                state.warnings.owned(),
             )
-        };
+        });
         if count < 0 {
             crate::sexp::context::r_error("invalid collected warning count");
         }
@@ -1038,11 +1035,12 @@ fn collect_warning_owned(call: SEXP, message: &str) {
         collection_checked(access.require_active());
         // A callback may clear or replace the live field. Publish the complete
         // original snapshot and its matching count together after callbacks.
-        unsafe {
-            (*pointer).error_state.warnings =
-                crate::sexp::instance::RuntimeValue::from_owned(warnings);
-            (*pointer).error_state.collect_warnings = count + 1;
-        }
+        let next = crate::sexp::instance::RuntimeValue::from_owned(warnings);
+        let previous = _cleanup.owner.with_error_state(|state| {
+            state.collect_warnings = count + 1;
+            std::mem::replace(&mut state.warnings, next)
+        });
+        drop(previous);
     }));
 }
 
@@ -1050,11 +1048,10 @@ fn collect_warning_owned(call: SEXP, message: &str) {
 /// before name-symbol installation can allocate or trigger notification.
 pub(super) fn setup_warnings() {
     let pin = super::state::error_scope_pin();
-    let pointer = pin.as_ptr();
     let owner = collection_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     collection_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
-        let capacity = unsafe { (*pointer).error_state.nwarnings };
+        let capacity = pin.with_error_state(|state| state.nwarnings);
         if capacity < 0 {
             crate::sexp::context::r_error("invalid warning collection capacity");
         }
@@ -1074,11 +1071,12 @@ pub(super) fn setup_warnings() {
             Ok(())
         }));
         collection_checked(access.require_active());
-        unsafe {
-            (*pointer).error_state.warnings =
-                crate::sexp::instance::RuntimeValue::from_owned(warnings);
-            (*pointer).error_state.collect_warnings = 0;
-        }
+        let next = crate::sexp::instance::RuntimeValue::from_owned(warnings);
+        let previous = pin.with_error_state(|state| {
+            state.collect_warnings = 0;
+            std::mem::replace(&mut state.warnings, next)
+        });
+        drop(previous);
     }));
 }
 
@@ -1251,9 +1249,12 @@ pub struct MathlibWarningCallGuard {
 impl Drop for MathlibWarningCallGuard {
     fn drop(&mut self) {
         if let Some(previous) = self.previous.take() {
-            unsafe {
-                (*self.owner.as_ptr()).error_state.mathlib_warning_call = previous;
-            }
+            // Cleanup restores the original physical runtime even if a callback
+            // revoked it or changed the ambient session.
+            let displaced = self
+                .owner
+                .with_error_state(|state| std::mem::replace(&mut state.mathlib_warning_call, previous));
+            drop(displaced);
         }
     }
 }
@@ -1261,13 +1262,9 @@ impl Drop for MathlibWarningCallGuard {
 /// Scope nmath warning attribution to the original owning call.
 pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
     let owner = super::state::error_scope_pin();
-    let next = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(owner.as_ptr(), call) };
-    let previous = unsafe {
-        std::mem::replace(
-            &mut (*owner.as_ptr()).error_state.mathlib_warning_call,
-            next,
-        )
-    };
+    let next = super::state::warning_scope_value(&owner, call);
+    let previous =
+        owner.with_error_state(|state| std::mem::replace(&mut state.mathlib_warning_call, next));
     MathlibWarningCallGuard {
         owner,
         previous: Some(previous),

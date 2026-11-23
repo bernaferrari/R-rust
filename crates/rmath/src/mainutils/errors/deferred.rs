@@ -22,9 +22,8 @@ struct WarningPrintScope {
 impl Drop for WarningPrintScope {
     fn drop(&mut self) {
         // Physical cleanup remains valid after revocation and ambient switch.
-        unsafe {
-            (*self.owner.as_ptr()).error_state.in_print_warnings = self.previous;
-        }
+        self.owner
+            .with_error_state(|state| state.in_print_warnings = self.previous);
     }
 }
 struct WarningEntry {
@@ -52,32 +51,32 @@ pub(crate) fn take_warnings_block() -> Option<String> {
     let owner = warning_checked(pin.token());
     let affiliation = owner.weak_owner().expect("managed warning owner");
     warning_checked(crate::sexp::owner::with_runtime(&affiliation, |access| {
-        let pointer = pin.as_ptr();
-        let (count, previous, capacity) = unsafe {
+        let (count, previous, capacity) = pin.with_error_state(|state| {
             (
-                (*pointer).error_state.collect_warnings,
-                (*pointer).error_state.in_print_warnings,
-                (*pointer).error_state.nwarnings,
+                state.collect_warnings,
+                state.in_print_warnings,
+                state.nwarnings,
             )
-        };
+        });
         if count == 0 {
             return None;
         }
         if previous != 0 {
-            unsafe {
-                (*pointer).error_state.collect_warnings = 0;
-                (*pointer).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
-            }
+            let old = pin.with_error_state(|state| {
+                state.collect_warnings = 0;
+                std::mem::take(&mut state.warnings)
+            });
+            drop(old);
             return Some("Lost warning messages\n".into());
         }
         let scope = WarningPrintScope {
             owner: pin,
             previous,
         };
-        unsafe {
-            (*pointer).error_state.in_print_warnings = 1;
-        }
-        let warnings = unsafe { (*pointer).error_state.warnings.owned() }?;
+        let warnings = scope.owner.with_error_state(|state| {
+            state.in_print_warnings = 1;
+            state.warnings.owned()
+        })?;
         if warnings.typeof_() != SEXPTYPE::VECSXP {
             return None;
         }
@@ -200,10 +199,11 @@ pub(crate) fn take_warnings_block() -> Option<String> {
             Ok(())
         }));
         warning_checked(access.require_active());
-        unsafe {
-            (*pointer).error_state.collect_warnings = 0;
-            (*pointer).error_state.warnings = crate::sexp::instance::RuntimeValue::empty();
-        }
+        let old = scope.owner.with_error_state(|state| {
+            state.collect_warnings = 0;
+            std::mem::take(&mut state.warnings)
+        });
+        drop(old);
         drop(scope);
         Some(block)
     }))

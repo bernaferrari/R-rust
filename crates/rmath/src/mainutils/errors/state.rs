@@ -104,9 +104,10 @@ impl Drop for WarningCallGuard {
         if let Some(previous) = self.previous.take() {
             // Cleanup restores the original physical runtime even if a callback
             // revoked it or changed the ambient session.
-            unsafe {
-                (*self.owner.as_ptr()).error_state.warning_call = previous;
-            }
+            let displaced = self
+                .owner
+                .with_error_state(|state| std::mem::replace(&mut state.warning_call, previous));
+            drop(displaced);
         }
     }
 }
@@ -121,13 +122,35 @@ pub(super) fn error_scope_pin() -> crate::sexp::owner::OwnerPin {
 
 pub fn warning_call_guard(call: SEXP) -> WarningCallGuard {
     let owner = error_scope_pin();
-    let next = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(owner.as_ptr(), call) };
-    let previous =
-        unsafe { std::mem::replace(&mut (*owner.as_ptr()).error_state.warning_call, next) };
+    let next = warning_scope_value(&owner, call);
+    let previous = owner.with_error_state(|state| std::mem::replace(&mut state.warning_call, next));
     WarningCallGuard {
         owner,
         previous: Some(previous),
     }
+}
+
+/// Owned context value for a scoped warning attribution. This retains the
+/// `RuntimeValue::from_raw_in` semantics through the original checked pin.
+pub(super) fn warning_scope_value(
+    pin: &crate::sexp::owner::OwnerPin,
+    call: SEXP,
+) -> crate::sexp::instance::RuntimeValue {
+    use crate::sexp::instance::RuntimeValue;
+    if call.is_null() {
+        return RuntimeValue::empty();
+    }
+    let call = pin
+        .token()
+        .and_then(|owner| {
+            owner
+                .sexp(call)
+                .and_then(crate::sexp::object::Sexp::into_owned)
+        })
+        .unwrap_or_else(|error| {
+            crate::sexp::context::r_error(format!("invalid context value: {error}"))
+        });
+    RuntimeValue::from_owned(call)
 }
 
 fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
@@ -462,8 +485,7 @@ pub fn R_curErrorBuf() -> *const c_char {
 /// failure for a closed session) or when the buffer holds something else;
 /// callers then fall back to the bare-message rendering.
 pub fn try_last_rendered_message(message: &str) -> Option<String> {
-    instance::with_current_instance(|instance| unsafe {
-        let state = &(*instance).error_state;
+    with_current_error_state(|state| {
         state
             .last_rendered_message
             .as_ref()
