@@ -253,12 +253,10 @@ fn parse_failure(message: impl Into<String>) -> ! {
     let colno = crate::sexp::constructors::Rf_ScalarInteger(col);
     crate::mainutils::errors::R_setConditionField(cond, 2, c"lineno", lineno);
     crate::mainutils::errors::R_setConditionField(cond, 3, c"colno", colno);
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        let condition = parse_runtime_value(cond);
-        unsafe {
-            (*inst).error_state.signalled_condition = condition;
-        }
-    });
+    let condition = parse_runtime_value(cond);
+    drop(crate::mainutils::errors::with_error_state(|state| {
+        std::mem::replace(&mut state.signalled_condition, condition)
+    }));
     std::panic::panic_any(RError { message });
 }
 

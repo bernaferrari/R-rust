@@ -27,7 +27,7 @@ pub(super) static R_NSHOWCALLS: usize = 512;
 /// Maximum number of calls shown in concise traceback.
 pub(super) static R_MAXCALLS: c_int = 50;
 
-pub(super) fn with_error_state<F, R>(f: F) -> R
+pub(crate) fn with_error_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
@@ -153,7 +153,7 @@ pub(super) fn warning_scope_value(
     RuntimeValue::from_owned(call)
 }
 
-fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
+pub(crate) fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
     instance::with_required_current_instance(|instance| unsafe {
         crate::sexp::instance::RuntimeValue::from_raw_in(instance, value)
     })
@@ -454,7 +454,9 @@ pub(super) fn handler_stack() -> SEXP {
 
 pub(super) fn set_handler_stack(val: SEXP) {
     let value = error_value(val);
-    with_error_state(|state| state.handler_stack = value);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.handler_stack, value)
+    }));
 }
 
 pub(super) fn restart_stack() -> SEXP {
@@ -463,7 +465,9 @@ pub(super) fn restart_stack() -> SEXP {
 
 pub(super) fn set_restart_stack(val: SEXP) {
     let value = error_value(val);
-    with_error_state(|state| state.restart_stack = value);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.restart_stack, value)
+    }));
 }
 
 /// Get the current error buffer contents as a string.

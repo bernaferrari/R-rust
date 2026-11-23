@@ -1,4 +1,5 @@
 use super::*;
+use crate::mainutils::errors::{error_value, with_error_state};
 use crate::sexp::object::SexpMut;
 
 // ---------------------------------------------------------------------------
@@ -179,21 +180,19 @@ pub fn do_globalCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 }
 
 fn global_handlers_list() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        let gh = (*inst).error_state.global_calling_handlers.as_raw();
-        if gh.is_null() || gh == R_NilValue() {
-            empty_named_list()
-        } else {
-            gh
-        }
-    })
+    let gh = with_error_state(|state| state.global_calling_handlers.as_raw());
+    if gh.is_null() || gh == R_NilValue() {
+        empty_named_list()
+    } else {
+        gh
+    }
 }
 
 fn set_global_handlers_list(list: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.global_calling_handlers =
-            crate::sexp::instance::RuntimeValue::from_raw_in(inst, list);
-    });
+    let value = error_value(list);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.global_calling_handlers, value)
+    }));
 }
 
 fn empty_named_list() -> SEXP {

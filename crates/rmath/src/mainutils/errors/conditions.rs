@@ -90,75 +90,72 @@ pub const RESULT_SIZE: usize = 4;
 
 /// do_addCondHands — add condition handlers to the stack.
 pub fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let owner = crate::mainutils::essentials::active_owner();
-        let _pin = owner
-            .pin()
-            .unwrap()
-            .expect("condition handlers require a managed runtime");
-        let factory = owner.node_factory();
-        let own = |pointer| {
-            factory
-                .wrap(pointer)
-                .and_then(|value| value.into_owned())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let arguments = own(args);
-        let classes = own(CAR(arguments.as_raw()));
-        let mut rest = CDR(arguments.as_raw());
-        let handlers = own(CAR(rest));
-        rest = CDR(rest);
-        let parentenv = own(CAR(rest));
-        rest = CDR(rest);
-        let target = own(CAR(rest));
-        rest = CDR(rest);
-        let calling_value = own(CAR(rest));
-        let oldstack = crate::sexp::instance::with_required_current_instance(|instance| {
-            (*instance).error_state.handler_stack.owned()
-        })
+    checkArity(op, args);
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap()
+        .expect("condition handlers require a managed runtime");
+    let factory = owner.node_factory();
+    let own = |pointer| {
+        factory
+            .wrap(pointer)
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let arguments = own(args);
+    let classes = own(CAR(arguments.as_raw()));
+    let mut rest = CDR(arguments.as_raw());
+    let handlers = own(CAR(rest));
+    rest = CDR(rest);
+    let parentenv = own(CAR(rest));
+    rest = CDR(rest);
+    let target = own(CAR(rest));
+    rest = CDR(rest);
+    let calling_value = own(CAR(rest));
+    let oldstack = pin
+        .with_error_state(|state| state.handler_stack.owned())
         .unwrap_or_else(|| factory.nil().into_owned().unwrap());
-        let n = if classes.is_nil() || handlers.is_nil() {
-            0
-        } else {
-            LENGTH(handlers.as_raw())
-        };
-        let entries: Vec<_> = (0..n)
-            .map(|i| {
-                (
-                    own(STRING_ELT(classes.as_raw(), i as _)),
-                    own(VECTOR_ELT(handlers.as_raw(), i as _)),
-                )
-            })
-            .collect();
-        let calling = asLogical(calling_value.as_raw());
-        owner
-            .require_active()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if classes.is_nil() || handlers.is_nil() {
-            return oldstack.as_raw();
-        }
-        let result = factory
-            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, RESULT_SIZE as _)))
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut newstack = oldstack.clone();
-        for (klass, handler) in entries.into_iter().rev() {
-            let entry = own(mkHandlerEntry(
-                klass.as_raw(),
-                parentenv.as_raw(),
-                handler.as_raw(),
-                target.as_raw(),
-                result.as_raw(),
-                calling,
-            ));
-            newstack = factory
-                .pairlist_cell(&entry, &newstack, &factory.nil())
-                .and_then(|value| value.into_owned())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        set_handler_stack(newstack.as_raw());
-        oldstack.as_raw()
+    let n = if classes.is_nil() || handlers.is_nil() {
+        0
+    } else {
+        LENGTH(handlers.as_raw())
+    };
+    let entries: Vec<_> = (0..n)
+        .map(|i| {
+            (
+                own(STRING_ELT(classes.as_raw(), i as _)),
+                own(VECTOR_ELT(handlers.as_raw(), i as _)),
+            )
+        })
+        .collect();
+    let calling = asLogical(calling_value.as_raw());
+    owner
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    if classes.is_nil() || handlers.is_nil() {
+        return oldstack.as_raw();
     }
+    let result = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, RESULT_SIZE as _)))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut newstack = oldstack.clone();
+    for (klass, handler) in entries.into_iter().rev() {
+        let entry = own(mkHandlerEntry(
+            klass.as_raw(),
+            parentenv.as_raw(),
+            handler.as_raw(),
+            target.as_raw(),
+            result.as_raw(),
+            calling,
+        ));
+        newstack = factory
+            .pairlist_cell(&entry, &newstack, &factory.nil())
+            .and_then(|value| value.into_owned())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    set_handler_stack(newstack.as_raw());
+    oldstack.as_raw()
 }
 
 /// do_resetCondHands — reset condition handlers to a previous state.
@@ -443,84 +440,83 @@ pub(crate) fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
 }
 
 fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected: Option<SEXP>) {
-    unsafe {
-        let operation_pin = super::state::error_scope_pin();
-        let active = || {
-            operation_pin
-                .token()
-                .and_then(|owner| owner.require_active())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let condition = crate::sexp::context::own_control_value(cond);
-        let call = crate::sexp::context::own_control_value(if call.is_null() {
-            globals::R_NilValue()
-        } else {
-            call
-        });
-        let selected = selected.map(|value| crate::sexp::context::own_control_value(value));
-        signal_condition_handlers(
-            condition.as_raw(),
-            selected
-                .as_ref()
-                .map_or(globals::R_NilValue(), |message| message.as_raw()),
+    let operation_pin = super::state::error_scope_pin();
+    let active = || {
+        operation_pin
+            .token()
+            .and_then(|owner| owner.require_active())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let condition = crate::sexp::context::own_control_value(cond);
+    let call = crate::sexp::context::own_control_value(if call.is_null() {
+        globals::R_NilValue()
+    } else {
+        call
+    });
+    let selected = selected.map(|value| crate::sexp::context::own_control_value(value));
+    signal_condition_handlers(
+        condition.as_raw(),
+        selected
+            .as_ref()
+            .map_or(globals::R_NilValue(), |message| message.as_raw()),
+        call.as_raw(),
+        mode,
+    );
+    active();
+    let cond = condition.as_raw();
+    if selected.is_none() && (TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0) {
+        errorcall_cstr(
             call.as_raw(),
-            mode,
+            c"condition object must be a VECSXP of length at least one",
         );
-        active();
-        let cond = condition.as_raw();
-        if selected.is_none() && (TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0) {
-            errorcall_cstr(
-                call.as_raw(),
-                c"condition object must be a VECSXP of length at least one",
-            );
-        }
-        let supplied_message = selected.is_some();
-        let message = selected.unwrap_or_else(|| {
-            condition
-                .try_vector_elt(0)
-                .and_then(crate::sexp::object::Sexp::into_owned)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        });
-        active();
-        let message_type = message.typeof_();
-        let message_length = if message_type == SEXPTYPE::STRSXP {
-            message.len()
-        } else {
-            0
-        };
-        active();
-        if message_type != SEXPTYPE::STRSXP || message_length != 1 {
-            errorcall_cstr(
-                call.as_raw(),
-                if supplied_message {
-                    c"bad error message"
-                } else {
-                    c"first element of condition object must be a scalar string"
-                },
-            );
-        }
-        // Keep the same condition available to the outer public error adapter
-        // when no installed exiting entry handled it before default rendering.
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).error_state.signalled_condition =
-                crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
-        });
-        let character = message
-            .try_string_elt(0)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        active();
-        let translated = crate::sexp::encoding::NulText::new(
-            &character,
-            crate::sexp::encoding::Mode::Native,
-            &condition,
-        )
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        active();
-        let bytes = super::byte_buffer::Snapshot::raw(|i| translated.byte(i));
-        drop(translated);
-        super::render::verrorcall_bytes(call.as_raw(), bytes);
     }
+    let supplied_message = selected.is_some();
+    let message = selected.unwrap_or_else(|| {
+        condition
+            .try_vector_elt(0)
+            .and_then(crate::sexp::object::Sexp::into_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    });
+    active();
+    let message_type = message.typeof_();
+    let message_length = if message_type == SEXPTYPE::STRSXP {
+        message.len()
+    } else {
+        0
+    };
+    active();
+    if message_type != SEXPTYPE::STRSXP || message_length != 1 {
+        errorcall_cstr(
+            call.as_raw(),
+            if supplied_message {
+                c"bad error message"
+            } else {
+                c"first element of condition object must be a scalar string"
+            },
+        );
+    }
+    // Keep the same condition available to the outer public error adapter
+    // when no installed exiting entry handled it before default rendering.
+    let saved = crate::sexp::instance::RuntimeValue::from_owned(condition.clone());
+    drop(
+        operation_pin
+            .with_error_state(|state| std::mem::replace(&mut state.signalled_condition, saved)),
+    );
+    let character = message
+        .try_string_elt(0)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    active();
+    let translated = crate::sexp::encoding::NulText::new(
+        &character,
+        crate::sexp::encoding::Mode::Native,
+        &condition,
+    )
+    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    active();
+    let bytes = super::byte_buffer::Snapshot::raw(|i| translated.byte(i));
+    drop(translated);
+    super::render::verrorcall_bytes(call.as_raw(), bytes);
 }
 
 /// GNU `R_ObjectNotFoundError(sym, call, mode)`.

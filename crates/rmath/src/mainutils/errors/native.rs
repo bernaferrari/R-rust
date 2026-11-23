@@ -130,7 +130,7 @@ struct HandlerStackScope {
 }
 impl HandlerStackScope {
     fn capture(pin: OwnerPin) -> Self {
-        let previous = unsafe { (*pin.as_ptr()).error_state.handler_stack.clone() };
+        let previous = pin.with_error_state(|state| state.handler_stack.clone());
         Self {
             pin,
             previous: Some(previous),
@@ -140,9 +140,10 @@ impl HandlerStackScope {
         if let Some(previous) = self.previous.take() {
             // The original allocation stays physically pinned through cleanup,
             // including revocation and replacement of ambient dispatch.
-            unsafe {
-                (*self.pin.as_ptr()).error_state.handler_stack = previous;
-            }
+            drop(
+                self.pin
+                    .with_error_state(|state| std::mem::replace(&mut state.handler_stack, previous)),
+            );
         }
     }
 }

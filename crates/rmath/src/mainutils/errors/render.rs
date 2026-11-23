@@ -133,10 +133,10 @@ pub(super) struct RestoreInError {
 impl Drop for RestoreInError {
     fn drop(&mut self) {
         // Restore the original physical runtime even after callback revocation.
-        unsafe {
-            (*self.owner.as_ptr()).error_state.in_error = self.old_in_error;
-            (*self.owner.as_ptr()).error_state.expressions = self.old_expressions;
-        }
+        self.owner.with_error_state(|state| {
+            state.in_error = self.old_in_error;
+            state.expressions = self.old_expressions;
+        });
     }
 }
 

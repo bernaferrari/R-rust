@@ -1,4 +1,5 @@
 use super::*;
+use crate::mainutils::errors::{error_value, with_error_state};
 
 // ---------------------------------------------------------------------------
 // Exiting handlers (tryCatch) for warning conditions
@@ -8,23 +9,19 @@ use super::*;
 /// the slot). The object is a field of the active `RInstance`, so the normal
 /// field owns its original allocation while an unwind is in flight.
 pub(crate) fn set_signalled_condition(cond: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.signalled_condition =
-            crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
-    });
+    let value = error_value(cond);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.signalled_condition, value)
+    }));
 }
 
 pub(crate) fn signalled_condition() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.signalled_condition.as_raw()
-    })
+    with_error_state(|state| state.signalled_condition.as_raw())
 }
 
 /// Snapshot the actual root before clearing the runtime slot or running a callback.
 pub(crate) fn signalled_condition_owned() -> Option<crate::sexp::object::Sexp<'static>> {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.signalled_condition.owned()
-    })
+    with_error_state(|state| state.signalled_condition.owned())
 }
 
 /// Message text of a condition object (its `message` field), mirroring
@@ -60,9 +57,8 @@ pub(crate) fn try_catch_wants_warning() -> bool {
     try_catch_wants(&["simpleWarning", "warning", "condition"])
 }
 pub(crate) fn try_catch_wants(classes: &[&str]) -> bool {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst)
-            .error_state
+    with_error_state(|state| {
+        state
             .try_catch_handler_classes
             .iter()
             .any(|frame| frame.iter().any(|c| classes.contains(&c.as_str())))
@@ -70,16 +66,14 @@ pub(crate) fn try_catch_wants(classes: &[&str]) -> bool {
 }
 
 pub(crate) fn condition_handler_stack() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.handler_stack.as_raw()
-    })
+    with_error_state(|state| state.handler_stack.as_raw())
 }
 
 pub(crate) fn set_condition_handler_stack(stack: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.handler_stack =
-            crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
-    });
+    let value = error_value(stack);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.handler_stack, value)
+    }));
 }
 
 pub(crate) fn condition_entry_factory<'s>() -> crate::sexp::object::SessionNodeFactory<'s> {

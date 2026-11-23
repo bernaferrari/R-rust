@@ -1088,6 +1088,26 @@ mod tests {
     }
 
     #[test]
+    fn condition_state_access_checks_the_existing_lend() {
+        use crate::mainutils::essentials::{condition_handler_stack, set_signalled_condition};
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let previous = condition_handler_stack();
+            let pin = OwnerToken::current().unwrap().pin().unwrap().unwrap();
+            let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pin.with_error_state(|_| condition_handler_stack())
+            }));
+            assert!(read.is_err(), "condition stack reader bypassed the lend");
+            let write = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pin.with_error_state(|_| set_signalled_condition(std::ptr::null_mut()))
+            }));
+            assert!(write.is_err(), "condition writer bypassed the lend");
+            set_signalled_condition(std::ptr::null_mut());
+            assert_eq!(condition_handler_stack(), previous);
+        });
+    }
+
+    #[test]
     fn borrowed_owner_value_rejects_revoked_fixture_owner() {
         let mut instance = Box::new(super::super::instance::RInstance::new());
         let pointer: *mut RInstance = &mut *instance;

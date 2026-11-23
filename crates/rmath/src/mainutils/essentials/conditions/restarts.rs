@@ -1,4 +1,5 @@
 use super::*;
+use crate::mainutils::errors::{error_value, with_error_state};
 use crate::sexp::object::SexpMut;
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
@@ -136,7 +137,7 @@ impl ScopedRestartStack {
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             .unwrap_or_else(|| crate::sexp::context::r_error("restart requires a runtime owner"));
-        let previous = unsafe { (*pin.as_ptr()).error_state.restart_stack.owned() };
+        let previous = pin.with_error_state(|state| state.restart_stack.owned());
         let nil = owner
             .node_factory()
             .nil()
@@ -151,13 +152,15 @@ impl ScopedRestartStack {
 
     pub(crate) fn restore(&self) {
         // Cleanup retains the original physical runtime even after revocation.
-        unsafe {
-            (*self.pin.as_ptr()).error_state.restart_stack = self
-                .previous
-                .clone()
-                .map(crate::sexp::instance::RuntimeValue::from_owned)
-                .unwrap_or_default();
-        }
+        let previous = self
+            .previous
+            .clone()
+            .map(crate::sexp::instance::RuntimeValue::from_owned)
+            .unwrap_or_default();
+        drop(
+            self.pin
+                .with_error_state(|state| std::mem::replace(&mut state.restart_stack, previous)),
+        );
     }
 
     pub(crate) fn require_live(&self) {
@@ -275,16 +278,14 @@ pub(crate) fn call_function_with_args(
 }
 
 fn restart_stack() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.restart_stack.as_raw()
-    })
+    with_error_state(|state| state.restart_stack.as_raw())
 }
 
 pub(crate) fn set_restart_stack(stack: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.restart_stack =
-            crate::sexp::instance::RuntimeValue::from_raw_in(inst, stack);
-    });
+    let value = error_value(stack);
+    drop(with_error_state(|state| {
+        std::mem::replace(&mut state.restart_stack, value)
+    }));
 }
 
 fn restart_stack_as_list() -> SEXP {
