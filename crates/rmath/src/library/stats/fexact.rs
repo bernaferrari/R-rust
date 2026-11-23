@@ -84,12 +84,12 @@ unsafe fn f2xact(
     kyy: *mut c_int,
     idif: *mut c_int,
     irn: *mut c_int,
-    key: *mut c_int,
+    key: &mut [c_int],
     ldkey: c_int,
-    ipoin: *mut c_int,
-    stp: *mut c_double,
+    ipoin: &mut [c_int],
+    stp: &mut [c_double],
     ldstp: c_int,
-    ifrq: *mut c_int,
+    ifrq: &mut [c_int],
     lp: *mut c_double,
     sp: *mut c_double,
     tm: *mut c_double,
@@ -124,8 +124,6 @@ unsafe fn f2xact(
         let mut jkey: c_int = 0;
         let mut jstp: c_int = 0;
         let mut jstp2: c_int = 0;
-        let mut jstp3: c_int = 0;
-        let mut jstp4: c_int = 0;
         let mut k1: c_int = 0;
         let mut kb: c_int = 0;
         let mut kd: c_int = 0;
@@ -184,10 +182,6 @@ unsafe fn f2xact(
         let kyy = kyy.sub(1);
         let idif = idif.sub(1);
         let irn = irn.sub(1);
-        let key = key.sub(1);
-        let ipoin = ipoin.sub(1);
-        let stp = stp.sub(1);
-        let ifrq = ifrq.sub(1);
         let lp = lp.sub(1);
         let sp = sp.sub(1);
         let tm = tm.sub(1);
@@ -196,8 +190,8 @@ unsafe fn f2xact(
         let rwk = rwk.sub(1);
 
         // Initialize KEY array (1-based)
+        key.fill(-9999);
         for idx in 1..=(ldkey << 1) as usize {
-            *key.add(idx) = -9999;
             *key2.add(idx) = -9999;
         }
 
@@ -336,16 +330,14 @@ unsafe fn f2xact(
         jkey = ldkey + 1;
         jstp = ldstp + 1;
         jstp2 = ldstp * 3 + 1;
-        jstp3 = (ldstp << 2) + 1;
-        jstp4 = ldstp * 5 + 1;
         ikkey = 0;
         ikstp = 0;
         ikstp2 = ldstp << 1;
         ipo = 1;
-        *ipoin.add(1) = 1;
-        *stp.add(1) = 0.;
-        *ifrq.add(1) = 1;
-        *ifrq.add((ikstp2 + 1) as usize) = -1;
+        ipoin[0] = 1;
+        stp[0] = 0.;
+        ifrq[0] = 1;
+        ifrq[ikstp2 as usize] = -1;
 
         // Outer_Loop:
         'outer_loop: loop {
@@ -378,11 +370,9 @@ unsafe fn f2xact(
                 // Go get a new mother from stage K
                 loop {
                     if !f6xact(
-                        nro,
-                        iro.add(1),
-                        kyy.add(1),
-                        key.add((ikkey + 1) as usize),
-                        ldkey,
+                        std::slice::from_raw_parts_mut(iro.add(1), nro as usize),
+                        std::slice::from_raw_parts(kyy.add(1), nro as usize),
+                        &mut key[ikkey as usize..(ikkey + ldkey) as usize],
                         &mut last,
                         &mut ipo,
                     ) {
@@ -512,9 +502,9 @@ unsafe fn f2xact(
                 psh = true;
                 let mut hash_slot = 0;
                 // Recover pastp
-                ipn = *ipoin.add((ipo + ikkey) as usize);
-                pastp = *stp.add((ipn + ikstp) as usize);
-                ifreq = *ifrq.add((ipn + ikstp) as usize);
+                ipn = ipoin[(ipo + ikkey - 1) as usize];
+                pastp = stp[(ipn + ikstp - 1) as usize];
+                ifreq = ifrq[(ipn + ikstp - 1) as usize];
                 // Compute shortest and longest path
                 if k1 > 1 {
                     obs2 = obs
@@ -657,19 +647,26 @@ unsafe fn f2xact(
                             *pre += ifreq as c_double * (pastp + drn + pv).exp();
                         } else {
                             // Put daughter on queue
+                            let step_len = ldstp as usize;
+                            let step_start = (jstp - 1) as usize;
+                            let hash_start = (jkey - 1) as usize;
+                            // The branch arrays are shared by both stages; the counts
+                            // and links alternate halves.
+                            let (counts_and_links, branches) =
+                                ifrq.split_at_mut(4 * step_len);
+                            let (counts, links) = counts_and_links.split_at_mut(2 * step_len);
+                            let (right, left) = branches.split_at_mut(step_len);
                             f5xact(
                                 pastp + ddf,
                                 tol,
-                                &mut kval,
-                                key.add(jkey as usize),
-                                ldkey,
-                                ipoin.add(jkey as usize),
-                                stp.add(jstp as usize),
-                                ldstp,
-                                ifrq.add(jstp as usize),
-                                ifrq.add(jstp2 as usize),
-                                ifrq.add(jstp3 as usize),
-                                ifrq.add(jstp4 as usize),
+                                kval,
+                                &mut key[hash_start..hash_start + ldkey as usize],
+                                &mut ipoin[hash_start..hash_start + ldkey as usize],
+                                &mut stp[step_start..step_start + step_len],
+                                &mut counts[step_start..step_start + step_len],
+                                &mut links[step_start..step_start + step_len],
+                                right,
+                                left,
                                 ifreq,
                                 &mut itop,
                                 psh,
@@ -679,10 +676,10 @@ unsafe fn f2xact(
                         }
                     }
                     // Get next PASTP on chain
-                    ipn = *ifrq.add((ipn + ikstp2) as usize);
+                    ipn = ifrq[(ipn + ikstp2 - 1) as usize];
                     if ipn > 0 {
-                        pastp = *stp.add((ipn + ikstp) as usize);
-                        ifreq = *ifrq.add((ipn + ikstp) as usize);
+                        pastp = stp[(ipn + ikstp - 1) as usize];
+                        ifreq = ifrq[(ipn + ikstp - 1) as usize];
                         continue 'l300;
                     }
                     break;
@@ -697,11 +694,9 @@ unsafe fn f2xact(
                 // L310: Go get a new mother from stage K
                 loop {
                     if !f6xact(
-                        nro,
-                        iro.add(1),
-                        kyy.add(1),
-                        key.add((ikkey + 1) as usize),
-                        ldkey,
+                        std::slice::from_raw_parts_mut(iro.add(1), nro as usize),
+                        std::slice::from_raw_parts(kyy.add(1), nro as usize),
+                        &mut key[ikkey as usize..(ikkey + ldkey) as usize],
                         &mut last,
                         &mut ipo,
                     ) {
@@ -1423,217 +1418,199 @@ unsafe fn f4xact(
     }
 }
 
-unsafe fn f5xact(
+fn f5xact(
     pastp: c_double,
     tol: c_double,
-    kval: *mut c_int,
-    key: *mut c_int,
-    ldkey: c_int,
-    ipoin: *mut c_int,
-    stp: *mut c_double,
-    ldstp: c_int,
-    ifrq: *mut c_int,
-    npoin: *mut c_int,
-    nr: *mut c_int,
-    nl: *mut c_int,
+    kval: c_int,
+    key: &mut [c_int],
+    ipoin: &mut [c_int],
+    stp: &mut [c_double],
+    ifrq: &mut [c_int],
+    npoin: &mut [c_int],
+    nr: &mut [c_int],
+    nl: &mut [c_int],
     ifreq: c_int,
-    itop: *mut c_int,
+    itop: &mut c_int,
     psh: bool,
     hash_slot: &mut c_int,
 ) {
-    unsafe {
-        // GNU shifts these five only. key and ipoin stay 0-based.
-        let stp = stp.sub(1);
-        let ifrq = ifrq.sub(1);
-        let npoin = npoin.sub(1);
-        let nr = nr.sub(1);
-        let nl = nl.sub(1);
+    let ldkey = key.len() as c_int;
+    let ldstp = stp.len() as c_int;
 
-        if psh {
-            // Convert KVAL to int in range 0, ..., LDKEY-1
-            let ird = *kval % ldkey;
-            let mut found = false;
-            let mut saw_empty = false;
-            let mut itp_val: c_int = 0;
-            for idx in ird..ldkey {
-                if *key.add(idx as usize) == *kval {
+    if psh {
+        // Convert KVAL to int in range 0, ..., LDKEY-1
+        let ird = kval % ldkey;
+        let mut found = false;
+        let mut saw_empty = false;
+        let mut itp_val: c_int = 0;
+        for idx in ird..ldkey {
+            if key[idx as usize] == kval {
+                itp_val = idx;
+                found = true;
+                break;
+            }
+            if key[idx as usize] < 0 {
+                itp_val = idx;
+                saw_empty = true;
+                break;
+            }
+        }
+        if !found && !saw_empty {
+            for idx in 0..ird {
+                if key[idx as usize] == kval {
                     itp_val = idx;
                     found = true;
                     break;
                 }
-                if *key.add(idx as usize) < 0 {
+                if key[idx as usize] < 0 {
                     itp_val = idx;
                     saw_empty = true;
                     break;
                 }
             }
-            if !found && !saw_empty {
-                for idx in 0..ird {
-                    if *key.add(idx as usize) == *kval {
-                        itp_val = idx;
-                        found = true;
-                        break;
-                    }
-                    if *key.add(idx as usize) < 0 {
-                        itp_val = idx;
-                        saw_empty = true;
-                        break;
-                    }
-                }
-            }
-
-            if !found && !saw_empty {
-                // Return if KEY array is full
-                let msg = format!(
-                    "FEXACT error 6 (f5xact).  LDKEY={} is too small for this problem: kval={}.\n\
-                 Try increasing the size of the workspace.",
-                    ldkey, *kval
-                );
-                prterr(6, &msg);
-            }
-
-            *hash_slot = itp_val;
-            // Empty slot: insert and return. A hit falls through to L40.
-            if saw_empty {
-                *key.add(itp_val as usize) = *kval;
-                *itop += 1;
-                *ipoin.add(itp_val as usize) = *itop;
-                if *itop > ldstp {
-                    let msg = format!(
-                        "FEXACT error 7(update key). LDSTP={} is too small for this problem,\n  (kval={}, itop-ldstp={}).\n\
-                 Increase workspace or consider using 'simulate.p.value=TRUE'.",
-                        ldstp,
-                        *kval,
-                        *itop - ldstp
-                    );
-                    prterr(7, &msg);
-                }
-                *npoin.add(*itop as usize) = -1;
-                *nr.add(*itop as usize) = -1;
-                *nl.add(*itop as usize) = -1;
-                *stp.add(*itop as usize) = pastp;
-                *ifrq.add(*itop as usize) = ifreq;
-                return;
-            }
-        }
-        let itp_val = *hash_slot;
-
-        let mut ipn = *ipoin.add(itp_val as usize);
-
-        let test1 = pastp - tol;
-        let test2 = pastp + tol;
-
-        loop {
-            if ipn <= 0 {
-                break;
-            }
-            if *stp.add(ipn as usize) < test1 {
-                ipn = *nl.add(ipn as usize);
-            } else if *stp.add(ipn as usize) > test2 {
-                ipn = *nr.add(ipn as usize);
-            } else {
-                if c_int::MAX - *ifrq.add(ipn as usize) < ifreq {
-                    let msg = "integer overflow in exact computation";
-                    prterr(99, msg);
-                }
-                *ifrq.add(ipn as usize) += ifreq;
-                return;
-            }
-            if !(ipn > 0) {
-                break;
-            }
         }
 
-        // Return if STP array full
-        *itop += 1;
-        if *itop > ldstp {
-            let ipn0 = *ipoin.add(itp_val as usize);
+        if !found && !saw_empty {
+            // Return if KEY array is full
             let msg = format!(
-                "FEXACT error 7(location). LDSTP={} is too small for this problem,\n  (pastp={}, ipn_0:=ipoin[itp={}]= {}, stp[ipn_0]={}).\n\
-             Increase workspace or consider using 'simulate.p.value=TRUE'",
-                ldstp,
-                pastp,
-                itp_val,
-                ipn0,
-                *stp.add(ipn0 as usize)
+                "FEXACT error 6 (f5xact).  LDKEY={} is too small for this problem: kval={}.\n\
+             Try increasing the size of the workspace.",
+                ldkey, kval
             );
-            prterr(7, &msg);
+            prterr(6, &msg);
         }
 
-        // Find location to add value
-        ipn = *ipoin.add(itp_val as usize);
-        let mut itmp = ipn;
-
-        // L60:
-        loop {
-            if *stp.add(ipn as usize) < test1 {
-                itmp = ipn;
-                ipn = *nl.add(ipn as usize);
-                if ipn > 0 {
-                    continue;
-                }
-                // else
-                *nl.add(itmp as usize) = *itop;
-                break;
-            } else if *stp.add(ipn as usize) > test2 {
-                itmp = ipn;
-                ipn = *nr.add(ipn as usize);
-                if ipn > 0 {
-                    continue;
-                }
-                // else
-                *nr.add(itmp as usize) = *itop;
-                break;
-            } else {
-                break;
+        *hash_slot = itp_val;
+        // Empty slot: insert and return. A hit falls through to L40.
+        if saw_empty {
+            key[itp_val as usize] = kval;
+            *itop += 1;
+            ipoin[itp_val as usize] = *itop;
+            if *itop > ldstp {
+                let msg = format!(
+                    "FEXACT error 7(update key). LDSTP={} is too small for this problem,\n  (kval={}, itop-ldstp={}).\n\
+             Increase workspace or consider using 'simulate.p.value=TRUE'.",
+                    ldstp,
+                    kval,
+                    *itop - ldstp
+                );
+                prterr(7, &msg);
             }
+            npoin[(*itop - 1) as usize] = -1;
+            nr[(*itop - 1) as usize] = -1;
+            nl[(*itop - 1) as usize] = -1;
+            stp[(*itop - 1) as usize] = pastp;
+            ifrq[(*itop - 1) as usize] = ifreq;
+            return;
         }
-        // Update STP, etc.
-        *npoin.add(*itop as usize) = *npoin.add(itmp as usize);
-        *npoin.add(itmp as usize) = *itop;
-        *stp.add(*itop as usize) = pastp;
-        *ifrq.add(*itop as usize) = ifreq;
-        *nl.add(*itop as usize) = -1;
-        *nr.add(*itop as usize) = -1;
     }
+    let itp_val = *hash_slot;
+
+    let mut ipn = ipoin[itp_val as usize];
+
+    let test1 = pastp - tol;
+    let test2 = pastp + tol;
+
+    loop {
+        if ipn <= 0 {
+            break;
+        }
+        if stp[(ipn - 1) as usize] < test1 {
+            ipn = nl[(ipn - 1) as usize];
+        } else if stp[(ipn - 1) as usize] > test2 {
+            ipn = nr[(ipn - 1) as usize];
+        } else {
+            if c_int::MAX - ifrq[(ipn - 1) as usize] < ifreq {
+                let msg = "integer overflow in exact computation";
+                prterr(99, msg);
+            }
+            ifrq[(ipn - 1) as usize] += ifreq;
+            return;
+        }
+        if !(ipn > 0) {
+            break;
+        }
+    }
+
+    // Return if STP array full
+    *itop += 1;
+    if *itop > ldstp {
+        let ipn0 = ipoin[itp_val as usize];
+        let initial_step = usize::try_from(ipn0)
+            .ok()
+            .and_then(|index| index.checked_sub(1))
+            .and_then(|index| stp.get(index))
+            .copied()
+            .unwrap_or(f64::NAN);
+        let msg = format!(
+            "FEXACT error 7(location). LDSTP={} is too small for this problem,\n  (pastp={}, ipn_0:=ipoin[itp={}]= {}, stp[ipn_0]={}).\n\
+         Increase workspace or consider using 'simulate.p.value=TRUE'",
+            ldstp, pastp, itp_val, ipn0, initial_step
+        );
+        prterr(7, &msg);
+    }
+
+    // Find location to add value
+    ipn = ipoin[itp_val as usize];
+    let mut itmp = ipn;
+
+    // L60:
+    loop {
+        if stp[(ipn - 1) as usize] < test1 {
+            itmp = ipn;
+            ipn = nl[(ipn - 1) as usize];
+            if ipn > 0 {
+                continue;
+            }
+            // else
+            nl[(itmp - 1) as usize] = *itop;
+            break;
+        } else if stp[(ipn - 1) as usize] > test2 {
+            itmp = ipn;
+            ipn = nr[(ipn - 1) as usize];
+            if ipn > 0 {
+                continue;
+            }
+            // else
+            nr[(itmp - 1) as usize] = *itop;
+            break;
+        } else {
+            break;
+        }
+    }
+    // Update STP, etc.
+    npoin[(*itop - 1) as usize] = npoin[(itmp - 1) as usize];
+    npoin[(itmp - 1) as usize] = *itop;
+    stp[(*itop - 1) as usize] = pastp;
+    ifrq[(*itop - 1) as usize] = ifreq;
+    nl[(*itop - 1) as usize] = -1;
+    nr[(*itop - 1) as usize] = -1;
 }
 
-unsafe fn f6xact(
-    nrow: c_int,
-    irow: *mut c_int,
-    kyy: *const c_int,
-    key: *mut c_int,
-    ldkey: c_int,
-    last: *mut c_int,
-    ipn: *mut c_int,
+fn f6xact(
+    irow: &mut [c_int],
+    kyy: &[c_int],
+    key: &mut [c_int],
+    last: &mut c_int,
+    ipn: &mut c_int,
 ) -> bool {
-    unsafe {
-        let key = key.sub(1);
-
-        // L10:
-        'l10: loop {
-            *last += 1;
-            if *last <= ldkey {
-                if *key.add(*last as usize) < 0 {
-                    continue 'l10;
-                }
-
-                // Get KVAL from the stack
-                let mut kval = *key.add(*last as usize);
-                *key.add(*last as usize) = -9999;
-                for j in (1..nrow as usize).rev() {
-                    *irow.add(j) = kval / *kyy.add(j);
-                    kval -= *irow.add(j) * *kyy.add(j);
-                }
-                *irow.add(0) = kval;
-                *ipn = *last;
-                return false;
-            } else {
-                *last = 0;
-                return true;
-            }
+    while (*last as usize) < key.len() {
+        let slot = &mut key[*last as usize];
+        *last += 1;
+        if *slot < 0 {
+            continue;
         }
+        let mut kval = std::mem::replace(slot, -9999);
+        for j in (1..irow.len()).rev() {
+            irow[j] = kval / kyy[j];
+            kval -= irow[j] * kyy[j];
+        }
+        irow[0] = kval;
+        *ipn = *last;
+        return false;
     }
+    *last = 0;
+    true
 }
 
 unsafe fn f7xact(
@@ -1966,12 +1943,12 @@ fn fexact(
             iwrk.add(i3a),
             iwrk.add(i3b),
             iwrk.add(i3c),
-            iwrk.add(i4),
+            std::slice::from_raw_parts_mut(iwrk.add(i4), (2 * ldkey) as usize),
             ldkey as c_int,
-            iwrk.add(i5),
-            dwrk.add(i6),
+            std::slice::from_raw_parts_mut(iwrk.add(i5), (2 * ldkey) as usize),
+            std::slice::from_raw_parts_mut(dwrk.add(i6), (2 * ldstp) as usize),
             ldstp as c_int,
-            iwrk.add(i7),
+            std::slice::from_raw_parts_mut(iwrk.add(i7), (6 * ldstp) as usize),
             dwrk.add(i8),
             dwrk.add(i9),
             dwrk.add(i9a),
@@ -2027,6 +2004,63 @@ mod tests {
                     < 1e-14
             );
         });
+    }
+
+    #[test]
+    fn fexact_queue_probes_wrap_and_coalesces_steps() {
+        let mut key = [-9999, 2];
+        let mut ipoin = [0, 0];
+        let mut stp = [0.0; 4];
+        let mut ifrq = [0; 4];
+        let mut npoin = [0; 4];
+        let mut nr = [0; 4];
+        let mut nl = [0; 4];
+        let mut itop = 0;
+        let mut hash_slot = 0;
+        {
+            let mut enqueue = |pastp: f64, ifreq: c_int, psh: bool| {
+                super::f5xact(
+                    pastp,
+                    1e-7,
+                    1,
+                    &mut key,
+                    &mut ipoin,
+                    &mut stp,
+                    &mut ifrq,
+                    &mut npoin,
+                    &mut nr,
+                    &mut nl,
+                    ifreq,
+                    &mut itop,
+                    psh,
+                    &mut hash_slot,
+                )
+            };
+            enqueue(10.0, 2, true);
+            enqueue(10.0, 3, false);
+            enqueue(9.0, 1, false);
+            enqueue(11.0, 1, false);
+        }
+        assert_eq!(key, [1, 2]);
+        assert_eq!(ipoin, [1, 0]);
+        assert_eq!(itop, 3);
+        assert_eq!(stp[..3], [10.0, 9.0, 11.0]);
+        assert_eq!(ifrq[..3], [5, 1, 1]);
+        // GNU stores the smaller-child link in nr and the larger-child link
+        // in nl: the 9.0 node is index 2 under nr, the 11.0 node index 3
+        // under nl.
+        assert_eq!(nr[0], 2);
+        assert_eq!(nl[0], 3);
+        assert_eq!(npoin[..3], [3, -1, 2]);
+
+        let (mut last, mut ipn) = (0, 0);
+        let mut rows = [0, 0];
+        assert!(!super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert_eq!((last, ipn, rows), (1, 1, [1, 0]));
+        assert!(!super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert_eq!((last, ipn, rows), (2, 2, [0, 1]));
+        assert!(super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert_eq!(last, 0);
     }
 
     #[test]
