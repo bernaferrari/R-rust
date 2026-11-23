@@ -19,7 +19,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
+    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
     STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
@@ -756,23 +756,14 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
 
                 CPLXSXP => {
-                    let mut wi: c_int = 0;
-                    let mut di: c_int = 0;
-                    let mut ei: c_int = 0;
-                    let mut wr: c_int = 0;
-                    let mut dr: c_int = 0;
-                    let mut er: c_int = 0;
-                    crate::mainutils::format::formatComplex(
-                        COMPLEX(x),
-                        n,
-                        &mut wr,
-                        &mut dr,
-                        &mut er,
-                        &mut wi,
-                        &mut di,
-                        &mut ei,
-                        nsmall,
-                    );
+                    let crate::mainutils::format::ComplexField {
+                        wr: _,
+                        dr,
+                        er,
+                        mut wi,
+                        di,
+                        ei,
+                    } = crate::mainutils::format::complex_field_s(x, n, nsmall);
                     if trim != 0 {
                         wi = 0;
                         w = 0;
@@ -781,14 +772,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     wi = imax2_int(wi, wd);
                     result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                     for i in 0..n {
-                        let val = if COMPLEX(x).is_null() {
-                            crate::sexp::ffi::Rcomplex {
-                                r: NA_REAL,
-                                i: NA_REAL,
-                            }
-                        } else {
-                            *COMPLEX(x).add(i as usize)
-                        };
+                        let val = crate::sexp::accessors::COMPLEX_ELT(x, i as c_int);
                         let s = EncodeComplex(val, w, dr, er, wi, di, ei, my_OutDec);
                         let ch = Rf_mkChar(s);
                         SET_STRING_ELT(result_y, i, ch);

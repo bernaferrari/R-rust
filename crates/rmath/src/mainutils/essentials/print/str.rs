@@ -110,10 +110,8 @@ fn str_format_real(x: f64) -> String {
             na_width: old.na_width,
             na_width_noquote: old.na_width_noquote,
         });
-        let mut w = 0;
-        let mut d = 0;
-        let mut e = 0;
-        crate::mainutils::format::formatRealS(tmp, 1, &mut w, &mut d, &mut e, 0);
+        let crate::mainutils::format::RealField { w, d, e } =
+            crate::mainutils::format::real_field_s(tmp, 1, 0);
         let encoded = crate::mainutils::printutils::EncodeReal0(x, w, d, e, STR_OUT_DEC);
         crate::mainutils::format::format_set_R_print(old);
         let raw = if encoded.is_null() {
@@ -624,11 +622,8 @@ fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
             na_width: old.na_width,
             na_width_noquote: old.na_width_noquote,
         });
-        let mut w = 0;
-        let mut d = 0;
-        let mut e = 0;
-
-        crate::mainutils::format::formatRealS(tmp, show as R_xlen_t, &mut w, &mut d, &mut e, 0);
+        let crate::mainutils::format::RealField { w, d, e } =
+            crate::mainutils::format::real_field_s(tmp, show as R_xlen_t, 0);
         let mut parts = Vec::with_capacity(show);
         for i in 0..show {
             let v = REAL_ELT(tmp, i as std::os::raw::c_int);

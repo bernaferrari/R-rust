@@ -177,10 +177,17 @@ pub(crate) fn real_index(index: usize) -> Option<R_xlen_t> {
     R_xlen_t::try_from(index).ok()
 }
 
+/// Cell text from an encoder byte buffer: the encoder output is
+/// NUL-terminated scratch storage, so only bytes before the first NUL
+/// are meaningful.
+fn encoded_matrix_cell(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes.split(|&byte| byte == 0).next().unwrap_or_default())
+        .into_owned()
+}
+
 pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
-    use crate::mainutils::format::{compact_real_field, formatReal, real_field};
-    use crate::mainutils::printutils::EncodeReal;
-    use crate::sexp::accessors::REAL;
+    use crate::mainutils::format::{compact_real_field, real_field};
+    use crate::mainutils::printutils::encode_real0_text;
     use crate::sexp::ffi::NA_REAL;
 
     let seq = x
@@ -201,60 +208,30 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
             let val = real_index(r + c * nrow)
                 .map(|index| seq.real_or_na(index))
                 .unwrap_or(NA_REAL);
-            let encoded = EncodeReal(val, fmt.w, fmt.d, fmt.e, b'.' as _);
-            if encoded.is_null() {
-                String::new()
-            } else {
-                unsafe { std::ffi::CStr::from_ptr(encoded) }
-                    .to_string_lossy()
-                    .into_owned()
-            }
+            encoded_matrix_cell(&encode_real0_text(val, fmt.w, fmt.d, fmt.e, b"."))
         });
     }
 
-    unsafe {
-        let raw = x.clone().as_raw();
-        let data = REAL(raw);
-        let mut col_fmt = Vec::with_capacity(ncol);
-        for c in 0..ncol {
-            let mut w = 0;
-            let mut d = 0;
-            let mut e = 0;
-            if data.is_null() {
-                // Same empty width as formatReal on a null pointer. The cells
-                // below still encode NA_REAL. The pointer is not offset.
-                formatReal(std::ptr::null(), 0, &mut w, &mut d, &mut e, 0);
-            } else {
-                formatReal(
-                    data.add(c * nrow),
-                    nrow as R_xlen_t,
-                    &mut w,
-                    &mut d,
-                    &mut e,
-                    0,
-                );
-            }
-            col_fmt.push((w, d, e));
-        }
-        format_matrix_with(x, nrow, ncol, |r, c| {
-            let (w, d, e) = col_fmt[c];
-            let val = if data.is_null() {
-                NA_REAL
-            } else {
-                // SAFETY: `data` is the live real buffer. A null buffer took the other branch.
-                *data.add(r + c * nrow)
-            };
-            // SAFETY: EncodeReal writes a session print buffer, not an R node.
-            let encoded = EncodeReal(val, w, d, e, b'.' as _);
-            if encoded.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(encoded)
-                    .to_string_lossy()
-                    .into_owned()
-            }
+    let read = |index: usize| {
+        real_index(index).map_or(NA_REAL, |index| match x.try_real_elt(index) {
+            Ok(value) => value,
+            Err(crate::sexp::object::SexpError::MissingData { .. }) => NA_REAL,
+            Err(error) => crate::sexp::context::r_error(error.to_string()),
         })
-    }
+    };
+    let col_fmt: Vec<_> = (0..ncol)
+        .map(|c| real_field(nrow as R_xlen_t, 0, |r| read(c * nrow + r as usize)))
+        .collect();
+    format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+        let fmt = col_fmt[c];
+        encoded_matrix_cell(&encode_real0_text(
+            read(r + c * nrow),
+            fmt.w,
+            fmt.d,
+            fmt.e,
+            b".",
+        ))
+    })
 }
 
 pub(crate) fn print_max_cells() -> usize {
@@ -638,53 +615,32 @@ where
 }
 
 pub(crate) fn format_complex_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> String {
-    unsafe {
-        use crate::mainutils::format::formatComplex;
-        use crate::mainutils::printutils::EncodeComplex;
-        use crate::sexp::accessors::COMPLEX;
-        let data = COMPLEX(x.clone().as_raw());
-        let mut col_fmt = Vec::with_capacity(ncol);
-        for c in 0..ncol {
-            let mut wr = 0;
-            let mut dr = 0;
-            let mut er = 0;
-            let mut wi = 0;
-            let mut di = 0;
-            let mut ei = 0;
-            formatComplex(
-                data.add(c * nrow),
-                nrow as R_xlen_t,
-                &mut wr,
-                &mut dr,
-                &mut er,
-                &mut wi,
-                &mut di,
-                &mut ei,
-                0,
-            );
-            col_fmt.push((wr, dr, er, wi, di, ei));
-        }
-        format_matrix_with(x, nrow, ncol, |r, c| {
-            let (wr, dr, er, wi, di, ei) = col_fmt[c];
-            let encoded = EncodeComplex(
-                *data.add(r + c * nrow),
-                wr,
-                dr,
-                er,
-                wi,
-                di,
-                ei,
-                b".\0".as_ptr() as *const std::os::raw::c_char,
-            );
-            if encoded.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(encoded)
-                    .to_string_lossy()
-                    .into_owned()
-            }
-        })
+    use crate::mainutils::format::complex_field;
+    use crate::mainutils::printutils::encode_complex_text;
+
+    let read = |index: usize| {
+        x.try_complex_elt(index as R_xlen_t)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    let mut col_fmt = Vec::with_capacity(ncol);
+    let mut column = Vec::with_capacity(nrow);
+    for c in 0..ncol {
+        column.clear();
+        column.extend((0..nrow).map(|r| read(r + c * nrow)));
+        col_fmt.push(complex_field(&column, 0));
     }
+    format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+        let f = col_fmt[c];
+        encoded_matrix_cell(&encode_complex_text(
+            read(r + c * nrow),
+            f.wr,
+            f.dr,
+            f.er,
+            f.wi,
+            f.di,
+            f.ei,
+        ))
+    })
 }
 
 pub(crate) fn format_matrix(x: Sexp<'_>) -> Option<String> {

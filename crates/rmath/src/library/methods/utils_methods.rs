@@ -107,18 +107,16 @@ fn class_name_chars(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> S
                     } else {
                         c".".as_ptr()
                     };
-                let (mut w, mut d, mut e) = (0, 0, 0);
                 let text = if kind == SEXPTYPE::REALSXP {
                     let x = REAL_ELT(value, 0);
-                    crate::mainutils::format::formatReal(&x, 1, &mut w, &mut d, &mut e, 0);
-                    crate::mainutils::printutils::EncodeReal0(x, w, d, e, decimal)
+                    let f = crate::mainutils::format::real_field(1, 0, |_| x);
+                    crate::mainutils::printutils::EncodeReal0(x, f.w, f.d, f.e, decimal)
                 } else {
                     let x = COMPLEX_ELT(value, 0);
-                    let (mut wi, mut di, mut ei) = (0, 0, 0);
-                    crate::mainutils::format::formatComplex(
-                        &x, 1, &mut w, &mut d, &mut e, &mut wi, &mut di, &mut ei, 0,
-                    );
-                    crate::mainutils::printutils::EncodeComplex(x, w, d, e, wi, di, ei, decimal)
+                    let f = crate::mainutils::format::complex_field(&[x], 0);
+                    crate::mainutils::printutils::EncodeComplex(
+                        x, f.wr, f.dr, f.er, f.wi, f.di, f.ei, decimal,
+                    )
                 };
                 crate::sexp::constructors::Rf_mkChar(text)
             }

@@ -4,13 +4,8 @@
 //!
 //! Object Formatting -- determines proper width, digits, etc. for printing
 //! R objects.
-//!
-//! Exports (from original C):
-//!   formatStringS, formatLogical, formatLogicalS,
-//!   formatInteger, formatIntegerS, formatReal, formatRealS,
-//!   formatComplex, formatComplexS, formatRaw, formatRawS
 
-use std::os::raw::{c_double, c_int, c_void};
+use std::os::raw::{c_double, c_int};
 
 use crate::sexp::accessors::STRING_ELT;
 use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
@@ -183,29 +178,6 @@ pub fn format_Rexp10(n: c_int) -> c_double {
     }
 }
 
-// ---------------------------------------------------------------------------
-// format_via_sprintf  (static in C, exposed here for testing / reuse)
-//
-// Uses snprintf(%#.*e) to determine the exponent and significant digits
-// of a floating-point number.  Used when R_print.digits >= DBL_DIG + 1.
-// ---------------------------------------------------------------------------
-
-const NB: usize = 1000;
-
-/// Determine the exponent (kpower) and number of significant digits (nsig)
-/// for a real number using snprintf(%#.*e).
-///
-/// This is the fallback path when `R_print.digits >= DBL_DIG + 1` (i.e.
-/// >= 16 for IEEE 754 double).
-pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
-    let (k, n) = sprintf_scientific(r, d);
-    // SAFETY: the caller passes writable `kpower`/`nsig` outputs.
-    unsafe {
-        *kpower = k;
-        *nsig = n;
-    }
-}
-
 /// `(kpower, nsig)` of `r` printed with C `%#.<d-1>e`.
 fn sprintf_scientific(r: c_double, d: c_int) -> (c_int, c_int) {
     // C's snprintf("%#.<d-1>e", r): mantissa with d significant digits
@@ -240,32 +212,12 @@ fn sprintf_scientific(r: c_double, d: c_int) -> (c_int, c_int) {
 
 /// Determine the scientific representation parameters for a finite
 /// non-zero double.
-pub unsafe fn format_scientific(
-    x: *const c_double,
-    neg: *mut c_int,
-    kpower: *mut c_int,
-    nsig: *mut c_int,
-    roundingwidens: *mut bool,
-) {
-    // SAFETY: the caller passes a readable `x` and writable outputs.
-    unsafe {
-        let xv = *x;
-        // Zero needs no print configuration and remains usable without an
-        // active runtime, as in the original formatter.
-        let digits = if xv == 0.0 {
-            0
-        } else {
-            current_R_print().digits
-        };
-        format_scientific_with_digits(
-            xv,
-            &mut *neg,
-            &mut *kpower,
-            &mut *nsig,
-            &mut *roundingwidens,
-            digits,
-        );
-    }
+#[cfg(test)]
+fn format_scientific(x: c_double) -> (c_int, c_int, c_int, bool) {
+    let (mut neg, mut kpower, mut nsig, mut roundingwidens) = (0, 0, 0, false);
+    let digits = if x == 0.0 { 0 } else { current_R_print().digits };
+    format_scientific_with_digits(x, &mut neg, &mut kpower, &mut nsig, &mut roundingwidens, digits);
+    (neg, kpower, nsig, roundingwidens)
 }
 
 fn format_scientific_with_digits(
@@ -376,30 +328,8 @@ fn format_scientific_with_digits(
     }
 }
 
-// ---------------------------------------------------------------------------
-// formatRaw  -- field width for raw bytes (always 2: "00".."ff")
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        if !fieldwidth.is_null() {
-            *fieldwidth = 2;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// formatRawS  -- SEXP variant (also always 2)
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        if !fieldwidth.is_null() {
-            *fieldwidth = 2;
-        }
-        *fieldwidth = 2;
-    }
-}
+/// Field width for raw bytes (always 2: "00".."ff"; GNU formatRaw).
+pub(crate) const RAW_FIELD_WIDTH: c_int = 2;
 
 /// Display width of one character element, including quoting and NA widths.
 pub(crate) fn string_element_width(element: SEXP, quote: c_int) -> c_int {
@@ -412,17 +342,6 @@ pub(crate) fn string_element_width(element: SEXP, quote: c_int) -> c_int {
     } else {
         Rstrlen(element, quote) + if quote != 0 { 2 } else { 0 }
     }
-}
-
-// ---------------------------------------------------------------------------
-// formatStringS  -- SEXP variant using STRING_ELT
-//
-// Ported from C: uses STRING_ELT to access elements.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
-    // SAFETY: the caller guarantees `fieldwidth` is writable.
-    unsafe { *fieldwidth = string_width_s(x, n, quote) };
 }
 
 /// Field width of the first `n` elements of a STRSXP (GNU `formatString`).
@@ -447,28 +366,7 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
     result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-// ---------------------------------------------------------------------------
-// formatLogical  -- field width for logical vector (raw int* version)
-//
-// Ported from C: TRUE -> width 4, FALSE -> width 5, NA -> na_width.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
-    if x.is_null() || n <= 0 {
-        if !fieldwidth.is_null() {
-            // SAFETY: the caller guarantees a non-null `fieldwidth` is writable.
-            unsafe { *fieldwidth = 1 };
-        }
-        return;
-    }
-    // SAFETY: the caller guarantees `x` addresses `n` logicals and that
-    // `fieldwidth` is writable.
-    unsafe {
-        *fieldwidth = logical_field_width(std::slice::from_raw_parts(x, n as usize).iter().copied())
-    };
-}
-
-/// Slice form of [`formatLogical`]: field width of the logical values `x`.
+/// Slice form of `formatLogical`: field width of the logical values `x`.
 pub(crate) fn logical_field_width(x: impl IntoIterator<Item = c_int>) -> c_int {
     let mut fieldwidth = 1;
     for xi in x {
@@ -488,22 +386,6 @@ pub(crate) fn logical_field_width(x: impl IntoIterator<Item = c_int>) -> c_int {
     fieldwidth
 }
 
-// ---------------------------------------------------------------------------
-// formatLogicalS  -- SEXP variant using LOGICAL accessor
-//
-// Ported from C: uses LOGICAL() to get the data pointer, then delegates
-// to formatLogical. The C version uses ITERATE_BY_REGION_PARTIAL for
-// ALTREP support; we use the direct accessor path.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
-    if fieldwidth.is_null() {
-        return;
-    }
-    // SAFETY: `fieldwidth` is non-null and writable by the caller's contract.
-    unsafe { *fieldwidth = logical_width_s(x, n) };
-}
-
 /// Field width of the first `n` elements of a LGLSXP (GNU `formatLogicalS`).
 pub(crate) fn logical_width_s(x: SEXP, n: R_xlen_t) -> c_int {
     if x.is_null() || n <= 0 {
@@ -513,30 +395,11 @@ pub(crate) fn logical_width_s(x: SEXP, n: R_xlen_t) -> c_int {
     logical_field_width((0..n).map(|i| checked(src.try_logical_elt(i)))).max(1)
 }
 
-// ---------------------------------------------------------------------------
-// formatInteger  -- field width for integer vector (raw int* version)
-//
-// Ported from C: finds min/max values and NA presence, then applies
-// FORMATINT_RETLOGIC to compute the required field width.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
-    let width = if x.is_null() || n <= 0 {
-        1
-    } else {
-        integer_field_width(n, |i| unsafe { *x.add(i as usize) })
-    };
-    unsafe {
-        if !fieldwidth.is_null() {
-            *fieldwidth = width;
-        }
-    }
-}
-
 /// Field width of `n` integers produced by `elt`.
 ///
-/// A null pointer passed to [`formatInteger`] still means "no values" and
-/// stays width 1. A compact sequence passes its formula here and never a buffer.
+/// An empty span (GNU `formatInteger` on a null pointer) still means
+/// "no values" and stays width 1. A compact sequence passes its formula
+/// here and never a buffer.
 pub(crate) fn integer_field_width(n: R_xlen_t, mut elt: impl FnMut(R_xlen_t) -> c_int) -> c_int {
     if n <= 0 {
         return 1;
@@ -771,21 +634,6 @@ fn buffered_real_field(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
     real_field(n, nsmall, |i| checked(src.try_real_elt(i)))
 }
 
-// ---------------------------------------------------------------------------
-// formatIntegerS  -- SEXP variant
-//
-// A compact sequence is measured from its formula. INTEGER() would allocate
-// the payload, or return null when the budget refuses.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
-    let width = integer_width_s(x, n);
-    if !fieldwidth.is_null() {
-        // SAFETY: the caller guarantees a non-null `fieldwidth` is writable.
-        unsafe { *fieldwidth = width };
-    }
-}
-
 /// Field width of the first `n` elements of an INTSXP (GNU `formatIntegerS`).
 pub(crate) fn integer_width_s(x: SEXP, n: R_xlen_t) -> c_int {
     if x.is_null() || n == 0 {
@@ -802,52 +650,9 @@ pub(crate) fn integer_width_s(x: SEXP, n: R_xlen_t) -> c_int {
     }
 }
 
-// ---------------------------------------------------------------------------
-// formatReal  -- NOT hidden in C; used in graphics/src/plot.c
-//
-// Computes the field width (w), decimal digits (d), and exponent width (e)
-// for an array of doubles.  This is a fully standalone port that operates
-// on raw double pointers.
-// ---------------------------------------------------------------------------
-
-/// Compute format parameters for an array of doubles.
-///
-/// # Arguments
-/// * `x`      - pointer to array of `n` doubles
-/// * `n`      - number of elements
-/// * `w`      - [out] required field width
-/// * `d`      - [out] decimal digits to use
-/// * `e`      - [out] exponent width (0 = fixed format, 1 = 2-digit exp, 2 = 3-digit)
-/// * `nsmall` - minimum number of decimal digits in fixed format
-pub unsafe fn formatReal(
-    x: *const c_double,
-    n: R_xlen_t,
-    w: *mut c_int,
-    d: *mut c_int,
-    e: *mut c_int,
-    nsmall: c_int,
-) {
-    let fmt = if x.is_null() || n <= 0 {
-        RealField { w: 0, d: 0, e: 0 }
-    } else {
-        real_field(n, nsmall, |i| unsafe { *x.add(i as usize) })
-    };
-    unsafe {
-        if !w.is_null() {
-            *w = fmt.w;
-        }
-        if !d.is_null() {
-            *d = fmt.d;
-        }
-        if !e.is_null() {
-            *e = fmt.e;
-        }
-    }
-}
-
 /// Format parameters for `n` doubles produced by `elt`.
 ///
-/// [`formatReal`] keeps a null pointer as an empty span. A compact sequence
+/// `formatReal` keeps a null pointer as an empty span. A compact sequence
 /// passes its formula here and never a buffer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RealField {
@@ -1231,30 +1036,6 @@ pub(crate) fn compact_real_field(
     real_field(samples.len() as R_xlen_t, nsmall, |i| samples[i as usize])
 }
 
-// ---------------------------------------------------------------------------
-// formatRealS  -- SEXP variant
-//
-// A compact sequence is measured from its formula. REAL() would allocate
-// the payload, or return null when the budget refuses.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatRealS(
-    x: SEXP,
-    n: R_xlen_t,
-    w: *mut c_int,
-    d: *mut c_int,
-    e: *mut c_int,
-    nsmall: c_int,
-) {
-    let fmt = real_field_s(x, n, nsmall);
-    for (out, value) in [(w, fmt.w), (d, fmt.d), (e, fmt.e)] {
-        if !out.is_null() {
-            // SAFETY: the caller guarantees non-null outputs are writable.
-            unsafe { *out = value };
-        }
-    }
-}
-
 /// `(w, d, e)` of the first `n` elements of a REALSXP (GNU `formatRealS`).
 pub(crate) fn real_field_s(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
     if x.is_null() || n == 0 {
@@ -1275,48 +1056,6 @@ pub(crate) fn real_field_s(x: SEXP, n: R_xlen_t, nsmall: c_int) -> RealField {
     }
 }
 
-// ---------------------------------------------------------------------------
-// formatComplex  -- operates on raw Rcomplex arrays
-//
-// Since R 4.4.0, Re(.) and Im(.) are treated separately using formatReal.
-// We port the modern (non-"tricky") path with NA_give_NA behavior.
-// ---------------------------------------------------------------------------
-
-/// Compute format parameters for an array of complex numbers.
-///
-/// Treats Re and Im parts independently via `formatReal`.
-pub unsafe fn formatComplex(
-    x: *const Rcomplex,
-    n: R_xlen_t,
-    wr: *mut c_int,
-    dr: *mut c_int,
-    er: *mut c_int,
-    wi: *mut c_int,
-    di: *mut c_int,
-    ei: *mut c_int,
-    nsmall: c_int,
-) {
-    let field = if x.is_null() || n <= 0 {
-        ComplexField::default()
-    } else {
-        // SAFETY: the caller guarantees `x` addresses `n` complex values.
-        complex_field(unsafe { std::slice::from_raw_parts(x, n as usize) }, nsmall)
-    };
-    for (out, value) in [
-        (wr, field.wr),
-        (dr, field.dr),
-        (er, field.er),
-        (wi, field.wi),
-        (di, field.di),
-        (ei, field.ei),
-    ] {
-        if !out.is_null() {
-            // SAFETY: the caller guarantees non-null outputs are writable.
-            unsafe { *out = value };
-        }
-    }
-}
-
 /// Real/imaginary field parameters computed by [`complex_field`].
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ComplexField {
@@ -1328,7 +1067,7 @@ pub(crate) struct ComplexField {
     pub ei: c_int,
 }
 
-/// Slice form of [`formatComplex`]: Re and Im parts are formatted
+/// Slice form of `formatComplex`: Re and Im parts are formatted
 /// independently, NA entries are skipped, and the combined width admits NA.
 pub(crate) fn complex_field(x: &[Rcomplex], nsmall: c_int) -> ComplexField {
     complex_field_impl(x, nsmall, None)
@@ -1385,32 +1124,6 @@ fn complex_field_impl(x: &[Rcomplex], nsmall: c_int, print: Option<RPrint>) -> C
         field.wr += na_width - (field.wr + field.wi + 2);
     }
     field
-}
-
-// ---------------------------------------------------------------------------
-// formatComplexS  -- SEXP variant using COMPLEX accessor
-//
-// Ported from C: uses COMPLEX() to get the data pointer, then delegates
-// to formatComplex. The C version uses ITERATE_BY_REGION_PARTIAL for
-// ALTREP support; we use the direct accessor path.
-// ---------------------------------------------------------------------------
-
-pub unsafe fn formatComplexS(
-    x: SEXP,
-    n: R_xlen_t,
-    wr: *mut c_int,
-    dr: *mut c_int,
-    er: *mut c_int,
-    wi: *mut c_int,
-    di: *mut c_int,
-    ei: *mut c_int,
-    nsmall: c_int,
-) {
-    let f = complex_field_s(x, n, nsmall);
-    // SAFETY: the caller guarantees all six outputs are writable.
-    unsafe {
-        (*wr, *dr, *er, *wi, *di, *ei) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
-    }
 }
 
 /// Field parameters of the first `n` elements of a CPLXSXP (GNU `formatComplexS`).
@@ -1498,356 +1211,208 @@ mod tests {
 
     #[test]
     fn test_format_integer_empty() {
-        unsafe {
-            let mut fw: c_int = 0;
-            let arr: [c_int; 0] = [];
-            formatInteger(arr.as_ptr(), 0, &mut fw);
-            assert_eq!(fw, 1);
-        }
+        let arr: [c_int; 0] = [];
+        let fw = integer_field_width(arr.len() as R_xlen_t, |i| arr[i as usize]);
+        assert_eq!(fw, 1);
     }
 
     #[test]
     fn test_format_integer_simple() {
-        unsafe {
-            let mut fw: c_int = 0;
-            let arr = [1i32, 2, 3];
-            formatInteger(arr.as_ptr(), 3, &mut fw);
-            assert_eq!(fw, 1);
-        }
+        let arr = [1i32, 2, 3];
+        let fw = integer_field_width(arr.len() as R_xlen_t, |i| arr[i as usize]);
+        assert_eq!(fw, 1);
     }
 
     #[test]
     fn test_format_integer_with_na() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut fw: c_int = 0;
-            let arr = [1i32, NA_INTEGER, 3];
-            formatInteger(arr.as_ptr(), 3, &mut fw);
-            assert_eq!(fw, 2); // na_width = 2
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1i32, NA_INTEGER, 3];
+        let fw = integer_field_width(arr.len() as R_xlen_t, |i| arr[i as usize]);
+        assert_eq!(fw, 2); // na_width = 2
     }
 
     #[test]
     fn test_format_integer_negative() {
-        unsafe {
-            let mut fw: c_int = 0;
-            let arr = [-42i32, 100, 999];
-            formatInteger(arr.as_ptr(), 3, &mut fw);
-            // -42 needs 3 chars ("-42"), 999 needs 3 chars
-            assert_eq!(fw, 3);
-        }
+        let arr = [-42i32, 100, 999];
+        let fw = integer_field_width(arr.len() as R_xlen_t, |i| arr[i as usize]);
+        // -42 needs 3 chars ("-42"), 999 needs 3 chars
+        assert_eq!(fw, 3);
     }
 
     #[test]
     fn test_format_integer_large() {
-        unsafe {
-            let mut fw: c_int = 0;
-            let arr = [100000i32, -999999];
-            formatInteger(arr.as_ptr(), 2, &mut fw);
-            // 100000 -> 6 chars, -999999 -> 7 chars
-            assert_eq!(fw, 7);
-        }
+        let arr = [100000i32, -999999];
+        let fw = integer_field_width(arr.len() as R_xlen_t, |i| arr[i as usize]);
+        // 100000 -> 6 chars, -999999 -> 7 chars
+        assert_eq!(fw, 7);
     }
 
     #[test]
     fn test_format_logical_empty() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut fw: c_int = 0;
-            let arr: [c_int; 0] = [];
-            formatLogical(arr.as_ptr(), 0, &mut fw);
-            assert_eq!(fw, 1);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr: [c_int; 0] = [];
+        let fw = logical_field_width(arr);
+        assert_eq!(fw, 1);
     }
 
     #[test]
     fn test_format_logical_true() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut fw: c_int = 0;
-            let arr = [1i32];
-            formatLogical(arr.as_ptr(), 1, &mut fw);
-            assert_eq!(fw, 4); // "TRUE"
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1i32];
+        let fw = logical_field_width(arr);
+        assert_eq!(fw, 4); // "TRUE"
     }
 
     #[test]
     fn test_format_logical_false() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut fw: c_int = 0;
-            let arr = [0i32];
-            formatLogical(arr.as_ptr(), 1, &mut fw);
-            assert_eq!(fw, 5); // "FALSE"
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [0i32];
+        let fw = logical_field_width(arr);
+        assert_eq!(fw, 5); // "FALSE"
     }
 
     #[test]
     fn test_format_logical_mixed() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut fw: c_int = 0;
-            let arr = [1i32, 0, NA_LOGICAL];
-            formatLogical(arr.as_ptr(), 3, &mut fw);
-            // NA -> na_width=2, TRUE -> 4, FALSE -> 5 => max is 5
-            assert_eq!(fw, 5);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1i32, 0, NA_LOGICAL];
+        let fw = logical_field_width(arr);
+        // NA -> na_width=2, TRUE -> 4, FALSE -> 5 => max is 5
+        assert_eq!(fw, 5);
     }
 
     #[test]
     fn test_format_logical_false_short_circuits_like_r() {
-        unsafe {
-            let _session = RSession::new();
-            let p = RPrint {
-                digits: 7,
-                scipen: 0,
-                na_width: 10,
-                na_width_noquote: 10,
-            };
-            let old = format_set_R_print(p);
-            let mut fw: c_int = 0;
-            let arr = [0i32, NA_LOGICAL];
-            formatLogical(arr.as_ptr(), 2, &mut fw);
-            assert_eq!(fw, 5);
-            format_set_R_print(old);
-        }
+        let _session = RSession::new();
+        let p = RPrint {
+            digits: 7,
+            scipen: 0,
+            na_width: 10,
+            na_width_noquote: 10,
+        };
+        let old = format_set_R_print(p);
+        let arr = [0i32, NA_LOGICAL];
+        let fw = logical_field_width(arr);
+        assert_eq!(fw, 5);
+        format_set_R_print(old);
     }
 
     #[test]
     fn test_format_real_simple() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut w: c_int = 0;
-            let mut d: c_int = 0;
-            let mut e: c_int = 0;
-            let arr = [1.0f64, 2.0, 3.0];
-            formatReal(arr.as_ptr(), 3, &mut w, &mut d, &mut e, 0);
-            assert!(w > 0);
-            assert!(d >= 0);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1.0f64, 2.0, 3.0];
+        let RealField { w, d, e: _ } = real_field(arr.len() as R_xlen_t, 0, |i| arr[i as usize]);
+        assert!(w > 0);
+        assert!(d >= 0);
     }
 
     #[test]
     fn test_format_real_with_na() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut w: c_int = 0;
-            let mut d: c_int = 0;
-            let mut e: c_int = 0;
-            let na_val = c_double::from_bits(R_NA_BIT_PATTERN);
-            let arr = [1.0f64, na_val, 3.0];
-            formatReal(arr.as_ptr(), 3, &mut w, &mut d, &mut e, 0);
-            assert!(w >= 2); // at least na_width=2
-        }
+        let _g = RPrintGuard::new(7);
+        let na_val = c_double::from_bits(R_NA_BIT_PATTERN);
+        let arr = [1.0f64, na_val, 3.0];
+        let RealField { w, .. } = real_field(arr.len() as R_xlen_t, 0, |i| arr[i as usize]);
+        assert!(w >= 2); // at least na_width=2
     }
 
     #[test]
     fn test_format_quiet_na_width_preserves_nan_distinction() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let na = f64::from_bits(R_NA_BIT_PATTERN | (1 << 51));
-            let (mut w, mut d, mut e) = (0, 0, 0);
-            formatReal(&na, 1, &mut w, &mut d, &mut e, 0);
-            assert_eq!((w, d, e), (2, 0, 0));
-            formatReal(&f64::NAN, 1, &mut w, &mut d, &mut e, 0);
-            assert_eq!((w, d, e), (3, 0, 0));
-            for value in [Rcomplex { r: na, i: 1.0 }, Rcomplex { r: 1.0, i: na }] {
-                let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
-                formatComplex(
-                    &value, 1, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-                );
-                assert_eq!((wr, dr, er, wi, di, ei), (0, 0, 0, 0, 0, 0));
-            }
+        let _g = RPrintGuard::new(7);
+        let na = f64::from_bits(R_NA_BIT_PATTERN | (1 << 51));
+        let RealField { w, d, e } = real_field(1, 0, |_| na);
+        assert_eq!((w, d, e), (2, 0, 0));
+        let RealField { w, d, e } = real_field(1, 0, |_| f64::NAN);
+        assert_eq!((w, d, e), (3, 0, 0));
+        for value in [Rcomplex { r: na, i: 1.0 }, Rcomplex { r: 1.0, i: na }] {
+            let ComplexField { wr, dr, er, wi, di, ei } = complex_field(&[value], 0);
+            assert_eq!((wr, dr, er, wi, di, ei), (0, 0, 0, 0, 0, 0));
         }
     }
 
     #[test]
     fn test_format_real_with_inf() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut w: c_int = 0;
-            let mut d: c_int = 0;
-            let mut e: c_int = 0;
-            let arr = [1.0f64, f64::INFINITY, f64::NEG_INFINITY];
-            formatReal(arr.as_ptr(), 3, &mut w, &mut d, &mut e, 0);
-            assert!(w >= 4); // at least "-Inf" = 4
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1.0f64, f64::INFINITY, f64::NEG_INFINITY];
+        let RealField { w, .. } = real_field(arr.len() as R_xlen_t, 0, |i| arr[i as usize]);
+        assert!(w >= 4); // at least "-Inf" = 4
     }
 
     #[test]
     fn test_format_real_scientific() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut w: c_int = 0;
-            let mut d: c_int = 0;
-            let mut e: c_int = 0;
-            let arr = [1e20f64];
-            formatReal(arr.as_ptr(), 1, &mut w, &mut d, &mut e, 0);
-            // Very large number: should use exponential format
-            assert!(e > 0);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [1e20f64];
+        let RealField { e, .. } = real_field(arr.len() as R_xlen_t, 0, |i| arr[i as usize]);
+        // Very large number: should use exponential format
+        assert!(e > 0);
     }
 
     #[test]
     fn test_format_real_empty() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut w: c_int = 0;
-            let mut d: c_int = 0;
-            let mut e: c_int = 0;
-            let arr: [f64; 0] = [];
-            formatReal(arr.as_ptr(), 0, &mut w, &mut d, &mut e, 0);
-            // All non-finite: w=0, d=0, e=0
-            assert_eq!(w, 0);
-            assert_eq!(d, 0);
-            assert_eq!(e, 0);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr: [f64; 0] = [];
+        let RealField { w, d, e } = real_field(arr.len() as R_xlen_t, 0, |i| arr[i as usize]);
+        // All non-finite: w=0, d=0, e=0
+        assert_eq!(w, 0);
+        assert_eq!(d, 0);
+        assert_eq!(e, 0);
     }
 
     #[test]
     fn test_format_complex_simple() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut wr: c_int = 0;
-            let mut dr: c_int = 0;
-            let mut er: c_int = 0;
-            let mut wi: c_int = 0;
-            let mut di: c_int = 0;
-            let mut ei: c_int = 0;
-            let arr = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: 3.0, i: 4.0 }];
-            formatComplex(
-                arr.as_ptr(),
-                2,
-                &mut wr,
-                &mut dr,
-                &mut er,
-                &mut wi,
-                &mut di,
-                &mut ei,
-                0,
-            );
-            assert!(wr > 0);
-            assert!(wi > 0);
-        }
+        let _g = RPrintGuard::new(7);
+        let arr = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: 3.0, i: 4.0 }];
+        let ComplexField { wr, wi, .. } = complex_field(&arr, 0);
+        assert!(wr > 0);
+        assert!(wi > 0);
     }
 
     #[test]
     fn test_format_complex_empty() {
-        unsafe {
-            let mut wr: c_int = 0;
-            let mut dr: c_int = 0;
-            let mut er: c_int = 0;
-            let mut wi: c_int = 0;
-            let mut di: c_int = 0;
-            let mut ei: c_int = 0;
-            let arr: [Rcomplex; 0] = [];
-            formatComplex(
-                arr.as_ptr(),
-                0,
-                &mut wr,
-                &mut dr,
-                &mut er,
-                &mut wi,
-                &mut di,
-                &mut ei,
-                0,
-            );
-            assert_eq!(wr, 0);
-            assert_eq!(wi, 0);
-        }
+        let arr: [Rcomplex; 0] = [];
+        let ComplexField { wr, wi, .. } = complex_field(&arr, 0);
+        assert_eq!(wr, 0);
+        assert_eq!(wi, 0);
     }
 
     #[test]
     fn test_format_complex_with_na() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let mut wr: c_int = 0;
-            let mut dr: c_int = 0;
-            let mut er: c_int = 0;
-            let mut wi: c_int = 0;
-            let mut di: c_int = 0;
-            let mut ei: c_int = 0;
-            let na_val = c_double::from_bits(R_NA_BIT_PATTERN);
-            let arr = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: na_val, i: 3.0 }];
-            formatComplex(
-                arr.as_ptr(),
-                2,
-                &mut wr,
-                &mut dr,
-                &mut er,
-                &mut wi,
-                &mut di,
-                &mut ei,
-                0,
-            );
-            assert!(wr + wi + 2 >= 2); // space for NA
-        }
+        let _g = RPrintGuard::new(7);
+        let na_val = c_double::from_bits(R_NA_BIT_PATTERN);
+        let arr = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: na_val, i: 3.0 }];
+        let ComplexField { wr, wi, .. } = complex_field(&arr, 0);
+        assert!(wr + wi + 2 >= 2); // space for NA
     }
 
     #[test]
     fn test_scientific_zero() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let x = 0.0_f64;
-            let mut neg: c_int = 0;
-            let mut kpower: c_int = 0;
-            let mut nsig: c_int = 0;
-            let mut rw = false;
-            format_scientific(&x, &mut neg, &mut kpower, &mut nsig, &mut rw);
-            assert_eq!(neg, 0);
-            assert_eq!(kpower, 0);
-            assert_eq!(nsig, 1);
-            assert!(!rw);
-        }
+        let _g = RPrintGuard::new(7);
+        let (neg, kpower, nsig, rw) = format_scientific(0.0);
+        assert_eq!(neg, 0);
+        assert_eq!(kpower, 0);
+        assert_eq!(nsig, 1);
+        assert!(!rw);
     }
 
     #[test]
     fn test_scientific_zero_without_active_runtime() {
-        let value = 0.0;
-        let (mut neg, mut power, mut digits, mut widens) = (1, 1, 0, true);
-        unsafe { format_scientific(&value, &mut neg, &mut power, &mut digits, &mut widens) };
+        let (neg, power, digits, widens) = format_scientific(0.0);
         assert_eq!((neg, power, digits, widens), (0, 0, 1, false));
     }
 
     #[test]
     fn test_scientific_positive() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let x = 123.456_f64;
-            let mut neg: c_int = 0;
-            let mut kpower: c_int = 0;
-            let mut nsig: c_int = 0;
-            let mut rw = false;
-            format_scientific(&x, &mut neg, &mut kpower, &mut nsig, &mut rw);
-            assert_eq!(neg, 0);
-            assert_eq!(kpower, 2); // 123.456 = 1.23... * 10^2
-            assert!(nsig >= 1);
-        }
+        let _g = RPrintGuard::new(7);
+        let (neg, kpower, nsig, _rw) = format_scientific(123.456);
+        assert_eq!(neg, 0);
+        assert_eq!(kpower, 2); // 123.456 = 1.23... * 10^2
+        assert!(nsig >= 1);
     }
 
     #[test]
     fn test_scientific_negative() {
-        unsafe {
-            let _g = RPrintGuard::new(7);
-            let x = -42.0_f64;
-            let mut neg: c_int = 0;
-            let mut kpower: c_int = 0;
-            let mut nsig: c_int = 0;
-            let mut rw = false;
-            format_scientific(&x, &mut neg, &mut kpower, &mut nsig, &mut rw);
-            assert_eq!(neg, 1);
-            assert_eq!(kpower, 1); // 42 = 4.2 * 10^1
-        }
-    }
-
-    #[test]
-    fn test_format_raw() {
-        unsafe {
-            let mut fw: c_int = 0;
-            let arr: [u8; 3] = [0x00, 0xFF, 0xAB];
-            formatRaw(arr.as_ptr() as *const c_void, 3, &mut fw);
-            assert_eq!(fw, 2);
-        }
+        let _g = RPrintGuard::new(7);
+        let (neg, kpower, _nsig, _rw) = format_scientific(-42.0);
+        assert_eq!(neg, 1);
+        assert_eq!(kpower, 1); // 42 = 4.2 * 10^1
     }
 
     #[test]

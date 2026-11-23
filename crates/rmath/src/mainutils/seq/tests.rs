@@ -1083,8 +1083,7 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
         assert_eq!(wi_l, wi_p);
         assert!(still_lazy(lazy_i));
 
-        let mut neg_w = 0;
-        crate::mainutils::format::formatIntegerS(neg, XLENGTH(neg), &mut neg_w);
+        let neg_w = crate::mainutils::format::integer_width_s(neg, XLENGTH(neg));
         assert_eq!(neg_w, 4);
         assert!(still_lazy(neg));
 
@@ -1190,23 +1189,18 @@ fn altseq_printing_reads_the_formula_without_a_buffer() {
 
         refuse_new_nodes();
         let under_budget = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            let mut w = 0;
-            crate::mainutils::format::formatIntegerS(neg, XLENGTH(neg), &mut w);
+            let w = crate::mainutils::format::integer_width_s(neg, XLENGTH(neg));
             assert_eq!(w, 4);
             assert!(still_lazy(neg));
             let mut wi = 0;
             crate::mainutils::printarray::formatIntegerMatrix(lazy_i, 3, &mut wi);
             assert_eq!(wi, 2);
             assert!(still_lazy(lazy_i));
-            let (mut wr, mut dr, mut er) = (0, 0, 0);
-            crate::mainutils::format::formatRealS(
-                lazy_r,
-                XLENGTH(lazy_r),
-                &mut wr,
-                &mut dr,
-                &mut er,
-                0,
-            );
+            let crate::mainutils::format::RealField {
+                w: wr,
+                d: dr,
+                e: er,
+            } = crate::mainutils::format::real_field_s(lazy_r, XLENGTH(lazy_r), 0);
             assert_eq!((wr, dr, er), (wr_l, dr_l, er_l));
             assert!(still_lazy(lazy_r));
             let again = capture_stderr(|| {
@@ -1290,8 +1284,7 @@ fn altseq_long_integer_colon_stays_lazy() {
         assert_eq!(TYPEOF(seq), INTSXP_VAL);
         assert_eq!(XLENGTH(seq), n);
         assert!(still_lazy(seq));
-        let mut width = 0;
-        crate::mainutils::format::formatIntegerS(seq, XLENGTH(seq), &mut width);
+        let width = crate::mainutils::format::integer_width_s(seq, XLENGTH(seq));
         assert_eq!(width, 10);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 0), 0);
         assert_eq!(
@@ -1305,8 +1298,7 @@ fn altseq_long_integer_colon_stays_lazy() {
         assert_eq!(TYPEOF(via), INTSXP_VAL);
         assert_eq!(XLENGTH(via), n);
         assert!(still_lazy(via));
-        let mut via_width = 0;
-        crate::mainutils::format::formatIntegerS(via, XLENGTH(via), &mut via_width);
+        let via_width = crate::mainutils::format::integer_width_s(via, XLENGTH(via));
         assert_eq!(via_width, 10);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(via, 0), 0);
         assert_eq!(
@@ -1327,8 +1319,7 @@ fn altseq_long_integer_colon_stays_lazy() {
         ] {
             let sample = crate::sexp::altseq::compact_int_seq(from, step, len as usize);
             root_global(&format!("alt_int_width_{from}_{step}"), sample);
-            let mut fast = 0;
-            crate::mainutils::format::formatIntegerS(sample, len, &mut fast);
+            let fast = crate::mainutils::format::integer_width_s(sample, len);
             let view = crate::sexp::Sexp::from_raw(sample).unwrap();
             let formula = view.compact_seq().unwrap();
             let scanned =
@@ -1363,8 +1354,8 @@ fn altseq_long_real_colon_stays_lazy() {
         assert_eq!(TYPEOF(seq), REALSXP_VAL);
         assert_eq!(XLENGTH(seq), n);
         assert!(still_lazy(seq));
-        let (mut w, mut d, mut e) = (0, 0, 0);
-        crate::mainutils::format::formatRealS(seq, XLENGTH(seq), &mut w, &mut d, &mut e, 0);
+        let crate::mainutils::format::RealField { w, .. } =
+            crate::mainutils::format::real_field_s(seq, XLENGTH(seq), 0);
         assert!(w > 0, "long real colon width was {w}");
         assert_eq!(crate::sexp::accessors::REAL_ELT(seq, 0), 1.0);
         assert!(still_lazy(seq));

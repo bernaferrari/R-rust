@@ -1008,22 +1008,22 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
         let mut wi: c_int = 0;
         let mut di: c_int = 0;
         let mut ei: c_int = 0;
-        let mut w: c_int = 0;
+        let mut w: c_int;
         match TYPEOF(x) {
             10 => {
-                crate::mainutils::format::formatLogicalS(x, n, &mut w);
+                w = crate::mainutils::format::logical_width_s(x, n);
             }
             13 => {
-                crate::mainutils::format::formatIntegerS(x, n, &mut w);
+                w = crate::mainutils::format::integer_width_s(x, n);
             }
             14 => {
-                crate::mainutils::format::formatRealS(x, n, &mut wr, &mut dr, &mut er, nsmall);
+                let f = crate::mainutils::format::real_field_s(x, n, nsmall);
+                (wr, dr, er) = (f.w, f.d, f.e);
                 w = wr;
             }
             _ => {
-                crate::mainutils::format::formatComplexS(
-                    x, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, nsmall,
-                );
+                let f = crate::mainutils::format::complex_field_s(x, n, nsmall);
+                (wr, dr, er, wi, di, ei) = (f.wr, f.dr, f.er, f.wi, f.di, f.ei);
                 w = wr + wi + 2;
             }
         }

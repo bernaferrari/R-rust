@@ -21,53 +21,40 @@ pub(crate) fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {
 }
 
 pub(crate) fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Option<Vec<String>> {
-    unsafe {
-        if x.typeof_() != SEXPTYPE::REALSXP {
-            return None;
-        }
-        let slice: Vec<_> = x.iter_real().collect();
-        if slice.len() != names.len() {
-            return None;
-        }
-        let mut finite = Vec::new();
-        let mut nas_at = None;
-        for (i, name) in names.iter().enumerate() {
-            if name == "NAs" {
-                nas_at = Some(i);
-            } else {
-                finite.push(i);
-            }
-        }
-        let n = finite.len() as R_xlen_t;
-        let tmp = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if tmp.is_null() {
-            return None;
-        }
-        let _tmp = crate::sexp::protect::protect(tmp);
-        for (j, &i) in finite.iter().enumerate() {
-            *crate::sexp::accessors::REAL(tmp).add(j) = slice[i];
-        }
-        Some(with_summary_default_digits(|| {
-            let mut w = 0;
-            let mut d = 0;
-            let mut e = 0;
-            crate::mainutils::format::formatRealS(tmp, n, &mut w, &mut d, &mut e, 0);
-            let mut values = vec![String::new(); names.len()];
-            for (j, &i) in finite.iter().enumerate() {
-                values[i] = encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                    crate::sexp::accessors::REAL_ELT(tmp, j as std::os::raw::c_int),
-                    w,
-                    d,
-                    e,
-                    OUT_DEC,
-                ));
-            }
-            if let Some(i) = nas_at {
-                values[i] = format!("{}", slice[i] as i64);
-            }
-            values
-        }))
+    if x.typeof_() != SEXPTYPE::REALSXP {
+        return None;
     }
+    let slice: Vec<_> = x.iter_real().collect();
+    if slice.len() != names.len() {
+        return None;
+    }
+    let mut finite = Vec::new();
+    let mut nas_at = None;
+    for (i, name) in names.iter().enumerate() {
+        if name == "NAs" {
+            nas_at = Some(i);
+        } else {
+            finite.push(i);
+        }
+    }
+    Some(with_summary_default_digits(|| {
+        let f = crate::mainutils::format::real_field(finite.len() as R_xlen_t, 0, |j| {
+            slice[finite[j as usize]]
+        });
+        let mut values = vec![String::new(); names.len()];
+        for &i in &finite {
+            let bytes =
+                crate::mainutils::printutils::encode_real0_text(slice[i], f.w, f.d, f.e, b".");
+            values[i] = String::from_utf8_lossy(
+                bytes.split(|&b| b == 0).next().unwrap_or_default(),
+            )
+            .into_owned();
+        }
+        if let Some(i) = nas_at {
+            values[i] = format!("{}", slice[i] as i64);
+        }
+        values
+    }))
 }
 
 pub(crate) fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {

@@ -2,6 +2,11 @@
 
 use super::*;
 
+use crate::mainutils::format::{
+    ComplexField, RAW_FIELD_WIDTH, complex_field_s, integer_width_s, logical_width_s,
+    real_field_s, string_width_s,
+};
+
 // ---------------------------------------------------------------------------
 // Faithful ports of stock printvector.c: printVector / printNamedVector.
 //
@@ -339,7 +344,7 @@ pub(crate) fn vector_index(i: R_xlen_t, labwidth: usize) -> String {
 
 /// The stock type-specific field width `w` (before the gap is added by the
 /// callers that add it), computed over the first `n` elements.
-pub(crate) unsafe fn type_field_width(
+pub(crate) fn type_field_width(
     raw: SEXP,
     tp: SEXPTYPE,
     n: R_xlen_t,
@@ -349,90 +354,26 @@ pub(crate) unsafe fn type_field_width(
     std::os::raw::c_int,
     std::os::raw::c_int,
 ) {
-    // SAFETY: callers provide a live atomic-vector SEXP whose runtime tag is
-    // `tp`; the formatting routines only read it and write to stack locals.
-    unsafe {
-        // (w, d, e); only real/complex use d/e.
-        let _ = quote;
-        match tp {
-            SEXPTYPE::LGLSXP => {
-                let mut w = 0;
-                crate::mainutils::format::formatLogicalS(raw, n, &mut w);
-                (w, 0, 0)
-            }
-            SEXPTYPE::INTSXP => {
-                let mut w = 0;
-                crate::mainutils::format::formatIntegerS(raw, n, &mut w);
-                (w, 0, 0)
-            }
-            SEXPTYPE::REALSXP => {
-                let mut w = 0;
-                let mut d = 0;
-                let mut e = 0;
-                crate::mainutils::format::formatRealS(raw, n, &mut w, &mut d, &mut e, 0);
-                (w, d, e)
-            }
-            SEXPTYPE::CPLXSXP => {
-                let mut wr = 0;
-                let mut dr = 0;
-                let mut er = 0;
-                let mut wi = 0;
-                let mut di = 0;
-                let mut ei = 0;
-                crate::mainutils::format::formatComplexS(
-                    raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-                );
-                (wr + wi + 2, dr, er)
-            }
-            SEXPTYPE::STRSXP => {
-                let mut w = 0;
-                // Stock formatString measures against the actual quote
-                // character so embedded quotes render as \" (two columns).
-                let quote_ch = if quote {
-                    b'"' as std::os::raw::c_int
-                } else {
-                    0
-                };
-                crate::mainutils::format::formatStringS(raw, n, &mut w, quote_ch);
-                (w, 0, 0)
-            }
-            SEXPTYPE::RAWSXP => {
-                let mut w = 0;
-                crate::mainutils::format::formatRawS(raw, n, &mut w);
-                (w, 0, 0)
-            }
-            _ => (0, 0, 0),
+    // (w, d, e); only real/complex use d/e.
+    match tp {
+        SEXPTYPE::LGLSXP => (logical_width_s(raw, n), 0, 0),
+        SEXPTYPE::INTSXP => (integer_width_s(raw, n), 0, 0),
+        SEXPTYPE::REALSXP => {
+            let f = real_field_s(raw, n, 0);
+            (f.w, f.d, f.e)
         }
-    }
-}
-
-/// formatComplexS results, computed once per vector.
-#[derive(Clone, Copy)]
-pub(crate) struct ComplexFmt {
-    wr: std::os::raw::c_int,
-    dr: std::os::raw::c_int,
-    er: std::os::raw::c_int,
-    wi: std::os::raw::c_int,
-    di: std::os::raw::c_int,
-    ei: std::os::raw::c_int,
-}
-
-pub(crate) unsafe fn complex_fmt(raw: SEXP, n: R_xlen_t) -> ComplexFmt {
-    // SAFETY: callers guarantee that `raw` is a live CPLXSXP with at least
-    // `n` elements; all output pointers refer to initialized stack locals.
-    unsafe {
-        let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
-        crate::mainutils::format::formatComplexS(
-            raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-        );
-        ComplexFmt {
-            wr,
-            dr,
-            er,
-            wi,
-            di,
-            ei,
+        SEXPTYPE::CPLXSXP => {
+            let f = complex_field_s(raw, n, 0);
+            (f.wr + f.wi + 2, f.dr, f.er)
         }
+        SEXPTYPE::STRSXP => {
+            // Stock formatString measures against the actual quote
+            // character so embedded quotes render as \" (two columns).
+            let q = if quote { i32::from(b'"') } else { 0 };
+            (string_width_s(raw, n, q), 0, 0)
+        }
+        SEXPTYPE::RAWSXP => (RAW_FIELD_WIDTH, 0, 0),
+        _ => (0, 0, 0),
     }
 }
 
@@ -454,7 +395,7 @@ pub(crate) unsafe fn encode_element_at(
     e: std::os::raw::c_int,
     quote: bool,
     gap: std::os::raw::c_int,
-    cfmt: ComplexFmt,
+    cfmt: ComplexField,
 ) -> String {
     // SAFETY: `encode_element_adj` inherits this function's live-SEXP,
     // matching-tag, and in-bounds-index requirements.
@@ -486,7 +427,7 @@ pub(crate) unsafe fn encode_element_adj(
     e: std::os::raw::c_int,
     quote: bool,
     gap: std::os::raw::c_int,
-    cfmt: ComplexFmt,
+    cfmt: ComplexField,
     str_adj: crate::mainutils::printutils::Rprt_adj,
 ) -> String {
     // SAFETY: callers guarantee `raw` is live, `tp` is its actual runtime
@@ -579,16 +520,9 @@ pub(crate) fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String
         let is_str = matches!(tp, SEXPTYPE::STRSXP);
         let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
         let cfmt = if tp == SEXPTYPE::CPLXSXP {
-            complex_fmt(raw, n_pr)
+            complex_field_s(raw, n_pr, 0)
         } else {
-            ComplexFmt {
-                wr: 0,
-                dr: 0,
-                er: 0,
-                wi: 0,
-                di: 0,
-                ei: 0,
-            }
+            ComplexField::default()
         };
         for i in 0..n_pr {
             if i > 0 {
@@ -643,20 +577,12 @@ pub(crate) fn print_named_vector_stock(
         let tp = x.typeof_();
         let (print_width, gap, _max) = vector_print_settings();
         let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
-        let mut wn = 0;
         let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
-            complex_fmt(raw, n_pr)
+            complex_field_s(raw, n_pr, 0)
         } else {
-            ComplexFmt {
-                wr: 0,
-                dr: 0,
-                er: 0,
-                wi: 0,
-                di: 0,
-                ei: 0,
-            }
+            ComplexField::default()
         };
-        crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
+        let mut wn = string_width_s(names_raw, n_pr, 0);
         // Names use the unquoted missing label from PrintInit (normally
         // "<NA>"). The numeric-format settings can have a narrower NA width;
         // measure against the same label that EncodeString will emit.
