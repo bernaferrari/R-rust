@@ -241,6 +241,30 @@ impl Default for ProfilingState {
     }
 }
 
+/// Lend the original owner's profiler state for a strictly local operation.
+///
+/// # Safety
+/// `instance` must remain live physically, with no overlapping whole-instance
+/// borrow. `f` must not call into R or start collection.
+pub(crate) unsafe fn with_profiling_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut ProfilingState) -> R,
+) -> R {
+    // SAFETY: the caller retains the allocation; RefCell checks overlapping lends.
+    let cell = unsafe { &(*instance).profiling };
+    f(&mut cell.borrow_mut())
+}
+
+/// Read the sampling flags without lending state to a caller.
+///
+/// # Safety
+/// `instance` is live and the current call retains access to the allocation.
+pub(crate) unsafe fn profiling_scheduled_in(instance: *mut RInstance) -> bool {
+    // SAFETY: short shared field projection under the caller's liveness guarantee.
+    let state = unsafe { &(*instance).profiling }.borrow();
+    state.profiling != 0 && state.profile_schedule.is_some()
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SessionCapabilities {
     pub allow_system_commands: bool,
@@ -284,7 +308,6 @@ pub(crate) struct EvalControlState {
     pub bc_int_active: c_int,
     pub(crate) portable_primitive_names: Vec<String>,
     pub exec_token: RuntimeValue,
-    pub profiling: ProfilingState,
     pub cancellation: Option<crate::sexp::session::CancellationToken>,
 }
 
@@ -322,7 +345,6 @@ impl Default for EvalControlState {
             bc_int_active: 0,
             portable_primitive_names: Vec::new(),
             exec_token: RuntimeValue::empty(),
-            profiling: ProfilingState::default(),
             cancellation: None,
         }
     }
@@ -390,6 +412,8 @@ pub struct RInstance {
     pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Session-local profiler counters and owning source references.
+    profiling: RefCell<ProfilingState>,
     /// Per-instance names.c runtime caches and initialization marker.
     pub(crate) names_state: crate::mainutils::names::NamesRuntimeState,
     /// Per-instance bind.c cached sentinels.
@@ -609,6 +633,7 @@ impl RInstance {
             error_state: ErrorState::default(),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
             eval_state: EvalControlState::default(),
+            profiling: RefCell::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
             objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
@@ -825,31 +850,32 @@ impl Drop for RInstance {
         // Provider destructors can run arbitrary Rust code while fields are
         // released. Mark the owner unavailable before teardown starts.
         drop(self.liveness.take());
+        let profiling = self.profiling.get_mut();
         // Release canonical evaluator values while their original arena still
         // exists. Borrowed projections never participate in this teardown.
         self.eval_state.current_expr = RuntimeValue::empty();
         self.eval_state.parse_error_file = RuntimeValue::empty();
         self.eval_state.exec_token = RuntimeValue::empty();
-        self.eval_state.profiling.sref = RuntimeValue::empty();
-        self.eval_state.profiling.in_bc_interpreter = RuntimeValue::empty();
-        self.eval_state.profiling.bcbody = RuntimeValue::empty();
-        self.eval_state.profiling.bcrelpc = -1;
-        self.eval_state.profiling.srcfiles = Vec::new();
-        self.eval_state.profiling.srcfiles_reservation = None;
-        self.eval_state.profiling.srcfile_bytes_used = 0;
-        self.eval_state.profiling.srcfiles_buffer = RuntimeValue::empty();
+        profiling.sref = RuntimeValue::empty();
+        profiling.in_bc_interpreter = RuntimeValue::empty();
+        profiling.bcbody = RuntimeValue::empty();
+        profiling.bcrelpc = -1;
+        profiling.srcfiles = Vec::new();
+        profiling.srcfiles_reservation = None;
+        profiling.srcfile_bytes_used = 0;
+        profiling.srcfiles_buffer = RuntimeValue::empty();
         drop(self.imported_bytecode_metadata.get_mut().take());
         // Persistent headers and character bytes are owned Rust fields; their
         // pages invalidate outstanding checked identities during normal Drop.
         self.vmax.clear();
-        if self.eval_state.profiling.profile_outfile >= 0 {
+        if profiling.profile_outfile >= 0 {
             // Native only: on wasm32 the profiling stubs never open an
             // output file, so there is nothing to close.
             #[cfg(not(target_arch = "wasm32"))]
             unsafe {
-                libc::close(self.eval_state.profiling.profile_outfile);
+                libc::close(profiling.profile_outfile);
             }
-            self.eval_state.profiling.profile_outfile = -1;
+            profiling.profile_outfile = -1;
         }
     }
 }
@@ -1526,13 +1552,27 @@ mod owned_evaluator_root_tests {
                 0 => &raw mut (*instance).eval_state.current_expr,
                 1 => &raw mut (*instance).eval_state.parse_error_file,
                 2 => &raw mut (*instance).eval_state.exec_token,
-                3 => &raw mut (*instance).eval_state.profiling.sref,
-                4 => &raw mut (*instance).eval_state.profiling.srcfiles_buffer,
-                5 => &raw mut (*instance).eval_state.profiling.in_bc_interpreter,
-                6 => &raw mut (*instance).eval_state.profiling.bcbody,
                 _ => unreachable!(),
             }
         }
+    }
+
+    fn profile_root(state: &mut ProfilingState, index: usize) -> &mut RuntimeValue {
+        match index {
+            3 => &mut state.sref,
+            4 => &mut state.srcfiles_buffer,
+            5 => &mut state.in_bc_interpreter,
+            6 => &mut state.bcbody,
+            _ => unreachable!(),
+        }
+    }
+
+    fn replace_profile_root(
+        state: &mut ProfilingState,
+        index: usize,
+        value: RuntimeValue,
+    ) -> RuntimeValue {
+        std::mem::replace(profile_root(state, index), value)
     }
 
     #[test]
@@ -1540,6 +1580,15 @@ mod owned_evaluator_root_tests {
         let session = RSession::new_for_gc_tests();
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let replace = |index: usize, value: RuntimeValue| -> RuntimeValue {
+                if index < 3 {
+                    std::mem::replace(&mut *slot(instance, index), value)
+                } else {
+                    with_profiling_state_in(instance, |state| {
+                        replace_profile_root(state, index, value)
+                    })
+                }
+            };
             for index in 0..7 {
                 let value = owner
                     .node_factory()
@@ -1549,7 +1598,8 @@ mod owned_evaluator_root_tests {
                     .unwrap();
                 let pointer = value.as_raw();
                 let original = crate::sexp::memory::checked_projection(pointer).unwrap().1;
-                *slot(instance, index) = RuntimeValue::from_raw_in(instance, pointer);
+                let owned = RuntimeValue::from_raw_in(instance, pointer);
+                drop(replace(index, owned));
                 drop(value);
                 owner.full_gc().unwrap();
                 assert!(
@@ -1564,7 +1614,8 @@ mod owned_evaluator_root_tests {
                     .unwrap();
                 let pointer = replacement.as_raw();
                 let next = crate::sexp::memory::checked_projection(pointer).unwrap().1;
-                (*slot(instance, index)).replace_from_raw_in(instance, pointer);
+                let owned = RuntimeValue::from_raw_in(instance, pointer);
+                drop(replace(index, owned));
                 drop(replacement);
                 owner.full_gc().unwrap();
                 assert!(
@@ -1572,7 +1623,7 @@ mod owned_evaluator_root_tests {
                     "field {index} must release its replaced value"
                 );
                 assert!(next.is_live());
-                *slot(instance, index) = RuntimeValue::empty();
+                drop(replace(index, RuntimeValue::empty()));
                 owner.full_gc().unwrap();
                 assert!(
                     !next.is_live(),
@@ -1598,7 +1649,24 @@ mod owned_evaluator_root_tests {
         });
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+            let replace = |index: usize, value: RuntimeValue| -> RuntimeValue {
+                if index < 3 {
+                    std::mem::replace(&mut *slot(instance, index), value)
+                } else {
+                    with_profiling_state_in(instance, |state| {
+                        replace_profile_root(state, index, value)
+                    })
+                }
+            };
+            let read = |index: usize| -> SEXP {
+                if index < 3 {
+                    (*slot(instance, index)).as_raw()
+                } else {
+                    with_profiling_state_in(instance, |state| profile_root(state, index).as_raw())
+                }
+            };
             for index in 0..7 {
+
                 let value = owner
                     .node_factory()
                     .allocate(|arena| {
@@ -1607,16 +1675,18 @@ mod owned_evaluator_root_tests {
                     .unwrap();
                 let pointer = value.as_raw();
                 let original = crate::sexp::memory::checked_projection(pointer).unwrap().1;
-                *slot(instance, index) = RuntimeValue::from_raw_in(instance, pointer);
+                let owned = RuntimeValue::from_raw_in(instance, pointer);
+                drop(replace(index, owned));
                 drop(value);
                 let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    (*slot(instance, index)).replace_from_raw_in(instance, foreign_value.as_raw());
+                    let foreign = RuntimeValue::from_raw_in(instance, foreign_value.as_raw());
+                    drop(replace(index, foreign));
                 }));
                 assert!(rejected.is_err());
-                assert_eq!((*slot(instance, index)).as_raw(), pointer);
+                assert_eq!(read(index), pointer);
                 owner.full_gc().unwrap();
                 assert!(original.is_live());
-                *slot(instance, index) = RuntimeValue::empty();
+                drop(replace(index, RuntimeValue::empty()));
                 owner.full_gc().unwrap();
                 assert!(!original.is_live());
             }

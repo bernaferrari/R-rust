@@ -46,13 +46,18 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).eval_state.current_expr = instance::RuntimeValue::empty();
         (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
         (*instance).eval_state.exec_token = instance::RuntimeValue::empty();
-        (*instance).eval_state.profiling.sref = instance::RuntimeValue::empty();
-        (*instance).eval_state.profiling.in_bc_interpreter = instance::RuntimeValue::empty();
-        (*instance).eval_state.profiling.bcbody = instance::RuntimeValue::empty();
-        (*instance).eval_state.profiling.bcrelpc = -1;
-        (*instance).eval_state.profiling.srcfiles.clear();
-        (*instance).eval_state.profiling.srcfile_bytes_used = 0;
-        (*instance).eval_state.profiling.srcfiles_buffer = instance::RuntimeValue::empty();
+        let displaced = instance::with_profiling_state_in(instance, |state| {
+            state.bcrelpc = -1;
+            state.srcfiles.clear();
+            state.srcfile_bytes_used = 0;
+            (
+                std::mem::take(&mut state.sref),
+                std::mem::take(&mut state.in_bc_interpreter),
+                std::mem::take(&mut state.bcbody),
+                std::mem::take(&mut state.srcfiles_buffer),
+            )
+        });
+        drop(displaced);
         (*instance).eval_state.print.data.na_string = nil;
         (*instance).eval_state.print.data.na_string_noquote = nil;
         (*instance).eval_state.print.data.env = nil;

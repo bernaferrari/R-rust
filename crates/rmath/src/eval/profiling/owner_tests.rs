@@ -1,5 +1,5 @@
 use super::*;
-use crate::sexp::accessors::INTEGER_ELT;
+use crate::sexp::accessors::{INTEGER, INTEGER_ELT};
 use crate::sexp::{object::Sexp, owner::OwnerToken, session::RSession};
 
 fn frame(name: &str) -> crate::sexp::context::ContextGuard {
@@ -135,7 +135,10 @@ fn owner_profile_prevents_recursive_sampling_and_retains_cleared_contexts() {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(observed.get() + 1);
             (*instance).memory_state.gc_force_gap = 0;
-            assert!((*instance).eval_state.profiling.sampling_in_progress);
+            assert!(crate::sexp::instance::with_profiling_state_in(
+                instance,
+                |state| state.sampling_in_progress
+            ));
             R_WriteProfile(0);
             (*instance).context_stack.clear();
             crate::sexp::gengc::full_gc_in(instance);
@@ -146,8 +149,14 @@ fn owner_profile_prevents_recursive_sampling_and_retains_cleared_contexts() {
         R_WriteProfile(0);
         (*instance).memory_state.gc_force_gap = 0;
         assert_eq!(calls.get(), 1);
-        assert!(!(*instance).eval_state.profiling.sampling_in_progress);
-        assert_eq!((*instance).eval_state.profiling.srcfiles.len(), 1);
+        assert!(!crate::sexp::instance::with_profiling_state_in(
+            instance,
+            |state| state.sampling_in_progress
+        ));
+        assert_eq!(
+            crate::sexp::instance::with_profiling_state_in(instance, |state| state.srcfiles.len()),
+            1
+        );
         R_EndProfiling();
     });
 }
@@ -185,7 +194,7 @@ fn owner_profile_revocation_cleans_the_original_sampling_flag_only() {
         let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| R_WriteProfile(0)));
         assert!(denied.is_err());
         assert_eq!(notifications.get(), 1);
-        assert!(!(*pin.as_ptr()).eval_state.profiling.sampling_in_progress);
+        assert!(!pin.with_profiling_state(|state| state.sampling_in_progress));
         assert_eq!(crate::sexp::globals::R_Visible_in(pin.as_ptr()), FALSE);
     });
     drop(original);

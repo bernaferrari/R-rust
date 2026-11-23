@@ -329,9 +329,12 @@ pub unsafe fn Rf_begincontext_in(
     let closure = unsafe { ContextValue::from_raw_in(instance, closure) };
     let promiseargs = unsafe { ContextValue::from_raw_in(instance, promiseargs) };
     let callfun = ContextValue(closure.owned());
-    let active_srcref = unsafe { (*instance).eval_state.profiling.sref.owned() };
-    let bcbody = ContextValue(unsafe { (*instance).eval_state.profiling.bcbody.owned() });
-    let relpc = unsafe { (*instance).eval_state.profiling.bcrelpc };
+    // Strictly-local copies; no profiling borrow survives into later R calls.
+    let (active_srcref, bcbody, relpc) = unsafe {
+        instance::with_profiling_state_in(instance, |state| {
+            (state.sref.owned(), ContextValue(state.bcbody.owned()), state.bcrelpc)
+        })
+    };
     let srcref = if let Some(sref) = active_srcref {
         ContextValue(Some(sref))
     } else {

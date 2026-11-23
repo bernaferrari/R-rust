@@ -164,6 +164,15 @@ impl OwnerPin {
         // excludes any other `&mut ErrorState` for this owner.
         unsafe { super::instance::with_error_state_in(self.as_ptr(), f) }
     }
+
+    /// Lend profiler state retained by this pin, including for revoked-owner cleanup.
+    pub(crate) fn with_profiling_state<R>(
+        &self,
+        f: impl FnOnce(&mut super::instance::ProfilingState) -> R,
+    ) -> R {
+        // SAFETY: the pin retains the original allocation throughout this field lend.
+        unsafe { super::instance::with_profiling_state_in(self.as_ptr(), f) }
+    }
 }
 
 /// Execution authority exists only inside `with_runtime`. It cannot be cloned
@@ -576,6 +585,28 @@ impl<'session> OwnerToken<'session> {
     pub(crate) fn pin(self) -> SexpResult<Option<OwnerPin>> {
         self.require_live()?;
         self.weak_owner().map(|owner| owner.pin()).transpose()
+    }
+
+    /// Lend live profiler state without changing the active runtime.
+    pub(crate) fn with_profiling_state<R>(
+        self,
+        f: impl FnOnce(&mut super::instance::ProfilingState) -> R,
+    ) -> R {
+        // The pin retains the original allocation across `f`, so callers may
+        // revoke the owning session inside the closure; borrowed fixture
+        // owners simply yield `None`.
+        let _pin = self
+            .pin()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        // SAFETY: the pin retains the allocation; the lend runs no R code.
+        unsafe { super::instance::with_profiling_state_in(self.as_ptr(), f) }
+    }
+
+    /// Read the sampling flags without lending state to a caller.
+    pub(crate) fn profiling_scheduled(self) -> SexpResult<bool> {
+        self.require_live()?;
+        // SAFETY: the owner is live and no callbacks run during this scalar read.
+        Ok(unsafe { super::instance::profiling_scheduled_in(self.as_ptr()) })
     }
 
     /// Capture immutable allocation-domain and availability capabilities before

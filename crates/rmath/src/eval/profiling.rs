@@ -29,7 +29,7 @@ use std::ptr;
 use crate::eval::attrib_core::getAttrib;
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, STRING_ELT, TYPEOF, XLENGTH,
+    CADDR, CADR, CAR, CDR, CHAR, LENGTH, PRINTNAME, RAW, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::context::RCNTXT;
@@ -39,9 +39,10 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, TRUE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{
-    NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, RInstance,
-    with_required_current_instance,
+    NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, RInstance, RuntimeValue,
+    with_profiling_state_in, with_required_current_instance,
 };
+use crate::sexp::owner::{OwnerPin, OwnerToken};
 
 mod schedule;
 mod workspace;
@@ -83,118 +84,146 @@ use crate::sexp::symbol::{
 // Active source-reference & bytecode-interpreter location tracking
 // ---------------------------------------------------------------------------
 
+fn owned_profile_value(owner: OwnerToken<'_>, raw: SEXP) -> RuntimeValue {
+    if raw.is_null() {
+        return RuntimeValue::empty();
+    }
+    let value = owner
+        .sexp(raw)
+        .and_then(|value| value.into_owned())
+        .unwrap_or_else(|error| {
+            crate::sexp::context::r_error(format!("invalid context value: {error}"))
+        });
+    RuntimeValue::from_owned(value)
+}
+
+fn owned_srcref(owner: OwnerToken<'_>, raw: SEXP) -> RuntimeValue {
+    if raw == R_NilValue() {
+        RuntimeValue::empty()
+    } else {
+        owned_profile_value(owner, raw)
+    }
+}
+
+fn pin_profiler_owner(owner: OwnerToken<'_>) -> Option<OwnerPin> {
+    owner.pin().unwrap_or_else(|error| {
+        crate::sexp::context::r_error(format!("unavailable context owner: {error}"))
+    })
+}
+
 /// Return the per-instance `R_InBCInterpreter` sentinel symbol.
 ///
 /// Mirrors GNU R's `R_InBCInterpreter = mkSymMarker(mkChar("<in-bc-interp>"))`.
 /// The symbol is uninterned and rooted in `ProfilingState::in_bc_interpreter`,
 /// so no user R value can collide with it by pointer identity.
 pub(crate) fn get_R_InBCInterpreter() -> SEXP {
-    unsafe { with_required_current_instance(|instance| get_R_InBCInterpreter_in(instance)) }
+    in_bc_interpreter(current_profiler_owner())
 }
 
-pub(crate) unsafe fn get_R_InBCInterpreter_in(instance: *mut RInstance) -> SEXP {
-    unsafe {
-        let existing = (*instance).eval_state.profiling.in_bc_interpreter.as_raw();
-        if !existing.is_null() && existing != R_NilValue() {
-            return existing;
-        }
-        let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
-        let Ok(marker) = owner.node_factory().allocate(|arena| {
-            let node = arena.alloc_node(SEXPTYPE::SYMSXP);
-            if node.is_null() {
-                return None;
-            }
-            let name = arena.alloc_charsxp(b"<in-bc-interp>");
-            if name.is_null() {
-                return None;
-            }
-            crate::sexp::accessors::SET_PRINTNAME(node, name);
-            Some(node)
-        }) else {
-            return R_NilValue();
-        };
-        let raw = marker.as_raw();
-        (*instance).eval_state.profiling.in_bc_interpreter =
-            crate::sexp::instance::RuntimeValue::from_raw_in(instance, raw);
-        raw
+fn in_bc_interpreter(owner: OwnerToken<'_>) -> SEXP {
+    let existing = owner.with_profiling_state(|state| state.in_bc_interpreter.as_raw());
+    if !existing.is_null() && existing != R_NilValue() {
+        return existing;
     }
+    let _pin = pin_profiler_owner(owner);
+    let Ok(marker) = owner.node_factory().allocate(|arena| {
+        let node = arena.alloc_node(SEXPTYPE::SYMSXP);
+        if node.is_null() {
+            return None;
+        }
+        let name = arena.alloc_charsxp(b"<in-bc-interp>");
+        if name.is_null() {
+            return None;
+        }
+        crate::sexp::accessors::SET_PRINTNAME(node, name);
+        Some(node)
+    }) else {
+        return R_NilValue();
+    };
+    let marker = RuntimeValue::from_owned(
+        marker
+            .into_owned()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    );
+    let nil = R_NilValue();
+    let (raw, displaced) = owner.with_profiling_state(|state| {
+        if state.in_bc_interpreter.is_null() || state.in_bc_interpreter.as_raw() == nil {
+            let raw = marker.as_raw();
+            (raw, std::mem::replace(&mut state.in_bc_interpreter, marker))
+        } else {
+            (state.in_bc_interpreter.as_raw(), marker)
+        }
+    });
+    drop(displaced);
+    raw
+}
+
+fn update_srcref(owner: OwnerToken<'_>, raw: SEXP) {
+    let value = owned_srcref(owner, raw);
+    drop(owner.with_profiling_state(|state| std::mem::replace(&mut state.sref, value)));
 }
 
 /// Update the active `R_Srcref` on the current runtime instance.
 pub(crate) fn set_current_srcref(srcref: SEXP) {
-    unsafe {
-        with_required_current_instance(|instance| set_current_srcref_in(instance, srcref));
-    }
+    update_srcref(current_profiler_owner(), srcref);
 }
 
 /// Update the active `R_Srcref` on an explicit runtime instance.
+///
+/// # Safety
+/// `instance` must be a live runtime for the duration of this call.
 pub(crate) unsafe fn set_current_srcref_in(instance: *mut RInstance, srcref: SEXP) {
-    unsafe {
-        if srcref.is_null() || srcref == R_NilValue() {
-            (*instance).eval_state.profiling.sref = crate::sexp::instance::RuntimeValue::empty();
-        } else {
-            (*instance).eval_state.profiling.sref =
-                crate::sexp::instance::RuntimeValue::from_raw_in(instance, srcref);
-        }
-    }
+    // SAFETY: the caller's precondition supplies a live runtime owner.
+    update_srcref(unsafe { OwnerToken::from_raw(instance) }, srcref);
 }
 
-/// RAII guard that saves and restores `eval_state.profiling.sref` on the
+/// RAII guard that saves and restores the owner's profiling `sref` on the
 /// original runtime owner, including across panics/unwinds.
 pub(crate) struct SrcrefGuard {
-    instance: *mut RInstance,
-    pin: Option<crate::sexp::owner::OwnerPin>,
-    prev_sref: crate::sexp::instance::RuntimeValue,
+    owner: OwnerToken<'static>,
+    prev_sref: RuntimeValue,
+    _pin: Option<OwnerPin>,
 }
 
 impl SrcrefGuard {
-    pub(crate) unsafe fn push(new_srcref: SEXP) -> Self {
-        unsafe { with_required_current_instance(|instance| Self::push_in(instance, new_srcref)) }
+    pub(crate) fn push(new_srcref: SEXP) -> Self {
+        Self::push_owner(current_profiler_owner(), new_srcref)
     }
 
+    /// # Safety
+    /// `instance` must be a live runtime for the duration of this call.
     pub(crate) unsafe fn push_in(instance: *mut RInstance, new_srcref: SEXP) -> Self {
-        unsafe {
-            let pin = crate::sexp::context::pin_context_owner_in(instance);
-            let prev_sref = std::mem::replace(
-                &mut (*instance).eval_state.profiling.sref,
-                crate::sexp::instance::RuntimeValue::empty(),
-            );
-            set_current_srcref_in(instance, new_srcref);
-            Self {
-                instance,
-                pin,
-                prev_sref,
-            }
+        // SAFETY: the caller's precondition supplies a live runtime owner.
+        Self::push_owner(unsafe { OwnerToken::from_raw(instance) }, new_srcref)
+    }
+
+    fn push_owner(owner: OwnerToken<'static>, raw: SEXP) -> Self {
+        let pin = pin_profiler_owner(owner);
+        let value = owned_srcref(owner, raw);
+        let prev_sref =
+            owner.with_profiling_state(|state| std::mem::replace(&mut state.sref, value));
+        Self {
+            owner,
+            prev_sref,
+            _pin: pin,
         }
     }
 
-    pub(crate) unsafe fn update(&self, new_srcref: SEXP) {
-        unsafe {
-            if self
-                .pin
-                .as_ref()
-                .is_none_or(|pin| pin.require_live().is_ok())
-            {
-                set_current_srcref_in(self.instance, new_srcref);
-            }
+    pub(crate) fn update(&self, new_srcref: SEXP) {
+        if self.owner.is_live() {
+            update_srcref(self.owner, new_srcref);
         }
     }
 }
 
 impl Drop for SrcrefGuard {
     fn drop(&mut self) {
-        let prev = std::mem::replace(
-            &mut self.prev_sref,
-            crate::sexp::instance::RuntimeValue::empty(),
-        );
-        if self
-            .pin
-            .as_ref()
-            .is_none_or(|pin| pin.require_live().is_ok())
-        {
-            unsafe {
-                (*self.instance).eval_state.profiling.sref = prev;
-            }
+        if self.owner.is_live() {
+            let prev = std::mem::take(&mut self.prev_sref);
+            drop(
+                self.owner
+                    .with_profiling_state(|state| std::mem::replace(&mut state.sref, prev)),
+            );
         }
     }
 }
@@ -206,74 +235,58 @@ impl Drop for SrcrefGuard {
 /// roots `bcbody`, and restores the prior state on exit or unwind if the
 /// original runtime is still live.
 pub(crate) struct BcEvalSrcrefGuard {
-    instance: *mut RInstance,
-    pin: Option<crate::sexp::owner::OwnerPin>,
-    prev_sref: crate::sexp::instance::RuntimeValue,
-    prev_bcbody: crate::sexp::instance::RuntimeValue,
+    owner: OwnerToken<'static>,
+    prev_sref: RuntimeValue,
+    prev_bcbody: RuntimeValue,
     prev_bcrelpc: isize,
+    _pin: Option<OwnerPin>,
 }
 
 impl BcEvalSrcrefGuard {
     pub(crate) fn enter(body: SEXP, initial_pc: isize) -> Self {
-        unsafe {
-            with_required_current_instance(|instance| {
-                let pin = crate::sexp::context::pin_context_owner_in(instance);
-                let in_bc = get_R_InBCInterpreter_in(instance);
-                let prev_sref = std::mem::replace(
-                    &mut (*instance).eval_state.profiling.sref,
-                    crate::sexp::instance::RuntimeValue::from_raw_in(instance, in_bc),
-                );
-                let prev_bcbody = std::mem::replace(
-                    &mut (*instance).eval_state.profiling.bcbody,
-                    crate::sexp::instance::RuntimeValue::from_raw_in(instance, body),
-                );
-                let prev_bcrelpc =
-                    std::mem::replace(&mut (*instance).eval_state.profiling.bcrelpc, initial_pc);
-                Self {
-                    instance,
-                    pin,
-                    prev_sref,
-                    prev_bcbody,
-                    prev_bcrelpc,
-                }
-            })
+        let owner = current_profiler_owner();
+        let pin = pin_profiler_owner(owner);
+        // Root the body before the marker allocation so every new owner
+        // survives a collection inside `in_bc_interpreter`.
+        let body = owned_profile_value(owner, body);
+        let in_bc = owned_profile_value(owner, in_bc_interpreter(owner));
+        let (prev_sref, prev_bcbody, prev_bcrelpc) = owner.with_profiling_state(|state| {
+            (
+                std::mem::replace(&mut state.sref, in_bc),
+                std::mem::replace(&mut state.bcbody, body),
+                std::mem::replace(&mut state.bcrelpc, initial_pc),
+            )
+        });
+        Self {
+            owner,
+            prev_sref,
+            prev_bcbody,
+            prev_bcrelpc,
+            _pin: pin,
         }
     }
 
     #[inline]
     pub(crate) fn set_pc(&self, pc: isize) {
-        unsafe {
-            if self
-                .pin
-                .as_ref()
-                .is_none_or(|pin| pin.require_live().is_ok())
-            {
-                (*self.instance).eval_state.profiling.bcrelpc = pc;
-            }
+        if self.owner.is_live() {
+            self.owner
+                .with_profiling_state(|state| state.bcrelpc = pc);
         }
     }
 }
 
 impl Drop for BcEvalSrcrefGuard {
     fn drop(&mut self) {
-        let prev_sref = std::mem::replace(
-            &mut self.prev_sref,
-            crate::sexp::instance::RuntimeValue::empty(),
-        );
-        let prev_bcbody = std::mem::replace(
-            &mut self.prev_bcbody,
-            crate::sexp::instance::RuntimeValue::empty(),
-        );
-        if self
-            .pin
-            .as_ref()
-            .is_none_or(|pin| pin.require_live().is_ok())
-        {
-            unsafe {
-                (*self.instance).eval_state.profiling.sref = prev_sref;
-                (*self.instance).eval_state.profiling.bcbody = prev_bcbody;
-                (*self.instance).eval_state.profiling.bcrelpc = self.prev_bcrelpc;
-            }
+        if self.owner.is_live() {
+            let prev_sref = std::mem::take(&mut self.prev_sref);
+            let prev_bcbody = std::mem::take(&mut self.prev_bcbody);
+            drop(self.owner.with_profiling_state(|state| {
+                state.bcrelpc = self.prev_bcrelpc;
+                (
+                    std::mem::replace(&mut state.sref, prev_sref),
+                    std::mem::replace(&mut state.bcbody, prev_bcbody),
+                )
+            }));
         }
     }
 }
@@ -399,22 +412,12 @@ fn with_profiling_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ProfilingState) -> R,
 {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|instance| unsafe { with_profiling_state_in(instance, f) })
+    current_profiler_owner().with_profiling_state(f)
 }
 
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn with_profiling_state_in<F, R>(instance: *mut RInstance, f: F) -> R
-where
-    F: FnOnce(&mut ProfilingState) -> R,
-{
-    // P1: the &mut ProfilingState lend lives only across `f`, and every
-    // caller's closure is strictly local state arithmetic (counters, flags,
-    // file descriptors) — no allocation, protect, or eval can reenter here.
-    f(unsafe { &mut (*instance).eval_state.profiling })
+fn current_profiler_owner() -> OwnerToken<'static> {
+    OwnerToken::current()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Retain the physical original owner across profiling callbacks and detect
@@ -429,9 +432,7 @@ impl ProfileEpoch {
         let pin = owner
             .pin()?
             .ok_or(crate::sexp::object::SexpError::RootUnavailable)?;
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        let generation =
-            unsafe { with_profiling_state_in(owner.as_ptr(), |state| state.profile_generation) };
+        let generation = pin.with_profiling_state(|state| state.profile_generation);
         Ok(Self { pin, generation })
     }
     fn unchanged(&self) -> bool {
@@ -442,26 +443,19 @@ impl ProfileEpoch {
         owner
             .require_active()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            with_profiling_state_in(owner.as_ptr(), |state| {
-                state.profile_generation == self.generation
-            })
-        }
+        self.pin
+            .with_profiling_state(|state| state.profile_generation == self.generation)
     }
 }
 struct SamplingGuard(ProfileEpoch);
 impl Drop for SamplingGuard {
     fn drop(&mut self) {
         // Physical cleanup must still work when a provider revoked the owner.
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            with_profiling_state_in(self.0.pin.as_ptr(), |state| {
-                if state.profile_generation == self.0.generation {
-                    state.sampling_in_progress = false;
-                }
-            })
-        };
+        self.0.pin.with_profiling_state(|state| {
+            if state.profile_generation == self.0.generation {
+                state.sampling_in_progress = false;
+            }
+        });
     }
 }
 
@@ -473,12 +467,7 @@ pub(crate) fn sample_at_safe_point(
 ) -> crate::sexp::object::SexpResult<()> {
     // Each audited caller has just checked its original execution owner. The
     // disabled path must stay a plain flag read, without clocks or Rc traffic.
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    if unsafe {
-        with_profiling_state_in(owner.as_ptr(), |state| {
-            state.profiling == 0 || state.profile_schedule.is_none()
-        })
-    } {
+    if !owner.profiling_scheduled()? {
         return Ok(());
     }
     crate::sexp::instance::check_cancellation();
@@ -489,33 +478,25 @@ fn write_profile_sample(
     forced: bool,
 ) -> crate::sexp::object::SexpResult<()> {
     owner.require_active()?;
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    if unsafe {
-        with_profiling_state_in(owner.as_ptr(), |state| {
-            state.profiling == 0 || state.sampling_in_progress
-        })
-    } {
+    if owner.with_profiling_state(|state| state.profiling == 0 || state.sampling_in_progress) {
         return Ok(());
     }
     let epoch = ProfileEpoch::capture(owner)?;
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    let ready = unsafe {
-        with_profiling_state_in(owner.as_ptr(), |state| {
-            if state.profiling == 0 || state.sampling_in_progress {
-                return false;
-            }
-            if !forced
-                && !state
-                    .profile_schedule
-                    .as_mut()
-                    .is_some_and(ProfileSchedule::due)
-            {
-                return false;
-            }
-            state.sampling_in_progress = true;
-            true
-        })
-    };
+    let ready = owner.with_profiling_state(|state| {
+        if state.profiling == 0 || state.sampling_in_progress {
+            return false;
+        }
+        if !forced
+            && !state
+                .profile_schedule
+                .as_mut()
+                .is_some_and(ProfileSchedule::due)
+        {
+            return false;
+        }
+        state.sampling_in_progress = true;
+        true
+    });
     if ready {
         let _guard = SamplingGuard(epoch);
         let _visibility = super::runtime::VisibilityGuard::new();
@@ -547,22 +528,27 @@ fn memory_profile_snapshot() -> MemoryProfileSnapshot {
 unsafe fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileSnapshot {
     // P1/P2: all borrows are statement-local reads/writes of plain counters;
     // nothing here allocates or reenters the interpreter.
-    unsafe {
-        let current_bytes = (*instance).arena.total_bytes_allocated();
-        let peak_bytes = (*instance)
-            .eval_state
-            .profiling
-            .memory_peak_bytes
-            .max(current_bytes)
-            .max((*instance).gc_state.stats.peak_memory);
-        (*instance).eval_state.profiling.memory_peak_bytes = peak_bytes;
-
-        MemoryProfileSnapshot {
-            current_bytes: current_bytes as u64,
-            peak_bytes: peak_bytes as u64,
-            active_nodes: (*instance).arena.node_count() as u64,
-            gc_freed_nodes: (*instance).gc_state.stats.freed as u64,
-        }
+    let (current_bytes, active_nodes, gc_peak, gc_freed_nodes) = unsafe {
+        (
+            (*instance).arena.total_bytes_allocated(),
+            (*instance).arena.node_count() as u64,
+            (*instance).gc_state.stats.peak_memory,
+            (*instance).gc_state.stats.freed as u64,
+        )
+    };
+    // SAFETY: `instance` is the caller's live fixture; the lend mutates only
+    // the local peak counter.
+    let peak_bytes = unsafe {
+        with_profiling_state_in(instance, |state| {
+            state.memory_peak_bytes = state.memory_peak_bytes.max(current_bytes).max(gc_peak);
+            state.memory_peak_bytes
+        })
+    };
+    MemoryProfileSnapshot {
+        current_bytes: current_bytes as u64,
+        peak_bytes: peak_bytes as u64,
+        active_nodes,
+        gc_freed_nodes,
     }
 }
 
@@ -585,16 +571,7 @@ fn write_memory_profile_prefix(pb: &mut ProfileBuffer<'_>, snapshot: MemoryProfi
 
 /// Check whether R profiling is currently active.
 pub fn R_Profiling_active() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { R_Profiling_active_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
-    unsafe { (*instance).eval_state.profiling.profiling }
+    with_profiling_state(|state| state.profiling)
 }
 
 // ---------------------------------------------------------------------------
@@ -603,16 +580,7 @@ pub(crate) unsafe fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
 
 /// Check if R profiling is enabled (public API).
 pub fn R_isRprofiling() -> c_int {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { R_isRprofiling_in(inst) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn R_isRprofiling_in(instance: *mut RInstance) -> c_int {
-    unsafe { (*instance).eval_state.profiling.profiling }
+    R_Profiling_active()
 }
 
 // ---------------------------------------------------------------------------
@@ -1399,45 +1367,52 @@ fn doprof_null(_sig: c_int) {
 /// single-threaded Android hosts.
 #[cfg(not(target_arch = "wasm32"))]
 fn R_EndProfiling() {
-    unsafe {
-        with_profiling_state(|state| {
-            state.profile_generation = state.profile_generation.wrapping_add(1);
-            state.profile_schedule = None;
-            state.sampling_in_progress = false;
-        });
-        // Close the output file
-        let outfile = with_profiling_state(|state| state.profile_outfile);
-        if outfile >= 0 {
+    with_profiling_state(|state| {
+        state.profile_generation = state.profile_generation.wrapping_add(1);
+        state.profile_schedule = None;
+        state.sampling_in_progress = false;
+    });
+    // Close the output file; `outfile` is the live fd this instance opened.
+    let outfile = with_profiling_state(|state| state.profile_outfile);
+    if outfile >= 0 {
+        // SAFETY: `outfile` is the profiling fd owned by this instance.
+        unsafe {
             libc::close(outfile);
-            with_profiling_state(|state| state.profile_outfile = -1);
         }
+        with_profiling_state(|state| state.profile_outfile = -1);
+    }
 
-        // Reset state
-        with_profiling_state(|state| {
-            state.profiling = 0;
-            state.mem_profiling = 0;
-            state.gc_profiling = 0;
-            state.line_profiling = 0;
-        });
+    // Reset state
+    with_profiling_state(|state| {
+        state.profiling = 0;
+        state.mem_profiling = 0;
+        state.gc_profiling = 0;
+        state.line_profiling = 0;
+    });
 
-        // Clear derived offsets before releasing the canonical buffer owner.
-        with_profiling_state(|state| {
-            state.srcfiles = Vec::new();
-            state.srcfiles_reservation = None;
-            state.srcfile_bytes_used = 0;
-            state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
-        });
+    // Clear derived offsets before releasing the canonical buffer owner; the
+    // displaced reservation and root drop after the lend so provider releases
+    // cannot reenter the borrow.
+    let displaced = with_profiling_state(|state| {
+        state.srcfiles = Vec::new();
+        state.srcfile_bytes_used = 0;
+        (
+            state.srcfiles_reservation.take(),
+            std::mem::take(&mut state.srcfiles_buffer),
+        )
+    });
+    // Read any pending error before releasing the displaced roots, so no
+    // ambient owner is consulted after provider releases have run.
+    let err = with_profiling_state(|state| state.profiling_error);
+    drop(displaced);
 
-        // Report any profiling errors
-        let err = with_profiling_state(|state| state.profiling_error);
-        if err != 0 {
-            if err == 3 {
-                // Samples too large for I/O buffer skipped
-            } else if err == 1 {
-                // Too many source files
-            } else if err == 2 {
-                // Buffer space exhausted
-            }
+    if err != 0 {
+        if err == 3 {
+            // Samples too large for I/O buffer skipped
+        } else if err == 1 {
+            // Too many source files
+        } else if err == 2 {
+            // Buffer space exhausted
         }
     }
 }
@@ -1448,28 +1423,29 @@ fn R_EndProfiling() {
 /// stub never opens one).
 #[cfg(target_arch = "wasm32")]
 fn R_EndProfiling() {
-    unsafe {
-        with_profiling_state(|state| {
-            state.profile_generation = state.profile_generation.wrapping_add(1);
-            state.profile_schedule = None;
-            state.sampling_in_progress = false;
-        });
-        // Reset state
-        with_profiling_state(|state| {
-            state.profiling = 0;
-            state.mem_profiling = 0;
-            state.gc_profiling = 0;
-            state.line_profiling = 0;
-        });
+    with_profiling_state(|state| {
+        state.profile_generation = state.profile_generation.wrapping_add(1);
+        state.profile_schedule = None;
+        state.sampling_in_progress = false;
+    });
+    // Reset state
+    with_profiling_state(|state| {
+        state.profiling = 0;
+        state.mem_profiling = 0;
+        state.gc_profiling = 0;
+        state.line_profiling = 0;
+    });
 
-        // Clear derived offsets before releasing the canonical buffer owner.
-        with_profiling_state(|state| {
-            state.srcfiles = Vec::new();
-            state.srcfiles_reservation = None;
-            state.srcfile_bytes_used = 0;
-            state.srcfiles_buffer = crate::sexp::instance::RuntimeValue::empty();
-        });
-    }
+    // Clear derived offsets before releasing the canonical buffer owner.
+    let displaced = with_profiling_state(|state| {
+        state.srcfiles = Vec::new();
+        state.srcfile_bytes_used = 0;
+        (
+            state.srcfiles_reservation.take(),
+            std::mem::take(&mut state.srcfiles_buffer),
+        )
+    });
+    drop(displaced);
 }
 
 // ---------------------------------------------------------------------------
@@ -1588,13 +1564,16 @@ fn R_InitProfiling(
                 if !epoch.unchanged() {
                     return;
                 }
-                with_profiling_state(|state| {
+                let displaced = with_profiling_state(|state| {
                     state.srcfiles = Vec::new();
-                    state.srcfiles_reservation = None;
                     state.srcfile_bytes_used = 0;
                     state.srcfile_bufcount = count;
-                    state.srcfiles_buffer = buffer;
+                    (
+                        state.srcfiles_reservation.take(),
+                        std::mem::replace(&mut state.srcfiles_buffer, buffer),
+                    )
                 });
+                drop(displaced);
             }
 
             if !epoch.unchanged() {
@@ -2080,21 +2059,17 @@ pub fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// Ported from R's `do_bcprofcounts()` in eval.c.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let val = Rf_allocVector(SEXPTYPE::INTSXP, OPCOUNT as c_int);
-        if val.is_null() {
-            return R_NilValue();
-        }
-        let ip = INTEGER(val);
-        if !ip.is_null() {
-            with_profiling_state(|state| {
-                for i in 0..OPCOUNT {
-                    *ip.add(i) = state.opcode_counts[i];
-                }
-            });
-        }
-        val
+    let owner = current_profiler_owner();
+    let val = Rf_allocVector(SEXPTYPE::INTSXP, OPCOUNT as c_int);
+    if val.is_null() {
+        return R_NilValue();
     }
+    let _root = crate::sexp::protect::protect(val);
+    let counts = owner.with_profiling_state(|state| state.opcode_counts);
+    for (i, count) in counts.into_iter().enumerate() {
+        crate::sexp::accessors::SET_INTEGER_ELT(val, i as c_int, count);
+    }
+    val
 }
 /// WASM M1 stub for `bcprofcounts()`: no bytecode profiler state on wasm.
 /// Raises the catchable R platform-unavailable error (matching upstream's
@@ -2256,8 +2231,9 @@ mod tests {
             let pointer = srcref.as_raw();
             let node = crate::sexp::memory::checked_projection(pointer).unwrap().1;
             crate::sexp::attrib_core::setAttrib(pointer, srcfile_symbol, srcfile.as_raw());
-            (*instance).eval_state.profiling.sref =
+            let owned_srcref =
                 crate::sexp::instance::RuntimeValue::from_raw_in(instance, pointer);
+            with_profiling_state_in(instance, |state| state.sref = owned_srcref);
             let buffer = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, 64)))
                 .unwrap();
@@ -2279,8 +2255,9 @@ mod tests {
                 if called.replace(true) {
                     return;
                 }
-                (*instance).eval_state.profiling.sref =
-                    crate::sexp::instance::RuntimeValue::empty();
+                drop(with_profiling_state_in(instance, |state| {
+                    std::mem::take(&mut state.sref)
+                }));
                 crate::sexp::attrib_core::setAttrib(pointer, srcfile_symbol, R_NilValue());
                 (*instance).context_stack.clear();
                 crate::sexp::gengc::full_gc_in(instance);
@@ -2341,44 +2318,52 @@ mod tests {
 
     #[test]
     fn profiling_flags_can_target_instance_explicitly() {
-        let mut left = RInstance::new();
-        let mut right = RInstance::new();
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        let left_owner = left.owner_token().unwrap();
+        let right_owner = right.owner_token().unwrap();
 
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            with_profiling_state_in(&mut left as *mut RInstance, |state| {
-                state.profiling = 1;
-                state.bc_profiling = 1;
-                state.current_opcode = 9;
-                state.opcode_counts[9] = 17;
-            })
-        };
+        left_owner.with_profiling_state(|state| {
+            state.profiling = 1;
+            state.bc_profiling = 1;
+            state.current_opcode = 9;
+            state.opcode_counts[9] = 17;
+        });
+        assert_eq!(left_owner.with_profiling_state(|state| state.profiling), 1);
+        assert_eq!(right_owner.with_profiling_state(|state| state.profiling), 0);
+        right_owner.with_profiling_state(|state| {
+            assert_eq!(state.bc_profiling, 0);
+            assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
+            assert_eq!(state.opcode_counts[9], 0);
+        });
+    }
 
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { R_Profiling_active_in(&mut left as *mut RInstance) },
-            1
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(unsafe { R_isRprofiling_in(&mut left as *mut RInstance) }, 1);
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { R_Profiling_active_in(&mut right as *mut RInstance) },
-            0
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        assert_eq!(
-            unsafe { R_isRprofiling_in(&mut right as *mut RInstance) },
-            0
-        );
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            with_profiling_state_in(&mut right as *mut RInstance, |state| {
-                assert_eq!(state.bc_profiling, 0);
-                assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
-                assert_eq!(state.opcode_counts[9], 0);
-            })
-        };
+    #[test]
+    fn profiling_state_reentrant_borrow_panics_and_recovers() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            owner.with_profiling_state(|_| owner.with_profiling_state(|_| ()))
+        }));
+        assert!(denied.is_err());
+        owner.with_profiling_state(|state| state.line_profiling = 7);
+        assert_eq!(owner.with_profiling_state(|state| state.line_profiling), 7);
+    }
+
+    #[test]
+    fn profiling_lend_keeps_owner_alive_through_revocation() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.with_active(|| OwnerToken::current().unwrap());
+        let weak = owner.weak_owner().unwrap();
+        owner.with_profiling_state(|state| {
+            drop(session);
+            assert!(!owner.is_live());
+            assert_eq!(weak.allocation_strong_count(), 1);
+            state.profiling = 1;
+            assert_eq!(state.profiling, 1);
+        });
+        assert_eq!(weak.allocation_strong_count(), 0);
+        assert!(owner.profiling_scheduled().is_err());
     }
 
     #[test]
