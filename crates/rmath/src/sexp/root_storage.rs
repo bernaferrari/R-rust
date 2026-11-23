@@ -187,6 +187,12 @@ impl<T> RootStorage<T> {
             })
     }
 
+    pub(super) fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.entries
+            .iter_mut()
+            .filter_map(|entry| entry.value.as_mut())
+    }
+
     pub(super) fn retain_managed(&mut self, slot: SlotId) -> bool {
         let Some(entry) = self.entries.get_mut(slot.index) else {
             return false;

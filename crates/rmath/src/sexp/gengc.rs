@@ -92,7 +92,7 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::heap::NodeLink;
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
-use super::protect::{RootValue, update_preserve_stack_refs_in, update_protect_stack_refs_in};
+use super::protect::{GuardOwner, RootValue};
 
 #[path = "gc_trace.rs"]
 mod gc_trace;

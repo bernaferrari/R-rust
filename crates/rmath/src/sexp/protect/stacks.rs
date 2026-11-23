@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 #![deny(unsafe_op_in_unsafe_fn)]
+use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 use super::snapshot::RootSnapshot;
@@ -152,6 +153,23 @@ impl NativeRoots {
             .replace_if_current(lease, expected, value);
     }
 }
+// Sweep uses a fixed map, not a callback. Keep each existing lease in place
+// and reject stale/foreign projections without borrowing the active arena.
+fn remap_root_values<'a>(
+    roots: impl Iterator<Item = &'a mut RootValue>,
+    heap: &crate::sexp::heap::HeapIdentity,
+    old_to_new: &HashMap<usize, SEXP>,
+) -> Result<(), ProtectError> {
+    for root in roots {
+        let Some(old) = root.projection() else { continue; };
+        let Some(&new) = old_to_new.get(&old.addr()) else { continue; };
+        if old != new {
+            *root = RootValue::from_heap(heap, new)?;
+        }
+    }
+    Ok(())
+}
+
 // Evaluate the preparation block first: all table loans end before error hooks.
 fn snapshot_or_error<T>(result: Result<RootSnapshot<T>, StorageError>) -> RootSnapshot<T> {
     result
@@ -636,7 +654,7 @@ impl GuardOwner {
     }
 
     /// Run `f` on this owner's legacy protection stack while it is live.
-    fn with_legacy_protect<R>(
+    pub(in crate::sexp) fn with_legacy_protect<R>(
         &self,
         f: impl FnOnce(&LegacyProtectionStack) -> R,
     ) -> Option<R> {
@@ -644,12 +662,15 @@ impl GuardOwner {
     }
 
     /// Run `f` on this owner's generational root table while it is live.
-    fn with_root_table<R>(&self, f: impl FnOnce(&RootTable) -> R) -> Option<R> {
+    pub(in crate::sexp) fn with_root_table<R>(&self, f: impl FnOnce(&RootTable) -> R) -> Option<R> {
         self.live_store(&self.root_table).map(|table| f(&table))
     }
 
     /// Run `f` on this owner's preserved-roots stack while it is live.
-    fn with_preserve_stack<R>(&self, f: impl FnOnce(&PreservedRoots) -> R) -> Option<R> {
+    pub(in crate::sexp) fn with_preserve_stack<R>(
+        &self,
+        f: impl FnOnce(&PreservedRoots) -> R,
+    ) -> Option<R> {
         self.live_store(&self.preserve_stack).map(|stack| f(&stack))
     }
 
@@ -666,6 +687,22 @@ impl GuardOwner {
     pub(crate) fn restore_protection(&self, legacy_depth: usize, root_depth: u64) {
         self.with_legacy_protect(|stack| stack.truncate(legacy_depth));
         self.with_root_table(|table| table.restore(root_depth));
+    }
+
+    /// Apply a collector-owned remap without allocating a callback snapshot.
+    pub(crate) fn remap_for_gc(&self, old_to_new: &HashMap<usize, SEXP>) -> Result<(), ProtectError> {
+        if old_to_new.is_empty() {
+            return Ok(());
+        }
+        self.with_legacy_protect(|stack| {
+            remap_root_values(stack.roots.entries.borrow_mut().values_mut(), &self.heap, old_to_new)
+        }).ok_or(ProtectError::OwnerUnavailable)??;
+        self.with_root_table(|table| {
+            remap_root_values(table.storage.borrow_mut().values_mut(), &self.heap, old_to_new)
+        }).ok_or(ProtectError::OwnerUnavailable)??;
+        self.with_preserve_stack(|stack| {
+            remap_root_values(stack.roots.entries.borrow_mut().values_mut(), &self.heap, old_to_new)
+        }).ok_or(ProtectError::OwnerUnavailable)?
     }
 
     /// Authenticate `s` against this owner's captured heap identity.

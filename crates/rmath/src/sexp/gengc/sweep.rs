@@ -26,46 +26,6 @@ pub(crate) fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
     matches!(t.0, 16 | 19 | 20 | 21) // STRSXP, VECSXP, EXPRSXP, BCODESXP
 }
 
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn update_protect_stack_in(
-    instance: *mut instance::RInstance,
-    old_to_new: &HashMap<usize, SEXP>,
-) {
-    {
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            update_protect_stack_refs_in(instance, |ptr| {
-                let addr = ptr as usize;
-                old_to_new.get(&addr).copied().unwrap_or(ptr)
-            })
-        };
-    }
-}
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub(crate) unsafe fn update_preserve_stack_in(
-    instance: *mut instance::RInstance,
-    old_to_new: &HashMap<usize, SEXP>,
-) {
-    {
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        unsafe {
-            update_preserve_stack_refs_in(instance, |ptr| {
-                let addr = ptr as usize;
-                old_to_new.get(&addr).copied().unwrap_or(ptr)
-            })
-        };
-    }
-}
-
 pub(crate) fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
     instance::with_required_current_instance(|instance| {
         // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
@@ -208,29 +168,12 @@ pub(crate) unsafe fn update_instance_roots_in(
         update_field(&mut (*instance).base_env, old_to_new);
         update_field(&mut (*instance).global_env, old_to_new);
 
-        // Nonmoving sweep normally remaps only dead headers. Strong checked
-        // roots therefore need no rewrite. Avoid allocating callback snapshots
-        // when the map cannot change any root, including under a lowered limit.
-        // Explicit remaps of a live root still use the exact-lease update path.
-        let mapped = |value: RootValue| {
-            value
-                .projection()
-                .is_some_and(|ptr| old_to_new.contains_key(&ptr.addr()))
-        };
-        if (*instance)
-            .legacy_protect
-            .checked_roots_for_marking()
-            .chain((*instance).root_table.checked_roots_for_marking())
-            .any(mapped)
-        {
-            update_protect_stack_in(instance, old_to_new);
-        }
-        if (*instance)
-            .preserve_stack
-            .checked_roots_for_marking()
-            .any(mapped)
-        {
-            update_preserve_stack_in(instance, old_to_new);
+        // Sweep's fixed remap can update checked roots in place. No callback
+        // snapshot is needed, even when the live root budget is exhausted.
+        if !old_to_new.is_empty() {
+            GuardOwner::new(instance)
+                .remap_for_gc(old_to_new)
+                .expect("invalid protection root remap");
         }
 
         update_field(&mut (*instance).eval_state.print.data.na_string, old_to_new);

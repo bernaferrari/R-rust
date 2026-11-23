@@ -97,7 +97,7 @@ fn test_write_barrier_detects_old_to_young() {
 }
 
 #[test]
-fn test_gc_root_updates_can_target_instance_explicitly() {
+fn test_gc_root_remap_targets_original_owner_under_lowered_limit() {
     let mut left = instance::RInstance::new();
     let mut right = instance::RInstance::new();
     let old = left.arena.alloc_node(SEXPTYPE::INTSXP);
@@ -116,23 +116,30 @@ fn test_gc_root_updates_can_target_instance_explicitly() {
         unsafe { RootValue::from_owner(std::ptr::addr_of_mut!(right), right_obj) }.unwrap();
     left.legacy_protect.push(old_root.clone(), "test");
     let (projection, allocation) = super::super::memory::checked_projection(old).unwrap();
-    left.root_table.claim(
-        RootValue::Checked {
-            projection,
-            allocation,
-        },
-        "test",
-    );
+    let slot = left
+        .root_table
+        .try_claim(
+            RootValue::Checked {
+                projection,
+                allocation,
+            },
+            false,
+        )
+        .unwrap();
     left.preserve_stack.push_for_test(old_root);
     left.gc_state.remembered_set.add(old);
     right.legacy_protect.push(right_root.clone(), "test");
     right.preserve_stack.push_for_test(right_root);
     right.gc_state.remembered_set.add(right_obj);
 
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { update_protect_stack_in(&mut left, &old_to_new) };
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { update_preserve_stack_in(&mut left, &old_to_new) };
+    let original_budget = left.arena.budget();
+    left.arena.set_budget(ArenaBudget::new(1, 0));
+    // SAFETY: left remains a live standalone owner while its roots are captured.
+    let owner = unsafe { GuardOwner::new(std::ptr::addr_of_mut!(left)) };
+    owner.remap_for_gc(&old_to_new).unwrap();
+    assert_eq!(left.arena.workspace_bytes(), 0);
+    assert_eq!(owner.root_generation_at(slot), Some(slot.generation()));
+    left.arena.set_budget(original_budget);
     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
     unsafe { update_remembered_set_in(&mut left, &old_to_new) };
 

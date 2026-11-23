@@ -124,6 +124,10 @@ impl<T> RootSequence<T> {
         self.entries.iter().map(|entry| (entry.lease, &entry.value))
     }
 
+    pub(super) fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.entries.iter_mut().map(|entry| &mut entry.value)
+    }
+
     pub(super) fn get(&self, lease: SequenceLease) -> Option<&T> {
         self.entries
             .iter()

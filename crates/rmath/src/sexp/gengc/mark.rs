@@ -162,12 +162,25 @@ pub(crate) unsafe fn mark_instance_roots(instance: *mut instance::RInstance) {
 
         // Every native and Rust protection channel carries original checked
         // allocation identities; raw address reuse never creates a new root.
+        let roots = GuardOwner::new(instance);
         MARK_WHERE.with(|w| w.set("legacy_protect"));
-        mark_checked_root_snapshot((*instance).legacy_protect.checked_roots_for_marking());
+        roots
+            .with_legacy_protect(|stack| {
+                mark_checked_root_snapshot(stack.checked_roots_for_marking())
+            })
+            .expect("live collector root store");
         MARK_WHERE.with(|w| w.set("root_table"));
-        mark_checked_root_snapshot((*instance).root_table.checked_roots_for_marking());
+        roots
+            .with_root_table(|table| {
+                mark_checked_root_snapshot(table.checked_roots_for_marking())
+            })
+            .expect("live collector root store");
         MARK_WHERE.with(|w| w.set("preserve_stack"));
-        mark_checked_root_snapshot((*instance).preserve_stack.checked_roots_for_marking());
+        roots
+            .with_preserve_stack(|stack| {
+                mark_checked_root_snapshot(stack.checked_roots_for_marking())
+            })
+            .expect("live collector root store");
         // Context and bytecode values own exact-generation automatic roots.
 
         // Error-state values own exact-generation automatic roots.

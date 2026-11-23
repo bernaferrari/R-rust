@@ -729,9 +729,9 @@ fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), Protect
 
 /// Iterate over every protection entry: first the legacy stack (in push
 /// order), then the root table (in index order; tombstoned slots hold
-/// null). Used by GC-facing tests and diagnostics; the collector's mark and
-/// updates use this compatibility view; marking consumes exact allocation
-/// identities through `RootTable::checked_entries_snapshot`.
+/// null). Used by GC-facing tests and diagnostics; the collector instead
+/// marks exact allocation identities directly and updates roots through
+/// the fixed-map `GuardOwner::remap_for_gc`, not this compatibility view.
 pub(crate) fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP], &[SEXP]) -> R,
