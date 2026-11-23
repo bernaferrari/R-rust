@@ -27,14 +27,15 @@ use crate::eval::attrib_core::{
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::duplicate::{duplicate, lazy_duplicate, shallow_duplicate};
 use crate::mainutils::essentials::{
-    complex_elt_checked, integer_elt_checked, logical_elt_checked, raw_elt_checked,
-    real_elt_checked, set_complex_checked, set_integer_checked, set_logical_checked,
-    set_raw_checked, set_real_checked,
+    active_owner, complex_elt_checked, integer_elt_checked, logical_elt_checked, owner_sexp,
+    raw_elt_checked, real_elt_checked, sexp_ok, set_complex_checked, set_integer_checked,
+    set_logical_checked, set_raw_checked, set_real_checked,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_lang3};
 use crate::sexp::envir::{R_findVarInFrame, defineVar, forcePromise};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{protect, protect_with_index_raw};
+use crate::sexp::object::SexpMut;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants used in this module
@@ -357,6 +358,7 @@ fn checkArgIsSymbol(x: SEXP) -> SEXP {
 
 pub fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     checkArity(op, args);
+    let owner = active_owner();
 
     // X and FUN are symbols bound to promises in rho
     let X = checkArgIsSymbol(CAR(args));
@@ -383,32 +385,34 @@ pub fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     MARK_NOT_MUTABLE(R_fcall);
 
     // Create the loop index variable and value
-    let mut ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
-    let mut ind_guard = protect_with_index_raw(ind, "do_lapply ind");
-    defineVar(isym, ind, rho);
-    INCREMENT_NAMED(ind);
+    let ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
+    let mut ind = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, ind)));
+    defineVar(isym, ind.as_raw(), rho);
+    INCREMENT_NAMED(ind.as_raw());
 
     // Main loop
     for i in 0..n {
         if realIndx {
-            set_real_checked(ind, 0, (i + 1) as c_double);
+            sexp_ok(ind.try_set_real_elt(0, (i + 1) as c_double));
         } else {
-            SET_INTEGER_ELT(ind, 0, (i + 1) as c_int);
+            sexp_ok(ind.try_set_integer_elt(0, (i + 1) as c_int));
         }
 
         let mut tmp2 = force_and_call(R_fcall, 1, rho);
+        sexp_ok(owner.require_active());
         if MAYBE_REFERENCED(tmp2) {
             tmp2 = lazy_duplicate(tmp2);
         }
         SET_VECTOR_ELT(ans, i, tmp2);
 
         // Check if ind was captured or removed by FUN
+        sexp_ok(owner.require_active());
         let cur_val = R_findVarInFrame(rho, isym);
-        if cur_val != ind || MAYBE_SHARED(ind) {
-            ind = duplicate(ind);
-            ind_guard.reprotect_raw(ind);
-            defineVar(isym, ind, rho);
-            INCREMENT_NAMED(ind);
+        if cur_val != ind.as_raw() || MAYBE_SHARED(ind.as_raw()) {
+            let next = duplicate(ind.as_raw());
+            ind = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, next)));
+            defineVar(isym, ind.as_raw(), rho);
+            INCREMENT_NAMED(ind.as_raw());
         }
     }
 
@@ -423,6 +427,7 @@ pub fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     checkArity(op, args);
+    let owner = active_owner();
 
     let X = CAR(args);
     let _x_guard = protect(X);
@@ -469,6 +474,7 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 
     let dim_v = getAttrib(value, R_DimSymbol());
+    let _dim_guard = owner_sexp(owner, dim_v);
     let array_value: bool = TYPEOF(dim_v) == INTSXP_VAL && LENGTH(dim_v) >= 1;
 
     let result_len = n
@@ -477,32 +483,37 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let ans = Rf_allocVector3(commonType, result_len);
     let _ans_guard = protect(ans);
 
-    let mut names: SEXP = R_NilValue();
-    let mut rowNames: SEXP = R_NilValue();
-    let mut rowNames_guard = None;
-
+    let mut names = owner_sexp(owner, R_NilValue());
+    let mut rowNames = owner_sexp(owner, R_NilValue());
     if useNames != 0 {
-        names = getAttrib(XX, R_NamesSymbol());
-        if Rf_isNull(names) != 0 && TYPEOF(XX) == STRSXP_VAL {
-            names = XX;
-        }
-        rowNames = getAttrib(
-            value,
-            if array_value {
-                R_DimNamesSymbol()
+        let raw_names = getAttrib(XX, R_NamesSymbol());
+        names = owner_sexp(
+            owner,
+            if Rf_isNull(raw_names) != 0 && TYPEOF(XX) == STRSXP_VAL {
+                XX
             } else {
-                R_NamesSymbol()
+                raw_names
             },
         );
-        rowNames_guard = Some(protect_with_index_raw(rowNames, "do_vapply rowNames"));
+        rowNames = owner_sexp(
+            owner,
+            getAttrib(
+                value,
+                if array_value {
+                    R_DimNamesSymbol()
+                } else {
+                    R_NamesSymbol()
+                },
+            ),
+        );
     }
 
     // Build call: FUN(XX[[<ind>]], ...)
     let isym = crate::sexp::symbol::install_str("i");
-    let mut ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
-    let mut ind_guard = protect_with_index_raw(ind, "do_vapply ind");
-    defineVar(isym, ind, rho);
-    INCREMENT_NAMED(ind);
+    let ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
+    let mut ind = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, ind)));
+    defineVar(isym, ind.as_raw(), rho);
+    INCREMENT_NAMED(ind.as_raw());
 
     let tmp = LCONS(
         crate::sexp::symbol::R_Bracket2Symbol(),
@@ -517,16 +528,17 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     for i in 0..n {
         if realIndx {
-            set_real_checked(ind, 0, (i + 1) as c_double);
+            sexp_ok(ind.try_set_real_elt(0, (i + 1) as c_double));
         } else {
-            SET_INTEGER_ELT(ind, 0, (i + 1) as c_int);
+            sexp_ok(ind.try_set_integer_elt(0, (i + 1) as c_int));
         }
 
         let mut val = force_and_call(R_fcall, 1, rho);
+        sexp_ok(owner.require_active());
         if MAYBE_REFERENCED(val) {
             val = lazy_duplicate(val);
         }
-        let mut val_guard = protect_with_index_raw(val, "do_vapply val");
+        let mut val_root = owner_sexp(owner, val);
 
         if length(val) != commonLen {
             r_error!(
@@ -561,22 +573,24 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 );
             }
             val = coerceVector(val, commonType);
-            val_guard.reprotect_raw(val);
+            val_root = owner_sexp(owner, val);
         }
+        sexp_ok(owner.require_active());
+        let val = val_root.as_raw();
 
         // Take row names from the first result only
-        if i == 0 && useNames != 0 && Rf_isNull(rowNames) != 0 {
-            rowNames = getAttrib(
-                val,
-                if array_value {
-                    R_DimNamesSymbol()
-                } else {
-                    R_NamesSymbol()
-                },
+        if i == 0 && useNames != 0 && rowNames.is_nil() {
+            rowNames = owner_sexp(
+                owner,
+                getAttrib(
+                    val,
+                    if array_value {
+                        R_DimNamesSymbol()
+                    } else {
+                        R_NamesSymbol()
+                    },
+                ),
             );
-            if let Some(guard) = rowNames_guard.as_mut() {
-                guard.reprotect_raw(rowNames);
-            }
         }
 
         // Copy values into ans
@@ -601,12 +615,13 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
+        sexp_ok(owner.require_active());
         let cur_val = R_findVarInFrame(rho, isym);
-        if cur_val != ind || MAYBE_SHARED(ind) {
-            ind = duplicate(ind);
-            ind_guard.reprotect_raw(ind);
-            defineVar(isym, ind, rho);
-            INCREMENT_NAMED(ind);
+        if cur_val != ind.as_raw() || MAYBE_SHARED(ind.as_raw()) {
+            let next = duplicate(ind.as_raw());
+            ind = sexp_ok(SexpMut::try_from_checked(owner_sexp(owner, next)));
+            defineVar(isym, ind.as_raw(), rho);
+            INCREMENT_NAMED(ind.as_raw());
         }
     }
 
@@ -627,11 +642,13 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Set dimnames if useNames
         if useNames != 0 {
-            if Rf_isNull(names) == 0 || Rf_isNull(rowNames) == 0 {
+            if !names.is_nil() || !rowNames.is_nil() {
                 let dimnames = Rf_allocVector(VECSXP_VAL, rnk_v + 1);
                 let _dimnames_guard = protect(dimnames);
-                if array_value && Rf_isNull(rowNames) == 0 {
-                    if TYPEOF(rowNames) != VECSXP_VAL || LENGTH(rowNames) != rnk_v {
+                if array_value && !rowNames.is_nil() {
+                    if TYPEOF(rowNames.as_raw()) != VECSXP_VAL
+                        || LENGTH(rowNames.as_raw()) != rnk_v
+                    {
                         r_error!(
                             "dimnames(<value>) is neither NULL nor list of length {}",
                             rnk_v,
@@ -641,22 +658,23 @@ pub fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         SET_VECTOR_ELT(
                             dimnames,
                             j as R_xlen_t,
-                            VECTOR_ELT(rowNames, j as R_xlen_t),
+                            VECTOR_ELT(rowNames.as_raw(), j as R_xlen_t),
                         );
                     }
                 } else {
-                    SET_VECTOR_ELT(dimnames, 0, rowNames);
+                    SET_VECTOR_ELT(dimnames, 0, rowNames.as_raw());
                 }
-                SET_VECTOR_ELT(dimnames, rnk_v as R_xlen_t, names);
+                SET_VECTOR_ELT(dimnames, rnk_v as R_xlen_t, names.as_raw());
                 setAttrib(ans, R_DimNamesSymbol(), dimnames);
             }
         }
     } else if useNames != 0 {
         // commonLen == 1: just set names
-        if Rf_isNull(names) == 0 {
-            setAttrib(ans, R_NamesSymbol(), names);
+        if !names.is_nil() {
+            setAttrib(ans, R_NamesSymbol(), names.as_raw());
         }
     }
+    sexp_ok(owner.require_active());
 
     ans
 }

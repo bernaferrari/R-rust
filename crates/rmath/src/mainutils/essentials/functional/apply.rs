@@ -247,6 +247,7 @@ pub(super) fn sapply_is_array(x: SEXP) -> bool {
 /// (or X itself when X is character) onto the result; the template's (or
 /// first result's) names/dimnames become the row names.
 pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let owner = active_owner();
     let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
     let _x_guard = protect(x);
     let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
@@ -297,27 +298,31 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     // && is.character(XX)) names <- XX). Row names: the template's
     // names — dimnames when the template is an array — with a
     // fallback to the FIRST result's, taken inside the loop.
-    let mut names = R_NilValue();
-    let mut names_guard =
-        crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply names");
-    let mut row_names = R_NilValue();
-    let mut row_names_guard =
-        crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply row names");
+    let mut names = owner_sexp(owner, R_NilValue());
+    let mut row_names = owner_sexp(owner, R_NilValue());
     if use_names {
-        names = crate::sexp::attrib_core::getAttrib(xx, crate::sexp::attrib_core::R_NamesSymbol());
-        if vapply_is_nil(names) && TYPEOF(xx) == SEXPTYPE::STRSXP {
-            names = xx;
-        }
-        names_guard.reprotect_raw(names);
-        row_names = crate::sexp::attrib_core::getAttrib(
-            value,
-            if array_value {
-                crate::sexp::attrib_core::R_DimNamesSymbol()
+        let raw_names =
+            crate::sexp::attrib_core::getAttrib(xx, crate::sexp::attrib_core::R_NamesSymbol());
+        names = owner_sexp(
+            owner,
+            if (raw_names.is_null() || raw_names == R_NilValue()) && TYPEOF(xx) == SEXPTYPE::STRSXP
+            {
+                xx
             } else {
-                crate::sexp::attrib_core::R_NamesSymbol()
+                raw_names
             },
         );
-        row_names_guard.reprotect_raw(row_names);
+        row_names = owner_sexp(
+            owner,
+            crate::sexp::attrib_core::getAttrib(
+                value,
+                if array_value {
+                    crate::sexp::attrib_core::R_DimNamesSymbol()
+                } else {
+                    crate::sexp::attrib_core::R_NamesSymbol()
+                },
+            ),
+        );
     }
 
     // Collect vapply's `...`: every cell that is not X, FUN, FUN.VALUE
@@ -359,10 +364,15 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     let mut offset: R_xlen_t = 0;
     for i in 0..n {
-        let elem = extract_element(xx, i);
-        let mut elem_guard = crate::sexp::protect::protect_with_index_raw(elem, "vapply element");
-        let mut val = apply_fun_to_element(fun, elem, extra_args, rho);
-        elem_guard.reprotect_raw(val);
+        sexp_ok(owner.require_active());
+        let elem = owner_sexp(owner, extract_element(xx, i));
+        let mut val_root = owner_sexp(
+            owner,
+            apply_fun_to_element(fun, elem.as_raw(), extra_args, rho),
+        );
+        drop(elem);
+        sexp_ok(owner.require_active());
+        let val = val_root.as_raw();
 
         // Immediate validation, before the next FUN call: length
         // first, then type — apply.c's order and wording.
@@ -397,21 +407,27 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     sexp_type_name(SEXPTYPE(val_type))
                 ));
             }
-            val = crate::mainutils::coerce::coerceVector(val, common_type);
-            elem_guard.reprotect_raw(val);
+            val_root = owner_sexp(
+                owner,
+                crate::mainutils::coerce::coerceVector(val, common_type),
+            );
         }
+        sexp_ok(owner.require_active());
+        let val = val_root.as_raw();
 
         // Row names come from the first result only.
-        if i == 0 && use_names && vapply_is_nil(row_names) {
-            row_names = crate::sexp::attrib_core::getAttrib(
-                val,
-                if array_value {
-                    crate::sexp::attrib_core::R_DimNamesSymbol()
-                } else {
-                    crate::sexp::attrib_core::R_NamesSymbol()
-                },
+        if i == 0 && use_names && row_names.is_nil() {
+            row_names = owner_sexp(
+                owner,
+                crate::sexp::attrib_core::getAttrib(
+                    val,
+                    if array_value {
+                        crate::sexp::attrib_core::R_DimNamesSymbol()
+                    } else {
+                        crate::sexp::attrib_core::R_NamesSymbol()
+                    },
+                ),
             );
-            row_names_guard.reprotect_raw(row_names);
         }
 
         // commonLen == 1 is the flat case: element i. Any other
@@ -480,6 +496,7 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
 
+    sexp_ok(owner.require_active());
     if common_len != 1 {
         let rnk_v: R_xlen_t = if array_value { XLENGTH(dim_v) } else { 1 };
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, rnk_v + 1);
@@ -498,37 +515,47 @@ pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_integer_checked(dim, (rnk_v as usize) as R_xlen_t, n as c_int);
         crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
-        if use_names && (!vapply_is_nil(names) || !vapply_is_nil(row_names)) {
+        if use_names && (!names.is_nil() || !row_names.is_nil()) {
             let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, rnk_v + 1);
             let _dimnames_guard = protect(dimnames);
-            if array_value && !vapply_is_nil(row_names) {
-                if TYPEOF(row_names) != SEXPTYPE::VECSXP || XLENGTH(row_names) != rnk_v {
+            if array_value && !row_names.is_nil() {
+                if TYPEOF(row_names.as_raw()) != SEXPTYPE::VECSXP
+                    || XLENGTH(row_names.as_raw()) != rnk_v
+                {
                     base_error(format!(
                         "dimnames(<value>) is neither NULL nor list of length {}",
                         rnk_v
                     ));
                 }
                 for j in 0..rnk_v {
-                    SET_VECTOR_ELT(dimnames, j as i64, VECTOR_ELT(row_names, j as i64));
+                    SET_VECTOR_ELT(
+                        dimnames,
+                        j as i64,
+                        VECTOR_ELT(row_names.as_raw(), j as i64),
+                    );
                 }
             } else {
                 // The engine zero-initializes fresh VECSXP payloads;
                 // unset dimnames slots must read as NULL like
                 // upstream's R_NilValue-filled allocation.
-                SET_VECTOR_ELT(dimnames, 0, row_names);
+                SET_VECTOR_ELT(dimnames, 0, row_names.as_raw());
                 for j in 1..rnk_v {
                     SET_VECTOR_ELT(dimnames, j as i64, R_NilValue());
                 }
             }
-            SET_VECTOR_ELT(dimnames, rnk_v as i64, names);
+            SET_VECTOR_ELT(dimnames, rnk_v as i64, names.as_raw());
             crate::sexp::attrib_core::setAttrib(
                 ans,
                 crate::sexp::attrib_core::R_DimNamesSymbol(),
                 dimnames,
             );
         }
-    } else if use_names && !vapply_is_nil(names) {
-        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    } else if use_names && !names.is_nil() {
+        crate::sexp::attrib_core::setAttrib(
+            ans,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names.as_raw(),
+        );
     }
     ans
 }
@@ -654,10 +681,6 @@ pub(super) fn vapply_length(x: SEXP) -> R_xlen_t {
             XLENGTH(x)
         }
     }
-}
-
-pub(super) fn vapply_is_nil(x: SEXP) -> bool {
-    x.is_null() || x == R_NilValue()
 }
 
 /// Upstream type names as they appear in vapply's error messages

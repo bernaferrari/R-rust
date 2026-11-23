@@ -69,3 +69,21 @@ fn vapply_uses_checked_cells_for_scalar_and_column_results() {
         "[1] TRUE"
     );
 }
+
+#[test]
+fn vapply_keeps_first_result_names_through_gc_and_coercion() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"v_native <- function(X,FUN,FUN.VALUE,USE.NAMES=TRUE,...) .Internal(vapply(X,FUN,FUN.VALUE,USE.NAMES))
+f <- function(i) { invisible(gc()); c(y=i>1L,z=i==1L) }
+x <- c(a=1L,b=2L)
+want <- matrix(c(0,1,1,0),2L,dimnames=list(c('y','z'),c('a','b')))
+stopifnot(identical(vapply(x,f,numeric(2)),want), identical(v_native(x,f,numeric(2)),want))
+cat('apply-roots-ok\n')"#
+            )
+            .unwrap(),
+        "apply-roots-ok\n"
+    );
+}

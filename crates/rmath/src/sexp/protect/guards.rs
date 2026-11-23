@@ -296,6 +296,7 @@ impl<'a> IndexedProtectGuard<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             match owner.try_reprotect_value(self.slot, value) {
@@ -471,10 +472,8 @@ pub(crate) fn try_protect_sexp_with_index<'a>(
     })
 }
 
-/// Protect a raw SEXP in a replaceable root-table slot.
-///
-/// Legacy compatibility helper for translated Rust modules. Prefer
-/// [`protect_sexp_with_index`] when the caller has an owner-scoped value.
+/// Fixture-only root claim for testing raw projection and slot behavior.
+#[cfg(test)]
 pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<'static> {
     if s.is_null() {
         return IndexedProtectGuard {

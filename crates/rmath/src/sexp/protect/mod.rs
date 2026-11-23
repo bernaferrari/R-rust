@@ -35,10 +35,9 @@
 //!   handle moves it, and aliasing the same R object requires an explicit
 //!   [`Clone`](Sexp::clone) (a cheap second handle over identical memory,
 //!   never a deep copy).
-//! * Holding a handle alone does **not** root the object: the non-moving /
-//!   generational GC may collect anything only reachable from Rust locals
-//!   once an R evaluation re-enters. To retain a value across a GC point,
-//!   push it on a protection storage.
+//! * Checked session handles retain their own GC root until the last clone
+//!   drops. A raw `SEXP` or an unchecked view does not root the object; keep
+//!   the checked handle or a protection guard alive across collection.
 //! * [`RootedSexp`] is the ergonomic RAII rooting layer: it clones the
 //!   handle, roots it on creation, and releases the root on [`Drop`],
 //!   exposing reads through [`RootedSexp::get`]. Lower-level callers can use

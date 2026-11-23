@@ -176,26 +176,65 @@ pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
     {
         return R_NilValue();
     }
+    let owner = active_owner();
+    let x = owner_sexp(owner, x);
     let elem = Rf_allocVector3(t, 1);
     if elem.is_null() {
         return R_NilValue();
     }
-    if t == SEXPTYPE::REALSXP {
-        set_real_checked(elem, 0, real_elt_checked(x, (i as usize) as R_xlen_t));
-    } else if t == SEXPTYPE::INTSXP {
-        set_integer_checked(elem, 0, integer_elt_checked(x, (i as usize) as R_xlen_t));
-    } else if t == SEXPTYPE::LGLSXP {
-        set_logical_checked(elem, 0, logical_elt_checked(x, (i as usize) as R_xlen_t));
-    } else if t == SEXPTYPE::CPLXSXP {
-        set_complex_checked(elem, 0, complex_elt_checked(x, i as R_xlen_t));
-    } else if t == SEXPTYPE::RAWSXP {
-        set_raw_checked(elem, 0, raw_elt_checked(x, i as R_xlen_t));
-    } else if t == SEXPTYPE::STRSXP {
-        crate::sexp::accessors::SET_STRING_ELT(
-            elem,
-            0,
-            crate::sexp::accessors::STRING_ELT(x, i as i64),
-        );
+    let elem = owner_sexp(owner, elem);
+    let mut dst = sexp_ok(crate::sexp::object::SexpMut::try_from_checked(elem.clone()));
+    match SEXPTYPE(t) {
+        SEXPTYPE::REALSXP => sexp_ok(dst.try_set_real_elt(0, sexp_ok(x.try_real_elt(i)))),
+        SEXPTYPE::INTSXP => sexp_ok(dst.try_set_integer_elt(0, sexp_ok(x.try_integer_elt(i)))),
+        SEXPTYPE::LGLSXP => sexp_ok(dst.try_set_logical_elt(0, sexp_ok(x.try_logical_elt(i)))),
+        SEXPTYPE::CPLXSXP => sexp_ok(dst.try_set_complex_elt(0, sexp_ok(x.try_complex_elt(i)))),
+        SEXPTYPE::RAWSXP => sexp_ok(dst.try_set_raw_elt(0, sexp_ok(x.try_raw_elt(i)))),
+        SEXPTYPE::STRSXP => sexp_ok(dst.try_set_string_elt(0, sexp_ok(x.try_string_elt(i)))),
+        _ => unreachable!("checked atomic element type"),
     }
-    elem
+    sexp_ok(owner.require_active());
+    elem.as_raw()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::altrep::{
+        AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,
+    };
+    use crate::sexp::{object::SexpResult, session::RSession};
+
+    struct CollectingInteger;
+
+    impl AltrepClass for CollectingInteger {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::INTSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+            Ok(2)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            i: R_xlen_t,
+        ) -> SexpResult<AltrepElement<'s>> {
+            context.gc()?;
+            Ok(AltrepElement::Integer([7, 9][i as usize]))
+        }
+    }
+
+    #[test]
+    fn apply_scalar_extraction_roots_destination_during_altrep_collection() {
+        let session = RSession::new_for_gc_tests();
+        let class = session
+            .register_altrep_class("collecting-apply-integer", CollectingInteger)
+            .unwrap();
+        let input = AltrepBuilder::new(class).build().unwrap();
+        session.with_active(|| {
+            let out = session.sexp(extract_element(input.as_raw(), 1)).unwrap();
+            assert_eq!(out.try_integer_elt(0), Ok(9));
+            assert!(!is_materialized(&input));
+        });
+    }
 }
