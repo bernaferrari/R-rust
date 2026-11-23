@@ -547,9 +547,6 @@ pub struct RInstance {
     /// Per-instance methods package dispatch flags and cache counters.
     pub(crate) methods_dispatch_state:
         crate::library::methods::methods_list_dispatch::MethodsDispatchState,
-    /// Per-instance parallel fork child/process bookkeeping.
-    #[cfg(all(unix, not(target_os = "android")))]
-    pub(crate) parallel_fork_state: crate::library::parallel::fork::ForkRuntimeState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -689,8 +686,6 @@ impl RInstance {
             dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
             methods_dispatch_state:
                 crate::library::methods::methods_list_dispatch::MethodsDispatchState::default(),
-            #[cfg(all(unix, not(target_os = "android")))]
-            parallel_fork_state: crate::library::parallel::fork::ForkRuntimeState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         }
