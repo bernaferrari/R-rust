@@ -1806,172 +1806,202 @@ unsafe fn tre_compute_nfl(
 
 // ===== TNFA construction =====
 
+enum TransitionPass<'a> {
+    Count(&'a mut [c_int]),
+    Emit {
+        entries: &'a mut [tre_tnfa_transition_t],
+        base: *mut tre_tnfa_transition_t,
+        offsets: &'a [c_int],
+        written: &'a mut [c_int],
+    },
+}
+
+fn state_start(offsets: &[c_int], state: c_int, len: usize) -> Option<usize> {
+    let start = usize::try_from(*offsets.get(usize::try_from(state).ok()?)?).ok()?;
+    (start < len).then_some(start)
+}
+
+fn transition_offsets(counts: &mut [c_int], offsets: &mut [c_int]) -> Option<c_int> {
+    if offsets.len() != counts.len() {
+        return None;
+    }
+    let mut total: c_int = 0;
+    for (count, offset) in counts.iter_mut().zip(offsets) {
+        *offset = total;
+        total = total.checked_add(*count)?.checked_add(1)?;
+        *count = 0;
+    }
+    Some(total)
+}
+
+impl TransitionPass<'_> {
+    fn record(&mut self, from: c_int, to: c_int) -> Option<Option<&mut tre_tnfa_transition_t>> {
+        match self {
+            Self::Count(counts) => {
+                counts.get(usize::try_from(to).ok()?)?;
+                let count = counts.get_mut(usize::try_from(from).ok()?)?;
+                *count = count.checked_add(1)?;
+                Some(None)
+            }
+            Self::Emit {
+                entries,
+                base,
+                offsets,
+                written,
+            } => {
+                let from_index = usize::try_from(from).ok()?;
+                let start = state_start(offsets, from, entries.len())?;
+                let end = match offsets.get(from_index + 1) {
+                    Some(&end) => usize::try_from(end).ok()?,
+                    None => entries.len(),
+                };
+                let dest = state_start(offsets, to, entries.len())?;
+                let count = written.get_mut(from_index)?;
+                let index = start.checked_add(usize::try_from(*count).ok()?)?;
+                // Every row reserves its final slot for a null-state terminator.
+                if end > entries.len() || index >= end.checked_sub(1)? {
+                    return None;
+                }
+                let entry = entries.get_mut(index)?;
+                *count = count.checked_add(1)?;
+                // Use the allocation pointer, not provenance from the time-limited slice.
+                entry.state = base.wrapping_add(dest);
+                entry.state_id = to;
+                Some(Some(entry))
+            }
+        }
+    }
+}
+
 /// # Safety
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// `p1` and `p2` must point to initialized position arrays with negative
+/// terminators. Their tag, negated-class, and parameter pointers must be
+/// null or point to live arrays with the corresponding TRE layout.
 unsafe fn tre_make_trans(
     p1: *const tre_pos_and_tags_t,
     p2: *const tre_pos_and_tags_t,
-    transitions: *mut tre_tnfa_transition_t,
-    counts: *mut c_int,
-    offs: *const c_int,
+    pass: &mut TransitionPass<'_>,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
-        if !transitions.is_null() {
-            let mut pi: isize = 0;
-            while (*p1.offset(pi)).position >= 0 {
-                let mut pj: isize = 0;
-                let mut prev_p2_pos: c_int = -1;
-                while (*p2.offset(pj)).position >= 0 {
-                    if (*p2.offset(pj)).position == prev_p2_pos {
-                        pj += 1;
-                        continue;
-                    }
-                    prev_p2_pos = (*p2.offset(pj)).position;
+        let emit = matches!(pass, TransitionPass::Emit { .. });
+        let mut left = p1;
+        while (*left).position >= 0 {
+            let lhs = &*left;
+            let mut right = p2;
+            let mut previous: c_int = -1;
+            while (*right).position >= 0 {
+                let rhs = &*right;
+                right = right.add(1);
+                if emit && rhs.position == previous {
+                    continue;
+                }
+                previous = rhs.position;
+                let Some(entry) = pass.record(lhs.position, rhs.position) else {
+                    return REG_ESPACE;
+                };
+                let Some(t) = entry else { continue };
+                t.code_min = lhs.code_min as tre_cint_t;
+                t.code_max = lhs.code_max as tre_cint_t;
+                t.assertions = lhs.assertions | rhs.assertions;
+                if lhs.class != 0 {
+                    t.assertions |= ASSERT_CHAR_CLASS;
+                }
+                if !lhs.neg_classes.is_null() {
+                    t.assertions |= ASSERT_CHAR_CLASS_NEG;
+                }
+                if lhs.backref >= 0 {
+                    t.u.set_backref(lhs.backref);
+                    t.assertions |= ASSERT_BACKREF;
+                } else {
+                    t.u.set_class(lhs.class);
+                }
+                t.neg_classes = allocate_neg_classes(lhs.neg_classes, storage);
+                if !lhs.neg_classes.is_null() && t.neg_classes.is_null() {
+                    return REG_ESPACE;
+                }
+                t.tags = ptr::null_mut();
+                t.params = ptr::null_mut();
 
-                    let trans = transitions
-                        .offset(*offs.offset((*p1.offset(pi)).position as isize) as isize);
-                    let mut trans = trans;
-                    while !(*trans).state.is_null() {
-                        trans = trans.add(1);
+                // Count tags
+                let mut i: c_int = 0;
+                if !lhs.tags.is_null() {
+                    while *lhs.tags.offset(i as isize) >= 0 {
+                        i += 1;
                     }
+                }
+                let mut j: c_int = 0;
+                if !rhs.tags.is_null() {
+                    while *rhs.tags.offset(j as isize) >= 0 {
+                        j += 1;
+                    }
+                }
 
-                    if (*trans).state.is_null() {
-                        // Set terminator for next transition
-                        let _ = trans;
-                    }
-
-                    let mut t = transitions
-                        .offset(*offs.offset((*p1.offset(pi)).position as isize) as isize);
-                    while !(*t).state.is_null() {
-                        t = t.add(1);
-                    }
-                    (*t).code_min = (*p1.offset(pi)).code_min as tre_cint_t;
-                    (*t).code_max = (*p1.offset(pi)).code_max as tre_cint_t;
-                    (*t).state = transitions
-                        .offset(*offs.offset((*p2.offset(pj)).position as isize) as isize);
-                    (*t).state_id = (*p2.offset(pj)).position;
-                    (*t).assertions = (*p1.offset(pi)).assertions | (*p2.offset(pj)).assertions;
-                    if (*p1.offset(pi)).class != 0 {
-                        (*t).assertions |= ASSERT_CHAR_CLASS;
-                    }
-                    if !(*p1.offset(pi)).neg_classes.is_null() {
-                        (*t).assertions |= ASSERT_CHAR_CLASS_NEG;
-                    }
-                    if (*p1.offset(pi)).backref >= 0 {
-                        (*t).u.set_backref((*p1.offset(pi)).backref);
-                        (*t).assertions |= ASSERT_BACKREF;
-                    } else {
-                        (*t).u.set_class((*p1.offset(pi)).class);
-                    }
-                    (*t).neg_classes = allocate_neg_classes((*p1.offset(pi)).neg_classes, storage);
-                    if !(*p1.offset(pi)).neg_classes.is_null() && (*t).neg_classes.is_null() {
+                if i > 0 || j > 0 {
+                    let total = match usize::try_from(i)
+                        .ok()
+                        .zip(usize::try_from(j).ok())
+                        .and_then(|(i, j)| i.checked_add(j))
+                        .and_then(|n| n.checked_add(1))
+                    {
+                        Some(total) => total,
+                        None => return REG_ESPACE,
+                    };
+                    t.tags = allocate_retained_ints(total, false, storage);
+                    if t.tags.is_null() {
                         return REG_ESPACE;
-                    }
-                    (*t).tags = ptr::null_mut();
-                    (*t).params = ptr::null_mut();
-
-                    // Count tags
-                    let mut i: c_int = 0;
-                    if !(*p1.offset(pi)).tags.is_null() {
-                        while *(*p1.offset(pi)).tags.offset(i as isize) >= 0 {
-                            i += 1;
-                        }
-                    }
-                    let mut j: c_int = 0;
-                    if !(*p2.offset(pj)).tags.is_null() {
-                        while *(*p2.offset(pj)).tags.offset(j as isize) >= 0 {
-                            j += 1;
-                        }
-                    }
-
-                    if i > 0 || j > 0 {
-                        let total = match usize::try_from(i)
-                            .ok()
-                            .zip(usize::try_from(j).ok())
-                            .and_then(|(i, j)| i.checked_add(j))
-                            .and_then(|n| n.checked_add(1))
-                        {
-                            Some(total) => total,
-                            None => return REG_ESPACE,
-                        };
-                        (*t).tags = allocate_retained_ints(total, false, storage);
-                        if (*t).tags.is_null() {
-                            return REG_ESPACE;
-                        } else {
-                            let mut k: c_int = 0;
-                            if !(*p1.offset(pi)).tags.is_null() {
-                                while *(*p1.offset(pi)).tags.offset(k as isize) >= 0 {
-                                    *(*t).tags.offset(k as isize) =
-                                        *(*p1.offset(pi)).tags.offset(k as isize);
-                                    k += 1;
-                                }
+                    } else {
+                        let mut k: c_int = 0;
+                        if !lhs.tags.is_null() {
+                            while *lhs.tags.offset(k as isize) >= 0 {
+                                *t.tags.offset(k as isize) = *lhs.tags.offset(k as isize);
+                                k += 1;
                             }
-                            let mut l = k;
-                            let mut j2: c_int = 0;
-                            if !(*p2.offset(pj)).tags.is_null() {
-                                while *(*p2.offset(pj)).tags.offset(j2 as isize) >= 0 {
-                                    let mut dup = 0;
-                                    let mut k2 = 0;
-                                    while k2 < k {
-                                        if *(*t).tags.offset(k2 as isize)
-                                            == *(*p2.offset(pj)).tags.offset(j2 as isize)
-                                        {
-                                            dup = 1;
-                                            break;
-                                        }
-                                        k2 += 1;
+                        }
+                        let mut l = k;
+                        let mut j2: c_int = 0;
+                        if !rhs.tags.is_null() {
+                            while *rhs.tags.offset(j2 as isize) >= 0 {
+                                let mut dup = 0;
+                                let mut k2 = 0;
+                                while k2 < k {
+                                    if *t.tags.offset(k2 as isize) == *rhs.tags.offset(j2 as isize)
+                                    {
+                                        dup = 1;
+                                        break;
                                     }
-                                    if dup == 0 {
-                                        *(*t).tags.offset(l as isize) =
-                                            *(*p2.offset(pj)).tags.offset(j2 as isize);
-                                        l += 1;
-                                    }
-                                    j2 += 1;
+                                    k2 += 1;
                                 }
+                                if dup == 0 {
+                                    *t.tags.offset(l as isize) = *rhs.tags.offset(j2 as isize);
+                                    l += 1;
+                                }
+                                j2 += 1;
                             }
-                            *(*t).tags.offset(l as isize) = -1;
                         }
+                        *t.tags.offset(l as isize) = -1;
                     }
+                }
 
-                    if !(*p1.offset(pi)).params.is_null() || !(*p2.offset(pj)).params.is_null() {
-                        (*t).params = allocate_retained_ints(TRE_PARAM_LAST, false, storage);
-                        if (*t).params.is_null() {
-                            return REG_ESPACE;
-                        } else {
-                            for k in 0..TRE_PARAM_LAST {
-                                *(*t).params.add(k) = TRE_PARAM_UNSET;
-                                if !(*p1.offset(pi)).params.is_null()
-                                    && *(*p1.offset(pi)).params.add(k) != TRE_PARAM_UNSET
-                                {
-                                    *(*t).params.add(k) = *(*p1.offset(pi)).params.add(k);
-                                }
-                                if !(*p2.offset(pj)).params.is_null()
-                                    && *(*p2.offset(pj)).params.add(k) != TRE_PARAM_UNSET
-                                {
-                                    *(*t).params.add(k) = *(*p2.offset(pj)).params.add(k);
-                                }
+                if !lhs.params.is_null() || !rhs.params.is_null() {
+                    t.params = allocate_retained_ints(TRE_PARAM_LAST, false, storage);
+                    if t.params.is_null() {
+                        return REG_ESPACE;
+                    } else {
+                        for k in 0..TRE_PARAM_LAST {
+                            *t.params.add(k) = TRE_PARAM_UNSET;
+                            if !lhs.params.is_null() && *lhs.params.add(k) != TRE_PARAM_UNSET {
+                                *t.params.add(k) = *lhs.params.add(k);
+                            }
+                            if !rhs.params.is_null() && *rhs.params.add(k) != TRE_PARAM_UNSET {
+                                *t.params.add(k) = *rhs.params.add(k);
                             }
                         }
                     }
-
-                    pj += 1;
                 }
-                pi += 1;
             }
-        } else {
-            let mut pi: isize = 0;
-            while (*p1.offset(pi)).position >= 0 {
-                let mut pj: isize = 0;
-                while (*p2.offset(pj)).position >= 0 {
-                    *counts.offset((*p1.offset(pi)).position as isize) += 1;
-                    pj += 1;
-                }
-                pi += 1;
-            }
+            left = left.add(1);
         }
         REG_OK as c_int
     }
@@ -1991,9 +2021,7 @@ enum tre_tnfa_symbol_t {
 unsafe fn tre_ast_to_tnfa_iter(
     stack: *mut stack::tre_stack_rec,
     node: *mut tre_ast_node_t,
-    transitions: *mut tre_tnfa_transition_t,
-    counts: *mut c_int,
-    offs: *const c_int,
+    pass: &mut TransitionPass<'_>,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
@@ -2019,9 +2047,7 @@ unsafe fn tre_ast_to_tnfa_iter(
                     let errcode = tre_make_trans(
                         (*cat).left.as_ref().map_or(ptr::null(), |l| l.lastpos),
                         (*cat).right.as_ref().map_or(ptr::null(), |r| r.firstpos),
-                        transitions,
-                        counts,
-                        offs,
+                        pass,
                         storage,
                     );
                     if errcode != REG_OK as c_int {
@@ -2042,9 +2068,7 @@ unsafe fn tre_ast_to_tnfa_iter(
                         let errcode = tre_make_trans(
                             (*iter).arg.as_ref().map_or(ptr::null(), |a| a.lastpos),
                             (*iter).arg.as_ref().map_or(ptr::null(), |a| a.firstpos),
-                            transitions,
-                            counts,
-                            offs,
+                            pass,
                             storage,
                         );
                         if errcode != REG_OK as c_int {
@@ -2069,9 +2093,7 @@ unsafe fn tre_ast_to_tnfa_iter(
 /// here; null is accepted only where the original C TRE API accepts it.
 unsafe fn tre_ast_to_tnfa(
     node: *mut tre_ast_node_t,
-    transitions: *mut tre_tnfa_transition_t,
-    counts: *mut c_int,
-    offs: *const c_int,
+    pass: &mut TransitionPass<'_>,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
     workspace: &crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
@@ -2084,7 +2106,7 @@ unsafe fn tre_ast_to_tnfa(
         return REG_ESPACE as c_int;
     }
     // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
-    let errcode = unsafe { tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage) };
+    let errcode = unsafe { tre_ast_to_tnfa_iter(stack, node, pass, storage) };
     // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
     unsafe { stack::tre_stack_destroy(stack) };
     errcode
@@ -2385,8 +2407,6 @@ unsafe fn tre_compile_tables(
         (*preg).value = ptr::null_mut();
         (*preg).re_nsub = 0;
         let mut parse_ctx: tre_parse_ctx_t = std::mem::zeroed();
-        let mut counts: *mut c_int = ptr::null_mut();
-        let mut offs: *mut c_int = ptr::null_mut();
 
         let stack = if owned_tables {
             stack::tre_stack_new_owned(512, &workspace)
@@ -2415,8 +2435,6 @@ unsafe fn tre_compile_tables(
             return compile_error(
                 mem,
                 stack,
-                counts,
-                offs,
                 preg,
                 ptr::null_mut(),
                 errcode,
@@ -2437,8 +2455,6 @@ unsafe fn tre_compile_tables(
             return compile_error(
                 mem,
                 stack,
-                counts,
-                offs,
                 preg,
                 ptr::null_mut(),
                 REG_ESPACE as c_int,
@@ -2453,7 +2469,7 @@ unsafe fn tre_compile_tables(
         if (*tnfa).have_backrefs != 0 || (cflags & REG_NOSUB) == 0 {
             let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa, &mut storage);
             if _errcode != REG_OK {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+                return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
             }
             if (*tnfa).num_tags > 0 {
                 let tag_directions = usize::try_from((*tnfa).num_tags)
@@ -2466,8 +2482,6 @@ unsafe fn tre_compile_tables(
                     return compile_error(
                         mem,
                         stack,
-                        counts,
-                        offs,
                         preg,
                         tnfa,
                         REG_ESPACE as c_int,
@@ -2490,8 +2504,6 @@ unsafe fn tre_compile_tables(
                 return compile_error(
                     mem,
                     stack,
-                    counts,
-                    offs,
                     preg,
                     tnfa,
                     REG_ESPACE as c_int,
@@ -2508,8 +2520,6 @@ unsafe fn tre_compile_tables(
                 return compile_error(
                     mem,
                     stack,
-                    counts,
-                    offs,
                     preg,
                     tnfa,
                     REG_ESPACE as c_int,
@@ -2520,7 +2530,7 @@ unsafe fn tre_compile_tables(
 
             let _errcode = tre_add_tags(mem, stack, tree, tnfa, &mut storage);
             if _errcode != REG_OK {
-                return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+                return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
             }
         }
 
@@ -2534,7 +2544,7 @@ unsafe fn tre_compile_tables(
             &mut (*tnfa).params_depth,
         );
         if _errcode != REG_OK {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+            return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
         }
 
         // Add dummy node for final state
@@ -2544,22 +2554,21 @@ unsafe fn tre_compile_tables(
             return compile_error(
                 mem,
                 stack,
-                counts,
-                offs,
                 preg,
                 tnfa,
                 REG_ESPACE as c_int,
                 owned_tables,
             );
         }
-        parse_ctx.position += 1;
+        let Some(positions) = parse_ctx.position.checked_add(1) else {
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
+        };
+        parse_ctx.position = positions;
         let tree = tre_ast_new_catenation(mem, tmp_ast_l, tmp_ast_r);
         if tree.is_null() {
             return compile_error(
                 mem,
                 stack,
-                counts,
-                offs,
                 preg,
                 tnfa,
                 REG_ESPACE as c_int,
@@ -2569,7 +2578,7 @@ unsafe fn tre_compile_tables(
 
         let _errcode = tre_compute_nfl(mem, stack, tree);
         if _errcode != REG_OK as c_int {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+            return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
         }
 
         // Counts and offsets live only for this compilation. Allocate them
@@ -2579,70 +2588,47 @@ unsafe fn tre_compile_tables(
             .ok()
             .and_then(|count| count.checked_mul(std::mem::size_of::<c_int>()))
             .unwrap_or(0);
-        counts = if work_array_bytes == 0 {
+        let counts = if work_array_bytes == 0 {
             ptr::null_mut()
         } else {
             mem::tre_mem_alloc(mem, work_array_bytes).cast::<c_int>()
         };
         if counts.is_null() {
-            return compile_error(
-                mem,
-                stack,
-                counts,
-                offs,
-                preg,
-                tnfa,
-                REG_ESPACE as c_int,
-                owned_tables,
-            );
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
         }
-        offs = if work_array_bytes == 0 {
+        let offs = if work_array_bytes == 0 {
             ptr::null_mut()
         } else {
             mem::tre_mem_alloc(mem, work_array_bytes).cast::<c_int>()
         };
         if offs.is_null() {
-            return compile_error(
-                mem,
-                stack,
-                counts,
-                offs,
-                preg,
-                tnfa,
-                REG_ESPACE as c_int,
-                owned_tables,
-            );
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
         }
 
-        for i in 0..parse_ctx.position as isize {
-            *counts.offset(i) = 0;
-        }
+        // Distinct zeroed allocations in compilation scratch; neither escapes this compile.
+        let positions = parse_ctx.position as usize;
+        let counts = std::slice::from_raw_parts_mut(counts, positions);
+        let offs = std::slice::from_raw_parts_mut(offs, positions);
+
         let _errcode = tre_ast_to_tnfa(
             tree,
-            ptr::null_mut(),
-            counts,
-            ptr::null(),
+            &mut TransitionPass::Count(&mut *counts),
             &mut storage,
             &workspace,
         );
         if _errcode != REG_OK {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+            return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
         }
 
-        let mut add: c_int = 0;
-        for i in 0..parse_ctx.position as isize {
-            *offs.offset(i) = add;
-            add += *counts.offset(i) + 1;
-            *counts.offset(i) = 0;
-        }
+        let Some(add) = transition_offsets(counts, offs) else {
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
+        };
 
         let transitions = allocate_transition_table(add, &mut storage);
         if transitions.is_null() {
             return compile_error(
                 mem,
                 stack,
-                counts,
-                offs,
                 preg,
                 tnfa,
                 REG_ESPACE as c_int,
@@ -2652,9 +2638,15 @@ unsafe fn tre_compile_tables(
         (*tnfa).transitions = transitions;
         (*tnfa).num_transitions = add as u32;
 
-        let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs, &mut storage, &workspace);
+        let mut pass = TransitionPass::Emit {
+            entries: std::slice::from_raw_parts_mut(transitions, add as usize),
+            base: transitions,
+            offsets: &*offs,
+            written: counts,
+        };
+        let _errcode = tre_ast_to_tnfa(tree, &mut pass, &mut storage, &workspace);
         if _errcode != REG_OK as c_int {
-            return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
+            return compile_error(mem, stack, preg, tnfa, _errcode, owned_tables);
         }
 
         (*tnfa).first_char = -1;
@@ -2664,34 +2656,30 @@ unsafe fn tre_compile_tables(
         let mut p = (*tree).firstpos;
         let mut i: c_int = 0;
         while !p.is_null() && (*p).position >= 0 {
-            i += 1;
+            let Some(next) = i.checked_add(1) else {
+                return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
+            };
+            i = next;
             p = p.add(1);
         }
 
         let initial = allocate_transition_table(i, &mut storage);
         if initial.is_null() {
-            return compile_error(
-                mem,
-                stack,
-                counts,
-                offs,
-                preg,
-                tnfa,
-                REG_ESPACE as c_int,
-                owned_tables,
-            );
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
         }
         (*tnfa).initial = initial;
 
-        let mut i2: c_int = 0;
+        let initial = std::slice::from_raw_parts_mut(initial, i as usize);
         p = (*tree).firstpos;
-        while !p.is_null() && (*p).position >= 0 {
-            (*initial.offset(i2 as isize)).state =
-                transitions.offset(*offs.offset((*p).position as isize) as isize);
-            (*initial.offset(i2 as isize)).state_id = (*p).position;
-            (*initial.offset(i2 as isize)).tags = ptr::null_mut();
-            (*initial.offset(i2 as isize)).params = ptr::null_mut();
-            (*initial.offset(i2 as isize)).assertions = (*p).assertions;
+        for t in initial {
+            let Some(dest) = state_start(offs, (*p).position, add as usize) else {
+                return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
+            };
+            t.state = transitions.wrapping_add(dest);
+            t.state_id = (*p).position;
+            t.tags = ptr::null_mut();
+            t.params = ptr::null_mut();
+            t.assertions = (*p).assertions;
             // Copy tags
             if !(*p).tags.is_null() {
                 let mut j = 0;
@@ -2705,53 +2693,34 @@ unsafe fn tre_compile_tables(
                         allocate_retained_ints(count, false, &mut storage)
                     });
                 if tags.is_null() {
-                    return compile_error(
-                        mem,
-                        stack,
-                        counts,
-                        offs,
-                        preg,
-                        tnfa,
-                        REG_ESPACE,
-                        owned_tables,
-                    );
+                    return compile_error(mem, stack, preg, tnfa, REG_ESPACE, owned_tables);
                 } else {
                     for k in 0..j as isize {
                         *tags.offset(k) = *(*p).tags.offset(k);
                     }
                     *tags.offset(j) = -1;
-                    (*initial.offset(i2 as isize)).tags = tags;
+                    t.tags = tags;
                 }
             }
             // Copy params
             if !(*p).params.is_null() {
                 let params = allocate_retained_ints(TRE_PARAM_LAST, false, &mut storage);
                 if params.is_null() {
-                    return compile_error(
-                        mem,
-                        stack,
-                        counts,
-                        offs,
-                        preg,
-                        tnfa,
-                        REG_ESPACE,
-                        owned_tables,
-                    );
+                    return compile_error(mem, stack, preg, tnfa, REG_ESPACE, owned_tables);
                 } else {
                     for k in 0..TRE_PARAM_LAST {
                         *params.add(k) = *(*p).params.add(k);
                     }
-                    (*initial.offset(i2 as isize)).params = params;
+                    t.params = params;
                 }
             }
-            i2 += 1;
             p = p.add(1);
         }
-        (*initial.offset(i2 as isize)).state = ptr::null_mut();
 
-        (*tnfa).num_transitions = add as u32;
-        (*tnfa).final_ =
-            transitions.offset(*offs.offset((*(*tree).lastpos).position as isize) as isize);
+        let Some(final_index) = state_start(offs, (*(*tree).lastpos).position, add as usize) else {
+            return compile_error(mem, stack, preg, tnfa, REG_ESPACE as c_int, owned_tables);
+        };
+        (*tnfa).final_ = transitions.wrapping_add(final_index);
         (*tnfa).num_states = parse_ctx.position;
         (*tnfa).cflags = cflags;
 
@@ -2772,8 +2741,6 @@ unsafe fn tre_compile_tables(
 unsafe fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
-    _counts: *mut c_int,
-    _offs: *mut c_int,
     preg: *mut regex_t,
     tnfa: *mut tre_tnfa_t,
     errcode: c_int,
@@ -3423,7 +3390,24 @@ mod owned_table_tests {
         right[0].params = params.as_mut_ptr();
         right[0].backref = -1;
         right[1].position = -1;
-        (left, right, [0, 1])
+        (left, right, [0, 2])
+    }
+
+    unsafe fn emit_synthetic_transition(
+        left: &[tre_pos_and_tags_t; 2],
+        right: &[tre_pos_and_tags_t; 2],
+        base: *mut tre_tnfa_transition_t,
+        offsets: &[c_int; 2],
+        storage: &mut Option<&mut super::super::owned_arena::OwnedArena>,
+    ) -> c_int {
+        let entries = unsafe { std::slice::from_raw_parts_mut(base, 3) };
+        let mut pass = TransitionPass::Emit {
+            entries,
+            base,
+            offsets,
+            written: &mut [0; 2],
+        };
+        unsafe { tre_make_trans(left.as_ptr(), right.as_ptr(), &mut pass, storage) }
     }
 
     #[test]
@@ -3446,17 +3430,10 @@ mod owned_table_tests {
             synthetic_transition_positions(&mut left_tags, &mut right_tags, &mut params);
 
         let descriptor = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
-        let transitions = unsafe { allocate_transition_table(1, &mut Some(&mut storage)) };
+        let transitions = unsafe { allocate_transition_table(3, &mut Some(&mut storage)) };
         assert!(!descriptor.is_null() && !transitions.is_null());
         let status = unsafe {
-            tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
-                transitions,
-                ptr::null_mut(),
-                offsets.as_ptr(),
-                &mut Some(&mut storage),
-            )
+            emit_synthetic_transition(&left, &right, transitions, &offsets, &mut Some(&mut storage))
         };
         assert_eq!(status, REG_OK);
         assert!(storage.contains(unsafe { (*transitions).tags.cast() }));
@@ -3471,8 +3448,8 @@ mod owned_table_tests {
                 params[TRE_PARAM_COST_INS]
             );
             (*descriptor).transitions = transitions;
-            (*descriptor).num_transitions = 1;
-            (*transitions).state = transitions.add(1);
+            (*descriptor).num_transitions = 3;
+            assert_eq!((*transitions).state, transitions.wrapping_add(2));
         }
         let compiled = CompiledTre {
             preg: regex_t {
@@ -3523,14 +3500,13 @@ mod owned_table_tests {
                 ))
             })
             .unwrap();
-        let mut denied: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let mut denied: [tre_tnfa_transition_t; 3] = unsafe { std::mem::zeroed() };
         let status = unsafe {
-            tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
+            emit_synthetic_transition(
+                &left,
+                &right,
                 denied.as_mut_ptr(),
-                ptr::null_mut(),
-                offsets.as_ptr(),
+                &offsets,
                 &mut Some(&mut storage),
             )
         };
@@ -3545,14 +3521,13 @@ mod owned_table_tests {
         owner
             .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
             .unwrap();
-        let mut recovered: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let mut recovered: [tre_tnfa_transition_t; 3] = unsafe { std::mem::zeroed() };
         let status = unsafe {
-            tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
+            emit_synthetic_transition(
+                &left,
+                &right,
                 recovered.as_mut_ptr(),
-                ptr::null_mut(),
-                offsets.as_ptr(),
+                &offsets,
                 &mut Some(&mut storage),
             )
         };
@@ -3583,21 +3558,15 @@ mod owned_table_tests {
         let (status, report) = mem::fault::observe(None, || unsafe {
             let mut storage = None;
             let descriptor = allocate_tnfa(&mut storage);
-            let transitions = allocate_transition_table(1, &mut storage);
+            let transitions = allocate_transition_table(3, &mut storage);
             assert!(!descriptor.is_null() && !transitions.is_null());
-            let status = tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
-                transitions,
-                ptr::null_mut(),
-                offsets.as_ptr(),
-                &mut storage,
-            );
+            let status =
+                emit_synthetic_transition(&left, &right, transitions, &offsets, &mut storage);
             assert_eq!(status, REG_OK);
             assert!(!(*transitions).tags.is_null());
             assert!(!(*transitions).params.is_null());
             (*descriptor).transitions = transitions;
-            (*descriptor).num_transitions = 1;
+            (*descriptor).num_transitions = 3;
             let mut preg = regex_t {
                 re_nsub: 0,
                 value: descriptor.cast(),
@@ -3628,7 +3597,7 @@ mod owned_table_tests {
         right[0].code_max = i32::from(b'a');
         right[0].backref = -1;
         right[1].position = -1;
-        (left, right, [0, 1])
+        (left, right, [0, 2])
     }
 
     #[test]
@@ -3661,14 +3630,13 @@ mod owned_table_tests {
                 ))
             })
             .unwrap();
-        let mut denied: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let mut denied: [tre_tnfa_transition_t; 3] = unsafe { std::mem::zeroed() };
         let status = unsafe {
-            tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
+            emit_synthetic_transition(
+                &left,
+                &right,
                 denied.as_mut_ptr(),
-                ptr::null_mut(),
-                offsets.as_ptr(),
+                &offsets,
                 &mut Some(&mut storage),
             )
         };
@@ -3683,17 +3651,10 @@ mod owned_table_tests {
             .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
             .unwrap();
         let descriptor = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
-        let transitions = unsafe { allocate_transition_table(1, &mut Some(&mut storage)) };
+        let transitions = unsafe { allocate_transition_table(3, &mut Some(&mut storage)) };
         assert!(!descriptor.is_null() && !transitions.is_null());
         let status = unsafe {
-            tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
-                transitions,
-                ptr::null_mut(),
-                offsets.as_ptr(),
-                &mut Some(&mut storage),
-            )
+            emit_synthetic_transition(&left, &right, transitions, &offsets, &mut Some(&mut storage))
         };
         assert_eq!(status, REG_OK);
         assert_ne!(unsafe { (*transitions).neg_classes }, source);
@@ -3706,8 +3667,8 @@ mod owned_table_tests {
         unsafe {
             assert_ne!((*transitions).assertions & ASSERT_CHAR_CLASS_NEG, 0);
             (*descriptor).transitions = transitions;
-            (*descriptor).num_transitions = 1;
-            (*transitions).state = transitions.add(1);
+            (*descriptor).num_transitions = 3;
+            assert_eq!((*transitions).state, transitions.wrapping_add(2));
         }
         let compiled = CompiledTre {
             preg: regex_t {
@@ -3745,16 +3706,10 @@ mod owned_table_tests {
             let (left, right, offsets) = synthetic_neg_class_positions(source);
             let mut storage = None;
             let descriptor = allocate_tnfa(&mut storage);
-            let transitions = allocate_transition_table(1, &mut storage);
+            let transitions = allocate_transition_table(3, &mut storage);
             assert!(!descriptor.is_null() && !transitions.is_null());
-            let status = tre_make_trans(
-                left.as_ptr(),
-                right.as_ptr(),
-                transitions,
-                ptr::null_mut(),
-                offsets.as_ptr(),
-                &mut storage,
-            );
+            let status =
+                emit_synthetic_transition(&left, &right, transitions, &offsets, &mut storage);
             assert_eq!(status, REG_OK);
             assert!(!(*transitions).neg_classes.is_null());
             assert_ne!((*transitions).neg_classes, source);
@@ -3764,7 +3719,7 @@ mod owned_table_tests {
                 [12, 0]
             );
             (*descriptor).transitions = transitions;
-            (*descriptor).num_transitions = 1;
+            (*descriptor).num_transitions = 3;
             let mut preg = regex_t {
                 re_nsub: 0,
                 value: descriptor.cast(),
@@ -3921,6 +3876,33 @@ mod owned_table_tests {
             0
         );
     }
+
+    #[test]
+    fn tnfa_transition_pass_preserves_row_terminators_and_rejects_overflow() {
+        let mut counts = [c_int::MAX, 0];
+        let mut offsets = [0; 2];
+        assert_eq!(transition_offsets(&mut counts, &mut offsets), None);
+        assert!(TransitionPass::Count(&mut counts).record(0, 1).is_none());
+        assert!(TransitionPass::Count(&mut [0; 2]).record(0, 2).is_none());
+
+        let mut counts = [1, 0];
+        assert_eq!(transition_offsets(&mut counts, &mut offsets), Some(3));
+        let mut table: [tre_tnfa_transition_t; 3] = unsafe { std::mem::zeroed() };
+        let base = table.as_mut_ptr();
+        let entries = unsafe { std::slice::from_raw_parts_mut(base, table.len()) };
+        let mut pass = TransitionPass::Emit {
+            entries,
+            base,
+            offsets: &offsets,
+            written: &mut counts,
+        };
+        assert!(pass.record(0, 1).unwrap().is_some());
+        assert!(pass.record(0, 1).is_none());
+        assert!(pass.record(1, 0).is_none());
+        assert_eq!(table[0].state, base.wrapping_add(2));
+        assert!(table[1].state.is_null());
+        assert!(table[2].state.is_null());
+    }
 }
 
 #[cfg(test)]
@@ -3997,9 +3979,7 @@ mod traversal_stack_tests {
                     Pass::Tnfa => tre_ast_to_tnfa_iter(
                         stack,
                         tree,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null(),
+                        &mut TransitionPass::Count(&mut []),
                         &mut None,
                     ),
                 };
