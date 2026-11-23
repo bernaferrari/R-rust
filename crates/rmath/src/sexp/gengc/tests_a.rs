@@ -60,7 +60,7 @@ fn preamble_unwind_detaches_incidental_roots(safe_point: bool) {
     }));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if safe_point {
-            unsafe { (*instance).gc_state.gc_pending = true };
+            unsafe { with_gc_state_in(instance, |state| state.gc_pending = true) };
             maybe_collect_at_eval_safe_point();
         } else {
             collect_with_environment_protects(true);
@@ -71,7 +71,7 @@ fn preamble_unwind_detaches_incidental_roots(safe_point: bool) {
         unsafe { (*instance).legacy_protect.checked_entries_snapshot() },
         *expected.borrow()
     );
-    unsafe { (*instance).gc_state.callbacks.clear() };
+    unsafe { clear_gc_callbacks_in(instance) };
     owner.full_gc().unwrap();
     assert!(
         !binding_node.is_live(),
@@ -140,7 +140,7 @@ fn owned_gc_safe_point_revocation_stops_original_finalizer_continuation() {
         assert_eq!((*instance).legacy_protect.len(), 0);
         drop(callback_facade.upgrade().unwrap().borrow_mut().take());
     }));
-    unsafe { (*instance).gc_state.gc_pending = true };
+    unsafe { with_gc_state_in(instance, |state| state.gc_pending = true) };
     // Actual minor collection must stop before consulting a dead ambient
     // owner for finalizers or cleanup.
     maybe_collect_at_eval_safe_point();
@@ -158,7 +158,7 @@ fn collected_node_resources_reenter_only_after_collection_and_arena_lends_end() 
     impl Drop for ReentrantDrop {
         fn drop(&mut self) {
             instance::with_required_current_instance(|owner| unsafe {
-                assert!(!(*owner).gc_state.in_progress);
+                assert!(!with_gc_state_in(owner, |state| state.in_progress));
                 assert!(!super::super::memory::is_arena_lent(owner));
             });
             super::super::owner::OwnerToken::with_current(|owner| {
@@ -260,4 +260,36 @@ fn test_persistent_env_roots_retraced_every_cycle() {
         "global binding swept by preamble-less minor gc"
     );
     assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(found) }, 42);
+}
+
+#[test]
+fn gc_callback_can_collect_and_register_for_next_notification() {
+    use std::{cell::Cell, rc::Rc};
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        reset_gc_stats();
+        let outer_calls = Rc::new(Cell::new(0));
+        let later_calls = Rc::new(Cell::new(0));
+        let observed_outer = outer_calls.clone();
+        let observed_later = later_calls.clone();
+        register_gc_callback(Box::new(move |stats| {
+            let call = observed_outer.get() + 1;
+            observed_outer.set(call);
+            if call == 1 {
+                assert_eq!(stats.collections, 1);
+                let later = observed_later.clone();
+                register_gc_callback(Box::new(move |_| later.set(later.get() + 1)));
+                full_gc();
+                assert_eq!(get_gc_stats().collections, 2);
+                assert_eq!(stats.collections, 1);
+            }
+        }));
+        full_gc();
+        assert_eq!(outer_calls.get(), 1);
+        assert_eq!(later_calls.get(), 0);
+        full_gc();
+        assert_eq!(outer_calls.get(), 2);
+        assert_eq!(later_calls.get(), 1);
+        assert_eq!(get_gc_stats().collections, 3);
+    });
 }

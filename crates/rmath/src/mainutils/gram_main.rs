@@ -446,7 +446,7 @@ mod tests {
         // Stop the input-specific observer before proving eventual release.
         session.with_active_in(|owner| unsafe {
             (*owner).memory_state.gc_force_gap = 0;
-            (*owner).gc_state.callbacks.clear();
+            crate::sexp::gengc::clear_gc_callbacks_in(owner);
         });
         crate::sexp::gengc::full_gc();
         assert!(!text_node.is_live());
@@ -525,7 +525,7 @@ mod tests {
         assert!(notifications.get() > 0);
         session.with_active_in(|owner| unsafe {
             (*owner).memory_state.gc_force_gap = 0;
-            (*owner).gc_state.callbacks.clear();
+            crate::sexp::gengc::clear_gc_callbacks_in(owner);
         });
         crate::sexp::gengc::full_gc();
         assert!(!environment_node.is_live());

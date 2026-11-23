@@ -296,10 +296,10 @@ where
     unsafe {
         // Defer direct requests before touching an arena with an active mutable lend.
         if super::super::memory::is_arena_lent(instance) {
-            (*instance).gc_state.gc_pending = true;
+            with_gc_state_in(instance, |state| state.gc_pending = true);
             return (0, 0);
         }
-        if (*instance).gc_state.in_progress {
+        if with_gc_state_in(instance, |state| state.in_progress) {
             return (0, 0);
         }
 
@@ -307,7 +307,7 @@ where
         // reenter R. Release them after tracing, arena lends, and collection
         // bookkeeping have ended, including when collection unwinds.
         let _resource_drops = super::super::memory::resource_drop_guard_in(instance);
-        (*instance).gc_state.in_progress = true;
+        with_gc_state_in(instance, |state| state.in_progress = true);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // Managed and permanent headers share epoch metadata; immutable
             // process singletons are recognized without marking their bytes.
@@ -318,7 +318,7 @@ where
             ));
             collect(instance)
         }));
-        (*instance).gc_state.in_progress = false;
+        with_gc_state_in(instance, |state| state.in_progress = false);
         // Sweep has retired exact generations. This metadata-only pass drops
         // dead env indexes without rooting any cell. Live indexes remain warm;
         // canonical structural writes invalidate their membership separately.
@@ -326,7 +326,9 @@ where
 
         match result {
             Ok((promoted, freed)) => {
-                record_collection_in(&mut (*instance).gc_state, promoted, freed);
+                with_gc_state_in(instance, |state| {
+                    record_collection_in(state, promoted, freed)
+                });
                 (*instance).arena.note_gc_completed();
                 notify_gc_callbacks_in(instance);
                 (promoted, freed)
@@ -364,7 +366,8 @@ pub(crate) unsafe fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usiz
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
         mark_instance_roots(instance);
-        mark_checked_root_snapshot((*instance).gc_state.remembered_set.checked_roots());
+        let remembered = with_gc_state_in(instance, |state| state.remembered_set.checked_roots());
+        mark_checked_root_snapshot(remembered);
 
         let mut freed_count = 0;
         let mut promoted_count = 0;
@@ -414,7 +417,7 @@ pub(crate) unsafe fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usiz
             }
         }
 
-        (*instance).gc_state.remembered_set.clear();
+        with_gc_state_in(instance, |state| state.remembered_set.clear());
 
         (promoted_count, freed_count)
     }
@@ -523,7 +526,9 @@ pub(crate) unsafe fn do_torture_mark_sweep_in(
         // collection, reachable young nodes were not promoted, so live
         // old-to-young edges still exist). Drop only entries whose old parent
         // was reclaimed this cycle.
-        (*instance).gc_state.remembered_set.retain_live(&freed_set);
+        with_gc_state_in(instance, |state| {
+            state.remembered_set.retain_live(&freed_set)
+        });
 
         (0, freed_count)
     }
@@ -538,7 +543,8 @@ pub(crate) unsafe fn mark_from_all_roots_in(instance: *mut instance::RInstance) 
         // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
         // about allocating HashSets and hashing every edge.)
         mark_instance_roots(instance);
-        mark_checked_root_snapshot((*instance).gc_state.remembered_set.checked_roots());
+        let remembered = with_gc_state_in(instance, |state| state.remembered_set.checked_roots());
+        mark_checked_root_snapshot(remembered);
     }
 }
 
@@ -593,7 +599,7 @@ pub(crate) unsafe fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -
             }
         }
 
-        (*instance).gc_state.remembered_set.clear();
+        with_gc_state_in(instance, |state| state.remembered_set.clear());
 
         (promoted_count, freed_count)
     }

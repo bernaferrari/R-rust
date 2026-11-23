@@ -740,8 +740,10 @@ fn owned_gnu_instruction_safe_point_keeps_original_pool_snapshot() {
             observed.set(observed.get() + 1);
         }));
         session.with_active_in(|instance| {
-            (*instance).gc_state.gc_pending = true;
-            (*instance).gc_state.safe_point_collections = 63;
+            crate::sexp::instance::with_gc_state_in(instance, |state| {
+                state.gc_pending = true;
+                state.safe_point_collections = 63;
+            });
         });
         let result = own_operand(bcEval(body.as_raw(), R_BaseEnv()));
         assert_eq!(callbacks.get(), 1);

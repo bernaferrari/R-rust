@@ -98,7 +98,7 @@ fn runtime_memory_snapshot() -> RuntimeMemorySnapshot {
         let active_nodes = (*instance).arena.node_count();
         let free_nodes = (*instance).arena.free_count();
         let current_bytes = (*instance).arena.total_bytes_allocated();
-        let peak_bytes = (*instance).gc_state.stats.peak_memory.max(current_bytes);
+        let peak_bytes = crate::sexp::gengc::gc_stats_in(instance).peak_memory.max(current_bytes);
 
         RuntimeMemorySnapshot {
             active_nodes,

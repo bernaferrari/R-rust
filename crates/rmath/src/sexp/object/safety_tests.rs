@@ -157,16 +157,15 @@ fn checked_graph_writes_remember_original_owner_and_retain_unrooted_young_child(
         }
         drop(mutation); // Both nodes now have no checked leases.
         right.with_active_in(|owner| unsafe {
-            assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+            assert_eq!(
+                crate::sexp::instance::with_gc_state_in(owner, |state| state.remembered_set.len()),
+                0
+            );
         });
         left.with_active_in(|owner| unsafe {
-            assert!(
-                (*owner)
-                    .gc_state
-                    .remembered_set
-                    .iter()
-                    .any(|ptr| ptr == parent_ptr)
-            );
+            assert!(crate::sexp::instance::with_gc_state_in(owner, |state| {
+                state.remembered_set.iter().any(|ptr| ptr == parent_ptr)
+            }));
             left.owner_token().unwrap().minor_gc().unwrap();
             // Check membership before wrapping or reading a possibly swept node.
             assert!((*owner).arena.contains(child_ptr));
@@ -188,10 +187,9 @@ fn checked_graph_write_barrier_failure_leaves_graph_and_membership_unchanged() {
     let child_ptr = alloc(&session, SEXPTYPE::INTSXP, 1);
     let child = session.sexp(child_ptr).unwrap();
     session.with_active_in(|owner| unsafe {
-        (*owner)
-            .gc_state
-            .remembered_set
-            .fail_next_reservation_for_test();
+        crate::sexp::instance::with_gc_state_in(owner, |state| {
+            state.remembered_set.fail_next_reservation_for_test()
+        });
     });
     let mut mutation = SexpMut::try_from_checked(parent).unwrap();
     assert!(matches!(
@@ -203,7 +201,10 @@ fn checked_graph_write_barrier_failure_leaves_graph_and_membership_unchanged() {
     let parent = mutation.freeze();
     assert!(parent.vector_elt(0).unwrap().is_nil());
     session.with_active_in(|owner| unsafe {
-        assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+        assert_eq!(
+            crate::sexp::instance::with_gc_state_in(owner, |state| state.remembered_set.len()),
+            0
+        );
     });
     // Retrying the same valid write succeeds after the injected failure.
     let mut mutation = SexpMut::try_from_checked(parent).unwrap();
@@ -294,10 +295,10 @@ fn direct_gc_defers_while_arena_is_lent() {
             assert!(arena.contains(ptr));
             ptr
         });
-        assert!((*owner).gc_state.gc_pending);
+        assert!(crate::sexp::instance::with_gc_state_in(owner, |state| state.gc_pending));
         crate::sexp::gengc::run_pending_gc_if_quiescent_in(owner);
         assert!(!(*owner).arena.contains(ptr));
-        assert!(!(*owner).gc_state.gc_pending);
+        assert!(!crate::sexp::instance::with_gc_state_in(owner, |state| state.gc_pending));
     });
 }
 

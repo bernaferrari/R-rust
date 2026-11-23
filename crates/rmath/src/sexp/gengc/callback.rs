@@ -19,7 +19,19 @@ pub(crate) type GcCallbackLease = Rc<dyn Fn(&GcStats)>;
 /// in the next notification; nested collections update statistics without
 /// recursively notifying the same callbacks.
 pub fn register_gc_callback(cb: GcCallback) {
-    with_gc_state(|state| state.callbacks.push(Rc::from(cb)));
+    let cb = Rc::from(cb);
+    with_gc_state(|state| state.callbacks.push(cb));
+}
+
+#[cfg(test)]
+/// Remove callbacks without running their destructors under the state borrow.
+///
+/// # Safety
+/// The caller must retain the live owner for this call.
+pub(crate) unsafe fn clear_gc_callbacks_in(instance: *mut instance::RInstance) {
+    // SAFETY: the caller retains the allocation.
+    let removed = unsafe { with_gc_state_in(instance, |state| std::mem::take(&mut state.callbacks)) };
+    drop(removed);
 }
 
 pub(crate) struct NotificationGuard(Rc<Cell<bool>>);
@@ -91,13 +103,13 @@ pub fn maybe_collect_at_eval_safe_point() {
             .unwrap_or_else(|failure| gc_entry_failure(failure));
         let bindings = owned_environment_binding_values(owner)
             .unwrap_or_else(|failure| gc_entry_failure(failure));
-        (*instance).gc_state.gc_pending = false;
-        // Full passes bound old-generation garbage between explicit gc() calls.
-        (*instance).gc_state.safe_point_collections =
-            (*instance).gc_state.safe_point_collections.wrapping_add(1);
+        let safe_point_collections = with_gc_state_in(instance, |state| {
+            state.gc_pending = false;
+            state.safe_point_collections = state.safe_point_collections.wrapping_add(1);
+            state.safe_point_collections
+        });
         if (*instance).arena.budget_pressure_warrants_full_gc()
-            || (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL
-                == 0
+            || safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0
         {
             full_gc_in(instance);
         } else {
@@ -157,8 +169,9 @@ pub(crate) unsafe fn run_pending_gc_if_quiescent_in(inst: *mut instance::RInstan
     let liveness = unsafe { instance::instance_liveness(inst) };
     let collected = unsafe {
         // Raw place accesses: minor_gc_in reenters instance bookkeeping.
-        if (*inst).eval_state.eval_depth == 0 && (*inst).gc_state.gc_pending {
-            (*inst).gc_state.gc_pending = false;
+        if (*inst).eval_state.eval_depth == 0
+            && with_gc_state_in(inst, |state| std::mem::take(&mut state.gc_pending))
+        {
             minor_gc_in(inst);
             true
         } else {

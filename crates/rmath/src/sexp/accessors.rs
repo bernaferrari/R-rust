@@ -1564,13 +1564,9 @@ mod tests {
             super::super::gengc::promote_to_old(parent);
             SET_STRING_ELT(parent, 0, child);
             super::super::instance::with_required_current_instance(|instance| {
-                assert!(
-                    (*instance)
-                        .gc_state
-                        .remembered_set
-                        .iter()
-                        .any(|p| p == parent)
-                );
+                assert!(crate::sexp::instance::with_gc_state_in(instance, |state| {
+                    state.remembered_set.iter().any(|p| p == parent)
+                }));
             });
             assert_eq!(STRING_ELT(parent, 0), child);
         });

@@ -24,7 +24,7 @@ pub(crate) unsafe fn process_deferred_alloc_gc_in(
 ) {
     unsafe {
         if collect_requested {
-            (*instance).gc_state.gc_pending = true;
+            with_gc_state_in(instance, |state| state.gc_pending = true);
         }
         if torture_ticks > 0 {
             maybe_torture_gc_in(instance, torture_ticks);
@@ -55,10 +55,12 @@ pub(crate) unsafe fn maybe_torture_gc_in(instance: *mut instance::RInstance, tic
             // Not armed: default behavior is identical (single branch).
             return;
         }
-        if (*instance).gc_state.in_progress || (*instance).memory_state.in_gc != 0 {
+        if with_gc_state_in(instance, |state| state.in_progress)
+            || (*instance).memory_state.in_gc != 0
+        {
             // Mirrors upstream's R_in_gc deferral: don't recurse into a
             // collection from inside one; run it at the next safe point.
-            (*instance).gc_state.gc_pending = true;
+            with_gc_state_in(instance, |state| state.gc_pending = true);
             return;
         }
         // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
@@ -77,7 +79,7 @@ pub(crate) unsafe fn maybe_torture_gc_in(instance: *mut instance::RInstance, tic
             .unwrap_or_else(|failure| gc_entry_failure(failure));
         let _bindings = owned_environment_binding_values(owner)
             .unwrap_or_else(|failure| gc_entry_failure(failure));
-        (*instance).gc_state.gc_pending = false;
+        with_gc_state_in(instance, |state| state.gc_pending = false);
         let _collection = crate::mainutils::memory_main::GcOperationGuard::enter(pin, true)
             .unwrap_or_else(|failure| gc_entry_failure(failure));
         // `run_gc_cycle_in` hands the live `instance` back to the callback.
@@ -90,7 +92,9 @@ pub(crate) unsafe fn maybe_torture_gc_in(instance: *mut instance::RInstance, tic
 /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
 /// no conflicting outstanding borrow of the fields touched here.
 pub(crate) unsafe fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
-    unsafe { (*instance).gc_state.gc_pending || (*instance).arena.growth_warrants_gc() }
+    unsafe {
+        with_gc_state_in(instance, |state| state.gc_pending) || (*instance).arena.growth_warrants_gc()
+    }
 }
 
 /// # Safety
@@ -163,7 +167,7 @@ pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
             .unwrap_or_else(|failure| gc_entry_failure(failure));
         let _bindings = owned_environment_binding_values(owner)
             .unwrap_or_else(|failure| gc_entry_failure(failure));
-        (*instance).gc_state.gc_pending = false;
+        with_gc_state_in(instance, |state| state.gc_pending = false);
         if full {
             full_gc_in(instance)
         } else {

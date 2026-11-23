@@ -407,7 +407,7 @@ pub struct RInstance {
     /// Per-instance in-error flag.
     pub(crate) in_error: bool,
     /// Per-instance generational GC state.
-    pub(crate) gc_state: super::gengc::GcState,
+    gc_state: RefCell<super::gengc::GcState>,
     /// Per-instance error, warning, interrupt, and expression-limit state.
     error_state: RefCell<ErrorState>,
     // Legacy raw pointers to these bytes must not pass through an exclusive ErrorState lend.
@@ -633,7 +633,7 @@ impl RInstance {
             base_wrappers: RefCell::default(),
             context_stack: Vec::new(),
             in_error: false,
-            gc_state: super::gengc::GcState::default(),
+            gc_state: RefCell::default(),
             error_state: RefCell::default(),
             error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
@@ -977,6 +977,20 @@ impl Drop for LivenessOwner {
     fn drop(&mut self) {
         self.generation.release();
     }
+}
+
+/// Lend collector state for a local operation, not a GC cycle or callback.
+///
+/// # Safety
+/// `instance` must point to a live allocation throughout the lend, without
+/// an overlapping mutable whole-instance reference.
+pub(crate) unsafe fn with_gc_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut super::gengc::GcState) -> R,
+) -> R {
+    // SAFETY: the caller retains the allocation; project only this field.
+    let cell = unsafe { &(*instance).gc_state };
+    f(&mut cell.borrow_mut())
 }
 
 /// Lend `instance.error_state` exclusively for a strictly-local update.

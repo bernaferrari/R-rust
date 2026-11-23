@@ -617,9 +617,11 @@ fn owning_pairlist_live_callback_panic_keeps_payload_and_releases_protection() {
     assert_eq!(callbacks.get(), 1);
     assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
     session.with_active_in(|owner| unsafe {
-        (*owner).gc_state.callbacks.clear();
+        crate::sexp::gengc::clear_gc_callbacks_in(owner);
         (*owner).memory_state.gc_force_gap = 0;
-        assert!(!(*owner).gc_state.in_progress);
+        assert!(!crate::sexp::instance::with_gc_state_in(owner, |state| {
+            state.in_progress
+        }));
     });
     assert_values(&factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap());
 }

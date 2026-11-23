@@ -928,7 +928,9 @@ mod tests {
             )
         };
         let value = integer(&factory, 123);
-        session.with_active_in(|instance| unsafe { (*instance).gc_state.gc_pending = true });
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::instance::with_gc_state_in(instance, |state| state.gc_pending = true)
+        });
         unsafe { crate::sexp::envir::define_var_safe(key, value, env.clone()) };
         assert_eq!(lookup(&global, &written).unwrap().integer_elt(0), Some(123));
         assert_canonical_index(&env);

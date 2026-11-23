@@ -708,9 +708,11 @@ fn owning_graph_live_callback_panic_preserves_exact_payload_and_cleanup() {
     assert_eq!(payload.downcast_ref::<u32>(), Some(&917));
     assert_eq!(crate::sexp::protect::R_ProtectCount(), protection);
     session.with_active_in(|owner| unsafe {
-        (*owner).gc_state.callbacks.clear();
+        crate::sexp::gengc::clear_gc_callbacks_in(owner);
         (*owner).memory_state.gc_force_gap = 0;
-        assert!(!(*owner).gc_state.in_progress);
+        assert!(!crate::sexp::instance::with_gc_state_in(owner, |state| {
+            state.in_progress
+        }));
     });
     let copy = factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap();
     assert_eq!(

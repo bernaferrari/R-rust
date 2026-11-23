@@ -28,7 +28,7 @@ fn pressure_safe_point_collects_old_garbage_and_keeps_the_owned_value() {
     drop(roots);
     session.with_active(|| {
         instance::with_required_current_instance(|owner| unsafe {
-            (*owner).gc_state.gc_pending = true;
+            with_gc_state_in(owner, |state| state.gc_pending = true);
         });
         maybe_collect_at_eval_safe_point();
     });

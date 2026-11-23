@@ -91,6 +91,7 @@ use std::{
 use super::ffi::{SEXP, SEXPTYPE};
 use super::heap::NodeLink;
 use super::instance;
+use super::instance::with_gc_state_in;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{GuardOwner, RootValue};
 
@@ -129,6 +130,16 @@ pub fn get_gc_stats() -> GcStats {
 /// Reset all GC statistics to zero.
 pub fn reset_gc_stats() {
     with_gc_state(|state| state.stats = GcStats::default());
+}
+
+/// Snapshot counters on an explicit owner without activating it.
+///
+/// # Safety
+/// The caller must retain the live owner for this call and exclude an
+/// overlapping mutable whole-instance reference.
+pub(crate) unsafe fn gc_stats_in(instance: *mut instance::RInstance) -> GcStats {
+    // SAFETY: the caller retains the allocation and we only copy counters.
+    unsafe { with_gc_state_in(instance, |state| state.stats.clone()) }
 }
 
 fn record_collection_in(state: &mut GcState, promoted: usize, freed: usize) {
@@ -183,19 +194,6 @@ where
 {
     // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
     instance::with_required_current_instance(|instance| unsafe { with_gc_state_in(instance, f) })
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn with_gc_state_in<F, R>(instance: *mut instance::RInstance, f: F) -> R
-where
-    F: FnOnce(&mut GcState) -> R,
-{
-    // P1: the `&mut` field lend is held only across the caller's local
-    // state operations; GC callbacks are invoked outside any lend.
-    unsafe { f(&mut (*instance).gc_state) }
 }
 
 // ---------------------------------------------------------------------------

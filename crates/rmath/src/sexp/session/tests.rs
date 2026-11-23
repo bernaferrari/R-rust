@@ -1,6 +1,6 @@
 use super::*;
 use crate::sexp::instance::{
-    current_instance_ptr, replace_current_instance, with_current_instance,
+    current_instance_ptr, replace_current_instance, with_current_instance, with_gc_state_in,
 };
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
 
@@ -282,7 +282,7 @@ fn owned_parsed_script_survives_deferred_and_reentrant_collection() {
         super::super::gengc::full_gc();
     }));
     unsafe {
-        (*session.instance).gc_state.gc_pending = true;
+        with_gc_state_in(session.instance, |state| state.gc_pending = true);
     }
     let (result, _, _) = session.eval_script_with_output_capture("7L; 11L; 19L");
     let result = result.expect("every parsed statement remains alive");
@@ -661,24 +661,24 @@ fn test_explicit_gc_owner_restores_nested_activation() {
     let right = RSession::new_without_default_packages();
     left.with_active_in(|left_inst| {
         unsafe {
-            (*left_inst).gc_state.gc_pending = true;
+            with_gc_state_in(left_inst, |state| state.gc_pending = true);
         }
         right.with_active_in(|right_inst| unsafe {
             assert_eq!(with_current_instance(|inst| inst), Some(right_inst));
-            (*right_inst).gc_state.gc_pending = true;
+            with_gc_state_in(right_inst, |state| state.gc_pending = true);
             // An evaluation frame must defer collection for this owner.
             (*right_inst).eval_state.eval_depth = 1;
             super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
-            assert!((*right_inst).gc_state.gc_pending);
+            assert!(with_gc_state_in(right_inst, |state| state.gc_pending));
             (*right_inst).eval_state.eval_depth = 0;
             super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
-            assert!(!(*right_inst).gc_state.gc_pending);
-            assert!((*left_inst).gc_state.gc_pending);
+            assert!(!with_gc_state_in(right_inst, |state| state.gc_pending));
+            assert!(with_gc_state_in(left_inst, |state| state.gc_pending));
         });
         assert_eq!(with_current_instance(|inst| inst), Some(left_inst));
         unsafe {
             super::super::gengc::run_pending_gc_if_quiescent_in(left_inst);
-            assert!(!(*left_inst).gc_state.gc_pending);
+            assert!(!with_gc_state_in(left_inst, |state| state.gc_pending));
         }
         // A callback unwind must also restore the outer owner.
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

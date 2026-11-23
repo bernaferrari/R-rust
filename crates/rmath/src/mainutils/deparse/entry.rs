@@ -861,7 +861,7 @@ mod ownership_tests {
             assert_eq!(output.string_value_elt(0), Some(Some("7L".into())));
             assert!(notifications.get() >= 2);
             (*owner).memory_state.gc_force_gap = 0;
-            (*owner).gc_state.callbacks.clear();
+            crate::sexp::gengc::clear_gc_callbacks_in(owner);
             crate::sexp::gengc::full_gc();
             assert!(!input_node.is_live());
             assert_eq!(output.string_value_elt(0), Some(Some("7L".into())));

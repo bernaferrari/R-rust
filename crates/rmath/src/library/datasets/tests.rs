@@ -321,7 +321,9 @@ fn owned_portable_dataset_fetch_preserves_live_panic_and_recovers() {
     };
     assert_eq!(*payload.downcast::<u32>().unwrap(), 0xDA7A_2142);
     stop_forcing(&session);
-    session.with_active_in(|instance| unsafe { (*instance).gc_state.callbacks.clear() });
+    session.with_active_in(|instance| unsafe {
+        crate::sexp::gengc::clear_gc_callbacks_in(instance)
+    });
     let result = fetch_arguments(&session, &arguments);
     assert_eq!(result.len(), 11);
     assert_eq!(result.try_real_elt(10).unwrap(), 200.482);

@@ -163,6 +163,8 @@ fn focused_console_live_print_panic_preserves_payload_and_cleanup() {
     assert!(!unsafe { (*pin.as_ptr()).output_capture.borrow().is_capturing() });
     session
         .core
-        .with_active_in(|instance| unsafe { (*instance).gc_state.callbacks.clear() });
+        .with_active_in(|instance| unsafe {
+            crate::sexp::gengc::clear_gc_callbacks_in(instance)
+        });
     assert_eq!(session.eval("7L").stdout, "[1] 7\n");
 }

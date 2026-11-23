@@ -499,7 +499,9 @@ mod tests {
         assert!(identity.is_live());
         assert_eq!(identity.root_count(), 1);
         // Remove the observing callback before testing retirement.
-        session.with_active_in(|instance| unsafe { (*instance).gc_state.callbacks.clear() });
+        session.with_active_in(|instance| unsafe {
+            crate::sexp::gengc::clear_gc_callbacks_in(instance)
+        });
         session.update_retained(id, ".()").unwrap();
         session.with_active(crate::sexp::gengc::full_gc);
         assert!(

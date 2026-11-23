@@ -127,10 +127,10 @@ fn test_gc_root_remap_targets_original_owner_under_lowered_limit() {
         )
         .unwrap();
     left.preserve_stack.push_for_test(old_root);
-    left.gc_state.remembered_set.add(old);
+    unsafe { with_gc_state_in(&raw mut left, |state| state.remembered_set.add(old)) };
     right.legacy_protect.push(right_root.clone(), "test");
     right.preserve_stack.push_for_test(right_root);
-    right.gc_state.remembered_set.add(right_obj);
+    unsafe { with_gc_state_in(&raw mut right, |state| state.remembered_set.add(right_obj)) };
 
     let original_budget = left.arena.budget();
     left.arena.set_budget(ArenaBudget::new(1, 0));
@@ -151,8 +151,16 @@ fn test_gc_root_remap_targets_original_owner_under_lowered_limit() {
         left.preserve_stack.entries_snapshot().last().copied(),
         Some(new)
     );
-    assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
-    assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
+    assert!(unsafe {
+        with_gc_state_in(&raw mut left, |state| {
+            state.remembered_set.iter().any(|obj| obj == new)
+        })
+    });
+    assert!(!unsafe {
+        with_gc_state_in(&raw mut left, |state| {
+            state.remembered_set.iter().any(|obj| obj == old)
+        })
+    });
 
     right
         .legacy_protect
@@ -161,13 +169,11 @@ fn test_gc_root_remap_targets_original_owner_under_lowered_limit() {
         right.preserve_stack.entries_snapshot().last().copied(),
         Some(right_obj)
     );
-    assert!(
-        right
-            .gc_state
-            .remembered_set
-            .iter()
-            .any(|obj| obj == right_obj)
-    );
+    assert!(unsafe {
+        with_gc_state_in(&raw mut right, |state| {
+            state.remembered_set.iter().any(|obj| obj == right_obj)
+        })
+    });
 }
 
 #[test]
@@ -293,10 +299,10 @@ fn test_gc_reentrancy_guard() {
     let _session = RSession::new_without_default_packages();
 
     instance::with_required_current_instance(|instance| unsafe {
-        (*instance).gc_state.in_progress = true;
+        with_gc_state_in(instance, |state| state.in_progress = true);
         assert_eq!(minor_gc_in(instance), (0, 0));
-        assert!((*instance).gc_state.in_progress);
-        (*instance).gc_state.in_progress = false;
+        assert!(with_gc_state_in(instance, |state| state.in_progress));
+        with_gc_state_in(instance, |state| state.in_progress = false);
     });
 }
 
@@ -421,9 +427,9 @@ fn checked_write_barrier_rejects_foreign_allocation_domains() {
         assert!(!write_barrier_in(owner, parent, foreign));
         assert!(!write_barrier_in(owner, foreign, child));
         assert!(!write_barrier_in(owner, parent, 1 as SEXP));
-        assert_eq!((*owner).gc_state.remembered_set.len(), 0);
+        assert_eq!(with_gc_state_in(owner, |state| state.remembered_set.len()), 0);
         assert!(write_barrier_in(owner, parent, child));
-        assert_eq!((*owner).gc_state.remembered_set.len(), 1);
+        assert_eq!(with_gc_state_in(owner, |state| state.remembered_set.len()), 1);
     }
 }
 
@@ -1431,7 +1437,7 @@ fn test_remembered_vector_element_survives_and_dedupes() {
 #[test]
 fn test_remembered_set_remap_updates_membership() {
     let mut inst = instance::RInstance::new();
-    let previous = inst.gc_state.remembered_set.len();
+    let previous = unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.len()) };
     let old = inst.arena.alloc_node(SEXPTYPE::INTSXP);
     let new = inst.arena.alloc_node(SEXPTYPE::REALSXP);
     unsafe {
@@ -1439,19 +1445,23 @@ fn test_remembered_set_remap_updates_membership() {
         (*new).sxpinfo.set_gcgen(Generation::Old as u8);
     }
 
-    inst.gc_state.remembered_set.add(old);
+    unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.add(old)) };
     let mut map = HashMap::new();
     map.insert(old as usize, new);
     // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
     unsafe { update_remembered_set_in(&mut inst, &map) };
 
-    assert!(inst.gc_state.remembered_set.iter().any(|obj| obj == new));
+    assert!(unsafe {
+        with_gc_state_in(&raw mut inst, |state| {
+            state.remembered_set.iter().any(|obj| obj == new)
+        })
+    });
     // Membership follows the remapped address: re-adding the new pointer
     // deduplicates, while the stale old address is no longer a member.
-    inst.gc_state.remembered_set.add(new);
-    assert_eq!(inst.gc_state.remembered_set.len(), previous + 1);
-    inst.gc_state.remembered_set.add(old);
-    assert_eq!(inst.gc_state.remembered_set.len(), previous + 2);
+    unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.add(new)) };
+    assert_eq!(unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.len()) }, previous + 1);
+    unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.add(old)) };
+    assert_eq!(unsafe { with_gc_state_in(&raw mut inst, |state| state.remembered_set.len()) }, previous + 2);
 }
 
 fn make_detached_env() -> SEXP {
@@ -1916,7 +1926,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
     session.with_active_in(|inst| unsafe {
         instance::with_required_current_instance(|inst| {
             (*inst).memory_state.pending_finalizers.clear();
-            (*inst).gc_state.gc_pending = false;
+            with_gc_state_in(inst, |state| state.gc_pending = false);
             (*inst).eval_state.eval_depth = 0;
         });
         RUNS.store(0, Ordering::SeqCst);
@@ -1930,7 +1940,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
         // threshold and request a collection. Re-anchor the no-pending
         // state so the flush contract below is what is under test.
         instance::with_required_current_instance(|inst| {
-            (*inst).gc_state.gc_pending = false;
+            with_gc_state_in(inst, |state| state.gc_pending = false);
         });
 
         // Nothing pending: no collection, so the finalizer stays put.
@@ -1938,7 +1948,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
         assert_eq!(RUNS.load(Ordering::SeqCst), 0);
 
         instance::with_required_current_instance(|inst| {
-            (*inst).gc_state.gc_pending = true;
+            with_gc_state_in(inst, |state| state.gc_pending = true);
         });
         run_pending_gc_if_quiescent_in(inst);
         assert_eq!(RUNS.load(Ordering::SeqCst), 1);
@@ -1964,7 +1974,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
     session.with_protected(|| unsafe {
         instance::with_required_current_instance(|inst| {
             (*inst).memory_state.pending_finalizers.clear();
-            (*inst).gc_state.gc_pending = false;
+            with_gc_state_in(inst, |state| state.gc_pending = false);
             (*inst).eval_state.eval_depth = 0;
         });
         RUNS.store(0, Ordering::SeqCst);
@@ -1977,7 +1987,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
         // baseline too — the boot-time bindings from the base-source
         // work grew the session past the delta threshold.
         instance::with_required_current_instance(|inst| {
-            (*inst).gc_state.gc_pending = false;
+            with_gc_state_in(inst, |state| state.gc_pending = false);
             (*inst).arena.nodes_at_last_gc = (*inst).arena.node_count();
         });
 
@@ -1986,7 +1996,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
         assert_eq!(RUNS.load(Ordering::SeqCst), 0);
 
         instance::with_required_current_instance(|inst| {
-            (*inst).gc_state.gc_pending = true;
+            with_gc_state_in(inst, |state| state.gc_pending = true);
         });
         maybe_collect_at_eval_safe_point();
         assert_eq!(RUNS.load(Ordering::SeqCst), 1);

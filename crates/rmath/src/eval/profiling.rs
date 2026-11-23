@@ -528,12 +528,13 @@ fn memory_profile_snapshot() -> MemoryProfileSnapshot {
 unsafe fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileSnapshot {
     // P1/P2: all borrows are statement-local reads/writes of plain counters;
     // nothing here allocates or reenters the interpreter.
+    let stats = unsafe { crate::sexp::gengc::gc_stats_in(instance) };
     let (current_bytes, active_nodes, gc_peak, gc_freed_nodes) = unsafe {
         (
             (*instance).arena.total_bytes_allocated(),
             (*instance).arena.node_count() as u64,
-            (*instance).gc_state.stats.peak_memory,
-            (*instance).gc_state.stats.freed as u64,
+            stats.peak_memory,
+            stats.freed as u64,
         )
     };
     // SAFETY: `instance` is the caller's live fixture; the lend mutates only

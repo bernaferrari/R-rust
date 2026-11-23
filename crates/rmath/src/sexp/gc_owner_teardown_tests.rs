@@ -87,7 +87,7 @@ fn collection_cleanup_skips_retired_owner_for_full_minor_and_pending_gc() {
         // Only fixture setup uses raw runtime state. The triggering collection
         // and the callback that destroys its owner are public safe Rust calls.
         unsafe {
-            (*owner).gc_state.gc_pending = true;
+            crate::sexp::instance::with_gc_state_in(owner, |state| state.gc_pending = true);
             (*owner).memory_state.pending_finalizers.push(
                 crate::mainutils::memory_main::PendingFinalizer::C {
                     obj: R_NilValue(),

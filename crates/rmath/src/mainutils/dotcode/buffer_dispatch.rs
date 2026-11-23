@@ -1350,11 +1350,9 @@ mod tests {
             );
             session.with_active_in(|instance| unsafe {
                 assert!(
-                    (*instance)
-                        .gc_state
-                        .remembered_set
-                        .iter()
-                        .any(|p| p == result.as_raw()),
+                    crate::sexp::instance::with_gc_state_in(instance, |state| {
+                        state.remembered_set.iter().any(|p| p == result.as_raw())
+                    }),
                     "production attribute publication must record the old result's young names edge"
                 );
             });
