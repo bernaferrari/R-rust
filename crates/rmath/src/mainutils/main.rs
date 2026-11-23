@@ -16,7 +16,7 @@ use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{with_parse_diagnostics, with_required_current_instance};
 use crate::sexp::protect::protect;
 
 /// Console buffer size.
@@ -180,10 +180,16 @@ pub const PARSE_ERROR: c_int = 2;
 pub const PARSE_EOF: c_int = 3;
 pub const PARSE_NULL: c_int = 4;
 
+/// Legacy parse-error message buffer getter.
+///
+/// # Safety
+/// The returned NUL-terminated buffer belongs to the active session and stays
+/// at a stable address while that session's original instance is allocated.
+/// Do not write through the pointer or hold references to the bytes across
+/// diagnostic updates.
 pub unsafe fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
-    with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.parse_error_msg.as_ptr() as *const std::os::raw::c_char
-    })
+    with_parse_diagnostics(|_, buffer| buffer.as_ptr().cast::<std::os::raw::c_char>())
+        .expect("mutable R runtime state requires an active RInstance")
 }
 
 fn main_error(message: impl Into<String>) -> ! {

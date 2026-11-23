@@ -49,7 +49,9 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
             instance,
             instance::RuntimeValue::empty(),
         ));
-        (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
+        drop(instance::with_parse_diagnostics_in(instance, |state, _| {
+            std::mem::take(&mut state.file)
+        }));
         instance::set_exec_token_in(instance, std::ptr::null_mut());
         let displaced = instance::with_profiling_state_in(instance, |state| {
             state.bcrelpc = -1;

@@ -184,6 +184,21 @@ pub(crate) const NO_PROFILING_OPCODE: c_int = -1;
 /// Raw compatibility getters project from this value; GC never reconstructs it.
 pub(crate) type RuntimeValue = super::context::ContextValue;
 
+pub(crate) const PARSE_ERROR_BYTES: usize = 256;
+/// Raw parse-error message bytes, kept as a sibling of [`ParseDiagnostics`]
+/// so legacy `R_GetParseErrorMsg` pointers do not pass through an exclusive
+/// diagnostic lend.
+pub(crate) type ParseErrorBuffer = Cell<[u8; PARSE_ERROR_BYTES]>;
+
+#[derive(Default)]
+pub(crate) struct ParseDiagnostics {
+    pub status: c_int,
+    pub column: c_int,
+    pub file: RuntimeValue,
+    pub context_line: c_int,
+    pub context: Vec<String>,
+}
+
 pub(crate) struct ProfilingState {
     pub sref: RuntimeValue,
     pub in_bc_interpreter: RuntimeValue,
@@ -286,12 +301,6 @@ pub(crate) struct EvalControlState {
     pub visible: c_int,
     pub pp_stack_top: c_int,
     pub collect_warnings: c_int,
-    pub parse_error_msg: [u8; 256],
-    pub parse_error: c_int,
-    pub parse_error_col: c_int,
-    pub parse_error_file: RuntimeValue,
-    pub parse_context_line: c_int,
-    pub parse_context: Vec<String>,
     pub relop_lang_option: c_int,
     pub tracing_state: c_int,
     pub debugging_state: c_int,
@@ -317,12 +326,6 @@ impl Default for EvalControlState {
             visible: 1,
             pp_stack_top: 0,
             collect_warnings: 0,
-            parse_error_msg: [0; 256],
-            parse_error: 0,
-            parse_error_col: 0,
-            parse_error_file: RuntimeValue::empty(),
-            parse_context_line: 0,
-            parse_context: Vec::new(),
             relop_lang_option: 0,
             tracing_state: crate::sexp::ffi::TRUE,
             debugging_state: crate::sexp::ffi::TRUE,
@@ -430,6 +433,9 @@ pub struct RInstance {
     exec_token: RefCell<RuntimeValue>,
     /// Owning source call for the current complex assignment.
     assignment_expr: RefCell<RuntimeValue>,
+    parse_diagnostics: RefCell<ParseDiagnostics>,
+    // The legacy message pointer must not pass through an exclusive diagnostic lend.
+    parse_error_buffer: ParseErrorBuffer,
     /// Session-local profiler counters and owning source references.
     profiling: RefCell<ProfilingState>,
     /// Per-instance names.c runtime caches and initialization marker.
@@ -656,6 +662,8 @@ impl RInstance {
             execution_state: RefCell::default(),
             exec_token: RefCell::default(),
             assignment_expr: RefCell::default(),
+            parse_diagnostics: RefCell::default(),
+            parse_error_buffer: Cell::new([0; PARSE_ERROR_BYTES]),
             profiling: RefCell::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
@@ -876,7 +884,7 @@ impl Drop for RInstance {
         // Release canonical evaluator values while their original arena still
         // exists. Borrowed projections never participate in this teardown.
         *self.assignment_expr.get_mut() = RuntimeValue::empty();
-        self.eval_state.parse_error_file = RuntimeValue::empty();
+        self.parse_diagnostics.get_mut().file = RuntimeValue::empty();
         *self.exec_token.get_mut() = RuntimeValue::empty();
         profiling.sref = RuntimeValue::empty();
         profiling.in_bc_interpreter = RuntimeValue::empty();
@@ -1078,6 +1086,36 @@ pub(crate) unsafe fn replace_assignment_expr_in(
     // SAFETY: project only the checked slot in the retained allocation.
     let slot = unsafe { &(*instance).assignment_expr };
     slot.replace(replacement)
+}
+
+/// Lend diagnostics for a local operation that cannot reenter the runtime.
+///
+/// # Safety
+/// The caller retains the instance for the whole call, without any overlapping
+/// exclusive whole-instance borrow. A returned raw buffer pointer is usable
+/// only while the original instance remains allocated.
+pub(crate) unsafe fn with_parse_diagnostics_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut ParseDiagnostics, &ParseErrorBuffer) -> R,
+) -> R {
+    // SAFETY: project only these two fields of the retained allocation.
+    let (state, buffer) = unsafe {
+        (
+            &(*instance).parse_diagnostics,
+            &(*instance).parse_error_buffer,
+        )
+    };
+    f(&mut state.borrow_mut(), buffer)
+}
+
+/// Access the active diagnostics without exposing the session pointer.
+pub(crate) fn with_parse_diagnostics<R>(
+    f: impl FnOnce(&mut ParseDiagnostics, &ParseErrorBuffer) -> R,
+) -> Option<R> {
+    with_current_instance(|instance| {
+        // SAFETY: the ambient accessor retains this allocation for the lend.
+        unsafe { with_parse_diagnostics_in(instance, f) }
+    })
 }
 
 /// Lend the finalizer queue for local bookkeeping or callback-free tracing.
@@ -1685,10 +1723,9 @@ mod owned_evaluator_root_tests {
                 }
                 1 => {
                     let value = RuntimeValue::from_raw_in(instance, pointer);
-                    drop(std::mem::replace(
-                        &mut (*instance).eval_state.parse_error_file,
-                        value,
-                    ));
+                    drop(with_parse_diagnostics_in(instance, |state, _| {
+                        std::mem::replace(&mut state.file, value)
+                    }));
                 }
                 2 => set_exec_token_in(instance, pointer),
                 _ => {
@@ -1763,10 +1800,9 @@ mod owned_evaluator_root_tests {
                 }
                 1 => {
                     let value = RuntimeValue::from_raw_in(instance, pointer);
-                    drop(std::mem::replace(
-                        &mut (*instance).eval_state.parse_error_file,
-                        value,
-                    ));
+                    drop(with_parse_diagnostics_in(instance, |state, _| {
+                        std::mem::replace(&mut state.file, value)
+                    }));
                 }
                 2 => set_exec_token_in(instance, pointer),
                 _ => {
@@ -1779,7 +1815,7 @@ mod owned_evaluator_root_tests {
             let read = |index: usize| match index {
                 0 => assignment_expr_in(instance)
                     .map_or(std::ptr::null_mut(), |value| value.as_raw()),
-                1 => (*instance).eval_state.parse_error_file.as_raw(),
+                1 => with_parse_diagnostics_in(instance, |state, _| state.file.as_raw()),
                 2 => exec_token_in(instance)
                     .map_or(std::ptr::null_mut(), |value| value.as_raw()),
                 _ => {
