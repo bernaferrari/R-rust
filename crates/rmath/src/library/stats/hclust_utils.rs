@@ -1,146 +1,148 @@
 //! Hierarchical clustering utilities: cutree
 //! Port of r-source/src/library/stats/src/hclust-utils.c
 
+use super::checked::{checked, current_owner};
 use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, SET_INTEGER_ELT, SET_REAL_ELT};
 use std::os::raw::c_int;
-use std::slice;
 
-use crate::main::array::allocMatrix;
 use crate::main::coerce::coerceVector;
 use crate::main::util_main::nrows;
-use crate::sexp::accessors::{INTEGER, LENGTH};
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::attrib_core::{R_DimSymbol, setAttrib};
+use crate::sexp::constructors::Rf_allocVector3;
+use crate::sexp::context::r_error;
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::object::SexpMut;
 use crate::sexp::protect::protect as protect_sexp;
 
 pub fn cutree(merge: SEXP, which: SEXP) -> SEXP {
-    let merge = coerceVector(merge, SEXPTYPE::INTSXP.as_c_int());
-    let _merge_guard = protect_sexp(merge);
-    let i_merge_len = LENGTH(merge);
-    let i_merge = unsafe { slice::from_raw_parts(INTEGER(merge), i_merge_len as usize) };
-
-    let which = coerceVector(which, SEXPTYPE::INTSXP.as_c_int());
-    let _which_guard = protect_sexp(which);
-    let which_len = LENGTH(which);
-    let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
-
-    let n = nrows(merge as *const std::ffi::c_void) + 1;
-
-    // Using 1-based indices
-    let mut sing = vec![true; (n + 1) as usize];
-    let mut m_nr = vec![0i32; (n + 1) as usize];
-    let mut z = vec![0i32; (n + 1) as usize];
-
-    let ans = allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len);
-    let _ans_guard = protect_sexp(ans);
-    let i_ans = unsafe { slice::from_raw_parts_mut(INTEGER(ans), (n * which_len) as usize) };
-
-    let mut k: c_int = 1;
-    while k <= n {
-        sing[k as usize] = true;
-        m_nr[k as usize] = 0;
-        k += 1;
+    let owner = current_owner();
+    let merge_input = checked(owner.sexp(merge));
+    let which_input = checked(owner.sexp(which));
+    let merge = checked(owner.sexp(coerceVector(
+        merge_input.as_raw(),
+        SEXPTYPE::INTSXP.as_c_int(),
+    )));
+    checked(owner.require_active());
+    let which = checked(owner.sexp(coerceVector(
+        which_input.as_raw(),
+        SEXPTYPE::INTSXP.as_c_int(),
+    )));
+    checked(owner.require_active());
+    let rows = nrows(merge.as_raw().cast());
+    checked(owner.require_active());
+    if rows < 0 || merge.len() != 2 * R_xlen_t::from(rows) {
+        r_error("invalid 'tree' ('merge' component)");
     }
+    let n = rows
+        .checked_add(1)
+        .unwrap_or_else(|| r_error("too many leaves in 'tree'"));
+    let which_len = c_int::try_from(which.len()).unwrap_or_else(|_| r_error("too many cuts"));
 
-    let mut k: c_int = 1;
-    while k < n {
-        let mut m1 = i_merge[(k - 1) as usize];
-        let mut m2 = i_merge[(n - 1 + k - 1) as usize];
+    let ans_len = R_xlen_t::from(n) * R_xlen_t::from(which_len);
+    let ans = checked(owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, ans_len)));
+    checked(owner.require_active());
+    let dim = checked(owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 2)));
+    let mut dim_out = checked(SexpMut::try_from_checked(dim.clone()));
+    checked(dim_out.try_set_integer_elt(0, n));
+    checked(dim_out.try_set_integer_elt(1, which_len));
+    checked(owner.require_active());
+    setAttrib(ans.as_raw(), R_DimSymbol(), dim.as_raw());
+    let mut out = checked(SexpMut::try_from_checked(ans.clone()));
 
-        if m1 < 0 && m2 < 0 {
-            m_nr[(-m1) as usize] = k;
-            m_nr[(-m2) as usize] = k;
-            sing[(-m1) as usize] = false;
-            sing[(-m2) as usize] = false;
-        } else if m1 < 0 || m2 < 0 {
-            let mut j: c_int;
-            if m1 < 0 {
-                j = -m1;
-                m1 = m2;
+    // Read each requested cut once, even for an ALTREP provider that can run GC.
+    let cut_bytes = (which_len as usize)
+        .checked_mul(std::mem::size_of::<c_int>())
+        .unwrap_or_else(|| r_error("cannot allocate cutree workspace"));
+    let _cut_budget = if cut_bytes == 0 {
+        None
+    } else {
+        Some(
+            checked(owner.with_arena(|arena| arena.reserve_workspace(cut_bytes)))
+                .unwrap_or_else(|| r_error("cannot allocate cutree workspace")),
+        )
+    };
+    let mut cuts = Vec::new();
+    cuts.try_reserve_exact(which_len as usize)
+        .unwrap_or_else(|_| r_error("cannot allocate cutree workspace"));
+    for i in 0..which.len() {
+        cuts.push(checked(which.try_integer_elt(i)));
+    }
+    let n = n as usize;
+    let mut m_nr = vec![0_i32; n + 1];
+    let mut z = vec![0; n + 1];
+    let column_start = |column: usize| (column as R_xlen_t) * (n as R_xlen_t);
+
+    for k in 1..n {
+        let i = (k - 1) as R_xlen_t;
+        let m1 = checked(merge.try_integer_elt(i));
+        let m2 = checked(merge.try_integer_elt(R_xlen_t::from(rows) + i));
+        let valid = |m: c_int| {
+            if m < 0 {
+                m.unsigned_abs() as usize <= n
             } else {
-                j = -m2;
+                m > 0 && (m as usize) < k
             }
-            let mut l: c_int = 1;
-            while l <= n {
-                if m_nr[l as usize] == m1 {
-                    m_nr[l as usize] = k;
+        };
+        if !valid(m1) || !valid(m2) {
+            r_error("invalid 'tree' ('merge' component)");
+        }
+        if m1 < 0 {
+            m_nr[m1.unsigned_abs() as usize] = k as c_int;
+        }
+        if m2 < 0 {
+            m_nr[m2.unsigned_abs() as usize] = k as c_int;
+        }
+        if m1 > 0 || m2 > 0 {
+            for branch in &mut m_nr[1..] {
+                if (m1 > 0 && *branch == m1) || (m2 > 0 && *branch == m2) {
+                    *branch = k as c_int;
                 }
-                l += 1;
-            }
-            m_nr[j as usize] = k;
-            sing[j as usize] = false;
-        } else {
-            let mut l: c_int = 1;
-            while l <= n {
-                if m_nr[l as usize] == m1 || m_nr[l as usize] == m2 {
-                    m_nr[l as usize] = k;
-                }
-                l += 1;
             }
         }
 
-        let mut found_j = false;
-        let mut mm: c_int = 0;
-        let mut j: c_int = 0;
-        while j < which_len {
-            if i_which[j as usize] == n - k {
-                if !found_j {
-                    found_j = true;
-                    let mut l: c_int = 1;
-                    while l <= n {
-                        z[l as usize] = 0;
-                        l += 1;
-                    }
-                    let mut nclust: c_int = 0;
-                    mm = j * n;
-                    let mut l: c_int = 1;
-                    let mut m1_idx = mm;
-                    while l <= n {
-                        if sing[l as usize] {
+        let mut first_column = None;
+        for (column, &cut) in cuts.iter().enumerate() {
+            if cut != (n - k) as c_int {
+                continue;
+            }
+            let start = column_start(column);
+            if let Some(first) = first_column {
+                for i in 0..n as R_xlen_t {
+                    let value = checked(ans.try_integer_elt(first + i));
+                    checked(out.try_set_integer_elt(start + i, value));
+                }
+            } else {
+                first_column = Some(start);
+                z.fill(0);
+                let mut nclust = 0;
+                for (i, &branch) in m_nr[1..].iter().enumerate() {
+                    let label = if branch == 0 {
+                        nclust += 1;
+                        nclust
+                    } else {
+                        let branch = branch as usize;
+                        if z[branch] == 0 {
                             nclust += 1;
-                            i_ans[m1_idx as usize] = nclust;
-                        } else {
-                            if z[m_nr[l as usize] as usize] == 0 {
-                                nclust += 1;
-                                z[m_nr[l as usize] as usize] = nclust;
-                            }
-                            i_ans[m1_idx as usize] = z[m_nr[l as usize] as usize];
+                            z[branch] = nclust;
                         }
-                        l += 1;
-                        m1_idx += 1;
-                    }
-                } else {
-                    let mut l: c_int = 1;
-                    let mut m1_idx = j * n;
-                    let mut m2_idx = mm;
-                    while l <= n {
-                        i_ans[m1_idx as usize] = i_ans[m2_idx as usize];
-                        l += 1;
-                        m1_idx += 1;
-                        m2_idx += 1;
-                    }
+                        z[branch]
+                    };
+                    checked(out.try_set_integer_elt(start + i as R_xlen_t, label));
                 }
             }
-            j += 1;
         }
-        k += 1;
     }
 
-    // Trivial case which[] = n:
-    let mut j: c_int = 0;
-    while j < which_len {
-        if i_which[j as usize] == n {
-            let mut l: c_int = 1;
-            let mut m1 = j * n;
-            while l <= n {
-                i_ans[m1 as usize] = l;
-                l += 1;
-                m1 += 1;
+    for (column, &cut) in cuts.iter().enumerate() {
+        if cut == n as c_int {
+            let start = column_start(column);
+            for i in 0..n {
+                checked(out.try_set_integer_elt(start + i as R_xlen_t, (i + 1) as c_int));
             }
         }
-        j += 1;
     }
-
-    ans
+    checked(owner.require_active());
+    ans.as_raw()
 }
 pub unsafe extern "C-unwind" fn c_cutree(merge: SEXP, which: SEXP) -> SEXP {
     cutree(merge, which)
@@ -320,4 +322,62 @@ pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
         }
     }
     val
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::altrep::{
+        AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,
+    };
+    use crate::sexp::{object::SexpResult, session::RSession};
+    use std::{cell::Cell, rc::Rc};
+
+    struct CollectingCuts(Rc<Cell<usize>>);
+
+    impl AltrepClass for CollectingCuts {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::INTSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+            Ok(3)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            i: R_xlen_t,
+        ) -> SexpResult<AltrepElement<'s>> {
+            self.0.set(self.0.get() + 1);
+            context.gc()?;
+            Ok(AltrepElement::Integer([2, 1, 1][i as usize]))
+        }
+    }
+
+    #[test]
+    fn cutree_keeps_collecting_altrep_cuts_lazy() {
+        let session = RSession::new_for_gc_tests();
+        let reads = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class("collecting-cutree-cuts", CollectingCuts(reads.clone()))
+            .unwrap();
+        let cuts = AltrepBuilder::new(class).build().unwrap();
+        session.with_active(|| {
+            let merge = checked(current_owner().sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 2)));
+            let mut out = checked(SexpMut::try_from_checked(merge.clone()));
+            checked(out.try_set_integer_elt(0, -1));
+            checked(out.try_set_integer_elt(1, -2));
+            let dims = checked(current_owner().sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 2)));
+            let mut out = checked(SexpMut::try_from_checked(dims.clone()));
+            checked(out.try_set_integer_elt(0, 1));
+            checked(out.try_set_integer_elt(1, 2));
+            setAttrib(merge.as_raw(), R_DimSymbol(), dims.as_raw());
+            let result = session.sexp(cutree(merge.as_raw(), cuts.as_raw())).unwrap();
+            assert_eq!(
+                super::super::checked::int_vec(result.as_raw()),
+                [1, 2, 1, 1, 1, 1]
+            );
+            assert!(!is_materialized(&cuts));
+        });
+        assert_eq!(reads.get(), 3);
+    }
 }
