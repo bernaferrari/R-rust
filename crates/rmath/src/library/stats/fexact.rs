@@ -92,8 +92,8 @@ unsafe fn f2xact(
     sp: *mut c_double,
     tm: *mut c_double,
     key2: *mut c_int,
-    iwk: *mut c_int,
-    rwk: *mut c_double,
+    iwk: &mut [c_int],
+    rwk: &mut [c_double],
     n2_stack: c_int,
 ) {
     unsafe {
@@ -135,18 +135,6 @@ unsafe fn f2xact(
         let mut nro2: c_int = 0;
         let mut nrb: c_int = 0;
 
-        let i31: c_int;
-        let i32: c_int;
-        let i33: c_int;
-        let i34: c_int;
-        let i35: c_int;
-        let i36: c_int;
-        let i37: c_int;
-        let i38: c_int;
-        let i39: c_int;
-        let i310: c_int;
-        let i311: c_int;
-
         let mut dspt: c_double = 0.;
         let mut df: c_double = 0.;
         let mut ddf: c_double = 0.;
@@ -176,8 +164,6 @@ unsafe fn f2xact(
         let sp = sp.sub(1);
         let tm = tm.sub(1);
         let key2 = key2.sub(1);
-        let iwk = iwk.sub(1);
-        let rwk = rwk.sub(1);
 
         // Initialize KEY array (1-based)
         key.fill(-9999);
@@ -292,20 +278,6 @@ unsafe fn f2xact(
         );
         *pre = 0.;
         itop = 0;
-
-        // Initialize pointers for workspace
-        // f3xact
-        i31 = 1;
-        i32 = i31 + nco;
-        i33 = i32 + nco;
-        i34 = i33 + nco;
-        i35 = i34 + nco;
-        i36 = i35 + nco;
-        i37 = i36 + nco;
-        i38 = i37 + nco;
-        i39 = i38 + 2 * n2_stack;
-        i310 = 1;
-        i311 = 1 + 2 * n2_stack;
 
         // Initialize pointers
         k = nco;
@@ -509,27 +481,26 @@ unsafe fn f2xact(
 
                     if *lp.add(itp as usize) > 0. {
                         dspt = obs - obs2 - ddf;
+                        let rows = std::slice::from_raw_parts(irn.add(nrb as usize), nro2 as usize);
+                        let cols =
+                            std::slice::from_raw_parts(ico.add((kb + 1) as usize), k1 as usize);
+                        let width = nco as usize;
+                        let stack_len = 2 * n2_stack as usize;
+                        let (col_work, scratch) = iwk.split_at_mut(width);
+                        let (row_work, scratch) = scratch.split_at_mut(width);
+                        let (it, scratch) = scratch.split_at_mut(width);
+                        let (lb, scratch) = scratch.split_at_mut(width);
+                        let (nr, scratch) = scratch.split_at_mut(width);
+                        let (nt, scratch) = scratch.split_at_mut(width);
+                        let (nu, scratch) = scratch.split_at_mut(width);
+                        let (itc, scratch) = scratch.split_at_mut(stack_len);
+                        let ist = &mut scratch[..stack_len];
+                        let (stv, scratch) = rwk.split_at_mut(stack_len);
+                        let alen = &mut scratch[..width + 1];
                         // Compute longest path
                         *lp.add(itp as usize) = f3xact(
-                            nro2,
-                            irn.add(nrb as usize),
-                            k1,
-                            ico.add((kb + 1) as usize),
-                            ntot,
-                            fact,
-                            iwk.add(i31 as usize),
-                            iwk.add(i32 as usize),
-                            iwk.add(i33 as usize),
-                            iwk.add(i34 as usize),
-                            iwk.add(i35 as usize),
-                            iwk.add(i36 as usize),
-                            iwk.add(i37 as usize),
-                            iwk.add(i38 as usize),
-                            iwk.add(i39 as usize),
-                            rwk.add(i310 as usize),
-                            rwk.add(i311 as usize),
-                            tol,
-                            n2_stack,
+                            rows, cols, ntot, fact, col_work, row_work, it, lb, nr, nt, nu, itc,
+                            ist, stv, alen, tol, n2_stack,
                         );
                         if *lp.add(itp as usize) > 0. {
                             REprintf(c"___ LP[itp=%d] = %g > 0\n");
@@ -537,15 +508,12 @@ unsafe fn f2xact(
                         }
 
                         // Compute shortest path -- using dspt as offset
+                        // Reuses the same reserved iwk/rwk space as the
+                        // longest-path search; the earlier borrows end at its
+                        // return.
                         let depth = (nrow + ncol + 1) as usize;
                         let stack_cells = depth * nco as usize;
-                        // SAFETY: iwork reserved at least 5*depth + 2*stack_cells
-                        // ints at iwk[1..] and depth doubles at rwk[1..]; each
-                        // reborrow ends when f4xact returns.
-                        let scratch = std::slice::from_raw_parts_mut(
-                            iwk.add(1),
-                            5 * depth + 2 * stack_cells,
-                        );
+                        let scratch = &mut iwk[..5 * depth + 2 * stack_cells];
                         let (ncstk, scratch) = scratch.split_at_mut(depth);
                         let (lstk, scratch) = scratch.split_at_mut(depth);
                         let (mstk, scratch) = scratch.split_at_mut(depth);
@@ -553,8 +521,8 @@ unsafe fn f2xact(
                         let (nrstk, scratch) = scratch.split_at_mut(depth);
                         let (irstk, icstk) = scratch.split_at_mut(stack_cells);
                         *sp.add(itp as usize) = f4xact(
-                            std::slice::from_raw_parts(irn.add(nrb as usize), nro2 as usize),
-                            std::slice::from_raw_parts(ico.add((kb + 1) as usize), k1 as usize),
+                            rows,
+                            cols,
                             dspt,
                             fact,
                             icstk,
@@ -564,7 +532,7 @@ unsafe fn f2xact(
                             nstk,
                             nrstk,
                             irstk,
-                            std::slice::from_raw_parts_mut(rwk.add(1), depth),
+                            &mut rwk[..depth],
                             tol,
                         );
                         if *sp.add(itp as usize) > 0. {
@@ -657,8 +625,7 @@ unsafe fn f2xact(
                             let hash_start = (jkey - 1) as usize;
                             // The branch arrays are shared by both stages; the counts
                             // and links alternate halves.
-                            let (counts_and_links, branches) =
-                                ifrq.split_at_mut(4 * step_len);
+                            let (counts_and_links, branches) = ifrq.split_at_mut(4 * step_len);
                             let (counts, links) = counts_and_links.split_at_mut(2 * step_len);
                             let (right, left) = branches.split_at_mut(step_len);
                             f5xact(
@@ -730,417 +697,358 @@ unsafe fn f2xact(
     }
 }
 
-unsafe fn f3xact(
-    nrow: c_int,
-    irow: *const c_int,
-    ncol: c_int,
-    icol: *const c_int,
+fn f3xact(
+    irow: &[c_int],
+    icol: &[c_int],
     ntot: c_int,
     fact: &[c_double],
-    ico: *mut c_int,
-    iro: *mut c_int,
-    it: *mut c_int,
-    lb: *mut c_int,
-    nr: *mut c_int,
-    nt: *mut c_int,
-    nu: *mut c_int,
-    itc: *mut c_int,
-    ist: *mut c_int,
-    stv: *mut c_double,
-    alen: *mut c_double,
+    ico: &mut [c_int],
+    iro: &mut [c_int],
+    it: &mut [c_int],
+    lb: &mut [c_int],
+    nr: &mut [c_int],
+    nt: &mut [c_int],
+    nu: &mut [c_int],
+    itc: &mut [c_int],
+    ist: &mut [c_int],
+    stv: &mut [c_double],
+    alen: &mut [c_double],
     tol: c_double,
     ldst: c_int,
 ) -> c_double {
-    unsafe {
-        let irow = irow.sub(1);
-        let icol = icol.sub(1);
-        let ico = ico.sub(1);
-        let iro = iro.sub(1);
-        let it = it.sub(1);
-        let lb = lb.sub(1);
-        let nr = nr.sub(1);
-        let nt = nt.sub(1);
-        let nu = nu.sub(1);
-        let itc = itc.sub(1);
-        let ist = ist.sub(1);
-        let stv = stv.sub(1);
+    let nrow = irow.len() as c_int;
+    let ncol = icol.len() as c_int;
 
-        if nrow <= 1 {
-            // nrow is 1
-            let mut lp: c_double = 0.;
-            if nrow > 0 {
-                for idx in 1..=ncol as usize {
-                    lp -= fact[*icol.add(idx) as usize];
-                }
-            }
-            return lp;
-        }
-
-        if ncol <= 1 {
-            // ncol is 1
-            let mut lp: c_double = 0.;
-            if ncol > 0 {
-                for idx in 1..=nrow as usize {
-                    lp -= fact[*irow.add(idx) as usize];
-                }
-            }
-            return lp;
-        }
-
-        // 2 by 2 table
-        if nrow * ncol == 4 {
-            let n11 = (*irow.add(1) + 1) * (*icol.add(1) + 1) / (ntot + 2);
-            let n12 = *irow.add(1) - n11;
-            return -(fact[n11 as usize]
-                + fact[n12 as usize]
-                + fact[(*icol.add(1) - n11) as usize]
-                + fact[(*icol.add(2) - n12) as usize]);
-        }
-
-        // ELSE: larger than 2 x 2
-
-        // Test for optimal table
-        let mut nst: c_int = 0;
-        let mut nitc: c_int = 0;
-
-        let mut i: c_int;
-        let mut ii: c_int;
-        let mut nn: c_int;
-        let nco: c_int;
-        let mut ipn: c_int;
-        let mut key: c_int = 0;
-        let mut itp: c_int = 0;
-        let nro: c_int;
-        let mut xmin: bool;
-
-        let mut val: c_double = 0.;
-
-        if *irow.add(nrow as usize) <= *irow.add(1) + ncol {
-            xmin = f10act(
-                nrow,
-                irow.add(1),
-                ncol,
-                icol.add(1),
-                &mut val,
-                fact,
-                lb.add(1),
-                nu.add(1),
-                nr.add(1),
-            );
-        } else {
-            xmin = false;
-        }
-        if !xmin && *icol.add(ncol as usize) <= *icol.add(1) + nrow {
-            xmin = f10act(
-                ncol,
-                icol.add(1),
-                nrow,
-                irow.add(1),
-                &mut val,
-                fact,
-                lb.add(1),
-                nu.add(1),
-                nr.add(1),
-            );
-        }
-        if xmin {
-            return -val;
-        }
-
-        // Setup for dynamic programming
-        for idx in 0..=ncol as usize {
-            *alen.add(idx) = 0.;
-        }
-        for idx in 1..=2 * ldst as usize {
-            *ist.add(idx) = -1;
-        }
-
-        nn = ntot;
-        // Minimize ncol: nco = min(ncol, nrow); nro = max(nrow, ncol)
-        let mut nro;
-        let nco;
-        if nrow >= ncol {
-            nro = nrow;
-            nco = ncol;
-            *ico.add(1) = *icol.add(1);
-            *nt.add(1) = nn - *ico.add(1);
-            for idx in 2..=ncol as usize {
-                *ico.add(idx) = *icol.add(idx);
-                *nt.add(idx) = *nt.add(idx - 1) - *ico.add(idx);
-            }
-            for idx in 1..=nrow as usize {
-                *iro.add(idx) = *irow.add(idx);
-            }
-        } else {
-            nro = ncol;
-            nco = nrow;
-            *ico.add(1) = *irow.add(1);
-            *nt.add(1) = nn - *ico.add(1);
-            for idx in 2..=nrow as usize {
-                *ico.add(idx) = *irow.add(idx);
-                *nt.add(idx) = *nt.add(idx - 1) - *ico.add(idx);
-            }
+    if nrow <= 1 {
+        // nrow is 1
+        let mut lp: c_double = 0.;
+        if nrow > 0 {
             for idx in 1..=ncol as usize {
-                *iro.add(idx) = *icol.add(idx);
+                lp -= fact[icol[idx - 1] as usize];
             }
         }
+        return lp;
+    }
 
-        let nc1s = nco - 1;
-        let kyy = *ico.add(nco as usize) + 1;
-        // Initialize pointers
-        let mut irl: c_int = 1;
-        let mut ks: c_int = 0;
-        let mut k: c_int = ldst;
-        let mut lev: c_int;
-        let mut nr1 = nro - 1;
-        let mut vmn: c_double = 1e100;
+    if ncol <= 1 {
+        // ncol is 1
+        let mut lp: c_double = 0.;
+        if ncol > 0 {
+            for idx in 1..=nrow as usize {
+                lp -= fact[irow[idx - 1] as usize];
+            }
+        }
+        return lp;
+    }
 
-        'new_node: loop {
-            // GNU sets nr1 = nro - 1 at every LnewNode.
-            nr1 = nro - 1;
-            lev = 1;
-            let nrt = *iro.add(irl as usize);
-            let nct = *ico.add(1);
-            *lb.add(1) = (((nrt as c_double + 1.) * (nct as c_double + 1.))
-                / (nn as c_double + nr1 as c_double * nc1s as c_double + 1.)
-                - tol) as c_int
-                - 1;
-            *nu.add(1) = (((nrt as c_double + nc1s as c_double)
-                * (nct as c_double + nr1 as c_double))
-                / (nn as c_double + nr1 as c_double + nc1s as c_double)
-                - *lb.add(1) as c_double
-                + 1.) as c_int;
-            *nr.add(1) = nrt - *lb.add(1);
+    // 2 by 2 table
+    if nrow * ncol == 4 {
+        let n11 = (irow[0] + 1) * (icol[0] + 1) / (ntot + 2);
+        let n12 = irow[0] - n11;
+        return -(fact[n11 as usize]
+            + fact[n12 as usize]
+            + fact[(icol[0] - n11) as usize]
+            + fact[(icol[1] - n12) as usize]);
+    }
 
-            // LoopNode: Generate a node
-            'loop_node: loop {
-                *nu.add(lev as usize) -= 1;
-                if *nu.add(lev as usize) == 0 {
-                    if lev == 1 {
-                        // goto L200
-                        break 'loop_node;
-                    }
-                    lev -= 1;
-                    continue 'loop_node;
+    // ELSE: larger than 2 x 2
+
+    // Test for optimal table
+    let mut nst: c_int = 0;
+    let mut nitc: c_int = 0;
+
+    let mut i: c_int;
+    let mut ii: c_int;
+    let mut nn: c_int;
+    let nco: c_int;
+    let mut ipn: c_int;
+    let mut key: c_int = 0;
+    let mut itp: c_int = 0;
+    let nro: c_int;
+    let mut xmin: bool;
+
+    let mut val: c_double = 0.;
+
+    if irow[(nrow - 1) as usize] <= irow[0] + ncol {
+        xmin = f10act(irow, icol, &mut val, fact, lb, nu, nr);
+    } else {
+        xmin = false;
+    }
+    if !xmin && icol[(ncol - 1) as usize] <= icol[0] + nrow {
+        xmin = f10act(icol, irow, &mut val, fact, lb, nu, nr);
+    }
+    if xmin {
+        return -val;
+    }
+
+    // Setup for dynamic programming
+    alen[..=ncol as usize].fill(0.);
+    ist.fill(-1);
+
+    nn = ntot;
+    // Minimize ncol: nco = min(ncol, nrow); nro = max(nrow, ncol)
+    let mut nro;
+    let nco;
+    if nrow >= ncol {
+        nro = nrow;
+        nco = ncol;
+        ico[0] = icol[0];
+        nt[0] = nn - ico[0];
+        for idx in 2..=ncol as usize {
+            ico[idx - 1] = icol[idx - 1];
+            nt[idx - 1] = nt[idx - 2] - ico[idx - 1];
+        }
+        for idx in 1..=nrow as usize {
+            iro[idx - 1] = irow[idx - 1];
+        }
+    } else {
+        nro = ncol;
+        nco = nrow;
+        ico[0] = irow[0];
+        nt[0] = nn - ico[0];
+        for idx in 2..=nrow as usize {
+            ico[idx - 1] = irow[idx - 1];
+            nt[idx - 1] = nt[idx - 2] - ico[idx - 1];
+        }
+        for idx in 1..=ncol as usize {
+            iro[idx - 1] = icol[idx - 1];
+        }
+    }
+
+    let nc1s = nco - 1;
+    let kyy = ico[(nco - 1) as usize] + 1;
+    // Initialize pointers
+    let mut irl: c_int = 1;
+    let mut ks: c_int = 0;
+    let mut k: c_int = ldst;
+    let mut lev: c_int;
+    let mut nr1 = nro - 1;
+    let mut vmn: c_double = 1e100;
+
+    'new_node: loop {
+        // GNU sets nr1 = nro - 1 at every LnewNode.
+        nr1 = nro - 1;
+        lev = 1;
+        let nrt = iro[(irl - 1) as usize];
+        let nct = ico[0];
+        lb[0] = (((nrt as c_double + 1.) * (nct as c_double + 1.))
+            / (nn as c_double + nr1 as c_double * nc1s as c_double + 1.)
+            - tol) as c_int
+            - 1;
+        nu[0] = (((nrt as c_double + nc1s as c_double) * (nct as c_double + nr1 as c_double))
+            / (nn as c_double + nr1 as c_double + nc1s as c_double)
+            - lb[0] as c_double
+            + 1.) as c_int;
+        nr[0] = nrt - lb[0];
+
+        // LoopNode: Generate a node
+        'loop_node: loop {
+            nu[(lev - 1) as usize] -= 1;
+            if nu[(lev - 1) as usize] == 0 {
+                if lev == 1 {
+                    // goto L200
+                    break 'loop_node;
                 }
-                *lb.add(lev as usize) += 1;
-                *nr.add(lev as usize) -= 1;
-
-                loop {
-                    *alen.add(lev as usize) = *alen.add((lev - 1) as usize)
-                        + fact_term(fact, *lb.add(lev as usize), "lb");
-                    if lev >= nc1s {
-                        break;
-                    }
-
-                    let nn1 = *nt.add(lev as usize);
-                    let nrt_val = *nr.add(lev as usize);
-                    lev += 1;
-                    let nc1 = nco - lev;
-                    let nct_val = *ico.add(lev as usize);
-                    *lb.add(lev as usize) = (((nrt_val as c_double + 1.)
-                        * (nct_val as c_double + 1.))
-                        / (nn1 as c_double + nr1 as c_double * nc1 as c_double + 1.)
-                        - tol) as c_int;
-                    *nu.add(lev as usize) = (((nrt_val as c_double + nc1 as c_double)
-                        * (nct_val as c_double + nr1 as c_double))
-                        / (nn1 as c_double + nr1 as c_double + nc1 as c_double)
-                        - *lb.add(lev as usize) as c_double
-                        + 1.) as c_int;
-                    *nr.add(lev as usize) = nrt_val - *lb.add(lev as usize);
-                }
-                *alen.add(nco as usize) =
-                    *alen.add(lev as usize) + fact_term(fact, *nr.add(lev as usize), "nr");
-                *lb.add(nco as usize) = *nr.add(lev as usize);
-
-                let v = val + *alen.add(nco as usize);
-
-                if nro == 2 {
-                    // Only 1 row left
-                    let mut v2 = v
-                        + fact_term(fact, *ico.add(1) - *lb.add(1), "ico1-lb1")
-                        + fact_term(fact, *ico.add(2) - *lb.add(2), "ico2-lb2");
-                    for idx in 3..=nco as usize {
-                        v2 += fact_term(fact, *ico.add(idx) - *lb.add(idx), "ico-lb");
-                    }
-                    if vmn > v2 {
-                        vmn = v2;
-                    }
-                } else if nro == 3 && nco == 2 {
-                    // 3 rows and 2 columns
-                    let nn1 = nn - *iro.add(irl as usize) + 2;
-                    let ic1 = *ico.add(1) - *lb.add(1);
-                    let ic2 = *ico.add(2) - *lb.add(2);
-                    let n11 = (*iro.add((irl + 1) as usize) + 1) * (ic1 + 1) / nn1;
-                    let n12 = *iro.add((irl + 1) as usize) - n11;
-                    let v2 = v
-                        + fact_term(fact, n11, "n11")
-                        + fact_term(fact, n12, "n12")
-                        + fact_term(fact, ic1 - n11, "ic1-n11")
-                        + fact_term(fact, ic2 - n12, "ic2-n12");
-                    if vmn > v2 {
-                        vmn = v2;
-                    }
-                } else {
-                    // Column marginals are new node
-                    for idx in 1..=nco as usize {
-                        *it.add(idx) = std::cmp::max(*ico.add(idx) - *lb.add(idx), 0);
-                    }
-
-                    // Sort column marginals it[]
-                    if nco == 2 {
-                        if *it.add(1) > *it.add(2) {
-                            ii = *it.add(1);
-                            *it.add(1) = *it.add(2);
-                            *it.add(2) = ii;
-                        }
-                    } else {
-                        isort_wrapper(nco, it.add(1));
-                    }
-
-                    // Compute hash value
-                    let dky = kyy as c_double;
-                    let mut dkey = *it.add(1) as c_double * dky + *it.add(2) as c_double;
-                    for idx in 3..=nco as usize {
-                        dkey = *it.add(idx) as c_double + dkey * dky;
-                    }
-                    if dkey > c_int::MAX as c_double {
-                        let msg = format!(
-                            "FEXACT[f3xact()] error: hash key {:.0} > INT_MAX, kyy={}, it[i (= nco = {})]= {}.\n\
-                         Rather set 'simulate.p.value=TRUE'",
-                            dkey,
-                            kyy,
-                            nco,
-                            *it.add(nco as usize)
-                        );
-                        prterr(30, &msg);
-                    } else {
-                        key = dkey as c_int;
-                    }
-                    // Table index
-                    ipn = key % ldst + 1;
-                    // Find empty position
-                    let mut found_push = false;
-                    for (itp_s, ii_s) in
-                        (ipn as usize..=ldst as usize).zip((ks as usize + ipn as usize)..)
-                    {
-                        if *ist.add(ii_s) < 0 {
-                            // L180: Push onto stack
-                            *ist.add(ii_s) = key;
-                            *stv.add(ii_s) = v;
-                            nst += 1;
-                            let ii2 = nst as usize + ks as usize;
-                            *itc.add(ii2) = itp_s as c_int;
-                            found_push = true;
-                            break;
-                        } else if *ist.add(ii_s) == key {
-                            // L190: Marginals already on stack
-                            *stv.add(ii_s) = f64::min(v, *stv.add(ii_s));
-                            found_push = true;
-                            break;
-                        }
-                    }
-                    if !found_push {
-                        for (itp_s, ii_s) in (1usize..=ipn as usize - 1).zip((ks as usize + 1)..) {
-                            if *ist.add(ii_s) < 0 {
-                                *ist.add(ii_s) = key;
-                                *stv.add(ii_s) = v;
-                                nst += 1;
-                                let ii2 = nst as usize + ks as usize;
-                                *itc.add(ii2) = itp_s as c_int;
-                                found_push = true;
-                                break;
-                            } else if *ist.add(ii_s) == key {
-                                *stv.add(ii_s) = f64::min(v, *stv.add(ii_s));
-                                found_push = true;
-                                break;
-                            }
-                        }
-                    }
-                    if !found_push {
-                        let msg = format!(
-                            "FEXACT error 30.  Stack length exceeded in f3xact,\n  (ldst={}, key={}, ipn={}, itp={}, ist[ii={}]={}).\n\
-                         Increase workspace or consider using 'simulate.p.value=TRUE'",
-                            ldst, key, ipn, itp, 0, 0
-                        );
-                        prterr(30, &msg);
-                    }
-                }
+                lev -= 1;
                 continue 'loop_node;
             }
+            lb[(lev - 1) as usize] += 1;
+            nr[(lev - 1) as usize] -= 1;
 
-            // L200: Pop item from stack
-            'l200: loop {
-                if nitc > 0 {
-                    // Stack index
-                    itp = *itc.add((nitc + k) as usize) + k;
-                    nitc -= 1;
-                    val = *stv.add(itp as usize);
-                    key = *ist.add(itp as usize);
-                    *ist.add(itp as usize) = -1;
-                    // Compute marginals
-                    for idx in (2..=nco as usize).rev() {
-                        *ico.add(idx) = key % kyy;
-                        key /= kyy;
-                    }
-                    *ico.add(1) = key;
-                    // Set up nt array
-                    *nt.add(1) = nn - *ico.add(1);
-                    for idx in 2..=nco as usize {
-                        *nt.add(idx) = *nt.add(idx - 1) - *ico.add(idx);
-                    }
+            loop {
+                alen[lev as usize] =
+                    alen[(lev - 1) as usize] + fact_term(fact, lb[(lev - 1) as usize], "lb");
+                if lev >= nc1s {
+                    break;
+                }
 
-                    // Test for optimality (L90)
-                    if *iro.add(nro as usize) <= *iro.add(irl as usize) + nco {
-                        xmin = f10act(
-                            nro,
-                            iro.add(irl as usize),
-                            nco,
-                            ico.add(1),
-                            &mut val,
-                            fact,
-                            lb.add(1),
-                            nu.add(1),
-                            nr.add(1),
-                        );
-                    } else {
-                        xmin = false;
-                    }
+                let nn1 = nt[(lev - 1) as usize];
+                let nrt_val = nr[(lev - 1) as usize];
+                lev += 1;
+                let nc1 = nco - lev;
+                let nct_val = ico[(lev - 1) as usize];
+                lb[(lev - 1) as usize] = (((nrt_val as c_double + 1.) * (nct_val as c_double + 1.))
+                    / (nn1 as c_double + nr1 as c_double * nc1 as c_double + 1.)
+                    - tol) as c_int;
+                nu[(lev - 1) as usize] = (((nrt_val as c_double + nc1 as c_double)
+                    * (nct_val as c_double + nr1 as c_double))
+                    / (nn1 as c_double + nr1 as c_double + nc1 as c_double)
+                    - lb[(lev - 1) as usize] as c_double
+                    + 1.) as c_int;
+                nr[(lev - 1) as usize] = nrt_val - lb[(lev - 1) as usize];
+            }
+            alen[nco as usize] = alen[lev as usize] + fact_term(fact, nr[(lev - 1) as usize], "nr");
+            lb[(nco - 1) as usize] = nr[(lev - 1) as usize];
 
-                    if !xmin && *ico.add(nco as usize) <= *ico.add(1) + nro {
-                        xmin = f10act(
-                            nco,
-                            ico.add(1),
-                            nro,
-                            iro.add(irl as usize),
-                            &mut val,
-                            fact,
-                            lb.add(1),
-                            nu.add(1),
-                            nr.add(1),
-                        );
+            let v = val + alen[nco as usize];
+
+            if nro == 2 {
+                // Only 1 row left
+                let mut v2 = v
+                    + fact_term(fact, ico[0] - lb[0], "ico1-lb1")
+                    + fact_term(fact, ico[1] - lb[1], "ico2-lb2");
+                for idx in 3..=nco as usize {
+                    v2 += fact_term(fact, ico[idx - 1] - lb[idx - 1], "ico-lb");
+                }
+                if vmn > v2 {
+                    vmn = v2;
+                }
+            } else if nro == 3 && nco == 2 {
+                // 3 rows and 2 columns
+                let nn1 = nn - iro[(irl - 1) as usize] + 2;
+                let ic1 = ico[0] - lb[0];
+                let ic2 = ico[1] - lb[1];
+                let n11 = (iro[irl as usize] + 1) * (ic1 + 1) / nn1;
+                let n12 = iro[irl as usize] - n11;
+                let v2 = v
+                    + fact_term(fact, n11, "n11")
+                    + fact_term(fact, n12, "n12")
+                    + fact_term(fact, ic1 - n11, "ic1-n11")
+                    + fact_term(fact, ic2 - n12, "ic2-n12");
+                if vmn > v2 {
+                    vmn = v2;
+                }
+            } else {
+                // Column marginals are new node
+                for idx in 1..=nco as usize {
+                    it[idx - 1] = std::cmp::max(ico[idx - 1] - lb[idx - 1], 0);
+                }
+
+                // Sort column marginals it[]
+                if nco == 2 {
+                    if it[0] > it[1] {
+                        ii = it[0];
+                        it[0] = it[1];
+                        it[1] = ii;
                     }
-                    if xmin {
-                        if vmn > val {
-                            vmn = val;
+                } else {
+                    crate::main::sort::isort_slice(&mut it[..nco as usize]);
+                }
+
+                // Compute hash value
+                let dky = kyy as c_double;
+                let mut dkey = it[0] as c_double * dky + it[1] as c_double;
+                for idx in 3..=nco as usize {
+                    dkey = it[idx - 1] as c_double + dkey * dky;
+                }
+                if dkey > c_int::MAX as c_double {
+                    let msg = format!(
+                        "FEXACT[f3xact()] error: hash key {:.0} > INT_MAX, kyy={}, it[i (= nco = {})]= {}.\n\
+                     Rather set 'simulate.p.value=TRUE'",
+                        dkey,
+                        kyy,
+                        nco,
+                        it[(nco - 1) as usize]
+                    );
+                    prterr(30, &msg);
+                } else {
+                    key = dkey as c_int;
+                }
+                // Table index
+                ipn = key % ldst + 1;
+                // Find empty position
+                let mut found_push = false;
+                for (itp_s, ii_s) in
+                    (ipn as usize..=ldst as usize).zip((ks as usize + ipn as usize)..)
+                {
+                    if ist[ii_s - 1] < 0 {
+                        // L180: Push onto stack
+                        ist[ii_s - 1] = key;
+                        stv[ii_s - 1] = v;
+                        nst += 1;
+                        let ii2 = nst as usize + ks as usize;
+                        itc[ii2 - 1] = itp_s as c_int;
+                        found_push = true;
+                        break;
+                    } else if ist[ii_s - 1] == key {
+                        // L190: Marginals already on stack
+                        stv[ii_s - 1] = f64::min(v, stv[ii_s - 1]);
+                        found_push = true;
+                        break;
+                    }
+                }
+                if !found_push {
+                    for (itp_s, ii_s) in (1usize..=ipn as usize - 1).zip((ks as usize + 1)..) {
+                        if ist[ii_s - 1] < 0 {
+                            ist[ii_s - 1] = key;
+                            stv[ii_s - 1] = v;
+                            nst += 1;
+                            let ii2 = nst as usize + ks as usize;
+                            itc[ii2 - 1] = itp_s as c_int;
+                            found_push = true;
+                            break;
+                        } else if ist[ii_s - 1] == key {
+                            stv[ii_s - 1] = f64::min(v, stv[ii_s - 1]);
+                            found_push = true;
+                            break;
                         }
-                        continue 'l200;
-                    } else {
-                        continue 'new_node;
                     }
-                } else if nro > 2 && nst > 0 {
-                    // Go to next level
-                    nitc = nst;
-                    nst = 0;
-                    k = ks;
-                    ks = ldst - ks;
-                    nn -= *iro.add(irl as usize);
-                    irl += 1;
-                    nro -= 1;
+                }
+                if !found_push {
+                    let msg = format!(
+                        "FEXACT error 30.  Stack length exceeded in f3xact,\n  (ldst={}, key={}, ipn={}, itp={}, ist[ii={}]={}).\n\
+                     Increase workspace or consider using 'simulate.p.value=TRUE'",
+                        ldst, key, ipn, itp, 0, 0
+                    );
+                    prterr(30, &msg);
+                }
+            }
+            continue 'loop_node;
+        }
+
+        // L200: Pop item from stack
+        'l200: loop {
+            if nitc > 0 {
+                // Stack index
+                itp = itc[(nitc + k - 1) as usize] + k;
+                nitc -= 1;
+                val = stv[(itp - 1) as usize];
+                key = ist[(itp - 1) as usize];
+                ist[(itp - 1) as usize] = -1;
+                // Compute marginals
+                for idx in (2..=nco as usize).rev() {
+                    ico[idx - 1] = key % kyy;
+                    key /= kyy;
+                }
+                ico[0] = key;
+                // Set up nt array
+                nt[0] = nn - ico[0];
+                for idx in 2..=nco as usize {
+                    nt[idx - 1] = nt[idx - 2] - ico[idx - 1];
+                }
+
+                let remaining_rows = &iro[(irl - 1) as usize..(irl - 1 + nro) as usize];
+                let remaining_cols = &ico[..nco as usize];
+                // Test for optimality (L90)
+                if iro[(nro - 1) as usize] <= iro[(irl - 1) as usize] + nco {
+                    xmin = f10act(remaining_rows, remaining_cols, &mut val, fact, lb, nu, nr);
+                } else {
+                    xmin = false;
+                }
+
+                if !xmin && ico[(nco - 1) as usize] <= ico[0] + nro {
+                    xmin = f10act(remaining_cols, remaining_rows, &mut val, fact, lb, nu, nr);
+                }
+                if xmin {
+                    if vmn > val {
+                        vmn = val;
+                    }
                     continue 'l200;
                 } else {
-                    return -vmn;
+                    continue 'new_node;
                 }
+            } else if nro > 2 && nst > 0 {
+                // Go to next level
+                nitc = nst;
+                nst = 0;
+                k = ks;
+                ks = ldst - ks;
+                nn -= iro[(irl - 1) as usize];
+                irl += 1;
+                nro -= 1;
+                continue 'l200;
+            } else {
+                return -vmn;
             }
         }
     }
@@ -1714,65 +1622,61 @@ fn f9xact(ntot: c_int, ir: &[c_int], fact: &[c_double]) -> c_double {
     d
 }
 
-unsafe fn f10act(
-    nrow: c_int,
-    irow: *const c_int,
-    ncol: c_int,
-    icol: *const c_int,
-    val: *mut c_double,
+fn f10act(
+    irow: &[c_int],
+    icol: &[c_int],
+    val: &mut c_double,
     fact: &[c_double],
-    nd: *mut c_int,
-    ne: *mut c_int,
-    m: *mut c_int,
+    nd: &mut [c_int],
+    ne: &mut [c_int],
+    m: &mut [c_int],
 ) -> bool {
-    unsafe {
-        // All arrays are 0-based
+    // All arrays are 0-based
+    let nrow = irow.len() as c_int;
+    let ncol = icol.len() as c_int;
 
-        for idx in 0..(nrow - 1) as usize {
-            *nd.add(idx) = 0;
-        }
+    nd[..(nrow - 1) as usize].fill(0);
 
-        let mut is = *icol.add(0) / nrow;
-        let mut ix = *icol.add(0) - nrow * is;
-        *ne.add(0) = is;
-        *m.add(0) = ix;
-        if ix != 0 {
-            *nd.add((ix - 1) as usize) += 1;
-        }
-
-        for idx in 1..ncol as usize {
-            ix = *icol.add(idx) / nrow;
-            *ne.add(idx) = ix;
-            is += ix;
-            ix = *icol.add(idx) - nrow * ix;
-            *m.add(idx) = ix;
-            if ix != 0 {
-                *nd.add((ix - 1) as usize) += 1;
-            }
-        }
-
-        if nrow >= 3 {
-            for idx in (0..=(nrow - 3) as usize).rev() {
-                *nd.add(idx) += *nd.add(idx + 1);
-            }
-        }
-
-        ix = 0;
-        for idx in (2..=nrow as usize).rev() {
-            ix += is + *nd.add(nrow as usize - idx) - *irow.add((idx - 1) as usize);
-            if ix < 0 {
-                return false;
-            }
-        }
-
-        for idx in 0..ncol as usize {
-            ix = *ne.add(idx);
-            is = *m.add(idx);
-            *val += is as c_double * fact[(ix + 1) as usize]
-                + (nrow - is) as c_double * fact[ix as usize];
-        }
-        true
+    let mut is = icol[0] / nrow;
+    let mut ix = icol[0] - nrow * is;
+    ne[0] = is;
+    m[0] = ix;
+    if ix != 0 {
+        nd[(ix - 1) as usize] += 1;
     }
+
+    for idx in 1..ncol as usize {
+        ix = icol[idx] / nrow;
+        ne[idx] = ix;
+        is += ix;
+        ix = icol[idx] - nrow * ix;
+        m[idx] = ix;
+        if ix != 0 {
+            nd[(ix - 1) as usize] += 1;
+        }
+    }
+
+    if nrow >= 3 {
+        for idx in (0..=(nrow - 3) as usize).rev() {
+            nd[idx] += nd[idx + 1];
+        }
+    }
+
+    ix = 0;
+    for idx in (2..=nrow as usize).rev() {
+        ix += is + nd[nrow as usize - idx] - irow[idx - 1];
+        if ix < 0 {
+            return false;
+        }
+    }
+
+    for idx in 0..ncol as usize {
+        ix = ne[idx];
+        is = m[idx];
+        *val +=
+            is as c_double * fact[(ix + 1) as usize] + (nrow - is) as c_double * fact[ix as usize];
+    }
+    true
 }
 
 fn f11act(irow: &[c_int], i1: c_int, i2: c_int, new: &mut [c_int]) {
@@ -1832,10 +1736,10 @@ fn fexact(
     let i3c = iwork(iwkmax, &mut iwkpt, nro, false);
     let k = nco + nro + 1;
     let kk = k * nco;
-    let ikh = (k * 5 + 2 * kk).max(nco * 7 + 4 * n2_stack);
-    let iiwk = iwork(iwkmax, &mut iwkpt, ikh, false);
-    let ikh = (nco + 1 + 2 * n2_stack).max(k);
-    let irwk = iwork(iwkmax, &mut iwkpt, ikh, true);
+    let int_scratch_len = (k * 5 + 2 * kk).max(nco * 7 + 4 * n2_stack);
+    let iiwk = iwork(iwkmax, &mut iwkpt, int_scratch_len, false);
+    let real_scratch_len = (nco + 1 + 2 * n2_stack).max(k);
+    let irwk = iwork(iwkmax, &mut iwkpt, real_scratch_len, true);
     let numb = 18 + 10 * i64::from(mult);
     let ldkey = (iwkmax - iwkpt) / numb - 1;
     if ldkey <= 0 {
@@ -1894,8 +1798,8 @@ fn fexact(
             dwrk.add(i9),
             dwrk.add(i9a),
             iwrk.add(i10),
-            iwrk.add(iiwk),
-            dwrk.add(irwk),
+            std::slice::from_raw_parts_mut(iwrk.add(iiwk), int_scratch_len as usize),
+            std::slice::from_raw_parts_mut(dwrk.add(irwk), real_scratch_len as usize),
             n2_stack as c_int,
         );
     }
@@ -1986,6 +1890,35 @@ mod tests {
     }
 
     #[test]
+    fn fexact_longest_path_matches_enumerated_tables() {
+        let mut fact = [0.0; 23];
+        for n in 2..fact.len() {
+            fact[n] = fact[n - 1] + (n as f64).ln();
+        }
+        let actual = super::f3xact(
+            &[1, 6, 7, 8],
+            &[1, 5, 7, 9],
+            22,
+            &fact,
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 4],
+            &mut [0; 400],
+            &mut [0; 400],
+            &mut [0.0; 400],
+            &mut [0.0; 5],
+            3.45254e-7,
+            200,
+        );
+        // Exhaustive enumeration gives a minimum product of cell factorials of 6912.
+        assert!((actual - (-8.841014310483892)).abs() < 1e-12, "{actual}");
+    }
+
+    #[test]
     fn fexact_queue_probes_wrap_and_coalesces_steps() {
         let mut key = [-9999, 2];
         let mut ipoin = [0, 0];
@@ -2034,11 +1967,29 @@ mod tests {
 
         let (mut last, mut ipn) = (0, 0);
         let mut rows = [0, 0];
-        assert!(!super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert!(!super::f6xact(
+            &mut rows,
+            &[1, 2],
+            &mut key,
+            &mut last,
+            &mut ipn
+        ));
         assert_eq!((last, ipn, rows), (1, 1, [1, 0]));
-        assert!(!super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert!(!super::f6xact(
+            &mut rows,
+            &[1, 2],
+            &mut key,
+            &mut last,
+            &mut ipn
+        ));
         assert_eq!((last, ipn, rows), (2, 2, [0, 1]));
-        assert!(super::f6xact(&mut rows, &[1, 2], &mut key, &mut last, &mut ipn));
+        assert!(super::f6xact(
+            &mut rows,
+            &[1, 2],
+            &mut key,
+            &mut last,
+            &mut ipn
+        ));
         assert_eq!(last, 0);
     }
 
