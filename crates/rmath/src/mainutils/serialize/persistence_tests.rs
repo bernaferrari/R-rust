@@ -179,7 +179,7 @@ fn lazy_persistence_rollback_keeps_original_and_callback_bindings_after_revocati
                     return;
                 }
                 callback_observed.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let keep = factory.wrap(Rf_ScalarInteger(87)).unwrap();
                 define(&factory, &callback_cache, c"callback.keep", keep);
                 *saved_head.borrow_mut() =
@@ -187,8 +187,7 @@ fn lazy_persistence_rollback_keeps_original_and_callback_bindings_after_revocati
                 crate::sexp::gengc::full_gc();
                 drop(callback_facade.upgrade().unwrap().borrow_mut().take());
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             R_unserialize(input.as_raw(), data.as_raw())
         })
     }))
@@ -205,7 +204,7 @@ fn lazy_persistence_rollback_keeps_original_and_callback_bindings_after_revocati
             .message,
         crate::sexp::object::SexpError::RootUnavailable.to_string()
     );
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     let head = callback_head.borrow_mut().take().unwrap();
     let cache_node = cache.allocation().unwrap();
     let heap = cache_node.heap_identity();

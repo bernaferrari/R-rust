@@ -1293,8 +1293,7 @@ mod tests {
                         // setter collects again with its promises published.
                         // Repeating this detachment at every allocation adds
                         // no further transition to this ownership regression.
-                        (*instance).memory_state.gc_force_gap = 0;
-                        (*instance).memory_state.gc_force_wait = 0;
+                        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
                         for index in 0..captured_pool.len() {
                             crate::sexp::accessors::SET_VECTOR_ELT(
                                 captured_pool.as_raw(),
@@ -1304,8 +1303,7 @@ mod tests {
                         }
                         crate::sexp::gengc::full_gc_in(instance);
                     }));
-                    (*instance).memory_state.gc_force_gap = 1;
-                    (*instance).memory_state.gc_force_wait = 1;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
                 });
             }
             let compiled = own_operand(super::super::bc_eval::bcEval(code.as_raw(), env.as_raw()));
@@ -1856,8 +1854,7 @@ mod tests {
                 observed.set(observed.get() + 1);
             }));
             session.with_active_in(|instance| {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             let bytecode = own_operand(compiler.finish(R_NilValue()));
             assert!(callbacks.get() > 0);
@@ -1894,8 +1891,7 @@ mod tests {
                 observed.set(observed.get() + 1);
             }));
             session.with_active_in(|instance| {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             let bytecode = own_operand(compile_expr(block, R_BaseEnv()).unwrap());
             assert!(callbacks.get() > 0);

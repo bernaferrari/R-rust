@@ -309,10 +309,9 @@ fn task_callback_name_snapshot_survives_collecting_removal_and_releases_roots() 
             if !check.replace(true) {
                 R_remove_task_callback(selector.as_raw());
             }
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     });
     let names = session.with_active(|| {
         factory
@@ -375,11 +374,10 @@ fn task_callback_name_snapshot_revocation_drops_only_original_workspace() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::sexp::session::with_instance_active(instance, || {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 drop(callback_facade.upgrade().unwrap().borrow_mut().take());
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             R_task_callback_names();
         });
     }));
@@ -450,14 +448,13 @@ fn task_callback_lazy_metadata_survives_gc_reentry_lock_and_forces_once() {
                     return;
                 }
                 let pin = weak.pin().unwrap();
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, None);
                 if observed.replace(1) == 0 {
                     *recursive_seen.borrow_mut() =
                         crate::eval::eval::eval_safe(expression.clone(), environment.clone()).err();
                 }
             }));
-            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
             let first = owner
                 .sexp(crate::eval::eval::Rf_eval(symbol, base))
                 .unwrap()
@@ -532,12 +529,11 @@ fn task_callback_lazy_metadata_revocation_never_publishes_into_replacement() {
                     return;
                 }
                 let pin = weak.pin().unwrap();
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, None);
                 crate::sexp::instance::revoke_instance_availability(pin.as_ptr());
                 *target.upgrade().unwrap().borrow_mut() = Some(RSession::new_for_gc_tests());
             }));
-            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
             let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::eval::eval::Rf_eval(symbol, base)
             }));

@@ -47,7 +47,7 @@ fn text_publication_callback(action: u8) {
             if count.replace(1) != 0 {
                 return;
             }
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             if action == 2 {
                 let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     do_close(
@@ -74,12 +74,11 @@ fn text_publication_callback(action: u8) {
                 assert_eq!(nested.finish().stdout, "nested");
             }
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::mainutils::printutils::Rprintf(c"outer\n".as_ptr(), ptr::null_mut());
         }));
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         if action == 3 {
             let error = result.expect_err("the callback removed the original frame");
             assert_eq!(
@@ -108,7 +107,7 @@ fn text_publication_callback(action: u8) {
             1,
             "the actual writer allocation must run the hook"
         );
-        assert_eq!((*instance).memory_state.in_gc, 0);
+        assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
         let value = factory
             .wrap(crate::sexp::envir::R_findVarInFrame(
                 env.as_raw(),

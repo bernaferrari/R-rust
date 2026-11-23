@@ -148,7 +148,7 @@ fn detaching_parameters(action: u8, publication: bool) {
         assert!(source.try_car().unwrap().is_nil());
         assert!(source.try_cdr().unwrap().is_nil());
     }
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
     match action {
         0 => {
             let result = result.unwrap();

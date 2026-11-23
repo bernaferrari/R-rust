@@ -303,7 +303,7 @@ fn collecting_intercept(action: u8) {
                 if counted.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 crate::sexp::accessors::SETCAR(lhs.as_raw(), crate::sexp::globals::R_NilValue());
                 crate::sexp::gengc::full_gc();
                 assert!(
@@ -316,8 +316,7 @@ fn collecting_intercept(action: u8) {
                     _ => drop(callback_facade.upgrade().unwrap().borrow_mut().take()),
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             f.wrap(super::do_lm(
                 f.nil().as_raw(),
                 f.nil().as_raw(),
@@ -330,7 +329,7 @@ fn collecting_intercept(action: u8) {
         })
     }));
     assert_eq!(observed.get(), 1);
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     match action {
         0 => {
             let model = result.unwrap();
@@ -430,7 +429,7 @@ fn owned_lm_intercept_data_column_and_row_labels_survive_environment_callback() 
                 if counted.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let f = callback_weak.node_factory().unwrap();
                 let mut data = SexpMut::try_from_checked(callback_data.clone()).unwrap();
                 data.try_set_vector_elt(0, f.nil()).unwrap();
@@ -439,8 +438,7 @@ fn owned_lm_intercept_data_column_and_row_labels_survive_environment_callback() 
                 assert!(old_response.is_live());
                 assert!(old_rows.is_live());
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         }
         let model = f
             .wrap(unsafe {

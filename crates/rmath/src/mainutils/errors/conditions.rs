@@ -1202,8 +1202,7 @@ mod condition_construction_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before = crate::sexp::protect::R_ProtectCount();
         // Each view ends before another non-NUL byte: C string scanning is invalid.
@@ -1253,7 +1252,9 @@ mod condition_construction_tests {
                 );
             }
         }
-        session.with_active_in(|instance| unsafe { (*instance).memory_state.gc_force_gap = 0 });
+        session.with_active_in(|instance| unsafe {
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None)
+        });
         assert!(notifications.get() >= 10);
         assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
     }

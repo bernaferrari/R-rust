@@ -147,7 +147,7 @@ fn owned_gc_safe_point_revocation_stops_original_finalizer_continuation() {
     assert_eq!(calls.get(), 1);
     assert!(facade.borrow().is_none());
     assert!(pin.require_live().is_err());
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     assert_eq!(unsafe { (*instance).legacy_protect.len() }, 0);
 }
 

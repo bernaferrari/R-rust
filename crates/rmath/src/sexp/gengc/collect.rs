@@ -1,6 +1,7 @@
 //! gengc — extracted verbatim from gengc.rs.
 
 use super::*;
+use crate::mainutils::memory_main::{TortureAction, torture_action_in};
 
 /// Deferred alloc-time GC processing (see `memory::with_arena_in`).
 ///
@@ -51,27 +52,16 @@ pub(crate) unsafe fn process_deferred_alloc_gc_in(
 /// no conflicting outstanding borrow of the fields touched here.
 pub(crate) unsafe fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
     unsafe {
-        if (*instance).memory_state.gc_force_gap <= 0 {
-            // Not armed: default behavior is identical (single branch).
-            return;
+        match torture_action_in(instance, ticks) {
+            TortureAction::Skip => return,
+            TortureAction::Defer => {
+                // Mirrors upstream's R_in_gc deferral: don't recurse into a
+                // collection from inside one; run it at the next safe point.
+                with_gc_state_in(instance, |state| state.gc_pending = true);
+                return;
+            }
+            TortureAction::Collect => {}
         }
-        if with_gc_state_in(instance, |state| state.in_progress)
-            || (*instance).memory_state.in_gc != 0
-        {
-            // Mirrors upstream's R_in_gc deferral: don't recurse into a
-            // collection from inside one; run it at the next safe point.
-            with_gc_state_in(instance, |state| state.gc_pending = true);
-            return;
-        }
-        // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
-        // then re-arms to `gc_force_gap`. Deferred ticks are consumed in one
-        // step, firing at most one collection per processing point.
-        let ticks: std::os::raw::c_int = ticks.try_into().unwrap_or(std::os::raw::c_int::MAX);
-        if (*instance).memory_state.gc_force_wait > ticks {
-            (*instance).memory_state.gc_force_wait -= ticks;
-            return;
-        }
-        (*instance).memory_state.gc_force_wait = (*instance).memory_state.gc_force_gap;
         let owner = super::super::owner::OwnerToken::from_raw(instance);
         let pin = owner
             .pin()

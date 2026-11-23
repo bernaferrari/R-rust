@@ -134,7 +134,7 @@ fn owner_profile_prevents_recursive_sampling_and_retains_cleared_contexts() {
         let observed = calls.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(observed.get() + 1);
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             assert!(crate::sexp::instance::with_profiling_state_in(
                 instance,
                 |state| state.sampling_in_progress
@@ -144,10 +144,9 @@ fn owner_profile_prevents_recursive_sampling_and_retains_cleared_contexts() {
             crate::sexp::gengc::full_gc_in(instance);
             assert!(source_node.is_live());
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         R_WriteProfile(0);
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         assert_eq!(calls.get(), 1);
         assert!(!crate::sexp::instance::with_profiling_state_in(
             instance,
@@ -184,12 +183,11 @@ fn owner_profile_revocation_cleans_the_original_sampling_flag_only() {
             if observed.replace(1) != 0 {
                 return;
             }
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             crate::sexp::instance::revoke_instance_availability(instance);
             *target.upgrade().unwrap().borrow_mut() = Some(RSession::new_for_gc_tests());
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         crate::eval::runtime::set_visible(FALSE);
         let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| R_WriteProfile(0)));
         assert!(denied.is_err());
@@ -224,7 +222,7 @@ fn owner_profile_stop_during_a_source_callback_discards_old_metadata() {
             if observed.replace(1) != 0 {
                 return;
             }
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             R_EndProfiling();
             // A nested profiling start gets a new generation; the old sample
             // must neither fill its line table nor clear its state on unwind.
@@ -235,10 +233,9 @@ fn owner_profile_stop_during_a_source_callback_discards_old_metadata() {
             });
             R_WriteProfile(0);
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         R_WriteProfile(0);
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         assert_eq!(calls.get(), 1);
         with_profiling_state(|state| {
             assert_eq!(state.profile_generation, old_generation + 2);
@@ -534,17 +531,16 @@ fn profile_workspace_denial_skips_the_sample_before_source_providers() {
         let counter = observed.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             counter.set(counter.get() + 1);
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         }));
         let (budget, bytes, workspace) = owner.with_arena(|arena| {
             let before = (arena.budget(), arena.total_bytes_allocated(), arena.workspace_bytes());
             arena.set_budget(crate::sexp::memory::ArenaBudget::new(before.1 + before.2, 0));
             before
         }).unwrap();
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let sampled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| R_WriteProfile(0)));
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         owner.with_arena(|arena| arena.set_budget(budget)).unwrap();
         assert!(sampled.is_ok(), "sampling admission must not replace the workload's result with a profiling allocation error");
         assert_eq!(observed.get(), 0, "no profiling source provider may execute when snapshot workspace cannot be admitted");
@@ -888,15 +884,14 @@ fn owner_profile_typed_eval_checks_cancellation_before_metadata_allocation() {
         let observed = calls.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(observed.get() + 1);
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         token.request();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::eval_safe(expression, environment)
         }));
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         let error = result
             .expect("typed evaluation must catch cooperative cancellation")
             .unwrap_err();

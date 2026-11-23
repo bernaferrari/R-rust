@@ -79,7 +79,7 @@ fn deparse_callback(action: u8, stop_condition: bool) {
                         continue;
                     }
                     called.set(1);
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     R_SetErrmessage("mutated during real deparse publication");
                     R_SetExpressions(991);
                     crate::sexp::gengc::full_gc();
@@ -108,8 +108,7 @@ fn deparse_callback(action: u8, stop_condition: bool) {
                     break;
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             // The native format pointer aliases the exact state being rendered.
             // It must be snapshotted before any mutable error-state lend.
             let format = R_curErrorBuf();
@@ -129,7 +128,7 @@ fn deparse_callback(action: u8, stop_condition: bool) {
                 1,
                 "actual deparse character constructor reached"
             );
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             assert_eq!(pin.with_error_state(|state| state.in_error), 0);
             assert_eq!(pin.with_error_state(|state| state.expressions), 503);
             let cache_capacity = pin.with_error_state(|state| {

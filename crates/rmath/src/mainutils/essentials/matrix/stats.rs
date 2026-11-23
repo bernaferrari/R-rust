@@ -2014,8 +2014,7 @@ mod owned_bind_argument_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         notifications
     }

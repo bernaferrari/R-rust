@@ -357,7 +357,7 @@ fn detaching_provider_kind(action: u8, kind: SEXPTYPE) {
         })
     }));
     assert_eq!(calls.get(), 1);
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
     match action {
         0 if kind != SEXPTYPE::STRSXP => {
             let output = result.unwrap().unwrap().unwrap();

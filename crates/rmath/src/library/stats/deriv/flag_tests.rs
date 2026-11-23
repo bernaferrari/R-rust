@@ -363,7 +363,7 @@ fn transition_case(action: u8) {
         }));
         assert_eq!(calls.get(), 1);
         assert!(parent.try_car().unwrap().is_nil());
-        assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
         assert_eq!(ledger.workspace_bytes_for_test(), 128);
         drop(held);
         assert_eq!(ledger.workspace_bytes_for_test(), 0);

@@ -99,7 +99,7 @@ fn native_constructor(kind: u8, action: u8) {
                         return;
                     }
                     called.set(1);
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     SETCAR(saved.as_raw(), R_NilValue());
                     SETCDR(saved.as_raw(), R_NilValue());
                     crate::sexp::gengc::full_gc();
@@ -133,14 +133,13 @@ fn native_constructor(kind: u8, action: u8) {
                         _ => {}
                     }
                 }));
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             }
             let result = catch_unwind(AssertUnwindSafe(|| construct(kind, args.as_raw())));
             if action != 0 {
                 assert_eq!(seen.get(), 1, "actual attribute vector constructor reached");
             }
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             assert_eq!(
                 source
                     .heap_identity()

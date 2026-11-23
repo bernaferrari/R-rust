@@ -316,7 +316,7 @@ fn outer_names_case_impl(action: u8, phase: u8, prebuilt: bool) {
     drop(held);
     assert_eq!(ledger.workspace_bytes_for_test(), 0);
     assert_eq!(arguments.try_cdr().unwrap().is_nil(), action != 3);
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
     if action == 3 && !prebuilt {
         assert_eq!(
             (calls.get(), trace.get()),

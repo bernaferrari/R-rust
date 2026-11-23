@@ -1840,13 +1840,12 @@ mod lazy_native_symbol_tests {
                     return;
                 }
                 let pin = weak.pin().unwrap();
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, None);
                 crate::sexp::instance::revoke_instance_availability(pin.as_ptr());
                 *target.upgrade().unwrap().borrow_mut() =
                     Some(crate::sexp::session::RSession::new_for_gc_tests());
             }));
-            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
             let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::eval::eval::Rf_eval(symbol, base)
             }));

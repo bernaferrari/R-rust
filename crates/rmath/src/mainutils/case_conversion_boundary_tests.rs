@@ -123,7 +123,7 @@ fn original_input_callback(action: u8, during_publication: bool) {
                 if count.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 if during_publication {
                     assert!(ledger.workspace_bytes_for_test() >= "Éßᾈ".len());
                 }
@@ -139,14 +139,13 @@ fn original_input_callback(action: u8, during_publication: bool) {
                     _ => {}
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 let raw = crate::mainutils::character::case_entry(args.as_raw(), true);
                 factory.wrap(raw).unwrap().into_owned().unwrap()
             }));
             assert_eq!(called.get(), 1);
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             match action {
                 0 => {
                     let result = outcome.unwrap();

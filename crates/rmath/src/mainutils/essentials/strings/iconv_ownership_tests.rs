@@ -52,7 +52,7 @@ fn iconv_output_allocation_callback(action: u8) {
                 if count.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 crate::sexp::accessors::SETCAR(saved.as_raw(), crate::sexp::globals::R_NilValue());
                 crate::sexp::accessors::SETCDR(saved.as_raw(), crate::sexp::globals::R_NilValue());
                 crate::sexp::gengc::full_gc();
@@ -66,8 +66,7 @@ fn iconv_output_allocation_callback(action: u8) {
                     _ => {}
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = catch_unwind(AssertUnwindSafe(|| {
                 factory
                     .wrap(super::encodings::do_iconv(
@@ -81,7 +80,7 @@ fn iconv_output_allocation_callback(action: u8) {
                     .unwrap()
             }));
             assert_eq!(called.get(), 1);
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             match action {
                 0 => {
                     let result = result.unwrap();

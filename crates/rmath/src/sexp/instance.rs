@@ -413,7 +413,7 @@ pub struct RInstance {
     // Legacy raw pointers to these bytes must not pass through an exclusive ErrorState lend.
     error_buffer: ErrorBuffer,
     /// Per-instance main memory/GC control state.
-    pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
+    memory_state: RefCell<crate::mainutils::memory_main::MemoryRuntimeState>,
     /// Per-instance finalizer queue and dispatch state.
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
@@ -638,7 +638,7 @@ impl RInstance {
             gc_state: RefCell::default(),
             error_state: RefCell::default(),
             error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
-            memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
+            memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
             profiling: RefCell::default(),
@@ -980,6 +980,20 @@ impl Drop for LivenessOwner {
     fn drop(&mut self) {
         self.generation.release();
     }
+}
+
+/// Lend GC controls and heap limits for a local operation, not runtime reentry.
+///
+/// # Safety
+/// `instance` must point to a live allocation throughout the lend, without
+/// an overlapping mutable whole-instance reference.
+pub(crate) unsafe fn with_memory_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut crate::mainutils::memory_main::MemoryRuntimeState) -> R,
+) -> R {
+    // SAFETY: the caller retains the allocation; project only this field.
+    let cell = unsafe { &(*instance).memory_state };
+    f(&mut cell.borrow_mut())
 }
 
 /// Lend the finalizer queue for local bookkeeping or callback-free tracing.

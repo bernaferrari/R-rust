@@ -277,13 +277,12 @@ fn typed_native_symbol_rechecks_revocation_after_collecting_argument_constructio
                     return;
                 }
                 let pin = weak.pin().unwrap();
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, None);
                 if clear {
                     crate::mainutils::memory_main::R_ClearExternalPtr(raw);
                 }
             }));
-            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::mainutils::dotcode::do_External(
                     nil.as_raw(),

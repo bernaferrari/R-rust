@@ -2134,7 +2134,7 @@ mod typed_native_handler_tests {
                 unsafe {
                     let pin = callback_owner.pin().unwrap();
                     let instance = pin.as_ptr();
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     crate::sexp::accessors::SETCAR(original, R_NilValue());
                     SETCDR(original, R_NilValue());
                 }
@@ -2146,8 +2146,7 @@ mod typed_native_handler_tests {
                 );
             }));
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             let result = {
                 do_External(
@@ -2185,7 +2184,7 @@ mod typed_native_handler_tests {
             unsafe {
                 let pin = callback_owner.pin().unwrap();
                 let instance = pin.as_ptr();
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             }
             weak.upgrade()
                 .unwrap()
@@ -2197,8 +2196,7 @@ mod typed_native_handler_tests {
         unsafe {
             let instance =
                 crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap();
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         }
         let message = rejection(|| {
             do_External(
@@ -2566,8 +2564,7 @@ utils	ishashtab_Ext	1";
                 observed.set(observed.get() + 1)
             }));
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             let before =
                 session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
@@ -2595,7 +2592,7 @@ utils	ishashtab_Ext	1";
                 );
             }
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
         });
     }

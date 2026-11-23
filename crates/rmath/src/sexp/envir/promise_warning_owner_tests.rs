@@ -47,7 +47,7 @@ fn warning_callback(revoke: bool) {
         crate::sexp::session::with_instance_active(pointer, || {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 callback_observed.set(callback_observed.get() + 1);
-                (*pointer).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pointer, 0, None);
                 let node = callback_input.allocation().unwrap();
                 assert_eq!(
                     node.heap_identity()
@@ -62,8 +62,7 @@ fn warning_callback(revoke: bool) {
                 }
                 std::panic::panic_any(137_u64);
             }));
-            (*pointer).memory_state.gc_force_gap = 1;
-            (*pointer).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(pointer, 1, Some(1));
             force_promise_result(input.clone())
         })
     }));
@@ -73,7 +72,7 @@ fn warning_callback(revoke: bool) {
         "actual restart-warning allocation must collect"
     );
     // This pinned original memory remains available for passive cleanup checks.
-    assert_eq!(unsafe { (*pointer).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pointer) }, 0);
     let node = input.allocation().unwrap();
     assert_eq!(
         node.heap_identity()

@@ -151,8 +151,7 @@ mod methods_startup_tests {
             }));
             {
                 let _source = methods_metadata_source_body(function.as_raw()).unwrap();
-                (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-                (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
                 let mut call = crate::sexp::object::PairlistBuilder::new_in(owner);
                 call.push(function.clone(), None).unwrap();
                 let call = call.finish_as_type(SEXPTYPE::LANGSXP).unwrap();

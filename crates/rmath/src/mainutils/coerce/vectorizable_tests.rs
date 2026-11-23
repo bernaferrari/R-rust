@@ -189,7 +189,7 @@ fn exercise_provider(action: u8) {
         })
     }));
     assert_eq!(calls.get(), 1);
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     match action {
         0 => assert!(outcome.unwrap().unwrap().unwrap()),
         1 => assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 731),

@@ -781,8 +781,7 @@ fn owned_gnu_makeclosure_survives_collecting_srcref_and_pool_replacement() {
             observed.set(observed.get() + 1);
         }));
         session.with_active_in(|instance| {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = own_operand(bcEval(bytecode.as_raw(), R_BaseEnv()));
         assert!(callbacks.get() >= 2);
@@ -836,8 +835,7 @@ fn owned_gnu_colon_keeps_coercions_and_constants_across_collecting_callbacks() {
             observed.set(observed.get() + 1);
         }));
         session.with_active_in(|instance| {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = own_operand(bcEval(bytecode.as_raw(), R_BaseEnv()));
         assert!(callbacks.get() >= 2);

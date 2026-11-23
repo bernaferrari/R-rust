@@ -246,13 +246,11 @@ mod tests {
                 if !cache.borrow().is_empty() {
                     cache.borrow_mut().clear();
                     observed.set(observed.get() + 1);
-                    (*instance).memory_state.gc_force_gap = 0;
-                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
                     crate::sexp::gengc::full_gc_in(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = apply(
                 "owned_wrapper_gc",
                 "function(x) { gc(); x + 1 }",

@@ -324,8 +324,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
     // the entire test. No interpreter field or payload loan is retained.
     unsafe {
         (*instance).current_renderplot_backend = Some(previous_backend);
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     }
 
     let value = session.eval_script_with_output_capture_then_renderplot(
@@ -382,7 +381,7 @@ fn owned_renderplot_statements_survive_reentrant_gc_and_restore_backend_after_er
             (*instance).current_renderplot_backend.unwrap(),
             previous_backend,
         ));
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         (*instance).current_renderplot_backend = None;
     }
 }

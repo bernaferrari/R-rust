@@ -195,8 +195,7 @@ fn automatic_and_fresh_roots_survive_actual_collection_at_one_byte_then_release(
             })
             .unwrap();
         unsafe {
-            (*owner.as_ptr()).memory_state.gc_force_gap = 1;
-            (*owner.as_ptr()).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 1, Some(1));
         }
         let notifications = Arc::new(AtomicUsize::new(0));
         let calls = notifications.clone();

@@ -2288,7 +2288,7 @@ mod tests {
             assert_eq!(header.data.closure().body, expected_body);
             unsafe {
                 crate::sexp::owner::OwnerToken::with_current(|owner| {
-                    (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, None);
                 })
                 .unwrap()
             }
@@ -2307,8 +2307,7 @@ mod tests {
             );
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         let copy = factory.wrap(duplicate(source.as_raw())).unwrap();
         assert!(seen.get() > 0);

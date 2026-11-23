@@ -103,8 +103,7 @@ mod tests {
                     crate::sexp::instance::revoke_instance_availability(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 R_possible_dispatch(
                     R_NilValue(),
@@ -309,13 +308,11 @@ mod tests {
                 if !observed.replace(true) {
                     (*instance).objects_state.prim_generics.clear();
                     (*instance).objects_state.prim_mlist.clear();
-                    (*instance).memory_state.gc_force_gap = 0;
-                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
                     crate::sexp::gengc::full_gc_in(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = factory
                 .wrap(R_possible_dispatch(
                     R_NilValue(),
@@ -376,13 +373,11 @@ mod tests {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !observed.replace(true) {
                     (*instance).objects_state.s4_validity.clear();
-                    (*instance).memory_state.gc_force_gap = 0;
-                    (*instance).memory_state.gc_force_wait = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
                     crate::sexp::gengc::full_gc_in(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = factory
                 .wrap(crate::mainutils::essentials::do_validObject(
                     R_NilValue(),
@@ -1552,8 +1547,7 @@ mod tests {
             setAttrib(input.as_raw(), marker_symbol, marker.as_raw());
             SET_S4_OBJECT(input.as_raw());
             SET_NAMED(input.as_raw(), 2);
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let output = factory.wrap(asS4(input.as_raw(), FALSE, 1)).unwrap();
             crate::sexp::gengc::full_gc_in(instance);
             assert_ne!(output.as_raw(), input.as_raw());
@@ -1610,8 +1604,7 @@ mod tests {
                     crate::sexp::instance::revoke_instance_availability(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 asS4(input.as_raw(), FALSE, 1)
             }));

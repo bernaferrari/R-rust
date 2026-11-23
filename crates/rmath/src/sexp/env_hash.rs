@@ -855,7 +855,7 @@ mod tests {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !observed.replace(true) {
                     instance::with_required_current_instance(|instance| unsafe {
-                        (*instance).memory_state.gc_force_gap = 0;
+                        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     });
                     unsafe {
                         crate::sexp::envir::define_var_safe(
@@ -868,8 +868,7 @@ mod tests {
                 }
             }));
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             unsafe {
                 crate::sexp::envir::define_var_safe(outer_name.clone(), outer_value, env.clone())
@@ -949,13 +948,12 @@ mod tests {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             fired.set(true);
             instance::with_required_current_instance(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
             crate::sexp::envir::lock_environment_raw(callback_env.as_raw());
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             crate::sexp::envir::define_var_safe(key.clone(), value, env.clone())

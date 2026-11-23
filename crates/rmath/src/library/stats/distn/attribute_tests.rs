@@ -116,9 +116,11 @@ fn attribute_snapshot_survives_detachment_during_copy_collection() {
                 return;
             }
             unsafe {
-                (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                    .memory_state
-                    .gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                    crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                    0,
+                    None,
+                );
             }
             let mut header = heap.node_snapshot(&source_node).unwrap();
             header.attrib = nil;
@@ -128,8 +130,7 @@ fn attribute_snapshot_survives_detachment_during_copy_collection() {
         }))
     });
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
     session
         .with_active(|| unsafe { copy_math_attributes(owner, target.as_raw(), source.as_raw()) });
@@ -158,9 +159,11 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
                 return;
             }
             unsafe {
-                (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                    .memory_state
-                    .gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                    crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                    0,
+                    None,
+                );
             }
             if let Some(session) = closer.borrow_mut().as_mut() {
                 session.close();
@@ -168,8 +171,7 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
         }))
     });
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
     *facade.borrow_mut() = Some(session);
     let published = Cell::new(false);

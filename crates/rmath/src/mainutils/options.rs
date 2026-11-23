@@ -1609,8 +1609,7 @@ mod tests {
                 }
                 crate::sexp::gengc::full_gc_in(instance);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = options_vector(&factory).unwrap();
             assert!(cleared.get());
             let names = result.try_attrib().unwrap().try_car().unwrap();
@@ -1665,8 +1664,7 @@ mod tests {
                 crate::sexp::gengc::full_gc_in(instance);
                 observed.set(true);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let previous = factory
                 .wrap(SetOptionByName("owned_option", replacement.as_raw()))
                 .unwrap();

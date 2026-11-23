@@ -98,7 +98,7 @@ fn getter_constructor(action: u8) {
                         TextEncoding::Native
                     );
                     called.set(1);
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     R_SetErrmessage("mutated during message constructor");
                     crate::sexp::gengc::full_gc();
                     match action {
@@ -109,13 +109,12 @@ fn getter_constructor(action: u8) {
                     break;
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = catch_unwind(AssertUnwindSafe(|| {
                 native::error_buffer_entry(op.as_raw(), nil.as_raw(), false)
             }));
             assert_eq!(seen.get(), 1);
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             assert_eq!(heap.byte_ledger().workspace_bytes_for_test(), 0);
             match action {
                 0 => {

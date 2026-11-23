@@ -1585,15 +1585,14 @@ mod tests {
         session.with_active_in(|instance| unsafe {
             crate::sexp::instance::with_error_state_in(instance, |state| state.nwarnings = 1);
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 // Remove the sole source allocation while the warning is
                 // signaling. Any reread of its bytes after this point is invalid.
                 drop(detached.borrow_mut().take());
                 crate::sexp::gengc::full_gc_in(instance);
                 observed.set(true);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let mut end = ptr::null_mut();
             let value = R_strtod5(pointer, &mut end, b'.' as c_char, FALSE, NA_INTEGER);
             assert!(

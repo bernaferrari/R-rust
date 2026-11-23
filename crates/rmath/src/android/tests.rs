@@ -948,8 +948,7 @@ fn bessel_warning_revocation_case(func: RBesselFunc, x: f64, alpha: f64) {
             }
         }));
         unsafe {
-            (*p).memory_state.gc_force_gap = 1;
-            (*p).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(p, 1, Some(1));
         }
     });
     other.core.with_active_in(|p| {

@@ -165,7 +165,7 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
                     return;
                 }
                 called.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 assert!(callback_ledger.workspace_bytes_for_test() >= expected.len());
                 super::accessors::SETCAR(saved.as_raw(), super::globals::R_NilValue());
                 super::accessors::SETCDR(saved.as_raw(), super::globals::R_NilValue());
@@ -180,8 +180,7 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
                     _ => {}
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = catch_unwind(AssertUnwindSafe(|| match operation {
                 MessageOperation::Case => {
                     crate::mainutils::character::case_entry(args.as_raw(), true)
@@ -206,7 +205,7 @@ fn actual_message_publication(action: u8, operation: MessageOperation) {
                 ),
             }));
             assert_eq!(seen.get(), 1);
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             let cache_capacity = pin.with_error_state(|state| {
                 state
                     .last_rendered_message

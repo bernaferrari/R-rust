@@ -102,8 +102,7 @@ fn owned_options_publication_resolves_frame_replaced_by_collecting_callback() {
                 crate::sexp::gengc::full_gc_in(instance);
             }
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         refresh_options_binding(owner);
         assert!(
             fired.get(),
@@ -179,8 +178,7 @@ fn callback_panic(revoke: bool) {
                         std::panic::panic_any(317_u32);
                     }
                 }));
-                (*pin.as_ptr()).memory_state.gc_force_gap = 1;
-                (*pin.as_ptr()).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 1, Some(1));
                 refresh_options_binding(token);
             })
             .unwrap()
@@ -200,8 +198,7 @@ fn callback_panic(revoke: bool) {
         assert!(owner.pin().is_ok());
         unsafe {
             crate::sexp::session::with_instance_active(pin.as_ptr(), || {
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
-                (*pin.as_ptr()).memory_state.gc_force_wait = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, Some(0));
                 OwnerToken::with_current(|token| {
                     refresh_options_binding(token);
                     assert!(!GetOptionByName("selected").is_null());
@@ -210,7 +207,7 @@ fn callback_panic(revoke: bool) {
             });
         }
     }
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
 }
 
 #[test]

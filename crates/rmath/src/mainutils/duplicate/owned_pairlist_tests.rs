@@ -56,8 +56,7 @@ fn fixture_with_attributes(
 
 fn force_next_gc(session: &RSession) {
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
 }
 
@@ -519,7 +518,7 @@ fn owning_pairlist_callback_can_independently_duplicate_same_source() {
         }
         crate::sexp::owner::OwnerToken::with_current(|owner| {
             unsafe {
-                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, None);
             }
             let copy = owner
                 .sexp(unsafe { duplicate(raw) })
@@ -563,9 +562,11 @@ fn owning_pairlist_public_copy_owns_sole_source_through_flags_and_trace() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                .memory_state
-                .gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                0,
+                None,
+            );
         }
         drop(holder.borrow_mut().take());
         let mut header = heap.node_snapshot(&source_token).unwrap();
@@ -618,7 +619,7 @@ fn owning_pairlist_live_callback_panic_keeps_payload_and_releases_protection() {
     assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
     session.with_active_in(|owner| unsafe {
         crate::sexp::gengc::clear_gc_callbacks_in(owner);
-        (*owner).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
         assert!(!crate::sexp::instance::with_gc_state_in(owner, |state| {
             state.in_progress
         }));
@@ -726,7 +727,7 @@ fn owning_pairlist_detached_tail_collects_cells_but_keeps_saved_values() {
         }
         unsafe {
             crate::sexp::owner::OwnerToken::with_current(|owner| {
-                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, None);
             })
             .unwrap()
         }
@@ -749,8 +750,7 @@ fn owning_pairlist_detached_tail_collects_cells_but_keeps_saved_values() {
         );
     }));
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
     let protect_count = crate::sexp::protect::R_ProtectCount();
     let copy = factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap();
@@ -977,9 +977,11 @@ fn owning_pairlist_thirty_two_detached_cells_preserve_saved_graph() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                .memory_state
-                .gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                0,
+                None,
+            );
         }
         let mut header = heap.node_snapshot(&source_node).unwrap();
         header.data.list_mut().carval = replacement_link;

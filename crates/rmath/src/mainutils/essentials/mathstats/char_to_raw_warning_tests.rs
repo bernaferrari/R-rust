@@ -315,7 +315,7 @@ fn handler_case(action: u8) {
                 crate::sexp::instance::with_error_state_in(instance, |state| state.warning_call.as_raw()),
                 previous.as_raw()
             );
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             match action {
                 0 => {
                     let value = result.unwrap();

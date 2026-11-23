@@ -31,9 +31,11 @@ fn coercion_attributes_keep_detached_nested_values_rooted_across_gc() {
             return;
         }
         unsafe {
-            (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                .memory_state
-                .gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                0,
+                None,
+            );
         }
         let mut header = heap.node_snapshot(&source_node).unwrap();
         header.attrib = nil;
@@ -43,8 +45,7 @@ fn coercion_attributes_keep_detached_nested_values_rooted_across_gc() {
         assert!(value_node.is_live());
     }));
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
     let protection = crate::sexp::protect::R_ProtectCount();
     SHALLOW_DUPLICATE_ATTRIB(result.as_raw(), source.as_raw());

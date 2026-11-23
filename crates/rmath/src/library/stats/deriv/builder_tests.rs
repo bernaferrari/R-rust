@@ -239,7 +239,7 @@ fn detaching_names_case(action: u8) {
     }));
     assert!(calls.get() > 0);
     assert!(parent.try_car().unwrap().is_nil());
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
     if action == 0 {
         let actual = result.unwrap();
         let mut sessions = sessions.borrow_mut();

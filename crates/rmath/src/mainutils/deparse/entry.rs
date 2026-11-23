@@ -713,8 +713,7 @@ mod ownership_tests {
                 na_width_noquote: 22,
             };
             (*owner).eval_state.deparse.browse_lines = 9;
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         }
     }
 
@@ -860,7 +859,7 @@ mod ownership_tests {
             assert_original_state(owner);
             assert_eq!(output.string_value_elt(0), Some(Some("7L".into())));
             assert!(notifications.get() >= 2);
-            (*owner).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
             crate::sexp::gengc::clear_gc_callbacks_in(owner);
             crate::sexp::gengc::full_gc();
             assert!(!input_node.is_live());

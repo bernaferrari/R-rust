@@ -325,14 +325,12 @@ fn managed_initialization_does_not_restore_previous_owner_dropped_by_callback() 
             }
             // This regression targets the first collecting callback;
             // subsequent bootstrap allocations need ordinary GC policy.
-            (*instance).memory_state.gc_force_gap = 0;
-            (*instance).memory_state.gc_force_wait = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
             let old = previous.borrow_mut().take();
             drop(old);
             crate::sexp::gengc::full_gc();
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         instance
     });
     // Make the previous owner ambient without retaining an activation
@@ -370,8 +368,7 @@ fn managed_initialization_rejects_callback_revocation_before_publication() {
             }
             super::super::instance::revoke_instance_availability(instance);
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         instance
     });
     let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {

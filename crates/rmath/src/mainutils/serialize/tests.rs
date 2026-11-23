@@ -1356,8 +1356,7 @@ fn deferred_real_string_expansion_retains_inputs_during_collecting_callbacks() {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(observed.get() + 1)
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let result = factory
             .wrap(expand_deferred_string(state.as_raw()).unwrap())
             .unwrap();

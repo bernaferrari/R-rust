@@ -333,7 +333,7 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 .unwrap()
         })
     }));
-    assert_eq!(unsafe { (*pin.as_ptr()).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(pin.as_ptr()) }, 0);
     assert!(calls.get() > 0);
     match action {
         0 => {

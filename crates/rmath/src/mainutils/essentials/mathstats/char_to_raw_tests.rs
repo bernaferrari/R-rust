@@ -69,7 +69,7 @@ fn owned_char_to_raw_selected_character_survives_detachment_and_collecting_alloc
                     return;
                 }
                 callback_seen.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let f = weak.node_factory().unwrap();
                 crate::sexp::accessors::SETCAR(callback_args.as_raw(), f.nil().as_raw());
                 crate::sexp::accessors::SET_STRING_ELT(
@@ -83,8 +83,7 @@ fn owned_char_to_raw_selected_character_survives_detachment_and_collecting_alloc
                     "the operation must own its detached selected CHARSXP"
                 );
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         }
         let output = call(&f, &arguments);
         assert_eq!(seen.get(), 1, "genuine allocation collection must execute");
@@ -243,7 +242,7 @@ fn allocation_unwind(revoke: bool) {
                     return;
                 }
                 callback_calls.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let f = callback_owner.node_factory().unwrap();
                 crate::sexp::accessors::SETCAR(callback_args.as_raw(), f.nil().as_raw());
                 crate::sexp::accessors::SET_STRING_ELT(
@@ -259,8 +258,7 @@ fn allocation_unwind(revoke: bool) {
                     std::panic::panic_any(952_u32);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             call(&f, &arguments)
         })
     }));
@@ -286,7 +284,7 @@ fn allocation_unwind(revoke: bool) {
             });
         }
     }
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
 }
 #[test]
 fn owned_char_to_raw_live_collecting_callback_panic_is_preserved() {

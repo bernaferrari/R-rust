@@ -54,15 +54,13 @@ fn fetch_arguments(session: &RSession, arguments: &Sexp<'static>) -> Sexp<'stati
 
 fn first_collection(session: &RSession) {
     session.with_active_in(|instance| unsafe {
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     });
 }
 
 fn stop_forcing(session: &RSession) {
     session.with_active_in(|instance| unsafe {
-        (*instance).memory_state.gc_force_gap = 0;
-        (*instance).memory_state.gc_force_wait = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
     });
 }
 
@@ -206,8 +204,7 @@ fn owned_portable_dataset_fetch_keeps_all_selected_operands_after_argument_detac
         }
         OwnerToken::with_current(|owner| {
             unsafe {
-                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-                (*owner.as_ptr()).memory_state.gc_force_wait = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, Some(0));
             }
             let args = domain
                 .wrap(
@@ -290,8 +287,7 @@ fn owned_portable_dataset_decompressed_output_survives_its_allocation_callback()
         // its decoded raw output: collect while that producer is still active.
         OwnerToken::with_current(|owner| {
             unsafe {
-                (*owner.as_ptr()).memory_state.gc_force_gap = 0;
-                (*owner.as_ptr()).memory_state.gc_force_wait = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, Some(0));
             }
             crate::sexp::gengc::full_gc();
         })

@@ -107,15 +107,14 @@ fn callback_outcome(revoke: bool) {
         crate::sexp::session::with_instance_active(instance, || {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 callback_observed.set(callback_observed.get() + 1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 if revoke {
                     drop(callback_facade.upgrade().unwrap().borrow_mut().take());
                 } else {
                     std::panic::panic_any(137_u64);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             force_promise_result(input)
         })
     }));
@@ -124,7 +123,7 @@ fn callback_outcome(revoke: bool) {
         1,
         "actual evaluator allocation GC callback must execute"
     );
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     if revoke {
         assert!(facade.borrow().is_none());
         assert!(pin.require_live().is_err());

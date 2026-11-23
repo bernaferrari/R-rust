@@ -311,8 +311,7 @@ fn compact_sequence_automatic_roots_precede_post_lend_compatibility_guards() {
                 notifications.set(notifications.get() + 1);
             }));
             session.with_active_in(|owner| unsafe {
-                (*owner).memory_state.gc_force_gap = 1;
-                (*owner).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
             });
             let (projection, guard) = session.with_active(|| unsafe {
                 if real {
@@ -323,7 +322,7 @@ fn compact_sequence_automatic_roots_precede_post_lend_compatibility_guards() {
             });
             active.set(false);
             session.with_active_in(|owner| unsafe {
-                (*owner).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
             });
             assert!(observed.get() > 0);
             assert_eq!(super::super::protect::R_ProtectCount(), before);

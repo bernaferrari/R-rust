@@ -218,8 +218,7 @@ fn owned_scalar_arithmetic_preserves_na_power_cases_during_result_gc() {
             let before = crate::sexp::protect::R_ProtectCount();
             let collections_before = collections.get();
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             });
             let result = factory
                 .wrap(unsafe {
@@ -232,7 +231,7 @@ fn owned_scalar_arithmetic_preserves_na_power_cases_during_result_gc() {
                 })
                 .unwrap();
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
             assert!(collections.get() > collections_before);
             drop(arguments);
@@ -357,8 +356,7 @@ fn owned_integer_vector_division_and_power_use_real_results_through_gc() {
         let before = crate::sexp::protect::R_ProtectCount();
         let collections_before = collections.get();
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = factory
             .wrap(unsafe {
@@ -371,7 +369,7 @@ fn owned_integer_vector_division_and_power_use_real_results_through_gc() {
             })
             .unwrap();
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         assert!(collections.get() > collections_before);
         assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
@@ -448,8 +446,7 @@ fn owned_logical_coercion_preserves_lazy_and_materialized_providers_during_gc() 
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before = crate::sexp::protect::R_ProtectCount();
         let result = coerce_logical_to_int(&factory, source.clone()).unwrap();

@@ -620,8 +620,7 @@ mod weighted_revocation_tests {
         let revoked = Rc::new(Cell::new(false));
         let observed = revoked.clone();
         unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
-            (*instance).memory_state.gc_force_wait = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if observed.replace(true) {
                     return;

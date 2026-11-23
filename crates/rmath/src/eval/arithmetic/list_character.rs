@@ -297,15 +297,14 @@ mod tests {
             let nil = factory.nil().into_owned().unwrap();
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if seen.replace(seen.get() + 1) == 0 {
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     let mut holder = SexpMut::try_from_checked(retained.clone()).unwrap();
                     holder.try_set_pairlist_car(&nil).unwrap();
                     holder.try_set_pairlist_cdr(&nil).unwrap();
                     crate::sexp::gengc::full_gc_in(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = compare("==", left, right).unwrap();
             let result = session
                 .owner_token()
@@ -362,12 +361,11 @@ mod tests {
             crate::sexp::session::with_instance_active(instance, || {
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     if !observed.replace(true) {
-                        (*instance).memory_state.gc_force_gap = 0;
+                        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                         drop(callback_facade.upgrade().unwrap().borrow_mut().take());
                     }
                 }));
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
                 compare("==", left, right)
             })
         };

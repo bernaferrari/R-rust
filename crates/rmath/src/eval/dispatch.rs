@@ -1459,8 +1459,7 @@ mod owned_argument_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         notifications
     }
@@ -1568,7 +1567,7 @@ mod owned_argument_tests {
 
         session.with_active_in(|instance| unsafe {
             (*instance).arena.set_budget(ArenaBudget::unlimited());
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         let recovered = summary_method_arguments(&factory, arguments);
         assert_eq!(PairlistIter::new(recovered).count(), 2);
@@ -1812,7 +1811,7 @@ mod owned_argument_tests {
         let notifications = force_allocations_with_reentrant_gc(&session);
         let promised = unsafe { promiseArgs(&factory, args, environment.clone()) };
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         assert!(notifications.get() >= 8);
         assert_eq!(crate::sexp::accessors::NAMED(first_code), original_named);
@@ -1938,7 +1937,7 @@ mod owned_argument_tests {
         }
         let retry = unsafe { promiseArgs(&factory, args.clone(), environment.clone()) };
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         drop(call);
         drop(args);
@@ -1998,13 +1997,12 @@ mod owned_argument_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before_roots = crate::sexp::protect::R_ProtectCount();
         let evaluated = evalListKeepMissing(call.try_cdr().unwrap(), environment);
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         drop(call);
         drop(dots_source);
@@ -2088,13 +2086,12 @@ mod owned_argument_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before = crate::sexp::protect::R_ProtectCount();
         let evaluated = evalList(args, environment, Some(call.clone()), -1);
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         drop(call);
         crate::sexp::gengc::full_gc();

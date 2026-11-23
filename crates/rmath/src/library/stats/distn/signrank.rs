@@ -306,7 +306,7 @@ mod tests {
                 }
                 OwnerToken::with_current(|owner| {
                     unsafe {
-                        (*owner.as_ptr()).memory_state.gc_force_gap = 0;
+                        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner.as_ptr(), 0, None);
                     }
                     assert!(cached(owner, 10).is_none());
                     let nested = table(owner, 5);
@@ -317,8 +317,7 @@ mod tests {
             }))
         });
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         let result = session.with_active(|| table(owner, 10));
         assert!(called.get());
@@ -340,9 +339,11 @@ mod tests {
                     return;
                 }
                 unsafe {
-                    (*OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-                        .memory_state
-                        .gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                        OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+                        0,
+                        None,
+                    );
                 }
                 if let Some(session) = closer.borrow_mut().as_mut() {
                     session.close();
@@ -350,8 +351,7 @@ mod tests {
             }))
         });
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         *facade.borrow_mut() = Some(session);
         let published = std::cell::Cell::new(false);

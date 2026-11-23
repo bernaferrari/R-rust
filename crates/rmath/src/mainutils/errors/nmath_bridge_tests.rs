@@ -25,8 +25,7 @@ fn nmath_bridge_actual_storage_is_admitted_through_unwind() {
                 std::panic::panic_any(713_u32);
             }
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let message = "nmath bridge accounting";
         let error = catch_unwind(AssertUnwindSafe(|| nmath_warning_hook(message))).unwrap_err();
         assert_eq!(error.downcast_ref::<u32>(), Some(&713));
@@ -106,8 +105,7 @@ fn nmath_bridge_budget_denial_matches_allocation_and_same_cap_retry() {
         let callbacks = Rc::new(Cell::new(0));
         let seen = callbacks.clone();
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| seen.set(seen.get() + 1)));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let denied = catch_unwind(AssertUnwindSafe(|| {
             owner
                 .with_arena(|_| nmath_warning_hook("denied bridge storage"))
@@ -133,8 +131,7 @@ fn nmath_bridge_budget_denial_matches_allocation_and_same_cap_retry() {
             "R allocation failed: memory or node budget exceeded"
         );
         drop(held);
-        (*instance).memory_state.gc_force_gap = 0;
-        (*instance).memory_state.gc_force_wait = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, Some(0));
         nmath_warning_hook("denied bridge storage");
         assert_eq!(crate::sexp::instance::with_error_state_in(instance, |state| state.collect_warnings), 2);
         assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
@@ -183,8 +180,7 @@ fn nmath_bridge_revocation_refunds_original_not_replacement() {
                     after.replace(Some((next, bytes)));
                 }
             }));
-            (*pointer).memory_state.gc_force_gap = 1;
-            (*pointer).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(pointer, 1, Some(1));
             let error = catch_unwind(AssertUnwindSafe(|| nmath_warning_hook("revoking bridge")))
                 .unwrap_err();
             assert_eq!(

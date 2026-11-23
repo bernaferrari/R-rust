@@ -58,8 +58,7 @@ mod tests_a {
                     .replace_from_raw_in(instance, nil);
                 crate::sexp::gengc::full_gc_in(instance);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = do_recall(nil, nil, nil, environment.as_raw());
             let result = owner.sexp(result).unwrap();
             assert!(

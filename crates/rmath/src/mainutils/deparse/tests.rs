@@ -304,8 +304,7 @@ fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_valu
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let mut data = LocalParseData {
             strvec: output.clone().as_raw(),

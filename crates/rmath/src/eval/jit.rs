@@ -1114,12 +1114,11 @@ mod tests {
                     "selected expression child must be independently owned"
                 );
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let answer = factory
                 .wrap(eval_exec_call(arguments.as_raw(), global.as_raw()))
                 .unwrap();
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             assert!(observed.get());
             assert_eq!(answer.integer_elt(0), Some(3));
             owner.full_gc().unwrap();
@@ -1157,8 +1156,7 @@ mod tests {
                 assert!(token_observed.is_live());
                 assert!(call_observed.is_live());
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let continuation = factory
                 .wrap(make_exec_continuation(
                     pointer,
@@ -1166,7 +1164,7 @@ mod tests {
                     R_NilValue(),
                 ))
                 .unwrap();
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             assert!(observed.get());
             owner.full_gc().unwrap();
             assert_eq!(continuation.try_vector_elt(0).unwrap().as_raw(), token);
@@ -1270,8 +1268,7 @@ mod tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before = crate::sexp::protect::R_ProtectCount();
         let promised =
@@ -1320,7 +1317,7 @@ mod tests {
             .wrap(unsafe { handle_exec_continuation(continuation.as_raw()) })
             .unwrap();
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         drop(continuation);
         crate::sexp::gengc::full_gc();

@@ -1219,7 +1219,7 @@ mod owned_source_assignment_tests {
                 if observed.replace(true) {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 (*instance).eval_state.current_expr = RuntimeValue::empty();
                 SETCAR(lhs_arguments.as_raw(), R_NilValue());
                 SETCAR(extra_arguments.as_raw(), R_NilValue());
@@ -1292,8 +1292,7 @@ mod owned_source_assignment_tests {
                     "original source input must survive field replacement"
                 );
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let _guard = SourceAssignCall::enter(call);
                 drop(current);
@@ -1302,7 +1301,7 @@ mod owned_source_assignment_tests {
                     .unwrap();
                 crate::sexp::context::r_error("unwind source assignment");
             }));
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             assert!(result.is_err());
             assert!(observed.get());
             assert_eq!(

@@ -1245,7 +1245,7 @@ mod owned_task_callback_tests {
         session.with_active_in(|instance| unsafe {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if seen.replace(seen.get() + 1) == 0 {
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     assert_eq!(Rf_removeTaskCallback(selector.as_raw()), TRUE);
                     Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
                     OwnerToken::from_raw(instance).full_gc().unwrap();
@@ -1253,8 +1253,7 @@ mod owned_task_callback_tests {
                     assert!(data_node.is_live());
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             assert!(!(*instance).main_state.running_toplevel_handlers);
         });
@@ -1294,12 +1293,11 @@ mod owned_task_callback_tests {
         session.with_active_in(|instance| unsafe {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !injected.replace(true) {
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     panic!("collecting callback unwind");
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             assert!(!(*instance).main_state.running_toplevel_handlers);
             assert_eq!((*instance).eval_state.visible, FALSE);
@@ -1336,8 +1334,7 @@ mod owned_task_callback_tests {
                     assert!((*instance).main_state.running_toplevel_handlers);
                     drop(callback_facade.upgrade().unwrap().borrow_mut().take());
                 }));
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
                 Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             });
             assert!(!(*instance).main_state.running_toplevel_handlers);

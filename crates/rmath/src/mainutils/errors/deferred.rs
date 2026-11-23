@@ -375,8 +375,7 @@ mod owned_warning_snapshot_tests {
                     "selected message must own an independent root"
                 );
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let block = take_warnings_block().unwrap();
             assert!(
                 collected.get(),
@@ -427,8 +426,7 @@ mod owned_warning_snapshot_tests {
                 crate::sexp::gengc::full_gc_in(instance);
                 observed.set(observed.get() + 1);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             super::super::render::vwarningcall_dflt(
                 globals::R_NilValue(),
                 c"collecting warning".as_ptr(),
@@ -482,8 +480,7 @@ mod owned_warning_snapshot_tests {
                 );
                 observed.set(true);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             super::super::render::vwarningcall_dflt(
                 raw,
                 c"entry warning".as_ptr(),
@@ -571,8 +568,7 @@ mod owned_warning_snapshot_tests {
                 }
             }));
             (*instance).eval_state.visible = crate::sexp::ffi::TRUE;
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             super::super::render::vwarningcall_dflt(
                 globals::R_NilValue(),
                 c"option warning".as_ptr(),
@@ -629,8 +625,7 @@ mod owned_warning_snapshot_tests {
                 observed.set(observed.get() + 1);
                 crate::sexp::gengc::full_gc_in(instance);
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             super::super::render::vwarningcall_dflt(
                 globals::R_NilValue(),
                 c"outer expression warning".as_ptr(),
@@ -657,8 +652,7 @@ mod owned_warning_snapshot_tests {
                     crate::sexp::instance::revoke_instance_availability(instance);
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let outcome =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| take_warnings_block()));
             assert!(revoked.get());

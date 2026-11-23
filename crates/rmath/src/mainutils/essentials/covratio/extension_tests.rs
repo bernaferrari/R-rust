@@ -372,7 +372,7 @@ fn collecting_weighted_case(action: u8) {
                 if counted.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let f = callback_weak.node_factory().unwrap();
                 let mut model = SexpMut::try_from_checked(callback_fit.clone()).unwrap();
                 for i in 0..model.len() {
@@ -389,8 +389,7 @@ fn collecting_weighted_case(action: u8) {
                     _ => drop(callback_facade.upgrade().unwrap().borrow_mut().take()),
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let raw = crate::mainutils::essentials::mathstats::do_covratio(
                 f.nil().as_raw(),
                 f.nil().as_raw(),
@@ -401,7 +400,7 @@ fn collecting_weighted_case(action: u8) {
         })
     }));
     assert_eq!(observed.get(), 1);
-    assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+    assert_eq!(unsafe { crate::mainutils::memory_main::gc_running_in(instance) }, 0);
     match action {
         0 => {
             let result = outcome.unwrap();

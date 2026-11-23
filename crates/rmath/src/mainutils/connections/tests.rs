@@ -842,7 +842,7 @@ fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() 
                 return;
             }
             crate::sexp::instance::with_required_current_instance(|instance| {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
             connection_table().borrow_mut()[3] = Some(Box::new(RConn::new(
                 "textConnection",
@@ -851,8 +851,7 @@ fn show_connections_preserves_snapshot_when_allocation_callback_replaces_slot() 
                 ConnKind::TextConnection,
             )));
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let result = do_showConnections(
             crate::sexp::globals::R_NilValue(),
             crate::sexp::globals::R_NilValue(),

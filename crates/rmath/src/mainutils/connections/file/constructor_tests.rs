@@ -87,12 +87,11 @@ fn constructor_roots_omitted_defaults_survive_every_allocation_gc() {
             observed.set(observed.get() + 1);
             crate::sexp::gengc::full_gc();
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     });
     let result = construct(&session, &args);
     session.with_active_in(|instance| unsafe {
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
     });
     assert!(collections.get() > 2);
     assert_eq!(result.typeof_(), SEXPTYPE::INTSXP);
@@ -116,12 +115,11 @@ fn constructor_roots_missing_defaults_survive_every_allocation_gc() {
     }
     let args = args.finish().unwrap();
     session.with_active_in(|instance| unsafe {
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
     });
     let result = construct(&session, &args);
     session.with_active_in(|instance| unsafe {
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
     });
     assert_eq!(result.typeof_(), SEXPTYPE::INTSXP);
     session.with_active(|| {

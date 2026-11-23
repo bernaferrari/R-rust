@@ -75,8 +75,7 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
             }
             let pin = original.pin().unwrap();
             unsafe {
-                (*pin.as_ptr()).memory_state.gc_force_gap = 0;
-                (*pin.as_ptr()).memory_state.gc_force_wait = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(pin.as_ptr(), 0, Some(0));
             }
             let factory = captured_pool.node_factory().unwrap();
             let mut mutation = SexpMut::try_from_checked(captured_pool.clone()).unwrap();
@@ -87,8 +86,7 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
     }
     let actual = own_operand(super::super::bc_eval::bcEval(

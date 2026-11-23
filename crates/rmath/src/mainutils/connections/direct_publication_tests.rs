@@ -73,7 +73,7 @@ fn text_writer_callback(action: u8) {
             if count.replace(1) != 0 {
                 return;
             }
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             if action == 7 {
                 connection_table().borrow_mut()[index as usize] = None;
                 let fresh = do_textConnection(
@@ -119,8 +119,7 @@ fn text_writer_callback(action: u8) {
                 );
             }
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if action == 3 {
                 do_writeLines(
@@ -165,7 +164,7 @@ fn text_writer_callback(action: u8) {
                 connection_write_bytes(index, b"outer\n");
             }
         }));
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         if action == 6 || action == 7 {
             let error = result.expect_err("the callback invalidated this operation");
             assert_eq!(
@@ -190,7 +189,7 @@ fn text_writer_callback(action: u8) {
             1,
             "the actual writer allocation must run the hook"
         );
-        assert_eq!((*instance).memory_state.in_gc, 0);
+        assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
         let value = factory
             .wrap(crate::sexp::envir::R_findVarInFrame(
                 env.as_raw(),
@@ -328,7 +327,7 @@ fn text_writer_owner_exit(action: u8) {
         if called.replace(1) != 0 {
             return;
         }
-        (*pointer).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(pointer, 0, None);
         if action == 0 {
             closed
                 .upgrade()
@@ -344,8 +343,7 @@ fn text_writer_owner_exit(action: u8) {
     }));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::sexp::session::with_instance_active(pointer, || {
-            (*pointer).memory_state.gc_force_gap = 1;
-            (*pointer).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(pointer, 1, Some(1));
             connection_write_bytes(index, b"original\n");
         });
     }));

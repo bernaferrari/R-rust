@@ -131,7 +131,7 @@ fn raw_to_char_constructor_keeps_selected_input_after_argument_detachment() {
                 if callback_seen.replace(1) != 0 {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 assert!(ledger.workspace_bytes_for_test() >= 3);
                 crate::sexp::accessors::SETCAR(saved.as_raw(), crate::sexp::globals::R_NilValue());
                 crate::sexp::gengc::full_gc();
@@ -140,8 +140,7 @@ fn raw_to_char_constructor_keeps_selected_input_after_argument_detachment() {
                     "rawToChar must own its selected input across constructor notification"
                 );
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let raw = super::do_rawToChar(
                 factory.nil().as_raw(),
                 factory.nil().as_raw(),
@@ -243,7 +242,7 @@ fn callback_case(action: u8, multiple: bool, publication: bool) {
                     }
                 }
                 seen.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 if multiple {
                     assert_eq!(callback_ledger.workspace_bytes_for_test(), 0);
                 } else {
@@ -264,8 +263,7 @@ fn callback_case(action: u8, multiple: bool, publication: bool) {
                     _ => {}
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 let raw = super::do_rawToChar(
                     f.nil().as_raw(),
@@ -280,7 +278,7 @@ fn callback_case(action: u8, multiple: bool, publication: bool) {
                 1,
                 "the requested real constructor callback must run"
             );
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             assert_eq!(ledger.workspace_bytes_for_test(), 0);
             match action {
                 0 => {

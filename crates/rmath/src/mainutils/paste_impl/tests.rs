@@ -162,7 +162,7 @@ fn collecting_allocation(action: u8) {
                     return;
                 }
                 count.set(1);
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 let f = original.node_factory().unwrap();
                 crate::sexp::accessors::SET_STRING_ELT(
                     separator.as_raw(),
@@ -185,11 +185,10 @@ fn collecting_allocation(action: u8) {
                     _ => {}
                 }
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
             let result = catch_unwind(AssertUnwindSafe(|| invoke_op(&f, &args, &op)));
             assert_eq!(called.get(), 1);
-            assert_eq!((*instance).memory_state.in_gc, 0);
+            assert_eq!(crate::mainutils::memory_main::gc_running_in(instance), 0);
             match action {
                 0 => {
                     let value = result.unwrap();
@@ -355,7 +354,7 @@ fn owned_paste_selected_collapse_survives_detachment_during_output_allocation() 
                 if selection.get() < 2 || called.replace(true) {
                     return;
                 }
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 crate::sexp::accessors::SET_STRING_ELT(
                     source.as_raw(),
                     0,
@@ -364,8 +363,7 @@ fn owned_paste_selected_collapse_survives_detachment_during_output_allocation() 
                 crate::sexp::gengc::full_gc();
                 assert!(witness.is_live());
             }));
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         }
         let output = invoke_op(&f, &args, &op);
         assert!(ran.get());

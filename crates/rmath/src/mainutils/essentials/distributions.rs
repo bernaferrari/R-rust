@@ -1445,8 +1445,7 @@ mod safety_tests {
             }));
         });
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         session.with_active(|| dpq_copy_attrib(owner, &target, &source));
         assert!(called.get());

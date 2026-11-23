@@ -30,7 +30,9 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 use crate::sexp::heap::NodeLink;
-use crate::sexp::instance::with_finalizer_state_in;
+use crate::sexp::instance::{
+    RInstance, with_finalizer_state_in, with_gc_state_in, with_memory_state_in,
+};
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
 #[cfg(test)]
@@ -141,13 +143,13 @@ fn default_max_v_size() -> u64 {
 }
 
 pub(crate) struct MemoryRuntimeState {
-    pub in_gc: c_int,
-    pub gc_reporting: c_int,
-    pub gc_count: c_int,
-    pub gc_force_gap: c_int,
-    pub gc_force_wait: c_int,
-    pub max_v_size: u64,
-    pub max_n_size: u64,
+    in_gc: c_int,
+    gc_reporting: c_int,
+    gc_count: c_int,
+    gc_force_gap: c_int,
+    gc_force_wait: c_int,
+    max_v_size: u64,
+    max_n_size: u64,
 }
 
 impl Default for MemoryRuntimeState {
@@ -169,7 +171,7 @@ where
     F: FnOnce(&mut MemoryRuntimeState) -> R,
 {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        f(&mut (*inst).memory_state)
+        with_memory_state_in(inst, f)
     })
 }
 
@@ -183,8 +185,31 @@ fn with_finalizer_state<R>(f: impl FnOnce(&mut FinalizerState) -> R) -> R {
 ///
 /// This is the equivalent of R's `R_gc_running()`.
 pub fn R_gc_running() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.in_gc })
-        .unwrap_or(0)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { gc_running_in(inst) }).unwrap_or(0)
+}
+
+/// # Safety
+/// `instance` must point to a live allocation for this read.
+pub(crate) unsafe fn gc_running_in(instance: *mut RInstance) -> c_int {
+    unsafe { with_memory_state_in(instance, |state| state.in_gc) }
+}
+
+/// # Safety
+/// `instance` must point to a live allocation for this update.
+#[cfg(test)]
+pub(crate) unsafe fn set_gc_torture_for_test_in(
+    instance: *mut RInstance,
+    gap: c_int,
+    wait: Option<c_int>,
+) {
+    unsafe {
+        with_memory_state_in(instance, |state| {
+            state.gc_force_gap = gap;
+            if let Some(wait) = wait {
+                state.gc_force_wait = wait;
+            }
+        });
+    }
 }
 
 /// Own the exact physical GC state until its collection scope ends.
@@ -202,14 +227,10 @@ impl GcOperationGuard {
         owner.require_live()?;
         let instance = owner.as_ptr();
         let previous_in_gc = unsafe {
-            (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
-            if full {
-                let previous = (*instance).memory_state.in_gc;
-                (*instance).memory_state.in_gc = 1;
-                Some(previous)
-            } else {
-                None
-            }
+            with_memory_state_in(instance, |state| {
+                state.gc_count = state.gc_count.wrapping_add(1);
+                full.then(|| std::mem::replace(&mut state.in_gc, 1))
+            })
         };
         Ok(Self {
             owner,
@@ -223,7 +244,7 @@ impl Drop for GcOperationGuard {
         if let Some(previous) = self.previous_in_gc {
             // The pin retains this exact allocation even after callback teardown.
             // No ambient lookup or callback is permitted during state cleanup.
-            unsafe { (*self.owner.as_ptr()).memory_state.in_gc = previous };
+            unsafe { with_memory_state_in(self.owner.as_ptr(), |state| state.in_gc = previous) };
         }
     }
 }
@@ -277,6 +298,40 @@ pub fn R_gc_torture(gap: c_int, wait: c_int, _inhibit: c_int) {
             state.gc_force_wait = wait;
         }
     });
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TortureAction {
+    Skip,
+    Defer,
+    Collect,
+}
+
+/// Consume a batch of deferred allocation ticks without holding either state
+/// borrow across a collection. An in-progress cycle defers without counting.
+///
+/// # Safety
+/// `instance` must point to a live allocation throughout the update.
+pub(crate) unsafe fn torture_action_in(instance: *mut RInstance, ticks: u32) -> TortureAction {
+    unsafe {
+        with_memory_state_in(instance, |state| {
+            if state.gc_force_gap <= 0 {
+                return TortureAction::Skip;
+            }
+            // These are separate cells; reading in_progress cannot reenter R.
+            if state.in_gc != 0 || with_gc_state_in(instance, |gc| gc.in_progress) {
+                return TortureAction::Defer;
+            }
+            let ticks = c_int::try_from(ticks).unwrap_or(c_int::MAX);
+            if state.gc_force_wait > ticks {
+                state.gc_force_wait -= ticks;
+                TortureAction::Skip
+            } else {
+                state.gc_force_wait = state.gc_force_gap;
+                TortureAction::Collect
+            }
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1162,15 +1217,19 @@ pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
 /// Get the maximum vector heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) fn R_GetMaxVSize_memory() -> u64 {
-    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.max_v_size })
-        .unwrap_or(u64::MAX)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        with_memory_state_in(inst, |state| state.max_v_size)
+    })
+    .unwrap_or(u64::MAX)
 }
 
 /// Get the maximum node heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) fn R_GetMaxNSize_memory() -> u64 {
-    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.max_n_size })
-        .unwrap_or(u64::MAX)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        with_memory_state_in(inst, |state| state.max_n_size)
+    })
+    .unwrap_or(u64::MAX)
 }
 
 /// Set the maximum vector heap size.
@@ -2418,18 +2477,51 @@ mod owned_gc_operation_tests {
     }
 
     #[test]
+    fn torture_ticks_stay_session_local_and_defer_without_consuming_wait() {
+        let session = RSession::new_for_gc_tests();
+        let other = RSession::new_for_gc_tests();
+        let original = pin(&session);
+        let second = pin(&other);
+        let instance = original.as_ptr();
+        unsafe {
+            set_gc_torture_for_test_in(instance, 3, Some(5));
+            assert_eq!(
+                torture_action_in(second.as_ptr(), u32::MAX),
+                TortureAction::Skip
+            );
+            assert_eq!(torture_action_in(instance, 2), TortureAction::Skip);
+        }
+        let guard = GcOperationGuard::enter(pin(&session), true).unwrap();
+        assert_eq!(
+            unsafe { torture_action_in(instance, u32::MAX) },
+            TortureAction::Defer
+        );
+        drop(guard);
+        unsafe {
+            with_gc_state_in(instance, |state| state.in_progress = true);
+            assert_eq!(torture_action_in(instance, u32::MAX), TortureAction::Defer);
+            with_gc_state_in(instance, |state| state.in_progress = false);
+            assert_eq!(torture_action_in(instance, 2), TortureAction::Skip);
+            assert_eq!(torture_action_in(instance, 1), TortureAction::Collect);
+            assert_eq!(torture_action_in(instance, u32::MAX), TortureAction::Collect);
+            assert_eq!(torture_action_in(instance, 2), TortureAction::Skip);
+            assert_eq!(torture_action_in(instance, 1), TortureAction::Collect);
+        }
+    }
+
+    #[test]
     fn owned_gc_operation_live_panic_restores_original_state_and_payload() {
         let session = RSession::new_for_gc_tests();
         let original = pin(&session);
         let instance = original.as_ptr();
         register_gc_callback(Box::new(move |_| {
-            assert_eq!(unsafe { (*instance).memory_state.in_gc }, 1);
+            assert_eq!(unsafe { gc_running_in(instance) }, 1);
             std::panic::panic_any(73_u32);
         }));
         let outcome = catch_unwind(AssertUnwindSafe(|| R_gc()));
         assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 73);
-        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
-        assert_eq!(unsafe { (*instance).memory_state.gc_count }, 1);
+        assert_eq!(unsafe { gc_running_in(instance) }, 0);
+        assert_eq!(unsafe { with_memory_state_in(instance, |state| state.gc_count) }, 1);
     }
 
     #[test]
@@ -2441,14 +2533,14 @@ mod owned_gc_operation_tests {
         let callback_calls = calls.clone();
         register_gc_callback(Box::new(move |_| unsafe {
             callback_calls.set(callback_calls.get() + 1);
-            assert_eq!((*instance).memory_state.in_gc, 1);
+            assert_eq!(gc_running_in(instance), 1);
             R_gc();
-            assert_eq!((*instance).memory_state.in_gc, 1);
+            assert_eq!(gc_running_in(instance), 1);
         }));
         R_gc();
         assert_eq!(calls.get(), 1);
-        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
-        assert_eq!(unsafe { (*instance).memory_state.gc_count }, 2);
+        assert_eq!(unsafe { gc_running_in(instance) }, 0);
+        assert_eq!(unsafe { with_memory_state_in(instance, |state| state.gc_count) }, 2);
     }
 
     fn drops_facade(full: bool) {
@@ -2457,7 +2549,7 @@ mod owned_gc_operation_tests {
         let instance = original.as_ptr();
         let other = RSession::new_for_gc_tests();
         let other_pin = pin(&other);
-        unsafe { (*other_pin.as_ptr()).memory_state.in_gc = 9 };
+        unsafe { with_memory_state_in(other_pin.as_ptr(), |state| state.in_gc = 9) };
         let callback_facade = Rc::downgrade(&facade);
         let calls = Rc::new(Cell::new(0));
         let callback_calls = calls.clone();
@@ -2473,8 +2565,8 @@ mod owned_gc_operation_tests {
         assert_eq!(calls.get(), 1);
         assert!(facade.borrow().is_none());
         assert!(original.require_live().is_err());
-        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
-        assert_eq!(unsafe { (*other_pin.as_ptr()).memory_state.in_gc }, 9);
+        assert_eq!(unsafe { gc_running_in(instance) }, 0);
+        assert_eq!(unsafe { gc_running_in(other_pin.as_ptr()) }, 9);
         assert!(outcome.unwrap_err().is::<crate::sexp::context::RError>());
     }
 
@@ -2519,23 +2611,22 @@ mod owned_gc_operation_tests {
             crate::sexp::session::with_instance_active(instance, || {
                 register_gc_callback(Box::new(move |_| {
                     callback_calls.set(callback_calls.get() + 1);
-                    assert_eq!((*instance).memory_state.in_gc, 1);
+                    assert_eq!(gc_running_in(instance), 1);
                     assert!(binding_node.is_live());
                     assert_eq!((*instance).legacy_protect.len(), 0);
-                    (*instance).memory_state.gc_force_gap = 0;
+                    set_gc_torture_for_test_in(instance, 0, None);
                     if revoke {
                         drop(callback_facade.upgrade().unwrap().borrow_mut().take());
                     } else {
                         std::panic::panic_any(127_u32);
                     }
                 }));
-                (*instance).memory_state.gc_force_gap = 1;
-                (*instance).memory_state.gc_force_wait = 1;
+                set_gc_torture_for_test_in(instance, 1, Some(1));
                 factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
             })
         }));
         assert_eq!(calls.get(), 1);
-        assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
+        assert_eq!(unsafe { gc_running_in(instance) }, 0);
         assert_eq!(unsafe { (*instance).legacy_protect.len() }, 0);
         if revoke {
             assert!(facade.borrow().is_none());

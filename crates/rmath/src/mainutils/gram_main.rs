@@ -424,8 +424,7 @@ mod tests {
             }
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         drop(text);
         let mut status = 0;
@@ -445,7 +444,7 @@ mod tests {
         assert!(notifications.get() >= 2);
         // Stop the input-specific observer before proving eventual release.
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
             crate::sexp::gengc::clear_gc_callbacks_in(owner);
         });
         crate::sexp::gengc::full_gc();
@@ -474,8 +473,7 @@ mod tests {
             closing.upgrade().unwrap().borrow_mut().close();
         }));
         session.borrow().with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         drop(text);
         let mut status = 0;
@@ -514,8 +512,7 @@ mod tests {
             assert!(observed.is_live());
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         drop(environment);
         let result = factory
@@ -524,7 +521,7 @@ mod tests {
         assert_eq!(result.real_elt(0), Some(7.0));
         assert!(notifications.get() > 0);
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
             crate::sexp::gengc::clear_gc_callbacks_in(owner);
         });
         crate::sexp::gengc::full_gc();

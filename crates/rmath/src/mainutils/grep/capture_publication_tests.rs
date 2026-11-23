@@ -62,21 +62,20 @@ fn owned_gregexpr_capture_rows_stay_charged_through_real_gc_publication() {
                 if matches {
                     called.set(1);
                     recorded.set(callback_ledger.workspace_bytes_for_test());
-                    (*instance).memory_state.gc_force_gap = 0;
+                    crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                     crate::sexp::gengc::full_gc();
                     break;
                 }
             }
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let raw = crate::mainutils::essentials::do_gregexpr(
             nil.as_raw(),
             nil.as_raw(),
             args.as_raw(),
             nil.as_raw(),
         );
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         let result = owner.sexp(raw).unwrap().into_owned().unwrap();
         assert_eq!(seen.get(), 1, "real capture-name publication reached");
         assert!(
@@ -135,8 +134,7 @@ fn owned_regexec_named_captures_survive_every_collecting_constructor() {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(observed.get() + 1)
         }));
-        (*instance).memory_state.gc_force_gap = 1;
-        (*instance).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         let raw = crate::mainutils::essentials::do_regexec(
             nil.as_raw(),
             nil.as_raw(),
@@ -144,7 +142,7 @@ fn owned_regexec_named_captures_survive_every_collecting_constructor() {
             nil.as_raw(),
         );
         let result = owner.sexp(raw).unwrap().into_owned().unwrap();
-        (*instance).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         assert!(called.get() > 0);
         owner.full_gc().unwrap();
         for (i, expected) in [&[1, 1, 2][..], &[1, 1, 0][..], &[-1][..]]

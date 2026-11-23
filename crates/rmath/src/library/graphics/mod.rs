@@ -974,7 +974,7 @@ mod portable_title_tests {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(true);
             crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
             crate::sexp::gengc::full_gc();
         }));
@@ -989,8 +989,7 @@ mod portable_title_tests {
                     device: [0., 0., 320., 240.],
                     log: [false; 2],
                 });
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             super::draw_portable_positional(
@@ -1050,7 +1049,7 @@ mod portable_title_tests {
         crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
             observed.set(true);
             crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
             });
             crate::sexp::gengc::full_gc();
         }));
@@ -1065,8 +1064,7 @@ mod portable_title_tests {
                     device: [0., 0., 320., 240.],
                     log: [false; 2],
                 });
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             super::draw_portable_title(input.as_raw())

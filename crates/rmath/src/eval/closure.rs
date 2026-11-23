@@ -1156,8 +1156,11 @@ mod owned_matcher_tests {
             let node_observed = retained_node.clone();
             session.with_active_in(|instance| unsafe {
                 crate::eval::jit::set_R_jit_enabled(0);
-                (*instance).memory_state.gc_force_gap = if force_allocations { 1 } else { 0 };
-                (*instance).memory_state.gc_force_wait = 1;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(
+                    instance,
+                    if force_allocations { 1 } else { 0 },
+                    Some(1),
+                );
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     if observed.get() {
                         return;
@@ -1201,7 +1204,7 @@ mod owned_matcher_tests {
             assert_eq!(value.integer_elt(0).unwrap(), 314);
             assert!(retained_node.borrow().as_ref().unwrap().is_live());
             session.with_active_in(|instance| unsafe {
-                (*instance).memory_state.gc_force_gap = 0;
+                crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
                 crate::sexp::gengc::full_gc_in(instance);
                 assert!((*instance).context_stack.is_empty());
             });
@@ -1250,13 +1253,12 @@ mod owned_matcher_tests {
             crate::sexp::gengc::full_gc();
         }));
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 1;
-            (*instance).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 1, Some(1));
         });
         let before = crate::sexp::protect::R_ProtectCount();
         let matched = match_closure_args(&factory, formals.clone(), arguments.clone()).unwrap();
         session.with_active_in(|instance| unsafe {
-            (*instance).memory_state.gc_force_gap = 0;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
         });
         assert!(detached.get());
         assert!(formals.try_cdr().unwrap().is_nil());

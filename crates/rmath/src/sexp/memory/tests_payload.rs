@@ -252,8 +252,7 @@ pub(super) fn allocation_callback_rejects_invalid_shape_without_changing_rooted_
             observed.set(observed.get() + 1);
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         let value = factory
             .allocate(|arena| Some(arena.alloc_node(super::SEXPTYPE::LISTSXP)))
@@ -463,8 +462,7 @@ pub(super) fn character_allocation_callbacks_observe_only_sealed_initialized_byt
             callbacks.set(callbacks.get() + 1);
         }));
         session.with_active_in(|owner| unsafe {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         let text = factory.character("µ").unwrap();
         let header = text.header();
@@ -1388,8 +1386,7 @@ pub(super) fn fresh_lend_allocations_survive_nested_collection_notifications() {
     let calls = notifications.clone();
     session.with_active(|| unsafe {
         super::super::instance::with_required_current_instance(|owner| {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
         });
         super::super::gengc::register_gc_callback(Box::new(move |_| {
             if calls.fetch_add(1, Ordering::SeqCst) != 0 {
@@ -1439,8 +1436,7 @@ pub(super) fn fresh_lend_scope_is_removed_after_notification_panic() {
     let panic_once = Arc::new(AtomicBool::new(true));
     session.with_active(|| unsafe {
         let identity = super::super::instance::with_required_current_instance(|owner| {
-            (*owner).memory_state.gc_force_gap = 1;
-            (*owner).memory_state.gc_force_wait = 1;
+            crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
             (*owner).arena.heap_identity()
         });
         super::super::gengc::register_gc_callback(Box::new(move |_| {

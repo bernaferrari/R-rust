@@ -9,16 +9,17 @@ use std::{
 
 fn force_next_gc(session: &RSession) {
     session.with_active_in(|owner| unsafe {
-        (*owner).memory_state.gc_force_gap = 1;
-        (*owner).memory_state.gc_force_wait = 1;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 1, Some(1));
     });
 }
 
 fn disable_forced_gc() {
     unsafe {
-        (*crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap())
-            .memory_state
-            .gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(
+            crate::sexp::owner::OwnerToken::with_current(|owner| owner.as_ptr()).unwrap(),
+            0,
+            None,
+        );
     }
 }
 
@@ -709,7 +710,7 @@ fn owning_graph_live_callback_panic_preserves_exact_payload_and_cleanup() {
     assert_eq!(crate::sexp::protect::R_ProtectCount(), protection);
     session.with_active_in(|owner| unsafe {
         crate::sexp::gengc::clear_gc_callbacks_in(owner);
-        (*owner).memory_state.gc_force_gap = 0;
+        crate::mainutils::memory_main::set_gc_torture_for_test_in(owner, 0, None);
         assert!(!crate::sexp::instance::with_gc_state_in(owner, |state| {
             state.in_progress
         }));
