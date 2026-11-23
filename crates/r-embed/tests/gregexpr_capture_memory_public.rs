@@ -29,8 +29,11 @@ fn gregexpr_capture_attribution_stays_charged_through_r_result_construction() {
     assert_eq!(session.eval("nchar(subject)").unwrap(), "[1] 10000\n");
     assert_eq!(session.eval("nchar(p)").unwrap(), "[1] 100\n");
     assert_eq!(session.eval("1L+1L").unwrap(), "[1] 2\n");
-    assert_eq!(
-        session.memory_usage().unwrap().workspace_bytes,
+    // Allocation pressure can evict the optional bytecode-string cache.
+    let after = session.memory_usage().unwrap().workspace_bytes;
+    assert!(
+        after <= before.workspace_bytes,
+        "capture workspace was not released: {} bytes before, {after} after",
         before.workspace_bytes
     );
 }

@@ -770,31 +770,27 @@ pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             lengths.clear();
             capture_rows = None;
         }
-        let (elt, match_lengths) = if starts.is_empty() {
-            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            if elt.is_null() || match_lengths.is_null() {
-                return R_NilValue();
-            }
-            let _elt_guard = protect(elt);
-            let _ml_guard = protect(match_lengths);
-            set_integer_checked(elt, 0, if missing { NA_INTEGER } else { -1 });
-            set_integer_checked(match_lengths, 0, if missing { NA_INTEGER } else { -1 });
-            (elt, match_lengths)
+        let count = starts.len().max(1) as R_xlen_t;
+        let elt = Rf_allocVector3(SEXPTYPE::INTSXP, count);
+        if elt.is_null() {
+            return R_NilValue();
+        }
+        let _elt_guard = protect(elt);
+        let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, count);
+        if match_lengths.is_null() {
+            return R_NilValue();
+        }
+        let _ml_guard = protect(match_lengths);
+        if starts.is_empty() {
+            let unmatched = if missing { NA_INTEGER } else { -1 };
+            set_integer_checked(elt, 0, unmatched);
+            set_integer_checked(match_lengths, 0, unmatched);
         } else {
-            let elt = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
-            let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
-            if elt.is_null() || match_lengths.is_null() {
-                return R_NilValue();
-            }
-            let _elt_guard = protect(elt);
-            let _ml_guard = protect(match_lengths);
             for (idx, start) in starts.iter().enumerate() {
-                set_integer_checked(elt, (idx) as R_xlen_t, *start as c_int);
-                set_integer_checked(match_lengths, (idx) as R_xlen_t, lengths[idx] as c_int);
+                set_integer_checked(elt, idx as R_xlen_t, *start as c_int);
+                set_integer_checked(match_lengths, idx as R_xlen_t, lengths[idx] as c_int);
             }
-            (elt, match_lengths)
-        };
+        }
 
         crate::sexp::attrib_core::setAttrib(elt, install_str("match.length"), match_lengths);
         if !missing {
@@ -949,11 +945,14 @@ fn set_gregexpr_capture_attrs(
     }
 
     let capture_start = alloc_int_matrix(n_match as R_xlen_t, capture_count);
-    let capture_len = alloc_int_matrix(n_match as R_xlen_t, capture_count);
-    if capture_start.is_null() || capture_len.is_null() {
+    if capture_start.is_null() {
         return;
     }
     let _csp = protect(capture_start);
+    let capture_len = alloc_int_matrix(n_match as R_xlen_t, capture_count);
+    if capture_len.is_null() {
+        return;
+    }
     let _clp = protect(capture_len);
     for k in 0..n_match {
         for g in 0..capture_count {
