@@ -772,9 +772,10 @@ fn test_root_release_never_shifts_legacy_entries() {
 fn test_nested_sessions_with_interleaved_roots() {
     // Two live sessions on one thread, each with roots claimed while it
     // was ambient. Re-activation goes through each session's STABLE
-    // instance pointer (never a fresh `&mut`), so guard owner
-    // exposures stay valid while the ambient instance switches — the
-    // documented owner discipline (see `with_guard_owner`).
+    // instance pointer (never a fresh `&mut`), so the guard owner's weak
+    // store handles keep naming the original session's stores while the
+    // ambient instance switches — the documented owner discipline (see
+    // `GuardOwner`).
     let left = RSession::new_for_gc_tests();
     let right = RSession::new_for_gc_tests();
     let left_root = left.with_active(|| RootedSexp::root(left.global_env().unwrap()));
@@ -1039,8 +1040,7 @@ fn exhausted_safe_preserve_leaves_roots_and_cleanup_intact() {
     let pointer = session.owner_token().unwrap().as_ptr();
     let before = unsafe { (*pointer).preserve_stack.entries_snapshot() };
     unsafe {
-        (*pointer)
-            .preserve_stack
+        (&(*pointer).preserve_stack)
             .roots
             .entries
             .borrow_mut()

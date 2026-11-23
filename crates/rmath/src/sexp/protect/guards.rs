@@ -74,16 +74,12 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
     }
 
     let owner = GuardOwner::current();
-    with_required_current_instance(|inst| {
-        // SAFETY: guard creation requires an active instance; `inst` is it.
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        let slot = { unsafe { protect_raw_with_slot_in(inst, s, "protect") } };
-        ProtectGuard {
-            owner: Some(owner.clone()),
-            release: GuardRelease::RootSlot(slot),
-            _confined: PhantomData,
-        }
-    })
+    let slot = claim_raw_root(&owner, s, "protect");
+    ProtectGuard {
+        owner: Some(owner),
+        release: GuardRelease::RootSlot(slot),
+        _confined: PhantomData,
+    }
 }
 
 /// Create a guard that will pop `n` LEGACY-stack entries on drop.
@@ -127,8 +123,10 @@ pub(crate) unsafe fn push_protect_in(inst: *mut RInstance, s: SEXP) {
 }
 
 fn push_protect(s: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { push_protect_in(inst, s) });
+    let owner = GuardOwner::current();
+    if !s.is_null() {
+        owner.push_legacy(s);
+    }
 }
 
 /// Push a raw SEXP onto the LEGACY protection stack and return it.
@@ -155,16 +153,17 @@ pub(crate) unsafe fn unprotect_count_in(inst: *mut RInstance, n: usize) {
 
 /// Pop the top `n` entries from the protection stack.
 pub(crate) fn unprotect_count(n: usize) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { unprotect_count_in(inst, n) });
+    GuardOwner::current().pop_legacy_count(n);
 }
 
 /// Unprotect the topmost legacy entry holding `s`.
 ///
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
 pub(crate) fn unprotect_ptr(s: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { unprotect_ptr_in(inst, s) });
+    let owner = GuardOwner::current();
+    if !s.is_null() {
+        owner.remove_topmost_legacy(s);
+    }
 }
 
 /// # Safety
@@ -187,8 +186,7 @@ pub(crate) unsafe fn unprotect_ptr_in(inst: *mut RInstance, s: SEXP) {
 /// invisible to translated count-based code. Used by the context system to
 /// track protect depth.
 pub(crate) fn R_ProtectCount() -> usize {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { R_ProtectCount_in(inst) })
+    GuardOwner::current().legacy_len()
 }
 
 /// # Safety
@@ -297,105 +295,30 @@ impl ProtectionSlot {
     /// created for: the entry was released and its index handed out again
     /// (or is gone entirely). Inactive slots are never stale.
     pub(crate) fn is_stale(self) -> bool {
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        with_required_current_instance(|inst| unsafe { protect_slot_is_stale_in(inst, self) })
+        let owner = GuardOwner::current();
+        self.is_active() && owner.root_generation_at(self) != Some(self.generation)
     }
 }
 
-fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { protect_raw_with_slot_in(inst, s, api) })
-}
-
-/// Claim a generational root-table slot for `s` on `inst`.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn protect_raw_with_slot_in(inst: *mut RInstance, s: SEXP, api: &str) -> ProtectionSlot {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    (unsafe { try_protect_raw_with_slot_in(inst, s, false) })
+/// Claim a generational root-table slot for `s` on `owner`'s table.
+fn claim_raw_root(owner: &GuardOwner, s: SEXP, api: &str) -> ProtectionSlot {
+    if s.is_null() {
+        return ProtectionSlot::inactive();
+    }
+    owner
+        .try_protect_value(s, false)
         .unwrap_or_else(|error| panic!("{api}: {error}"))
 }
 
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn try_protect_raw_with_slot_in(
-    inst: *mut RInstance,
-    s: SEXP,
-    managed: bool,
-) -> Result<ProtectionSlot, ProtectError> {
-    if s.is_null() {
-        return Ok(ProtectionSlot::inactive());
-    }
-    // SAFETY: all callers retain the live native owner for this local access.
-    unsafe { GuardOwner::new(inst) }.try_protect_value(s, managed)
-}
-
 pub(crate) fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { reprotect_slot_in(inst, slot, s) });
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn reprotect_slot_in(inst: *mut RInstance, slot: ProtectionSlot, s: SEXP) {
-    // P2: strictly-local RefCell write; no ambient write intervenes.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    if !slot.is_active() {
-        return;
+    let owner = GuardOwner::current();
+    if slot.is_active() {
+        owner.reprotect_value(slot, s);
     }
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe { GuardOwner::new(inst) }.reprotect_value(slot, s);
 }
 
 pub(crate) fn release_protect_slot(slot: ProtectionSlot) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { release_protect_slot_in(inst, slot) });
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn release_protect_slot_in(inst: *mut RInstance, slot: ProtectionSlot) {
-    // P2: strictly-local RefCell access; no ambient write intervenes.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe { (*inst).root_table.release(slot) };
-}
-
-/// The generation currently recorded for `slot`'s table index, or `None`
-/// when the entry is gone.
-///
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn protect_slot_generation_in(inst: *mut RInstance, slot: ProtectionSlot) -> Option<u64> {
-    // P2: strictly-local RefCell read; no ambient write intervenes.
-    // SAFETY: `inst` is a live instance pointer from the caller.
-    unsafe { (*inst).root_table.generation_at(slot) }
-}
-
-/// Whether `slot` no longer refers to the table entry it was created for.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn protect_slot_is_stale_in(inst: *mut RInstance, slot: ProtectionSlot) -> bool {
-    if !slot.is_active() {
-        return false;
-    }
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    (unsafe { protect_slot_generation_in(inst, slot) }) != Some(slot.generation)
+    GuardOwner::current().release_root(slot);
 }
 
 /// RAII guard for a replaceable root-table slot.
@@ -413,7 +336,7 @@ impl<'a> IndexedProtectGuard<'a> {
 
     /// Whether the live table entry at the guard's slot index still carries
     /// `expected` as its generation, checked against the guard's OWNING
-    /// instance (see [`with_guard_owner`]). Inactive slots (null-SEXP
+    /// instance (see [`GuardOwner`]). Inactive slots (null-SEXP
     /// protections) trivially match — there is no entry to go stale.
     pub(crate) fn slot_generation_is(&self, expected: u64) -> bool {
         match self.owner.as_ref() {
@@ -610,13 +533,13 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<
     }
 
     let owner = GuardOwner::current();
-    with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(owner.clone()),
-        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-        slot: unsafe { protect_raw_with_slot_in(inst, s, api) },
+    let slot = claim_raw_root(&owner, s, api);
+    IndexedProtectGuard {
+        owner: Some(owner),
+        slot,
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
-    })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +561,7 @@ pub(crate) struct ProtectIndex {
 /// would leak the slot until scope exit. No translated module in this port
 /// calls this shim; it exists for C-shape compatibility only.
 pub(crate) fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
-    protect_raw_with_slot(s, "R_ProtectWithIndex").into_legacy_ptr()
+    claim_raw_root(&GuardOwner::current(), s, "R_ProtectWithIndex").into_legacy_ptr()
 }
 
 /// Free a ProtectIndex returned by R_ProtectWithIndex.
@@ -650,30 +573,17 @@ pub(crate) fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 ///
 /// This is the equivalent of R's `R_Reprotect()`.
 pub(crate) fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
-    with_required_current_instance(|inst| {
-        let mut slot = ProtectionSlot::from_legacy_ptr(index);
-        // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-        if let Some(generation) = unsafe { protect_slot_generation_in(inst, slot) } {
-            slot.generation = generation;
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            unsafe { reprotect_slot_in(inst, slot, s) };
-        }
-    });
+    let owner = GuardOwner::current();
+    let mut slot = ProtectionSlot::from_legacy_ptr(index);
+    if let Some(generation) = owner.root_generation_at(slot) {
+        slot.generation = generation;
+        owner.reprotect_value(slot, s);
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Preserve stack (R_PreserveObject / R_ReleaseObject)
 // ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn push_preserve_in(inst: *mut RInstance, s: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    (unsafe { try_push_preserve_in(inst, s) }).unwrap_or_else(|error| panic!("preserve: {error}"));
-}
 
 /// # Safety
 ///
@@ -691,8 +601,12 @@ pub(crate) unsafe fn try_push_preserve_in(
 }
 
 fn push_preserve(s: SEXP) {
-    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { push_preserve_in(inst, s) });
+    let owner = GuardOwner::current();
+    if !s.is_null() {
+        owner
+            .try_preserve(s)
+            .unwrap_or_else(|error| panic!("preserve: {error}"));
+    }
 }
 
 /// # Safety
@@ -708,8 +622,10 @@ pub(crate) unsafe fn release_preserved_in(inst: *mut RInstance, s: SEXP) {
 }
 
 fn release_preserved(s: SEXP) {
-    // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-    with_required_current_instance(|inst| unsafe { release_preserved_in(inst, s) });
+    let owner = GuardOwner::current();
+    if !s.is_null() {
+        owner.remove_preserved(s);
+    }
 }
 
 /// RAII guard for the preserve stack.

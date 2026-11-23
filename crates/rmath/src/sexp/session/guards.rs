@@ -279,30 +279,18 @@ impl Drop for RenderPlotBackendGuard {
 }
 
 pub(crate) struct ProtectScope {
-    /// Original shared-cell projection, never reconstituted from an address.
-    instance: std::ptr::NonNull<RInstance>,
-    /// Weak availability observation; scopes do not retain closed owners.
-    liveness: crate::sexp::instance::InstanceLiveness,
+    owner: crate::sexp::protect::GuardOwner,
     legacy_depth: usize,
     root_depth: u64,
 }
 
 impl ProtectScope {
-    /// # Safety
-    ///
-    /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-    /// no conflicting outstanding borrow of the fields touched here.
-    pub(crate) unsafe fn new(instance: *mut RInstance) -> Self {
-        let liveness = unsafe { crate::sexp::instance::instance_liveness(instance) };
-        let (legacy_depth, root_depth) = unsafe {
-            (
-                (*instance).legacy_protect.len(),
-                (*instance).root_table.checkpoint(),
-            )
-        };
+    /// Capture the ambient active owner's protection checkpoints.
+    pub(crate) fn current() -> Self {
+        let owner = crate::sexp::protect::GuardOwner::current();
+        let (legacy_depth, root_depth) = owner.protection_checkpoint();
         Self {
-            instance: std::ptr::NonNull::new(instance).expect("live protection owner"),
-            liveness,
+            owner,
             legacy_depth,
             root_depth,
         }
@@ -311,15 +299,7 @@ impl ProtectScope {
 
 impl Drop for ProtectScope {
     fn drop(&mut self) {
-        if !self.liveness.is_live() {
-            return;
-        }
-        let instance = self.instance.as_ptr();
-        // The observation is weak, and no callback occurs between this check
-        // and these short storage operations.
-        unsafe {
-            (*instance).legacy_protect.truncate(self.legacy_depth);
-            (*instance).root_table.restore(self.root_depth);
-        }
+        self.owner
+            .restore_protection(self.legacy_depth, self.root_depth);
     }
 }

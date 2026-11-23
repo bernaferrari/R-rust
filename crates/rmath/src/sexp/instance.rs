@@ -389,14 +389,14 @@ pub struct RInstance {
     pub(crate) initialized: bool,
     /// Legacy C-port protection stack (strict LIFO, count-based release).
     /// See `protect::LegacyProtectionStack` for the discipline.
-    pub(crate) legacy_protect: super::protect::LegacyProtectionStack,
+    pub(crate) legacy_protect: Rc<super::protect::LegacyProtectionStack>,
     /// Stable, generational root table for Rust-side handle guards
     /// (`RootedSexp` / `ProtectGuard` / `IndexedProtectGuard`): tombstone +
     /// free-list slots released in any order; never truncated by count-based
     /// legacy ops. See `protect::RootTable`.
-    pub(crate) root_table: super::protect::RootTable,
+    pub(crate) root_table: Rc<super::protect::RootTable>,
     /// The permanent preserve stack for this instance.
-    pub(crate) preserve_stack: super::protect::PreservedRoots,
+    pub(crate) preserve_stack: Rc<super::protect::PreservedRoots>,
     /// Cached closures own their exact GC roots until eviction or teardown.
     pub(crate) base_wrappers: RefCell<HashMap<&'static str, super::object::Sexp<'static>>>,
     /// Per-instance execution context stack.
@@ -606,10 +606,12 @@ impl RInstance {
         let base_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, empty_env, nil);
         let global_env = Self::push_env(&mut persistent_nodes, &mut env_nodes, nil, base_env, nil);
 
-        let root_table = super::protect::RootTable::new(heap_identity.byte_ledger());
+        let root_table =
+            Rc::new(super::protect::RootTable::new(heap_identity.byte_ledger()));
         let legacy_protect =
-            super::protect::LegacyProtectionStack::new(heap_identity.byte_ledger());
-        let preserve_stack = super::protect::PreservedRoots::new(heap_identity.byte_ledger());
+            Rc::new(super::protect::LegacyProtectionStack::new(heap_identity.byte_ledger()));
+        let preserve_stack =
+            Rc::new(super::protect::PreservedRoots::new(heap_identity.byte_ledger()));
         RInstance {
             liveness: Some(LivenessOwner::new()),
             runtime_owner: None,

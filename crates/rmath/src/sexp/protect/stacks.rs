@@ -1,5 +1,7 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 #![deny(unsafe_op_in_unsafe_fn)]
+use std::rc::{Rc, Weak};
+
 use super::snapshot::RootSnapshot;
 use super::*;
 
@@ -542,8 +544,8 @@ impl RootTable {
 
 /// Thread-confinement marker for protection guards.
 ///
-/// Guards act on their OWNING instance (stored as an address, see
-/// [`with_guard_owner`]) and release into per-instance storages guarded only
+/// Guards act on their OWNING instance through the weak store handles in
+/// [`GuardOwner`] and release into per-instance storages guarded only
 /// by `RefCell` — none of that is thread-safe, and the ambient
 /// current-instance machinery is thread-local. `PhantomData<*mut ()>` opts
 /// guard types out of `Send` and `Sync` at compile time, so a guard can
@@ -551,16 +553,16 @@ impl RootTable {
 /// the wrong session.
 pub(crate) type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 
-/// Run `f` with a guard's owning instance.
+/// Weak handles to the original owner's protection stores. Guards keep neither
+/// the runtime nor the stores alive, and skip cleanup after revocation.
 ///
 /// # Owner discipline (the type-level contract)
 ///
 /// Guards must act on their owning instance even when the ambient current
-/// instance has switched to another session. The owner retains the original
-/// session allocation's pointer provenance in a `NonNull<RInstance>` handle;
-/// it is never reconstructed from an integer address. Cleanup uses raw place
-/// accesses to the owner's `RefCell` fields without creating a new exclusive
-/// borrow of the complete instance.
+/// instance has switched to another session. Each store is captured as a
+/// [`Weak`] into the `Rc` the owning [`RInstance`] holds, so a guard upgrades
+/// to a shared borrow of that exact store — never a stale address or a
+/// reused session's store.
 ///
 /// Creation requires a live owner. A weak allocation-lifetime witness skips
 /// cleanup when that exact owner is destroyed, without keeping its storage alive
@@ -571,19 +573,25 @@ pub(crate) type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 /// unwound is a no-op instead of evicting the live owner.
 #[derive(Clone)]
 pub(crate) struct GuardOwner {
-    pointer: std::ptr::NonNull<RInstance>,
     liveness: crate::sexp::instance::InstanceLiveness,
-    runtime_owner: Option<crate::sexp::owner::WeakOwner>,
     heap: crate::sexp::heap::HeapIdentity,
+    legacy_protect: Weak<LegacyProtectionStack>,
+    root_table: Weak<RootTable>,
+    preserve_stack: Weak<PreservedRoots>,
 }
 impl GuardOwner {
-    /// Capture a weak lifetime witness while this native owner is live.
+    /// # Safety
+    /// `pointer` is the live owner projection for the duration of this capture.
     pub(crate) unsafe fn new(pointer: *mut RInstance) -> Self {
-        Self {
-            pointer: std::ptr::NonNull::new(pointer).expect("live guard owner"),
-            liveness: unsafe { crate::sexp::instance::instance_liveness(pointer) },
-            runtime_owner: unsafe { (*pointer).runtime_owner.clone() },
-            heap: unsafe { (*pointer).heap_identity.clone() },
+        // SAFETY: capture only shared field projections from the live owner.
+        unsafe {
+            Self {
+                liveness: crate::sexp::instance::instance_liveness(pointer),
+                heap: (*pointer).heap_identity.clone(),
+                legacy_protect: Rc::downgrade(&(*pointer).legacy_protect),
+                root_table: Rc::downgrade(&(*pointer).root_table),
+                preserve_stack: Rc::downgrade(&(*pointer).preserve_stack),
+            }
         }
     }
 
@@ -599,16 +607,11 @@ impl GuardOwner {
     /// Capture a guard owner from an already-managed weak owner.
     ///
     /// No raw-pointer authority is required: the weak owner proves liveness
-    /// and supplies its own heap identity snapshot.
+    /// and supplies its own pinned projection for the capture.
     pub(crate) fn from_weak(owner: &crate::sexp::owner::WeakOwner) -> Option<Self> {
         let pin = owner.pin().ok()?;
-        let heap = owner.live_heap_identity()?;
-        Some(Self {
-            pointer: std::ptr::NonNull::new(pin.as_ptr())?,
-            liveness: pin.liveness(),
-            runtime_owner: Some(owner.clone()),
-            heap,
-        })
+        // SAFETY: the pin keeps the original allocation alive through capture.
+        Some(unsafe { Self::new(pin.as_ptr()) })
     }
 
     pub(crate) fn is_live(&self) -> bool {
@@ -621,55 +624,48 @@ impl GuardOwner {
         self.liveness.clone()
     }
 
-    /// Run one strictly-local projection while this owner is live and pinned.
+    /// Upgrade a weak store handle when the owning instance is still live.
     ///
-    /// Returns `None` without calling `f` when the owner can no longer be
-    /// reached — callers that already checked liveness between callbacks get
-    /// the same early-exit discipline as [`with_guard_owner`] without a
-    /// panic on teardown races.
-    fn with_pinned<R>(&self, f: impl FnOnce(*mut RInstance) -> R) -> Option<R> {
-        if !self.liveness.is_live() {
+    /// Returns `None` after revocation so cleanup skips the destroyed owner
+    /// instead of touching recycled memory.
+    fn live_store<T>(&self, store: &Weak<T>) -> Option<Rc<T>> {
+        if !self.is_live() {
             return None;
         }
-        if let Some(owner) = &self.runtime_owner {
-            let pin = owner.pin().ok()?;
-            Some(f(pin.as_ptr()))
-        } else {
-            Some(f(self.pointer.as_ptr()))
-        }
+        store.upgrade()
     }
 
-    /// Lend this owner's legacy protection stack for a strictly-local update.
-    ///
-    /// P1: `f` must not run any ambient-capable call while the lend is live.
+    /// Run `f` on this owner's legacy protection stack while it is live.
     fn with_legacy_protect<R>(
         &self,
-        f: impl FnOnce(&mut super::super::protect::LegacyProtectionStack) -> R,
+        f: impl FnOnce(&LegacyProtectionStack) -> R,
     ) -> Option<R> {
-        // SAFETY: strictly-local single-field lend on a live pinned owner.
-        self.with_pinned(|inst| unsafe { f(&mut (*inst).legacy_protect) })
+        self.live_store(&self.legacy_protect).map(|stack| f(&stack))
     }
 
-    /// Lend this owner's generational root table for a strictly-local update.
-    ///
-    /// Same strictly-local lend contract as [`Self::with_legacy_protect`].
-    fn with_root_table<R>(
-        &self,
-        f: impl FnOnce(&mut super::super::protect::RootTable) -> R,
-    ) -> Option<R> {
-        // SAFETY: strictly-local single-field lend on a live pinned owner.
-        self.with_pinned(|inst| unsafe { f(&mut (*inst).root_table) })
+    /// Run `f` on this owner's generational root table while it is live.
+    fn with_root_table<R>(&self, f: impl FnOnce(&RootTable) -> R) -> Option<R> {
+        self.live_store(&self.root_table).map(|table| f(&table))
     }
 
-    /// Lend this owner's preserved-roots stack for a strictly-local update.
-    ///
-    /// Same strictly-local lend contract as [`Self::with_legacy_protect`].
-    fn with_preserve_stack<R>(
-        &self,
-        f: impl FnOnce(&mut super::super::protect::PreservedRoots) -> R,
-    ) -> Option<R> {
-        // SAFETY: strictly-local single-field lend on a live pinned owner.
-        self.with_pinned(|inst| unsafe { f(&mut (*inst).preserve_stack) })
+    /// Run `f` on this owner's preserved-roots stack while it is live.
+    fn with_preserve_stack<R>(&self, f: impl FnOnce(&PreservedRoots) -> R) -> Option<R> {
+        self.live_store(&self.preserve_stack).map(|stack| f(&stack))
+    }
+
+    /// Depth checkpoints of both protection stores for scope-style restore.
+    pub(crate) fn protection_checkpoint(&self) -> (usize, u64) {
+        (
+            self.legacy_len(),
+            self.with_root_table(RootTable::checkpoint)
+                .expect("live protection owner"),
+        )
+    }
+
+    /// Truncate both protection stores back to a [`Self::protection_checkpoint`].
+    pub(crate) fn restore_protection(&self, legacy_depth: usize, root_depth: u64) {
+        self.with_legacy_protect(|stack| stack.truncate(legacy_depth));
+        self.with_root_table(|table| table.restore(root_depth));
     }
 
     /// Authenticate `s` against this owner's captured heap identity.
@@ -839,17 +835,6 @@ impl GuardOwner {
     }
 }
 
-pub(crate) fn with_guard_owner<R>(owner: &GuardOwner, f: impl FnOnce(*mut RInstance) -> R) -> R {
-    assert!(owner.is_live(), "root owner has been destroyed");
-    let pin = owner
-        .runtime_owner
-        .as_ref()
-        .map(|owner| owner.pin().expect("live guard owner"));
-    f(pin
-        .as_ref()
-        .map_or(owner.pointer.as_ptr(), |pin| pin.as_ptr()))
-}
-
 /// How a [`ProtectGuard`] releases its protection at drop.
 pub(crate) enum GuardRelease {
     /// Pop `n` entries off the owner's [`LegacyProtectionStack`].
@@ -866,8 +851,8 @@ pub(crate) enum GuardRelease {
 
 /// RAII guard for a protection entry; automatically unprotects when dropped.
 ///
-/// The guard carries its owner as a raw address (see [`with_guard_owner`])
-/// plus the release token for the entry it owns:
+/// The guard carries weak handles into its owner's root stores (see
+/// [`GuardOwner`]) plus the release token for the entry it owns:
 /// * [`protect_sexp`] / [`protect`] / [`try_protect_sexp`] push one
 ///   generational [`RootTable`] slot — the guard may be dropped in ANY
 ///   order relative to other root guards;
@@ -884,8 +869,8 @@ pub(crate) enum GuardRelease {
 /// // guard automatically unprotects when it goes out of scope
 /// ```
 pub(crate) struct ProtectGuard<'a> {
-    /// Provenance-preserving owning instance handle — see
-    /// [`with_guard_owner`].
+    /// Weak handles into the owning instance's protection stores — see
+    /// [`GuardOwner`].
     pub(crate) owner: Option<GuardOwner>,
     pub(crate) release: GuardRelease,
     pub(crate) _confined: Confined<'a>,

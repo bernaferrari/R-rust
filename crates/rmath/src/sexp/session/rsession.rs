@@ -1337,8 +1337,7 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            let _scope = unsafe { ProtectScope::new(self.instance_ptr()) };
+            let _scope = ProtectScope::current();
             f()
         })
     }

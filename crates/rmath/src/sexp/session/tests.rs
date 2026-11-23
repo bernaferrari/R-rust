@@ -214,8 +214,7 @@ fn weak_protection_scope_skips_destroyed_owner_even_on_unwind() {
         let mut owner = Some(session);
         let mut fresh = None;
         let result = catch_unwind(AssertUnwindSafe(|| {
-            // SAFETY: `inst` is the live current-instance pointer handed to this accessor closure (or owned by this caller) for the duration of the call.
-            let _scope = unsafe { ProtectScope::new(pointer) };
+            let _scope = ProtectScope::current();
             unsafe {
                 super::super::protect::protect_raw_pointer(R_NilValue());
             }
@@ -238,6 +237,38 @@ fn weak_protection_scope_skips_destroyed_owner_even_on_unwind() {
         }
         drop(fresh);
     }
+}
+
+#[test]
+fn protection_scope_restores_original_stores_while_another_session_is_active() {
+    use crate::sexp::protect::{
+        R_ProtectWithIndex, protect, protect_raw_pointer, with_protected_objects,
+    };
+
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
+    let scope = left.with_active(|| {
+        let scope = ProtectScope::current();
+        protect_raw_pointer(R_NilValue());
+        R_ProtectWithIndex(R_NilValue());
+        scope
+    });
+    right.with_active(|| {
+        protect_raw_pointer(R_NilValue());
+        let _root = protect(R_NilValue());
+        drop(scope);
+        with_protected_objects(|legacy, roots| {
+            assert_eq!(legacy, &[R_NilValue()]);
+            assert_eq!(roots, &[R_NilValue()]);
+        });
+        crate::sexp::protect::unprotect_count(1);
+    });
+    left.with_active(|| {
+        with_protected_objects(|legacy, roots| {
+            assert!(legacy.is_empty());
+            assert!(roots.iter().all(|root| root.is_null()));
+        });
+    });
 }
 
 #[test]
