@@ -199,29 +199,6 @@ pub(crate) unsafe fn R_ProtectCount_in(inst: *mut RInstance) -> usize {
     unsafe { (*inst).legacy_protect.len() }
 }
 
-/// Run `f` while temporarily protecting extra roots on the LEGACY stack.
-///
-/// The `extra` callback pushes entries (via [`push_protect_in`] or
-/// [`protect_raw_pointer`]); on exit exactly the number of entries it added
-/// is popped, LIFO.
-pub(crate) fn with_temporary_extra_protects<F, R>(extra: impl FnOnce(*mut RInstance), f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    with_required_current_instance(|inst| {
-        // The ambient instance supplies the checked owner; `extra` still
-        // receives the raw pointer its translated callers require. f() runs
-        // with no instance borrow held.
-        let owner = GuardOwner::current();
-        let start = owner.legacy_len();
-        extra(inst);
-        let added = owner.legacy_len().saturating_sub(start);
-        let result = f();
-        owner.pop_legacy_count(added);
-        result
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Root-table entry points (Rust guards)
 // ---------------------------------------------------------------------------
@@ -262,24 +239,6 @@ impl ProtectionSlot {
         }
     }
 
-    fn from_legacy_ptr(index: *mut ProtectIndex) -> Self {
-        let raw = index as usize;
-        if raw == 0 {
-            Self::inactive()
-        } else {
-            // Legacy encoded indices carry no generation; they are transient
-            // values passed straight back to `R_Reprotect`, never held long
-            // enough to be checked for staleness.
-            Self::from_stack_index(raw - 1, 0)
-        }
-    }
-
-    fn into_legacy_ptr(self) -> *mut ProtectIndex {
-        self.index
-            .map(|index| (index + 1) as *mut ProtectIndex)
-            .unwrap_or(std::ptr::null_mut())
-    }
-
     /// The generation assigned to the table entry when this slot was
     /// created. A released-then-reused slot always reports a different
     /// generation than handles captured before the release.
@@ -294,6 +253,7 @@ impl ProtectionSlot {
     /// Whether this handle no longer refers to the root-table entry it was
     /// created for: the entry was released and its index handed out again
     /// (or is gone entirely). Inactive slots are never stale.
+    #[cfg(test)]
     pub(crate) fn is_stale(self) -> bool {
         let owner = GuardOwner::current();
         self.is_active() && owner.root_generation_at(self) != Some(self.generation)
@@ -308,17 +268,6 @@ fn claim_raw_root(owner: &GuardOwner, s: SEXP, api: &str) -> ProtectionSlot {
     owner
         .try_protect_value(s, false)
         .unwrap_or_else(|error| panic!("{api}: {error}"))
-}
-
-pub(crate) fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
-    let owner = GuardOwner::current();
-    if slot.is_active() {
-        owner.reprotect_value(slot, s);
-    }
-}
-
-pub(crate) fn release_protect_slot(slot: ProtectionSlot) {
-    GuardOwner::current().release_root(slot);
 }
 
 /// RAII guard for a replaceable root-table slot.
@@ -349,7 +298,10 @@ impl<'a> IndexedProtectGuard<'a> {
 
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
-            owner.reprotect_value(self.slot, value);
+            match owner.try_reprotect_value(self.slot, value) {
+                Ok(()) | Err(ProtectError::StaleSlot | ProtectError::OwnerUnavailable) => {}
+                Err(error) => panic!("invalid root replacement: {error}"),
+            }
         }
     }
 
@@ -363,12 +315,13 @@ impl<'a> IndexedProtectGuard<'a> {
         if value.owner() != self.value_owner {
             return Err(ProtectError::ForeignOwner);
         }
-        if !self.slot_generation_is(self.slot.generation) {
-            return Err(ProtectError::StaleSlot);
+        if !self.slot.is_active() {
+            return Ok(());
         }
-        // SAFETY: checked value has the same live owner as this managed slot.
-        self.reprotect_raw(value.as_raw());
-        Ok(())
+        self.owner
+            .as_ref()
+            .ok_or(ProtectError::OwnerUnavailable)?
+            .try_reprotect_value(self.slot, value.as_raw())
     }
 }
 
@@ -539,45 +492,6 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<
         slot,
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R_ProtectWithIndex / R_Reprotect — legacy C shim over the root table
-// ---------------------------------------------------------------------------
-
-/// Opaque legacy marker used by the `R_ProtectWithIndex` compatibility shim.
-pub(crate) struct ProtectIndex {
-    _private: (),
-}
-
-/// Protect an SEXP and return a legacy encoded index for later replacement.
-///
-/// This is the equivalent of R's `R_ProtectWithIndex()`. The claimed entry
-/// lives in the generational [`RootTable`]: it is NOT covered by legacy
-/// count-based `Rf_unprotect` — release happens when the surrounding session
-/// scope unwinds (the `ProtectScope` teardown truncates the root table), so
-/// translated code that PROTECTs-with-index and later UNPROTECTs by count
-/// would leak the slot until scope exit. No translated module in this port
-/// calls this shim; it exists for C-shape compatibility only.
-pub(crate) fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
-    claim_raw_root(&GuardOwner::current(), s, "R_ProtectWithIndex").into_legacy_ptr()
-}
-
-/// Free a ProtectIndex returned by R_ProtectWithIndex.
-///
-/// This is a no-op - the index was just a number, not an allocation.
-pub(crate) fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
-
-/// Unprotect the entry at the given index and replace it with a new value.
-///
-/// This is the equivalent of R's `R_Reprotect()`.
-pub(crate) fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
-    let owner = GuardOwner::current();
-    let mut slot = ProtectionSlot::from_legacy_ptr(index);
-    if let Some(generation) = owner.root_generation_at(slot) {
-        slot.generation = generation;
-        owner.reprotect_value(slot, s);
     }
 }
 

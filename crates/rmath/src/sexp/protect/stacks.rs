@@ -775,12 +775,15 @@ impl GuardOwner {
             .unwrap_or(Err(ProtectError::OwnerUnavailable))
     }
 
-    /// Replace the value held by `slot` with a checked image of `s`.
-    pub(crate) fn reprotect_value(&self, slot: ProtectionSlot, s: SEXP) {
-        let value = self.root_value(s).expect("invalid root replacement");
-        self.with_root_table(|table| {
-            let _ = table.reprotect(slot, value);
-        });
+    /// Replace `slot` through this owner's checked store.
+    pub(crate) fn try_reprotect_value(
+        &self,
+        slot: ProtectionSlot,
+        s: SEXP,
+    ) -> Result<(), ProtectError> {
+        let value = self.root_value(s)?;
+        self.with_root_table(|table| table.reprotect(slot, value))
+            .unwrap_or(Err(ProtectError::OwnerUnavailable))
     }
 
     /// Release `slot` from this owner's root table.

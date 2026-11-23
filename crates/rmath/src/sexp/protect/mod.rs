@@ -20,13 +20,10 @@
 //!   violation is a caller bug, not a detected error (as in C).
 //! * **[`RootTable`]** — the Rust root table: stable, generational slots for
 //!   Rust-side handles ([`ProtectGuard`] from [`protect_sexp`] / [`protect`],
-//!   [`IndexedProtectGuard`] / [`protect_sexp_with_index`], [`RootedSexp`],
-//!   and the `R_ProtectWithIndex` shim). Slots are released BY SLOT ID +
-//!   GENERATION in ANY order; a released slot becomes vacant in place and its
-//!   index is recycled via a free list,
-//!   so surviving guards keep resolving to their own entries and a stale
-//!   handle is detectable ([`ProtectionSlot::is_stale`]) instead of silently
-//!   aliasing another entry's protection.
+//!   [`IndexedProtectGuard`] / [`protect_sexp_with_index`], [`RootedSexp`]).
+//!   Slots may be released in any order. A freed slot becomes vacant in place
+//!   and may be reused, but a stale handle's old generation is rejected
+//!   instead of silently aliasing the new entry.
 //!
 //! The two storages never alias: count-based legacy ops cannot truncate root
 //! slots and root release never shifts legacy entries. The collector (gengc)
@@ -63,8 +60,7 @@
 //! to their own entries. A later slot push reuses a freed index with a fresh
 //! generation. Every pushed entry is tagged with a generation from a
 //! monotonic per-instance counter, so a slot handle whose entry was released
-//! is detectable via [`ProtectionSlot::is_stale`] /
-//! [`RootedSexp::is_stale`] instead of silently resolving to another entry's
+//! is detectable via [`RootedSexp::is_stale`] instead of resolving to another entry's
 //! protection. Freed TAIL slots collapse off the table (popped together with
 //! their generation tags) so the physical Vec stays contiguous; interior
 //! frees stay tombstoned beneath live entries.

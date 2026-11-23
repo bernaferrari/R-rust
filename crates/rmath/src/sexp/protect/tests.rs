@@ -415,57 +415,6 @@ fn test_indexed_guard_drops_against_original_instance() {
         replace_current_instance(previous);
     }
 }
-#[test]
-fn test_protect_with_index() {
-    let session = RSession::new_for_gc_tests();
-    session.with_protected(|| unsafe {
-        let fake = token(0x1);
-        let idx = R_ProtectWithIndex(fake);
-        assert!(!idx.is_null());
-        // The shim claims a generational root-table slot: the legacy
-        // count-based view does not see it.
-        assert_eq!(R_ProtectCount(), 0);
-        with_protected_objects(|legacy, roots| {
-            assert!(legacy.is_empty());
-            assert_eq!(roots, &[fake]);
-        });
-    });
-}
-#[test]
-fn test_protect_with_index_null() {
-    let session = RSession::new_for_gc_tests();
-    session.with_protected(|| unsafe {
-        let idx = R_ProtectWithIndex(ptr::null_mut());
-        assert!((idx as usize) == 0);
-        assert_eq!(R_ProtectCount(), 0);
-        with_protected_objects(|_, roots| assert!(roots.is_empty()));
-    });
-}
-#[test]
-fn test_reprotect() {
-    let session = RSession::new_for_gc_tests();
-    session.with_protected(|| unsafe {
-        let a = token(0x1);
-        let b = token(0x2);
-        let idx = R_ProtectWithIndex(a);
-        R_Reprotect(b, idx);
-        with_protected_objects(|_, roots| assert_eq!(roots[0], b));
-    });
-}
-#[test]
-fn test_reprotect_null_index() {
-    let session = RSession::new_for_gc_tests();
-    session.with_protected(|| unsafe {
-        R_Reprotect(token(0x1), ptr::null_mut());
-    });
-}
-#[test]
-fn test_free_protect_index() {
-    unsafe {
-        R_FreeProtectIndex(ptr::null_mut());
-        R_FreeProtectIndex(0x1 as *mut ProtectIndex);
-    }
-}
 // -- Preserve / release --------------------------------------------------
 #[test]
 fn test_preserve_release() {
@@ -697,7 +646,7 @@ fn test_slot_reuse_rejects_old_token() {
         assert!(!live_token.is_stale());
         // A double release against the stale token cannot evict the live
         // owner: generations disagree, so the tombstone is untouched.
-        release_protect_slot(stale_token);
+        GuardOwner::current().release_root(stale_token);
         assert!(!live_token.is_stale());
         assert!(!second.slot().is_stale());
         assert_eq!(second.slot().generation(), live_token.generation());
@@ -852,28 +801,35 @@ fn test_with_preserved_objects() {
 fn safe_roots_use_value_owner_not_ambient_session() {
     let left = RSession::new_for_gc_tests();
     let right = RSession::new_for_gc_tests();
-    let value = left.global_env().unwrap();
-    let mut root = protect_sexp_with_index(value.clone());
-    left.with_active(|| {
-        with_protected_objects(|_, roots| assert_eq!(roots, &[value.clone().as_raw()]))
+    let mut root = protect_sexp_with_index(left.global_env().unwrap());
+    let other_root = protect_sexp_with_index(right.global_env().unwrap());
+    assert_eq!(root.slot(), other_root.slot());
+    let replacement = left.base_env().unwrap();
+    let replacement_raw = replacement.clone().as_raw();
+    let other_raw = right.global_env().unwrap().as_raw();
+    right.with_active(|| {
+        assert_eq!(
+            root.try_reprotect_sexp(right.global_env().unwrap()),
+            Err(ProtectError::ForeignOwner)
+        );
+        assert_eq!(root.try_reprotect_sexp(replacement), Ok(()));
+        with_protected_objects(|_, roots| assert_eq!(roots, &[other_raw]));
     });
-    right.with_active(|| with_protected_objects(|_, roots| assert!(roots.is_empty())));
-    assert_eq!(
-        root.try_reprotect_sexp(right.global_env().unwrap()),
-        Err(ProtectError::ForeignOwner)
-    );
+    left.with_active(|| {
+        with_protected_objects(|_, roots| assert_eq!(roots, &[replacement_raw]));
+    });
 }
 #[test]
 fn stale_reprotect_cannot_replace_reused_slot() {
     let session = RSession::new_for_gc_tests();
     let mut old = protect_sexp_with_index(session.global_env().unwrap());
-    release_protect_slot(old.slot());
+    GuardOwner::current().release_root(old.slot());
     let live = protect_sexp_with_index(session.base_env().unwrap());
     assert_eq!(
         old.try_reprotect_sexp(session.global_env().unwrap()),
         Err(ProtectError::StaleSlot)
     );
-    reprotect_slot(old.slot(), session.global_env().unwrap().as_raw());
+    old.reprotect_raw(session.global_env().unwrap().as_raw());
     let base = session.base_env().unwrap().as_raw();
     with_protected_objects(|_, roots| {
         assert_eq!(

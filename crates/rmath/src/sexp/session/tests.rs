@@ -242,7 +242,7 @@ fn weak_protection_scope_skips_destroyed_owner_even_on_unwind() {
 #[test]
 fn protection_scope_restores_original_stores_while_another_session_is_active() {
     use crate::sexp::protect::{
-        R_ProtectWithIndex, protect, protect_raw_pointer, with_protected_objects,
+        GuardOwner, protect, protect_raw_pointer, with_protected_objects,
     };
 
     let left = RSession::new_for_gc_tests();
@@ -250,7 +250,7 @@ fn protection_scope_restores_original_stores_while_another_session_is_active() {
     let scope = left.with_active(|| {
         let scope = ProtectScope::current();
         protect_raw_pointer(R_NilValue());
-        R_ProtectWithIndex(R_NilValue());
+        GuardOwner::current().try_protect_value(R_NilValue(), false).unwrap();
         scope
     });
     right.with_active(|| {
