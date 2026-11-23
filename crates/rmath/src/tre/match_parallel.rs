@@ -82,12 +82,35 @@ unsafe fn CHECK_CHAR_CLASSES(
             && unsafe { super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) } != 0)
 }
 
+fn skip_minimal_state(
+    pairs: &[[c_int; 2]],
+    state: &[c_int],
+    matched: &[c_int],
+) -> Result<bool, ()> {
+    for &[end, start] in pairs {
+        let end = usize::try_from(end).map_err(|_| ())?;
+        // The virtual final tag has no cell in the state or match buffer.
+        if end >= matched.len() {
+            return Ok(true);
+        }
+        let start = usize::try_from(start).map_err(|_| ())?;
+        if state.get(start).ok_or(())? == matched.get(start).ok_or(())?
+            && state.get(end).ok_or(())? < matched.get(end).ok_or(())?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[allow(clippy::if_same_then_else)]
 /// # Safety
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// `tnfa` must be a live immutable compiler-produced descriptor, including
+/// initialized `num_minimals` pairs when nonzero. `string` must satisfy the
+/// byte/wide buffer and length/termination contract; `match_end_ofs` must be
+/// writable and `match_tags` either null (no tags) or point to `tnfa.num_tags`
+/// writable integers disjoint from inputs and each other.
 pub unsafe fn tre_tnfa_run_parallel(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
@@ -114,15 +137,48 @@ pub unsafe fn tre_tnfa_run_parallel(
             (*tnfa).num_tags
         };
 
-        // Allocate temporary buffers
-        let tbytes = std::mem::size_of::<c_int>() * num_tags as usize;
-        let rbytes = std::mem::size_of::<tre_tnfa_reach_t>() * ((*tnfa).num_states as usize + 1);
-        let pbytes = std::mem::size_of::<tre_reach_pos_t>() * (*tnfa).num_states as usize;
-        let xbytes = std::mem::size_of::<c_int>() * num_tags as usize;
+        let Ok(tag_count) = usize::try_from(num_tags) else {
+            return REG_ESPACE;
+        };
+        let Ok(compiled_tag_count) = usize::try_from((*tnfa).num_tags) else {
+            return REG_ESPACE;
+        };
+        let Ok(pair_count) = usize::try_from((*tnfa).num_minimals) else {
+            return REG_ESPACE;
+        };
+        let pairs = if pair_count == 0 {
+            &[][..]
+        } else {
+            let table = (*tnfa).minimal_tags;
+            if table.is_null()
+                || pair_count > compiled_tag_count
+                || pair_count > isize::MAX as usize / std::mem::size_of::<[c_int; 2]>()
+            {
+                return REG_ESPACE;
+            }
+            // SAFETY: the compiled descriptor owns this many initialized pairs.
+            std::slice::from_raw_parts(table.cast::<[c_int; 2]>(), pair_count)
+        };
 
-        let align_padding = (std::mem::size_of::<usize>() - 1) * 4;
-        let total_bytes =
-            rbytes * 2 + xbytes * (*tnfa).num_states as usize * 2 + tbytes + pbytes + align_padding;
+        // Allocate temporary buffers
+        let state_count = (*tnfa).num_states as usize;
+        let sizes = || {
+            let tbytes = std::mem::size_of::<c_int>().checked_mul(tag_count)?;
+            let rbytes = std::mem::size_of::<tre_tnfa_reach_t>()
+                .checked_mul(state_count.checked_add(1)?)?;
+            let pbytes = std::mem::size_of::<tre_reach_pos_t>().checked_mul(state_count)?;
+            let align_padding = (std::mem::align_of::<usize>() - 1) * 4;
+            let total_bytes = rbytes.checked_mul(2)?
+                .checked_add(tbytes.checked_mul(state_count)?.checked_mul(2)?)?
+                .checked_add(tbytes)?
+                .checked_add(pbytes)?
+                .checked_add(align_padding)?;
+            Some((tbytes, rbytes, pbytes, total_bytes))
+        };
+        let Some((tbytes, rbytes, pbytes, total_bytes)) = sizes() else {
+            return REG_ESPACE;
+        };
+        let xbytes = tbytes;
         let buf = mem::xmalloc(total_bytes);
         if buf.is_null() {
             return REG_ESPACE as c_int;
@@ -286,29 +342,20 @@ pub unsafe fn tre_tnfa_run_parallel(
             reach_next = tmp;
 
             // Weed out states that don't fulfill minimal matching conditions
-            if (*tnfa).num_minimals != 0 && new_match != 0 {
+            if !pairs.is_empty() && new_match != 0 {
                 new_match = 0;
                 reach_next_i = reach_next;
                 let mut reach_i = reach;
+                let matched = std::slice::from_raw_parts(ptr_or_dangling(match_tags), tag_count);
                 while !(*reach_i).state.is_null() {
-                    let mut skip = false;
-                    let mut mi: c_int = 0;
-                    while *(*tnfa).minimal_tags.offset(mi as isize) >= 0 {
-                        let end = *(*tnfa).minimal_tags.offset(mi as isize);
-                        let start = *(*tnfa).minimal_tags.offset((mi + 1) as isize);
-                        if end >= num_tags {
-                            skip = true;
-                            break;
-                        } else if *(*reach_i).tags.offset(start as isize)
-                            == *match_tags.offset(start as isize)
-                            && *(*reach_i).tags.offset(end as isize)
-                                < *match_tags.offset(end as isize)
-                        {
-                            skip = true;
-                            break;
-                        }
-                        mi += 2;
-                    }
+                    let state = std::slice::from_raw_parts(
+                        ptr_or_dangling((*reach_i).tags),
+                        tag_count,
+                    );
+                    let Ok(skip) = skip_minimal_state(pairs, state, matched) else {
+                        mem::xfree(buf);
+                        return REG_ESPACE;
+                    };
                     if !skip {
                         (*reach_next_i).state = (*reach_i).state;
                         let tmp_iptr = (*reach_next_i).tags;
@@ -435,9 +482,29 @@ pub unsafe fn tre_tnfa_run_parallel(
 }
 
 fn align_ptr(p: *mut u8) -> *mut u8 {
-    // Align with address arithmetic only: the resulting pointer is merely
-    // carried around, never dereferenced here, so no unsafe op is needed.
-    (p as usize).next_multiple_of(std::mem::size_of::<usize>()) as *mut u8
+    p.map_addr(|addr| addr.next_multiple_of(std::mem::align_of::<usize>()))
 }
 
 use super::mem;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimal_tag_pruning_keeps_final_tag_and_checks_capture_indices() {
+        let matched = [4, 8, 10];
+        assert_eq!(skip_minimal_state(&[[2, 0]], &[4, 8, 9], &matched), Ok(true));
+        assert_eq!(skip_minimal_state(&[[2, 0]], &[3, 8, 9], &matched), Ok(false));
+        assert_eq!(
+            skip_minimal_state(&[[2, 0], [1, 0]], &[4, 7, 10], &matched),
+            Ok(true)
+        );
+        assert_eq!(skip_minimal_state(&[[3, -1]], &matched, &matched), Ok(true));
+        assert_eq!(skip_minimal_state(&[[2, 0]], &[], &[]), Ok(true));
+        assert_eq!(skip_minimal_state(&[[2, -1]], &matched, &matched), Err(()));
+        assert_eq!(skip_minimal_state(&[[2, 3]], &matched, &matched), Err(()));
+        assert_eq!(skip_minimal_state(&[[-1, 0]], &matched, &matched), Err(()));
+        assert_eq!(skip_minimal_state(&[[2, 0]], &[4, 8], &matched), Err(()));
+    }
+}
