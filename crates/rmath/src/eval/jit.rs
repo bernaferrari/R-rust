@@ -20,7 +20,9 @@ use crate::sexp::accessors::{BODY, CAR, CDR, LENGTH, TYPEOF};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::instance::{RInstance, with_required_current_instance};
+use crate::sexp::instance::{
+    RInstance, exec_token_in, set_exec_token_in, with_required_current_instance,
+};
 use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::protect;
@@ -604,34 +606,14 @@ pub(crate) unsafe fn init_exec_token_in(inst: *mut RInstance) {
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             pin.require_live()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            set_R_exec_token_in(inst, token.as_raw());
+            set_exec_token_in(inst, token.as_raw());
         });
     }
 }
 
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn get_R_exec_token_in(inst: *mut RInstance) -> SEXP {
-    unsafe { (*inst).eval_state.exec_token.as_raw() }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-unsafe fn exec_token_owner_in(inst: *mut RInstance) -> Option<Sexp<'static>> {
-    unsafe { (*inst).eval_state.exec_token.owned() }
-}
-
-/// # Safety
-///
-/// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
-/// no conflicting outstanding borrow of the fields touched here.
-pub(crate) unsafe fn set_R_exec_token_in(inst: *mut RInstance, token: SEXP) {
-    let token = unsafe { crate::sexp::instance::RuntimeValue::from_raw_in(inst, token) };
-    unsafe { (*inst).eval_state.exec_token = token };
+#[cfg(test)]
+unsafe fn get_R_exec_token_in(inst: *mut RInstance) -> SEXP {
+    unsafe { exec_token_in(inst) }.map_or(std::ptr::null_mut(), |token| token.as_raw())
 }
 
 /// Check if a value is an exec continuation (for tail call optimization).
@@ -648,7 +630,7 @@ pub(crate) unsafe fn is_exec_continuation_in(inst: *mut RInstance, val: SEXP) ->
         if len != 4 {
             return FALSE;
         }
-        let Some(token) = exec_token_owner_in(inst) else {
+        let Some(token) = exec_token_in(inst) else {
             return FALSE;
         };
         let pin = crate::sexp::context::pin_context_owner_in(inst);
@@ -822,11 +804,14 @@ fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
             let call = super::dispatch::argument_value(&factory, call);
             let rho = super::dispatch::argument_value(&factory, rho);
             let op = super::dispatch::argument_value(&factory, op);
-            if exec_token_owner_in(inst).is_none() {
-                init_exec_token_in(inst);
-            }
-            let token = exec_token_owner_in(inst)
-                .unwrap_or_else(|| crate::sexp::context::r_error("missing exec token"));
+            let token = match exec_token_in(inst) {
+                Some(token) => token,
+                None => {
+                    init_exec_token_in(inst);
+                    exec_token_in(inst)
+                        .unwrap_or_else(|| crate::sexp::context::r_error("missing exec token"))
+                }
+            };
             let continuation = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 4)))
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -1151,7 +1136,8 @@ mod tests {
                 if called.replace(true) {
                     return;
                 }
-                (*instance).eval_state.exec_token = crate::sexp::instance::RuntimeValue::empty();
+                set_exec_token_in(instance, std::ptr::null_mut());
+                assert!(exec_token_in(instance).is_none());
                 crate::sexp::gengc::full_gc_in(instance);
                 assert!(token_observed.is_live());
                 assert!(call_observed.is_live());
@@ -1606,7 +1592,7 @@ mod tests {
                     .unwrap();
                 crate::sexp::object::SexpMut::try_from_checked(continuation.clone())
                     .unwrap()
-                    .try_set_vector_elt(0, exec_token_owner_in(left_ptr).unwrap())
+                    .try_set_vector_elt(0, exec_token_in(left_ptr).unwrap())
                     .unwrap();
                 assert_eq!(
                     is_exec_continuation_in(left_ptr, continuation.as_raw()),

@@ -47,7 +47,7 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         });
         (*instance).eval_state.current_expr = instance::RuntimeValue::empty();
         (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
-        (*instance).eval_state.exec_token = instance::RuntimeValue::empty();
+        instance::set_exec_token_in(instance, std::ptr::null_mut());
         let displaced = instance::with_profiling_state_in(instance, |state| {
             state.bcrelpc = -1;
             state.srcfiles.clear();
