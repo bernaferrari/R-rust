@@ -20,22 +20,13 @@ pub(crate) unsafe fn retain_newly_ready_finalizer_graph(
     }
     unsafe {
         let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keys = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-            &mut (*instance).memory_state,
-            &unreachable,
-        );
-        if keys.is_empty() {
+        // Snapshot original pointers, preserving provenance and ending the
+        // queue borrow before recursive traversal touches the owning graph.
+        let ready_roots =
+            crate::mainutils::memory_main::ready_finalizer_roots_in(instance, &unreachable);
+        if ready_roots.is_empty() {
             return 0;
         }
-        // Copy original pointers, preserving provenance and ending the memory
-        // state borrow before recursive traversal touches the owning graph.
-        let ready_roots: Vec<SEXP> = (*instance)
-            .memory_state
-            .pending_finalizers
-            .iter()
-            .filter(|finalizer| finalizer.is_ready())
-            .map(|finalizer| finalizer.obj())
-            .collect();
         for root in ready_roots {
             mark_reachable(root);
         }

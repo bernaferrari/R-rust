@@ -414,6 +414,8 @@ pub struct RInstance {
     error_buffer: ErrorBuffer,
     /// Per-instance main memory/GC control state.
     pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
+    /// Per-instance finalizer queue and dispatch state.
+    finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
     /// Session-local profiler counters and owning source references.
@@ -637,6 +639,7 @@ impl RInstance {
             error_state: RefCell::default(),
             error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
+            finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
             profiling: RefCell::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
@@ -977,6 +980,20 @@ impl Drop for LivenessOwner {
     fn drop(&mut self) {
         self.generation.release();
     }
+}
+
+/// Lend the finalizer queue for local bookkeeping or callback-free tracing.
+///
+/// # Safety
+/// `instance` must point to a live allocation throughout the lend, without
+/// an overlapping mutable whole-instance reference.
+pub(crate) unsafe fn with_finalizer_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut crate::mainutils::memory_main::FinalizerState) -> R,
+) -> R {
+    // SAFETY: the caller retains the allocation; project only this field.
+    let cell = unsafe { &(*instance).finalizer_state };
+    f(&mut cell.borrow_mut())
 }
 
 /// Lend collector state for a local operation, not a GC cycle or callback.

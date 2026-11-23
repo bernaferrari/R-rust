@@ -73,7 +73,7 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).objects_state.prim_generics.clear();
         (*instance).objects_state.prim_mlist.clear();
         (*instance).heap_identity.clear_binding_indexes();
-        (*instance).memory_state.pending_finalizers.clear();
+        crate::mainutils::memory_main::clear_finalizers_for_test(instance);
         (*instance).dynload_state.dll_info_eptrs = nil;
         (*instance).dynload_state.symbol_eptrs = nil;
         (*instance).dynload_state.c_entry_table = nil;

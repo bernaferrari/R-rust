@@ -69,7 +69,7 @@
 //! - Weak references and finalizers exist (`R_MakeWeakRef`,
 //!   `R_WeakRefKey`, `R_RegisterFinalizer(Ex)`, `R_RegisterCFinalizer(Ex)`
 //!   in `mainutils::memory_main`). Sweeps mark ready finalizers via
-//!   `mark_finalizers_ready_for_unreachable_in` and pin them until run;
+//!   `ready_finalizer_roots_in` and pin them until run;
 //!   they execute after collections at the same quiescent points upstream
 //!   uses — `R_gc`/`R_gc_lite`, eval safe points, the quiescent flush, and
 //!   session exit (`R_RunExitFinalizers`).

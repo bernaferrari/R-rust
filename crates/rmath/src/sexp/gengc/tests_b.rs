@@ -1925,7 +1925,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
     let session = RSession::new_without_default_packages();
     session.with_active_in(|inst| unsafe {
         instance::with_required_current_instance(|inst| {
-            (*inst).memory_state.pending_finalizers.clear();
+            crate::mainutils::memory_main::clear_finalizers_for_test(inst);
             with_gc_state_in(inst, |state| state.gc_pending = false);
             (*inst).eval_state.eval_depth = 0;
         });
@@ -1973,7 +1973,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
     let session = RSession::new_without_default_packages();
     session.with_protected(|| unsafe {
         instance::with_required_current_instance(|inst| {
-            (*inst).memory_state.pending_finalizers.clear();
+            crate::mainutils::memory_main::clear_finalizers_for_test(inst);
             with_gc_state_in(inst, |state| state.gc_pending = false);
             (*inst).eval_state.eval_depth = 0;
         });

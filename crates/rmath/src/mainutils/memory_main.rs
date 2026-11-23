@@ -30,6 +30,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ExtPtrBody, Listsxp, NA_INTEGER, NodeBody, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 use crate::sexp::heap::NodeLink;
+use crate::sexp::instance::with_finalizer_state_in;
 use crate::sexp::{Sexp, SexpMut, object::SexpResult, owner::OwnerToken};
 
 #[cfg(test)]
@@ -49,7 +50,7 @@ fn error(msg: &str) -> ! {
 pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
 
 #[derive(Clone)]
-pub(crate) enum PendingFinalizer {
+enum PendingFinalizer {
     C {
         obj: SEXP,
         fun: R_CFinalizer_t,
@@ -65,26 +66,26 @@ pub(crate) enum PendingFinalizer {
 }
 
 impl PendingFinalizer {
-    pub(crate) fn obj(&self) -> SEXP {
+    fn obj(&self) -> SEXP {
         match *self {
             PendingFinalizer::C { obj, .. } | PendingFinalizer::R { obj, .. } => obj,
         }
     }
 
-    pub(crate) fn obj_mut(&mut self) -> &mut SEXP {
+    fn obj_mut(&mut self) -> &mut SEXP {
         match self {
             PendingFinalizer::C { obj, .. } | PendingFinalizer::R { obj, .. } => obj,
         }
     }
 
-    pub(crate) fn fun_mut(&mut self) -> Option<&mut SEXP> {
+    fn fun_mut(&mut self) -> Option<&mut SEXP> {
         match self {
             PendingFinalizer::C { .. } => None,
             PendingFinalizer::R { fun, .. } => Some(fun),
         }
     }
 
-    pub(crate) fn is_ready(&self) -> bool {
+    fn is_ready(&self) -> bool {
         match *self {
             PendingFinalizer::C { ready, .. } | PendingFinalizer::R { ready, .. } => ready,
         }
@@ -103,6 +104,12 @@ impl PendingFinalizer {
             PendingFinalizer::C { onexit, .. } | PendingFinalizer::R { onexit, .. } => onexit,
         }
     }
+}
+
+#[derive(Default)]
+pub(crate) struct FinalizerState {
+    running_finalizers: bool,
+    pending_finalizers: Vec<PendingFinalizer>,
 }
 
 /// Startup default for the vector-heap limit, mirroring upstream
@@ -141,8 +148,6 @@ pub(crate) struct MemoryRuntimeState {
     pub gc_force_wait: c_int,
     pub max_v_size: u64,
     pub max_n_size: u64,
-    pub running_finalizers: bool,
-    pub pending_finalizers: Vec<PendingFinalizer>,
 }
 
 impl Default for MemoryRuntimeState {
@@ -155,8 +160,6 @@ impl Default for MemoryRuntimeState {
             gc_force_wait: 0,
             max_v_size: default_max_v_size(),
             max_n_size: u64::MAX,
-            running_finalizers: false,
-            pending_finalizers: Vec::new(),
         }
     }
 }
@@ -167,6 +170,12 @@ where
 {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         f(&mut (*inst).memory_state)
+    })
+}
+
+fn with_finalizer_state<R>(f: impl FnOnce(&mut FinalizerState) -> R) -> R {
+    crate::sexp::instance::with_required_current_instance(|owner| unsafe {
+        with_finalizer_state_in(owner, f)
     })
 }
 
@@ -689,7 +698,7 @@ impl Drop for FinalizerRunGuard {
         if self.liveness.is_live() {
             // SAFETY: the exact captured owner remains alive on this thread;
             // no instance/state borrow is held across a finalizer callback.
-            unsafe { (*self.owner).memory_state.running_finalizers = false };
+            unsafe { with_finalizer_state_in(self.owner, |state| state.running_finalizers = false) };
         }
     }
 }
@@ -699,7 +708,7 @@ pub unsafe fn R_RunPendingFinalizers() {
     // SAFETY: the ambient owner is live on entry. Retain only its weak teardown
     // observer; callbacks may destroy the original session.
     let liveness = unsafe { crate::sexp::instance::instance_liveness(owner) };
-    let mut finalizers = with_memory_state(|state| {
+    let mut finalizers = with_finalizer_state(|state| {
         if state.running_finalizers {
             return Vec::new();
         }
@@ -736,10 +745,11 @@ pub unsafe fn R_RunPendingFinalizers() {
             }
             // A failed claim unwinds the partial roots and running guard while
             // retaining the complete original queue for a later retry.
-            (*owner)
-                .memory_state
-                .pending_finalizers
-                .retain(|finalizer| !finalizer.is_ready());
+            with_finalizer_state_in(owner, |state| {
+                state
+                    .pending_finalizers
+                    .retain(|finalizer| !finalizer.is_ready());
+            });
             roots
         })
     };
@@ -810,7 +820,7 @@ fn run_pending_finalizer(finalizer: PendingFinalizer) {
 }
 
 fn register_c_finalizer(obj: SEXP, fun: R_CFinalizer_t, onexit: bool) {
-    with_memory_state(|state| {
+    with_finalizer_state(|state| {
         state.pending_finalizers.push(PendingFinalizer::C {
             obj,
             fun,
@@ -821,7 +831,7 @@ fn register_c_finalizer(obj: SEXP, fun: R_CFinalizer_t, onexit: bool) {
 }
 
 fn register_r_finalizer(obj: SEXP, fun: SEXP, onexit: bool) {
-    with_memory_state(|state| {
+    with_finalizer_state(|state| {
         state.pending_finalizers.push(PendingFinalizer::R {
             obj,
             fun,
@@ -869,27 +879,99 @@ pub fn R_RunFinalizers() {
     }
 }
 
-pub(crate) fn mark_finalizers_ready_for_unreachable(
-    unreachable: &std::collections::HashSet<usize>,
-) -> std::collections::HashSet<usize> {
-    with_memory_state(|state| mark_finalizers_ready_for_unreachable_in(state, unreachable))
+/// Mark ready keys and all R finalizer functions. The trace only visits
+/// checked heap metadata and cannot run R code or invoke providers.
+///
+/// # Safety
+/// `owner` is the live instance for the current collection.
+pub(crate) unsafe fn mark_finalizer_roots_in(owner: *mut crate::sexp::instance::RInstance) {
+    // SAFETY: the collector retains this owner during callback-free tracing.
+    unsafe {
+        with_finalizer_state_in(owner, |state| {
+            for finalizer in &state.pending_finalizers {
+                if finalizer.is_ready() {
+                    crate::sexp::gengc::mark_reachable(finalizer.obj());
+                }
+                if let PendingFinalizer::R { fun, .. } = finalizer {
+                    crate::sexp::gengc::mark_reachable(*fun);
+                }
+            }
+        });
+    }
 }
 
-pub(crate) fn mark_finalizers_ready_for_unreachable_in(
-    state: &mut MemoryRuntimeState,
+/// Make unreachable keys ready and snapshot all ready, non-null keys to trace.
+///
+/// # Safety
+/// `owner` is the live instance for the current collection.
+pub(crate) unsafe fn ready_finalizer_roots_in(
+    owner: *mut crate::sexp::instance::RInstance,
     unreachable: &std::collections::HashSet<usize>,
-) -> std::collections::HashSet<usize> {
-    let mut keep_alive = std::collections::HashSet::new();
-    for finalizer in &mut state.pending_finalizers {
-        let obj = finalizer.obj();
-        if !obj.is_null() && unreachable.contains(&(obj as usize)) {
-            finalizer.set_ready();
-        }
-        if finalizer.is_ready() && !obj.is_null() {
-            keep_alive.insert(obj as usize);
-        }
+) -> Vec<SEXP> {
+    // SAFETY: the collector retains this owner during queue bookkeeping.
+    unsafe {
+        with_finalizer_state_in(owner, |state| {
+            let mut roots = Vec::new();
+            for finalizer in &mut state.pending_finalizers {
+                let obj = finalizer.obj();
+                if obj.is_null() {
+                    continue;
+                }
+                if unreachable.contains(&(obj as usize)) {
+                    finalizer.set_ready();
+                }
+                if finalizer.is_ready() {
+                    roots.push(obj);
+                }
+            }
+            roots
+        })
     }
-    keep_alive
+}
+
+/// Apply an immutable sweep map without lending the queue to a visitor.
+///
+/// # Safety
+/// `owner` is the live instance for the current collection.
+pub(crate) unsafe fn remap_finalizer_roots_in(
+    owner: *mut crate::sexp::instance::RInstance,
+    old_to_new: &std::collections::HashMap<usize, SEXP>,
+) {
+    use crate::sexp::gengc::update_field;
+    // SAFETY: the collector retains the owner and remap does not run R code.
+    unsafe {
+        with_finalizer_state_in(owner, |state| {
+            for finalizer in &mut state.pending_finalizers {
+                update_field(finalizer.obj_mut(), old_to_new);
+                if let Some(fun) = finalizer.fun_mut() {
+                    update_field(fun, old_to_new);
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+pub(crate) unsafe fn clear_finalizers_for_test(owner: *mut crate::sexp::instance::RInstance) {
+    unsafe { with_finalizer_state_in(owner, |state| state.pending_finalizers.clear()) };
+}
+
+#[cfg(test)]
+pub(crate) unsafe fn queue_ready_c_finalizer_for_test(
+    owner: *mut crate::sexp::instance::RInstance,
+    obj: SEXP,
+    fun: R_CFinalizer_t,
+) {
+    unsafe {
+        with_finalizer_state_in(owner, |state| {
+            state.pending_finalizers.push(PendingFinalizer::C {
+                obj,
+                fun,
+                ready: true,
+                onexit: false,
+            });
+        });
+    }
 }
 
 pub(crate) unsafe fn R_RunExitFinalizers_memory() {
@@ -900,7 +982,7 @@ pub(crate) unsafe fn R_RunExitFinalizers_memory() {
 }
 
 fn mark_exit_finalizers_ready() {
-    with_memory_state(|state| {
+    with_finalizer_state(|state| {
         for finalizer in &mut state.pending_finalizers {
             if finalizer.is_onexit() {
                 finalizer.set_ready();
@@ -2081,14 +2163,14 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             R_RegisterFinalizer(ptr::null_mut(), ptr::null_mut());
             R_RegisterFinalizerEx(ptr::null_mut(), ptr::null_mut(), 0);
             R_RegisterCFinalizer(ptr::null_mut(), dummy_c_finalizer);
             R_RegisterCFinalizerEx(ptr::null_mut(), dummy_c_finalizer, 0);
             R_RunPendingFinalizers();
             R_RunFinalizers();
-            assert!(with_memory_state(|state| state
+            assert!(with_finalizer_state(|state| state
                 .pending_finalizers
                 .is_empty()));
         });
@@ -2099,7 +2181,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             let mut value = 41_i32;
             let extptr = R_MakeExternalPtr(
                 &mut value as *mut i32 as *mut c_void,
@@ -2111,7 +2193,7 @@ mod tests {
             assert_eq!(value, 41);
             R_RunPendingFinalizers();
             assert_eq!(value, 41);
-            assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 1);
+            assert_eq!(with_finalizer_state(|state| state.pending_finalizers.len()), 1);
         });
     }
 
@@ -2120,7 +2202,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             FINALIZER_RUNS.set(0);
 
             let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
@@ -2131,7 +2213,7 @@ mod tests {
 
             R_gc();
             assert_eq!(FINALIZER_RUNS.get(), 1);
-            assert!(with_memory_state(|state| state
+            assert!(with_finalizer_state(|state| state
                 .pending_finalizers
                 .is_empty()));
 
@@ -2145,7 +2227,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             FINALIZER_RUNS.set(0);
 
             let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
@@ -2156,7 +2238,7 @@ mod tests {
 
             R_RunExitFinalizers_memory();
             assert_eq!(FINALIZER_RUNS.get(), 1);
-            assert!(with_memory_state(|state| state
+            assert!(with_finalizer_state(|state| state
                 .pending_finalizers
                 .is_empty()));
         });
@@ -2167,13 +2249,13 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             let obj = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             let body = Rf_ScalarInteger(123);
             let fun = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), body, R_GlobalEnv());
 
             R_RegisterFinalizerEx(obj, fun, 0);
-            with_memory_state(|state| {
+            with_finalizer_state(|state| {
                 assert_eq!(state.pending_finalizers.len(), 1);
                 match state.pending_finalizers[0] {
                     PendingFinalizer::R {
@@ -2192,7 +2274,7 @@ mod tests {
             });
 
             R_RunPendingFinalizers();
-            assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 1);
+            assert_eq!(with_finalizer_state(|state| state.pending_finalizers.len()), 1);
         });
     }
 
@@ -2201,7 +2283,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| {
-            with_memory_state(|state| state.pending_finalizers.clear());
+            with_finalizer_state(|state| state.pending_finalizers.clear());
             let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             let body = Rf_ScalarInteger(123);
             // SAFETY: nil formals, fresh body, global env — a complete closure.
@@ -2211,7 +2293,7 @@ mod tests {
 
             let weak = R_MakeWeakRef(key, R_NilValue(), fun, 1);
             assert_eq!(TYPEOF(weak), SEXPTYPE::WEAKREFSXP);
-            with_memory_state(|state| {
+            with_finalizer_state(|state| {
                 assert_eq!(state.pending_finalizers.len(), 1);
                 match state.pending_finalizers[0] {
                     PendingFinalizer::R {

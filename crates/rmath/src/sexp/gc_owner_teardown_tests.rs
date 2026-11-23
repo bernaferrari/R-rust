@@ -88,13 +88,10 @@ fn collection_cleanup_skips_retired_owner_for_full_minor_and_pending_gc() {
         // and the callback that destroys its owner are public safe Rust calls.
         unsafe {
             crate::sexp::instance::with_gc_state_in(owner, |state| state.gc_pending = true);
-            (*owner).memory_state.pending_finalizers.push(
-                crate::mainutils::memory_main::PendingFinalizer::C {
-                    obj: R_NilValue(),
-                    fun: unexpected_finalizer,
-                    ready: true,
-                    onexit: false,
-                },
+            crate::mainutils::memory_main::queue_ready_c_finalizer_for_test(
+                owner,
+                R_NilValue(),
+                unexpected_finalizer,
             );
         }
         let later_calls = Arc::new(AtomicUsize::new(0));

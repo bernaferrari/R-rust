@@ -223,12 +223,7 @@ pub(crate) unsafe fn update_instance_roots_in(
             !old_to_new.contains_key(env) && !old_to_new.contains_key(symbol)
         });
 
-        for finalizer in &mut (*instance).memory_state.pending_finalizers {
-            update_field(finalizer.obj_mut(), old_to_new);
-            if let Some(fun) = finalizer.fun_mut() {
-                update_field(fun, old_to_new);
-            }
-        }
+        crate::mainutils::memory_main::remap_finalizer_roots_in(instance, old_to_new);
         update_field(&mut (*instance).dynload_state.dll_info_eptrs, old_to_new);
         update_field(&mut (*instance).dynload_state.symbol_eptrs, old_to_new);
         update_field(&mut (*instance).dynload_state.c_entry_table, old_to_new);

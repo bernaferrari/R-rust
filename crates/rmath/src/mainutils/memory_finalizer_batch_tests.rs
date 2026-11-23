@@ -62,7 +62,7 @@ unsafe extern "C" fn nested_runner(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
     // SAFETY: the outer invocation owns the active instance and is running.
     unsafe { R_RunPendingFinalizers() };
-    LOST_RUNNING_GUARD.set(!with_memory_state(|state| state.running_finalizers));
+    LOST_RUNNING_GUARD.set(!with_finalizer_state(|state| state.running_finalizers));
 }
 
 extern "C" fn destroy_owner(_: *mut c_void) {
@@ -83,7 +83,7 @@ fn ready_finalizer_batch_retains_current_and_later_transitive_graphs_during_gc()
         drop(first_root);
         drop(second_root);
         full_gc();
-        assert!(with_memory_state(|state| state
+        assert!(with_finalizer_state(|state| state
             .pending_finalizers
             .iter()
             .all(PendingFinalizer::is_ready)));
@@ -93,7 +93,7 @@ fn ready_finalizer_batch_retains_current_and_later_transitive_graphs_during_gc()
             !LOST_GRAPH.get(),
             "ready batch graph reclaimed during callback collection"
         );
-        assert!(with_memory_state(|state| state
+        assert!(with_finalizer_state(|state| state
             .pending_finalizers
             .is_empty()));
         full_gc();
@@ -143,7 +143,7 @@ fn ready_finalizer_batch_roots_later_r_function_before_first_c_callback() {
             !LOST_GRAPH.get(),
             "later R finalizer function reclaimed by earlier callback"
         );
-        assert!(with_memory_state(|state| state
+        assert!(with_finalizer_state(|state| state
             .pending_finalizers
             .is_empty()));
     });
@@ -204,7 +204,7 @@ fn real_r_finalizer_call_survives_torture_before_evaluation() {
                 .expect("R finalizer body did not execute"),
             key
         );
-        assert!(with_memory_state(|state| state
+        assert!(with_finalizer_state(|state| state
             .pending_finalizers
             .is_empty()));
         assert!(GRAPH_NODES.with(|nodes| nodes.borrow().iter().all(CheckedNode::is_live)));
@@ -227,7 +227,23 @@ fn nested_pending_runner_keeps_outer_running_flag_set() {
             !LOST_RUNNING_GUARD.get(),
             "nested no-op cleared outer running flag"
         );
-        assert!(!with_memory_state(|state| state.running_finalizers));
+        assert!(!with_finalizer_state(|state| state.running_finalizers));
+    });
+    reset_observations();
+}
+
+#[test]
+fn finalizer_queue_rejects_reentrant_borrow_and_recovers() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let (key, _root) = graph();
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_finalizer_state(|_| R_RegisterCFinalizer(key, count_only));
+        }));
+        assert!(failure.is_err(), "registration must not bypass the queue borrow");
+        assert!(with_finalizer_state(|state| state.pending_finalizers.is_empty()));
+        R_RegisterCFinalizer(key, count_only);
+        assert_eq!(with_finalizer_state(|state| state.pending_finalizers.len()), 1);
     });
     reset_observations();
 }
@@ -260,8 +276,8 @@ fn ready_batch_root_claim_failure_keeps_queue_and_releases_partial_roots() {
             "runner did not claim roots for its ready batch"
         );
         assert_eq!(RUNS.get(), 0);
-        assert!(!with_memory_state(|state| state.running_finalizers));
-        assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 2);
+        assert!(!with_finalizer_state(|state| state.running_finalizers));
+        assert_eq!(with_finalizer_state(|state| state.pending_finalizers.len()), 2);
         assert_eq!(
             unsafe { (*owner).root_table.checked_entries_snapshot().len() },
             root_count

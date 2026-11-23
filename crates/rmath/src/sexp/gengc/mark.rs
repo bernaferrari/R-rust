@@ -226,14 +226,7 @@ pub(crate) unsafe fn mark_instance_roots(instance: *mut instance::RInstance) {
             mark_reachable(*value);
         }
 
-        for finalizer in &(*instance).memory_state.pending_finalizers {
-            if finalizer.is_ready() {
-                mark_reachable(finalizer.obj());
-            }
-            if let crate::mainutils::memory_main::PendingFinalizer::R { fun, .. } = finalizer {
-                mark_reachable(*fun);
-            }
-        }
+        crate::mainutils::memory_main::mark_finalizer_roots_in(instance);
         mark_reachable((*instance).dynload_state.dll_info_eptrs);
         mark_reachable((*instance).dynload_state.symbol_eptrs);
         mark_reachable((*instance).dynload_state.c_entry_table);

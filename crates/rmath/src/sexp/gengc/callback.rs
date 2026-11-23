@@ -127,7 +127,7 @@ pub fn maybe_collect_at_eval_safe_point() {
 /// Run finalizers whose keys died in the collection that just completed.
 ///
 /// Sweeps only mark weak references ready
-/// (`mark_finalizers_ready_for_unreachable_in`); executing them is deferred
+/// (`ready_finalizer_roots_in`); executing them is deferred
 /// to quiescent points because finalizers run arbitrary R code. Upstream
 /// runs `RunFinalizers` from exactly these sites: after `R_gc`/`R_gc_lite`
 /// (memory.c:3092-3102) and from the eval-loop interrupt checks
