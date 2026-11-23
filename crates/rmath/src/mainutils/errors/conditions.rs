@@ -5,7 +5,7 @@
 //! Condition handling: handler entries, condition signaling, condition
 //! constructors (R_make*/R_signal*), tryCatch support, and initialization.
 
-use super::helpers::translateChar;
+use super::helpers::diagnostic_cstring;
 use super::*;
 
 // ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMod
     let condition = crate::sexp::context::own_control_value(cond);
     let message = crate::sexp::context::own_control_value(msg);
     let call = crate::sexp::context::own_control_value(ecall);
-    super::native::with_preserved_handler_stack(|| unsafe {
+    super::native::with_preserved_handler_stack(|| {
         let mut called = false;
         let mut list = findConditionHandler(condition.as_raw());
         active();
@@ -275,14 +275,15 @@ fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMod
                         break;
                     }
                     let msg = message.as_raw();
-                    let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP && LENGTH(msg) > 0 {
-                        let c = translateChar(STRING_ELT(msg, 0));
-                        CStr::from_ptr(c).to_str().unwrap_or("error")
-                    } else {
-                        "error message not a string"
-                    };
-                    let cmsg = std::ffi::CString::new(msgstr).unwrap_or_default();
-                    verrorcall_dflt(call.as_raw(), cmsg.as_ptr(), ptr::null_mut());
+                    let msg = (TYPEOF(msg) == SEXPTYPE::STRSXP && LENGTH(msg) > 0)
+                        .then(|| diagnostic_cstring(STRING_ELT(msg, 0)));
+                    let text = msg.as_ref().map_or("error message not a string", |msg| {
+                        msg.to_str().unwrap_or("error")
+                    });
+                    verrorcall_bytes(
+                        call.as_raw(),
+                        super::byte_buffer::Snapshot::raw(|i| text.as_bytes().get(i).copied()),
+                    );
                 } else if !matches!(mode, SignalMode::Error { exit_only: true }) {
                     if !super::native::dispatch_calling_handler(h, condition.as_raw()) {
                         let hcall = Rf_lang2(h, condition.as_raw());
@@ -308,25 +309,20 @@ pub fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
         errorcall_cstr(call, c"bad error message");
     }
-    let msg = translateChar(STRING_ELT(CAR(args), 0));
+    let msg = diagnostic_cstring(STRING_ELT(CAR(args), 0));
     let ecall = CADR(args);
-    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
-    // the protected argument list; `ap` is null.
-    unsafe { vwarningcall_dflt(ecall, msg, ptr::null_mut()) };
+    default_warning_cstr(ecall, &msg);
     globals::R_NilValue()
 }
 
 /// do_dfltStop — default error handler.
 pub fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
-            errorcall_cstr(call, c"bad error message");
-        }
-        let msg = translateChar(STRING_ELT(CAR(args), 0));
-        let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
-        errorcall_str(globals::R_NilValue(), &message)
+    checkArity(op, args);
+    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
+        errorcall_cstr(call, c"bad error message");
     }
+    let msg = diagnostic_cstring(STRING_ELT(CAR(args), 0));
+    errorcall_str(globals::R_NilValue(), msg.to_str().unwrap_or(""))
 }
 
 // ---------------------------------------------------------------------------
@@ -769,17 +765,11 @@ pub fn R_MissingArgError_c(arg: Option<&CStr>, call: SEXP, subclass: Option<&CSt
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
 pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: Option<&CStr>) {
     let name = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-        ptr::null()
+        std::ffi::CString::default()
     } else {
-        CHAR_local(PRINTNAME(symbol))
+        diagnostic_cstring(PRINTNAME(symbol))
     };
-    let arg = if name.is_null() {
-        c""
-    } else {
-        // SAFETY: a symbol's PRINTNAME is a live NUL-terminated CHARSXP.
-        unsafe { CStr::from_ptr(name) }
-    };
-    R_MissingArgError_c(Some(arg), call, subclass);
+    R_MissingArgError_c(Some(&name), call, subclass);
 }
 
 /// R_signalWarningCondition — signal a warning condition object.
@@ -792,15 +782,13 @@ pub fn R_signalWarningCondition(cond: SEXP) {
     if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
         return;
     }
-    let msg = translateChar(STRING_ELT(elt, 0));
+    let msg = diagnostic_cstring(STRING_ELT(elt, 0));
     let call = if LENGTH(cond) > 1 {
         VECTOR_ELT(cond, 1)
     } else {
         ptr::null_mut()
     };
-    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
-    // the condition's message element for the duration of the call.
-    unsafe { warningcall(call, msg) };
+    warningcall_cstr(call, &msg);
 }
 
 /// Apply the default warning policy to an already-signaled condition.
@@ -816,15 +804,13 @@ pub(crate) fn warning_condition_default(cond: SEXP) {
     if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
         return;
     }
-    let msg = translateChar(STRING_ELT(elt, 0));
+    let msg = diagnostic_cstring(STRING_ELT(elt, 0));
     let call = if LENGTH(cond) > 1 {
         VECTOR_ELT(cond, 1)
     } else {
         ptr::null_mut()
     };
-    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
-    // the condition's message element; `ap` is null.
-    unsafe { vwarningcall_dflt(call, msg, ptr::null_mut()) };
+    default_warning_cstr(call, &msg);
 }
 
 /// R_makeWarningCondition — create a warning condition object.
@@ -849,19 +835,15 @@ pub fn R_makeWarningCondition(
 /// symbol, translateChar for a CHARSXP string (upstream errors.c passes
 /// these straight into the format string).
 fn partial_match_text(x: SEXP) -> String {
-    unsafe {
-        if !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP {
-            CStr::from_ptr(CHAR_local(PRINTNAME(x)))
-                .to_string_lossy()
-                .into_owned()
-        } else if !x.is_null() {
-            CStr::from_ptr(translateChar(x))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            "?".to_string()
-        }
+    if x.is_null() {
+        return "?".to_owned();
     }
+    let ch = if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        PRINTNAME(x)
+    } else {
+        x
+    };
+    diagnostic_cstring(ch).to_string_lossy().into_owned()
 }
 
 /// R_makePartialMatchWarningCondition — create a partial match warning condition.
@@ -931,60 +913,53 @@ pub fn R_makePartialArgumentMatchWarningCondition(
     cond
 }
 
+fn diagnostic_class_label(x: SEXP) -> String {
+    if !x.is_null() {
+        let klass = getAttrib_wrap(x, R_ClassSymbol());
+        if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
+            let value = STRING_ELT(klass, 0);
+            if !value.is_null() && TYPEOF(value) == SEXPTYPE::CHARSXP {
+                return diagnostic_cstring(value)
+                    .to_str()
+                    .unwrap_or("object")
+                    .to_owned();
+            }
+            return String::new();
+        }
+    }
+    "object".to_owned()
+}
+
 /// R_makeNotSubsettableError — create a "not subsettable" error condition.
 /// Matches C's `SEXP R_makeNotSubsettableError(SEXP x, SEXP call)`
 pub fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let class_str = if !x.is_null() {
-            let klass = getAttrib_wrap(x, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
-                let s = CHAR_local(STRING_ELT(klass, 0));
-                CStr::from_ptr(s).to_str().unwrap_or("object")
-            } else {
-                "object"
-            }
-        } else {
-            "object"
-        };
-        let msg = format!("object of type '{}' is not subsettable", class_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let class_str = diagnostic_class_label(x);
+    let msg = format!("object of type '{}' is not subsettable", class_str);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        R_makeErrorCondition(
-            call,
-            Some(c"simpleError"),
-            Some(c"notSubsettableError"),
-            0,
-            Some(&c_msg),
-        )
-    }
+    R_makeErrorCondition(
+        call,
+        Some(c"simpleError"),
+        Some(c"notSubsettableError"),
+        0,
+        Some(&c_msg),
+    )
 }
 
 /// R_makeMissingSubscriptError — create a missing subscript error condition.
 /// Matches C's `SEXP R_makeMissingSubscriptError(SEXP x, SEXP call)`
 pub fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
-    unsafe {
-        let class_str = if !x.is_null() {
-            let klass = getAttrib_wrap(x, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
-                let s = CHAR_local(STRING_ELT(klass, 0));
-                CStr::from_ptr(s).to_str().unwrap_or("object")
-            } else {
-                "object"
-            }
-        } else {
-            "object"
-        };
-        let msg = format!("subscript out of bounds for {}", class_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let class_str = diagnostic_class_label(x);
+    let msg = format!("subscript out of bounds for {}", class_str);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        R_makeErrorCondition(
-            call,
-            Some(c"simpleError"),
-            Some(c"missingSubscriptError"),
-            0,
-            Some(&c_msg),
-        )
-    }
+    R_makeErrorCondition(
+        call,
+        Some(c"simpleError"),
+        Some(c"missingSubscriptError"),
+        0,
+        Some(&c_msg),
+    )
 }
 
 /// R_makeMissingSubscriptError1 — create a missing subscript error condition (no x).

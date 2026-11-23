@@ -126,6 +126,11 @@ pub(super) fn translateChar(s: SEXP) -> *const c_char {
     }
 }
 
+/// Snapshot the bytes the local translateChar shim exposes, without borrowing R memory.
+pub(super) fn diagnostic_cstring(value: SEXP) -> std::ffi::CString {
+    std::ffi::CString::new(char_cstr_bytes_opt(value).unwrap_or_default()).unwrap_or_default()
+}
+
 /// Check argument arity (simplified).
 pub(super) fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)

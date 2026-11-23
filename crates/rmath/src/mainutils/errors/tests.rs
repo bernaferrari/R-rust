@@ -845,3 +845,21 @@ fn test_r_nwarnings_default() {
     let _session = crate::sexp::session::RSession::new();
     assert_eq!(R_NWARNINGS_DEFAULT, 50);
 }
+
+#[test]
+fn diagnostic_message_snapshot_outlives_its_session_and_preserves_bytes() {
+    let snapshot = {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let ch = crate::sexp::constructors::mk_char_bytes(&[b'x', 0xff, b'y']);
+            let _root = crate::sexp::protect::protect(ch);
+            assert_eq!(
+                super::helpers::diagnostic_cstring(globals::R_NaString()).to_bytes(),
+                b"NA"
+            );
+            super::helpers::diagnostic_cstring(ch)
+        })
+    };
+    assert_eq!(snapshot.to_bytes(), b"x\xffy");
+    assert!(snapshot.to_str().is_err());
+}

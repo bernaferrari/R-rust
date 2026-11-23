@@ -5,7 +5,7 @@
 //! Error/warning state: ErrorState accessors, constants, error buffer and
 //! errmessage state, and R_Expressions management.
 
-use super::helpers::translateChar;
+use super::helpers::diagnostic_cstring;
 use super::*;
 
 // ---------------------------------------------------------------------------
@@ -413,19 +413,15 @@ pub(crate) fn last_collected_warning_message() -> String {
     if cw <= 0 {
         return String::new();
     }
-    unsafe {
-        let names = CAR(ATTRIB(warnings_ptr()));
-        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return String::new();
-        }
-        let cs = STRING_ELT(names, (cw - 1) as R_xlen_t);
-        if cs.is_null() {
-            return String::new();
-        }
-        CStr::from_ptr(translateChar(cs))
-            .to_string_lossy()
-            .into_owned()
+    let names = CAR(ATTRIB(warnings_ptr()));
+    if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return String::new();
     }
+    let cs = STRING_ELT(names, (cw - 1) as R_xlen_t);
+    if cs.is_null() {
+        return String::new();
+    }
+    diagnostic_cstring(cs).to_string_lossy().into_owned()
 }
 
 pub(super) fn set_collect_warnings(val: c_int) {

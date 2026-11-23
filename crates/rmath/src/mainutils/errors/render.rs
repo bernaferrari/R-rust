@@ -1191,12 +1191,17 @@ pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
     }
 }
 
+/// Apply the default warning action to a literal, without running calling handlers again.
+pub(super) fn default_warning_cstr(call: SEXP, message: &CStr) {
+    // SAFETY: message is a live C string, and no variadic arguments are supplied.
+    unsafe { vwarningcall_dflt(call, message.as_ptr(), ptr::null_mut()) };
+}
+
 /// Issue an immediate warning (bypass collection).
 pub fn warningcall_immediate(call: SEXP, message: &CStr) {
     let prev = immediate_warning();
     set_immediate_warning(true);
-    // SAFETY: `message` is a live NUL-terminated string and `ap` is null.
-    unsafe { vwarningcall_dflt(call, message.as_ptr(), ptr::null_mut()) };
+    default_warning_cstr(call, message);
     set_immediate_warning(prev);
 }
 
@@ -1344,11 +1349,8 @@ pub fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     if isNull(CAR(args)) == 0 {
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
         if isValidString(CAR(args)) != 0 {
-            let msg = translateChar(STRING_ELT(CAR(args), 0));
-            // SAFETY: `translateChar` returns null or a NUL-terminated string
-            // kept alive by the protected argument for this call.
-            let msg = (!msg.is_null()).then(|| unsafe { CStr::from_ptr(msg) });
-            Rf_message_append(msg, append);
+            let msg = super::helpers::diagnostic_cstring(STRING_ELT(CAR(args), 0));
+            Rf_message_append(Some(&msg), append);
         }
     }
 
