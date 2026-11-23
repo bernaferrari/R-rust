@@ -60,15 +60,12 @@ impl Drop for RestoreBrowseLines {
 // ---------------------------------------------------------------------------
 
 /// Setup deparsing state and call the recursive deparse2buff.
-pub unsafe fn deparse2(what: SEXP, svec: SEXP, d: *mut LocalParseData) {
-    unsafe {
-        let d = &mut *d;
-        d.strvec = svec;
-        d.linenumber = 0;
-        d.indent = 0;
-        deparse2buff(what, d);
-        writeline(d);
-    }
+pub unsafe fn deparse2(what: SEXP, svec: SEXP, d: &mut LocalParseData) {
+    d.strvec = svec;
+    d.linenumber = 0;
+    d.indent = 0;
+    unsafe { deparse2buff(what, d) };
+    writeline(d);
 }
 
 // ---------------------------------------------------------------------------

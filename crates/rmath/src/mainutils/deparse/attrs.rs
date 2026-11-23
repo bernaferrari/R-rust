@@ -10,54 +10,51 @@ use super::*;
 /// Determine how to display attributes during deparsing.
 ///
 /// Returns one of ATTR_SIMPLE, ATTR_OK_NAMES, ATTR_STRUC_ATTR, ATTR_STRUC_NMS_A.
-pub unsafe fn attr1(s: SEXP, d: *mut LocalParseData) -> c_int {
-    unsafe {
-        let d = &mut *d;
-        let a = ATTRIB(s);
-        // For attr1 we need R_NamesSymbol and R_SrcrefSymbol - install them
-        let names_sym = crate::sexp::symbol::install_str("names");
-        let srcref_sym = crate::sexp::symbol::install_str("srcref");
-        let nm = getAttrib(s, names_sym);
+pub fn attr1(s: SEXP, d: &mut LocalParseData) -> c_int {
+    let a = ATTRIB(s);
+    // For attr1 we need R_NamesSymbol and R_SrcrefSymbol - install them
+    let names_sym = crate::sexp::symbol::install_str("names");
+    let srcref_sym = crate::sexp::symbol::install_str("srcref");
+    let nm = getAttrib(s, names_sym);
 
-        let mut attr = ATTR_UNKNOWN;
-        let nice_names = (d.opts & NICE_NAMES) != 0;
-        let show_attr = (d.opts & SHOWATTRIBUTES) != 0;
-        let has_names = !isNull(nm);
+    let mut attr = ATTR_UNKNOWN;
+    let nice_names = (d.opts & NICE_NAMES) != 0;
+    let show_attr = (d.opts & SHOWATTRIBUTES) != 0;
+    let has_names = !isNull(nm);
 
-        if has_names {
-            let ok_names = nice_names && usable_nice_names(nm, isVectorAtomic(s));
-            if !ok_names {
-                attr = if show_attr {
-                    ATTR_STRUC_NMS_A
-                } else {
-                    ATTR_OK_NAMES
-                };
-            }
-        }
-
-        let mut cur = a;
-        while attr == ATTR_UNKNOWN && !isNull(cur) {
-            if has_names && TAG(cur) == names_sym {
-                // skip names
-            } else if show_attr && TAG(cur) != srcref_sym {
-                attr = ATTR_STRUC_ATTR;
-                break;
-            }
-            cur = CDR(cur);
-        }
-        if attr == ATTR_UNKNOWN {
-            attr = if has_names {
-                ATTR_OK_NAMES
+    if has_names {
+        let ok_names = nice_names && usable_nice_names(nm, isVectorAtomic(s));
+        if !ok_names {
+            attr = if show_attr {
+                ATTR_STRUC_NMS_A
             } else {
-                ATTR_SIMPLE
+                ATTR_OK_NAMES
             };
         }
-
-        if attr >= ATTR_STRUC_ATTR {
-            print2buff(b"structure(\0".as_ptr() as *const c_char, d);
-        }
-        attr
     }
+
+    let mut cur = a;
+    while attr == ATTR_UNKNOWN && !isNull(cur) {
+        if has_names && TAG(cur) == names_sym {
+            // skip names
+        } else if show_attr && TAG(cur) != srcref_sym {
+            attr = ATTR_STRUC_ATTR;
+            break;
+        }
+        cur = CDR(cur);
+    }
+    if attr == ATTR_UNKNOWN {
+        attr = if has_names {
+            ATTR_OK_NAMES
+        } else {
+            ATTR_SIMPLE
+        };
+    }
+
+    if attr >= ATTR_STRUC_ATTR {
+        append_line_bytes(b"structure(", d);
+    }
+    attr
 }
 
 // ---------------------------------------------------------------------------
@@ -67,9 +64,8 @@ pub unsafe fn attr1(s: SEXP, d: *mut LocalParseData) -> c_int {
 /// Deparse a single attribute as `<name> = <value>`, shared by attr2() (the
 /// structure(..) form) and the OBJSXP / object(..) deparse below.
 /// Port of upstream deparse.c attrEntry().
-pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
+pub unsafe fn attrEntry(a: SEXP, d: &mut LocalParseData) {
     unsafe {
-        let d = &mut *d;
         let names_sym = crate::sexp::symbol::install_str("names");
         let dim_sym = crate::sexp::symbol::install_str("dim");
         let dimnames_sym = crate::sexp::symbol::install_str("dimnames");
@@ -77,15 +73,15 @@ pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
         let levels_sym = crate::sexp::symbol::install_str("levels");
 
         if TAG(a) == dim_sym {
-            print2buff(b"dim\0".as_ptr() as *const c_char, d); // was .Dim
+            append_line_bytes(b"dim", d); // was .Dim
         } else if TAG(a) == dimnames_sym {
-            print2buff(b"dimnames\0".as_ptr() as *const c_char, d); // was .Dimnames
+            append_line_bytes(b"dimnames", d); // was .Dimnames
         } else if TAG(a) == names_sym {
-            print2buff(b"names\0".as_ptr() as *const c_char, d); // was .Names
+            append_line_bytes(b"names", d); // was .Names
         } else if TAG(a) == tsp_sym {
-            print2buff(b"tsp\0".as_ptr() as *const c_char, d); // was .Tsp
+            append_line_bytes(b"tsp", d); // was .Tsp
         } else if TAG(a) == levels_sym {
-            print2buff(b"levels\0".as_ptr() as *const c_char, d); // was .Label
+            append_line_bytes(b"levels", d); // was .Label
         } else {
             // TAG(a) might contain spaces etc
             let tag_name = CHAR(PRINTNAME(TAG(a)));
@@ -94,13 +90,13 @@ pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
             if !tag_name.is_null() && isValidName(tag_name) {
                 deparse2buff(TAG(a), d);
             } else {
-                print2buff(b"\"\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"\"", d);
                 deparse2buff(TAG(a), d);
-                print2buff(b"\"\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"\"", d);
             }
             d.opts = d_opts_in;
         }
-        print2buff(b" = \0".as_ptr() as *const c_char, d);
+        append_line_bytes(b" = ", d);
         let fnarg = d.fnarg;
         d.fnarg = true;
         deparse2buff(CAR(a), d);
@@ -113,21 +109,20 @@ pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
 // ---------------------------------------------------------------------------
 
 /// Write full attributes(s) to 'buff'.  Port of upstream deparse.c attr2().
-pub unsafe fn attr2(s: SEXP, d: *mut LocalParseData, not_names: bool) {
+pub unsafe fn attr2(s: SEXP, d: &mut LocalParseData, not_names: bool) {
     unsafe {
-        let d = &mut *d;
         let names_sym = crate::sexp::symbol::install_str("names");
         let srcref_sym = crate::sexp::symbol::install_str("srcref");
 
         let mut a = ATTRIB(s);
         while !isNull(a) {
             if TAG(a) != srcref_sym && !(TAG(a) == names_sym && not_names) {
-                print2buff(b", \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b", ", d);
                 attrEntry(a, d);
             }
             a = CDR(a);
         }
-        print2buff(b")\0".as_ptr() as *const c_char, d);
+        append_line_bytes(b")", d);
     }
 }
 

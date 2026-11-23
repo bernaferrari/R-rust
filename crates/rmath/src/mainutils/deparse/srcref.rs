@@ -10,7 +10,7 @@ use super::*;
 /// Deparse one source reference to the buffer.
 ///
 /// Unimplemented: requires R_AsCharacterSymbol and eval infrastructure.
-pub fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
+pub fn src2buff1(_srcref: SEXP, _d: &mut LocalParseData) {
     // requires eval/R_AsCharacterSymbol
 }
 
@@ -19,7 +19,7 @@ pub fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
 // ---------------------------------------------------------------------------
 
 /// Deparse source element k to buffer if possible. Returns false on failure.
-pub unsafe fn src2buff(sv: SEXP, k: c_int, d: *mut LocalParseData) -> bool {
+pub fn src2buff(sv: SEXP, k: c_int, d: &mut LocalParseData) -> bool {
     if !sv.is_null() && TYPEOF(sv) == SEXPTYPE::VECSXP && LENGTH(sv) > k {
         let t = VECTOR_ELT(sv, k as R_xlen_t);
         if !isNull(t) {

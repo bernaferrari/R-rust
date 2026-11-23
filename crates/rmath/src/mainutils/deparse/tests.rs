@@ -327,10 +327,8 @@ fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_valu
             maxlines: 3,
             ..LocalParseData::default()
         };
-        unsafe {
-            print2buff(c"".as_ptr(), &mut data);
-            writeline(&mut data);
-        }
+        append_line_bytes(b"", &mut data);
+        writeline(&mut data);
         assert_eq!(output.string_value_elt(0), Some(Some(String::new())));
         let text = "λ café".repeat(200).into_bytes();
         assert_ne!(text.last(), Some(&0));
@@ -338,9 +336,7 @@ fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_valu
         append_line_bytes(&text, &mut data);
         assert!(data.buffer.bytes().len() > BUFSIZE as usize);
         assert_eq!(data.len as usize, text.len() + 20);
-        unsafe {
-            writeline(&mut data);
-        }
+        writeline(&mut data);
         assert_eq!(
             output.string_value_elt(1),
             Some(Some(format!(
@@ -354,9 +350,7 @@ fn owned_deparse_line_flushes_empty_and_unterminated_unicode_through_actual_valu
         assert!(data.startline);
         data.indent = 0;
         append_line_bytes(b"last", &mut data);
-        unsafe {
-            writeline(&mut data);
-        }
+        writeline(&mut data);
         assert_eq!(output.string_value_elt(2), Some(Some("last".into())));
         assert_eq!(data.linenumber, 3);
         assert!(!data.active);
@@ -413,28 +407,20 @@ fn owned_deparse_line_wrap_and_line_limit_preserve_original_output() {
         };
         let mut continued = false;
         append_line_bytes(b"abc", &mut data);
-        unsafe {
-            linebreak(&mut continued, &mut data);
-        }
+        linebreak(&mut continued, &mut data);
         assert_eq!(data.linenumber, 0);
         append_line_bytes(b"d", &mut data);
-        unsafe {
-            linebreak(&mut continued, &mut data);
-        }
+        linebreak(&mut continued, &mut data);
         assert!(continued);
         assert_eq!(data.indent, 1);
         assert_eq!(output.string_value_elt(0), Some(Some("abcd".into())));
         append_line_bytes(b"next", &mut data);
-        unsafe {
-            writeline(&mut data);
-        }
+        writeline(&mut data);
         assert_eq!(output.string_value_elt(1), Some(Some("    next".into())));
         assert!(!data.active);
         // Counting flushes after the limit cannot overwrite completed lines.
         append_line_bytes(b"ignored", &mut data);
-        unsafe {
-            writeline(&mut data);
-        }
+        writeline(&mut data);
         assert_eq!(output.string_value_elt(1), Some(Some("    next".into())));
     });
 }

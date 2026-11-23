@@ -7,15 +7,15 @@ use super::*;
 // deparse2buff — recursive deparsing workhorse
 // ---------------------------------------------------------------------------
 
-pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
+pub unsafe fn deparse_s4_object(s: SEXP, d: &mut LocalParseData) -> bool {
     unsafe {
         let Some(class_name) = s4_class_name(s) else {
             return false;
         };
 
-        print2buff(b"new(\0".as_ptr() as *const c_char, d);
+        append_line_bytes(b"new(", d);
         print_r_string_literal(&class_name, d);
-        print2buff(b", \0".as_ptr() as *const c_char, d);
+        append_line_bytes(b", ", d);
 
         // GNU deparse.c: names(getClassDef(class)@slots), not the local
         // fallback setClass table. .S3Class formula objects have no .Data
@@ -76,12 +76,12 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         // do not grow a trailing empty argument.
         if has_s3_class && TYPEOF(s) != SEXPTYPE::OBJSXP.as_c_int() && !has_data {
             if let Some(s3) = s4_as_s3_view(s) {
-                print2buff(b", \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b", ", d);
                 deparse2buff(s3, d);
             }
         }
 
-        print2buff(b")\0".as_ptr() as *const c_char, d);
+        append_line_bytes(b")", d);
         true
     }
 }
@@ -242,41 +242,33 @@ pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> 
     }
 }
 
-pub unsafe fn print_argument_name(name: &str, d: *mut LocalParseData) {
-    unsafe {
-        if let Ok(c_name) = std::ffi::CString::new(name) {
-            if isValidName(c_name.as_ptr()) {
-                print2buff(c_name.as_ptr(), d);
-                return;
-            }
-        }
-        print2buff(b"`\0".as_ptr() as *const c_char, d);
-        print_owned_string(name.replace('`', "\\`"), d);
-        print2buff(b"`\0".as_ptr() as *const c_char, d);
+pub fn print_argument_name(name: &str, d: &mut LocalParseData) {
+    if !name.as_bytes().contains(&0) && is_valid_r_name_bytes(name.as_bytes()) {
+        append_line_bytes(name.as_bytes(), d);
+        return;
     }
+    append_line_bytes(b"`", d);
+    print_owned_string(name.replace('`', "\\`"), d);
+    append_line_bytes(b"`", d);
 }
 
-pub unsafe fn print_r_string_literal(value: &str, d: *mut LocalParseData) {
-    unsafe {
-        print2buff(b"\"\0".as_ptr() as *const c_char, d);
-        print_owned_string(
-            value
-                .replace('\\', "\\\\")
-                .replace('"', "\\\"")
-                .replace('\n', "\\n")
-                .replace('\r', "\\r")
-                .replace('\t', "\\t"),
-            d,
-        );
-        print2buff(b"\"\0".as_ptr() as *const c_char, d);
-    }
+pub fn print_r_string_literal(value: &str, d: &mut LocalParseData) {
+    append_line_bytes(b"\"", d);
+    print_owned_string(
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t"),
+        d,
+    );
+    append_line_bytes(b"\"", d);
 }
 
-pub unsafe fn print_owned_string(value: String, d: *mut LocalParseData) {
-    unsafe {
-        if let Ok(c_value) = std::ffi::CString::new(value) {
-            print2buff(c_value.as_ptr(), d);
-        }
+pub fn print_owned_string(value: String, d: &mut LocalParseData) {
+    if !value.as_bytes().contains(&0) {
+        append_line_bytes(value.as_bytes(), d);
     }
 }
 
@@ -284,9 +276,8 @@ pub unsafe fn print_owned_string(value: String, d: *mut LocalParseData) {
 ///
 /// This is the main recursive function that dispatches based on the SEXPTYPE
 /// of the input and builds the deparsed string representation.
-pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
+pub unsafe fn deparse2buff(s: SEXP, d: &mut LocalParseData) {
     unsafe {
-        let d = &mut *d;
         let d_opts_in = d.opts;
         let fnarg = d.fnarg;
         d.fnarg = false;
@@ -306,7 +297,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             d.isS4 = 1;
             if !deparse_s4_object(s, d) {
                 d.sourceable = 0;
-                print2buff(b"<S4 object>\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"<S4 object>", d);
             }
             d.left = prev_left;
             return;
@@ -316,7 +307,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
         let sexp_type = TYPEOF(s);
 
         if sexp_type == SEXPTYPE::NILSXP {
-            print2buff(b"NULL\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"NULL", d);
         } else if sexp_type == SEXPTYPE::SYMSXP {
             let doquote = (d_opts_in & QUOTEEXPRESSIONS != 0) && {
                 let pn = CHAR(PRINTNAME(s));
@@ -328,7 +319,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 } else {
                     ATTR_SIMPLE
                 };
-                print2buff(b"quote(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"quote(", d);
                 // Now print the name
                 if (d_opts_in & S_COMPAT) != 0 {
                     let q = quotify(PRINTNAME(s), b'"' as c_int);
@@ -346,7 +337,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         print2buff(pn, d);
                     }
                 }
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
                 if attr >= ATTR_STRUC_ATTR {
                     attr2(s, d, attr == ATTR_STRUC_ATTR);
                 }
@@ -374,19 +365,19 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 print2buff(name, d);
             }
         } else if sexp_type == SEXPTYPE::SPECIALSXP || sexp_type == SEXPTYPE::BUILTINSXP {
-            print2buff(b".Primitive(\"\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b".Primitive(\"", d);
             let pname = primname_c(s);
             print2buff(pname, d);
-            print2buff(b"\")\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"\")", d);
         } else if sexp_type == SEXPTYPE::PROMSXP {
             if (d.opts & DELAYPROMISES) != 0 {
                 d.sourceable = 0;
-                print2buff(b"<promise: \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"<promise: ", d);
                 d.opts &= !QUOTEEXPRESSIONS;
                 // PREXPR is not available, just print <promise>
-                print2buff(b">\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b">", d);
             } else {
-                print2buff(b"<promise>\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"<promise>", d);
             }
         } else if sexp_type == SEXPTYPE::CLOSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
@@ -400,9 +391,9 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 src2buff1(t, d);
             } else {
                 d.opts &= SIMPLE_OPTS & !USESOURCE;
-                print2buff(b"function (\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"function (", d);
                 args2buff(FORMALS(s), 0, 1, d);
-                print2buff(b") \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b") ", d);
                 writeline(d);
                 deparse2buff(BODY(s), d);
                 d.opts = d_opts_in;
@@ -412,18 +403,18 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             }
         } else if sexp_type == SEXPTYPE::ENVSXP {
             d.sourceable = 0;
-            print2buff(b"<environment>\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"<environment>", d);
         } else if sexp_type == SEXPTYPE::VECSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
                 ATTR_SIMPLE
             };
-            print2buff(b"list(\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"list(", d);
             d.opts = d_opts_in;
             vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
             d.opts |= NICE_NAMES;
-            print2buff(b")\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b")", d);
             if attr >= ATTR_STRUC_ATTR {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
@@ -435,14 +426,14 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 ATTR_SIMPLE
             };
             if LENGTH(s) <= 0 {
-                print2buff(b"expression()\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"expression()", d);
             } else {
                 let loc_opts = d.opts;
-                print2buff(b"expression(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"expression(", d);
                 d.opts &= SIMPLE_OPTS;
                 vec2buff(s, d, attr == ATTR_OK_NAMES || attr == ATTR_STRUC_ATTR);
                 d.opts = loc_opts;
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             }
             if attr >= ATTR_STRUC_ATTR {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
@@ -465,9 +456,9 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 t = CDR(t);
             }
             if missing {
-                print2buff(b"as.pairlist(alist(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"as.pairlist(alist(", d);
             } else {
-                print2buff(b"pairlist(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"pairlist(", d);
             }
             d.inlist += 1;
             let mut t = s;
@@ -476,23 +467,23 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     d.opts = SIMPLEDEPARSE;
                     deparse2buff(TAG(t), d);
                     d.opts = d_opts_in;
-                    print2buff(b" = \0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b" = ", d);
                 }
                 deparse2buff(CAR(t), d);
-                print2buff(b", \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b", ", d);
                 t = CDR(t);
             }
             if !isNull(TAG(t)) {
                 d.opts = SIMPLEDEPARSE;
                 deparse2buff(TAG(t), d);
                 d.opts = d_opts_in;
-                print2buff(b" = \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b" = ", d);
             }
             deparse2buff(CAR(t), d);
             if missing {
-                print2buff(b"))\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"))", d);
             } else {
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             }
             d.inlist -= 1;
             if attr >= ATTR_STRUC_ATTR {
@@ -513,7 +504,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 };
                 doquote = !is_tilde;
                 if doquote {
-                    print2buff(b"quote(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"quote(", d);
                     d.opts &= SIMPLE_OPTS;
                 } else {
                     d.opts &= !QUOTEEXPRESSIONS;
@@ -600,9 +591,9 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     // Dispatch on operator kind
                     match fop.kind {
                         PP_IF => {
-                            print2buff(b"if (\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"if (", d);
                             deparse2buff(CAR(s), d);
-                            print2buff(b") \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b") ", d);
                             if d.incurly != 0 && d.inlist == 0 {
                                 let lookahead = curlyahead(CADR(s));
                                 if !lookahead {
@@ -618,9 +609,9 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                         d.indent -= 1;
                                     }
                                 } else {
-                                    print2buff(b" \0".as_ptr() as *const c_char, d);
+                                    append_line_bytes(b" ", d);
                                 }
-                                print2buff(b"else \0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"else ", d);
                                 deparse2buff(CADDR(s), d);
                             } else {
                                 deparse2buff(CADR(s), d);
@@ -630,25 +621,25 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                             }
                         }
                         PP_WHILE => {
-                            print2buff(b"while (\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"while (", d);
                             deparse2buff(CAR(s), d);
-                            print2buff(b") \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b") ", d);
                             deparse2buff(CADR(s), d);
                         }
                         PP_FOR => {
-                            print2buff(b"for (\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"for (", d);
                             deparse2buff(CAR(s), d);
-                            print2buff(b" in \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b" in ", d);
                             deparse2buff(CADR(s), d);
-                            print2buff(b") \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b") ", d);
                             deparse2buff(CADDR(s), d);
                         }
                         PP_REPEAT => {
-                            print2buff(b"repeat \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"repeat ", d);
                             deparse2buff(CAR(s), d);
                         }
                         PP_CURLY => {
-                            print2buff(b"{\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"{", d);
                             d.incurly += 1;
                             d.indent += 1;
                             writeline(d);
@@ -659,13 +650,13 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 cur = CDR(cur);
                             }
                             d.indent -= 1;
-                            print2buff(b"}\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"}", d);
                             d.incurly -= 1;
                         }
                         PP_PAREN => {
-                            print2buff(b"(\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"(", d);
                             deparse2buff(CAR(s), d);
-                            print2buff(b")\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b")", d);
                         }
                         PP_SUBSET => {
                             let parens = needsparens(
@@ -677,24 +668,24 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             // Determine [ or [[
                             let primval = subset_primval(op, symval);
                             if primval == 1 {
-                                print2buff(b"[\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"[", d);
                             } else {
-                                print2buff(b"[[\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"[[", d);
                             }
                             args2buff(CDR(s), 0, 0, d);
                             if primval == 1 {
-                                print2buff(b"]\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"]", d);
                             } else {
-                                print2buff(b"]]\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"]]", d);
                             }
                         }
                         PP_FUNCALL | PP_RETURN => {
@@ -709,22 +700,22 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                     print2buff(q, d);
                                 }
                             }
-                            print2buff(b"(\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"(", d);
                             d.inlist += 1;
                             args2buff(s, 0, 0, d);
                             d.inlist -= 1;
-                            print2buff(b")\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b")", d);
                         }
                         PP_FOREIGN => {
                             let pn = CHAR(PRINTNAME(op));
                             if !pn.is_null() {
                                 print2buff(pn, d);
                             } // ASCII
-                            print2buff(b"(\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"(", d);
                             d.inlist += 1;
                             args2buff(s, 1, 0, d);
                             d.inlist -= 1;
-                            print2buff(b")\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b")", d);
                         }
                         PP_FUNCTION => {
                             if (d.opts & USESOURCE == 0) || !isString(CADDR(s)) {
@@ -732,12 +723,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 if !pn.is_null() {
                                     print2buff(pn, d);
                                 } // ASCII
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                                 // Parsed function arguments are a pairlist, not a closure.
                                 // GNU's FORMALS macro aliases CAR through its C layout;
                                 // the checked Rust graph requires the actual pairlist field.
                                 args2buff(CAR(s), 0, 1, d);
-                                print2buff(b") \0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b") ", d);
                                 deparse2buff(CADR(s), d);
                             } else {
                                 // Use source reference
@@ -759,7 +750,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 && streql(op_name, b"=\0".as_ptr() as *const c_char);
                             let outerparens = fnarg && is_eq;
                             if outerparens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             let parens = needsparens(
                                 fop.kind,
@@ -770,18 +761,18 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { fop.prec };
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
-                            print2buff(b" \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b" ", d);
                             if !op_name.is_null() {
                                 print2buff(op_name, d);
                             } // ASCII
-                            print2buff(b" \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b" ", d);
                             let parens = needsparens(
                                 fop.kind,
                                 fop.prec,
@@ -791,15 +782,15 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { prev_left };
                             deparse2buff(CADR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             if outerparens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             d.left = 0;
                         }
@@ -813,12 +804,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { fop.prec };
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             let op_name = CHAR(PRINTNAME(op));
                             if !op_name.is_null() {
@@ -842,12 +833,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                             prev_left,
                                         );
                                         if parens {
-                                            print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                            append_line_bytes(b"(", d);
                                         }
                                         d.left = if parens { 0 } else { prev_left };
                                         deparse2buff(rhs, d);
                                         if parens {
-                                            print2buff(b")\0".as_ptr() as *const c_char, d);
+                                            append_line_bytes(b")", d);
                                         }
                                     }
                                 }
@@ -861,12 +852,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                     prev_left,
                                 );
                                 if parens {
-                                    print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                    append_line_bytes(b"(", d);
                                 }
                                 d.left = if parens { 0 } else { prev_left };
                                 deparse2buff(rhs, d);
                                 if parens {
-                                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                                    append_line_bytes(b")", d);
                                 }
                             }
                             d.left = 0;
@@ -882,19 +873,19 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { fop.prec };
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
-                            print2buff(b" \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b" ", d);
                             let op_name = CHAR(PRINTNAME(op));
                             if !op_name.is_null() {
                                 print2buff(op_name, d);
                             } // ASCII
-                            print2buff(b" \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b" ", d);
                             linebreak(&mut lbreak, d);
                             let parens = needsparens(
                                 fop.kind,
@@ -905,12 +896,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { prev_left };
                             deparse2buff(CADR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             if lbreak {
                                 d.indent -= 1;
@@ -927,12 +918,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { fop.prec };
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             let op_name = CHAR(PRINTNAME(op));
                             if !op_name.is_null() {
@@ -947,12 +938,12 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { prev_left };
                             deparse2buff(CADR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             d.left = 0;
                         }
@@ -970,39 +961,39 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 prev_left,
                             );
                             if parens {
-                                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"(", d);
                             }
                             d.left = if parens { 0 } else { prev_left };
                             deparse2buff(CAR(s), d);
                             if parens {
-                                print2buff(b")\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b")", d);
                             }
                             d.left = 0;
                         }
                         PP_BREAK => {
-                            print2buff(b"break\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"break", d);
                         }
                         PP_NEXT => {
-                            print2buff(b"next\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"next", d);
                         }
                         PP_SUBASS => {
                             if (d.opts & S_COMPAT) != 0 {
-                                print2buff(b"\"\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"\"", d);
                                 let op_name = CHAR(PRINTNAME(op));
                                 if !op_name.is_null() {
                                     print2buff(op_name, d);
                                 } // ASCII
-                                print2buff(b"\'(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"\'(", d);
                             } else {
-                                print2buff(b"`\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"`", d);
                                 let op_name = CHAR(PRINTNAME(op));
                                 if !op_name.is_null() {
                                     print2buff(op_name, d);
                                 } // ASCII
-                                print2buff(b"`(\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"`(", d);
                             }
                             args2buff(s, 0, 0, d);
-                            print2buff(b")\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b")", d);
                         }
                         _ => {
                             d.sourceable = 0;
@@ -1023,7 +1014,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         && streql(op_name, b"::\0".as_ptr() as *const c_char)
                     {
                         deparse2buff(CADR(s), d);
-                        print2buff(b"::\0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b"::", d);
                         deparse2buff(CADDR(s), d);
                     } else if isSymbol(op)
                         && TYPEOF(val) == SEXPTYPE::CLOSXP
@@ -1031,7 +1022,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         && streql(op_name, b":::\0".as_ptr() as *const c_char)
                     {
                         deparse2buff(CADR(s), d);
-                        print2buff(b":::\0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b":::", d);
                         deparse2buff(CADDR(s), d);
                     } else {
                         if isSymbol(op) {
@@ -1049,9 +1040,9 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         } else {
                             deparse2buff(CAR(s), d);
                         }
-                        print2buff(b"(\0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b"(", d);
                         args2buff(CDR(s), 0, 0, d);
-                        print2buff(b")\0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b")", d);
                     }
                 }
             } else if TYPEOF(op) == SEXPTYPE::CLOSXP
@@ -1059,32 +1050,32 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 || TYPEOF(op) == SEXPTYPE::BUILTINSXP
             {
                 if parenthesizeCaller(op) {
-                    print2buff(b"(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"(", d);
                     deparse2buff(op, d);
-                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b")", d);
                 } else {
                     deparse2buff(op, d);
                 }
-                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"(", d);
                 args2buff(CDR(s), 0, 0, d);
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             } else {
                 // lambda expression or other
                 if parenthesizeCaller(op) {
-                    print2buff(b"(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"(", d);
                     deparse2buff(op, d);
-                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b")", d);
                 } else {
                     deparse2buff(op, d);
                 }
-                print2buff(b"(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"(", d);
                 args2buff(CDR(s), 0, 0, d);
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             }
             if maybe_quote {
                 d.opts = d_opts_in;
                 if doquote {
-                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b")", d);
                 }
             }
         } else if sexp_type == SEXPTYPE::LGLSXP
@@ -1096,18 +1087,18 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
         {
             vector2buff(s, d);
         } else if sexp_type == SEXPTYPE::EXTPTRSXP {
-            print2buff(b"<pointer: 0x0>\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"<pointer: 0x0>", d);
         } else if sexp_type == SEXPTYPE::BCODESXP {
             let source = crate::eval::bc_eval::BCODE_EXPR(s);
             if !isNull(source) {
                 deparse2buff(source, d);
             } else {
                 d.sourceable = 0;
-                print2buff(b"<bytecode>\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"<bytecode>", d);
             }
         } else if sexp_type == SEXPTYPE::WEAKREFSXP {
             d.sourceable = 0;
-            print2buff(b"<weak reference>\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"<weak reference>", d);
         } else if sexp_type == SEXPTYPE::OBJSXP {
             // A bare OBJSXP, e.g. from S7; objects with the S4 bit are
             // dealt with above.  Deparse to .OBJSXP() or
@@ -1115,16 +1106,16 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 let srcref_sym = crate::sexp::symbol::install_str("srcref");
                 let mut a = ATTRIB(s);
-                print2buff(b"structure(.OBJSXP()\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"structure(.OBJSXP()", d);
                 while !isNull(a) {
                     if TAG(a) != srcref_sym {
-                        print2buff(b", \0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b", ", d);
                         attrEntry(a, d);
                     }
                     a = CDR(a);
                 }
             }
-            print2buff(b")\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b")", d);
         } else {
             d.sourceable = 0;
         }

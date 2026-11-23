@@ -30,21 +30,22 @@ pub(crate) fn append_line_bytes(bytes: &[u8], data: &mut LocalParseData) {
     data.startline = false;
 }
 
-/// Native input adapter. The caller supplies a valid terminated string and a
-/// live exclusive parse state. Only the bounded CStr payload is appended.
-pub unsafe fn print2buff(string: *const c_char, data: *mut LocalParseData) {
+/// Append a compatibility formatter's C string.
+///
+/// # Safety
+/// A non-null string must be readable through its NUL terminator.
+pub unsafe fn print2buff(string: *const c_char, data: &mut LocalParseData) {
     if string.is_null() {
         return;
     }
     // SAFETY: the translated caller provides the source C string and state.
     let bytes = unsafe { std::ffi::CStr::from_ptr(string) }.to_bytes();
-    append_line_bytes(bytes, unsafe { &mut *data });
+    append_line_bytes(bytes, data);
 }
 
 /// Flush the actual owned bytes into an owning character value. The safe
 /// factory copies a bounded slice before its deferred allocation callbacks.
-pub unsafe fn writeline(data: *mut LocalParseData) {
-    let data = unsafe { &mut *data };
+pub fn writeline(data: &mut LocalParseData) {
     if !isNull(data.strvec) && data.linenumber < data.maxlines {
         // Capture the output's owning token before allocating the character.
         let owner = crate::sexp::owner::OwnerToken::current()
@@ -76,20 +77,15 @@ pub unsafe fn writeline(data: *mut LocalParseData) {
     data.startline = true;
 }
 
-pub unsafe fn linebreak(should_break: *mut bool, data: *mut LocalParseData) {
-    let data = unsafe { &mut *data };
+pub fn linebreak(should_break: &mut bool, data: &mut LocalParseData) {
     if data.len > data.cutoff {
-        if !unsafe { *should_break } {
-            unsafe {
-                *should_break = true;
-            }
+        if !*should_break {
+            *should_break = true;
             data.indent = data
                 .indent
                 .checked_add(1)
                 .unwrap_or_else(|| buffer_error(LineBufferError::TooLong));
         }
-        unsafe {
-            writeline(data);
-        }
+        writeline(data);
     }
 }

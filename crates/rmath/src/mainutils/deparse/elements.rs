@@ -56,12 +56,11 @@ fn write_cstr(buf: &mut [c_char], s: &str) {
 // ---------------------------------------------------------------------------
 
 /// Deparse a name from a names vector to the buffer, with quoting as needed.
-pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: *mut LocalParseData) {
+pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: &mut LocalParseData) {
     unsafe {
         if isNull(nv) {
             return;
         }
-        let d = &mut *d;
         let elt = STRING_ELT(nv, i as R_xlen_t);
         if isNull(elt) {
             return;
@@ -74,15 +73,15 @@ pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: *mut LocalParseData) {
         if !name.is_null() && isValidName(name) {
             deparse2buff(elt, d);
         } else if d.backtick != 0 {
-            print2buff(b"`\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"`", d);
             deparse2buff(elt, d);
-            print2buff(b"`\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"`", d);
         } else {
-            print2buff(b"\"\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"\"", d);
             deparse2buff(elt, d);
-            print2buff(b"\"\0".as_ptr() as *const c_char, d);
+            append_line_bytes(b"\"", d);
         }
-        print2buff(b" = \0".as_ptr() as *const c_char, d);
+        append_line_bytes(b" = ", d);
     }
 }
 
@@ -291,9 +290,8 @@ pub fn format_raw_element(val: Rbyte) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// Deparse atomic vectors (LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP).
-pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
+pub unsafe fn vector2buff(vector: SEXP, d: &mut LocalParseData) {
     unsafe {
-        let d = &mut *d;
         let d_opts_in = d.opts;
         let tlen = LENGTH(vector);
         let quote = if TYPEOF(vector) == SEXPTYPE::STRSXP {
@@ -363,12 +361,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
 
         if tlen == 0 {
             match TYPEOF(vector) {
-                10 => print2buff(b"logical(0)\0".as_ptr() as *const c_char, d), // LGLSXP
-                13 => print2buff(b"integer(0)\0".as_ptr() as *const c_char, d), // INTSXP
-                14 => print2buff(b"numeric(0)\0".as_ptr() as *const c_char, d), // REALSXP
-                15 => print2buff(b"complex(0)\0".as_ptr() as *const c_char, d), // CPLXSXP
-                16 => print2buff(b"character(0)\0".as_ptr() as *const c_char, d), // STRSXP
-                24 => print2buff(b"raw(0)\0".as_ptr() as *const c_char, d),     // RAWSXP
+                10 => append_line_bytes(b"logical(0)", d), // LGLSXP
+                13 => append_line_bytes(b"integer(0)", d), // INTSXP
+                14 => append_line_bytes(b"numeric(0)", d), // REALSXP
+                15 => append_line_bytes(b"complex(0)", d), // CPLXSXP
+                16 => append_line_bytes(b"character(0)", d), // STRSXP
+                24 => append_line_bytes(b"raw(0)", d),     // RAWSXP
                 _ => {} // intentionally unhandled: unsupported type for empty vector display
             }
         } else if TYPEOF(vector) == SEXPTYPE::INTSXP {
@@ -377,7 +375,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 if !vec.is_null() {
                     let strp = format_int_element(INTEGER_ELT(vector, 0));
                     print2buff(strp, d);
-                    print2buff(b":\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b":", d);
                     let strp =
                         format_int_element(INTEGER_ELT(vector, ((tlen - 1) as usize) as c_int));
                     print2buff(strp, d);
@@ -395,12 +393,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     }
                 }
                 if (d.opts & KEEPINTEGER != 0) && (d.opts & S_COMPAT != 0) {
-                    print2buff(b"as.integer(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"as.integer(", d);
                     surround = true;
                 }
                 all_na = all_na && (d.opts & S_COMPAT == 0);
                 if need_c {
-                    print2buff(b"c(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"c(", d);
                 }
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
@@ -408,16 +406,16 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             deparse2buf_name(nv, i as c_int, d);
                         }
                         if all_na && INTEGER_ELT(vector, (i) as c_int) == NA_INTEGER {
-                            print2buff(b"NA_integer_\0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b"NA_integer_", d);
                         } else {
                             let strp = format_int_element(INTEGER_ELT(vector, (i) as c_int));
                             print2buff(strp, d);
                             if add_l && INTEGER_ELT(vector, (i) as c_int) != NA_INTEGER {
-                                print2buff(b"L\0".as_ptr() as *const c_char, d);
+                                append_line_bytes(b"L", d);
                             }
                         }
                         if i < (tlen as usize) - 1 {
-                            print2buff(b", \0".as_ptr() as *const c_char, d);
+                            append_line_bytes(b", ", d);
                         }
                         if tlen > 1 && d.len > d.cutoff {
                             writeline(d);
@@ -428,10 +426,10 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     }
                 }
                 if need_c {
-                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b")", d);
                 }
                 if surround {
-                    print2buff(b")\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b")", d);
                 }
             }
         } else {
@@ -450,7 +448,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     }
                 }
                 if all_na && (d.opts & S_COMPAT != 0) {
-                    print2buff(b"as.double(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"as.double(", d);
                     surround = true;
                 }
             } else if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::CPLXSXP {
@@ -465,7 +463,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     }
                 }
                 if all_na && (d.opts & S_COMPAT != 0) {
-                    print2buff(b"as.complex(\0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b"as.complex(", d);
                     surround = true;
                 }
             } else if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::STRSXP {
@@ -477,16 +475,16 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     }
                 }
                 if all_na && (d.opts & S_COMPAT != 0) {
-                    print2buff(c"as.character(".as_ptr(), d);
+                    append_line_bytes(b"as.character(", d);
                     surround = true;
                 }
             } else if TYPEOF(vector) == SEXPTYPE::RAWSXP {
-                print2buff(b"as.raw(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"as.raw(", d);
                 surround = true;
             }
 
             if need_c {
-                print2buff(b"c(\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b"c(", d);
             }
             all_na = all_na && (d.opts & S_COMPAT == 0);
 
@@ -618,7 +616,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     print2buff(strp, d);
                 }
                 if i < (tlen as usize) - 1 {
-                    print2buff(b", \0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b", ", d);
                 }
                 if tlen > 1 && d.len > d.cutoff {
                     writeline(d);
@@ -629,10 +627,10 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
             }
 
             if need_c {
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             }
             if surround {
-                print2buff(b")\0".as_ptr() as *const c_char, d);
+                append_line_bytes(b")", d);
             }
         }
         if attr >= ATTR_STRUC_ATTR {
@@ -649,9 +647,8 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
 // ---------------------------------------------------------------------------
 
 /// Deparse vectors of S-expressions (list() and expression() objects).
-pub unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
+pub unsafe fn vec2buff(v: SEXP, d: &mut LocalParseData, do_names: bool) {
     unsafe {
-        let d = &mut *d;
         let mut lbreak = false;
         let n = LENGTH(v);
         let names_sym = crate::sexp::symbol::install_str("names");
@@ -676,7 +673,7 @@ pub unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
 
         for i in 0..n as usize {
             if i > 0 {
-                print2buff(b", \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b", ", d);
             }
             linebreak(&mut lbreak, d);
             if do_names {
@@ -700,9 +697,8 @@ pub unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
 ///
 /// Handles named and unnamed arguments, default values for formals, and
 /// line breaking for long argument lists.
-pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut LocalParseData) {
+pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: &mut LocalParseData) {
     unsafe {
-        let d = &mut *d;
         let mut lbreak = false;
         let mut cur = arglist;
 
@@ -732,12 +728,12 @@ pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut Lo
                     // GNU: only R_MissingArg means no default. `x = NULL` must
                     // print as `x = NULL`, not as a missing formal.
                     if CAR(cur) != R_MissingArg() {
-                        print2buff(b" = \0".as_ptr() as *const c_char, d);
+                        append_line_bytes(b" = ", d);
                         d.fnarg = true;
                         deparse2buff(CAR(cur), d);
                     }
                 } else {
-                    print2buff(b" = \0".as_ptr() as *const c_char, d);
+                    append_line_bytes(b" = ", d);
                     if CAR(cur) != R_MissingArg() {
                         d.fnarg = true;
                         deparse2buff(CAR(cur), d);
@@ -749,7 +745,7 @@ pub unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut Lo
             }
             cur = CDR(cur);
             if !isNull(cur) {
-                print2buff(b", \0".as_ptr() as *const c_char, d);
+                append_line_bytes(b", ", d);
                 linebreak(&mut lbreak, d);
             }
         }
