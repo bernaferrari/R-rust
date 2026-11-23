@@ -1193,19 +1193,12 @@ unsafe fn tre_set_union(
     mem: mem::tre_mem_t,
     set1: *const tre_pos_and_tags_t,
     set2: *const tre_pos_and_tags_t,
-    tags: *const c_int,
+    tags: Option<&[c_int]>,
     assertions: c_int,
     params: *const c_int,
 ) -> *mut tre_pos_and_tags_t {
     unsafe {
-        let mut num_tags: c_int = 0;
-        if !tags.is_null() {
-            let mut i: c_int = 0;
-            while *tags.offset(i as isize) >= 0 {
-                i += 1;
-            }
-            num_tags = i;
-        }
+        let num_tags = tags.map_or(0, <[c_int]>::len);
 
         let mut s1: c_int = 0;
         while (*set1.offset(s1 as isize)).position >= 0 {
@@ -1235,31 +1228,37 @@ unsafe fn tre_set_union(
             (*new_set.offset(idx)).backref = (*set1.offset(idx)).backref;
 
             // Merge tags: combine existing entry tags with the `tags` parameter
-            if (*set1.offset(idx)).tags.is_null() && tags.is_null() {
+            if (*set1.offset(idx)).tags.is_null() && tags.is_none() {
                 (*new_set.offset(idx)).tags = ptr::null_mut();
             } else {
-                let mut existing_count: c_int = 0;
+                let mut existing_count = 0usize;
                 if !(*set1.offset(idx)).tags.is_null() {
-                    while *(*set1.offset(idx)).tags.offset(existing_count as isize) >= 0 {
+                    while *(*set1.offset(idx)).tags.add(existing_count) >= 0 {
                         existing_count += 1;
                     }
                 }
-                let new_tags = mem::tre_mem_alloc(
-                    mem,
-                    std::mem::size_of::<c_int>() * (existing_count + num_tags + 1) as usize,
-                ) as *mut c_int;
+                let Some(bytes) = existing_count
+                    .checked_add(num_tags)
+                    .and_then(|count| count.checked_add(1))
+                    .and_then(|count| count.checked_mul(std::mem::size_of::<c_int>()))
+                else {
+                    return ptr::null_mut();
+                };
+                let new_tags = mem::tre_mem_alloc(mem, bytes).cast::<c_int>();
                 if new_tags.is_null() {
                     return ptr::null_mut();
                 }
-                let mut j: c_int = 0;
-                while j < existing_count {
-                    *new_tags.offset(j as isize) = *(*set1.offset(idx)).tags.offset(j as isize);
-                    j += 1;
+                if existing_count != 0 {
+                    ptr::copy_nonoverlapping((*set1.offset(idx)).tags, new_tags, existing_count);
                 }
-                for k in 0..num_tags {
-                    *new_tags.offset((j + k) as isize) = *tags.offset(k as isize);
+                if let Some(tags) = tags {
+                    ptr::copy_nonoverlapping(
+                        tags.as_ptr(),
+                        new_tags.add(existing_count),
+                        tags.len(),
+                    );
                 }
-                *new_tags.offset((j + num_tags) as isize) = -1;
+                *new_tags.add(existing_count + num_tags) = -1;
                 (*new_set.offset(idx)).tags = new_tags;
             }
 
@@ -1350,78 +1349,68 @@ unsafe fn tre_set_union(
     }
 }
 
+enum EmptyMatchPass<'a> {
+    Count(&'a mut usize),
+    Emit {
+        tags: &'a mut [c_int],
+        len: &'a mut usize,
+        assertions: &'a mut c_int,
+    },
+}
+
+impl EmptyMatchPass<'_> {
+    fn record_tag(&mut self, tag: c_int) -> Option<()> {
+        match self {
+            Self::Count(count) => {
+                **count = count.checked_add(1)?;
+            }
+            Self::Emit { tags, len, .. } => {
+                if tags.get(..**len)?.contains(&tag) {
+                    return Some(());
+                }
+                let (entry, tail) = tags.get_mut(**len..)?.split_first_mut()?;
+                let terminator = tail.first_mut()?;
+                *entry = tag;
+                *terminator = -1;
+                **len += 1;
+            }
+        }
+        Some(())
+    }
+}
+
 // ===== Match empty =====
 
 /// # Safety
 ///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// `stack` must be a live TRE stack and `node` a properly initialized AST
+/// subtree; the emitted scratch never escapes the call.
 unsafe fn tre_match_empty(
     stack: *mut stack::tre_stack_rec,
     mut node: *mut tre_ast_node_t,
-    tags: *mut c_int,
-    assertions: *mut c_int,
-    params: *mut c_int,
-    num_tags_seen: *mut c_int,
-    _params_seen: *mut c_int,
+    mut pass: EmptyMatchPass<'_>,
 ) -> c_int {
     unsafe {
         let bottom = stack::tre_stack_num_objects(stack);
-        let status: c_int = REG_OK as c_int;
-
-        if !num_tags_seen.is_null() {
-            *num_tags_seen = 0;
-        }
-        if !_params_seen.is_null() {
-            *_params_seen = 0;
-        }
 
         checked_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
 
-        while status == REG_OK as c_int && stack::tre_stack_num_objects(stack) > bottom {
+        while stack::tre_stack_num_objects(stack) > bottom {
             node = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
             match (*node).type_ {
                 tre_ast_type_t::LITERAL => {
                     let lit = (*node).obj as *mut tre_literal_t;
                     match (*lit).code_min {
-                        TAG => {
-                            if (*lit).code_max >= 0 {
-                                if !tags.is_null() {
-                                    let mut i = 0;
-                                    while *tags.offset(i) >= 0 {
-                                        if *tags.offset(i) == (*lit).code_max as c_int {
-                                            break;
-                                        }
-                                        i += 1;
-                                    }
-                                    if *tags.offset(i) < 0 {
-                                        *tags.offset(i) = (*lit).code_max as c_int;
-                                        *tags.offset(i + 1) = -1;
-                                    }
-                                }
-                                if !num_tags_seen.is_null() {
-                                    *num_tags_seen += 1;
-                                }
+                        TAG if (*lit).code_max >= 0 => {
+                            if pass.record_tag((*lit).code_max as c_int).is_none() {
+                                return REG_ESPACE;
                             }
                         }
                         ASSERTION => {
-                            if !assertions.is_null() {
-                                *assertions |= (*lit).code_max as c_int;
+                            if let EmptyMatchPass::Emit { assertions, .. } = &mut pass {
+                                **assertions |= (*lit).code_max as c_int;
                             }
                         }
-                        PARAMETER => {
-                            if !params.is_null() {
-                                let p = (*lit).get_params();
-                                for i in 0..TRE_PARAM_LAST {
-                                    *params.add(i) = *p.add(i);
-                                }
-                            }
-                            if !_params_seen.is_null() {
-                                *_params_seen = 1;
-                            }
-                        }
-                        EMPTY => {}
                         _ => {}
                     }
                 }
@@ -1461,7 +1450,52 @@ unsafe fn tre_match_empty(
                 }
             }
         }
-        status
+        REG_OK
+    }
+}
+
+/// # Safety
+/// The stack, arena, nullable node and both position sets must be live TRE
+/// objects for the traversal and union.
+unsafe fn tre_union_with_empty_branch(
+    mem: mem::tre_mem_t,
+    stack: stack::tre_stack_t,
+    nullable: *mut tre_ast_node_t,
+    set1: *const tre_pos_and_tags_t,
+    set2: *const tre_pos_and_tags_t,
+) -> Result<*mut tre_pos_and_tags_t, c_int> {
+    unsafe {
+        let mut count = 0;
+        let status = tre_match_empty(stack, nullable, EmptyMatchPass::Count(&mut count));
+        if status != REG_OK {
+            return Err(status);
+        }
+        let capacity = count.checked_add(1).ok_or(REG_ESPACE)?;
+        let tags = mem::xcalloc(capacity, std::mem::size_of::<c_int>()).cast::<c_int>();
+        if tags.is_null() {
+            return Err(REG_ESPACE);
+        }
+        let entries = std::slice::from_raw_parts_mut(tags, capacity);
+        entries[0] = -1;
+        let mut len = 0;
+        let mut assertions = 0;
+        let status = tre_match_empty(
+            stack,
+            nullable,
+            EmptyMatchPass::Emit {
+                tags: entries,
+                len: &mut len,
+                assertions: &mut assertions,
+            },
+        );
+        let result = if status != REG_OK {
+            Err(status)
+        } else {
+            let result = tre_set_union(mem, set1, set2, Some(&entries[..len]), assertions, ptr::null());
+            if result.is_null() { Err(REG_ESPACE) } else { Ok(result) }
+        };
+        mem::xfree(tags.cast());
+        result
     }
 }
 
@@ -1652,7 +1686,7 @@ unsafe fn tre_compute_nfl(
                         mem,
                         (*(*uni).left).firstpos,
                         (*(*uni).right).firstpos,
-                        ptr::null(),
+                        None,
                         0,
                         ptr::null(),
                     );
@@ -1663,7 +1697,7 @@ unsafe fn tre_compute_nfl(
                         mem,
                         (*(*uni).left).lastpos,
                         (*(*uni).right).lastpos,
-                        ptr::null(),
+                        None,
                         0,
                         ptr::null(),
                     );
@@ -1694,104 +1728,30 @@ unsafe fn tre_compute_nfl(
                         };
 
                     if (*(*cat).left).nullable != 0 {
-                        let mut num_tags: c_int = 0;
-                        let mut params_seen: c_int = 0;
-                        let _status = tre_match_empty(
-                            stack,
-                            (*cat).left,
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            &mut num_tags,
-                            &mut params_seen,
-                        );
-                        if _status != REG_OK as c_int {
-                            return _status;
-                        }
-                        let tags =
-                            mem::xmalloc(std::mem::size_of::<c_int>() * (num_tags as usize + 1))
-                                as *mut c_int;
-                        if tags.is_null() {
-                            return REG_ESPACE as c_int;
-                        }
-                        *tags = -1;
-                        let mut assertions: c_int = 0;
-                        let _status = tre_match_empty(
-                            stack,
-                            (*cat).left,
-                            tags,
-                            &mut assertions,
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                        );
-                        if _status != REG_OK as c_int {
-                            mem::xfree(tags as *mut c_void);
-                            return _status;
-                        }
-                        (*node).firstpos = tre_set_union(
+                        match tre_union_with_empty_branch(
                             mem,
+                            stack,
+                            (*cat).left,
                             (*(*cat).right).firstpos,
                             (*(*cat).left).firstpos,
-                            tags,
-                            assertions,
-                            ptr::null(),
-                        );
-                        mem::xfree(tags as *mut c_void);
-                        if (*node).firstpos.is_null() {
-                            return REG_ESPACE as c_int;
+                        ) {
+                            Ok(firstpos) => (*node).firstpos = firstpos,
+                            Err(status) => return status,
                         }
                     } else {
                         (*node).firstpos = (*(*cat).left).firstpos;
                     }
 
                     if (*(*cat).right).nullable != 0 {
-                        let mut num_tags: c_int = 0;
-                        let mut params_seen: c_int = 0;
-                        let _status = tre_match_empty(
-                            stack,
-                            (*cat).right,
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            &mut num_tags,
-                            &mut params_seen,
-                        );
-                        if _status != REG_OK as c_int {
-                            return _status;
-                        }
-                        let tags =
-                            mem::xmalloc(std::mem::size_of::<c_int>() * (num_tags as usize + 1))
-                                as *mut c_int;
-                        if tags.is_null() {
-                            return REG_ESPACE as c_int;
-                        }
-                        *tags = -1;
-                        let mut assertions: c_int = 0;
-                        let _status = tre_match_empty(
-                            stack,
-                            (*cat).right,
-                            tags,
-                            &mut assertions,
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                            ptr::null_mut(),
-                        );
-                        if _status != REG_OK as c_int {
-                            mem::xfree(tags as *mut c_void);
-                            return _status;
-                        }
-                        (*node).lastpos = tre_set_union(
+                        match tre_union_with_empty_branch(
                             mem,
+                            stack,
+                            (*cat).right,
                             (*(*cat).left).lastpos,
                             (*(*cat).right).lastpos,
-                            tags,
-                            assertions,
-                            ptr::null(),
-                        );
-                        mem::xfree(tags as *mut c_void);
-                        if (*node).lastpos.is_null() {
-                            return REG_ESPACE as c_int;
+                        ) {
+                            Ok(lastpos) => (*node).lastpos = lastpos,
+                            Err(status) => return status,
                         }
                     } else {
                         (*node).lastpos = (*(*cat).right).lastpos;
@@ -3966,15 +3926,9 @@ mod traversal_stack_tests {
                     Pass::Expand => {
                         tre_expand_ast(mem, stack, tree, &mut value, ptr::null_mut(), &mut depth)
                     }
-                    Pass::Empty => tre_match_empty(
-                        stack,
-                        tree,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                    ),
+                    Pass::Empty => {
+                        tre_match_empty(stack, tree, EmptyMatchPass::Count(&mut 0))
+                    }
                     Pass::Nfl => tre_compute_nfl(mem, stack, tree),
                     Pass::Tnfa => tre_ast_to_tnfa_iter(
                         stack,
@@ -3986,6 +3940,65 @@ mod traversal_stack_tests {
                 stack::tre_stack_destroy(stack);
                 status
             })
+        }
+    }
+
+    #[test]
+    fn nullable_capture_tags_preserve_order_and_require_sentinel_space() {
+        let mut arena =
+            mem::tre_mem_struct::new(crate::mainutils::grep::RegexWorkspace::unbounded()).unwrap();
+        unsafe {
+            let mem = &mut arena as mem::tre_mem_t;
+            let t1 = tre_ast_new_literal(mem, TAG as c_int, 7, -1);
+            let t2 = tre_ast_new_literal(mem, TAG as c_int, 7, -1);
+            let t3 = tre_ast_new_literal(mem, TAG as c_int, 3, -1);
+            let assertion = tre_ast_new_literal(mem, ASSERTION as c_int, ASSERT_AT_BOL, -1);
+            let left = tre_ast_new_catenation(mem, t1, t2);
+            let right = tre_ast_new_catenation(mem, t3, assertion);
+            let tree = tre_ast_new_catenation(mem, left, right);
+            let stack = stack::tre_stack_new(64, 64, 1);
+            assert!(!stack.is_null());
+            let mut count = 0;
+            assert_eq!(
+                tre_match_empty(stack, tree, EmptyMatchPass::Count(&mut count)),
+                REG_OK
+            );
+            assert_eq!(count, 3);
+            let mut tags = [-1; 3];
+            let mut len = 0;
+            let mut assertions = 0;
+            assert_eq!(
+                tre_match_empty(
+                    stack,
+                    tree,
+                    EmptyMatchPass::Emit {
+                        tags: &mut tags,
+                        len: &mut len,
+                        assertions: &mut assertions
+                    }
+                ),
+                REG_OK
+            );
+            assert_eq!(len, 2);
+            assert_eq!(tags, [3, 7, -1]);
+            assert_eq!(assertions, ASSERT_AT_BOL);
+            let mut narrow = [-1; 2];
+            len = 0;
+            assertions = 0;
+            assert_eq!(
+                tre_match_empty(
+                    stack,
+                    tree,
+                    EmptyMatchPass::Emit {
+                        tags: &mut narrow,
+                        len: &mut len,
+                        assertions: &mut assertions
+                    }
+                ),
+                REG_ESPACE
+            );
+            assert_eq!(narrow, [3, -1]);
+            stack::tre_stack_destroy(stack);
         }
     }
 

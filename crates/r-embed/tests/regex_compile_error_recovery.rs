@@ -58,3 +58,27 @@ fn tre_compile_memory_denial_is_an_error_and_recovers_under_unchanged_cap() {
         );
     }
 }
+
+#[test]
+fn nullable_tre_captures_preserve_positions_and_lengths() {
+    let mut session =
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), "tmp")).unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"
+local({
+    x <- c("", "a", "b", "ab", "aab", "bb")
+    m <- regexec("^(a*)(b?)$", x)
+    stopifnot(identical(lapply(m, as.integer),
+                       list(c(1L,1L,1L),c(1L,1L,2L),c(1L,1L,1L),c(1L,1L,2L),c(1L,1L,3L),-1L)),
+              identical(lapply(m, attr, "match.length"),
+                       list(c(0L,0L,0L),c(1L,1L,0L),c(1L,0L,1L),c(2L,1L,1L),c(3L,2L,1L),-1L)))
+    cat("nullable-tre-ok\n")
+})
+"#
+            )
+            .unwrap(),
+        "nullable-tre-ok\n"
+    );
+}
