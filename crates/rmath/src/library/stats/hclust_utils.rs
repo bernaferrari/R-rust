@@ -7,7 +7,6 @@ use std::os::raw::c_int;
 
 use crate::main::coerce::coerceVector;
 use crate::main::util_main::nrows;
-use crate::sexp::attrib_core::{R_DimSymbol, setAttrib};
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::context::r_error;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -40,13 +39,7 @@ pub fn cutree(merge: SEXP, which: SEXP) -> SEXP {
 
     let ans_len = R_xlen_t::from(n) * R_xlen_t::from(which_len);
     let ans = checked(owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, ans_len)));
-    checked(owner.require_active());
-    let dim = checked(owner.sexp(Rf_allocVector3(SEXPTYPE::INTSXP, 2)));
-    let mut dim_out = checked(SexpMut::try_from_checked(dim.clone()));
-    checked(dim_out.try_set_integer_elt(0, n));
-    checked(dim_out.try_set_integer_elt(1, which_len));
-    checked(owner.require_active());
-    setAttrib(ans.as_raw(), R_DimSymbol(), dim.as_raw());
+    crate::mainutils::array::set_dim_vector(owner, &ans, [n, which_len].into_iter());
     let mut out = checked(SexpMut::try_from_checked(ans.clone()));
 
     // Read each requested cut once, even for an ALTREP provider that can run GC.
@@ -330,6 +323,7 @@ mod tests {
     use crate::sexp::altrep::{
         AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,
     };
+    use crate::sexp::attrib_core::{R_DimSymbol, setAttrib};
     use crate::sexp::{object::SexpResult, session::RSession};
     use std::{cell::Cell, rc::Rc};
 

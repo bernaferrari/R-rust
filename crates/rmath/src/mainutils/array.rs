@@ -31,23 +31,27 @@ use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons, Rf_l
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut};
+use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::protect;
 
-/// Checked node factory bound to the active runtime session.
-fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
-    crate::sexp::object::SessionNodeFactory::new(
-        crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
-    )
+/// Owner retained by the active R call.
+fn array_owner() -> OwnerToken<'static> {
+    checked(OwnerToken::current())
 }
 
-fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> SessionNodeFactory<'static> {
+    SessionNodeFactory::new(array_owner())
+}
+
+fn wrapped(x: SEXP) -> Sexp<'static> {
     node_factory()
         .wrap(x)
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
-fn mutable_vector(x: SEXP) -> crate::sexp::object::SexpMut<'static> {
+fn mutable_vector(x: SEXP) -> SexpMut<'static> {
     node_factory()
         .wrap(x)
         .and_then(crate::sexp::object::SexpMut::try_from_checked)
@@ -412,19 +416,24 @@ fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
     }
 }
 
-fn set_dim_vector(target: SEXP, dims: &[usize]) {
-    {
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as R_xlen_t);
-        if !dim.is_null() {
-            {
-                let mut dim = mutable_vector(dim);
-                for (index, value) in dims.iter().enumerate() {
-                    checked(dim.try_set_integer_elt(index as R_xlen_t, *value as c_int));
-                }
-            }
-            setAttrib(target, R_DimSymbol(), dim);
-        }
+pub(crate) fn set_dim_vector(
+    owner: OwnerToken<'static>,
+    target: &Sexp<'static>,
+    extents: impl ExactSizeIterator<Item = c_int>,
+) {
+    checked(owner.require_active());
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, extents.len() as R_xlen_t);
+    if dim.is_null() {
+        return;
     }
+    let dim = checked(owner.sexp(dim));
+    let mut dims = checked(SexpMut::try_from_checked(dim.clone()));
+    for (i, extent) in extents.enumerate() {
+        checked(dims.try_set_integer_elt(i as R_xlen_t, extent));
+    }
+    checked(owner.require_active());
+    setAttrib(target.as_raw(), R_DimSymbol(), dim.as_raw());
+    checked(owner.require_active());
 }
 
 fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
@@ -937,13 +946,6 @@ pub(crate) fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
     }
 }
 
-fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
-    if !x.is_null() {
-        setAttrib(x, R_DimSymbol(), dims);
-    }
-    x
-}
-
 // ---------------------------------------------------------------------------
 // GetRowNames / GetColNames
 // ---------------------------------------------------------------------------
@@ -1011,12 +1013,14 @@ pub fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
         let len = (nrow as R_xlen_t)
             .checked_mul(ncol as R_xlen_t)
             .unwrap_or_else(|| array_error("matrix is too large"));
+        let owner = array_owner();
         let result = Rf_allocVector3(mode, len);
         if result.is_null() {
             return R_NilValue();
         }
-        set_dim_vector(result, &[nrow as usize, ncol as usize]);
-        result
+        let result = checked(owner.sexp(result));
+        set_dim_vector(owner, &result, [nrow, ncol].into_iter());
+        result.as_raw()
     }
 }
 
@@ -1056,15 +1060,24 @@ pub fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
         if !valid_array_storage_type(mode) {
             array_error("invalid array storage mode");
         }
-        let len = match dim2total(dims) {
+        if dims.is_null() {
+            array_error("'dims' must be an integer vector");
+        }
+        let owner = array_owner();
+        let dims = checked(owner.sexp(dims));
+        let len = match dim2total(dims.as_raw()) {
             Ok(len) => len,
             Err(()) => array_error("'allocArray': too many elements specified by 'dims'"),
         };
+        checked(owner.require_active());
         let result = Rf_allocVector3(mode, len);
         if result.is_null() {
             return R_NilValue();
         }
-        set_dim_attr(result, dims)
+        let result = checked(owner.sexp(result));
+        setAttrib(result.as_raw(), R_DimSymbol(), dims.as_raw());
+        checked(owner.require_active());
+        result.as_raw()
     }
 }
 
@@ -1613,7 +1626,10 @@ pub fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             array_error("asplit() requires an array");
         }
-        let dims = array_dimensions(x, "asplit()");
+        let owner = array_owner();
+        let _args_root = checked(owner.sexp(_args));
+        let x = checked(owner.sexp(x));
+        let dims = array_dimensions(x.as_raw(), "asplit()");
         let split_axes = parse_margin(matched[1], dims.len());
         let inner_axes = (0..dims.len())
             .filter(|axis| !split_axes.contains(axis))
@@ -1629,22 +1645,27 @@ pub fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
         let outer_len = product(&split_dims);
         let inner_len = product(&inner_dims);
 
+        checked(owner.require_active());
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, outer_len as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
-        set_dim_vector(result, &split_dims);
-        set_dimnames_from_axes(result, x, &split_axes);
+        let result = checked(owner.sexp(result));
+        let mut output = checked(SexpMut::try_from_checked(result.clone()));
+        set_dim_vector(owner, &result, split_dims.iter().map(|&dim| dim as c_int));
+        set_dimnames_from_axes(result.as_raw(), x.as_raw(), &split_axes);
 
         let input_strides = column_major_strides(&dims);
         for outer_index in 0..outer_len {
             let outer_coords = unravel_column_major(outer_index, &split_dims);
-            let element = Rf_allocVector3(TYPEOF(x), inner_len as R_xlen_t);
+            checked(owner.require_active());
+            let element = Rf_allocVector3(x.typeof_(), inner_len as R_xlen_t);
             if element.is_null() {
                 return R_NilValue();
             }
-            set_dim_vector(element, &inner_dims);
-            set_dimnames_from_axes(element, x, &inner_axes);
+            let element = checked(owner.sexp(element));
+            set_dim_vector(owner, &element, inner_dims.iter().map(|&dim| dim as c_int));
+            set_dimnames_from_axes(element.as_raw(), x.as_raw(), &inner_axes);
 
             for inner_index in 0..inner_len {
                 let inner_coords = unravel_column_major(inner_index, &inner_dims);
@@ -1656,11 +1677,12 @@ pub fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
                     input_coords[*axis] = inner_coords[coord_index];
                 }
                 let src_index = ravel_column_major(&input_coords, &input_strides);
-                copy_vector_element(element, inner_index, x, src_index);
+                copy_vector_element(element.as_raw(), inner_index, x.as_raw(), src_index);
             }
-            SET_VECTOR_ELT(result, outer_index as R_xlen_t, element);
+            checked(output.try_set_vector_elt(outer_index as R_xlen_t, element));
         }
-        result
+        checked(owner.require_active());
+        result.as_raw()
     }
 }
 
@@ -1669,7 +1691,9 @@ pub fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 /// runs of `n1 = prod(d.call)` elements into `n2 = prod(d.ans)` slices.
 fn do_asplit_internal(args: SEXP) -> SEXP {
     {
-        let mut cell = args;
+        let owner = array_owner();
+        let args = checked(owner.sexp(args));
+        let mut cell = args.as_raw();
         let mut arg = [R_NilValue(); 8];
         for slot in arg.iter_mut() {
             if cell.is_null() || cell == R_NilValue() {
@@ -1690,27 +1714,40 @@ fn do_asplit_internal(args: SEXP) -> SEXP {
         let keepdim = !(TYPEOF(drop) == SEXPTYPE::LGLSXP
             && Rf_length(drop) == 1
             && LOGICAL_ELT(drop, 0) != 0);
+        checked(owner.require_active());
         let y = Rf_allocVector3(SEXPTYPE::VECSXP, n2 as R_xlen_t);
-        setAttrib(y, R_DimSymbol(), da);
+        if y.is_null() {
+            return R_NilValue();
+        }
+        let y = checked(owner.sexp(y));
+        let mut output = checked(SexpMut::try_from_checked(y.clone()));
+        setAttrib(y.as_raw(), R_DimSymbol(), da);
         if !dna.is_null() && dna != R_NilValue() && Rf_length(dna) > 0 {
-            setAttrib(y, R_DimNamesSymbol(), dna);
+            setAttrib(y.as_raw(), R_DimNamesSymbol(), dna);
         }
         let mut k = 0usize;
         for i in 0..n2 as usize {
+            checked(owner.require_active());
             let e = Rf_allocVector3(TYPEOF(x), n1 as R_xlen_t);
+            if e.is_null() {
+                return R_NilValue();
+            }
+            let e = checked(owner.sexp(e));
             for j in 0..n1 as usize {
-                copy_vector_element(e, j, x, k);
+                copy_vector_element(e.as_raw(), j, x, k);
                 k += 1;
             }
             if keepdim {
-                setAttrib(e, R_DimSymbol(), dc);
+                checked(owner.require_active());
+                setAttrib(e.as_raw(), R_DimSymbol(), dc);
                 if havednc {
-                    setAttrib(e, R_DimNamesSymbol(), dnc);
+                    setAttrib(e.as_raw(), R_DimNamesSymbol(), dnc);
                 }
             }
-            SET_VECTOR_ELT(y, i as R_xlen_t, e);
+            checked(output.try_set_vector_elt(i as R_xlen_t, e));
         }
-        y
+        checked(owner.require_active());
+        y.as_raw()
     }
 }
 
@@ -1742,6 +1779,19 @@ mod tests {
             .downcast_ref::<RError>()
             .expect("expected RError payload")
             .clone()
+    }
+
+    fn collect_fully_on_next_allocation_gc() -> std::rc::Rc<std::cell::Cell<bool>> {
+        let called = std::rc::Rc::new(std::cell::Cell::new(false));
+        let observed = called.clone();
+        let owner = array_owner();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !observed.replace(true) {
+                crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+                checked(owner.full_gc());
+            }
+        }));
+        called
     }
 
     unsafe fn real_matrix(values: &[f64], nrow: c_int, ncol: c_int) -> SEXP {
@@ -1878,6 +1928,55 @@ mod tests {
             assert_eq!(*INTEGER(dim), 2);
             assert_eq!(*INTEGER(dim).add(1), 3);
         }
+    }
+
+    #[test]
+    fn shaped_matrix_keeps_result_rooted_during_dimension_allocation() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let _dim_symbol = R_DimSymbol();
+            let collected = collect_fully_on_next_allocation_gc();
+            crate::mainutils::memory_main::R_gc_torture(1, 2, 0);
+            let result = allocMatrix(SEXPTYPE::INTSXP.as_c_int(), 2, 3);
+            crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            assert!(
+                collected.get(),
+                "allocation must reach the full collection callback"
+            );
+            let result = session.sexp(result).unwrap();
+            let dim = session.sexp(getAttrib(result.as_raw(), R_DimSymbol())).unwrap();
+            assert_eq!(result.len(), 6);
+            assert_eq!(dim.try_integer_elt(0), Ok(2));
+            assert_eq!(dim.try_integer_elt(1), Ok(3));
+        });
+    }
+
+    #[test]
+    fn shaped_array_keeps_unrooted_caller_dimensions_during_result_allocation() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let _dim_symbol = R_DimSymbol();
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            {
+                let mut dim_out = mutable_vector(dim);
+                checked(dim_out.try_set_integer_elt(0, 2));
+                checked(dim_out.try_set_integer_elt(1, 3));
+            }
+            let collected = collect_fully_on_next_allocation_gc();
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            let result = allocArray(SEXPTYPE::INTSXP.as_c_int(), dim);
+            crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            assert!(
+                collected.get(),
+                "allocation must reach the full collection callback"
+            );
+            let result = session.sexp(result).unwrap();
+            let installed_dim = session.sexp(getAttrib(result.as_raw(), R_DimSymbol())).unwrap();
+            assert_eq!(result.len(), 6);
+            assert_eq!(installed_dim.as_raw(), dim);
+            assert_eq!(installed_dim.try_integer_elt(0), Ok(2));
+            assert_eq!(installed_dim.try_integer_elt(1), Ok(3));
+        });
     }
 
     #[test]

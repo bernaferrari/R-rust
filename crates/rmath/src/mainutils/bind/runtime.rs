@@ -484,18 +484,14 @@ pub fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
 
 /// Allocate a matrix (2D array) of the given type and dimensions.
 pub fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
-        let ans = checked_allocVector(mode, (nrow as R_xlen_t) * (ncol as R_xlen_t));
-        let _ans_guard = protect(ans);
-        // Set the dim attribute
-        let dim_sym = crate::eval::attrib_core::R_DimSymbol();
-        let dim = Rf_allocVector(INTSXP_I, 2);
-        let _dim_guard = protect(dim);
-        *INTEGER(dim) = nrow;
-        *INTEGER(dim).add(1) = ncol;
-        setAttrib(ans, dim_sym, dim);
-        ans
-    }
+    let owner = crate::sexp::owner::OwnerToken::current()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let ans = checked_allocVector(mode, (nrow as R_xlen_t) * (ncol as R_xlen_t));
+    let ans = owner
+        .sexp(ans)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    crate::mainutils::array::set_dim_vector(owner, &ans, [nrow, ncol].into_iter());
+    ans.as_raw()
 }
 
 /// Allocate a vector of the given type/length, erroring loudly on allocation
