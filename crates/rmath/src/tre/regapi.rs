@@ -101,7 +101,7 @@ pub unsafe fn tre_fill_pmatch(
 /// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
 /// sized per the accompanying length/count arguments) valid for the reads and writes performed
 /// here; null is accepted only where the original C TRE API accepts it.
-unsafe fn tre_match(
+pub(super) unsafe fn tre_match(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: usize,
@@ -292,7 +292,7 @@ pub unsafe fn tre_regfree(preg: *mut regex_t) {
 // ===== regexec functions =====
 
 /// C-shaped TRE match entry point; Rust callers should use
-/// [`tre_regnexec_bytes`].
+/// `CompiledTre::match_bytes` instead.
 ///
 /// # Safety
 ///
@@ -323,44 +323,29 @@ pub unsafe fn tre_regnexec(
     }
 }
 
-/// Match a bounded byte buffer against a compiled regex (safe core of
-/// [`tre_regnexec`]).
-pub(crate) fn tre_regnexec_bytes(
-    preg: &regex_t,
-    input: &[u8],
-    matches: &mut [regmatch_t],
-    eflags: c_int,
-) -> c_int {
-    // SAFETY: `preg` is a compiled regex (its `value` is the live tnfa), `input`
-    // is a live slice of `input.len()` bytes, and `matches` is a live slice of
-    // `matches.len()` writable entries.
-    unsafe {
-        tre_match(
-            preg.value as *const tre_tnfa_t,
-            input.as_ptr().cast(),
-            input.len(),
-            tre_str_type_t::STR_BYTE,
-            matches.len(),
-            matches.as_mut_ptr(),
-            eflags,
-        )
-    }
-}
-
 /// Match a bounded Unicode scalar buffer. Offsets count scalar values; the
 /// UTF-8 adapter translates them back to original byte positions.
-pub(crate) fn tre_regwnexec(
+///
+/// # Safety
+///
+/// `preg` must come from a successful TRE compile and remain live and unfreed
+/// for the duration of the call.
+#[cfg(test)]
+pub(super) unsafe fn tre_regwnexec_legacy(
     preg: &regex_t,
     text: &[tre_char_t],
     matches: &mut [regmatch_t],
     flags: c_int,
 ) -> c_int {
+    let Ok(len) = c_int::try_from(text.len()) else {
+        return REG_ESPACE;
+    };
     // SAFETY: `preg` is a compiled regex, so `value` is its live tnfa; `text` and `matches` are live slices whose lengths are passed alongside.
     unsafe {
         tre_match(
             preg.value as *const tre_tnfa_t,
             text.as_ptr().cast(),
-            text.len(),
+            len as usize,
             tre_str_type_t::STR_WIDE,
             matches.len(),
             matches.as_mut_ptr(),
@@ -1410,5 +1395,30 @@ mod tests {
                 assert_eq!(s, REG_OK);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod owned_match_tests {
+    use super::*;
+    use crate::mainutils::grep::RegexWorkspace;
+
+    #[test]
+    fn owned_match_respects_bounded_input_and_capture_offsets() {
+        let pattern: Vec<_> = "(a+)".chars().map(u32::from).collect();
+        let regex = compile::tre_compile_owned_slice(
+            &pattern,
+            REG_EXTENDED,
+            RegexWorkspace::unbounded(),
+        )
+        .unwrap();
+        assert_eq!(regex.capture_count(), 1);
+        let mut matches = [regmatch_t::default(); 2];
+        assert_eq!(regex.match_bytes(b"x\0aa", &mut matches, 0), REG_OK);
+        assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(2, 4), (2, 4)]);
+        assert_eq!(regex.match_bytes(b"", &mut matches, 0), REG_NOMATCH);
+        let wide = [u32::from('\u{e9}'), u32::from('a'), u32::from('a')];
+        assert_eq!(regex.match_wide(&wide, &mut matches, 0), REG_OK);
+        assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(1, 3), (1, 3)]);
     }
 }

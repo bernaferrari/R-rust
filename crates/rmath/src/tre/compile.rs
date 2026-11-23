@@ -2139,8 +2139,52 @@ pub(crate) struct CompiledTre {
 }
 
 impl CompiledTre {
-    pub(crate) fn regex(&self) -> &regex_t {
-        &self.preg
+    pub(crate) fn capture_count(&self) -> usize {
+        self.preg.re_nsub
+    }
+
+    pub(crate) fn match_bytes(&self, text: &[u8], matches: &mut [regmatch_t], flags: c_int) -> c_int {
+        let Ok(len) = c_int::try_from(text.len()) else {
+            return REG_ESPACE;
+        };
+        // SAFETY: the owner retains its compiled tables, and both buffers
+        // are live bounded slices. The length fits the matcher's signed index.
+        unsafe {
+            super::regapi::tre_match(
+                self.preg.value.cast(),
+                text.as_ptr().cast(),
+                len as usize,
+                tre_str_type_t::STR_BYTE,
+                matches.len(),
+                matches.as_mut_ptr(),
+                flags,
+            )
+        }
+    }
+
+    /// Match wide code units. Offsets are in code units, not UTF-8 bytes.
+    pub(crate) fn match_wide(
+        &self,
+        text: &[tre_char_t],
+        matches: &mut [regmatch_t],
+        flags: c_int,
+    ) -> c_int {
+        let Ok(len) = c_int::try_from(text.len()) else {
+            return REG_ESPACE;
+        };
+        // SAFETY: the owner retains its compiled tables, and both buffers
+        // are live bounded slices. The length fits the matcher's signed index.
+        unsafe {
+            super::regapi::tre_match(
+                self.preg.value.cast(),
+                text.as_ptr().cast(),
+                len as usize,
+                tre_str_type_t::STR_WIDE,
+                matches.len(),
+                matches.as_mut_ptr(),
+                flags,
+            )
+        }
     }
 }
 
@@ -2885,13 +2929,8 @@ mod owned_table_tests {
                     let text: Vec<u32> = text.chars().map(u32::from).collect();
                     let mut owned_match = [regmatch_t::default()];
                     let mut standalone_match = [regmatch_t::default()];
-                    let owned_status = super::super::regapi::tre_regwnexec(
-                        owned.regex(),
-                        &text,
-                        &mut owned_match,
-                        0,
-                    );
-                    let standalone_status = super::super::regapi::tre_regwnexec(
+                    let owned_status = owned.match_wide(&text, &mut owned_match, 0);
+                    let standalone_status = super::super::regapi::tre_regwnexec_legacy(
                         &standalone,
                         &text,
                         &mut standalone_match,
@@ -2966,12 +3005,9 @@ mod owned_table_tests {
                 }
                 let mut left = vec![regmatch_t::default(); owned.preg.re_nsub + 1];
                 let mut right = vec![regmatch_t::default(); legacy.re_nsub + 1];
+                assert_eq!(owned.match_wide(&text, &mut left, 0), REG_OK);
                 assert_eq!(
-                    super::super::regapi::tre_regwnexec(owned.regex(), &text, &mut left, 0),
-                    REG_OK
-                );
-                assert_eq!(
-                    super::super::regapi::tre_regwnexec(&legacy, &text, &mut right, 0),
+                    super::super::regapi::tre_regwnexec_legacy(&legacy, &text, &mut right, 0),
                     REG_OK
                 );
                 assert_eq!(left[0].rm_so, 0);
@@ -3257,12 +3293,9 @@ mod owned_table_tests {
             );
             let mut owned_matches = [regmatch_t::default(); 3];
             let mut legacy_matches = [regmatch_t::default(); 3];
+            assert_eq!(owned.match_wide(&text, &mut owned_matches, 0), REG_OK);
             assert_eq!(
-                super::super::regapi::tre_regwnexec(owned.regex(), &text, &mut owned_matches, 0),
-                REG_OK
-            );
-            assert_eq!(
-                super::super::regapi::tre_regwnexec(&legacy, &text, &mut legacy_matches, 0),
+                super::super::regapi::tre_regwnexec_legacy(&legacy, &text, &mut legacy_matches, 0),
                 REG_OK
             );
             assert_eq!(owned_matches[0].rm_so, 0);
@@ -3308,14 +3341,11 @@ mod owned_table_tests {
         );
         let mut owned_matches = [regmatch_t::default(); 3];
         let mut legacy_matches = [regmatch_t::default(); 3];
+        assert_eq!(compiled.match_wide(&text, &mut owned_matches, 0), REG_OK);
         assert_eq!(
             unsafe {
-                super::super::regapi::tre_regwnexec(compiled.regex(), &text, &mut owned_matches, 0)
+                super::super::regapi::tre_regwnexec_legacy(&legacy, &text, &mut legacy_matches, 0)
             },
-            REG_OK
-        );
-        assert_eq!(
-            unsafe { super::super::regapi::tre_regwnexec(&legacy, &text, &mut legacy_matches, 0) },
             REG_OK
         );
         for (owned, standalone) in owned_matches.iter().zip(&legacy_matches) {

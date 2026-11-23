@@ -34,7 +34,6 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
 use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regmatch_t};
-use crate::tre::regapi::tre_regnexec_bytes;
 
 #[cfg(test)]
 mod capture_publication_tests;
@@ -387,7 +386,7 @@ impl TreRegex {
         let text = if self.bytes { "" } else { &original[offset..] };
         let input = &original.as_bytes()[offset..];
 
-        let nmatch = self.preg.regex().re_nsub.saturating_add(1).max(1);
+        let nmatch = self.preg.capture_count().saturating_add(1).max(1);
         let mut pmatch = self.workspace.buffer(nmatch);
         pmatch.resize(nmatch, regmatch_t::default());
         let wide = if !self.bytes && !text.is_ascii() {
@@ -405,9 +404,9 @@ impl TreRegex {
             crate::tre::ast::REG_NOTBOL
         };
         let status = if let Some(wide) = &wide {
-            crate::tre::regapi::tre_regwnexec(self.preg.regex(), wide, &mut pmatch, flags)
+            self.preg.match_wide(wide, &mut pmatch, flags)
         } else {
-            tre_regnexec_bytes(self.preg.regex(), input, &mut pmatch, flags)
+            self.preg.match_bytes(input, &mut pmatch, flags)
         };
         let byte_offset = |index: usize| {
             if wide.is_some() {

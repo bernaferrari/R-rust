@@ -1956,38 +1956,21 @@ mod character_class_id_tests {
             assert!(!tre_isctype(u32::from(no), id), "{name}");
 
             let pattern: Box<[u32]> = format!("[[:{name}:]]").chars().map(u32::from).collect();
-            let compiled = unsafe {
-                crate::tre::compile::tre_compile_owned(
-                    pattern.as_ptr(),
-                    pattern.len(),
-                    REG_EXTENDED,
-                    crate::mainutils::grep::RegexWorkspace::unbounded(),
-                )
-            }
+            let compiled = crate::tre::compile::tre_compile_owned_slice(
+                &pattern,
+                REG_EXTENDED,
+                crate::mainutils::grep::RegexWorkspace::unbounded(),
+            )
             .unwrap_or_else(|code| panic!("{name} compile code {code}"));
             let mut captures = [regmatch_t::default(); 1];
             assert_eq!(
-                unsafe {
-                    crate::tre::regapi::tre_regwnexec(
-                        compiled.regex(),
-                        &[u32::from(yes)],
-                        &mut captures,
-                        0,
-                    )
-                },
+                compiled.match_wide(&[u32::from(yes)], &mut captures, 0),
                 REG_OK,
                 "{name}"
             );
             assert_eq!((captures[0].rm_so, captures[0].rm_eo), (0, 1));
             assert_eq!(
-                unsafe {
-                    crate::tre::regapi::tre_regwnexec(
-                        compiled.regex(),
-                        &[u32::from(no)],
-                        &mut captures,
-                        0,
-                    )
-                },
+                compiled.match_wide(&[u32::from(no)], &mut captures, 0),
                 REG_NOMATCH,
                 "{name}"
             );
