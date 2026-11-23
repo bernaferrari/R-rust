@@ -106,3 +106,24 @@ fn nested_tre_alternations_preserve_capture_order() {
         "capture-order-ok\n"
     );
 }
+
+#[test]
+fn minimal_and_bounded_tre_repeats_preserve_captures() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval(
+                r#"local({
+    m <- regexec('((a|b)+?)((a|b)+?)b', c('aaabbb','abababa','abb','zz'))
+    stopifnot(identical(lapply(m,as.integer), list(c(1L,1L,4L,5L,5L), c(1L,1L,4L,5L,5L), c(1L,1L,1L,2L,2L), -1L)),
+              identical(lapply(m,attr,'match.length'), list(c(6L,4L,1L,1L,1L), c(6L,4L,1L,1L,1L), c(3L,1L,1L,1L,1L), -1L)))
+    n <- regexec('^((ab){2,3})(a+?)$', c('ababa','abababaa','aba'))
+    stopifnot(identical(lapply(n,as.integer), list(c(1L,1L,3L,5L), c(1L,1L,5L,7L), -1L)),
+              identical(lapply(n,attr,'match.length'), list(c(5L,4L,2L,1L), c(8L,6L,2L,2L), -1L)))
+    cat('tre-repeats-ok\n')
+})"#
+            )
+            .unwrap(),
+        "tre-repeats-ok\n"
+    );
+}
