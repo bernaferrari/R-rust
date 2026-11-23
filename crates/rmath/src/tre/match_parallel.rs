@@ -11,17 +11,74 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ast::*;
+use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
 
-#[repr(C)]
-struct tre_tnfa_reach_t {
+#[derive(Clone, Copy)]
+struct Reach {
     state: *mut tre_tnfa_transition_t,
-    tags: *mut c_int,
+    row: usize,
 }
 
-#[repr(C)]
-struct tre_reach_pos_t {
+#[derive(Clone, Copy)]
+struct ReachPos {
     pos: c_int,
-    tags: *mut *mut c_int,
+    slot: usize,
+}
+
+/// Flat tag table. Rows only move between reach slots by swapping disjoint
+/// numeric ids, so no two live entries ever alias the same storage.
+struct TagRows {
+    values: WorkspaceBuffer<c_int>,
+    width: usize,
+}
+
+impl TagRows {
+    fn row(&self, row: usize) -> &[c_int] {
+        &self.values[self.range(row)]
+    }
+
+    fn row_mut(&mut self, row: usize) -> &mut [c_int] {
+        let range = self.range(row);
+        &mut self.values[range]
+    }
+
+    fn range(&self, row: usize) -> std::ops::Range<usize> {
+        let start = row * self.width;
+        start..start + self.width
+    }
+
+    fn copy_row(&mut self, source: usize, target: usize) {
+        let range = self.range(source);
+        self.values.copy_within(range, target * self.width);
+    }
+}
+
+fn filled<T: Clone>(
+    workspace: &RegexWorkspace,
+    len: usize,
+    value: T,
+) -> Result<WorkspaceBuffer<T>, ()> {
+    let mut buffer = workspace.try_buffer(len)?;
+    buffer.try_resize(len, value)?;
+    Ok(buffer)
+}
+
+/// Apply a compiler-owned sentinel-terminated list to a bounded scratch row.
+/// # Safety
+/// Non-null `tags` must be a compiled transition's tag list.
+unsafe fn apply_tags(mut tags: *const c_int, row: &mut [c_int], pos: c_int) {
+    if row.is_empty() || tags.is_null() {
+        return;
+    }
+    // SAFETY: the compiled list is initialized through its first negative tag.
+    unsafe {
+        while *tags >= 0 {
+            if let Some(tag) = row.get_mut(*tags as usize) {
+                *tag = pos;
+            }
+            tags = tags.add(1);
+        }
+    }
 }
 
 pub(crate) fn tre_isalnum(c: tre_cint_t) -> bool {
@@ -103,14 +160,14 @@ fn skip_minimal_state(
     Ok(false)
 }
 
-#[allow(clippy::if_same_then_else)]
 /// # Safety
 ///
 /// `tnfa` must be a live immutable compiler-produced descriptor, including
 /// initialized `num_minimals` pairs when nonzero. `string` must satisfy the
 /// byte/wide buffer and length/termination contract; `match_end_ofs` must be
 /// writable and `match_tags` either null (no tags) or point to `tnfa.num_tags`
-/// writable integers disjoint from inputs and each other.
+/// writable integers disjoint from inputs and each other. The output range is
+/// written on success; it need not be initialized beforehand.
 pub unsafe fn tre_tnfa_run_parallel(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
@@ -119,6 +176,51 @@ pub unsafe fn tre_tnfa_run_parallel(
     match_tags: *mut c_int,
     eflags: c_int,
     match_end_ofs: *mut c_int,
+) -> c_int {
+    let workspace = RegexWorkspace::unbounded();
+    let Ok(count) = usize::try_from(unsafe { (*tnfa).num_tags }) else {
+        return REG_ESPACE;
+    };
+    let count = if match_tags.is_null() { 0 } else { count };
+    let Ok(mut tags) = filled(&workspace, count, -1) else {
+        return REG_ESPACE;
+    };
+    let status = unsafe {
+        run_parallel(
+            tnfa,
+            string,
+            len,
+            type_,
+            &mut tags,
+            eflags,
+            match_end_ofs,
+            &workspace,
+        )
+    };
+    if status == REG_OK && count != 0 {
+        // SAFETY: caller supplied a disjoint output range; it need not be initialized.
+        unsafe { ptr::copy_nonoverlapping(tags.as_ptr(), match_tags, count) };
+    }
+    status
+}
+
+#[allow(clippy::if_same_then_else)]
+/// # Safety
+///
+/// `tnfa` must be a live immutable compiler-produced descriptor, including
+/// initialized `num_minimals` pairs when nonzero. `string` must satisfy the
+/// byte/wide buffer and length/termination contract; `match_end_ofs` must be
+/// writable and `match_tags` either empty (no tags) or exactly `tnfa.num_tags`
+/// writable integers disjoint from inputs and each other.
+pub(super) unsafe fn run_parallel(
+    tnfa: *const tre_tnfa_t,
+    string: *const c_void,
+    len: c_int,
+    type_: tre_str_type_t,
+    match_tags: &mut [c_int],
+    eflags: c_int,
+    match_end_ofs: *mut c_int,
+    workspace: &RegexWorkspace,
 ) -> c_int {
     unsafe {
         let str_byte = string as *const u8;
@@ -131,18 +233,13 @@ pub unsafe fn tre_tnfa_run_parallel(
         let mut prev_c: tre_cint_t = 0;
         let mut next_c: tre_cint_t = 0;
 
-        let num_tags = if match_tags.is_null() {
-            0
-        } else {
-            (*tnfa).num_tags
-        };
-
-        let Ok(tag_count) = usize::try_from(num_tags) else {
-            return REG_ESPACE;
-        };
+        let tag_count = match_tags.len();
         let Ok(compiled_tag_count) = usize::try_from((*tnfa).num_tags) else {
             return REG_ESPACE;
         };
+        if tag_count != 0 && tag_count != compiled_tag_count {
+            return REG_ESPACE;
+        }
         let Ok(pair_count) = usize::try_from((*tnfa).num_minimals) else {
             return REG_ESPACE;
         };
@@ -159,58 +256,47 @@ pub unsafe fn tre_tnfa_run_parallel(
             // SAFETY: the compiled descriptor owns this many initialized pairs.
             std::slice::from_raw_parts(table.cast::<[c_int; 2]>(), pair_count)
         };
-
-        // Allocate temporary buffers
-        let state_count = (*tnfa).num_states as usize;
-        let sizes = || {
-            let tbytes = std::mem::size_of::<c_int>().checked_mul(tag_count)?;
-            let rbytes = std::mem::size_of::<tre_tnfa_reach_t>()
-                .checked_mul(state_count.checked_add(1)?)?;
-            let pbytes = std::mem::size_of::<tre_reach_pos_t>().checked_mul(state_count)?;
-            let align_padding = (std::mem::align_of::<usize>() - 1) * 4;
-            let total_bytes = rbytes.checked_mul(2)?
-                .checked_add(tbytes.checked_mul(state_count)?.checked_mul(2)?)?
-                .checked_add(tbytes)?
-                .checked_add(pbytes)?
-                .checked_add(align_padding)?;
-            Some((tbytes, rbytes, pbytes, total_bytes))
+        let directions = if tag_count == 0 {
+            &[][..]
+        } else {
+            // SAFETY: the compiled descriptor owns this many direction entries.
+            std::slice::from_raw_parts((*tnfa).tag_directions, tag_count)
         };
-        let Some((tbytes, rbytes, pbytes, total_bytes)) = sizes() else {
+
+        let Ok(state_count) = usize::try_from((*tnfa).num_states) else {
             return REG_ESPACE;
         };
-        let xbytes = tbytes;
-        let buf = mem::xmalloc(total_bytes);
-        if buf.is_null() {
-            return REG_ESPACE as c_int;
-        }
-        ptr::write_bytes(buf as *mut u8, 0, total_bytes);
-
-        let mut buf_offset = buf as *mut u8;
-        let mut tmp_tags = buf_offset as *mut c_int;
-        buf_offset = buf_offset.add(tbytes);
-        buf_offset = align_ptr(buf_offset);
-        let mut reach_next = buf_offset as *mut tre_tnfa_reach_t;
-        buf_offset = buf_offset.add(rbytes);
-        buf_offset = align_ptr(buf_offset);
-        let mut reach = buf_offset as *mut tre_tnfa_reach_t;
-        buf_offset = buf_offset.add(rbytes);
-        buf_offset = align_ptr(buf_offset);
-        let reach_pos = buf_offset as *mut tre_reach_pos_t;
-        buf_offset = buf_offset.add(pbytes);
-        buf_offset = align_ptr(buf_offset);
-
-        for i in 0..(*tnfa).num_states {
-            *reach.offset(i as isize) = std::mem::zeroed();
-            (*reach.offset(i as isize)).tags = buf_offset as *mut c_int;
-            buf_offset = buf_offset.add(xbytes);
-            *reach_next.offset(i as isize) = std::mem::zeroed();
-            (*reach_next.offset(i as isize)).tags = buf_offset as *mut c_int;
-            buf_offset = buf_offset.add(xbytes);
-        }
-
-        for i in 0..(*tnfa).num_states {
-            (*reach_pos.offset(i as isize)).pos = -1;
-        }
+        let scratch = || {
+            let tmp_row = state_count.checked_mul(2).ok_or(())?;
+            let cells = tmp_row
+                .checked_add(1)
+                .and_then(|rows| rows.checked_mul(tag_count))
+                .ok_or(())?;
+            let tags = TagRows {
+                values: filled(workspace, cells, 0)?,
+                width: tag_count,
+            };
+            let empty = Reach {
+                state: ptr::null_mut(),
+                row: 0,
+            };
+            let mut reach = filled(workspace, state_count, empty)?;
+            let mut reach_next = filled(workspace, state_count, empty)?;
+            for (index, (a, b)) in reach.iter_mut().zip(reach_next.iter_mut()).enumerate() {
+                a.row = index;
+                b.row = state_count + index;
+            }
+            let positions = filled(
+                workspace,
+                state_count,
+                ReachPos { pos: -1, slot: 0 },
+            )?;
+            Ok::<_, ()>((tags, reach, reach_next, positions, tmp_row))
+        };
+        let Ok((mut tags, mut reach, mut reach_next, mut positions, mut tmp_row)) = scratch()
+        else {
+            return REG_ESPACE;
+        };
 
         // First character optimization
         if (*tnfa).first_char >= 0 && type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
@@ -219,15 +305,18 @@ pub unsafe fn tre_tnfa_run_parallel(
             let limit = if len >= 0 { len as usize } else { usize::MAX };
             let mut j = 0;
             while j < limit {
-                if *str_byte.add(j) == first {
+                let ch = *str_byte.add(j);
+                if len < 0 && ch == 0 {
+                    break;
+                }
+                if ch == first {
                     found = true;
                     break;
                 }
                 j += 1;
             }
             if !found {
-                mem::xfree(buf);
-                return REG_NOMATCH as c_int;
+                return REG_NOMATCH;
             }
             if j >= 1 {
                 prev_c = *str_byte.add(j - 1) as tre_cint_t;
@@ -254,14 +343,20 @@ pub unsafe fn tre_tnfa_run_parallel(
 
         let mut match_eo: c_int = -1;
         let mut new_match: c_int = 0;
-        let mut reach_next_i = reach_next;
+        let mut next_len = 0;
 
         loop {
             // Add initial states to reach_next if no match found yet
             if match_eo < 0 {
                 let mut trans_i = (*tnfa).initial;
                 while !(*trans_i).state.is_null() {
-                    if (*reach_pos.offset((*trans_i).state_id as isize)).pos < pos {
+                    let Some(at) = usize::try_from((*trans_i).state_id)
+                        .ok()
+                        .and_then(|id| positions.get_mut(id))
+                    else {
+                        return REG_ESPACE;
+                    };
+                    if at.pos < pos {
                         if (*trans_i).assertions != 0
                             && CHECK_ASSERTIONS(
                                 (*trans_i).assertions,
@@ -277,39 +372,28 @@ pub unsafe fn tre_tnfa_run_parallel(
                             continue;
                         }
 
-                        (*reach_next_i).state = (*trans_i).state;
-                        for i in 0..num_tags {
-                            *(*reach_next_i).tags.offset(i as isize) = -1;
-                        }
-                        let mut tag_i = (*trans_i).tags;
-                        if !tag_i.is_null() {
-                            while *tag_i >= 0 {
-                                if *tag_i < num_tags {
-                                    *(*reach_next_i).tags.offset(*tag_i as isize) = pos;
-                                }
-                                tag_i = tag_i.add(1);
-                            }
-                        }
-                        if (*reach_next_i).state == (*tnfa).final_ {
+                        let Some(entry) = reach_next.get_mut(next_len) else {
+                            return REG_ESPACE;
+                        };
+                        entry.state = (*trans_i).state;
+                        let row = tags.row_mut(entry.row);
+                        row.fill(-1);
+                        apply_tags((*trans_i).tags, row, pos);
+                        if entry.state == (*tnfa).final_ {
                             match_eo = pos;
                             new_match = 1;
-                            for i in 0..num_tags {
-                                *match_tags.offset(i as isize) =
-                                    *(*reach_next_i).tags.offset(i as isize);
-                            }
+                            match_tags.copy_from_slice(row);
                         }
-                        (*reach_pos.offset((*trans_i).state_id as isize)).pos = pos;
-                        (*reach_pos.offset((*trans_i).state_id as isize)).tags =
-                            &mut (*reach_next_i).tags;
-                        reach_next_i = reach_next_i.add(1);
+                        *at = ReachPos {
+                            pos,
+                            slot: next_len,
+                        };
+                        next_len += 1;
                     }
                     trans_i = trans_i.add(1);
                 }
-                (*reach_next_i).state = ptr::null_mut();
-            } else {
-                if num_tags == 0 || reach_next_i == reach_next {
-                    break;
-                }
+            } else if tag_count == 0 || next_len == 0 {
+                break;
             }
 
             // Check for end of string
@@ -337,47 +421,34 @@ pub unsafe fn tre_tnfa_run_parallel(
             }
 
             // Swap reach and reach_next
-            let tmp = reach;
-            reach = reach_next;
-            reach_next = tmp;
+            std::mem::swap(&mut reach, &mut reach_next);
+            let mut reach_len = next_len;
 
             // Weed out states that don't fulfill minimal matching conditions
             if !pairs.is_empty() && new_match != 0 {
                 new_match = 0;
-                reach_next_i = reach_next;
-                let mut reach_i = reach;
-                let matched = std::slice::from_raw_parts(ptr_or_dangling(match_tags), tag_count);
-                while !(*reach_i).state.is_null() {
-                    let state = std::slice::from_raw_parts(
-                        ptr_or_dangling((*reach_i).tags),
-                        tag_count,
-                    );
-                    let Ok(skip) = skip_minimal_state(pairs, state, matched) else {
-                        mem::xfree(buf);
+                let mut kept = 0;
+                for entry in &mut reach[..reach_len] {
+                    let Ok(skip) =
+                        skip_minimal_state(pairs, tags.row(entry.row), match_tags)
+                    else {
                         return REG_ESPACE;
                     };
                     if !skip {
-                        (*reach_next_i).state = (*reach_i).state;
-                        let tmp_iptr = (*reach_next_i).tags;
-                        (*reach_next_i).tags = (*reach_i).tags;
-                        (*reach_i).tags = tmp_iptr;
-                        reach_next_i = reach_next_i.add(1);
+                        let next = &mut reach_next[kept];
+                        next.state = entry.state;
+                        std::mem::swap(&mut next.row, &mut entry.row);
+                        kept += 1;
                     }
-                    reach_i = reach_i.add(1);
                 }
-                (*reach_next_i).state = ptr::null_mut();
-
-                // Swap again
-                let tmp2 = reach;
-                reach = reach_next;
-                reach_next = tmp2;
+                std::mem::swap(&mut reach, &mut reach_next);
+                reach_len = kept;
             }
 
             // For each state in reach, find transitions
-            reach_next_i = reach_next;
-            let mut reach_i = reach;
-            while !(*reach_i).state.is_null() {
-                let mut trans_i = (*reach_i).state;
+            next_len = 0;
+            for entry in &reach[..reach_len] {
+                let mut trans_i = entry.state;
                 while !(*trans_i).state.is_null() {
                     if (*trans_i).code_min <= prev_c && (*trans_i).code_max >= prev_c {
                         if (*trans_i).assertions != 0
@@ -395,97 +466,70 @@ pub unsafe fn tre_tnfa_run_parallel(
                             continue;
                         }
 
-                        // Compute tags
-                        for i in 0..num_tags {
-                            *tmp_tags.offset(i as isize) = *(*reach_i).tags.offset(i as isize);
-                        }
-                        let mut tag_i = (*trans_i).tags;
-                        if !tag_i.is_null() {
-                            while *tag_i >= 0 {
-                                if *tag_i < num_tags {
-                                    *tmp_tags.offset(*tag_i as isize) = pos;
-                                }
-                                tag_i = tag_i.add(1);
-                            }
-                        }
+                        // Compute tags into the scratch row
+                        tags.copy_row(entry.row, tmp_row);
+                        apply_tags((*trans_i).tags, tags.row_mut(tmp_row), pos);
 
-                        if (*reach_pos.offset((*trans_i).state_id as isize)).pos < pos {
-                            (*reach_next_i).state = (*trans_i).state;
-                            let tmp_iptr = (*reach_next_i).tags;
-                            (*reach_next_i).tags = tmp_tags;
-                            tmp_tags = tmp_iptr;
-                            (*reach_pos.offset((*trans_i).state_id as isize)).pos = pos;
-                            (*reach_pos.offset((*trans_i).state_id as isize)).tags =
-                                &mut (*reach_next_i).tags;
-
-                            if (*reach_next_i).state == (*tnfa).final_
+                        let Some(at) = usize::try_from((*trans_i).state_id)
+                            .ok()
+                            .and_then(|id| positions.get_mut(id))
+                        else {
+                            return REG_ESPACE;
+                        };
+                        if at.pos < pos {
+                            let Some(next) = reach_next.get_mut(next_len) else {
+                                return REG_ESPACE;
+                            };
+                            next.state = (*trans_i).state;
+                            std::mem::swap(&mut next.row, &mut tmp_row);
+                            *at = ReachPos {
+                                pos,
+                                slot: next_len,
+                            };
+                            let row = tags.row(next.row);
+                            if next.state == (*tnfa).final_
                                 && (match_eo == -1
-                                    || (num_tags > 0 && *(*reach_next_i).tags <= *match_tags))
+                                    || (tag_count > 0 && row[0] <= match_tags[0]))
                             {
                                 match_eo = pos;
                                 new_match = 1;
-                                for i in 0..num_tags {
-                                    *match_tags.offset(i as isize) =
-                                        *(*reach_next_i).tags.offset(i as isize);
-                                }
+                                match_tags.copy_from_slice(row);
                             }
-                            reach_next_i = reach_next_i.add(1);
+                            next_len += 1;
                         } else {
                             // Another path reached this state - choose winner
+                            if at.slot >= next_len {
+                                return REG_ESPACE;
+                            }
+                            let next = &mut reach_next[at.slot];
                             if tre_tag_order(
-                                std::slice::from_raw_parts(
-                                    ptr_or_dangling((*tnfa).tag_directions),
-                                    num_tags as usize,
-                                ),
-                                std::slice::from_raw_parts(
-                                    ptr_or_dangling(tmp_tags),
-                                    num_tags as usize,
-                                ),
-                                std::slice::from_raw_parts(
-                                    ptr_or_dangling(
-                                        *(*reach_pos.offset((*trans_i).state_id as isize)).tags,
-                                    ),
-                                    num_tags as usize,
-                                ),
+                                directions,
+                                tags.row(tmp_row),
+                                tags.row(next.row),
                             ) != 0
                             {
-                                let tmp_iptr =
-                                    *(*reach_pos.offset((*trans_i).state_id as isize)).tags;
-                                *(*reach_pos.offset((*trans_i).state_id as isize)).tags = tmp_tags;
+                                std::mem::swap(&mut next.row, &mut tmp_row);
                                 if (*trans_i).state == (*tnfa).final_ {
                                     match_eo = pos;
                                     new_match = 1;
-                                    for i in 0..num_tags {
-                                        *match_tags.offset(i as isize) =
-                                            *tmp_tags.offset(i as isize);
-                                    }
+                                    match_tags.copy_from_slice(tags.row(next.row));
                                 }
-                                tmp_tags = tmp_iptr;
                             }
                         }
                     }
                     trans_i = trans_i.add(1);
                 }
-                reach_i = reach_i.add(1);
             }
-            (*reach_next_i).state = ptr::null_mut();
         }
 
-        mem::xfree(buf);
         *match_end_ofs = match_eo;
         if match_eo >= 0 {
-            REG_OK as c_int
+            REG_OK
         } else {
-            REG_NOMATCH as c_int
+            REG_NOMATCH
         }
     }
 }
-
-fn align_ptr(p: *mut u8) -> *mut u8 {
-    p.map_addr(|addr| addr.next_multiple_of(std::mem::align_of::<usize>()))
-}
-
-use super::mem;
 
 #[cfg(test)]
 mod tests {
@@ -506,5 +550,71 @@ mod tests {
         assert_eq!(skip_minimal_state(&[[2, 3]], &matched, &matched), Err(()));
         assert_eq!(skip_minimal_state(&[[-1, 0]], &matched, &matched), Err(()));
         assert_eq!(skip_minimal_state(&[[2, 0]], &[4, 8], &matched), Err(()));
+    }
+
+    #[test]
+    fn legacy_parallel_match_accepts_uninitialized_tags() {
+        let pattern = std::ffi::CString::new("(a+)").unwrap();
+        let mut preg = regex_t {
+            re_nsub: 0,
+            value: ptr::null_mut(),
+        };
+        // SAFETY: `preg` is writable and `pattern` is a NUL-terminated string.
+        assert_eq!(
+            unsafe {
+                super::super::regapi::tre_regcomp(&mut preg, pattern.as_ptr(), REG_EXTENDED)
+            },
+            REG_OK
+        );
+        let descriptor = preg.value.cast::<tre_tnfa_t>();
+        // SAFETY: `descriptor` was produced by the successful compile above.
+        let count = usize::try_from(unsafe { (*descriptor).num_tags }).unwrap();
+        assert!(count > 0);
+        let mut slots = [std::mem::MaybeUninit::<c_int>::uninit(); 32];
+        assert!(count <= slots.len());
+        let mut end = 0;
+        // SAFETY: the descriptor, byte buffer, and disjoint writable outputs
+        // satisfy the legacy contract; the tag range need not be initialized.
+        let status = unsafe {
+            tre_tnfa_run_parallel(
+                descriptor,
+                b"aaa".as_ptr().cast(),
+                3,
+                tre_str_type_t::STR_BYTE,
+                slots.as_mut_ptr().cast(),
+                0,
+                &mut end,
+            )
+        };
+        assert_eq!(status, REG_OK);
+        assert_eq!(end, 3);
+        let via_raw: Vec<c_int> = slots[..count]
+            .iter()
+            // SAFETY: the successful run initialized all `count` entries.
+            .map(|slot| unsafe { slot.assume_init() })
+            .collect();
+
+        let mut expected = vec![0; count];
+        let mut expected_end = 0;
+        let workspace = RegexWorkspace::unbounded();
+        // SAFETY: same compiled descriptor and input; outputs are initialized.
+        let status = unsafe {
+            run_parallel(
+                descriptor,
+                b"aaa".as_ptr().cast(),
+                3,
+                tre_str_type_t::STR_BYTE,
+                &mut expected,
+                0,
+                &mut expected_end,
+                &workspace,
+            )
+        };
+        assert_eq!(status, REG_OK);
+        assert_eq!(expected_end, 3);
+        assert_eq!(via_raw, expected);
+
+        // SAFETY: `preg` was compiled above and is freed exactly once.
+        unsafe { super::super::regapi::tre_regfree(&mut preg) };
     }
 }

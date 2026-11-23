@@ -15,6 +15,7 @@ use super::match_approx;
 use super::match_backtrack;
 use super::match_parallel;
 use super::mem;
+use crate::mainutils::grep::RegexWorkspace;
 
 #[cfg(test)]
 mod compile_error_tests;
@@ -111,16 +112,51 @@ pub(super) unsafe fn tre_match(
     eflags: c_int,
 ) -> c_int {
     unsafe {
-        let mut tags: *mut c_int = ptr::null_mut();
-        let mut eo: c_int = 0;
+        tre_match_with_workspace(
+            tnfa,
+            string,
+            len,
+            type_,
+            nmatch,
+            pmatch,
+            eflags,
+            &RegexWorkspace::unbounded(),
+        )
+    }
+}
 
-        if (*tnfa).num_tags > 0 && nmatch > 0 {
-            tags = mem::xmalloc(std::mem::size_of::<c_int>() * (*tnfa).num_tags as usize)
-                as *mut c_int;
-            if tags.is_null() {
-                return REG_ESPACE as c_int;
-            }
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub(super) unsafe fn tre_match_with_workspace(
+    tnfa: *const tre_tnfa_t,
+    string: *const c_void,
+    len: usize,
+    type_: tre_str_type_t,
+    nmatch: usize,
+    pmatch: *mut regmatch_t,
+    eflags: c_int,
+    workspace: &RegexWorkspace,
+) -> c_int {
+    unsafe {
+        let Ok(count) = usize::try_from((*tnfa).num_tags) else {
+            return REG_ESPACE;
+        };
+        let count = if nmatch == 0 { 0 } else { count };
+        let Ok(mut tag_buffer) = workspace.try_buffer(count) else {
+            return REG_ESPACE;
+        };
+        if tag_buffer.try_resize(count, -1).is_err() {
+            return REG_ESPACE;
         }
+        let tags = if count == 0 {
+            ptr::null_mut()
+        } else {
+            tag_buffer.as_mut_ptr()
+        };
+        let mut eo: c_int = 0;
 
         let status: c_int;
         if (*tnfa).have_backrefs != 0 || eflags & REG_BACKTRACKING_MATCHER != 0 {
@@ -151,23 +187,25 @@ pub(super) unsafe fn tre_match(
                 &mut eo,
             );
         } else {
-            status = match_parallel::tre_tnfa_run_parallel(
+            status = match_parallel::run_parallel(
                 tnfa,
                 string,
                 len as c_int,
                 type_,
-                tags,
+                &mut tag_buffer,
                 eflags,
                 &mut eo,
+                workspace,
             );
         }
 
         if status == REG_OK as c_int {
+            let tags = if count == 0 {
+                ptr::null_mut()
+            } else {
+                tag_buffer.as_mut_ptr()
+            };
             tre_fill_pmatch(nmatch, pmatch, (*tnfa).cflags, tnfa, tags, eo);
-        }
-
-        if !tags.is_null() {
-            mem::xfree(tags as *mut c_void);
         }
 
         status
@@ -1420,5 +1458,60 @@ mod owned_match_tests {
         let wide = [u32::from('\u{e9}'), u32::from('a'), u32::from('a')];
         assert_eq!(regex.match_wide(&wide, &mut matches, 0), REG_OK);
         assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(1, 3), (1, 3)]);
+    }
+
+    #[test]
+    fn owned_parallel_match_releases_workspace_after_denial() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        session.with_active(|| {
+            let pattern: Vec<_> = "(a+?)(a{1,2})b".chars().map(u32::from).collect();
+            let regex = compile::tre_compile_owned_slice(
+                &pattern,
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+            .unwrap();
+            let mut matches = [regmatch_t::default(); 3];
+            let baseline = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+            owner
+                .with_arena(|a| {
+                    let used = a.total_bytes_allocated();
+                    a.set_budget(crate::sexp::memory::ArenaBudget::new(used + 256, 0));
+                })
+                .unwrap();
+            assert_eq!(
+                regex.match_bytes(b"xaaab", &mut matches, 0),
+                REG_ESPACE
+            );
+            assert_eq!(
+                owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+                baseline
+            );
+            owner
+                .with_arena(|a| {
+                    a.set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+                })
+                .unwrap();
+            assert_eq!(regex.match_bytes(b"xaaab", &mut matches, 0), REG_OK);
+            assert_eq!(
+                matches.map(|m| (m.rm_so, m.rm_eo)),
+                [(1, 5), (1, 2), (2, 4)]
+            );
+            let wide: Vec<u32> = "éaaab".chars().map(u32::from).collect();
+            assert_eq!(regex.match_wide(&wide, &mut matches, 0), REG_OK);
+            assert_eq!(
+                matches.map(|m| (m.rm_so, m.rm_eo)),
+                [(1, 5), (1, 2), (2, 4)]
+            );
+            assert_eq!(
+                regex.match_bytes(b"nomatch", &mut matches, 0),
+                REG_NOMATCH
+            );
+            assert_eq!(
+                owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+                baseline
+            );
+        });
     }
 }

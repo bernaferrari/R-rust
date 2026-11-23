@@ -2179,6 +2179,7 @@ pub(crate) unsafe fn tre_compile_with_workspace(
 pub(crate) struct CompiledTre {
     preg: regex_t,
     _tables: super::owned_arena::OwnedArena,
+    workspace: crate::mainutils::grep::RegexWorkspace,
 }
 
 impl CompiledTre {
@@ -2193,7 +2194,7 @@ impl CompiledTre {
         // SAFETY: the owner retains its compiled tables, and both buffers
         // are live bounded slices. The length fits the matcher's signed index.
         unsafe {
-            super::regapi::tre_match(
+            super::regapi::tre_match_with_workspace(
                 self.preg.value.cast(),
                 text.as_ptr().cast(),
                 len as usize,
@@ -2201,6 +2202,7 @@ impl CompiledTre {
                 matches.len(),
                 matches.as_mut_ptr(),
                 flags,
+                &self.workspace,
             )
         }
     }
@@ -2218,7 +2220,7 @@ impl CompiledTre {
         // SAFETY: the owner retains its compiled tables, and both buffers
         // are live bounded slices. The length fits the matcher's signed index.
         unsafe {
-            super::regapi::tre_match(
+            super::regapi::tre_match_with_workspace(
                 self.preg.value.cast(),
                 text.as_ptr().cast(),
                 len as usize,
@@ -2226,6 +2228,7 @@ impl CompiledTre {
                 matches.len(),
                 matches.as_mut_ptr(),
                 flags,
+                &self.workspace,
             )
         }
     }
@@ -2259,7 +2262,7 @@ pub(crate) fn tre_compile_owned_slice(
             regex.as_ptr(),
             regex.len(),
             cflags,
-            workspace,
+            workspace.clone(),
             Some(&mut tables),
         )
     };
@@ -2267,6 +2270,7 @@ pub(crate) fn tre_compile_owned_slice(
         Ok(CompiledTre {
             preg,
             _tables: tables,
+            workspace,
         })
     } else {
         Err(status)
@@ -3482,6 +3486,7 @@ mod owned_table_tests {
                 value: descriptor.cast(),
             },
             _tables: storage,
+            workspace: crate::mainutils::grep::regex_workspace(),
         };
         owner.full_gc().unwrap();
         let replacement = RSession::new_for_gc_tests();
@@ -3701,6 +3706,7 @@ mod owned_table_tests {
                 value: descriptor.cast(),
             },
             _tables: storage,
+            workspace: crate::mainutils::grep::regex_workspace(),
         };
         owner.full_gc().unwrap();
         let replacement = RSession::new_for_gc_tests();

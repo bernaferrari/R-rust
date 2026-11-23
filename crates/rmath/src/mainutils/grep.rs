@@ -408,6 +408,9 @@ impl TreRegex {
         } else {
             self.preg.match_bytes(input, &mut pmatch, flags)
         };
+        if status == crate::tre::ast::REG_ESPACE {
+            workspace::memory_error();
+        }
         let byte_offset = |index: usize| {
             if wide.is_some() {
                 text.char_indices()
