@@ -30,19 +30,6 @@ pub(crate) fn append_line_bytes(bytes: &[u8], data: &mut LocalParseData) {
     data.startline = false;
 }
 
-/// Append a compatibility formatter's C string.
-///
-/// # Safety
-/// A non-null string must be readable through its NUL terminator.
-pub unsafe fn print2buff(string: *const c_char, data: &mut LocalParseData) {
-    if string.is_null() {
-        return;
-    }
-    // SAFETY: the translated caller provides the source C string and state.
-    let bytes = unsafe { std::ffi::CStr::from_ptr(string) }.to_bytes();
-    append_line_bytes(bytes, data);
-}
-
 /// Flush the actual owned bytes into an owning character value. The safe
 /// factory copies a bounded slice before its deferred allocation callbacks.
 pub fn writeline(data: &mut LocalParseData) {

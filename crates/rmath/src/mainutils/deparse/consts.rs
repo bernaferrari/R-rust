@@ -252,43 +252,9 @@ pub const ATTR_STRUC_ATTR: c_int = 2;
 pub const ATTR_STRUC_NMS_A: c_int = 3;
 
 // ---------------------------------------------------------------------------
-// NB / NB2 constants for complex encoding
-// ---------------------------------------------------------------------------
-pub const NB: usize = 1000;
-pub const NB2: usize = 2 * NB + 25;
-
+#[derive(Default)]
 pub struct DeparseRuntimeState {
-    pub int_buf: [c_char; 32],
-    pub logical_buf: [c_char; 8],
-    pub real_buf: [c_char; 64],
-    pub string_buf: [u8; 2048],
-    pub raw_buf: [c_char; 8],
-    pub hex_buf: [c_char; 64],
-    pub dig_buf: [c_char; 64],
-    pub cplx_buf: [c_char; NB2],
-    pub hex_cplx: [c_char; 128],
-    pub dig_cplx: [c_char; 128],
-    pub cplx_buf2: [c_char; 256],
     pub browse_lines: c_int,
-}
-
-impl Default for DeparseRuntimeState {
-    fn default() -> Self {
-        DeparseRuntimeState {
-            int_buf: [0; 32],
-            logical_buf: [0; 8],
-            real_buf: [0; 64],
-            string_buf: [0; 2048],
-            raw_buf: [0; 8],
-            hex_buf: [0; 64],
-            dig_buf: [0; 64],
-            cplx_buf: [0; NB2],
-            hex_cplx: [0; 128],
-            dig_cplx: [0; 128],
-            cplx_buf2: [0; 256],
-            browse_lines: 0,
-        }
-    }
 }
 
 pub fn with_deparse_runtime<F, R>(f: F) -> R

@@ -1014,8 +1014,7 @@ pub fn deparse2buff(s: SEXP, d: &mut LocalParseData) {
         || sexp_type == SEXPTYPE::STRSXP
         || sexp_type == SEXPTYPE::RAWSXP
     {
-        // SAFETY: the checked type above selects the live atomic vector for this call.
-        unsafe { vector2buff(s, d) };
+        vector2buff(s, d);
     } else if sexp_type == SEXPTYPE::EXTPTRSXP {
         append_line_bytes(b"<pointer: 0x0>", d);
     } else if sexp_type == SEXPTYPE::BCODESXP {

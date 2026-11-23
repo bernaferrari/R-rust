@@ -19,7 +19,7 @@
 //! Workhorse: deparse1WithCutoff() -> deparse2() -> deparse2buff()
 //!
 //! Porting status:
-//! - Full implementation of deparse2buff, deparse2, print2buff, writeline,
+//! - Full implementation of deparse2buff, deparse2, writeline,
 //!   linebreak, args2buff, vector2buff, vec2buff.
 //! - deparse1WithCutoff, deparse1, deparse1w, deparse1line, deparse1s, deparse1m.
 //! - do_deparse with argument extraction.
@@ -29,7 +29,6 @@
 //!   separate implementation.
 
 use std::os::raw::{c_char, c_int, c_uint};
-use std::ptr;
 
 use crate::mainutils::names::{
     PP_ASSIGN as N_PP_ASSIGN, PP_ASSIGN2 as N_PP_ASSIGN2, PP_BINARY as N_PP_BINARY,
@@ -45,7 +44,7 @@ use crate::mainutils::names::{
 use crate::sexp::accessors::*;
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::R_BraceSymbol;

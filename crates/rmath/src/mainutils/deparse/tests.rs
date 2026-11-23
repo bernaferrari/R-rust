@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::sexp::session::RSession;
+use std::ptr;
 
 #[test]
 fn test_constants() {
@@ -532,5 +533,23 @@ fn owned_deparse_quoted_name_preserves_legacy_bytes() {
         assert_eq!(bytes[0], b'"');
         assert_eq!(bytes[1021], b'"');
         assert!(bytes[1..1021].iter().all(|&byte| byte == b' '));
+    });
+}
+
+#[test]
+fn deparse_atomic_vectors_leave_compact_payloads_lazy() {
+    use crate::sexp::altrep::is_materialized;
+
+    let session = RSession::new_for_gc_tests();
+    let ints = session.compact_integer_sequence(3, -1, 3).unwrap();
+    let reals = session.compact_real_sequence(1.5, 0.25, 3).unwrap();
+    session.with_active(|| {
+        for (value, expected) in [(&ints, "3:1"), (&reals, "c(1.5, 1.75, 2)")] {
+            assert!(!is_materialized(value));
+            let text = deparse1WithCutoff(value.as_raw(), false, DEFAULT_CUTOFF, false, 0, 1);
+            let text = session.sexp(text).unwrap();
+            assert_eq!(text.string_value_elt(0), Some(Some(expected.to_owned())));
+            assert!(!is_materialized(value));
+        }
     });
 }
