@@ -168,8 +168,9 @@ pub(crate) unsafe fn run_pending_gc_if_quiescent_in(inst: *mut instance::RInstan
     // SAFETY: the explicit owner is live before collection starts.
     let liveness = unsafe { instance::instance_liveness(inst) };
     let collected = unsafe {
-        // Raw place accesses: minor_gc_in reenters instance bookkeeping.
-        if (*inst).eval_state.eval_depth == 0
+        // Depth and GC-state reads end before collection, which reenters
+        // instance bookkeeping through minor_gc_in.
+        if crate::sexp::globals::R_EvalDepth_in(inst) == 0
             && with_gc_state_in(inst, |state| std::mem::take(&mut state.gc_pending))
         {
             minor_gc_in(inst);

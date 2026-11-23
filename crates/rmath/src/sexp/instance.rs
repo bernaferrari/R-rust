@@ -285,8 +285,6 @@ pub(crate) struct EvalControlState {
     pub verbose: c_int,
     pub current_expr: RuntimeValue,
     pub visible: c_int,
-    pub eval_depth: c_int,
-    pub eval_depth_limit: c_int,
     pub pp_stack_top: c_int,
     pub collect_warnings: c_int,
     pub parse_error_msg: [u8; 256],
@@ -304,13 +302,10 @@ pub(crate) struct EvalControlState {
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub deparse: crate::mainutils::deparse::DeparseRuntimeState,
-    pub limits: crate::eval::eval::EvalLimits,
-    pub start_time: Option<Instant>,
     pub bc_stack: crate::eval::bc_stack::R_bcstack_t,
     pub bc_int_active: c_int,
     pub(crate) portable_primitive_names: Vec<String>,
     pub exec_token: RuntimeValue,
-    pub cancellation: Option<crate::sexp::session::CancellationToken>,
 }
 
 impl Default for EvalControlState {
@@ -323,8 +318,6 @@ impl Default for EvalControlState {
             verbose: 0,
             current_expr: RuntimeValue::empty(),
             visible: 1,
-            eval_depth: 0,
-            eval_depth_limit: 500,
             pp_stack_top: 0,
             collect_warnings: 0,
             parse_error_msg: [0; 256],
@@ -341,12 +334,29 @@ impl Default for EvalControlState {
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
             deparse: crate::mainutils::deparse::DeparseRuntimeState::default(),
-            limits: crate::eval::eval::EvalLimits::default(),
-            start_time: None,
             bc_stack: crate::eval::bc_stack::R_bcstack_t::new(256),
             bc_int_active: 0,
             portable_primitive_names: Vec::new(),
             exec_token: RuntimeValue::empty(),
+        }
+    }
+}
+
+pub(crate) struct ExecutionState {
+    pub(crate) eval_depth: c_int,
+    pub(crate) eval_depth_limit: c_int,
+    pub(crate) limits: crate::eval::limits::EvalLimits,
+    pub(crate) start_time: Option<Instant>,
+    pub(crate) cancellation: Option<super::session::CancellationToken>,
+}
+
+impl Default for ExecutionState {
+    fn default() -> Self {
+        Self {
+            eval_depth: 0,
+            eval_depth_limit: 500,
+            limits: crate::eval::limits::EvalLimits::default(),
+            start_time: None,
             cancellation: None,
         }
     }
@@ -418,6 +428,8 @@ pub struct RInstance {
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Evaluation limits and counters; borrows end before runtime reentry.
+    execution_state: RefCell<ExecutionState>,
     /// Session-local profiler counters and owning source references.
     profiling: RefCell<ProfilingState>,
     /// Per-instance names.c runtime caches and initialization marker.
@@ -641,6 +653,7 @@ impl RInstance {
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
+            execution_state: RefCell::default(),
             profiling: RefCell::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
@@ -993,6 +1006,20 @@ pub(crate) unsafe fn with_memory_state_in<R>(
 ) -> R {
     // SAFETY: the caller retains the allocation; project only this field.
     let cell = unsafe { &(*instance).memory_state };
+    f(&mut cell.borrow_mut())
+}
+
+/// Lend evaluation controls for a local operation, not runtime reentry.
+///
+/// # Safety
+/// `instance` must point to a live allocation throughout the lend, without
+/// an overlapping mutable whole-instance reference.
+pub(crate) unsafe fn with_execution_state_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut ExecutionState) -> R,
+) -> R {
+    // SAFETY: the caller retains the allocation; project only this field.
+    let cell = unsafe { &(*instance).execution_state };
     f(&mut cell.borrow_mut())
 }
 
@@ -1393,16 +1420,10 @@ where
 /// Return whether the active session has requested cooperative cancellation.
 #[inline]
 pub fn is_cancellation_requested() -> bool {
-    with_current_instance(|inst| {
-        // P2: short-lived read of one field; no ambient write can occur
-        // inside `is_requested` (it only reads a shared flag).
-        unsafe {
-            (*inst)
-                .eval_state
-                .cancellation
-                .as_ref()
-                .is_some_and(|token| token.is_requested())
-        }
+    with_current_instance(|inst| unsafe {
+        with_execution_state_in(inst, |state| {
+            state.cancellation.as_ref().is_some_and(|token| token.is_requested())
+        })
     })
     .unwrap_or(false)
 }

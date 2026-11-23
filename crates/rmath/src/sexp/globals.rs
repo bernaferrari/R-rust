@@ -232,8 +232,7 @@ pub(crate) unsafe fn set_R_Visible_in(inst: *mut RInstance, v: i32) {
 /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
 /// no conflicting outstanding borrow of the fields touched here.
 pub(crate) unsafe fn R_EvalDepth_in(inst: *mut RInstance) -> i32 {
-    // P2: single-field read; no ambient write intervenes.
-    unsafe { (*inst).eval_state.eval_depth }
+    unsafe { super::instance::with_execution_state_in(inst, |state| state.eval_depth) }
 }
 
 /// # Safety
@@ -241,10 +240,7 @@ pub(crate) unsafe fn R_EvalDepth_in(inst: *mut RInstance) -> i32 {
 /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
 /// no conflicting outstanding borrow of the fields touched here.
 pub(crate) unsafe fn set_R_EvalDepth_in(inst: *mut RInstance, d: i32) {
-    // P2: single-field write; no other raw path touches the instance here.
-    unsafe {
-        (*inst).eval_state.eval_depth = d;
-    }
+    unsafe { super::instance::with_execution_state_in(inst, |state| state.eval_depth = d) };
 }
 
 /// # Safety
@@ -252,8 +248,7 @@ pub(crate) unsafe fn set_R_EvalDepth_in(inst: *mut RInstance, d: i32) {
 /// `inst`/`instance` must point to a live `RInstance` (as supplied by the instance accessors) with
 /// no conflicting outstanding borrow of the fields touched here.
 pub(crate) unsafe fn R_EvalDepthLimit_in(inst: *mut RInstance) -> i32 {
-    // P2: single-field read; no ambient write intervenes.
-    unsafe { (*inst).eval_state.eval_depth_limit }
+    unsafe { super::instance::with_execution_state_in(inst, |state| state.eval_depth_limit) }
 }
 
 // ---------------------------------------------------------------------------

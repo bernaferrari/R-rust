@@ -3,7 +3,7 @@
 use std::os::raw::c_int;
 use std::time::{Duration, Instant};
 
-use crate::sexp::instance::{RInstance, with_required_current_instance};
+use crate::sexp::instance::{RInstance, with_execution_state_in, with_required_current_instance};
 use crate::sexp::object::Sexp;
 
 use super::error::EvalError;
@@ -43,12 +43,16 @@ impl EvalLimits {
 
 /// Set evaluation limits for the current thread.
 pub fn set_eval_limits(limits: EvalLimits) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.limits = limits });
+    with_required_current_instance(|inst| unsafe {
+        with_execution_state_in(inst, |state| state.limits = limits)
+    });
 }
 
 /// Get the current evaluation limits for this thread.
 pub fn get_eval_limits() -> EvalLimits {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.limits })
+    with_required_current_instance(|inst| unsafe {
+        with_execution_state_in(inst, |state| state.limits)
+    })
 }
 
 /// Reset evaluation limits to the default (500 depth, unlimited time/alloc).
@@ -93,19 +97,20 @@ impl EvalTimerGuard {
     pub fn start_if_needed() -> Self {
         let (started, owner) = with_required_current_instance(|inst| unsafe {
             let owner = EvaluationOwner::capture(inst);
-            if (*inst).eval_state.start_time.is_some() {
-                (false, owner)
-            } else {
+            let started = with_execution_state_in(inst, |state| {
+                if state.start_time.is_some() {
+                    return false;
+                }
                 // wasm32-unknown-unknown has no monotonic clock
                 // (`Instant::now` panics): the wall-time execution limit is
                 // inert there, like upstream R without setTimeLimit.
-                #[cfg(target_arch = "wasm32")]
-                let start = None;
                 #[cfg(not(target_arch = "wasm32"))]
-                let start = Some(Instant::now());
-                (*inst).eval_state.start_time = start;
-                (true, owner)
-            }
+                {
+                    state.start_time = Some(Instant::now());
+                }
+                true
+            });
+            (started, owner)
         });
         EvalTimerGuard { started, owner }
     }
@@ -120,7 +125,7 @@ impl Drop for EvalTimerGuard {
             // During unwinding or nested evaluation another compatibility
             // instance may be current, so do not dispatch through TLS here.
             unsafe {
-                (*instance).eval_state.start_time = None;
+                with_execution_state_in(instance, |state| state.start_time = None);
             }
         }
     }
@@ -135,18 +140,22 @@ struct EvalLimitsOverrideGuard {
 impl EvalLimitsOverrideGuard {
     fn install(limits: EvalLimits) -> Self {
         with_required_current_instance(|inst| unsafe {
-            let guard = EvalLimitsOverrideGuard {
-                owner: EvaluationOwner::capture(inst),
-                previous_limits: (*inst).eval_state.limits,
-                previous_start_time: (*inst).eval_state.start_time,
-            };
+            let owner = EvaluationOwner::capture(inst);
             #[cfg(target_arch = "wasm32")]
             let start = None;
             #[cfg(not(target_arch = "wasm32"))]
             let start = Some(Instant::now());
-            (*inst).eval_state.limits = limits;
-            (*inst).eval_state.start_time = start;
-            guard
+            let (previous_limits, previous_start_time) = with_execution_state_in(inst, |state| {
+                (
+                    std::mem::replace(&mut state.limits, limits),
+                    std::mem::replace(&mut state.start_time, start),
+                )
+            });
+            Self {
+                owner,
+                previous_limits,
+                previous_start_time,
+            }
         })
     }
 }
@@ -157,8 +166,10 @@ impl Drop for EvalLimitsOverrideGuard {
         // of whichever compatibility instance is current at drop time.
         if let Some(instance) = self.owner.cleanup_pointer() {
             unsafe {
-                (*instance).eval_state.limits = self.previous_limits;
-                (*instance).eval_state.start_time = self.previous_start_time;
+                with_execution_state_in(instance, |state| {
+                    state.limits = self.previous_limits;
+                    state.start_time = self.previous_start_time;
+                });
             }
         }
     }
@@ -177,7 +188,7 @@ impl Drop for DepthGuard {
         // ambient when the guard drops.
         if let Some(instance) = self.owner.cleanup_pointer() {
             unsafe {
-                (*instance).eval_state.eval_depth = self.depth - 1;
+                with_execution_state_in(instance, |state| state.eval_depth = self.depth - 1);
             }
         }
     }
@@ -233,14 +244,18 @@ fn effective_eval_depth_limit(configured: usize, r_expressions: c_int) -> usize 
 
 /// Check evaluation depth and time limits, returning a guard that decrements on drop.
 pub fn check_eval_depth() -> Result<DepthGuard, String> {
-    let (owner, limits, depth, elapsed) = with_required_current_instance(|inst| unsafe {
-        (
-            EvaluationOwner::capture(inst),
-            (*inst).eval_state.limits,
-            (*inst).eval_state.eval_depth.checked_add(1),
-            (*inst).eval_state.start_time.map(|start| start.elapsed()),
-        )
+    let (owner, limits, depth, start) = with_required_current_instance(|inst| unsafe {
+        let owner = EvaluationOwner::capture(inst);
+        let (limits, depth, start) = with_execution_state_in(inst, |state| {
+            (
+                state.limits,
+                state.eval_depth.checked_add(1),
+                state.start_time,
+            )
+        });
+        (owner, limits, depth, start)
     });
+    let elapsed = start.map(|start| start.elapsed());
     let depth = depth.ok_or_else(|| "evaluation depth overflow".to_string())?;
     let max_depth = effective_eval_depth_limit(
         limits.max_eval_depth,
@@ -261,17 +276,14 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
         }
     }
 
-    unsafe {
-        (*owner.cleanup_pointer().expect("live evaluation owner"))
-            .eval_state
-            .eval_depth = depth;
-    }
+    let instance = owner.cleanup_pointer().expect("live evaluation owner");
+    unsafe { with_execution_state_in(instance, |state| state.eval_depth = depth) };
     Ok(DepthGuard { owner, depth })
 }
 
 #[cfg(test)]
 mod depth_limit_tests {
-    use super::effective_eval_depth_limit;
+    use super::{effective_eval_depth_limit, with_execution_state_in};
 
     #[test]
     fn owned_evaluation_guards_restore_closed_owner_after_callback_unwind() {
@@ -283,11 +295,10 @@ mod depth_limit_tests {
             let mut session = Some(RSession::new_for_gc_tests());
             let (pin, previous_limits, previous_depth) =
                 with_required_current_instance(|instance| unsafe {
-                    (
-                        (*instance).runtime_owner.as_ref().unwrap().pin().unwrap(),
-                        (*instance).eval_state.limits,
-                        (*instance).eval_state.eval_depth,
-                    )
+                    let pin = (*instance).runtime_owner.as_ref().unwrap().pin().unwrap();
+                    let (limits, depth) =
+                        with_execution_state_in(instance, |state| (state.limits, state.eval_depth));
+                    (pin, limits, depth)
                 });
             let requested = super::EvalLimits {
                 max_eval_depth: 3,
@@ -300,7 +311,7 @@ mod depth_limit_tests {
                 assert_eq!(super::get_eval_limits(), requested);
                 let _depth = super::check_eval_depth().expect("bounded evaluation depth");
                 assert_eq!(
-                    unsafe { (*pin.as_ptr()).eval_state.eval_depth },
+                    unsafe { with_execution_state_in(pin.as_ptr(), |state| state.eval_depth) },
                     previous_depth + 1
                 );
                 // A user callback destroys the session while its guards remain
@@ -313,9 +324,13 @@ mod depth_limit_tests {
             }));
             assert_eq!(result.is_err(), inject_panic);
             let instance = pin.as_ptr();
-            assert_eq!(unsafe { (*instance).eval_state.limits }, previous_limits);
-            assert_eq!(unsafe { (*instance).eval_state.eval_depth }, previous_depth);
-            assert!(unsafe { (*instance).eval_state.start_time.is_none() });
+            unsafe {
+                with_execution_state_in(instance, |state| {
+                    assert_eq!(state.limits, previous_limits);
+                    assert_eq!(state.eval_depth, previous_depth);
+                    assert!(state.start_time.is_none());
+                });
+            }
         }
     }
 
@@ -339,15 +354,41 @@ mod depth_limit_tests {
     fn evaluation_depth_overflow_preserves_original_depth() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-            (*instance).eval_state.eval_depth = i32::MAX;
+            with_execution_state_in(instance, |state| state.eval_depth = i32::MAX);
         });
         assert_eq!(
             super::check_eval_depth().err().as_deref(),
             Some("evaluation depth overflow")
         );
         crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-            assert_eq!((*instance).eval_state.eval_depth, i32::MAX);
-            (*instance).eval_state.eval_depth = 0;
+            with_execution_state_in(instance, |state| {
+                assert_eq!(state.eval_depth, i32::MAX);
+                state.eval_depth = 0;
+            });
+        });
+    }
+
+    #[test]
+    fn execution_state_rejects_same_owner_reentry_and_releases_after_unwind() {
+        use crate::sexp::session::RSession;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        let left_ptr = left.instance_ptr();
+        left.with_active(|| {
+            let right_depth = std::cell::Cell::new(-1);
+            let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+                with_execution_state_in(left_ptr, |state| {
+                    state.eval_depth = 3;
+                    right_depth.set(right.with_active(crate::sexp::globals::R_EvalDepth));
+                    crate::sexp::globals::set_R_EvalDepth(4);
+                });
+            }));
+            assert_eq!(right_depth.get(), 0);
+            assert!(result.is_err());
+            assert_eq!(crate::sexp::globals::R_EvalDepth(), 3);
+            crate::sexp::globals::set_R_EvalDepth(0);
         });
     }
 
@@ -365,11 +406,10 @@ mod depth_limit_tests {
 pub(crate) fn poll_computation() {
     crate::sexp::instance::check_cancellation();
     let expired = crate::sexp::instance::with_current_instance(|instance| unsafe {
-        let state = &(*instance).eval_state;
-        state.limits.max_execution_time_ms > 0
-            && state.start_time.is_some_and(|start| {
-                start.elapsed() > Duration::from_millis(state.limits.max_execution_time_ms)
-            })
+        let (limit, start) = with_execution_state_in(instance, |state| {
+            (state.limits.max_execution_time_ms, state.start_time)
+        });
+        limit > 0 && start.is_some_and(|start| start.elapsed() > Duration::from_millis(limit))
     })
     .unwrap_or(false);
     if expired {

@@ -1927,7 +1927,7 @@ fn test_quiescent_flush_runs_dead_key_finalizer() {
         instance::with_required_current_instance(|inst| {
             crate::mainutils::memory_main::clear_finalizers_for_test(inst);
             with_gc_state_in(inst, |state| state.gc_pending = false);
-            (*inst).eval_state.eval_depth = 0;
+            crate::sexp::globals::set_R_EvalDepth_in(inst, 0);
         });
         RUNS.store(0, Ordering::SeqCst);
 
@@ -1975,7 +1975,7 @@ fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
         instance::with_required_current_instance(|inst| {
             crate::mainutils::memory_main::clear_finalizers_for_test(inst);
             with_gc_state_in(inst, |state| state.gc_pending = false);
-            (*inst).eval_state.eval_depth = 0;
+            crate::sexp::globals::set_R_EvalDepth_in(inst, 0);
         });
         RUNS.store(0, Ordering::SeqCst);
 

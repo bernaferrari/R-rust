@@ -116,12 +116,12 @@ pub fn R_Verbose() -> c_int {
 // ---------------------------------------------------------------------------
 /// Get evaluation depth.
 pub fn R_GetEvalDepth() -> c_int {
-    with_eval_state(|state| state.eval_depth)
+    crate::sexp::globals::R_EvalDepth()
 }
 
 /// Set evaluation depth.
 pub fn R_SetEvalDepth(v: c_int) {
-    with_eval_state(|state| state.eval_depth = v);
+    crate::sexp::globals::set_R_EvalDepth(v);
 }
 
 // ---------------------------------------------------------------------------

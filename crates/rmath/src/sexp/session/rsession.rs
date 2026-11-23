@@ -1392,11 +1392,7 @@ impl RSession {
     /// The token can be cloned and held by an embedding host so cancellation
     /// remains session-scoped while the synchronization detail stays private.
     pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
-        if self.active {
-            unsafe {
-                (*self.instance).eval_state.cancellation = token;
-            }
-        }
+        let _ = self.replace_cancellation_token(token);
     }
 
     /// Replace this session's cooperative cancellation token, returning the old one.
@@ -1409,7 +1405,11 @@ impl RSession {
         token: Option<CancellationToken>,
     ) -> Option<CancellationToken> {
         if self.active {
-            unsafe { std::mem::replace(&mut (*self.instance).eval_state.cancellation, token) }
+            unsafe {
+                crate::sexp::instance::with_execution_state_in(self.instance, |state| {
+                    std::mem::replace(&mut state.cancellation, token)
+                })
+            }
         } else {
             None
         }
@@ -1417,7 +1417,9 @@ impl RSession {
 
     /// Return this session's current evaluation limits.
     pub fn eval_limits(&self) -> crate::eval::eval::EvalLimits {
-        self.inst().eval_state.limits
+        unsafe {
+            crate::sexp::instance::with_execution_state_in(self.instance, |state| state.limits)
+        }
     }
 
     /// Set this session's evaluation limits.
@@ -1427,7 +1429,9 @@ impl RSession {
     pub fn set_eval_limits(&mut self, limits: crate::eval::eval::EvalLimits) {
         if self.active {
             unsafe {
-                (*self.instance).eval_state.limits = limits;
+                crate::sexp::instance::with_execution_state_in(self.instance, |state| {
+                    state.limits = limits;
+                });
             }
         }
     }

@@ -666,10 +666,10 @@ fn test_explicit_gc_owner_restores_nested_activation() {
             assert_eq!(with_current_instance(|inst| inst), Some(right_inst));
             with_gc_state_in(right_inst, |state| state.gc_pending = true);
             // An evaluation frame must defer collection for this owner.
-            (*right_inst).eval_state.eval_depth = 1;
+            crate::sexp::globals::set_R_EvalDepth_in(right_inst, 1);
             super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
             assert!(with_gc_state_in(right_inst, |state| state.gc_pending));
-            (*right_inst).eval_state.eval_depth = 0;
+            crate::sexp::globals::set_R_EvalDepth_in(right_inst, 0);
             super::super::gengc::run_pending_gc_if_quiescent_in(right_inst);
             assert!(!with_gc_state_in(right_inst, |state| state.gc_pending));
             assert!(with_gc_state_in(left_inst, |state| state.gc_pending));
@@ -814,13 +814,13 @@ fn test_eval_depth_guard_drops_against_original_session() {
 
     left.with_active(|| {
         let guard = crate::eval::eval::check_eval_depth().expect("left depth should increment");
-        assert_eq!(unsafe { (*left.instance).eval_state.eval_depth }, 1);
-        assert_eq!(unsafe { (*right.instance).eval_state.eval_depth }, 0);
+        assert_eq!(unsafe { crate::sexp::globals::R_EvalDepth_in(left.instance) }, 1);
+        assert_eq!(unsafe { crate::sexp::globals::R_EvalDepth_in(right.instance) }, 0);
 
         let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
         drop(guard);
-        assert_eq!(unsafe { (*left.instance).eval_state.eval_depth }, 0);
-        assert_eq!(unsafe { (*right.instance).eval_state.eval_depth }, 0);
+        assert_eq!(unsafe { crate::sexp::globals::R_EvalDepth_in(left.instance) }, 0);
+        assert_eq!(unsafe { crate::sexp::globals::R_EvalDepth_in(right.instance) }, 0);
         unsafe {
             replace_current_instance(previous);
         }
@@ -834,13 +834,29 @@ fn test_eval_timer_guard_drops_against_original_session() {
 
     left.with_active(|| {
         let guard = crate::eval::eval::EvalTimerGuard::start_if_needed();
-        assert!(unsafe { (*left.instance).eval_state.start_time.is_some() });
-        assert!(unsafe { (*right.instance).eval_state.start_time.is_none() });
+        assert!(unsafe {
+            crate::sexp::instance::with_execution_state_in(left.instance, |state| {
+                state.start_time.is_some()
+            })
+        });
+        assert!(unsafe {
+            crate::sexp::instance::with_execution_state_in(right.instance, |state| {
+                state.start_time.is_none()
+            })
+        });
 
         let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
         drop(guard);
-        assert!(unsafe { (*left.instance).eval_state.start_time.is_none() });
-        assert!(unsafe { (*right.instance).eval_state.start_time.is_none() });
+        assert!(unsafe {
+            crate::sexp::instance::with_execution_state_in(left.instance, |state| {
+                state.start_time.is_none()
+            })
+        });
+        assert!(unsafe {
+            crate::sexp::instance::with_execution_state_in(right.instance, |state| {
+                state.start_time.is_none()
+            })
+        });
         unsafe {
             replace_current_instance(previous);
         }
@@ -856,7 +872,11 @@ fn test_eval_with_limits_restores_session_state() {
         max_alloc_bytes: 0,
     };
     session.set_eval_limits(original_limits);
-    unsafe { (*session.instance).eval_state.start_time = Some(std::time::Instant::now()) };
+    unsafe {
+        crate::sexp::instance::with_execution_state_in(session.instance, |state| {
+            state.start_time = Some(std::time::Instant::now())
+        })
+    };
 
     let expr = session
         .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
@@ -882,10 +902,14 @@ fn test_eval_with_limits_restores_session_state() {
     let result = result.expect("self-evaluating vector should evaluate");
     assert_eq!(result.integer_elt(0), Some(7));
     assert_eq!(
-        unsafe { (*session.instance).eval_state.limits },
+        unsafe { crate::sexp::instance::with_execution_state_in(session.instance, |state| state.limits) },
         original_limits
     );
-    assert!(unsafe { (*session.instance).eval_state.start_time.is_some() });
+    assert!(unsafe {
+        crate::sexp::instance::with_execution_state_in(session.instance, |state| {
+            state.start_time.is_some()
+        })
+    });
 }
 
 #[test]

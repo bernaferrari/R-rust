@@ -320,7 +320,7 @@ mod tests {
                 .unwrap();
             assert_eq!(value.integer_elt(0), Some(42));
             assert_eq!(crate::eval::runtime::visible(), crate::sexp::ffi::FALSE);
-            let depth = (*instance).eval_state.eval_depth;
+            let depth = crate::sexp::globals::R_EvalDepth_in(instance);
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 apply(
                     "owned_wrapper_error",
@@ -336,7 +336,7 @@ mod tests {
                 matches!(*signal, crate::sexp::context::RSignal::Error { ref message }
                 if message == "wrapper failure")
             );
-            assert_eq!((*instance).eval_state.eval_depth, depth);
+            assert_eq!(crate::sexp::globals::R_EvalDepth_in(instance), depth);
             let value = factory
                 .wrap(apply(
                     "owned_wrapper_return",
