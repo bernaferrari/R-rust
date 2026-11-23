@@ -1,696 +1,232 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
-
-//! Port of R's src/main/cum.c — cumulative operations on arrays.
-//!
-//! These functions implement cumulative sum, product, max, and min
-//! for integer and double arrays, with proper NA/NaN handling.
-//!
-//! Ported standalone functions:
-//!   cumsum_double, icumsum_int, ccumsum_complex,
-//!   cumprod_double, ccumprod_complex,
-//!   cummax_double, cummin_double,
-//!   icummax_int, icummin_int,
-//!   handle_nan_double, chandle_nan_complex
-//!
-//! SEXP-dependent functions (ported from R's do_cum):
-//!   do_cumsum, do_cumprod, do_cummax, do_cummin
-
-use std::os::raw::{c_double, c_int};
+//! Checked payload drivers for R's cumulative sum and product.
 
 use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
-use crate::mainutils::errors::{Rf_error_cstr, Rf_warning_cstr};
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_INTEGER, R_NA_BIT_PATTERN, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::*;
-use crate::sexp::protect::*;
+use crate::mainutils::coerce::coerceVector;
+use crate::mainutils::errors::Rf_warning_cstr;
+use crate::mainutils::essentials::{active_owner, owner_sexp, sexp_ok};
+use crate::sexp::accessors::CAR;
+use crate::sexp::constructors::Rf_allocVector3;
+use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
+use crate::sexp::{Sexp, SexpMut};
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/// Check if a double is R's NA.
-#[inline]
-pub fn R_IsNA(x: f64) -> bool {
-    x.to_bits() == R_NA_BIT_PATTERN
+#[derive(Clone, Copy)]
+enum Operation {
+    Sum,
+    Product,
 }
 
-/// Check if a double is any NaN.
-#[inline]
-pub fn ISNAN(x: f64) -> bool {
-    x.is_nan()
+pub fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    cumulative(CAR(args), Operation::Sum)
 }
 
-// ---------------------------------------------------------------------------
-// NaN handling helpers
-// ---------------------------------------------------------------------------
+pub fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    cumulative(CAR(args), Operation::Product)
+}
 
-/// Handle NaN propagation for cumulative double results.
-///
-/// After computing cumulative sums/products that may have encountered NaN,
-/// this post-processes the result array: once any NaN is seen, all subsequent
-/// values become NA_REAL (if the NaN was R's NA) or R_NaN.
-pub fn handle_nan_double(x: &[f64], s: &mut [f64]) {
-    let mut has_na = false;
-    let mut has_nan = false;
-    let len = x.len().min(s.len());
-
-    for i in 0..len {
-        has_nan = has_nan || ISNAN(x[i]);
-        has_na = has_na || (has_nan && R_IsNA(x[i]));
-        if has_na || has_nan {
-            s[i] = crate::sexp::ffi::NA_REAL;
+fn cumulative(input: SEXP, operation: Operation) -> SEXP {
+    if input.is_null() || input == R_NilValue() {
+        return R_NilValue();
+    }
+    let owner = active_owner();
+    let source = owner_sexp(owner, input);
+    let source_type = source.typeof_();
+    let kind = match (operation, source_type) {
+        (_, SEXPTYPE::CPLXSXP) => SEXPTYPE::CPLXSXP,
+        (Operation::Sum, SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) => SEXPTYPE::INTSXP,
+        _ => SEXPTYPE::REALSXP,
+    };
+    let input = if source_type == kind {
+        source.clone()
+    } else {
+        owner_sexp(owner, coerceVector(source.as_raw(), kind.as_c_int()))
+    };
+    sexp_ok(owner.require_active());
+    let result = owner_sexp(owner, Rf_allocVector3(kind, input.len()));
+    let mut output = sexp_ok(SexpMut::try_from_checked(result.clone()));
+    sexp_ok(owner.require_active());
+    let symbol = R_NamesSymbol();
+    setAttrib(result.as_raw(), symbol, getAttrib(input.as_raw(), symbol));
+    sexp_ok(owner.require_active());
+    let overflow = match kind {
+        SEXPTYPE::INTSXP => accumulate_integer(&input, &mut output),
+        SEXPTYPE::REALSXP => {
+            accumulate_real(&input, &mut output, operation);
+            false
         }
-    }
-}
-
-/// Handle NaN propagation for cumulative complex results.
-///
-/// `r_is_n`: whether the real part had NaN
-/// `i_is_n`: whether the imaginary part had NaN
-#[allow(clippy::if_same_then_else)]
-pub fn chandle_nan_complex(x: &[Rcomplex], s: &mut [Rcomplex], r_is_n: bool, i_is_n: bool) {
-    let mut has_na = false;
-    let mut has_nan = false;
-    let len = x.len().min(s.len());
-
-    for i in 0..len {
-        has_nan = has_nan || ISNAN(x[i].r) || ISNAN(x[i].i);
-        has_na = has_na || (has_nan && (R_IsNA(x[i].r) || R_IsNA(x[i].i)));
-        if has_na {
-            if r_is_n {
-                s[i].r = crate::sexp::ffi::NA_REAL;
-            }
-            if i_is_n {
-                s[i].i = crate::sexp::ffi::NA_REAL;
-            }
-        } else if has_nan {
-            if r_is_n {
-                s[i].r = f64::NAN;
-            }
-            if i_is_n {
-                s[i].i = f64::NAN;
-            }
+        SEXPTYPE::CPLXSXP => {
+            accumulate_complex(&input, &result, &mut output, operation);
+            false
         }
+        _ => unreachable!(),
+    };
+    sexp_ok(owner.require_active());
+    if overflow {
+        Rf_warning_cstr(c"integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'");
+        sexp_ok(owner.require_active());
     }
+    result.as_raw()
 }
 
-// ---------------------------------------------------------------------------
-// Cumulative sum
-// ---------------------------------------------------------------------------
-
-/// Cumulative sum of a double array.
-///
-/// `x` is the input, `s` is the output (must be same length).
-/// Uses `f64` accumulator for precision.
-pub fn cumsum_double(x: &[f64], s: &mut [f64]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut sum: f64 = 0.0;
-    for i in 0..len {
-        sum += x[i]; // NaN propagated
-        s[i] = sum;
-    }
-    if ISNAN(sum) {
-        handle_nan_double(x, s);
-    }
-}
-
-/// Cumulative sum of an integer array.
-///
-/// Uses `f64` accumulator. Stops and sets remaining to NA_INTEGER
-/// on overflow. `warn` is set to true if overflow occurred.
-pub fn icumsum_int(x: &[c_int], s: &mut [c_int], warn: &mut bool) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut sum: f64 = 0.0;
-    for i in 0..len {
-        if x[i] == NA_INTEGER {
-            // remaining entries stay as initialized (0)
-            break;
-        }
-        sum += x[i] as f64;
-        if sum > c_int::MAX as f64 || sum < (c_int::MIN as f64) + 1.0 {
-            *warn = true;
-            break;
-        }
-        s[i] = sum as c_int;
-    }
-}
-
-/// Cumulative sum of a complex array.
-pub fn ccumsum_complex(x: &[Rcomplex], s: &mut [Rcomplex]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut sum_r: f64 = 0.0;
-    let mut sum_i: f64 = 0.0;
-    for i in 0..len {
-        sum_r += x[i].r;
-        sum_i += x[i].i;
-        s[i].r = sum_r;
-        s[i].i = sum_i;
-    }
-    if ISNAN(sum_r) || ISNAN(sum_i) {
-        chandle_nan_complex(x, s, ISNAN(sum_r), ISNAN(sum_i));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Cumulative product
-// ---------------------------------------------------------------------------
-
-/// Cumulative product of a double array.
-pub fn cumprod_double(x: &[f64], s: &mut [f64]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut prod: f64 = 1.0;
-    for i in 0..len {
-        prod *= x[i]; // NaN propagated
-        s[i] = prod;
-    }
-    if ISNAN(prod) {
-        handle_nan_double(x, s);
-    }
-}
-
-/// Cumulative product of a complex array.
-pub fn ccumprod_complex(x: &[Rcomplex], s: &mut [Rcomplex]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut prod_r: f64 = 1.0;
-    let mut prod_i: f64 = 0.0;
-    for i in 0..len {
-        let tmp_r = prod_r;
-        let tmp_i = prod_i;
-        prod_r = x[i].r * tmp_r - x[i].i * tmp_i;
-        prod_i = x[i].r * tmp_i + x[i].i * tmp_r;
-        s[i].r = prod_r;
-        s[i].i = prod_i;
-    }
-    if ISNAN(prod_r) || ISNAN(prod_i) {
-        chandle_nan_complex(x, s, ISNAN(prod_r), ISNAN(prod_i));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Cumulative max/min (double)
-// ---------------------------------------------------------------------------
-
-/// Cumulative maximum of a double array.
-pub fn cummax_double(x: &[f64], s: &mut [f64]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut max = f64::NEG_INFINITY;
-    for i in 0..len {
-        if ISNAN(x[i]) {
-            handle_nan_double(x, s);
-            return;
-        }
-        max = if max > x[i] { max } else { x[i] };
-        s[i] = max;
-    }
-}
-
-/// Cumulative minimum of a double array.
-pub fn cummin_double(x: &[f64], s: &mut [f64]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut min = f64::INFINITY;
-    for i in 0..len {
-        if ISNAN(x[i]) {
-            handle_nan_double(x, s);
-            return;
-        }
-        min = if min < x[i] { min } else { x[i] };
-        s[i] = min;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Cumulative max/min (integer)
-// ---------------------------------------------------------------------------
-
-/// Cumulative maximum of an integer array.
-pub fn icummax_int(x: &[c_int], s: &mut [c_int]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-    if x[0] == NA_INTEGER {
-        return;
-    }
-
-    let mut max = x[0];
-    s[0] = max;
-    for i in 1..len {
-        if x[i] == NA_INTEGER {
-            break;
-        }
-        max = if max > x[i] { max } else { x[i] };
-        s[i] = max;
-    }
-}
-
-/// Cumulative minimum of an integer array.
-pub fn icummin_int(x: &[c_int], s: &mut [c_int]) {
-    let len = x.len().min(s.len());
-    if len == 0 {
-        return;
-    }
-
-    let mut min = x[0];
-    s[0] = min;
-    for i in 1..len {
-        if x[i] == NA_INTEGER {
-            break;
-        }
-        min = if min < x[i] { min } else { x[i] };
-        s[i] = min;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// R-level cumulative functions
-// ---------------------------------------------------------------------------
-
-/// do_cumsum — R's cumsum() function.
-///
-/// Computes cumulative sums, handling integer, logical, double, and complex
-/// vectors with proper NA/NaN propagation.
-///
-/// Matches R's do_cum with PRIMVAL(op) == 1:
-/// - For complex: uses complex cumsum
-/// - For integer/logical: tries integer cumsum with overflow detection
-/// - Otherwise: coerces to double and uses double cumsum
-pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let s = CAR(args);
-        if s.is_null() || s == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let t = TYPEOF(s);
-        let n = XLENGTH(s);
-
-        if t == SEXPTYPE::CPLXSXP {
-            // Complex path: allocate, copy names, compute ccumsum
-            let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
-            if n == 0 {
-                return ans;
-            }
-            let src = std::slice::from_raw_parts(COMPLEX(s), n as usize);
-            let dst = std::slice::from_raw_parts_mut(COMPLEX(ans), n as usize);
-            ccumsum_complex(src, dst);
-            ans
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            // Integer/logical path: coerce to integer, try integer cumsum
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
-            }
-            // Initialize all result elements to NA_INTEGER (R does this)
-            let dst = INTEGER(ans);
-            for i in 0..n2 as usize {
-                *dst.add(i) = NA_INTEGER;
-            }
-            // Integer cumsum with overflow detection (R's icumsum logic)
-            let src = INTEGER(t);
-            let mut sum: c_double = 0.0;
-            for i in 0..n2 as usize {
-                let v = *src.add(i);
-                if v == NA_INTEGER {
-                    break;
-                }
-                sum += v as c_double;
-                if sum > c_int::MAX as c_double || sum < (c_int::MIN as c_double) + 1.0 {
-                    // Integer overflow — issue warning and stop
-                    let msg = c"integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'";
-                    Rf_warning_cstr(&msg);
-                    break;
-                }
-                *dst.add(i) = sum as c_int;
-            }
-            ans
+fn accumulate_integer(input: &Sexp<'_>, output: &mut SexpMut<'_>) -> bool {
+    let mut sum = 0_i32;
+    for i in 0..input.len() {
+        let value = sexp_ok(input.try_integer_elt(i));
+        let next = if value == NA_INTEGER {
+            None
         } else {
-            // Real / other types: coerce to double
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
+            sum.checked_add(value).filter(|&value| value != NA_INTEGER)
+        };
+        let Some(next) = next else {
+            for j in i..input.len() {
+                sexp_ok(output.try_set_integer_elt(j, NA_INTEGER));
             }
-            let src = std::slice::from_raw_parts(REAL(t), n2 as usize);
-            let dst = std::slice::from_raw_parts_mut(REAL(ans), n2 as usize);
-            cumsum_double(src, dst);
-            ans
-        }
+            return value != NA_INTEGER;
+        };
+        sum = next;
+        sexp_ok(output.try_set_integer_elt(i, sum));
     }
+    false
 }
 
-/// do_cumprod — R's cumprod() function.
-///
-/// Computes cumulative products, handling integer, logical, double, and complex
-/// vectors with proper NA/NaN propagation.
-///
-/// Matches R's do_cum with PRIMVAL(op) == 2:
-/// - For complex: uses complex cumprod
-/// - For integer/logical: coerces to double first (R excludes cumprod from integer path)
-/// - Otherwise: coerces to double and uses double cumprod
-pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let s = CAR(args);
-        if s.is_null() || s == R_NilValue() {
-            return R_NilValue();
-        }
+fn is_na(value: f64) -> bool {
+    value.to_bits() == R_NA_BIT_PATTERN
+}
 
-        let t = TYPEOF(s);
-        let n = XLENGTH(s);
-
-        if t == SEXPTYPE::CPLXSXP {
-            // Complex path
-            let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
-            if n == 0 {
-                return ans;
-            }
-            let src = std::slice::from_raw_parts(COMPLEX(s), n as usize);
-            let dst = std::slice::from_raw_parts_mut(COMPLEX(ans), n as usize);
-            ccumprod_complex(src, dst);
-            ans
+fn accumulate_real(input: &Sexp<'_>, output: &mut SexpMut<'_>, operation: Operation) {
+    let mut acc = match operation {
+        Operation::Sum => 0.0,
+        Operation::Product => 1.0,
+    };
+    let mut seen_na = false;
+    for i in 0..input.len() {
+        let value = sexp_ok(input.try_real_elt(i));
+        seen_na |= is_na(value);
+        acc = match operation {
+            Operation::Sum => acc + value,
+            Operation::Product => acc * value,
+        };
+        let value = if seen_na {
+            NA_REAL
+        } else if acc.is_nan() {
+            f64::NAN
         } else {
-            // All non-complex types (including integer/logical) coerce to double
-            // R's do_cum excludes cumprod (PRIMVAL == 2) from the integer path
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
-            }
-            let src = std::slice::from_raw_parts(REAL(t), n2 as usize);
-            let dst = std::slice::from_raw_parts_mut(REAL(ans), n2 as usize);
-            cumprod_double(src, dst);
-            ans
-        }
+            acc
+        };
+        sexp_ok(output.try_set_real_elt(i, value));
     }
 }
 
-/// do_cummax — R's cummax() function.
-///
-/// Computes cumulative maxima over a vector.
-///
-/// Matches R's do_cum with PRIMVAL(op) == 3:
-/// - For complex: error (not defined for complex)
-/// - For integer/logical: uses integer cummax (initialized to NA_INTEGER)
-/// - Otherwise: coerces to double and uses double cummax
-pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let s = CAR(args);
-        if s.is_null() || s == R_NilValue() {
-            return R_NilValue();
+fn accumulate_complex(
+    input: &Sexp<'_>,
+    result: &Sexp<'_>,
+    output: &mut SexpMut<'_>,
+    operation: Operation,
+) {
+    let n = input.len();
+    let mut acc = match operation {
+        Operation::Sum => Rcomplex { r: 0.0, i: 0.0 },
+        Operation::Product => Rcomplex { r: 1.0, i: 0.0 },
+    };
+    let mut first_nan = n;
+    let mut first_na = n;
+    for i in 0..n {
+        let value = sexp_ok(input.try_complex_elt(i));
+        if value.r.is_nan() || value.i.is_nan() {
+            first_nan = first_nan.min(i);
+            if is_na(value.r) || is_na(value.i) {
+                first_na = first_na.min(i);
+            }
         }
-
-        let t = TYPEOF(s);
-        let n = XLENGTH(s);
-
-        if t == SEXPTYPE::CPLXSXP {
-            // R errors: "'cummax' not defined for complex numbers"
-            let msg = c"'cummax' not defined for complex numbers";
-            Rf_error_cstr(&msg);
-            unreachable!()
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            // Integer/logical path: coerce to integer, use icummax logic
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
-            }
-            // Initialize all result elements to NA_INTEGER
-            let dst = INTEGER(ans);
-            for i in 0..n2 as usize {
-                *dst.add(i) = NA_INTEGER;
-            }
-            let src = INTEGER(t);
-            // R's icummax: if first element is NA, return all-NA
-            if *src != NA_INTEGER {
-                let mut max = *src;
-                *dst = max;
-                for i in 1..n2 as usize {
-                    let v = *src.add(i);
-                    if v == NA_INTEGER {
-                        break;
-                    }
-                    max = if max > v { max } else { v };
-                    *dst.add(i) = max;
-                }
-            }
-            ans
+        acc = match operation {
+            Operation::Sum => Rcomplex {
+                r: acc.r + value.r,
+                i: acc.i + value.i,
+            },
+            Operation::Product => Rcomplex {
+                r: value.r * acc.r - value.i * acc.i,
+                i: value.r * acc.i + value.i * acc.r,
+            },
+        };
+        sexp_ok(output.try_set_complex_elt(i, acc));
+    }
+    let (real_nan, imag_nan) = (acc.r.is_nan(), acc.i.is_nan());
+    if !real_nan && !imag_nan {
+        return;
+    }
+    // The final NaN components determine which lanes to normalize, even if
+    // one became NaN later than the other. Do not call lazy inputs twice.
+    for i in first_nan..n {
+        let value = if i >= first_na { NA_REAL } else { f64::NAN };
+        let z = if real_nan && imag_nan {
+            Rcomplex { r: value, i: value }
         } else {
-            // Real / other types: coerce to double
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
+            let z = sexp_ok(result.try_complex_elt(i));
+            Rcomplex {
+                r: if real_nan { value } else { z.r },
+                i: if imag_nan { value } else { z.i },
             }
-            let src = std::slice::from_raw_parts(REAL(t), n2 as usize);
-            let dst = std::slice::from_raw_parts_mut(REAL(ans), n2 as usize);
-            cummax_double(src, dst);
-            ans
-        }
+        };
+        sexp_ok(output.try_set_complex_elt(i, z));
     }
 }
-
-/// do_cummin — R's cummin() function.
-///
-/// Computes cumulative minima over a vector.
-///
-/// Matches R's do_cum with PRIMVAL(op) == 4:
-/// - For complex: error (not defined for complex)
-/// - For integer/logical: uses integer cummin (initialized to NA_INTEGER)
-/// - Otherwise: coerces to double and uses double cummin
-pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let s = CAR(args);
-        if s.is_null() || s == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let t = TYPEOF(s);
-        let n = XLENGTH(s);
-
-        if t == SEXPTYPE::CPLXSXP {
-            // R errors: "'cummin' not defined for complex numbers"
-            let msg = c"'cummin' not defined for complex numbers";
-            Rf_error_cstr(&msg);
-            unreachable!()
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            // Integer/logical path: coerce to integer, use icummin logic
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
-            }
-            // Initialize all result elements to NA_INTEGER
-            let dst = INTEGER(ans);
-            for i in 0..n2 as usize {
-                *dst.add(i) = NA_INTEGER;
-            }
-            let src = INTEGER(t);
-            // R's icummin logic
-            let mut min = *src;
-            *dst = min;
-            for i in 1..n2 as usize {
-                let v = *src.add(i);
-                if v == NA_INTEGER {
-                    break;
-                }
-                min = if min < v { min } else { v };
-                *dst.add(i) = min;
-            }
-            ans
-        } else {
-            // Real / other types: coerce to double
-            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
-            let _coerced_guard = protect(t);
-            let n2 = XLENGTH(t);
-            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
-            let _ans_guard = protect(ans);
-            setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            if n2 == 0 {
-                return ans;
-            }
-            let src = std::slice::from_raw_parts(REAL(t), n2 as usize);
-            let dst = std::slice::from_raw_parts_mut(REAL(ans), n2 as usize);
-            cummin_double(src, dst);
-            ans
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::altrep::{
+        AltrepBuilder, AltrepClass, AltrepContext, AltrepElement, is_materialized,
+    };
+    use crate::sexp::{ffi::R_xlen_t, object::SexpResult, session::RSession};
+    use std::{cell::Cell, rc::Rc};
 
-    #[test]
-    fn test_cumsum_double() {
-        let x = [1.0, 2.0, 3.0, 4.0, 5.0];
-        let mut s = [0.0; 5];
-        cumsum_double(&x, &mut s);
-        assert_eq!(s, [1.0, 3.0, 6.0, 10.0, 15.0]);
+    struct CollectingReal(Rc<Cell<usize>>);
+
+    impl AltrepClass for CollectingReal {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::REALSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+            Ok(3)
+        }
+        fn element<'s>(
+            &self,
+            context: &AltrepContext<'s>,
+            i: R_xlen_t,
+        ) -> SexpResult<AltrepElement<'s>> {
+            self.0.set(self.0.get() + 1);
+            context.gc()?;
+            Ok(AltrepElement::Real([2.0, 3.0, 5.0][i as usize]))
+        }
     }
 
     #[test]
-    fn test_cumsum_double_with_nan() {
-        let x = [1.0, 2.0, f64::NAN, 4.0, 5.0];
-        let mut s = [0.0; 5];
-        cumsum_double(&x, &mut s);
-        assert_eq!(s[0], 1.0);
-        assert_eq!(s[1], 3.0);
-        assert!(s[2].is_nan());
-        assert!(s[3].is_nan());
-        assert!(s[4].is_nan());
-    }
-
-    #[test]
-    fn test_cumsum_empty() {
-        let x: [f64; 0] = [];
-        let mut s: [f64; 0] = [];
-        cumsum_double(&x, &mut s);
-    }
-
-    #[test]
-    fn test_icumsum_int() {
-        let x = [1, 2, 3, 4, 5];
-        let mut s = [0; 5];
-        let mut warn = false;
-        icumsum_int(&x, &mut s, &mut warn);
-        assert_eq!(s, [1, 3, 6, 10, 15]);
-        assert!(!warn);
-    }
-
-    #[test]
-    fn test_icumsum_int_with_na() {
-        let x = [1, 2, NA_INTEGER, 4, 5];
-        let mut s = [0; 5];
-        let mut warn = false;
-        icumsum_int(&x, &mut s, &mut warn);
-        assert_eq!(s[0], 1);
-        assert_eq!(s[1], 3);
-        assert_eq!(s[2], 0); // not filled after NA
-    }
-
-    #[test]
-    fn test_cumprod_double() {
-        let x = [2.0, 3.0, 4.0];
-        let mut s = [0.0; 3];
-        cumprod_double(&x, &mut s);
-        assert_eq!(s, [2.0, 6.0, 24.0]);
-    }
-
-    #[test]
-    fn test_cummax_double() {
-        let x = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0];
-        let mut s = [0.0; 7];
-        cummax_double(&x, &mut s);
-        assert_eq!(s, [3.0, 3.0, 4.0, 4.0, 5.0, 9.0, 9.0]);
-    }
-
-    #[test]
-    fn test_cummin_double() {
-        let x = [3.0, 1.0, 4.0, 1.0, 5.0, 0.0, 2.0];
-        let mut s = [0.0; 7];
-        cummin_double(&x, &mut s);
-        assert_eq!(s, [3.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn test_icummax_int() {
-        let x = [3, 1, 4, 1, 5, 2];
-        let mut s = [0; 6];
-        icummax_int(&x, &mut s);
-        assert_eq!(s, [3, 3, 4, 4, 5, 5]);
-    }
-
-    #[test]
-    fn test_icummin_int() {
-        let x = [3, 1, 4, 1, 5, 2];
-        let mut s = [0; 6];
-        icummin_int(&x, &mut s);
-        assert_eq!(s, [3, 1, 1, 1, 1, 1]);
-    }
-
-    #[test]
-    fn test_ccumsum_complex() {
-        let x = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: 3.0, i: 4.0 }];
-        let mut s = [Rcomplex::default(); 2];
-        ccumsum_complex(&x, &mut s);
-        assert_eq!(s[0].r, 1.0);
-        assert_eq!(s[0].i, 2.0);
-        assert_eq!(s[1].r, 4.0);
-        assert_eq!(s[1].i, 6.0);
-    }
-
-    #[test]
-    fn test_ccumprod_complex() {
-        let x = [
-            Rcomplex { r: 1.0, i: 0.0 },
-            Rcomplex { r: 2.0, i: 0.0 },
-            Rcomplex { r: 3.0, i: 0.0 },
-        ];
-        let mut s = [Rcomplex::default(); 3];
-        ccumprod_complex(&x, &mut s);
-        assert_eq!(s[0].r, 1.0);
-        assert_eq!(s[1].r, 2.0);
-        assert_eq!(s[2].r, 6.0);
+    fn cumulative_functions_keep_collecting_altrep_input_lazy() {
+        let session = RSession::new_for_gc_tests();
+        let reads = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class(
+                "collecting-cumulative-real",
+                CollectingReal(reads.clone()),
+            )
+            .unwrap();
+        let input = AltrepBuilder::new(class).build().unwrap();
+        session.with_active(|| {
+            let args = crate::sexp::constructors::Rf_cons(input.as_raw(), R_NilValue());
+            let args = session.sexp(args).unwrap();
+            for (f, expected) in [
+                (do_cumsum as fn(SEXP, SEXP, SEXP, SEXP) -> SEXP, [2.0, 5.0, 10.0]),
+                (do_cumprod, [2.0, 6.0, 30.0]),
+            ] {
+                let nil = R_NilValue();
+                let raw = f(nil, nil, args.as_raw(), nil);
+                let result = session.sexp(raw).unwrap();
+                for (i, expected) in expected.into_iter().enumerate() {
+                    assert_eq!(result.try_real_elt(i as R_xlen_t), Ok(expected));
+                }
+                assert!(!is_materialized(&input));
+            }
+        });
+        assert_eq!(reads.get(), 6);
     }
 }
