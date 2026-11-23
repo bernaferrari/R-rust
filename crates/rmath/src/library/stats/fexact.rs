@@ -30,48 +30,29 @@ use crate::nmath::dist::gamma::pgamma;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::*;
-use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 
 // ---- internal helper functions (not exported) ----
 
-#[derive(Default)]
-pub(crate) struct FexactState {
-    f5xact_itp: c_int,
-}
-
-fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
-    with_required_current_instance(|instance| f(unsafe { &mut (*instance).fexact_state }))
-}
-
-fn prterr(icode: c_int, mes: &str) {
+fn prterr(icode: c_int, mes: &str) -> ! {
     let msg = format!("FEXACT error {}.\n{}", icode, mes);
     crate::mainutils::errors::implicit_errorcall_str(
         crate::mainutils::errors::R_getCurrentCall(),
         &msg,
-    );
+    )
 }
 
-fn iwork(iwkmax: c_int, iwkpt: &mut c_int, number: c_int, itype: c_int) -> c_int {
-    let i_real: c_int = 4;
-    let i_int: c_int = 2;
-
-    let mut i = *iwkpt;
-    if itype == i_int || itype == 3 {
-        *iwkpt += number;
-    } else {
-        // double
-        if i % 2 != 0 {
-            i += 1;
-        }
-        *iwkpt += number << 1;
-        i /= 2;
-    }
-    if *iwkpt > iwkmax {
+fn iwork(iwkmax: i64, iwkpt: &mut i64, number: i64, double: bool) -> usize {
+    // Charge the alignment cell so a double and a following integer do not
+    // overlap when the cursor was odd.
+    let start = if double { (*iwkpt + 1) & !1 } else { *iwkpt };
+    let end = start + if double { 2 * number } else { number };
+    if end > iwkmax {
         prterr(40, "Out of workspace.");
     }
-    i
+    *iwkpt = end;
+    (if double { start / 2 } else { start }) as usize
 }
 
 unsafe fn isort_wrapper(n: c_int, ix: *mut c_int) {
@@ -92,13 +73,11 @@ unsafe fn fact_term(fact: *const c_double, idx: c_int, site: &str) -> c_double {
 unsafe fn f2xact(
     nrow: c_int,
     ncol: c_int,
-    table: *const c_int,
-    ldtabl: c_int,
+    table: &[c_int],
     expect: c_double,
     percnt: c_double,
     emin: c_double,
-    prt: *mut c_double,
-    pre: *mut c_double,
+    pre: &mut c_double,
     fact: *mut c_double,
     ico: *mut c_int,
     iro: *mut c_int,
@@ -121,8 +100,6 @@ unsafe fn f2xact(
 ) {
     unsafe {
         let imax = c_int::MAX;
-
-        let amiss: c_double = -12345.;
 
         let tol: c_double = 3.45254e-7;
 
@@ -201,7 +178,7 @@ unsafe fn f2xact(
         let mut psh: bool;
 
         // GNU decrements these pointers once so later 1-based indexes
-        // land inside the allocation. table stays 0-based in this port.
+        // land inside the allocation. table stays a 0-based slice.
         let ico = ico.sub(1);
         let iro = iro.sub(1);
         let kyy = kyy.sub(1);
@@ -217,13 +194,6 @@ unsafe fn f2xact(
         let key2 = key2.sub(1);
         let iwk = iwk.sub(1);
         let rwk = rwk.sub(1);
-
-        if nrow > ldtabl {
-            prterr(1, "NROW must be less than or equal to LDTABL.");
-        }
-        if ncol <= 1 {
-            prterr(4, "NCOL must be at least 2");
-        }
 
         // Initialize KEY array (1-based)
         for idx in 1..=(ldkey << 1) as usize {
@@ -244,32 +214,17 @@ unsafe fn f2xact(
         for idx in 1..=nrow as usize {
             *iro.add(idx) = 0;
             for jdx in 1..=ncol as usize {
-                // table[i + j * ldtabl] with 1-based: table[(i-1) + (j-1)*ldtabl] = table[0-based]
-                let tval = *table.add((idx - 1) + (jdx - 1) * ldtabl as usize);
-                if tval < 0 {
-                    prterr(2, "All elements of TABLE must be nonnegative.");
-                }
+                let tval = table[(idx - 1) + (jdx - 1) * nrow as usize];
                 *iro.add(idx) += tval;
             }
             ntot += *iro.add(idx);
-        }
-
-        if ntot == 0 {
-            prterr(
-                3,
-                "All elements of TABLE are zero.\n\
-                   PRT and PRE are set to missing values.",
-            );
-            *pre = amiss;
-            *prt = amiss;
-            return;
         }
 
         // Column marginals (1-based)
         for idx in 1..=ncol as usize {
             *ico.add(idx) = 0;
             for jdx in 1..=nrow as usize {
-                *ico.add(idx) += *table.add((jdx - 1) + (idx - 1) * ldtabl as usize);
+                *ico.add(idx) += table[(jdx - 1) + (idx - 1) * nrow as usize];
             }
         }
 
@@ -299,7 +254,6 @@ unsafe fn f2xact(
                 *kyy.add(idx + 1) = *kyy.add(idx) * (*iro.add(idx) + 1);
             } else {
                 prterr(5, ch_err_5);
-                return;
             }
             idx += 1;
         }
@@ -307,7 +261,6 @@ unsafe fn f2xact(
         // Check for Maximum product
         if *iro.add(nro as usize) + 1 > imax / *kyy.add(nro as usize) {
             prterr(501, ch_err_5);
-            return;
         }
 
         // Compute log factorials (0-based for fact)
@@ -334,14 +287,14 @@ unsafe fn f2xact(
             let mut dd: c_double = 0.;
             if nr_gt_nc {
                 for idx in 1..=nro as usize {
-                    dd += *fact.add(*table.add((jdx - 1) + (idx - 1) * ldtabl as usize) as usize);
-                    ntot += *table.add((jdx - 1) + (idx - 1) * ldtabl as usize);
+                    dd += *fact.add(table[(jdx - 1) + (idx - 1) * nrow as usize] as usize);
+                    ntot += table[(jdx - 1) + (idx - 1) * nrow as usize];
                 }
             } else {
-                let mut ii_us: usize = (jdx - 1) * ldtabl as usize;
+                let mut ii_us: usize = (jdx - 1) * nrow as usize;
                 for idx in 1..=nro as usize {
-                    dd += *fact.add(*table.add(ii_us) as usize);
-                    ntot += *table.add(ii_us);
+                    dd += *fact.add(table[ii_us] as usize);
+                    ntot += table[ii_us];
                     ii_us += 1;
                 }
             }
@@ -350,7 +303,6 @@ unsafe fn f2xact(
 
         // Denominator of observed table: DRO
         dro = f9xact(nro, ntot, iro.add(1), fact);
-        *prt = (obs - dro).exp();
         *pre = 0.;
         itop = 0;
 
@@ -558,6 +510,7 @@ unsafe fn f2xact(
 
                 // L240:
                 psh = true;
+                let mut hash_slot = 0;
                 // Recover pastp
                 ipn = *ipoin.add((ipo + ikkey) as usize);
                 pastp = *stp.add((ipn + ikstp) as usize);
@@ -720,6 +673,7 @@ unsafe fn f2xact(
                                 ifreq,
                                 &mut itop,
                                 psh,
+                                &mut hash_slot,
                             );
                             psh = false;
                         }
@@ -1485,6 +1439,7 @@ unsafe fn f5xact(
     ifreq: c_int,
     itop: *mut c_int,
     psh: bool,
+    hash_slot: &mut c_int,
 ) {
     unsafe {
         // GNU shifts these five only. key and ipoin stay 0-based.
@@ -1537,7 +1492,7 @@ unsafe fn f5xact(
                 prterr(6, &msg);
             }
 
-            with_fexact_state(|state| state.f5xact_itp = itp_val);
+            *hash_slot = itp_val;
             // Empty slot: insert and return. A hit falls through to L40.
             if saw_empty {
                 *key.add(itp_val as usize) = *kval;
@@ -1561,7 +1516,7 @@ unsafe fn f5xact(
                 return;
             }
         }
-        let itp_val = with_fexact_state(|state| state.f5xact_itp);
+        let itp_val = *hash_slot;
 
         let mut ipn = *ipoin.add(itp_val as usize);
 
@@ -1909,172 +1864,124 @@ unsafe fn f11act(irow: *const c_int, i1: c_int, i2: c_int, new: *mut c_int) {
     }
 }
 
-// ---- Exported public functions ----
+// ---- internal entry ----
 
-/// Fisher's exact test entry point.
-///
-/// # Safety
-/// All pointer arguments must be valid.
-pub unsafe fn fexact(
+fn fexact(
     nrow: c_int,
     ncol: c_int,
-    table: *const c_int,
-    ldtabl: c_int,
+    table: &[c_int],
     expect: c_double,
     percnt: c_double,
     emin: c_double,
-    prt: *mut c_double,
-    pre: *mut c_double,
     workspace: c_int,
     mult: c_int,
-) {
+) -> c_double {
+    if nrow < 0 || ncol < 0 || (nrow as usize).checked_mul(ncol as usize) != Some(table.len()) {
+        prterr(1, "TABLE dimensions do not match its length.");
+    }
+    let mut total = 0_i64;
+    for &count in table {
+        if count < 0 {
+            prterr(2, "All elements of TABLE must be nonnegative.");
+        }
+        total += i64::from(count);
+        if total >= i64::from(c_int::MAX) {
+            prterr(99, "integer overflow in exact computation");
+        }
+    }
+    if total == 0 {
+        prterr(
+            3,
+            "All elements of TABLE are zero.\nPRT and PRE are set to missing values.",
+        );
+    }
+    if ncol <= 1 {
+        prterr(4, "NCOL must be at least 2");
+    }
+    if mult <= 0 {
+        prterr(40, "Out of workspace.");
+    }
+    let iwkmax = 2 * i64::from(workspace / 2);
+    let mut iwkpt = 0;
+    let n2_stack = std::cmp::max(200, iwkmax / 1000);
+    let nco = i64::from(nrow.max(ncol));
+    let nro = i64::from(nrow.min(ncol));
+    let i1 = iwork(iwkmax, &mut iwkpt, total + 1, true);
+    let i2 = iwork(iwkmax, &mut iwkpt, nco, false);
+    let i3 = iwork(iwkmax, &mut iwkpt, nco, false);
+    let i3a = iwork(iwkmax, &mut iwkpt, nco, false);
+    let i3b = iwork(iwkmax, &mut iwkpt, nro, false);
+    let i3c = iwork(iwkmax, &mut iwkpt, nro, false);
+    let k = nco + nro + 1;
+    let kk = k * nco;
+    let ikh = (k * 5 + 2 * kk).max(nco * 7 + 4 * n2_stack);
+    let iiwk = iwork(iwkmax, &mut iwkpt, ikh, false);
+    let ikh = (nco + 1 + 2 * n2_stack).max(k);
+    let irwk = iwork(iwkmax, &mut iwkpt, ikh, true);
+    let numb = 18 + 10 * i64::from(mult);
+    let ldkey = (iwkmax - iwkpt) / numb - 1;
+    if ldkey <= 0 {
+        prterr(
+            6,
+            &format!(
+                "LDKEY={ldkey} is too small for this problem.\nTry increasing the size of the workspace and possibly 'mult'"
+            ),
+        );
+    }
+    let ldstp = i64::from(mult) * ldkey;
+    if ldstp > i64::from(c_int::MAX) {
+        prterr(
+            99,
+            &format!("integer overflow would happen in 'mult * ldkey' = {ldstp}"),
+        );
+    }
+    let i4 = iwork(iwkmax, &mut iwkpt, ldkey * 2, false);
+    let i5 = iwork(iwkmax, &mut iwkpt, ldkey * 2, false);
+    let i6 = iwork(iwkmax, &mut iwkpt, ldstp * 2, true);
+    let i7 = iwork(iwkmax, &mut iwkpt, ldstp * 6, false);
+    let i8 = iwork(iwkmax, &mut iwkpt, ldkey * 2, true);
+    let i9 = iwork(iwkmax, &mut iwkpt, ldkey * 2, true);
+    let i9a = iwork(iwkmax, &mut iwkpt, ldkey * 2, true);
+    let i10 = iwork(iwkmax, &mut iwkpt, ldkey * 2, false);
+
+    let mut pre = 0.0;
+    // SAFETY: iwork partitions the R_alloc'd block into disjoint regions
+    // aligned for their element types. The session retains the transient
+    // allocation for this native call.
     unsafe {
-        let amiss: c_double = -12345.;
-
-        let i_real: c_int = 4;
-        let i_int_val: c_int = 2;
-
-        let mut nco: c_int;
-        let mut nro: c_int;
-        let ntot: c_int;
-        let mut numb: c_int;
-        let mut iiwk: c_int;
-        let mut irwk: c_int;
-
-        let mut i: c_int;
-        let j: c_int;
-        let k: c_int;
-        let kk: c_int;
-        let ldkey: c_int;
-        let ldstp: c_int;
-        let i1: c_int;
-        let i2: c_int;
-        let i3: c_int;
-        let i4: c_int;
-        let i5: c_int;
-        let i6: c_int;
-        let i7: c_int;
-        let i8: c_int;
-        let i9: c_int;
-        let i10: c_int;
-        let i3a: c_int;
-        let i3b: c_int;
-        let i3c: c_int;
-        let i9a: c_int;
-
-        let iwkmax = 2 * (workspace / 2);
-        let mut iwkpt: c_int = 0;
-        let n2_stack = std::cmp::max(200, iwkmax / 1000);
-
-        // Workspace Allocation: equiv = R_alloc(iwkmax / 2, sizeof(double))
-        // equiv serves as dwrk (doubles), iwrk (ints), rwrk (floats) via pointer casts
-        let equiv =
-            R_alloc(std::mem::size_of::<c_double>(), (iwkmax / 2) as usize) as *mut c_double;
-        // dwrk = equiv, iwrk = equiv as int*, rwrk = equiv as float*
-
-        if nrow > ldtabl {
-            prterr(1, "NROW must be less than or equal to LDTABL.");
-        }
-
-        let mut ntot_val: c_int = 0;
-        for idx_i in 0..nrow as usize {
-            for idx_j in 0..ncol as usize {
-                if *table.add(idx_i + idx_j * ldtabl as usize) < 0 {
-                    prterr(2, "All elements of TABLE must be nonnegative.");
-                }
-                ntot_val += *table.add(idx_i + idx_j * ldtabl as usize);
-            }
-        }
-        if ntot_val == 0 {
-            prterr(
-                3,
-                "All elements of TABLE are zero.\n\
-                   PRT and PRE are set to missing values.",
-            );
-            *pre = amiss;
-            *prt = amiss;
-            return;
-        }
-
-        // nco := max(nrow, ncol), nro := min(nrow, ncol)
-        if ncol > nrow {
-            nco = ncol;
-            nro = nrow;
-        } else {
-            nco = nrow;
-            nro = ncol;
-        }
-        k = nrow + ncol + 1;
-        kk = k * nco;
-
-        i1 = iwork(iwkmax, &mut iwkpt, ntot_val + 1, i_real);
-        i2 = iwork(iwkmax, &mut iwkpt, nco, i_int_val);
-        i3 = iwork(iwkmax, &mut iwkpt, nco, i_int_val);
-        i3a = iwork(iwkmax, &mut iwkpt, nco, i_int_val);
-        i3b = iwork(iwkmax, &mut iwkpt, nro, i_int_val);
-        i3c = iwork(iwkmax, &mut iwkpt, nro, i_int_val);
-        let mut ikh = std::cmp::max(k * 5 + (kk << 1), nco * 7 + 4 * n2_stack);
-        iiwk = iwork(iwkmax, &mut iwkpt, ikh, i_int_val);
-        ikh = std::cmp::max(nco + 1 + 2 * n2_stack, k);
-        irwk = iwork(iwkmax, &mut iwkpt, ikh, i_real);
-
-        // Double precision reals
-        numb = 18 + 10 * mult;
-        ldkey = (iwkmax - iwkpt) / numb - 1;
-        if (mult as c_double) * (ldkey as c_double) > c_int::MAX as c_double {
-            let msg = format!(
-                "integer overflow would happen in 'mult * ldkey' = {}",
-                (mult as c_double) * (ldkey as c_double)
-            );
-            prterr(99, &msg);
-        }
-        ldstp = mult * ldkey;
-        i4 = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_int_val);
-        i5 = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_int_val);
-        i6 = iwork(iwkmax, &mut iwkpt, ldstp << 1, i_real);
-        i7 = iwork(iwkmax, &mut iwkpt, ldstp * 6, i_int_val);
-        i8 = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_real);
-        i9 = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_real);
-        i9a = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_real);
-        i10 = iwork(iwkmax, &mut iwkpt, ldkey << 1, i_int_val);
-
-        // Call f2xact with workspace pointers
-        // dwrk + i1 = equiv as double + i1
-        // iwrk + i2 = equiv as int + i2 (iwrk and dwrk share the same memory, cast accordingly)
-        let dwrk = equiv;
-        let iwrk = equiv as *mut c_int;
-
+        let dwrk =
+            R_alloc(std::mem::size_of::<c_double>(), (iwkmax / 2) as usize).cast::<c_double>();
+        let iwrk = dwrk.cast::<c_int>();
         f2xact(
             nrow,
             ncol,
             table,
-            ldtabl,
             expect,
             percnt,
             emin,
-            prt,
-            pre,
-            dwrk.add(i1 as usize),
-            iwrk.add(i2 as usize),
-            iwrk.add(i3 as usize),
-            iwrk.add(i3a as usize),
-            iwrk.add(i3b as usize),
-            iwrk.add(i3c as usize),
-            iwrk.add(i4 as usize),
-            ldkey,
-            iwrk.add(i5 as usize),
-            dwrk.add(i6 as usize),
-            ldstp,
-            iwrk.add(i7 as usize),
-            dwrk.add(i8 as usize),
-            dwrk.add(i9 as usize),
-            dwrk.add(i9a as usize),
-            iwrk.add(i10 as usize),
-            iwrk.add(iiwk as usize),
-            dwrk.add(irwk as usize),
-            n2_stack,
+            &mut pre,
+            dwrk.add(i1),
+            iwrk.add(i2),
+            iwrk.add(i3),
+            iwrk.add(i3a),
+            iwrk.add(i3b),
+            iwrk.add(i3c),
+            iwrk.add(i4),
+            ldkey as c_int,
+            iwrk.add(i5),
+            dwrk.add(i6),
+            ldstp as c_int,
+            iwrk.add(i7),
+            dwrk.add(i8),
+            dwrk.add(i9),
+            dwrk.add(i9a),
+            iwrk.add(i10),
+            iwrk.add(iiwk),
+            dwrk.add(irwk),
+            n2_stack as c_int,
         );
     }
+    pre
 }
 
 /// SEXP wrapper for Fisher's exact test.
@@ -2087,28 +1994,10 @@ pub fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     let pars = coerceVector(pars, SEXPTYPE::REALSXP.as_c_int());
     let _pars_guard = protect(pars);
 
-    let mut p: c_double = 0.;
-    let mut prt: c_double = 0.;
     let table = crate::library::stats::checked::int_vec(x);
     let (expect, percnt, emin) = (REAL_ELT(pars, 0), REAL_ELT(pars, 1), REAL_ELT(pars, 2));
 
-    // SAFETY: `table` is a private copy of the `nr x nc` integer table with
-    // leading dimension `nr`, and `prt`/`p` are live out-parameters.
-    unsafe {
-        fexact(
-            nr,
-            nc,
-            table.as_ptr(),
-            nr,
-            expect,
-            percnt,
-            emin,
-            &mut prt,
-            &mut p,
-            ws,
-            mult,
-        );
-    }
+    let p = fexact(nr, nc, &table, expect, percnt, emin, ws, mult);
 
     // ScalarReal: allocate a 1-element REALSXP
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -2118,16 +2007,54 @@ pub fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
-    use crate::sexp::instance::RInstance;
+    use std::os::raw::c_int;
 
     #[test]
-    fn fexact_continuation_state_is_instance_local() {
-        let mut first = RInstance::new();
-        let second = RInstance::new();
+    fn fexact_matches_gnu_for_rectangular_tables() {
+        use super::fexact;
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            assert!(
+                (fexact(2, 3, &[4, 3, 1, 2, 5, 2], -1.0, 100.0, 0.0, 200_000, 30)
+                    - 0.81103455368161226)
+                    .abs()
+                    < 1e-14
+            );
+            assert!(
+                (fexact(3, 2, &[4, 1, 5, 3, 2, 2], -1.0, 100.0, 0.0, 200_000, 30)
+                    - 0.81103455368161226)
+                    .abs()
+                    < 1e-14
+            );
+        });
+    }
 
-        first.fexact_state.f5xact_itp = 11;
-
-        assert_eq!(first.fexact_state.f5xact_itp, 11);
-        assert_eq!(second.fexact_state.f5xact_itp, 0);
+    #[test]
+    fn fexact_rejects_invalid_layout_before_entering_kernel() {
+        use super::fexact;
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            for (nr, nc, table, ws, mult, code) in [
+                (2, 3, &[4, 3, 1, 2, 5][..], 200_000, 30, "FEXACT error 1."),
+                (2, 3, &[4, 3, 1, 2, 5, 2][..], 2, 30, "FEXACT error 40."),
+                (2, 3, &[4, 3, 1, 2, 5, 2][..], 1690, 30, "FEXACT error 6."),
+                (
+                    2,
+                    2,
+                    &[c_int::MAX, 1, 1, 1][..],
+                    200_000,
+                    30,
+                    "FEXACT error 99.",
+                ),
+            ] {
+                let result =
+                    std::panic::catch_unwind(|| fexact(nr, nc, table, -1.0, 100.0, 0.0, ws, mult));
+                let error = result
+                    .unwrap_err()
+                    .downcast::<crate::sexp::context::RError>()
+                    .unwrap();
+                assert!(error.message.starts_with(code));
+            }
+        });
     }
 }

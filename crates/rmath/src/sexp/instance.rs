@@ -473,8 +473,6 @@ pub struct RInstance {
     pub(crate) jit_settings: Cell<crate::eval::jit::JitSettings>,
     /// Per-instance stats::bspline recurrence continuation state.
     pub(crate) bspline_state: crate::library::stats::bspline::BsplineState,
-    /// Per-instance stats::fexact traversal continuation state.
-    pub(crate) fexact_state: crate::library::stats::fexact::FexactState,
     /// Per-instance dynamic loader and native package registry state.
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table.
@@ -647,7 +645,6 @@ impl RInstance {
             ppr_settings: Cell::new(crate::library::stats::smart::Common::default()),
             jit_settings: Cell::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
-            fexact_state: crate::library::stats::fexact::FexactState::default(),
             package_namespace_cache: HashMap::new(),
             namespace_directives_cache: HashMap::new(),
 
