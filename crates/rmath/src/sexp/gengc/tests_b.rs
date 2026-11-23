@@ -1581,7 +1581,7 @@ fn test_cache_only_namespace_survives_full_gc_and_colon_lookup() {
 #[test]
 fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
     let _session = RSession::new_without_default_packages();
-    const NAMESPACE_ROOT: usize = if cfg!(target_arch = "wasm32") { 3 } else { 6 };
+    const NAMESPACE_ROOT: usize = 3;
     let roots = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         with_arena(|arena| {
@@ -1596,13 +1596,6 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
         (*inst).objects_state.deferred_default_object =
             instance::RuntimeValue::from_raw_in(inst, roots[1]);
         unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let mut http_roots = roots[3..6].iter().copied();
-            (*inst)
-                .httpd_state
-                .visit_roots(|slot| *slot = http_roots.next().expect("HTTP root slot"));
-        }
         (*inst).package_namespace_cache.insert(
             "rootProbePkg".to_string(),
             (
@@ -1659,14 +1652,6 @@ fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
             Some(roots[2]),
             "owning bytecode entries preserve original allocation identity"
         );
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let mut http_roots = Vec::new();
-            (*inst)
-                .httpd_state
-                .visit_roots(|root| http_roots.push(*root));
-            assert_eq!(http_roots, replacements[3..6]);
-        }
         let cached_root = {
             let cache = unsafe { &(*inst).package_namespace_cache };
             cache["rootProbePkg"].1

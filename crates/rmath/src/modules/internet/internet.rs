@@ -828,40 +828,9 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
 // Module initialization
 // =========================================================================
 
-/// R_init_internet - initialize the internet module (DllInfo registration).
-/// Signature: void R_init_internet(DllInfo *info)
-///
-/// In R, this allocates an R_InternetRoutines struct and registers all
-/// function pointers via R_setInternetRoutines(). In the Rust port, we
-/// don't have the full R_InternetRoutines infrastructure, so we perform
-/// minimal initialization.
-pub(crate) fn R_init_internet(_info: *mut c_void) {
-    // In R's C implementation, this function:
-    //   1. Allocates an R_InternetRoutines struct via R_Calloc
-    //   2. Registers function pointers for:
-    //      - download (in_do_download)
-    //      - newurl (in_R_newurl) [Windows only]
-    //      - newsock (in_R_newsock) — from sockconn.rs
-    //      - newservsock (in_R_newservsock) — from sockconn.rs
-    //      - sockopen (in_Rsockopen) — from rsock.rs
-    //      - socklisten (in_Rsocklisten) — from rsock.rs
-    //      - sockconnect (in_Rsockconnect) — from rsock.rs
-    //      - sockclose (in_Rsockclose) — from rsock.rs
-    //      - sockread (in_Rsockread) — from rsock.rs
-    //      - sockwrite (in_Rsockwrite) — from rsock.rs
-    //      - sockselect (in_Rsockselect) — from rsock.rs
-    //      - HTTPDCreate (in_R_HTTPDCreate) — from rhttpd.rs
-    //      - HTTPDStop (in_R_HTTPDStop) — from rhttpd.rs
-    //      - curlVersion (in_do_curlVersion) — from libcurl.rs
-    //      - curlGetHeaders (in_do_curlGetHeaders) — from libcurl.rs
-    //      - curlDownload (in_do_curlDownload) — from libcurl.rs
-    //      - newcurlurl (in_newCurlUrl) — from libcurl.rs
-    //   3. Calls R_setInternetRoutines(tmp)
-    //
-    // In the Rust port, these functions are already available via their
-    // #[unsafe(no_mangle)] pub(crate) exports, so no explicit registration
-    // is needed. The function exists as a no-op to satisfy the C ABI contract.
-}
+/// Compatibility initializer. Rust internet entry points do not use GNU R's
+/// `R_InternetRoutines` registration table.
+pub(crate) fn R_init_internet(_info: *mut c_void) {}
 
 #[cfg(test)]
 mod tests {

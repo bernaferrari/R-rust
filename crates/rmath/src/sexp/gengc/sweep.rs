@@ -290,11 +290,6 @@ pub(crate) unsafe fn update_instance_roots_in(
         update_field(&mut (*instance).dynload_state.symbol_eptrs, old_to_new);
         update_field(&mut (*instance).dynload_state.c_entry_table, old_to_new);
 
-        #[cfg(not(target_arch = "wasm32"))]
-        (*instance)
-            .httpd_state
-            .visit_roots(|obj| update_field(obj, old_to_new));
-
         update_field(
             &mut (*instance).grid_runtime_state.current_grid_state,
             old_to_new,
