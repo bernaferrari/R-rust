@@ -7,7 +7,6 @@
 #![allow(non_snake_case)]
 
 use std::os::raw::{c_char, c_void};
-use std::ptr;
 
 // Re-export c_int for use across intl/ modules.
 pub(crate) use std::os::raw::c_int;
@@ -25,16 +24,6 @@ pub(crate) type nls_uint32 = u32;
 
 /// LC_MESSAGES category constant (value on most Unix systems).
 pub(crate) const LC_MESSAGES: c_int = 5;
-
-// ---------------------------------------------------------------------------
-// Loadinfo types (from loadinfo.h)
-// ---------------------------------------------------------------------------
-
-/// Bitmask flags for locale name components returned by `_nl_explode_name`.
-pub(crate) const XPG_NORM_CODESET: c_int = 1;
-pub(crate) const XPG_CODESET: c_int = 2;
-pub(crate) const XPG_TERRITORY: c_int = 4;
-pub(crate) const XPG_MODIFIER: c_int = 8;
 
 // ---------------------------------------------------------------------------
 // Message catalog constants (from gmo.h)
@@ -173,124 +162,4 @@ pub(crate) fn with_intl_runtime<R>(f: impl FnOnce(&mut IntlRuntimeState) -> R) -
     crate::sexp::instance::with_required_current_instance(|inst| {
         f(unsafe { &mut (*inst).intl_state })
     })
-}
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
-/// Null-checked shared borrow of an interior pointer.
-///
-/// # Safety
-///
-/// `ptr` must be null or valid for shared reads of `T` for the caller-chosen lifetime `'a`.
-#[inline]
-pub(crate) unsafe fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
-    unsafe { ptr.as_ref() }
-}
-
-/// Null-checked mutable borrow of an interior pointer.
-///
-/// Callers must ensure no conflicting borrow of the same object exists,
-/// matching the C code's single-threaded access model.
-///
-/// # Safety
-///
-/// `ptr` must be null or valid for exclusive reads/writes of `T` for the lifetime `'a`, with no
-/// other live reference to the pointee.
-#[inline]
-pub(crate) unsafe fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
-    unsafe { ptr.as_mut() }
-}
-
-/// Null-checked borrow of a NUL-terminated C string.
-///
-/// Callers guarantee the pointer is valid and NUL-terminated, matching
-/// the C API's `char *` contract.
-///
-/// # Safety
-///
-/// `s` must be null or point to a NUL-terminated string that stays live and unmodified for `'a`.
-#[inline]
-pub(crate) unsafe fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
-    if s.is_null() {
-        None
-    } else {
-        unsafe { Some(std::ffi::CStr::from_ptr(s)) }
-    }
-}
-
-/// Null-checked borrow of a `len`-element buffer.
-///
-/// Callers guarantee the buffer holds at least `len` elements, matching
-/// the C API's buffer-and-length contract.
-///
-/// # Safety
-///
-/// `ptr` must be null or valid for shared reads of `len` elements for the lifetime `'a`.
-#[inline]
-pub(crate) unsafe fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
-    if ptr.is_null() {
-        if len == 0 { Some(&[]) } else { None }
-    } else {
-        Some(unsafe { std::slice::from_raw_parts(ptr, len) })
-    }
-}
-
-/// Null-checked mutable borrow of a `len`-element buffer.
-///
-/// Callers must ensure no conflicting borrow of the buffer exists,
-/// matching the C code's single-threaded access model.
-///
-/// # Safety
-///
-/// `ptr` must be null or valid for exclusive reads/writes of `len` elements for the lifetime `'a`.
-#[inline]
-pub(crate) unsafe fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
-    if ptr.is_null() {
-        if len == 0 { Some(&mut []) } else { None }
-    } else {
-        Some(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
-    }
-}
-
-/// Duplicate a C string using `std::alloc`.
-///
-/// # Safety
-///
-/// `s` must be null or point to a NUL-terminated string.
-pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
-    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
-    let Some(s) = (unsafe { cstr(s) }) else {
-        return ptr::null_mut();
-    };
-    let len = s.to_bytes().len() + 1;
-    let layout = std::alloc::Layout::from_size_align(len, 1)
-        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-    // Allocate `len` bytes and copy the source string, NUL included.
-    unsafe {
-        let out = std::alloc::alloc(layout) as *mut c_char;
-        if !out.is_null() {
-            ptr::copy_nonoverlapping(s.as_ptr(), out, len);
-        }
-        out
-    }
-}
-
-/// Free memory previously allocated via c_strdup or std::alloc.
-///
-/// # Safety
-///
-/// `p` must be null or a live allocation returned by `c_strdup` (sized by its NUL-terminated
-/// contents) that is not used afterwards.
-pub(crate) unsafe fn c_free(p: *mut c_char) {
-    // SAFETY: forwarded raw pointers satisfy `cstr`'s contract per this function's own `# Safety` requirements.
-    let Some(s) = (unsafe { cstr(p) }) else {
-        return;
-    };
-    let len = s.to_bytes().len() + 1;
-    let layout = std::alloc::Layout::from_size_align(len, 1)
-        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-    // Free the `len`-byte block allocated by `c_strdup`.
-    unsafe { std::alloc::dealloc(p as *mut u8, layout) };
 }

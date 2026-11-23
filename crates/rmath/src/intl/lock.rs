@@ -16,8 +16,6 @@
 
 use std::os::raw::c_int;
 
-use super::types::ptr_mut;
-
 // ---------------------------------------------------------------------------
 // gl_lock_t -- Simple lock (stub, no-op in standalone mode)
 // ---------------------------------------------------------------------------
@@ -145,48 +143,19 @@ impl gl_once_t {
     }
 }
 
-/// Perform one-time initialization.
+/// Run an initializer on the first call with this flag.
 ///
-/// Ensures that `initfunction` is called exactly once, even if multiple
-/// threads call this function concurrently.
-///
-/// # Safety
-/// `once_control` must be a valid pointer to a `gl_once_t`.
-/// `initfunction` must be a valid function pointer.
-pub unsafe fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
-    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
-    let Some(once) = (unsafe { ptr_mut(once_control) }) else {
-        return;
-    };
-    if !once.inited {
-        once.inited = true;
-        if let Some(f) = initfunction {
-            f();
-        }
+/// This takes an exclusive borrow of `once`, so the single-threaded
+/// flag suffices for the standalone runtime.
+pub fn glthread_once(once: &mut gl_once_t, init: Option<fn()>) {
+    if glthread_once_singlethreaded(once) == 1 && let Some(init) = init {
+        init();
     }
 }
 
-/// Single-threaded one-time initialization check.
-///
-/// Returns 1 if this is the first call (the caller should perform the
-/// initialization), 0 otherwise.
-///
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
-    // SAFETY: forwarded raw pointers satisfy `ptr_mut`'s contract per this function's own `# Safety` requirements.
-    let Some(once) = (unsafe { ptr_mut(once_control) }) else {
-        return 1;
-    };
-    if !once.inited {
-        once.inited = true;
-        1
-    } else {
-        0
-    }
+/// Mark `once` initialized, returning 1 only on the first call.
+pub fn glthread_once_singlethreaded(once: &mut gl_once_t) -> c_int {
+    c_int::from(!std::mem::replace(&mut once.inited, true))
 }
 
 /// Check whether threads are in use.
@@ -209,30 +178,26 @@ mod tests {
         use std::cell::Cell;
 
         thread_local! { static INIT_CALLED: Cell<bool> = const { Cell::new(false) }; }
-        extern "C" fn init_fn() {
+        fn init_fn() {
             INIT_CALLED.with(|v| v.set(true));
         }
 
         let mut once = gl_once_t::new();
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { glthread_once(&mut once, Some(init_fn)) };
+        glthread_once(&mut once, Some(init_fn));
         assert_eq!(INIT_CALLED.with(|v| v.get()), true);
 
         // Calling again should not re-initialize.
         INIT_CALLED.with(|v| v.set(false));
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        unsafe { glthread_once(&mut once, Some(init_fn)) };
+        glthread_once(&mut once, Some(init_fn));
         assert_eq!(INIT_CALLED.with(|v| v.get()), false);
     }
 
     #[test]
     fn test_once_singlethreaded() {
         let mut once = gl_once_t::new();
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result1 = unsafe { glthread_once_singlethreaded(&mut once) };
+        let result1 = glthread_once_singlethreaded(&mut once);
         assert_eq!(result1, 1);
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        let result2 = unsafe { glthread_once_singlethreaded(&mut once) };
+        let result2 = glthread_once_singlethreaded(&mut once);
         assert_eq!(result2, 0);
     }
 
