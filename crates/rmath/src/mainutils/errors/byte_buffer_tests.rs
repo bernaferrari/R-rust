@@ -36,13 +36,17 @@ fn owned_error_buffer_c_setter_can_read_its_own_buffer_without_aliasing() {
     session.with_active(|| unsafe {
         R_SetErrmessage_c(c"original\xfftail".as_ptr());
         let original = R_curErrorBuf();
+        assert_eq!(R_GetInError(), 0);
         R_SetErrmessage_c(original);
         assert_eq!(
             &state::error_buffer_snapshot().into_array()[..ORIGINAL.len()],
             ORIGINAL
         );
-        R_SetErrmessage_c(R_curErrorBuf().add(9));
+        assert_eq!(R_curErrorBuf(), original);
+        R_SetErrmessage_c(original.add(9));
         assert_eq!(&state::error_buffer_snapshot().into_array()[..4], b"tail");
+        assert_eq!(R_curErrorBuf(), original);
+        assert_eq!(CStr::from_ptr(original).to_bytes(), b"tail");
     });
 }
 

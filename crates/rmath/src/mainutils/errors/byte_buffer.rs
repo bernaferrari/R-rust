@@ -170,9 +170,10 @@ impl Snapshot {
         }
     }
 
-    pub(super) fn stored(bytes: &[u8; super::BUFSIZE + 1]) -> Self {
+    #[allow(clippy::large_types_passed_by_value)]
+    pub(super) fn stored(bytes: [u8; super::BUFSIZE + 1]) -> Self {
         let len = bytes.iter().position(|&b| b == 0).unwrap_or(super::BUFSIZE);
-        Self { bytes: *bytes, len }
+        Self { bytes, len }
     }
 
     pub(super) fn copy(mut byte: impl FnMut(usize) -> Option<u8>, utf8: bool) -> Self {

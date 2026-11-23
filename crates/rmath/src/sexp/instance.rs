@@ -51,6 +51,10 @@ use persistent::PersistentHeap;
 // RInstance
 // ---------------------------------------------------------------------------
 
+/// Raw error text bytes, kept as a sibling of [`ErrorState`] so legacy
+/// `R_curErrorBuf` pointers do not pass through an exclusive state lend.
+pub(crate) type ErrorBuffer = Cell<[u8; crate::mainutils::errors::BUFSIZE + 1]>;
+
 pub(crate) struct ErrorState {
     pub warn_length: c_int,
     pub show_error_messages: bool,
@@ -79,7 +83,6 @@ pub(crate) struct ErrorState {
     pub global_calling_handlers: RuntimeValue,
 
     pub restart_stack: RuntimeValue,
-    pub error_buffer: [u8; crate::mainutils::errors::BUFSIZE + 1],
     pub expressions: c_int,
     pub expressions_keep: c_int,
     /// Message of the most recent error rendered into `error_buffer` by
@@ -167,7 +170,6 @@ impl Default for ErrorState {
             global_calling_handlers: RuntimeValue::empty(),
 
             restart_stack: RuntimeValue::empty(),
-            error_buffer: [0; crate::mainutils::errors::BUFSIZE + 1],
             expressions: 500,
             expressions_keep: 500,
         }
@@ -408,6 +410,8 @@ pub struct RInstance {
     pub(crate) gc_state: super::gengc::GcState,
     /// Per-instance error, warning, interrupt, and expression-limit state.
     pub(crate) error_state: ErrorState,
+    // Legacy raw pointers to these bytes must not pass through an exclusive ErrorState lend.
+    error_buffer: ErrorBuffer,
     /// Per-instance main memory/GC control state.
     pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
     /// Per-instance evaluator and REPL control state.
@@ -631,6 +635,7 @@ impl RInstance {
             in_error: false,
             gc_state: super::gengc::GcState::default(),
             error_state: ErrorState::default(),
+            error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
             eval_state: EvalControlState::default(),
             profiling: RefCell::default(),
@@ -1011,6 +1016,18 @@ pub(crate) unsafe fn with_error_state_in<R>(
     instance: *mut RInstance,
     f: impl FnOnce(&mut ErrorState) -> R,
 ) -> R {
+    // SAFETY: forwards the original owner and lend contract.
+    unsafe { with_error_state_and_buffer_in(instance, |state, _| f(state)) }
+}
+
+/// Lend diagnostic state and the stable, separately stored error bytes.
+///
+/// # Safety
+/// The owner and aliasing requirements of [`with_error_state_in`] apply.
+pub(crate) unsafe fn with_error_state_and_buffer_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&mut ErrorState, &ErrorBuffer) -> R,
+) -> R {
     let address = instance.addr();
     LENT_ERROR_STATES.with(|lent| {
         let mut lent = lent.borrow_mut();
@@ -1021,9 +1038,10 @@ pub(crate) unsafe fn with_error_state_in<R>(
         lent.push(address);
     });
     let _lend = ErrorStateLend(address);
-    // SAFETY: the caller guarantees a live owner; the lend set above excludes
-    // every other `&mut ErrorState` for this owner until `_lend` drops.
-    f(unsafe { &mut (*instance).error_state })
+    // SAFETY: the caller guarantees a live owner. The lend set excludes
+    // other exclusive borrows of error_state; the sibling Cell stores bytes
+    // without invalidating previously returned raw buffer pointers.
+    unsafe { f(&mut (*instance).error_state, &(*instance).error_buffer) }
 }
 
 /// Recycled generation cells. A cell is only ever leaked once and then reused,

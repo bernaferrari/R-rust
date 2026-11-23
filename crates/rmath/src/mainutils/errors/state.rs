@@ -50,6 +50,22 @@ where
     })
 }
 
+fn with_current_error_buffer<R>(
+    f: impl FnOnce(&mut ErrorState, &instance::ErrorBuffer) -> R,
+) -> Option<R> {
+    // SAFETY: the current-instance scope pins the runtime for the lend.
+    instance::with_current_instance(|instance| unsafe {
+        instance::with_error_state_and_buffer_in(instance, f)
+    })
+}
+
+fn with_error_buffer<R>(
+    f: impl FnOnce(&mut ErrorState, &instance::ErrorBuffer) -> R,
+) -> R {
+    with_current_error_buffer(f)
+        .expect("mutable R runtime state requires an active RInstance")
+}
+
 pub(super) fn r_warn_length() -> c_int {
     with_error_state(|state| state.warn_length)
 }
@@ -164,11 +180,11 @@ pub(crate) fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
 /// builtin-dispatch attribution wrapper to trust/distrust the error buffer
 /// and avoid re-rendering already-attributed errors.
 pub fn error_was_last_rendered(message: &str) -> bool {
-    with_error_state(|state| {
+    with_error_buffer(|state, buffer| {
         state
             .last_rendered_message
             .as_ref()
-            .is_some_and(|key| key.matches(&state.error_buffer, message))
+            .is_some_and(|key| key.matches(&buffer.get(), message))
     })
 }
 
@@ -471,8 +487,10 @@ pub(super) fn set_restart_stack(val: SEXP) {
 }
 
 /// Get the current error buffer contents as a string.
+/// The raw pointer is read-only and valid only while its original runtime
+/// remains alive and the buffer is not concurrently mutated.
 pub fn R_curErrorBuf() -> *const c_char {
-    with_error_state(|state| state.error_buffer.as_ptr() as *const c_char)
+    with_error_buffer(|_, buffer| buffer.as_ptr().cast::<c_char>())
 }
 
 /// The rendered top-level error text for `message`, when this exact message
@@ -482,12 +500,11 @@ pub fn R_curErrorBuf() -> *const c_char {
 /// failure for a closed session) or when the buffer holds something else;
 /// callers then fall back to the bare-message rendering.
 pub fn try_last_rendered_message(message: &str) -> Option<String> {
-    with_current_error_state(|state| {
-        state
-            .last_rendered_message
-            .as_ref()
-            .filter(|key| key.matches(&state.error_buffer, message))
-            .map(|_| super::byte_buffer::Snapshot::stored(&state.error_buffer))
+    with_current_error_buffer(|state, buffer| {
+        let key = state.last_rendered_message.as_ref()?;
+        let bytes = buffer.get();
+        key.matches(&bytes, message)
+            .then(|| super::byte_buffer::Snapshot::stored(bytes))
     })
     .flatten()
     .map(|snapshot| super::byte_buffer::Snapshot::host_text(snapshot.as_bytes()))
@@ -509,7 +526,7 @@ pub fn R_SetErrmessage(s: &str) {
 }
 
 pub(super) fn error_buffer_snapshot() -> super::byte_buffer::Snapshot {
-    with_error_state(|state| super::byte_buffer::Snapshot::stored(&state.error_buffer))
+    with_error_buffer(|_, buffer| super::byte_buffer::Snapshot::stored(buffer.get()))
 }
 
 pub(super) fn set_error_buffer_snapshot(message: super::byte_buffer::Snapshot) {
@@ -520,8 +537,8 @@ pub(super) fn set_rendered_error_buffer(
     message: super::byte_buffer::Snapshot,
     key: Option<super::RenderedMessage>,
 ) {
-    let previous = with_error_state(|state| {
-        state.error_buffer = message.into_array();
+    let previous = with_error_buffer(|state, buffer| {
+        buffer.set(message.into_array());
         std::mem::replace(&mut state.last_rendered_message, key)
     });
     drop(previous);
