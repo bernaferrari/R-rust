@@ -13,6 +13,7 @@ use crate::sexp::accessors::{
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::replace_assignment_expr_in;
 use crate::sexp::object::{SessionNodeFactory, Sexp};
 use crate::sexp::protect::protect;
 
@@ -43,8 +44,8 @@ impl SourceAssignCall {
         let call = current
             .owned()
             .unwrap_or_else(|| error("source assignment requires an initialized call"));
-        let previous =
-            unsafe { std::mem::replace(&mut (*instance).eval_state.current_expr, current) };
+        // SAFETY: the pin retains this instance, and current was validated for it.
+        let previous = unsafe { replace_assignment_expr_in(owner.as_ptr(), current) };
         Self {
             owner,
             previous,
@@ -57,9 +58,10 @@ impl Drop for SourceAssignCall {
     fn drop(&mut self) {
         // Revocation rejects new work, but the original strong pin permits this
         // local owning-field cleanup even if the session was closed or dropped.
-        unsafe {
-            (*self.owner.as_ptr()).eval_state.current_expr = std::mem::take(&mut self.previous);
-        }
+        let previous = std::mem::take(&mut self.previous);
+        // SAFETY: the original pin retains the instance and this is its saved value.
+        let displaced = unsafe { replace_assignment_expr_in(self.owner.as_ptr(), previous) };
+        drop(displaced);
     }
 }
 
@@ -1068,7 +1070,11 @@ mod restore_tmp_tests;
 mod owned_source_assignment_tests {
     use super::*;
     use crate::sexp::accessors::SETCAR;
-    use crate::sexp::{instance::RuntimeValue, owner::OwnerToken, session::RSession};
+    use crate::sexp::{
+        instance::{RuntimeValue, assignment_expr_in},
+        owner::OwnerToken,
+        session::RSession,
+    };
     use std::{cell::Cell, rc::Rc};
 
     fn source_value(session: &RSession, script: &str) -> Sexp<'static> {
@@ -1220,7 +1226,7 @@ mod owned_source_assignment_tests {
                     return;
                 }
                 crate::mainutils::memory_main::set_gc_torture_for_test_in(instance, 0, None);
-                (*instance).eval_state.current_expr = RuntimeValue::empty();
+                drop(replace_assignment_expr_in(instance, RuntimeValue::empty()));
                 SETCAR(lhs_arguments.as_raw(), R_NilValue());
                 SETCAR(extra_arguments.as_raw(), R_NilValue());
                 SETCAR(rhs_cell.as_raw(), R_NilValue());
@@ -1269,8 +1275,8 @@ mod owned_source_assignment_tests {
                 .unwrap()
                 .1;
             let previous_pointer = previous.as_raw();
-            (*instance).eval_state.current_expr =
-                RuntimeValue::from_raw_in(instance, previous_pointer);
+            let root = RuntimeValue::from_raw_in(instance, previous_pointer);
+            drop(replace_assignment_expr_in(instance, root));
             drop(previous);
             let call = current.as_raw();
             let observed = Rc::new(Cell::new(false));
@@ -1281,7 +1287,8 @@ mod owned_source_assignment_tests {
                 if called.replace(true) {
                     return;
                 }
-                (*instance).eval_state.current_expr = RuntimeValue::empty();
+                drop(replace_assignment_expr_in(instance, RuntimeValue::empty()));
+                assert!(assignment_expr_in(instance).is_none());
                 crate::sexp::gengc::full_gc_in(instance);
                 assert!(
                     old_observed.is_live(),
@@ -1305,13 +1312,13 @@ mod owned_source_assignment_tests {
             assert!(result.is_err());
             assert!(observed.get());
             assert_eq!(
-                (*instance).eval_state.current_expr.as_raw(),
+                assignment_expr_in(instance).unwrap().as_raw(),
                 previous_pointer
             );
             owner.full_gc().unwrap();
             assert!(old_node.is_live());
             assert!(!new_node.is_live());
-            (*instance).eval_state.current_expr = RuntimeValue::empty();
+            drop(replace_assignment_expr_in(instance, RuntimeValue::empty()));
             owner.full_gc().unwrap();
             assert!(!old_node.is_live());
         });
@@ -1335,8 +1342,8 @@ mod owned_source_assignment_tests {
             let new_node = crate::sexp::memory::checked_projection(current.as_raw())
                 .unwrap()
                 .1;
-            (*instance).eval_state.current_expr =
-                RuntimeValue::from_raw_in(instance, previous.as_raw());
+            let root = RuntimeValue::from_raw_in(instance, previous.as_raw());
+            drop(replace_assignment_expr_in(instance, root));
             let guard = SourceAssignCall::enter(current.as_raw());
             drop(previous);
             drop(current);
@@ -1347,7 +1354,12 @@ mod owned_source_assignment_tests {
         assert!(guard.owner.require_live().is_err());
         assert!(old_node.is_live());
         assert!(new_node.is_live());
-        drop(guard);
+        let other = RSession::new_for_gc_tests();
+        other.with_active_in(|instance| unsafe {
+            assert!(assignment_expr_in(instance).is_none());
+            drop(guard);
+            assert!(assignment_expr_in(instance).is_none());
+        });
         assert!(!old_node.is_live());
         assert!(!new_node.is_live());
     }

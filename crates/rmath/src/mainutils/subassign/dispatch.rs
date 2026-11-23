@@ -17,6 +17,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::{assignment_expr_in, with_required_current_instance};
 use crate::sexp::memory_ext::{allocList, allocSExp};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -135,14 +136,14 @@ pub(crate) fn errorNotSubsettable(x: SEXP) {
 /// Port of `errorMissingSubscript()` -- signals an error for missing subscripts.
 ///
 /// GNU uses `R_CurrentExpression`. During `xx[[]] <- pi` that is the source
-/// assignment, which `applydefine` stores on `eval_state.current_expr`.
+/// assignment, which `applydefine` roots for the duration of the replacement.
 pub(crate) fn errorMissingSubscript(x: SEXP, call: SEXP) {
-    unsafe {
-        let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
-        let source = (*instance).eval_state.current_expr.owned();
-        let call = source.as_ref().map_or(call, |source| source.as_raw());
-        crate::mainutils::errors::R_MissingSubscriptError(x, call);
-    }
+    let source = with_required_current_instance(|instance| {
+        // SAFETY: the current-instance accessor retains the allocation for this read.
+        unsafe { assignment_expr_in(instance) }
+    });
+    let call = source.as_ref().map_or(call, |source| source.as_raw());
+    crate::mainutils::errors::R_MissingSubscriptError(x, call);
 }
 
 /// Port of `errorOutOfBoundsSEXP()` -- signals an out-of-bounds error for [[<-.

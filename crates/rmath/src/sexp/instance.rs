@@ -283,7 +283,6 @@ pub(crate) struct EvalControlState {
     pub quiet: c_int,
     pub interactive: c_int,
     pub verbose: c_int,
-    pub current_expr: RuntimeValue,
     pub visible: c_int,
     pub pp_stack_top: c_int,
     pub collect_warnings: c_int,
@@ -315,7 +314,6 @@ impl Default for EvalControlState {
             quiet: 0,
             interactive: 1,
             verbose: 0,
-            current_expr: RuntimeValue::empty(),
             visible: 1,
             pp_stack_top: 0,
             collect_warnings: 0,
@@ -430,6 +428,8 @@ pub struct RInstance {
     execution_state: RefCell<ExecutionState>,
     /// Owning marker for tail-call continuations in this session.
     exec_token: RefCell<RuntimeValue>,
+    /// Owning source call for the current complex assignment.
+    assignment_expr: RefCell<RuntimeValue>,
     /// Session-local profiler counters and owning source references.
     profiling: RefCell<ProfilingState>,
     /// Per-instance names.c runtime caches and initialization marker.
@@ -655,6 +655,7 @@ impl RInstance {
             eval_state: EvalControlState::default(),
             execution_state: RefCell::default(),
             exec_token: RefCell::default(),
+            assignment_expr: RefCell::default(),
             profiling: RefCell::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
@@ -874,7 +875,7 @@ impl Drop for RInstance {
         let profiling = self.profiling.get_mut();
         // Release canonical evaluator values while their original arena still
         // exists. Borrowed projections never participate in this teardown.
-        self.eval_state.current_expr = RuntimeValue::empty();
+        *self.assignment_expr.get_mut() = RuntimeValue::empty();
         self.eval_state.parse_error_file = RuntimeValue::empty();
         *self.exec_token.get_mut() = RuntimeValue::empty();
         profiling.sref = RuntimeValue::empty();
@@ -1048,6 +1049,35 @@ pub(crate) unsafe fn set_exec_token_in(instance: *mut RInstance, token: SEXP) {
     let slot = unsafe { &(*instance).exec_token };
     let previous = slot.replace(replacement);
     drop(previous);
+}
+
+/// Retain the source call for condition construction without lending the slot.
+///
+/// # Safety
+/// `instance` must remain live for the call, with no overlapping exclusive
+/// borrow of the whole instance.
+pub(crate) unsafe fn assignment_expr_in(
+    instance: *mut RInstance,
+) -> Option<super::object::Sexp<'static>> {
+    // SAFETY: project only the checked slot in the retained allocation.
+    let slot = unsafe { &(*instance).assignment_expr };
+    slot.borrow().owned()
+}
+
+/// Swap the rooted source call. The displaced value leaves the slot before
+/// it can be dropped, including during cleanup of a revoked session.
+///
+/// # Safety
+/// `instance` must remain physically live for the call, with no overlapping
+/// exclusive borrow of the whole instance. `replacement` must be empty or
+/// a rooted value already validated for this instance.
+pub(crate) unsafe fn replace_assignment_expr_in(
+    instance: *mut RInstance,
+    replacement: RuntimeValue,
+) -> RuntimeValue {
+    // SAFETY: project only the checked slot in the retained allocation.
+    let slot = unsafe { &(*instance).assignment_expr };
+    slot.replace(replacement)
 }
 
 /// Lend the finalizer queue for local bookkeeping or callback-free tracing.
@@ -1625,16 +1655,6 @@ mod owned_evaluator_root_tests {
     use super::*;
     use crate::sexp::session::RSession;
 
-    unsafe fn slot(instance: *mut RInstance, index: usize) -> *mut RuntimeValue {
-        unsafe {
-            match index {
-                0 => &raw mut (*instance).eval_state.current_expr,
-                1 => &raw mut (*instance).eval_state.parse_error_file,
-                _ => unreachable!(),
-            }
-        }
-    }
-
     fn profile_root(state: &mut ProfilingState, index: usize) -> &mut RuntimeValue {
         match index {
             3 => &mut state.sref,
@@ -1659,9 +1679,16 @@ mod owned_evaluator_root_tests {
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let replace = |index: usize, pointer: SEXP| match index {
-                0..=1 => {
+                0 => {
                     let value = RuntimeValue::from_raw_in(instance, pointer);
-                    drop(std::mem::replace(&mut *slot(instance, index), value));
+                    drop(replace_assignment_expr_in(instance, value));
+                }
+                1 => {
+                    let value = RuntimeValue::from_raw_in(instance, pointer);
+                    drop(std::mem::replace(
+                        &mut (*instance).eval_state.parse_error_file,
+                        value,
+                    ));
                 }
                 2 => set_exec_token_in(instance, pointer),
                 _ => {
@@ -1730,9 +1757,16 @@ mod owned_evaluator_root_tests {
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let replace = |index: usize, pointer: SEXP| match index {
-                0..=1 => {
+                0 => {
                     let value = RuntimeValue::from_raw_in(instance, pointer);
-                    drop(std::mem::replace(&mut *slot(instance, index), value));
+                    drop(replace_assignment_expr_in(instance, value));
+                }
+                1 => {
+                    let value = RuntimeValue::from_raw_in(instance, pointer);
+                    drop(std::mem::replace(
+                        &mut (*instance).eval_state.parse_error_file,
+                        value,
+                    ));
                 }
                 2 => set_exec_token_in(instance, pointer),
                 _ => {
@@ -1743,7 +1777,9 @@ mod owned_evaluator_root_tests {
                 }
             };
             let read = |index: usize| match index {
-                0..=1 => (*slot(instance, index)).as_raw(),
+                0 => assignment_expr_in(instance)
+                    .map_or(std::ptr::null_mut(), |value| value.as_raw()),
+                1 => (*instance).eval_state.parse_error_file.as_raw(),
                 2 => exec_token_in(instance)
                     .map_or(std::ptr::null_mut(), |value| value.as_raw()),
                 _ => {

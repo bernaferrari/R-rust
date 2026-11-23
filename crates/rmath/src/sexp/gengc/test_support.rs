@@ -45,7 +45,10 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
             state.try_catch_nframes.clear();
             state.mathlib_warning_call = instance::RuntimeValue::empty();
         });
-        (*instance).eval_state.current_expr = instance::RuntimeValue::empty();
+        drop(instance::replace_assignment_expr_in(
+            instance,
+            instance::RuntimeValue::empty(),
+        ));
         (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
         instance::set_exec_token_in(instance, std::ptr::null_mut());
         let displaced = instance::with_profiling_state_in(instance, |state| {
