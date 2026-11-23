@@ -16,7 +16,6 @@ use libc::{
     F_SETFD,
     F_SETFL,
     FD_CLOEXEC,
-    IPPROTO_TCP,
     O_NONBLOCK,
     SIG_DFL,
     SIG_IGN,
@@ -26,7 +25,6 @@ use libc::{
     SOCK_STREAM,
     SOL_SOCKET,
     SOMAXCONN,
-    TCP_NODELAY,
     accept,
     addrinfo,
     bind,
@@ -174,21 +172,6 @@ pub(crate) fn R_set_nonblocking(s: c_int) -> c_int {
             return -1;
         }
         0
-    }
-}
-
-/// R_set_nodelay - set TCP_NODELAY on a socket
-/// Signature: int R_set_nodelay(SOCKET s)
-pub(crate) fn R_set_nodelay(s: c_int) -> c_int {
-    unsafe {
-        let val: c_int = 1;
-        setsockopt(
-            s,
-            IPPROTO_TCP,
-            TCP_NODELAY,
-            &val as *const c_int as *const c_void,
-            core::mem::size_of::<c_int>() as socklen_t,
-        )
     }
 }
 

@@ -50,13 +50,3 @@ pub(crate) mod rsock;
 )]
 #[cfg(not(target_arch = "wasm32"))]
 mod sock;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-#[cfg(not(target_arch = "wasm32"))]
-mod sockconn;

@@ -31,7 +31,6 @@ const IBUFSIZE: usize = 4096;
 pub(crate) struct InternetRuntimeState {
     pub(crate) quiet: c_int,
     pub(crate) sock_inited: c_int,
-    pub(crate) wait_usec: c_int,
 }
 
 impl Default for InternetRuntimeState {
@@ -39,7 +38,6 @@ impl Default for InternetRuntimeState {
         Self {
             quiet: 1,
             sock_inited: 0,
-            wait_usec: 0,
         }
     }
 }
