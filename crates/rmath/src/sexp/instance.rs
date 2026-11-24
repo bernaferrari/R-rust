@@ -911,6 +911,7 @@ impl Drop for RInstance {
         // exists. Borrowed projections never participate in this teardown.
         *self.assignment_expr.get_mut() = RuntimeValue::empty();
         *self.print_data.get_mut() = crate::mainutils::print::PrintDataSnapshot::default();
+        self.printutils.release_print_overrides();
         self.parse_diagnostics.get_mut().file = RuntimeValue::empty();
         *self.exec_token.get_mut() = RuntimeValue::empty();
         profiling.sref = RuntimeValue::empty();

@@ -36,7 +36,9 @@ use crate::sexp::ffi::{
 };
 
 use crate::mainutils::format::{integer_field_width, real_field, string_element_width};
-use crate::sexp::instance::with_printutils_in;
+use crate::sexp::instance::{RuntimeValue, with_printutils_in};
+use crate::sexp::object::{SexpError, SexpResult};
+use crate::sexp::owner::OwnerToken;
 
 // ---------------------------------------------------------------------------
 // Optional console sink
@@ -97,8 +99,37 @@ impl Default for RPrint {
     }
 }
 
+#[derive(Default)]
+struct EncoderPrintSnapshot {
+    raw: RPrint,
+    _labels: [RuntimeValue; 2],
+}
+
+impl EncoderPrintSnapshot {
+    fn capture(owner: OwnerToken<'_>, mut raw: RPrint) -> SexpResult<Self> {
+        let retain = |label: *const c_char| -> SexpResult<RuntimeValue> {
+            if label.is_null() {
+                return Ok(RuntimeValue::empty());
+            }
+            let label = owner.sexp(label.cast_mut().cast())?;
+            let actual = label.typeof_();
+            if actual != SEXPTYPE::CHARSXP {
+                return Err(SexpError::TypeMismatch {
+                    expected: "character scalar",
+                    actual,
+                });
+            }
+            label.into_owned().map(RuntimeValue::from_owned)
+        };
+        let labels = [retain(raw.na_string)?, retain(raw.na_string_noquote)?];
+        raw.na_string = labels[0].as_raw().cast();
+        raw.na_string_noquote = labels[1].as_raw().cast();
+        Ok(Self { raw, _labels: labels })
+    }
+}
+
 pub(crate) struct PrintUtilsState {
-    print: Cell<RPrint>,
+    print: RefCell<EncoderPrintSnapshot>,
     // Each encoder may overwrite its own result without borrowing sibling buffers.
     encode_logical: Cell<[u8; NB]>,
     encode_integer: Cell<[u8; NB]>,
@@ -115,7 +146,7 @@ pub(crate) struct PrintUtilsState {
 impl Default for PrintUtilsState {
     fn default() -> Self {
         PrintUtilsState {
-            print: Cell::default(),
+            print: RefCell::default(),
             encode_logical: Cell::new([0; NB]),
             encode_integer: Cell::new([0; NB]),
             encode_real0: Cell::new([0; 2 * NB]),
@@ -130,9 +161,15 @@ impl Default for PrintUtilsState {
     }
 }
 
+impl PrintUtilsState {
+    pub(crate) fn release_print_overrides(&mut self) {
+        *self.print.get_mut() = EncoderPrintSnapshot::default();
+    }
+}
+
 fn current_R_print() -> RPrint {
     crate::sexp::instance::with_current_instance(|inst| unsafe {
-        let mut print = with_printutils_in(inst, |state| state.print.get());
+        let mut print = with_printutils_in(inst, |state| state.print.borrow().raw);
         // Public print.default owns the active NA strings in R_PrintData.
         // Explicit low-level encoder overrides still take precedence.
         crate::sexp::instance::with_print_data_in(inst, |state| {
@@ -285,13 +322,25 @@ fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
 }
 
 /// Return a copy of the current R_print configuration.
+///
+/// The raw labels are borrowed from the session, not rooted by this copy.
 pub fn get_R_print() -> RPrint {
     current_R_print()
 }
 
 /// Set the R_print configuration.
+///
+/// Non-null label fields must name live character scalars from this session
+/// or immutable singletons. An invalid label leaves the settings unchanged.
 pub fn set_R_print(rp: RPrint) {
-    with_encode_buffers(|state| state.print.set(rp));
+    let result = OwnerToken::with_current(|owner| -> SexpResult<()> {
+        let next = EncoderPrintSnapshot::capture(owner, rp)?;
+        // SAFETY: the token retains the original owner for the short swap.
+        let old = unsafe { with_printutils_in(owner.as_ptr(), |state| state.print.replace(next)) };
+        drop(old);
+        Ok(())
+    });
+    checked(result.and_then(|result| result));
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
@@ -1485,6 +1534,110 @@ mod tests {
                 encode_logical_cell(NA_LOGICAL, label.len() as c_int),
                 label[..NB - 1]
             );
+        });
+    }
+
+    #[test]
+    fn encoder_na_overrides_survive_collection_until_cleared() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let fallback = get_R_print();
+            let (quoted, unquoted) = {
+                let quoted = factory.character("encoder quoted missing label").unwrap();
+                let unquoted = factory.character("encoder unquoted missing label").unwrap();
+                set_R_print(RPrint {
+                    na_string: quoted.as_raw().cast(),
+                    na_string_noquote: unquoted.as_raw().cast(),
+                    na_width: 28,
+                    na_width_noquote: 30,
+                    ..RPrint::default()
+                });
+                (
+                    quoted.allocation().unwrap().clone(),
+                    unquoted.allocation().unwrap().clone(),
+                )
+            };
+            owner.full_gc().unwrap();
+            assert!(quoted.is_live());
+            assert!(unquoted.is_live());
+            let print = get_R_print();
+            assert_eq!(
+                encode_logical_cell(NA_LOGICAL, print.na_width),
+                b"encoder quoted missing label"
+            );
+            assert_eq!(
+                na_string_bytes_from_print(print, true),
+                b"encoder unquoted missing label"
+            );
+            set_R_print(RPrint {
+                na_string_noquote: print.na_string_noquote,
+                na_width_noquote: print.na_width_noquote,
+                ..RPrint::default()
+            });
+            owner.full_gc().unwrap();
+            assert!(!quoted.is_live());
+            assert!(unquoted.is_live());
+            assert_eq!(get_R_print().na_string, fallback.na_string);
+            assert_eq!(get_R_print().na_width, fallback.na_width);
+            set_R_print(RPrint::default());
+            owner.full_gc().unwrap();
+            assert!(!unquoted.is_live());
+            assert_eq!(get_R_print().na_string_noquote, fallback.na_string_noquote);
+            assert_eq!(get_R_print().na_width_noquote, fallback.na_width_noquote);
+        });
+    }
+
+    #[test]
+    fn encoder_na_overrides_reject_bad_labels_without_replacing_settings() {
+        use crate::sexp::session::RSession;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let original = RSession::new_for_gc_tests();
+        let other = RSession::construct_detached(RSession::new_for_gc_tests);
+        let foreign = other.with_active(|| {
+            other
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .character("foreign missing label")
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        original.with_active(|| {
+            let owner = original.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let label = factory.character("original missing label").unwrap();
+            let original_ptr = label.as_raw().cast();
+            set_R_print(RPrint {
+                na_string: original_ptr,
+                na_width: 22,
+                ..RPrint::default()
+            });
+            drop(label);
+            let replacement = factory.character("unpublished missing label").unwrap();
+            let candidate = replacement.allocation().unwrap().clone();
+            let wrong_type = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            for bad in [foreign.as_raw(), wrong_type.as_raw()] {
+                let failed = catch_unwind(AssertUnwindSafe(|| {
+                    set_R_print(RPrint {
+                        na_string: replacement.as_raw().cast(),
+                        na_string_noquote: bad.cast(),
+                        ..RPrint::default()
+                    });
+                }));
+                assert!(failed.unwrap_err().is::<crate::sexp::context::RError>());
+                assert_eq!(get_R_print().na_string, original_ptr);
+                assert_eq!(get_R_print().na_width, 22);
+            }
+            drop(replacement);
+            owner.full_gc().unwrap();
+            assert!(!candidate.is_live());
+            assert_eq!(encode_logical_cell(NA_LOGICAL, 22), b"original missing label");
         });
     }
 }
