@@ -6,8 +6,12 @@ use std::os::raw::c_int;
 use crate::mainutils::names::{FunTabEntry, R_FunTab};
 use crate::sexp::accessors::SET_PRIMOFFSET;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::instance::{
+    with_current_value, with_portable_primitive_names_in, with_required_current_instance,
+};
 use crate::sexp::memory_ext::allocSExp;
-use crate::sexp::object::Sexp;
+use crate::sexp::object::{Sexp, SexpOwner};
+use crate::sexp::owner::BorrowedOwnerRef;
 
 /// Function pointer type for primitive functions (SPECIAL and BUILTIN).
 pub type PrimFun = unsafe extern "C" fn(
@@ -135,14 +139,17 @@ pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEX
         let prim = allocSExp(fallback_kind);
         if !prim.is_null() {
             (*prim).sxpinfo.set_gp(1);
-            let index = crate::sexp::instance::with_required_current_instance(|instance| {
-                let names = &mut (*instance).eval_state.portable_primitive_names;
-                if let Some(index) = names.iter().position(|existing| existing == name) {
-                    index
-                } else {
-                    names.push(name.to_owned());
-                    names.len() - 1
-                }
+            let index = with_required_current_instance(|instance| {
+                // allocSExp already checked that the allocating owner is still active.
+                with_portable_primitive_names_in(instance, |registry| {
+                    let mut names = registry.borrow_mut();
+                    if let Some(index) = names.iter().position(|existing| existing == name) {
+                        index
+                    } else {
+                        names.push(name.to_owned());
+                        names.len() - 1
+                    }
+                })
             });
             let offset = i32::try_from(index)
                 .ok()
@@ -157,16 +164,32 @@ pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEX
 
 /// Dispatch identity for helpers without an upstream function-table slot.
 pub(crate) fn portable_primitive_name(op: Sexp<'_>) -> Option<String> {
-    if !op.clone().is_primitive() {
+    if !op.is_live() || !op.is_primitive() {
         return None;
     }
-    let offset = op.try_primoffset().ok()?;
-    let index = offset.checked_neg()?.checked_sub(2)?;
-    let index = usize::try_from(index).ok()?;
-    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-        let names = &(*instance).eval_state.portable_primitive_names;
-        names.get(index).cloned()
-    })
+    let offset = op.primoffset()?;
+    let index = usize::try_from(offset.checked_neg()?.checked_sub(2)?).ok()?;
+    if op.owner() == SexpOwner::Unknown {
+        // Legacy views carry no interpreter authority. First validate the
+        // exact value against the active heap, never just its offset.
+        return with_current_value(op.as_raw(), |value| portable_name_in_owner(value, index))
+            .flatten();
+    }
+    portable_name_in_owner(&op, index)
+}
+
+fn portable_name_in_owner(op: &Sexp<'_>, index: usize) -> Option<String> {
+    let pin = op.pin_runtime().ok()?;
+    let instance = if let Some(pin) = &pin {
+        pin.as_ptr()
+    } else {
+        op.session_owner_ptr.and_then(BorrowedOwnerRef::live)?.as_ptr()
+    };
+    // SAFETY: a managed owner is pinned and a borrowed owner's generation
+    // was checked. Cloning the name does not reenter the interpreter.
+    unsafe {
+        with_portable_primitive_names_in(instance, |names| names.borrow().get(index).cloned())
+    }
 }
 
 fn primitive_print_flag(entry: &FunTabEntry) -> c_int {
@@ -442,6 +465,55 @@ mod tests {
         );
         let attributes = crate::sexp::accessors::ATTRIB(first);
         assert!(attributes.is_null() || attributes == crate::sexp::globals::R_NilValue());
+    }
+
+    #[test]
+    fn portable_names_follow_the_original_owner() {
+        let mut original = RSession::construct_detached(RSession::new_for_gc_tests);
+        let other = RSession::construct_detached(RSession::new_for_gc_tests);
+        let make = |session: &RSession, name| {
+            session.with_active(|| {
+                let pointer = unsafe { make_primitive_binding(name, SEXPTYPE::BUILTINSXP) };
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(pointer)
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            })
+        };
+        let first = make(&original, "__first_session_primitive__");
+        let second = make(&other, "__second_session_primitive__");
+        assert_eq!(
+            first.try_primoffset().unwrap(),
+            second.try_primoffset().unwrap()
+        );
+        assert_eq!(
+            portable_primitive_name(first.clone()).as_deref(),
+            Some("__first_session_primitive__")
+        );
+        other.with_active(|| {
+            assert_eq!(
+                portable_primitive_name(first.clone()).as_deref(),
+                Some("__first_session_primitive__")
+            );
+            // SAFETY: first is rooted until this raw view is consumed.
+            let raw = unsafe { Sexp::try_from_raw(first.as_raw()) }.unwrap();
+            assert_eq!(portable_primitive_name(raw), None);
+            assert_eq!(
+                portable_primitive_name(second.clone()).as_deref(),
+                Some("__second_session_primitive__")
+            );
+        });
+        original.close();
+        other.with_active(|| {
+            assert_eq!(portable_primitive_name(first), None);
+            assert_eq!(
+                portable_primitive_name(second).as_deref(),
+                Some("__second_session_primitive__")
+            );
+        });
     }
 
     #[test]

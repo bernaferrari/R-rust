@@ -338,7 +338,6 @@ impl Default for TraceDebugFlags {
 pub(crate) struct EvalControlState {
     pub capabilities: SessionCapabilities,
     pub print: crate::mainutils::print::PrintRuntimeState,
-    pub(crate) portable_primitive_names: Vec<String>,
 }
 
 impl Default for EvalControlState {
@@ -346,7 +345,6 @@ impl Default for EvalControlState {
         EvalControlState {
             capabilities: SessionCapabilities::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
-            portable_primitive_names: Vec::new(),
         }
     }
 }
@@ -437,6 +435,8 @@ pub struct RInstance {
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Dispatch names for negative primitive offsets in this session.
+    portable_primitive_names: RefCell<Vec<String>>,
     /// Print defaults snapshot owning exact-generation roots for its raw view.
     print_data: RefCell<crate::mainutils::print::PrintDataSnapshot>,
     /// Separate storage for legacy printer results.
@@ -689,6 +689,7 @@ impl RInstance {
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
+            portable_primitive_names: RefCell::default(),
             print_data: RefCell::default(),
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             scalar_print: Cell::default(),
@@ -1122,6 +1123,19 @@ pub(crate) unsafe fn with_printutils_in<R>(
 ) -> R {
     // SAFETY: the caller retains the original allocation; the fields use interior mutability.
     f(unsafe { &(*instance).printutils })
+}
+
+/// Access the original session's portable primitive registry for a local operation.
+///
+/// # Safety
+/// The instance must remain allocated during the call, without an overlapping
+/// exclusive whole-instance borrow.
+pub(crate) unsafe fn with_portable_primitive_names_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&RefCell<Vec<String>>) -> R,
+) -> R {
+    // SAFETY: the caller retains the original allocation.
+    f(unsafe { &(*instance).portable_primitive_names })
 }
 
 /// Access only the scalar print cell, without lending the evaluator state.
