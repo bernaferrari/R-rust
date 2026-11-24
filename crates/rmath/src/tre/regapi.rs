@@ -233,7 +233,7 @@ pub(super) unsafe fn tre_match_with_workspace(
             tre_regaparams_default(&mut params);
             params.max_err = 0;
             params.max_cost = 0;
-            status = match_approx::tre_tnfa_run_approx(
+            status = match_approx::run_approx(
                 tnfa,
                 string,
                 len as c_int,
@@ -243,6 +243,7 @@ pub(super) unsafe fn tre_match_with_workspace(
                 params,
                 eflags,
                 &mut eo,
+                workspace,
             );
         } else {
             status = match_parallel::run_parallel(
@@ -1441,6 +1442,40 @@ mod tests {
             (value.rm_so, value.rm_eo)
         });
         assert_eq!(pairs, [(1, 4), (-1, -1), (-1, -1), (-1, -1)]);
+    }
+
+    #[test]
+    fn approximate_deletions_report_native_costs() {
+        let (mut preg, rc) = unsafe { compile("^abc$", REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+        let mut result = regmatch_t::default();
+        let mut matched = regamatch_t {
+            nmatch: 1,
+            pmatch: &mut result,
+            cost: -1,
+            num_ins: -1,
+            num_del: -1,
+            num_subst: -1,
+        };
+        let params = regaparams_t {
+            cost_ins: 1,
+            cost_del: 1,
+            cost_subst: 1,
+            max_cost: 3,
+            max_ins: 0,
+            max_del: 3,
+            max_subst: 0,
+            max_err: 3,
+        };
+        // SAFETY: the regex, input and output buffers remain live for the call.
+        let status = unsafe { tre_reganexec(&preg, c"".as_ptr(), 0, &mut matched, params, 0) };
+        unsafe { tre_regfree(&mut preg) };
+        assert_eq!(status, REG_OK);
+        assert_eq!(
+            (matched.cost, matched.num_ins, matched.num_del, matched.num_subst),
+            (3, 0, 3, 0)
+        );
+        assert_eq!((result.rm_so, result.rm_eo), (0, 0));
     }
 
     #[test]
