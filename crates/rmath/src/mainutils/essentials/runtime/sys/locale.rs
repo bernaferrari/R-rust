@@ -104,9 +104,8 @@ pub fn do_Sys_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `Sys.setlocale(category, locale)` — set locale (simplified).
 pub fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).eval_state.capabilities.allow_environment_mutation
-        });
+        let allowed =
+            crate::sexp::instance::required_current_capabilities().allow_environment_mutation;
         if !allowed || crate::mainutils::platform::portable_utf8_profile() {
             return mk_string_cstr(c"");
         }

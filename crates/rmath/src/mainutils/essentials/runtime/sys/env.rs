@@ -129,9 +129,7 @@ fn libc_setenv(name: &str, value: &str) -> bool {
 }
 
 fn environment_mutation_allowed() -> bool {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.capabilities.allow_environment_mutation
-    })
+    crate::sexp::instance::required_current_capabilities().allow_environment_mutation
 }
 
 fn denied_setenv_result(args: SEXP) -> SEXP {

@@ -335,20 +335,6 @@ impl Default for TraceDebugFlags {
     }
 }
 
-pub(crate) struct EvalControlState {
-    pub capabilities: SessionCapabilities,
-    pub print: crate::mainutils::print::PrintRuntimeState,
-}
-
-impl Default for EvalControlState {
-    fn default() -> Self {
-        EvalControlState {
-            capabilities: SessionCapabilities::default(),
-            print: crate::mainutils::print::PrintRuntimeState::default(),
-        }
-    }
-}
-
 pub(crate) struct ExecutionState {
     pub(crate) eval_depth: c_int,
     pub(crate) eval_depth_limit: c_int,
@@ -433,8 +419,10 @@ pub struct RInstance {
     memory_state: RefCell<crate::mainutils::memory_main::MemoryRuntimeState>,
     /// Per-instance finalizer queue and dispatch state.
     finalizer_state: RefCell<crate::mainutils::memory_main::FinalizerState>,
-    /// Per-instance evaluator and REPL control state.
-    pub(crate) eval_state: EvalControlState,
+    /// Opt-in permissions for host-process operations.
+    capabilities: Cell<SessionCapabilities>,
+    /// Original-session print recursion and tag handles.
+    print_runtime: crate::mainutils::print::PrintRuntimeState,
     /// Dispatch names for negative primitive offsets in this session.
     portable_primitive_names: RefCell<Vec<String>>,
     /// Print defaults snapshot owning exact-generation roots for its raw view.
@@ -618,6 +606,14 @@ pub struct RInstance {
 }
 
 impl RInstance {
+    pub(crate) fn capabilities(&self) -> SessionCapabilities {
+        self.capabilities.get()
+    }
+
+    pub(crate) fn set_capabilities(&self, capabilities: SessionCapabilities) {
+        self.capabilities.set(capabilities);
+    }
+
     /// Read the current result visibility for this instance.
     #[inline]
     pub(crate) fn visibility(&self) -> c_int {
@@ -688,7 +684,8 @@ impl RInstance {
             error_buffer: Cell::new([0; crate::mainutils::errors::BUFSIZE + 1]),
             memory_state: RefCell::default(),
             finalizer_state: RefCell::default(),
-            eval_state: EvalControlState::default(),
+            capabilities: Cell::default(),
+            print_runtime: crate::mainutils::print::PrintRuntimeState::default(),
             portable_primitive_names: RefCell::default(),
             print_data: RefCell::default(),
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
@@ -1671,6 +1668,26 @@ where
     F: FnOnce(*mut RInstance) -> R,
 {
     with_current_instance(f).expect("mutable R runtime state requires an active RInstance")
+}
+
+/// Copy the active session's host-process capabilities, if any.
+pub(crate) fn current_capabilities() -> Option<SessionCapabilities> {
+    // SAFETY: the active allocation is retained and only the capability cell is read.
+    with_current_instance(|instance| unsafe { &(*instance).capabilities }.get())
+}
+
+pub(crate) fn required_current_capabilities() -> SessionCapabilities {
+    current_capabilities().expect("mutable R runtime state requires an active RInstance")
+}
+
+/// Access the active session's print handles for a local operation.
+pub(crate) fn with_current_print_runtime<R>(
+    f: impl FnOnce(&crate::mainutils::print::PrintRuntimeState) -> R,
+) -> R {
+    with_required_current_instance(|instance| {
+        // SAFETY: the active allocation is retained; only the print handles are lent.
+        f(unsafe { &(*instance).print_runtime })
+    })
 }
 
 /// Read or update the active session's scalar REPL flags without lending evaluator state.

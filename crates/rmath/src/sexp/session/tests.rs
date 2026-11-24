@@ -5,6 +5,40 @@ use crate::sexp::instance::{
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
 
 #[test]
+fn copied_capabilities_follow_the_active_session() {
+    use crate::mainutils::essentials::{
+        pipe_commands_disabled_by_runtime_policy, system_commands_disabled_by_runtime_policy,
+    };
+    use crate::sexp::instance::{SessionCapabilities, current_capabilities};
+
+    let mut original = RSession::construct_detached(RSession::new_for_gc_tests);
+    let other = RSession::construct_detached(RSession::new_for_gc_tests);
+    let configured = SessionCapabilities {
+        allow_system_commands: true,
+        allow_environment_mutation: true,
+        ..SessionCapabilities::default()
+    };
+    other.with_active(|| {
+        original.set_capabilities(configured);
+        assert_eq!(current_capabilities(), Some(SessionCapabilities::default()));
+        assert_eq!(original.capabilities(), configured);
+        original.with_active(|| {
+            assert_eq!(current_capabilities(), Some(configured));
+            assert!(!system_commands_disabled_by_runtime_policy());
+            assert!(pipe_commands_disabled_by_runtime_policy());
+        });
+        assert!(system_commands_disabled_by_runtime_policy());
+        assert!(pipe_commands_disabled_by_runtime_policy());
+    });
+    original.close();
+    original.set_capabilities(SessionCapabilities::default());
+    assert_eq!(original.capabilities(), configured);
+    assert_eq!(current_capabilities(), None);
+    assert!(system_commands_disabled_by_runtime_policy());
+    assert!(pipe_commands_disabled_by_runtime_policy());
+}
+
+#[test]
 fn error_rendering_option_symbol_is_preinterned_per_session_owner() {
     let left = RSession::new_for_gc_tests();
     let right = RSession::new_for_gc_tests();

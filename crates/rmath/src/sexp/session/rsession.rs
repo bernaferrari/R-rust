@@ -1443,15 +1443,13 @@ impl RSession {
 
     /// Return this session's capability flags for host-process operations.
     pub fn capabilities(&self) -> crate::sexp::instance::SessionCapabilities {
-        self.inst().eval_state.capabilities
+        self.inst().capabilities()
     }
 
     /// Configure which host-process operations this session may invoke.
     pub fn set_capabilities(&mut self, capabilities: crate::sexp::instance::SessionCapabilities) {
         if self.active {
-            unsafe {
-                (*self.instance).eval_state.capabilities = capabilities;
-            }
+            self.inst().set_capabilities(capabilities);
         }
     }
 

@@ -24,8 +24,8 @@ use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{
-    RuntimeValue, with_current_scalar_print_state, with_print_data_in,
-    with_required_current_instance,
+    RuntimeValue, with_current_print_runtime as with_print_runtime,
+    with_current_scalar_print_state, with_print_data_in, with_required_current_instance,
 };
 use crate::sexp::object::SexpResult;
 use crate::sexp::owner::OwnerToken;
@@ -125,13 +125,6 @@ fn suspend_print_value(value: SEXP) -> Option<SuspendedPrintFrame> {
         .rfind(|frame| !frame.suspended.get() && frame.value == value)?;
     frame.suspended.set(true);
     Some(SuspendedPrintFrame(frame.clone()))
-}
-
-fn with_print_runtime<R>(f: impl FnOnce(&PrintRuntimeState) -> R) -> R {
-    with_required_current_instance(|inst| {
-        // SAFETY: the active owner is retained and callers only access the checked cells or clone their handles.
-        f(unsafe { &(*inst).eval_state.print })
-    })
 }
 
 /// Retain exact allocations alongside the raw view used by translated printers.

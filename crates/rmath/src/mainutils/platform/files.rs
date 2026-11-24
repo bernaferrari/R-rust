@@ -1459,9 +1459,8 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             String::new()
         };
 
-        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).eval_state.capabilities.allow_environment_mutation
-        });
+        let allowed =
+            crate::sexp::instance::required_current_capabilities().allow_environment_mutation;
         if !allowed {
             // Queries use Sys.getlocale; every Sys.setlocale call mutates
             // or selects process-global locale state.

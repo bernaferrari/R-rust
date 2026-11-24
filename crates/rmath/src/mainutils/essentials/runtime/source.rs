@@ -64,12 +64,8 @@ impl SourceDirectoryGuard {
                     .unwrap_or_else(|error| base_error(error)),
             });
         }
-        let allowed = crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-            (*instance)
-                .eval_state
-                .capabilities
-                .allow_environment_mutation
-        });
+        let allowed =
+            crate::sexp::instance::required_current_capabilities().allow_environment_mutation;
         if !allowed {
             base_error("changing the working directory is disabled for this session");
         }

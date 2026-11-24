@@ -300,17 +300,15 @@ pub fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn system_commands_disabled_by_runtime_policy() -> bool {
-    !crate::sexp::instance::with_current_instance(|inst| unsafe {
-        (*inst).eval_state.capabilities.allow_system_commands
-    })
-    .unwrap_or(false)
+    !crate::sexp::instance::current_capabilities()
+        .unwrap_or_default()
+        .allow_system_commands
 }
 
 pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
-    !crate::sexp::instance::with_current_instance(|inst| unsafe {
-        (*inst).eval_state.capabilities.allow_pipe_commands
-    })
-    .unwrap_or(false)
+    !crate::sexp::instance::current_capabilities()
+        .unwrap_or_default()
+        .allow_pipe_commands
 }
 
 /// R's `stopifnot(...)` — stop if any condition is FALSE.
