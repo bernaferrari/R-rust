@@ -8,12 +8,11 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use std::os::raw::{c_int, c_void};
-use std::ptr::{self, NonNull};
+use std::ptr;
 
 use super::ast::*;
-use super::mem;
+use super::match_parallel::{TagRows, apply_tags, filled};
 use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
-use crate::sexp::memory::WorkspaceReservation;
 
 const TRE_M_COST: usize = 0;
 const TRE_M_NUM_INS: usize = 1;
@@ -23,37 +22,13 @@ const TRE_M_NUM_ERR: usize = 4;
 const TRE_M_LAST: usize = 5;
 const TRE_M_MAX_DEPTH: usize = 3;
 
-#[repr(C)]
-struct tre_tnfa_approx_reach_t {
+#[derive(Clone)]
+struct Reach {
     state: *mut tre_tnfa_transition_t,
     pos: c_int,
-    tags: *mut c_int,
     params: regaparams_t,
     depth: c_int,
     costs: [[c_int; TRE_M_LAST]; TRE_M_MAX_DEPTH + 1],
-}
-
-struct ApproxScratch {
-    payload: NonNull<c_void>,
-    _charge: WorkspaceReservation,
-}
-
-impl ApproxScratch {
-    fn new(workspace: &RegexWorkspace, bytes: usize) -> Result<Self, ()> {
-        let charge = workspace.try_reservation(mem::xallocation_size(bytes).ok_or(())?)?;
-        let payload = NonNull::new(mem::xmalloc(bytes)).ok_or(())?;
-        Ok(Self {
-            payload,
-            _charge: charge,
-        })
-    }
-}
-
-impl Drop for ApproxScratch {
-    fn drop(&mut self) {
-        // SAFETY: this owner holds the unique allocation from xmalloc.
-        unsafe { mem::xfree(self.payload.as_ptr()) };
-    }
 }
 
 const INITIAL_DELETION_SLOTS: usize = 32;
@@ -160,7 +135,7 @@ unsafe fn CHECK_CHAR_CLASSES(
             && unsafe { super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) } != 0)
 }
 
-fn tre_set_params(reach: &mut tre_tnfa_approx_reach_t, pa: &[c_int], default_params: regaparams_t) {
+fn tre_set_params(reach: &mut Reach, pa: &[c_int], default_params: regaparams_t) {
     let value = pa[TRE_PARAM_DEPTH];
     if value > reach.depth {
         for i in (reach.depth as usize + 1)..=value as usize {
@@ -261,7 +236,6 @@ pub unsafe fn tre_tnfa_run_approx(
     }
 }
 
-#[allow(clippy::manual_memcpy)]
 /// # Safety
 ///
 /// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
@@ -282,7 +256,6 @@ pub(super) unsafe fn run_approx(
     unsafe {
         let str_byte = string as *const u8;
         let mut pos: c_int = -1;
-        let pos_add_next: u32 = 1;
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
         let reg_newline = (*tnfa).cflags & REG_NEWLINE;
@@ -306,53 +279,41 @@ pub(super) unsafe fn run_approx(
         let Ok(tag_count) = usize::try_from(num_tags) else {
             return REG_ESPACE;
         };
-        let sizes = || {
-            let tag_bytes = std::mem::size_of::<c_int>().checked_mul(tag_count)?;
-            let reach_bytes =
-                std::mem::size_of::<tre_tnfa_approx_reach_t>().checked_mul(state_count)?;
-            let tag_rows = state_count.checked_mul(2)?.checked_add(1)?;
-            let total_bytes = reach_bytes
-                .checked_mul(2)?
-                .checked_add(tag_rows.checked_mul(tag_bytes)?)?
-                .checked_add(64)?;
-            Some((tag_bytes, reach_bytes, total_bytes))
+        let scratch = || {
+            let tmp_row = state_count.checked_mul(2).ok_or(())?;
+            let rows = tmp_row.checked_add(1).ok_or(())?;
+            let empty = Reach {
+                state: ptr::null_mut(),
+                pos: -2,
+                params: regaparams_t {
+                    cost_ins: 0,
+                    cost_del: 0,
+                    cost_subst: 0,
+                    max_cost: 0,
+                    max_ins: 0,
+                    max_del: 0,
+                    max_subst: 0,
+                    max_err: 0,
+                },
+                depth: 0,
+                costs: [[0; TRE_M_LAST]; TRE_M_MAX_DEPTH + 1],
+            };
+            let reach = filled(workspace, state_count, empty.clone())?;
+            let reach_next = filled(workspace, state_count, empty)?;
+            let tags = TagRows::new(workspace, rows, tag_count)?;
+            let deletions = DeletionQueue::new(workspace)?;
+            Ok::<_, ()>((reach, reach_next, tags, deletions, tmp_row))
         };
-        let Some((tag_bytes, reach_bytes, total_bytes)) = sizes() else {
+        let Ok((mut reach, mut reach_next, mut tags, mut deletions, tmp_row)) = scratch()
+        else {
             return REG_ESPACE;
         };
-        let Ok(scratch) = ApproxScratch::new(workspace, total_bytes) else {
-            return REG_ESPACE;
+        let directions = if tag_count == 0 {
+            &[][..]
+        } else {
+            // SAFETY: the live compiled descriptor owns this many entries.
+            std::slice::from_raw_parts((*tnfa).tag_directions, tag_count)
         };
-        let Ok(mut deletions) = DeletionQueue::new(workspace) else {
-            return REG_ESPACE;
-        };
-        let buf = scratch.payload.as_ptr().cast::<u8>();
-        ptr::write_bytes(buf, 0, total_bytes);
-
-        let mut buf_offset = buf;
-        let tmp_tags = buf_offset as *mut c_int;
-        buf_offset = buf_offset.add(tag_bytes);
-        buf_offset = align_ptr_approx(buf_offset);
-
-        let reach = buf_offset as *mut tre_tnfa_approx_reach_t;
-        buf_offset = buf_offset.add(reach_bytes);
-        buf_offset = align_ptr_approx(buf_offset);
-
-        let reach_next = buf_offset as *mut tre_tnfa_approx_reach_t;
-        buf_offset = buf_offset.add(reach_bytes);
-        buf_offset = align_ptr_approx(buf_offset);
-
-        for i in 0..(*tnfa).num_states {
-            (*reach.offset(i as isize)).tags = buf_offset as *mut c_int;
-            buf_offset = buf_offset.add(tag_bytes);
-            (*reach_next.offset(i as isize)).tags = buf_offset as *mut c_int;
-            buf_offset = buf_offset.add(tag_bytes);
-        }
-
-        for i in 0..(*tnfa).num_states {
-            (*reach.offset(i as isize)).pos = -2;
-            (*reach_next.offset(i as isize)).pos = -2;
-        }
 
         prev_pos = pos;
         // GET_NEXT_WCHAR
@@ -371,8 +332,13 @@ pub(super) unsafe fn run_approx(
             if match_costs[TRE_M_COST] > 0 {
                 let mut trans = (*tnfa).initial;
                 while !(*trans).state.is_null() {
-                    let stateid = (*trans).state_id;
-                    if (*reach_next.offset(stateid as isize)).pos < pos {
+                    let Ok(stateid) = usize::try_from((*trans).state_id) else {
+                        return REG_ESPACE;
+                    };
+                    let Some(next) = reach_next.get_mut(stateid) else {
+                        return REG_ESPACE;
+                    };
+                    if next.pos < pos {
                         if (*trans).assertions != 0
                             && CHECK_ASSERTIONS(
                                 (*trans).assertions,
@@ -387,34 +353,18 @@ pub(super) unsafe fn run_approx(
                             trans = trans.add(1);
                             continue;
                         }
-                        (*reach_next.offset(stateid as isize)).state = (*trans).state;
-                        (*reach_next.offset(stateid as isize)).pos = pos;
+                        next.state = (*trans).state;
+                        next.pos = pos;
+                        let row = tags.row_mut(state_count + stateid);
+                        row.fill(-1);
+                        apply_tags((*trans).tags, row, pos);
 
-                        for i in 0..num_tags {
-                            *(*reach_next.offset(stateid as isize))
-                                .tags
-                                .offset(i as isize) = -1;
-                        }
-                        if !(*trans).tags.is_null() {
-                            let mut ti: c_int = 0;
-                            while *(*trans).tags.offset(ti as isize) >= 0 {
-                                if *(*trans).tags.offset(ti as isize) < num_tags {
-                                    *(*reach_next.offset(stateid as isize))
-                                        .tags
-                                        .offset(*(*trans).tags.offset(ti as isize) as isize) = pos;
-                                }
-                                ti += 1;
-                            }
-                        }
-
-                        (*reach_next.offset(stateid as isize)).params = default_params;
-                        (*reach_next.offset(stateid as isize)).depth = 0;
-                        for j in 0..TRE_M_LAST {
-                            (*reach_next.offset(stateid as isize)).costs[0][j] = 0;
-                        }
+                        next.params = default_params;
+                        next.depth = 0;
+                        next.costs[0].fill(0);
                         if !(*trans).params.is_null() {
                             tre_set_params(
-                                &mut *reach_next.offset(stateid as isize),
+                                next,
                                 std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                                 default_params,
                             );
@@ -422,15 +372,10 @@ pub(super) unsafe fn run_approx(
 
                         if (*trans).state == (*tnfa).final_ {
                             match_eo = pos;
-                            for i in 0..num_tags {
-                                *match_tags.offset(i as isize) = *(*reach_next
-                                    .offset(stateid as isize))
-                                .tags
-                                .offset(i as isize);
+                            if !row.is_empty() {
+                                ptr::copy_nonoverlapping(row.as_ptr(), match_tags, row.len());
                             }
-                            for j in 0..TRE_M_LAST {
-                                match_costs[j] = 0;
-                            }
+                            match_costs.fill(0);
                         }
                     }
                     trans = trans.add(1);
@@ -438,78 +383,60 @@ pub(super) unsafe fn run_approx(
             }
 
             // Handle inserts
-            for id in 0..(*tnfa).num_states {
-                if (*reach.offset(id as isize)).pos != prev_pos {
+            for (id, (source, next)) in reach.iter().zip(reach_next.iter_mut()).enumerate() {
+                if source.pos != prev_pos {
                     continue;
                 }
-                let depth = (*reach.offset(id as isize)).depth as usize;
+                let depth = source.depth as usize;
 
-                let mut cost = (*reach.offset(id as isize)).costs[depth][TRE_M_COST];
-                if (*reach.offset(id as isize)).params.cost_ins != TRE_PARAM_UNSET {
-                    cost += (*reach.offset(id as isize)).params.cost_ins;
+                let mut cost = source.costs[depth][TRE_M_COST];
+                if source.params.cost_ins != TRE_PARAM_UNSET {
+                    cost += source.params.cost_ins;
                 }
-                if cost > (*reach.offset(id as isize)).params.max_cost {
+                if cost > source.params.max_cost {
                     continue;
                 }
-                if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_INS] + 1
-                    > (*reach.offset(id as isize)).params.max_ins
-                {
+                if source.costs[depth][TRE_M_NUM_INS] + 1 > source.params.max_ins {
                     continue;
                 }
-                if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_ERR] + 1
-                    > (*reach.offset(id as isize)).params.max_err
-                {
+                if source.costs[depth][TRE_M_NUM_ERR] + 1 > source.params.max_err {
                     continue;
                 }
 
                 let mut cost0 = cost;
                 if depth > 0 {
-                    cost0 = (*reach.offset(id as isize)).costs[0][TRE_M_COST];
-                    if (*reach.offset(id as isize)).params.cost_ins != TRE_PARAM_UNSET {
-                        cost0 += (*reach.offset(id as isize)).params.cost_ins;
+                    cost0 = source.costs[0][TRE_M_COST];
+                    if source.params.cost_ins != TRE_PARAM_UNSET {
+                        cost0 += source.params.cost_ins;
                     } else {
                         cost0 += default_params.cost_ins;
                     }
                 }
 
-                if (*reach_next.offset(id as isize)).pos == pos
-                    && cost0 >= (*reach_next.offset(id as isize)).costs[0][TRE_M_COST]
-                {
+                if next.pos == pos && cost0 >= next.costs[0][TRE_M_COST] {
                     continue;
                 }
 
-                (*reach_next.offset(id as isize)).state = (*reach.offset(id as isize)).state;
-                (*reach_next.offset(id as isize)).pos = pos;
-                for i in 0..num_tags {
-                    *(*reach_next.offset(id as isize)).tags.offset(i as isize) =
-                        *(*reach.offset(id as isize)).tags.offset(i as isize);
-                }
-                (*reach_next.offset(id as isize)).params = (*reach.offset(id as isize)).params;
-                (*reach_next.offset(id as isize)).depth = (*reach.offset(id as isize)).depth;
-
-                let copy_len = TRE_M_LAST * (depth + 1);
-                for j in 0..copy_len {
-                    let d = j / TRE_M_LAST;
-                    let c = j % TRE_M_LAST;
-                    (*reach_next.offset(id as isize)).costs[d][c] =
-                        (*reach.offset(id as isize)).costs[d][c];
-                }
-                (*reach_next.offset(id as isize)).costs[depth][TRE_M_COST] = cost;
-                (*reach_next.offset(id as isize)).costs[depth][TRE_M_NUM_INS] += 1;
-                (*reach_next.offset(id as isize)).costs[depth][TRE_M_NUM_ERR] += 1;
+                next.state = source.state;
+                next.pos = pos;
+                tags.copy_row(id, state_count + id);
+                next.params = source.params;
+                next.depth = source.depth;
+                next.costs[..=depth].copy_from_slice(&source.costs[..=depth]);
+                next.costs[depth][TRE_M_COST] = cost;
+                next.costs[depth][TRE_M_NUM_INS] += 1;
+                next.costs[depth][TRE_M_NUM_ERR] += 1;
                 if depth > 0 {
-                    (*reach_next.offset(id as isize)).costs[0][TRE_M_COST] = cost0;
-                    (*reach_next.offset(id as isize)).costs[0][TRE_M_NUM_INS] += 1;
-                    (*reach_next.offset(id as isize)).costs[0][TRE_M_NUM_ERR] += 1;
+                    next.costs[0][TRE_M_COST] = cost0;
+                    next.costs[0][TRE_M_NUM_INS] += 1;
+                    next.costs[0][TRE_M_NUM_ERR] += 1;
                 }
             }
 
             // Seed deletion closure in state order, then visit successors FIFO.
             {
-                for id in 0..state_count {
-                    if (*reach_next.add(id)).pos == pos
-                        && deletions.push(workspace, id).is_err()
-                    {
+                for (id, next) in reach_next.iter().enumerate() {
+                    if next.pos == pos && deletions.push(workspace, id).is_err() {
                         return REG_ESPACE;
                     }
                 }
@@ -517,32 +444,33 @@ pub(super) unsafe fn run_approx(
                 while let Some(id) = deletions.pop() {
                     // Queued ids are bounded: only `0..state_count` seeds and
                     // checked transition targets below are ever pushed.
-                    let reach_p = reach_next.add(id);
-                    let depth = (*reach_p).depth as usize;
+                    let depth = reach_next[id].depth as usize;
 
-                    let mut cost = (*reach_p).costs[depth][TRE_M_COST];
-                    if (*reach_p).params.cost_del != TRE_PARAM_UNSET {
-                        cost += (*reach_p).params.cost_del;
+                    let mut cost = reach_next[id].costs[depth][TRE_M_COST];
+                    if reach_next[id].params.cost_del != TRE_PARAM_UNSET {
+                        cost += reach_next[id].params.cost_del;
                     }
 
-                    if cost > (*reach_p).params.max_cost
-                        || (*reach_p).costs[depth][TRE_M_NUM_DEL] + 1 > (*reach_p).params.max_del
-                        || (*reach_p).costs[depth][TRE_M_NUM_ERR] + 1 > (*reach_p).params.max_err
+                    if cost > reach_next[id].params.max_cost
+                        || reach_next[id].costs[depth][TRE_M_NUM_DEL] + 1
+                            > reach_next[id].params.max_del
+                        || reach_next[id].costs[depth][TRE_M_NUM_ERR] + 1
+                            > reach_next[id].params.max_err
                     {
                         continue;
                     }
 
                     let mut cost0 = cost;
                     if depth > 0 {
-                        cost0 = (*reach_p).costs[0][TRE_M_COST];
-                        if (*reach_p).params.cost_del != TRE_PARAM_UNSET {
-                            cost0 += (*reach_p).params.cost_del;
+                        cost0 = reach_next[id].costs[0][TRE_M_COST];
+                        if reach_next[id].params.cost_del != TRE_PARAM_UNSET {
+                            cost0 += reach_next[id].params.cost_del;
                         } else {
                             cost0 += default_params.cost_del;
                         }
                     }
 
-                    let mut trans = (*reach_p).state;
+                    let mut trans = reach_next[id].state;
                     while !(*trans).state.is_null() {
                         let Ok(dest_id) = usize::try_from((*trans).state_id) else {
                             return REG_ESPACE;
@@ -566,93 +494,64 @@ pub(super) unsafe fn run_approx(
                             continue;
                         }
 
-                        for i in 0..num_tags {
-                            *tmp_tags.offset(i as isize) = *(*reach_p).tags.offset(i as isize);
-                        }
-                        if !(*trans).tags.is_null() {
-                            let mut ti: c_int = 0;
-                            while *(*trans).tags.offset(ti as isize) >= 0 {
-                                if *(*trans).tags.offset(ti as isize) < num_tags {
-                                    *tmp_tags.offset(*(*trans).tags.offset(ti as isize) as isize) =
-                                        pos;
-                                }
-                                ti += 1;
-                            }
-                        }
+                        tags.copy_row(state_count + id, tmp_row);
+                        apply_tags((*trans).tags, tags.row_mut(tmp_row), pos);
 
-                        if (*reach_next.add(dest_id)).pos == pos
-                            && (cost0 > (*reach_next.add(dest_id)).costs[0][TRE_M_COST]
-                                || (cost0
-                                    == (*reach_next.add(dest_id)).costs[0][TRE_M_COST]
-                                    && (match_tags.is_null()
+                        if reach_next[dest_id].pos == pos
+                            && (cost0 > reach_next[dest_id].costs[0][TRE_M_COST]
+                                || (cost0 == reach_next[dest_id].costs[0][TRE_M_COST]
+                                    && (tag_count == 0
                                         || tre_tag_order(
-                                            std::slice::from_raw_parts(
-                                                ptr_or_dangling((*tnfa).tag_directions),
-                                                num_tags as usize,
-                                            ),
-                                            std::slice::from_raw_parts(
-                                                ptr_or_dangling(tmp_tags),
-                                                num_tags as usize,
-                                            ),
-                                            std::slice::from_raw_parts(
-                                                ptr_or_dangling(
-                                                    (*reach_next.add(dest_id)).tags,
-                                                ),
-                                                num_tags as usize,
-                                            ),
+                                            directions,
+                                            tags.row(tmp_row),
+                                            tags.row(state_count + dest_id),
                                         ) == 0)))
                         {
                             trans = trans.add(1);
                             continue;
                         }
 
-                        (*reach_next.add(dest_id)).state = (*trans).state;
-                        (*reach_next.add(dest_id)).pos = pos;
-                        for i in 0..num_tags {
-                            *(*reach_next.add(dest_id))
-                                .tags
-                                .offset(i as isize) = *tmp_tags.offset(i as isize);
-                        }
-
-                        (*reach_next.add(dest_id)).params = (*reach_p).params;
+                        reach_next[dest_id].state = (*trans).state;
+                        reach_next[dest_id].pos = pos;
+                        tags.copy_row(tmp_row, state_count + dest_id);
+                        reach_next[dest_id].params = reach_next[id].params;
                         if !(*trans).params.is_null() {
                             tre_set_params(
-                                &mut *reach_next.add(dest_id),
+                                &mut reach_next[dest_id],
                                 std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                                 default_params,
                             );
                         }
 
-                        (*reach_next.add(dest_id)).depth = (*reach_p).depth;
-                        let copy_len = TRE_M_LAST * (depth + 1);
-                        for j in 0..copy_len {
-                            let d = j / TRE_M_LAST;
-                            let c = j % TRE_M_LAST;
-                            (*reach_next.add(dest_id)).costs[d][c] =
-                                (*reach_p).costs[d][c];
+                        // A self-transition can update the source depth above.
+                        reach_next[dest_id].depth = reach_next[id].depth;
+                        if dest_id != id {
+                            let costs = reach_next[id].costs;
+                            reach_next[dest_id].costs[..=depth]
+                                .copy_from_slice(&costs[..=depth]);
                         }
-                        (*reach_next.add(dest_id)).costs[depth][TRE_M_COST] = cost;
-                        (*reach_next.add(dest_id)).costs[depth][TRE_M_NUM_DEL] += 1;
-                        (*reach_next.add(dest_id)).costs[depth][TRE_M_NUM_ERR] += 1;
+                        let next = &mut reach_next[dest_id];
+                        next.costs[depth][TRE_M_COST] = cost;
+                        next.costs[depth][TRE_M_NUM_DEL] += 1;
+                        next.costs[depth][TRE_M_NUM_ERR] += 1;
                         if depth > 0 {
-                            (*reach_next.add(dest_id)).costs[0][TRE_M_COST] = cost0;
-                            (*reach_next.add(dest_id)).costs[0][TRE_M_NUM_DEL] += 1;
-                            (*reach_next.add(dest_id)).costs[0][TRE_M_NUM_ERR] += 1;
+                            next.costs[0][TRE_M_COST] = cost0;
+                            next.costs[0][TRE_M_NUM_DEL] += 1;
+                            next.costs[0][TRE_M_NUM_ERR] += 1;
                         }
 
                         if (*trans).state == (*tnfa).final_
                             && (match_eo < 0
                                 || match_costs[TRE_M_COST] > cost0
                                 || (match_costs[TRE_M_COST] == cost0
-                                    && num_tags > 0
-                                    && *tmp_tags <= *match_tags))
+                                    && tag_count > 0
+                                    && tags.row(tmp_row)[0] <= *match_tags))
                         {
                             match_eo = pos;
-                            for j in 0..TRE_M_LAST {
-                                match_costs[j] = (*reach_next.add(dest_id)).costs[0][j];
-                            }
-                            for i in 0..num_tags {
-                                *match_tags.offset(i as isize) = *tmp_tags.offset(i as isize);
+                            match_costs = next.costs[0];
+                            let row = tags.row(tmp_row);
+                            if !row.is_empty() {
+                                ptr::copy_nonoverlapping(row.as_ptr(), match_tags, row.len());
                             }
                         }
 
@@ -688,23 +587,23 @@ pub(super) unsafe fn run_approx(
                 next_c = 0;
             }
 
-            // Swap reach and reach_next
-            let tmp = reach;
-            let reach = reach_next;
-            let reach_next = tmp;
-
-            // Handle exact matches and substitutions
-            for id in 0..(*tnfa).num_states {
-                if (*reach.offset(id as isize)).pos < prev_pos {
+            // Consume from reach_next into reach, as in the legacy matcher.
+            for (id, source) in reach_next.iter().enumerate() {
+                if source.pos < prev_pos {
                     continue;
                 }
-                let mut trans = (*reach.offset(id as isize)).state;
+                let mut trans = source.state;
                 while !(*trans).state.is_null() {
-                    let dest_id = (*trans).state_id;
-                    let depth = (*reach.offset(id as isize)).depth as usize;
+                    let Ok(dest_id) = usize::try_from((*trans).state_id) else {
+                        return REG_ESPACE;
+                    };
+                    let Some(next) = reach.get_mut(dest_id) else {
+                        return REG_ESPACE;
+                    };
+                    let depth = source.depth as usize;
 
-                    let mut cost = (*reach.offset(id as isize)).costs[depth][TRE_M_COST];
-                    let mut cost0 = (*reach.offset(id as isize)).costs[0][TRE_M_COST];
+                    let mut cost = source.costs[depth][TRE_M_COST];
+                    let mut cost0 = source.costs[0][TRE_M_COST];
                     let mut err: c_int = 0;
 
                     if (*trans).assertions != 0
@@ -724,125 +623,84 @@ pub(super) unsafe fn run_approx(
 
                     if (*trans).code_min > prev_c || (*trans).code_max < prev_c {
                         err = 1;
-                        cost = (*reach.offset(id as isize)).costs[depth][TRE_M_COST];
-                        if (*reach.offset(id as isize)).params.cost_subst != TRE_PARAM_UNSET {
-                            cost += (*reach.offset(id as isize)).params.cost_subst;
+                        cost = source.costs[depth][TRE_M_COST];
+                        if source.params.cost_subst != TRE_PARAM_UNSET {
+                            cost += source.params.cost_subst;
                         }
-                        if cost > (*reach.offset(id as isize)).params.max_cost {
+                        if cost > source.params.max_cost {
                             trans = trans.add(1);
                             continue;
                         }
-                        if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_SUBST] + 1
-                            > (*reach.offset(id as isize)).params.max_subst
-                        {
+                        if source.costs[depth][TRE_M_NUM_SUBST] + 1 > source.params.max_subst {
                             trans = trans.add(1);
                             continue;
                         }
-                        if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_ERR] + 1
-                            > (*reach.offset(id as isize)).params.max_err
-                        {
+                        if source.costs[depth][TRE_M_NUM_ERR] + 1 > source.params.max_err {
                             trans = trans.add(1);
                             continue;
                         }
                         cost0 = cost;
                         if depth > 0 {
-                            cost0 = (*reach.offset(id as isize)).costs[0][TRE_M_COST];
-                            if (*reach.offset(id as isize)).params.cost_subst != TRE_PARAM_UNSET {
-                                cost0 += (*reach.offset(id as isize)).params.cost_subst;
+                            cost0 = source.costs[0][TRE_M_COST];
+                            if source.params.cost_subst != TRE_PARAM_UNSET {
+                                cost0 += source.params.cost_subst;
                             } else {
                                 cost0 += default_params.cost_subst;
                             }
                         }
                     }
 
-                    for i in 0..num_tags {
-                        *tmp_tags.offset(i as isize) =
-                            *(*reach.offset(id as isize)).tags.offset(i as isize);
-                    }
-                    if !(*trans).tags.is_null() {
-                        let mut ti: c_int = 0;
-                        while *(*trans).tags.offset(ti as isize) >= 0 {
-                            if *(*trans).tags.offset(ti as isize) < num_tags {
-                                *tmp_tags.offset(*(*trans).tags.offset(ti as isize) as isize) = pos;
-                            }
-                            ti += 1;
-                        }
-                    }
+                    tags.copy_row(state_count + id, tmp_row);
+                    apply_tags((*trans).tags, tags.row_mut(tmp_row), pos);
 
-                    if (*reach_next.offset(dest_id as isize)).pos == pos
-                        && (cost0 > (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_COST]
-                            || (cost0
-                                == (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_COST]
+                    if next.pos == pos
+                        && (cost0 > next.costs[0][TRE_M_COST]
+                            || (cost0 == next.costs[0][TRE_M_COST]
                                 && tre_tag_order(
-                                    std::slice::from_raw_parts(
-                                        ptr_or_dangling((*tnfa).tag_directions),
-                                        num_tags as usize,
-                                    ),
-                                    std::slice::from_raw_parts(
-                                        ptr_or_dangling(tmp_tags),
-                                        num_tags as usize,
-                                    ),
-                                    std::slice::from_raw_parts(
-                                        ptr_or_dangling(
-                                            (*reach_next.offset(dest_id as isize)).tags,
-                                        ),
-                                        num_tags as usize,
-                                    ),
+                                    directions,
+                                    tags.row(tmp_row),
+                                    tags.row(dest_id),
                                 ) == 0))
                     {
                         trans = trans.add(1);
                         continue;
                     }
 
-                    (*reach_next.offset(dest_id as isize)).state = (*trans).state;
-                    (*reach_next.offset(dest_id as isize)).pos = pos;
-                    for i in 0..num_tags {
-                        *(*reach_next.offset(dest_id as isize))
-                            .tags
-                            .offset(i as isize) = *tmp_tags.offset(i as isize);
-                    }
-                    (*reach_next.offset(dest_id as isize)).depth =
-                        (*reach.offset(id as isize)).depth;
-
-                    (*reach_next.offset(dest_id as isize)).params =
-                        (*reach.offset(id as isize)).params;
+                    next.state = (*trans).state;
+                    next.pos = pos;
+                    tags.copy_row(tmp_row, dest_id);
+                    next.depth = source.depth;
+                    next.params = source.params;
                     if !(*trans).params.is_null() {
                         tre_set_params(
-                            &mut *reach_next.offset(dest_id as isize),
+                            next,
                             std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                             default_params,
                         );
                     }
 
-                    let copy_len = TRE_M_LAST * (depth + 1);
-                    for j in 0..copy_len {
-                        let d = j / TRE_M_LAST;
-                        let c = j % TRE_M_LAST;
-                        (*reach_next.offset(dest_id as isize)).costs[d][c] =
-                            (*reach.offset(id as isize)).costs[d][c];
-                    }
-                    (*reach_next.offset(dest_id as isize)).costs[depth][TRE_M_COST] = cost;
-                    (*reach_next.offset(dest_id as isize)).costs[depth][TRE_M_NUM_SUBST] += err;
-                    (*reach_next.offset(dest_id as isize)).costs[depth][TRE_M_NUM_ERR] += err;
+                    next.costs[..=depth].copy_from_slice(&source.costs[..=depth]);
+                    next.costs[depth][TRE_M_COST] = cost;
+                    next.costs[depth][TRE_M_NUM_SUBST] += err;
+                    next.costs[depth][TRE_M_NUM_ERR] += err;
                     if depth > 0 {
-                        (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_COST] = cost0;
-                        (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_NUM_SUBST] += err;
-                        (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_NUM_ERR] += err;
+                        next.costs[0][TRE_M_COST] = cost0;
+                        next.costs[0][TRE_M_NUM_SUBST] += err;
+                        next.costs[0][TRE_M_NUM_ERR] += err;
                     }
 
                     if (*trans).state == (*tnfa).final_
                         && (match_eo < 0
                             || cost0 < match_costs[TRE_M_COST]
                             || (cost0 == match_costs[TRE_M_COST]
-                                && num_tags > 0
-                                && *tmp_tags <= *match_tags))
+                                && tag_count > 0
+                                && tags.row(tmp_row)[0] <= *match_tags))
                     {
                         match_eo = pos;
-                        for j in 0..TRE_M_LAST {
-                            match_costs[j] = (*reach_next.offset(dest_id as isize)).costs[0][j];
-                        }
-                        for i in 0..num_tags {
-                            *match_tags.offset(i as isize) = *tmp_tags.offset(i as isize);
+                        match_costs = next.costs[0];
+                        let row = tags.row(tmp_row);
+                        if !row.is_empty() {
+                            ptr::copy_nonoverlapping(row.as_ptr(), match_tags, row.len());
                         }
                     }
 
@@ -863,10 +721,6 @@ pub(super) unsafe fn run_approx(
             REG_NOMATCH as c_int
         }
     }
-}
-
-fn align_ptr_approx(p: *mut u8) -> *mut u8 {
-    p.map_addr(|addr| addr.next_multiple_of(std::mem::align_of::<usize>()))
 }
 
 #[cfg(test)]
@@ -933,5 +787,121 @@ mod tests {
                 baseline
             );
         });
+    }
+
+    #[test]
+    fn approximate_scratch_denial_releases_partial_workspace() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+        use crate::tre::regapi::{tre_regcomp, tre_regfree};
+
+        let mut regex = regex_t {
+            re_nsub: 0,
+            value: ptr::null_mut(),
+        };
+        // SAFETY: the pattern outlives the call and `regex` is writable output.
+        let rc = unsafe { tre_regcomp(&mut regex, c"^abc$".as_ptr(), REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+        let tnfa = regex.value.cast::<tre_tnfa_t>();
+        // SAFETY: `tre_regcomp` produced a live compiled descriptor.
+        let (state_count, tag_count) = unsafe {
+            (
+                usize::try_from((*tnfa).num_states).unwrap(),
+                usize::try_from((*tnfa).num_tags).unwrap(),
+            )
+        };
+
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let owner = session.owner_token().unwrap();
+            let workspace = crate::mainutils::grep::regex_workspace();
+            let baseline = owner
+                .with_arena(|arena| arena.workspace_bytes())
+                .unwrap();
+            owner
+                .with_arena(|arena| {
+                    arena.set_budget(ArenaBudget::new(
+                        arena.total_bytes_allocated()
+                            + baseline
+                            + state_count * std::mem::size_of::<Reach>(),
+                        0,
+                    ));
+                })
+                .unwrap();
+
+            let mut tags = vec![0; tag_count];
+            let tags_ptr = if tags.is_empty() {
+                ptr::null_mut()
+            } else {
+                tags.as_mut_ptr()
+            };
+            let mut amatch = regamatch_t {
+                nmatch: 0,
+                pmatch: ptr::null_mut(),
+                cost: -1,
+                num_ins: -1,
+                num_del: -1,
+                num_subst: -1,
+            };
+            let mut end = -1;
+            let params = regaparams_t {
+                cost_ins: 1,
+                cost_del: 1,
+                cost_subst: 1,
+                max_cost: 3,
+                max_ins: 0,
+                max_del: 3,
+                max_subst: 0,
+                max_err: 3,
+            };
+
+            // SAFETY: the descriptor, input, and output storage remain live.
+            let status = unsafe {
+                run_approx(
+                    tnfa,
+                    c"".as_ptr().cast(),
+                    0,
+                    tre_str_type_t::STR_BYTE,
+                    tags_ptr,
+                    &mut amatch,
+                    params,
+                    0,
+                    &mut end,
+                    &workspace,
+                )
+            };
+            assert_eq!(status, REG_ESPACE);
+            assert_eq!(end, -1);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                baseline
+            );
+
+            owner
+                .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+                .unwrap();
+            // SAFETY: the descriptor, input, and output storage remain live.
+            let status = unsafe {
+                run_approx(
+                    tnfa,
+                    c"".as_ptr().cast(),
+                    0,
+                    tre_str_type_t::STR_BYTE,
+                    tags_ptr,
+                    &mut amatch,
+                    params,
+                    0,
+                    &mut end,
+                    &workspace,
+                )
+            };
+            assert_eq!(status, REG_OK);
+            assert_eq!((end, amatch.cost, amatch.num_del), (0, 3, 3));
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                baseline
+            );
+        });
+        // SAFETY: the regex was compiled above and has no remaining borrowers.
+        unsafe { tre_regfree(&mut regex) };
     }
 }

@@ -25,19 +25,30 @@ struct ReachPos {
     slot: usize,
 }
 
-/// Flat tag table. Rows only move between reach slots by swapping disjoint
-/// numeric ids, so no two live entries ever alias the same storage.
-struct TagRows {
+/// Flat tag storage indexed by the row ids assigned by each matcher.
+pub(super) struct TagRows {
     values: WorkspaceBuffer<c_int>,
     width: usize,
 }
 
 impl TagRows {
-    fn row(&self, row: usize) -> &[c_int] {
+    pub(super) fn new(
+        workspace: &RegexWorkspace,
+        rows: usize,
+        width: usize,
+    ) -> Result<Self, ()> {
+        let cells = rows.checked_mul(width).ok_or(())?;
+        Ok(Self {
+            values: filled(workspace, cells, 0)?,
+            width,
+        })
+    }
+
+    pub(super) fn row(&self, row: usize) -> &[c_int] {
         &self.values[self.range(row)]
     }
 
-    fn row_mut(&mut self, row: usize) -> &mut [c_int] {
+    pub(super) fn row_mut(&mut self, row: usize) -> &mut [c_int] {
         let range = self.range(row);
         &mut self.values[range]
     }
@@ -47,13 +58,13 @@ impl TagRows {
         start..start + self.width
     }
 
-    fn copy_row(&mut self, source: usize, target: usize) {
+    pub(super) fn copy_row(&mut self, source: usize, target: usize) {
         let range = self.range(source);
         self.values.copy_within(range, target * self.width);
     }
 }
 
-fn filled<T: Clone>(
+pub(super) fn filled<T: Clone>(
     workspace: &RegexWorkspace,
     len: usize,
     value: T,
@@ -66,7 +77,7 @@ fn filled<T: Clone>(
 /// Apply a compiler-owned sentinel-terminated list to a bounded scratch row.
 /// # Safety
 /// Non-null `tags` must be a compiled transition's tag list.
-unsafe fn apply_tags(mut tags: *const c_int, row: &mut [c_int], pos: c_int) {
+pub(super) unsafe fn apply_tags(mut tags: *const c_int, row: &mut [c_int], pos: c_int) {
     if row.is_empty() || tags.is_null() {
         return;
     }
@@ -268,14 +279,7 @@ pub(super) unsafe fn run_parallel(
         };
         let scratch = || {
             let tmp_row = state_count.checked_mul(2).ok_or(())?;
-            let cells = tmp_row
-                .checked_add(1)
-                .and_then(|rows| rows.checked_mul(tag_count))
-                .ok_or(())?;
-            let tags = TagRows {
-                values: filled(workspace, cells, 0)?,
-                width: tag_count,
-            };
+            let tags = TagRows::new(workspace, tmp_row.checked_add(1).ok_or(())?, tag_count)?;
             let empty = Reach {
                 state: ptr::null_mut(),
                 row: 0,
