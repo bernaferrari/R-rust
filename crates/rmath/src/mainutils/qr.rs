@@ -306,6 +306,10 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 qr_error("LAPACK routine 'DGEQP3' failed");
             }
             rank = min_mn as c_int;
+        } else if min_mn == 0 {
+            // Empty factors already have zero qraux and the identity pivot.
+            // Their payloads may be null, so do not enter the LINPACK kernel.
+            rank = 0;
         } else {
             let work_len = match n.checked_mul(2).filter(|&v| v <= c_int::MAX as usize) {
                 Some(v) => v as c_int,
