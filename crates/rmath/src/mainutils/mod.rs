@@ -80,6 +80,7 @@ pub mod qr_apply;
 pub mod qr_coef;
 pub mod qr_extract;
 pub mod qr_fitted;
+mod qr_payload;
 pub mod qr_q;
 pub mod qr_x;
 pub mod qsort;

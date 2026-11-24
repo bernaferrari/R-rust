@@ -10,6 +10,8 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use std::os::raw::c_int;
 
+use super::qr_payload::{complex, real, root, writable, write_complex, write_real};
+
 const REALSXP_C: c_int = 14;
 const INTSXP_C: c_int = 13;
 const LGLSXP_C: c_int = 10;
@@ -45,7 +47,7 @@ fn field(x: SEXP, name: &[u8]) -> SEXP {
     R_NilValue()
 }
 
-unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
+fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
     let mut matched = [None; 3];
     let mut cell = args;
     while cell != R_NilValue() && !cell.is_null() {
@@ -78,214 +80,206 @@ unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
     matched
 }
 
-pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let [object, complete_arg, ncol_arg] = match_args(args);
-        let object = object.unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
-        if object == R_NilValue() || TYPEOF(object) != VECSXP_C || !is_qr(object) {
-            err("argument is not a QR decomposition")
+pub fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let [object, complete_arg, ncol_arg] = match_args(args);
+    let object = object.unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
+    if object == R_NilValue() || TYPEOF(object) != VECSXP_C || !is_qr(object) {
+        err("argument is not a QR decomposition")
+    }
+    let complete = complete_arg.is_some_and(|value| {
+        let flag = asLogical(value);
+        if flag == NA_LOGICAL {
+            err("invalid 'complete' argument")
         }
-        let complete = complete_arg.is_some_and(|value| {
-            let flag = asLogical(value);
-            if flag == NA_LOGICAL {
-                err("invalid 'complete' argument")
-            }
-            flag != 0
-        });
-        let true_s = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
-        let _true = protect(true_s);
-        *LOGICAL(true_s) = 1;
-        let r_tail = Rf_cons(true_s, R_NilValue());
-        let _r_tail = protect(r_tail);
-        let r_args = Rf_cons(object, r_tail);
-        let _r_args = protect(r_args);
-        let r =
-            crate::mainutils::qr_extract::do_qr_R(R_NilValue(), R_NilValue(), r_args, R_NilValue());
-        let _r = protect(r);
-        let rdim = getAttrib(r, R_DimSymbol());
-        if TYPEOF(rdim) != INTSXP_C || XLENGTH(rdim) != 2 {
-            err("invalid NCOL(R)")
+        flag != 0
+    });
+    let true_s = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
+    let _true = protect(true_s);
+    SET_LOGICAL_ELT(true_s, 0, 1);
+    let r_tail = Rf_cons(true_s, R_NilValue());
+    let _r_tail = protect(r_tail);
+    let r_args = Rf_cons(object, r_tail);
+    let _r_args = protect(r_args);
+    let r = crate::mainutils::qr_extract::do_qr_R(R_NilValue(), R_NilValue(), r_args, R_NilValue());
+    let r_values = root(r);
+    let rdim = getAttrib(r, R_DimSymbol());
+    if TYPEOF(rdim) != INTSXP_C || XLENGTH(rdim) != 2 {
+        err("invalid NCOL(R)")
+    }
+    let nrow_r = INTEGER_ELT(rdim, 0);
+    let p = INTEGER_ELT(rdim, 1);
+    if p < 0 || nrow_r < 0 {
+        err("invalid NCOL(R)")
+    }
+    let default_ncol = if complete {
+        nrow_r
+    } else if nrow_r < p {
+        nrow_r
+    } else {
+        p
+    };
+    let ncol = ncol_arg.map_or(default_ncol, |value| {
+        let n = asInteger(value);
+        if n == NA_INTEGER || n < 0 {
+            err("invalid 'ncol' argument")
         }
-        let nrow_r = *INTEGER(rdim);
-        let p = *INTEGER(rdim).add(1);
-        if p < 0 || nrow_r < 0 {
-            err("invalid NCOL(R)")
-        }
-        let default_ncol = if complete {
-            nrow_r
-        } else if nrow_r < p {
-            nrow_r
-        } else {
-            p
-        };
-        let ncol = ncol_arg.map_or(default_ncol, |value| {
-            let n = asInteger(value);
-            if n == NA_INTEGER || n < 0 {
-                err("invalid 'ncol' argument")
-            }
-            n
-        });
-        let pivot = field(object, b"pivot");
-        let pivoted = TYPEOF(pivot) == INTSXP_C
-            && (0..XLENGTH(pivot)).any(|i| *INTEGER(pivot).add(i as usize) != (i as c_int + 1));
-        if pivoted && ncol < XLENGTH(pivot) as c_int {
-            err("need larger value of 'ncol' as pivoting occurred")
-        }
-        let r_complex = TYPEOF(r) == SEXPTYPE::CPLXSXP;
-        let r_type = if r_complex {
-            SEXPTYPE::CPLXSXP
-        } else {
-            SEXPTYPE::REALSXP
-        };
-        unsafe fn copy_element(dst: SEXP, src: SEXP, index: usize, complex: bool) {
-            unsafe {
-                if complex {
-                    *COMPLEX(dst).add(index) = *COMPLEX(src).add(index);
-                } else {
-                    *REAL(dst).add(index) = *REAL(src).add(index);
-                }
-            }
-        }
-        unsafe fn fill_zero(dst: SEXP, index: usize, complex: bool) {
-            unsafe {
-                if complex {
-                    *COMPLEX(dst).add(index) = Rcomplex { r: 0.0, i: 0.0 };
-                } else {
-                    *REAL(dst).add(index) = 0.0;
-                }
-            }
-        }
-        unsafe fn set_one(dst: SEXP, index: usize, complex: bool) {
-            unsafe {
-                if complex {
-                    *COMPLEX(dst).add(index) = Rcomplex { r: 1.0, i: 0.0 };
-                } else {
-                    *REAL(dst).add(index) = 1.0;
-                }
-            }
-        }
-        let r_use = if ncol == p {
-            r
-        } else if ncol < p {
-            let out = Rf_allocVector3(r_type, (nrow_r * ncol) as R_xlen_t);
-            let _out = protect(out);
-            for j in 0..ncol as usize {
-                for i in 0..nrow_r as usize {
-                    copy_element(out, r, i + j * nrow_r as usize, r_complex);
-                }
-            }
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _dims = protect(dims);
-            *INTEGER(dims) = nrow_r;
-            *INTEGER(dims).add(1) = ncol;
-            setAttrib(out, R_DimSymbol(), dims);
-            out
-        } else {
+        n
+    });
+    let pivot = field(object, b"pivot");
+    let pivot_values = (TYPEOF(pivot) == INTSXP_C).then(|| root(pivot));
+    let read_pivot = |index: R_xlen_t| {
+        pivot_values
+            .as_ref()
+            .and_then(|pivot| pivot.integer_elt(index))
+            .unwrap_or_else(|| err("invalid QR pivot"))
+    };
+    let pivoted = pivot_values.is_some()
+        && (0..XLENGTH(pivot)).any(|i| R_xlen_t::from(read_pivot(i)) != i + 1);
+    if pivoted && R_xlen_t::from(ncol) < XLENGTH(pivot) {
+        err("need larger value of 'ncol' as pivoting occurred")
+    }
+    let r_complex = TYPEOF(r) == SEXPTYPE::CPLXSXP;
+    let r_type = if r_complex {
+        SEXPTYPE::CPLXSXP
+    } else {
+        SEXPTYPE::REALSXP
+    };
+    let r_use = if ncol == p {
+        r
+    } else {
+        let length = (nrow_r as usize)
+            .checked_mul(ncol as usize)
+            .and_then(|len| R_xlen_t::try_from(len).ok())
+            .unwrap_or_else(|| err("QR result is too large"));
+        let out = Rf_allocVector3(r_type, length);
+        let mut values = writable(out);
+        if ncol > p {
             // GNU does diag(1 or 1+0i, nrow(R), ncol) then overwrites the
             // first p columns with R.
-            let out = Rf_allocVector3(r_type, (nrow_r * ncol) as R_xlen_t);
-            let _out = protect(out);
-            for i in 0..(nrow_r * ncol) as usize {
-                fill_zero(out, i, r_complex);
+            for i in 0..length as usize {
+                if r_complex {
+                    write_complex(&mut values, i, Rcomplex { r: 0.0, i: 0.0 });
+                } else {
+                    write_real(&mut values, i, 0.0);
+                }
             }
             for i in 0..nrow_r.min(ncol) as usize {
-                set_one(out, i + i * nrow_r as usize, r_complex);
-            }
-            for j in 0..p as usize {
-                for i in 0..nrow_r as usize {
-                    copy_element(out, r, i + j * nrow_r as usize, r_complex);
+                if r_complex {
+                    write_complex(
+                        &mut values,
+                        i + i * nrow_r as usize,
+                        Rcomplex { r: 1.0, i: 0.0 },
+                    );
+                } else {
+                    write_real(&mut values, i + i * nrow_r as usize, 1.0);
                 }
             }
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _dims = protect(dims);
-            *INTEGER(dims) = nrow_r;
-            *INTEGER(dims).add(1) = ncol;
-            setAttrib(out, R_DimSymbol(), dims);
-            out
-        };
-        // A plain qr() is LINPACK. qr() sets useLAPACK only for lapack=TRUE.
-        // Stamping it here made qr.qy treat dqrdc2 qraux as DGEQP3 tau.
-        let qobj = object;
-        let qy_tail = Rf_cons(r_use, R_NilValue());
-        let _qy_tail = protect(qy_tail);
-        let qy_args = Rf_cons(qobj, qy_tail);
-        let _qy_args = protect(qy_args);
-        let res =
-            crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
-        let _res = protect(res);
-        if pivoted {
-            let pvt_len = XLENGTH(pivot) as usize;
-            let rdim = getAttrib(res, R_DimSymbol());
-            let rows = if TYPEOF(rdim) == INTSXP_C && XLENGTH(rdim) == 2 {
-                *INTEGER(rdim) as usize
-            } else {
-                err("invalid qr.X result")
-            };
-            let cols = if TYPEOF(rdim) == INTSXP_C && XLENGTH(rdim) == 2 {
-                *INTEGER(rdim).add(1) as usize
-            } else {
-                0
-            };
-            if cols < pvt_len {
-                err("need larger value of 'ncol' as pivoting occurred")
-            }
-            let res_complex = TYPEOF(res) == SEXPTYPE::CPLXSXP;
-            if res_complex {
-                let mut copy = vec![Rcomplex { r: 0.0, i: 0.0 }; rows * cols];
-                for i in 0..rows * cols {
-                    copy[i] = *COMPLEX(res).add(i);
-                }
-                for i in 0..pvt_len {
-                    let dest = *INTEGER(pivot).add(i);
-                    if dest <= 0 || dest as usize > cols {
-                        err("invalid QR pivot")
-                    }
-                    for row in 0..rows {
-                        *COMPLEX(res).add(row + (dest as usize - 1) * rows) = copy[row + i * rows];
-                    }
-                }
-            } else {
-                let mut copy = vec![0.0f64; rows * cols];
-                for i in 0..rows * cols {
-                    copy[i] = *REAL(res).add(i);
-                }
-                for i in 0..pvt_len {
-                    let dest = *INTEGER(pivot).add(i);
-                    if dest <= 0 || dest as usize > cols {
-                        err("invalid QR pivot")
-                    }
-                    for row in 0..rows {
-                        *REAL(res).add(row + (dest as usize - 1) * rows) = copy[row + i * rows];
-                    }
+        }
+        for j in 0..ncol.min(p) as usize {
+            for i in 0..nrow_r as usize {
+                let index = i + j * nrow_r as usize;
+                if r_complex {
+                    write_complex(&mut values, index, complex(&r_values, index));
+                } else {
+                    write_real(&mut values, index, real(&r_values, index));
                 }
             }
-            let dn = getAttrib(res, crate::sexp::attrib_core::R_DimNamesSymbol());
-            if !dn.is_null()
-                && dn != R_NilValue()
-                && TYPEOF(dn) == SEXPTYPE::VECSXP
-                && XLENGTH(dn) >= 2
+        }
+        let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dims = protect(dims);
+        SET_INTEGER_ELT(dims, 0, nrow_r);
+        SET_INTEGER_ELT(dims, 1, ncol);
+        setAttrib(out, R_DimSymbol(), dims);
+        out
+    };
+    // A plain qr() is LINPACK. qr() sets useLAPACK only for lapack=TRUE.
+    // Stamping it here made qr.qy treat dqrdc2 qraux as DGEQP3 tau.
+    let qobj = object;
+    let qy_tail = Rf_cons(r_use, R_NilValue());
+    let _qy_tail = protect(qy_tail);
+    let qy_args = Rf_cons(qobj, qy_tail);
+    let _qy_args = protect(qy_args);
+    let res =
+        crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
+    let _res = protect(res);
+    if pivoted {
+        let pvt_len = XLENGTH(pivot) as usize;
+        let rdim = getAttrib(res, R_DimSymbol());
+        if TYPEOF(rdim) != INTSXP_C || XLENGTH(rdim) != 2 {
+            err("invalid qr.X result")
+        }
+        let rows = INTEGER_ELT(rdim, 0);
+        let cols = INTEGER_ELT(rdim, 1);
+        if rows < 0 || cols < 0 {
+            err("invalid qr.X result")
+        }
+        let rows = rows as usize;
+        let cols = cols as usize;
+        if rows.checked_mul(cols) != Some(XLENGTH(res) as usize) {
+            err("invalid qr.X result")
+        }
+        if cols < pvt_len {
+            err("need larger value of 'ncol' as pivoting occurred")
+        }
+        let mut result_values = writable(res);
+        let saved = root(res);
+        let res_complex = TYPEOF(res) == SEXPTYPE::CPLXSXP;
+        if res_complex {
+            let mut copy = vec![Rcomplex { r: 0.0, i: 0.0 }; rows * cols];
+            for i in 0..rows * cols {
+                copy[i] = complex(&saved, i);
+            }
+            for i in 0..pvt_len {
+                let dest = read_pivot(i as R_xlen_t);
+                if dest <= 0 || dest as usize > cols {
+                    err("invalid QR pivot")
+                }
+                for row in 0..rows {
+                    write_complex(
+                        &mut result_values,
+                        row + (dest as usize - 1) * rows,
+                        copy[row + i * rows],
+                    );
+                }
+            }
+        } else {
+            let mut copy = vec![0.0f64; rows * cols];
+            for i in 0..rows * cols {
+                copy[i] = real(&saved, i);
+            }
+            for i in 0..pvt_len {
+                let dest = read_pivot(i as R_xlen_t);
+                if dest <= 0 || dest as usize > cols {
+                    err("invalid QR pivot")
+                }
+                for row in 0..rows {
+                    write_real(
+                        &mut result_values,
+                        row + (dest as usize - 1) * rows,
+                        copy[row + i * rows],
+                    );
+                }
+            }
+        }
+        let dn = getAttrib(res, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2
+        {
+            let cn = VECTOR_ELT(dn, 1);
+            if !cn.is_null()
+                && cn != R_NilValue()
+                && TYPEOF(cn) == SEXPTYPE::STRSXP
+                && XLENGTH(cn) as usize >= cols
             {
-                let cn = VECTOR_ELT(dn, 1);
-                if !cn.is_null()
-                    && cn != R_NilValue()
-                    && TYPEOF(cn) == SEXPTYPE::STRSXP
-                    && XLENGTH(cn) as usize >= cols
-                {
-                    let copy = crate::mainutils::duplicate::Rf_duplicate(cn);
-                    let _c = protect(copy);
-                    for i in 0..pvt_len {
-                        let dest = *INTEGER(pivot).add(i);
-                        if dest > 0 && (dest as usize) <= cols {
-                            SET_STRING_ELT(
-                                cn,
-                                (dest as R_xlen_t) - 1,
-                                STRING_ELT(copy, i as R_xlen_t),
-                            );
-                        }
+                let copy = crate::mainutils::duplicate::Rf_duplicate(cn);
+                let _c = protect(copy);
+                for i in 0..pvt_len {
+                    let dest = read_pivot(i as R_xlen_t);
+                    if dest > 0 && (dest as usize) <= cols {
+                        SET_STRING_ELT(cn, (dest as R_xlen_t) - 1, STRING_ELT(copy, i as R_xlen_t));
                     }
                 }
             }
         }
-        res
     }
+    res
 }

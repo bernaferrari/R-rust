@@ -10,6 +10,8 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use std::os::raw::c_int;
+
+use super::qr_payload::{read_writable_real, real, root, writable, write_real};
 const REALSXP_C: c_int = 14;
 const INTSXP_C: c_int = 13;
 const STRSXP_C: c_int = 16;
@@ -46,324 +48,330 @@ fn fields(x: SEXP) -> (SEXP, SEXP, SEXP) {
     }
     (f, a, r)
 }
-unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) -> SEXP {
-    unsafe {
-        let _ = (call, op, rho);
-        let mut matched = [None; 2];
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() {
-                let name = &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag))[..];
-                let index = [b"qr".as_slice(), b"y".as_slice()]
-                    .iter()
-                    .position(|formal| !name.is_empty() && formal.starts_with(name))
-                    .unwrap_or_else(|| err("unused argument"));
-                if matched[index].replace(CAR(cell)).is_some() {
-                    err("formal argument matched by multiple actual arguments");
-                }
+fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) -> SEXP {
+    let _ = (call, op, rho);
+    let mut matched = [None; 2];
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag != R_NilValue() {
+            let name = &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag))[..];
+            let index = [b"qr".as_slice(), b"y".as_slice()]
+                .iter()
+                .position(|formal| !name.is_empty() && formal.starts_with(name))
+                .unwrap_or_else(|| err("unused argument"));
+            if matched[index].replace(CAR(cell)).is_some() {
+                err("formal argument matched by multiple actual arguments");
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if tag.is_null() || tag == R_NilValue() {
-                let slot = matched
-                    .iter_mut()
-                    .find(|x| x.is_none())
-                    .unwrap_or_else(|| err("unused argument"));
-                *slot = Some(CAR(cell));
-            }
-            cell = CDR(cell);
+        cell = CDR(cell);
+    }
+    cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            let slot = matched
+                .iter_mut()
+                .find(|x| x.is_none())
+                .unwrap_or_else(|| err("unused argument"));
+            *slot = Some(CAR(cell));
         }
-        let q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
-        let y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
-        if TYPEOF(q) != VECSXP_C || !is_qr(q) {
-            err("'qr' must be a QR decomposition")
+        cell = CDR(cell);
+    }
+    let q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
+    let y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
+    if TYPEOF(q) != VECSXP_C || !is_qr(q) {
+        err("'qr' must be a QR decomposition")
+    }
+    let (f, a, r) = fields(q);
+    // GNU qr.qy/qr.qty dispatch complex decompositions straight to
+    // qr_qy_cmplx; `y` must be a complex matrix (vectors are promoted
+    // by as.matrix first, as in the R wrapper).
+    if TYPEOF(f) == SEXPTYPE::CPLXSXP {
+        return apply_complex(q, f, y, transpose);
+    }
+    if TYPEOF(f) != REALSXP_C || TYPEOF(a) != REALSXP_C {
+        err("invalid QR decomposition")
+    }
+    let f_values = root(f);
+    let aux_values = root(a);
+    let d = getAttrib(f, R_DimSymbol());
+    if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
+        err("invalid QR dimensions")
+    }
+    let m = INTEGER_ELT(d, 0) as isize;
+    let n = INTEGER_ELT(d, 1) as isize;
+    if m < 0 || n < 0 {
+        err("invalid QR dimensions")
+    }
+    let m = m as usize;
+    let n = n as usize;
+    if m.checked_mul(n) != Some(XLENGTH(f) as usize) {
+        err("invalid QR matrix length")
+    }
+    let k = m.min(n);
+    if XLENGTH(a) < k as R_xlen_t {
+        err("invalid QR decomposition fields");
+    }
+    let lap_attr = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
+    // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
+    let lap = TYPEOF(lap_attr) == SEXPTYPE::LGLSXP
+        && XLENGTH(lap_attr) == 1
+        && LOGICAL_ELT(lap_attr, 0) != 0;
+    let t = if lap {
+        k
+    } else {
+        if TYPEOF(r) != INTSXP_C || XLENGTH(r) != 1 {
+            err("invalid QR rank")
         }
-        let (f, a, r) = fields(q);
-        // GNU qr.qy/qr.qty dispatch complex decompositions straight to
-        // qr_qy_cmplx; `y` must be a complex matrix (vectors are promoted
-        // by as.matrix first, as in the R wrapper).
-        if TYPEOF(f) == SEXPTYPE::CPLXSXP {
-            return apply_complex(q, f, y, transpose);
+        let rank = INTEGER_ELT(r, 0);
+        if rank < 0 || rank as usize > k {
+            err("invalid QR rank")
         }
-        if TYPEOF(f) != REALSXP_C || TYPEOF(a) != REALSXP_C {
-            err("invalid QR decomposition")
+        (rank as usize).min(m.saturating_sub(1))
+    };
+    let yy = if TYPEOF(y) == REALSXP_C {
+        y
+    } else if matches!(TYPEOF(y), INTSXP_C | STRSXP_C | 10) {
+        coerceVector(y, REALSXP_C)
+    } else {
+        err("'y' must be numeric")
+    };
+    let y_values = root(yy);
+    let yd = getAttrib(yy, R_DimSymbol());
+    let matrix = yd != R_NilValue() && !yd.is_null();
+    if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+        err("invalid 'y' dimensions");
+    }
+    let cols = if matrix {
+        let rows = INTEGER_ELT(yd, 0);
+        if rows < 0 || rows as usize != m {
+            err("'qr' and 'y' must have the same number of rows")
         }
-        let d = getAttrib(f, R_DimSymbol());
-        if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
-            err("invalid QR dimensions")
-        }
-        let m = *INTEGER(d) as isize;
-        let n = *INTEGER(d).add(1) as isize;
-        if m < 0 || n < 0 {
-            err("invalid QR dimensions")
-        }
-        let m = m as usize;
-        let n = n as usize;
-        if m.checked_mul(n) != Some(XLENGTH(f) as usize) {
-            err("invalid QR matrix length")
-        }
-        let k = m.min(n);
-        if XLENGTH(a) < k as R_xlen_t {
-            err("invalid QR decomposition fields");
-        }
-        let lap_attr = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
-        // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
-        let lap = TYPEOF(lap_attr) == SEXPTYPE::LGLSXP
-            && XLENGTH(lap_attr) == 1
-            && LOGICAL_ELT(lap_attr, 0) != 0;
-        let t = if lap {
-            k
-        } else {
-            if TYPEOF(r) != INTSXP_C || XLENGTH(r) != 1 {
-                err("invalid QR rank")
-            }
-            let rank = INTEGER_ELT(r, 0);
-            if rank < 0 || rank as usize > k {
-                err("invalid QR rank")
-            }
-            (rank as usize).min(m.saturating_sub(1))
-        };
-        let yy = if TYPEOF(y) == REALSXP_C {
-            y
-        } else if matches!(TYPEOF(y), INTSXP_C | STRSXP_C | 10) {
-            coerceVector(y, REALSXP_C)
-        } else {
-            err("'y' must be numeric")
-        };
-        let _yg = protect(yy);
-        let yd = getAttrib(yy, R_DimSymbol());
-        let matrix = yd != R_NilValue() && !yd.is_null();
-        if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+        let cols = INTEGER_ELT(yd, 1);
+        if cols < 0 {
             err("invalid 'y' dimensions");
         }
-        let cols = if matrix {
-            let rows = *INTEGER(yd);
-            if rows < 0 || rows as usize != m {
-                err("'qr' and 'y' must have the same number of rows")
-            }
-            let cols = *INTEGER(yd).add(1);
-            if cols < 0 {
-                err("invalid 'y' dimensions");
-            }
-            cols as usize
-        } else {
-            if XLENGTH(yy) as usize != m {
-                err("'qr' and 'y' must have the same number of rows")
-            }
-            1
-        };
-        let count = m
-            .checked_mul(cols)
-            .filter(|&count| count <= isize::MAX as usize / std::mem::size_of::<f64>())
-            .unwrap_or_else(|| err("result too large"));
-        if XLENGTH(yy) as usize != count {
-            err("invalid 'y' dimensions")
+        cols as usize
+    } else {
+        if XLENGTH(yy) as usize != m {
+            err("'qr' and 'y' must have the same number of rows")
         }
-        // GNU's LINPACK .Fortran path rejects nonfinite input before arithmetic.
-        if !lap {
-            for field in [f, a, yy] {
-                for i in 0..XLENGTH(field) as usize {
+        1
+    };
+    let count = m
+        .checked_mul(cols)
+        .filter(|&count| count <= isize::MAX as usize / std::mem::size_of::<f64>())
+        .unwrap_or_else(|| err("result too large"));
+    if XLENGTH(yy) as usize != count {
+        err("invalid 'y' dimensions")
+    }
+    // GNU's LINPACK .Fortran path rejects nonfinite input before arithmetic.
+    if !lap {
+        for field in [&f_values, &aux_values, &y_values] {
+            for i in 0..field.len() as usize {
+                if i % 4096 == 0 {
+                    crate::eval::limits::poll_computation();
+                }
+                if !real(field, i).is_finite() {
+                    err("NA/NaN/Inf in foreign function call");
+                }
+            }
+        }
+    }
+    let out = Rf_allocVector3(SEXPTYPE::REALSXP, count as R_xlen_t);
+    let mut out_values = writable(out);
+    for i in 0..count {
+        if i % 4096 == 0 {
+            crate::eval::limits::poll_computation();
+        }
+        write_real(&mut out_values, i, real(&y_values, i));
+    }
+    for step in 0..t {
+        let j = if transpose { step } else { t - 1 - step };
+        crate::eval::limits::poll_computation();
+        let tau = real(&aux_values, j);
+        if !lap && !tau.is_finite() {
+            err("invalid QR decomposition")
+        }
+        if tau == 0.0 {
+            continue;
+        }
+        let scale = if lap { 1.0 } else { 0.0 };
+        for col in 0..cols {
+            crate::eval::limits::poll_computation();
+            if lap {
+                let mut dot = read_writable_real(&out_values, j + col * m);
+                for i in j + 1..m {
                     if i % 4096 == 0 {
                         crate::eval::limits::poll_computation();
                     }
-                    if !REAL(field).add(i).read().is_finite() {
-                        err("NA/NaN/Inf in foreign function call");
+                    dot +=
+                        real(&f_values, i + j * m) * read_writable_real(&out_values, i + col * m);
+                }
+                let z = tau * dot;
+                let updated = read_writable_real(&out_values, j + col * m) - z;
+                write_real(&mut out_values, j + col * m, updated);
+                for i in j + 1..m {
+                    if i % 4096 == 0 {
+                        crate::eval::limits::poll_computation();
                     }
+                    let updated = read_writable_real(&out_values, i + col * m)
+                        - z * real(&f_values, i + j * m);
+                    write_real(&mut out_values, i + col * m, updated);
+                }
+            } else {
+                let mut dot = tau * read_writable_real(&out_values, j + col * m);
+                for i in j + 1..m {
+                    if i % 4096 == 0 {
+                        crate::eval::limits::poll_computation();
+                    }
+                    dot +=
+                        real(&f_values, i + j * m) * read_writable_real(&out_values, i + col * m);
+                }
+                let t = -dot / tau;
+                let updated = read_writable_real(&out_values, j + col * m) + t * tau;
+                write_real(&mut out_values, j + col * m, updated);
+                for i in j + 1..m {
+                    if i % 4096 == 0 {
+                        crate::eval::limits::poll_computation();
+                    }
+                    let updated = read_writable_real(&out_values, i + col * m)
+                        + t * real(&f_values, i + j * m);
+                    write_real(&mut out_values, i + col * m, updated);
                 }
             }
+            let _ = scale;
         }
-        let out = Rf_allocVector3(SEXPTYPE::REALSXP, count as R_xlen_t);
-        let _og = protect(out);
-        for i in 0..count {
-            if i % 4096 == 0 {
-                crate::eval::limits::poll_computation();
-            }
-            *REAL(out).add(i) = *REAL(yy).add(i)
-        }
-        for step in 0..t {
-            let j = if transpose { step } else { t - 1 - step };
-            crate::eval::limits::poll_computation();
-            let tau = *REAL(a).add(j);
-            if !lap && !tau.is_finite() {
-                err("invalid QR decomposition")
-            }
-            if tau == 0.0 {
-                continue;
-            }
-            let scale = if lap { 1.0 } else { 0.0 };
-            for col in 0..cols {
-                crate::eval::limits::poll_computation();
-                if lap {
-                    let mut dot = *REAL(out).add(j + col * m);
-                    for i in j + 1..m {
-                        if i % 4096 == 0 {
-                            crate::eval::limits::poll_computation();
-                        }
-                        dot += *REAL(f).add(i + j * m) * *REAL(out).add(i + col * m);
-                    }
-                    let z = tau * dot;
-                    *REAL(out).add(j + col * m) -= z;
-                    for i in j + 1..m {
-                        if i % 4096 == 0 {
-                            crate::eval::limits::poll_computation();
-                        }
-                        *REAL(out).add(i + col * m) -= z * *REAL(f).add(i + j * m);
-                    }
-                } else {
-                    let mut dot = tau * *REAL(out).add(j + col * m);
-                    for i in j + 1..m {
-                        if i % 4096 == 0 {
-                            crate::eval::limits::poll_computation();
-                        }
-                        dot += *REAL(f).add(i + j * m) * *REAL(out).add(i + col * m);
-                    }
-                    let t = -dot / tau;
-                    *REAL(out).add(j + col * m) += t * tau;
-                    for i in j + 1..m {
-                        if i % 4096 == 0 {
-                            crate::eval::limits::poll_computation();
-                        }
-                        *REAL(out).add(i + col * m) += t * *REAL(f).add(i + j * m);
-                    }
-                }
-                let _ = scale;
-            }
-        }
-        if matrix {
+    }
+    if matrix {
+        setAttrib(
+            out,
+            R_DimSymbol(),
+            crate::mainutils::duplicate::Rf_duplicate(yd),
+        );
+        let dn = getAttrib(yy, R_DimNamesSymbol());
+        if dn != R_NilValue() {
             setAttrib(
                 out,
-                R_DimSymbol(),
-                crate::mainutils::duplicate::Rf_duplicate(yd),
-            );
-            let dn = getAttrib(yy, R_DimNamesSymbol());
-            if dn != R_NilValue() {
-                setAttrib(
-                    out,
-                    R_DimNamesSymbol(),
-                    crate::mainutils::duplicate::Rf_duplicate(dn),
-                )
-            }
-        } else if lap {
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _dims = protect(dims);
-            *INTEGER(dims) = m as c_int;
-            *INTEGER(dims).add(1) = 1;
-            setAttrib(out, R_DimSymbol(), dims);
-            let names = getAttrib(yy, R_NamesSymbol());
-            if names != R_NilValue() {
-                let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _dn = protect(dn);
-                SET_VECTOR_ELT(dn, 0, names);
-                SET_VECTOR_ELT(dn, 1, R_NilValue());
-                setAttrib(out, R_DimNamesSymbol(), dn);
-            }
-        } else {
-            let nm = getAttrib(yy, R_NamesSymbol());
-            if nm != R_NilValue() {
-                setAttrib(
-                    out,
-                    R_NamesSymbol(),
-                    crate::mainutils::duplicate::Rf_duplicate(nm),
-                )
-            }
+                R_DimNamesSymbol(),
+                crate::mainutils::duplicate::Rf_duplicate(dn),
+            )
         }
-        out
+    } else if lap {
+        let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dims = protect(dims);
+        SET_INTEGER_ELT(dims, 0, m as c_int);
+        SET_INTEGER_ELT(dims, 1, 1);
+        setAttrib(out, R_DimSymbol(), dims);
+        let names = getAttrib(yy, R_NamesSymbol());
+        if names != R_NilValue() {
+            let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dn = protect(dn);
+            SET_VECTOR_ELT(dn, 0, names);
+            SET_VECTOR_ELT(dn, 1, R_NilValue());
+            setAttrib(out, R_DimNamesSymbol(), dn);
+        }
+    } else {
+        let nm = getAttrib(yy, R_NamesSymbol());
+        if nm != R_NilValue() {
+            setAttrib(
+                out,
+                R_NamesSymbol(),
+                crate::mainutils::duplicate::Rf_duplicate(nm),
+            )
+        }
     }
+    out
 }
-pub unsafe fn do_qr_qy(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
-    unsafe { apply(c, o, a, r, false) }
+pub fn do_qr_qy(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
+    apply(c, o, a, r, false)
 }
-pub unsafe fn do_qr_qty(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
-    unsafe { apply(c, o, a, r, true) }
+pub fn do_qr_qty(c: SEXP, o: SEXP, a: SEXP, r: SEXP) -> SEXP {
+    apply(c, o, a, r, true)
 }
 
 /// GNU complex qr.qy/qr.qty: `.Internal(qr_qy_cmplx(qr, as.matrix(y), trans))`.
 /// The kernel returns a bare complex vector, so dimensions and dimnames are
 /// rebuilt here the way GNU's `duplicate(Bin)` keeps them.
-unsafe fn apply_complex(q: SEXP, f: SEXP, y: SEXP, transpose: bool) -> SEXP {
-    unsafe {
-        let d = getAttrib(f, R_DimSymbol());
-        if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
-            err("invalid QR dimensions")
+fn apply_complex(q: SEXP, f: SEXP, y: SEXP, transpose: bool) -> SEXP {
+    let d = getAttrib(f, R_DimSymbol());
+    if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
+        err("invalid QR dimensions")
+    }
+    let m = INTEGER_ELT(d, 0);
+    let n = INTEGER_ELT(d, 1);
+    if m < 0 || n < 0 || m.checked_mul(n).map(|len| len as i64) != Some(XLENGTH(f)) {
+        err("invalid QR dimensions")
+    }
+    let m_us = m as usize;
+    // GNU requires a complex right-hand side; other types error in
+    // qr_qy_cmplx with "'b' must be a complex matrix".
+    if TYPEOF(y) != SEXPTYPE::CPLXSXP {
+        err("'b' must be a complex matrix")
+    }
+    let yy = y;
+    let _yy_guard = protect(yy);
+    let yd = getAttrib(yy, R_DimSymbol());
+    let matrix = yd != R_NilValue() && !yd.is_null();
+    if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+        err("invalid 'y' dimensions")
+    }
+    let ny = if matrix {
+        let rows = INTEGER_ELT(yd, 0);
+        if rows != m {
+            err(&format!("right-hand side should have {m} not {rows} rows"))
         }
-        let m = *INTEGER(d);
-        let n = *INTEGER(d).add(1);
-        if m < 0 || n < 0 || m.checked_mul(n).map(|len| len as i64) != Some(XLENGTH(f)) {
-            err("invalid QR dimensions")
-        }
-        let m_us = m as usize;
-        // GNU requires a complex right-hand side; other types error in
-        // qr_qy_cmplx with "'b' must be a complex matrix".
-        if TYPEOF(y) != SEXPTYPE::CPLXSXP {
-            err("'b' must be a complex matrix")
-        }
-        let yy = y;
-        let _yy_guard = protect(yy);
-        let yd = getAttrib(yy, R_DimSymbol());
-        let matrix = yd != R_NilValue() && !yd.is_null();
-        if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+        let cols = INTEGER_ELT(yd, 1);
+        if cols < 0 {
             err("invalid 'y' dimensions")
         }
-        let ny = if matrix {
-            let rows = *INTEGER(yd);
-            if rows != m {
-                err(&format!("right-hand side should have {m} not {rows} rows"))
-            }
-            let cols = *INTEGER(yd).add(1);
-            if cols < 0 {
-                err("invalid 'y' dimensions")
-            }
-            cols as usize
-        } else {
-            if XLENGTH(yy) as usize != m_us {
-                err("'qr' and 'y' must have the same number of rows")
-            }
-            1
-        };
-        // as.matrix(): a bare complex vector becomes an m x 1 matrix, keeping
-        let y_mat = if matrix {
-            yy
-        } else {
-            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _dims_guard = protect(dims);
-            *INTEGER(dims) = m;
-            *INTEGER(dims).add(1) = 1;
-            let duplicated = crate::mainutils::duplicate::Rf_duplicate(yy);
-            let _duplicated_guard = protect(duplicated);
-            setAttrib(duplicated, R_DimSymbol(), dims);
-            let names = getAttrib(yy, R_NamesSymbol());
-            if names != R_NilValue() && !names.is_null() {
-                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                let _dimnames_guard = protect(dimnames);
-                SET_VECTOR_ELT(dimnames, 0, names);
-                SET_VECTOR_ELT(dimnames, 1, R_NilValue());
-                setAttrib(duplicated, R_DimNamesSymbol(), dimnames);
-            }
-            duplicated
-        };
-        let _y_mat_guard = protect(y_mat);
-        let trans_flag = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
-        let _trans_guard = protect(trans_flag);
-        *LOGICAL(trans_flag) = transpose as i32;
-        let out = crate::modules::lapack::lapack_impl::qr_qy_cmplx(q, y_mat, trans_flag);
-        let _out_guard = protect(out);
+        cols as usize
+    } else {
+        if XLENGTH(yy) as usize != m_us {
+            err("'qr' and 'y' must have the same number of rows")
+        }
+        1
+    };
+    // as.matrix(): a bare complex vector becomes an m x 1 matrix, keeping
+    let y_mat = if matrix {
+        yy
+    } else {
         let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let _dims_guard = protect(dims);
-        *INTEGER(dims) = m;
-        *INTEGER(dims).add(1) = ny as c_int;
-        setAttrib(out, R_DimSymbol(), dims);
-        let dn = getAttrib(y_mat, R_DimNamesSymbol());
-        if dn != R_NilValue() && !dn.is_null() {
-            setAttrib(
-                out,
-                R_DimNamesSymbol(),
-                crate::mainutils::duplicate::Rf_duplicate(dn),
-            );
+        SET_INTEGER_ELT(dims, 0, m);
+        SET_INTEGER_ELT(dims, 1, 1);
+        let duplicated = crate::mainutils::duplicate::Rf_duplicate(yy);
+        let _duplicated_guard = protect(duplicated);
+        setAttrib(duplicated, R_DimSymbol(), dims);
+        let names = getAttrib(yy, R_NamesSymbol());
+        if names != R_NilValue() && !names.is_null() {
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _dimnames_guard = protect(dimnames);
+            SET_VECTOR_ELT(dimnames, 0, names);
+            SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+            setAttrib(duplicated, R_DimNamesSymbol(), dimnames);
         }
-        out
+        duplicated
+    };
+    let _y_mat_guard = protect(y_mat);
+    let trans_flag = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
+    let _trans_guard = protect(trans_flag);
+    SET_LOGICAL_ELT(trans_flag, 0, transpose as i32);
+    let out = crate::modules::lapack::lapack_impl::qr_qy_cmplx(q, y_mat, trans_flag);
+    let _out_guard = protect(out);
+    let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _dims_guard = protect(dims);
+    SET_INTEGER_ELT(dims, 0, m);
+    SET_INTEGER_ELT(dims, 1, ny as c_int);
+    setAttrib(out, R_DimSymbol(), dims);
+    let dn = getAttrib(y_mat, R_DimNamesSymbol());
+    if dn != R_NilValue() && !dn.is_null() {
+        setAttrib(
+            out,
+            R_DimNamesSymbol(),
+            crate::mainutils::duplicate::Rf_duplicate(dn),
+        );
     }
+    out
 }

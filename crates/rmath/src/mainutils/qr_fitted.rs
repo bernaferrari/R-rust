@@ -13,6 +13,8 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use std::os::raw::c_int;
 
+use super::qr_payload::{real, root, writable, write_real};
+
 const REALSXP_C: c_int = 14;
 const INTSXP_C: c_int = 13;
 const STRSXP_C: c_int = 16;
@@ -54,7 +56,7 @@ fn fields(x: SEXP) -> (SEXP, SEXP, SEXP) {
     (qr, rank, qraux)
 }
 
-unsafe fn match_args<const N: usize>(args: SEXP, formals: [&[u8]; N]) -> [Option<SEXP>; N] {
+fn match_args<const N: usize>(args: SEXP, formals: [&[u8]; N]) -> [Option<SEXP>; N] {
     let mut matched = [None; N];
     let mut cell = args;
     while !cell.is_null() && cell != R_NilValue() {
@@ -92,186 +94,185 @@ enum Job {
     Resid,
 }
 
-unsafe fn apply(args: SEXP, job: Job) -> SEXP {
-    unsafe {
-        let q;
-        let y;
-        let k_arg;
-        match job {
-            Job::Fitted => {
-                let matched =
-                    match_args(args, [b"qr".as_slice(), b"y".as_slice(), b"k".as_slice()]);
-                q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
-                y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
-                k_arg = matched[2];
-            }
-            Job::Resid => {
-                let matched = match_args(args, [b"qr".as_slice(), b"y".as_slice()]);
-                q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
-                y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
-                k_arg = None;
-            }
+fn apply(args: SEXP, job: Job) -> SEXP {
+    let q;
+    let y;
+    let k_arg;
+    match job {
+        Job::Fitted => {
+            let matched = match_args(args, [b"qr".as_slice(), b"y".as_slice(), b"k".as_slice()]);
+            q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
+            y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
+            k_arg = matched[2];
         }
-        if TYPEOF(q) != VECSXP_C || !is_qr(q) {
-            err("argument is not a QR decomposition")
+        Job::Resid => {
+            let matched = match_args(args, [b"qr".as_slice(), b"y".as_slice()]);
+            q = matched[0].unwrap_or_else(|| err("argument 'qr' is missing, with no default"));
+            y = matched[1].unwrap_or_else(|| err("argument 'y' is missing, with no default"));
+            k_arg = None;
         }
-        let (f, rank_s, qraux) = fields(q);
-        if TYPEOF(f) != REALSXP_C {
-            err("not implemented for complex 'qr'")
-        }
-        let lap = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
-        // GNU uses LAPACK only when useLAPACK is TRUE.
-        let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) != 0;
-        if lap {
-            err("not supported for LAPACK QR")
-        }
-        let d = getAttrib(f, R_DimSymbol());
-        if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
-            err("invalid nrow(qr)")
-        }
-        let n = *INTEGER(d);
-        if n < 0 {
-            err("invalid nrow(qr)")
-        }
-        let p = *INTEGER(d).add(1);
-        if p < 0 {
-            err("invalid ncol(qr)")
-        }
-        let n_us = n as usize;
-        let p_us = p as usize;
-        if n_us.checked_mul(p_us) != Some(XLENGTH(f) as usize) {
-            err("invalid QR matrix length")
-        }
-        if TYPEOF(rank_s) != INTSXP_C || XLENGTH(rank_s) != 1 {
-            err("invalid ncol(qr)")
-        }
-        let rank = *INTEGER(rank_s);
-        if rank == NA_INTEGER || rank < 0 || rank as usize > n_us.min(p_us) {
-            err("invalid ncol(qr)")
-        }
-        let k = match k_arg {
-            Some(arg) => {
-                let value = asInteger(arg);
-                if value == NA_INTEGER {
-                    err("invalid 'k'")
-                }
-                if value > rank {
-                    err("'k' is too large")
-                }
-                if value < 0 {
-                    err("invalid 'k'")
-                }
-                value
-            }
-            None => rank,
-        };
-        if matches!(job, Job::Resid) && k == 0 {
-            return y;
-        }
-        if TYPEOF(qraux) != REALSXP_C || XLENGTH(qraux) < k as R_xlen_t {
-            err("invalid QR decomposition")
-        }
-        let yy = if TYPEOF(y) == REALSXP_C {
-            y
-        } else if matches!(TYPEOF(y), INTSXP_C | STRSXP_C | LGLSXP_C) {
-            coerceVector(y, REALSXP_C)
-        } else {
-            err("'y' must be numeric")
-        };
-        let _yg = protect(yy);
-        let yd = getAttrib(yy, R_DimSymbol());
-        let matrix = yd != R_NilValue() && !yd.is_null();
-        if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
-            err("invalid NCOL(y)")
-        }
-        let ny = if matrix {
-            let rows = *INTEGER(yd);
-            if rows != n {
-                err("'qr' and 'y' must have the same number of rows")
-            }
-            let cols = *INTEGER(yd).add(1);
-            if cols < 0 {
-                err("invalid NCOL(y)")
-            }
-            cols as usize
-        } else {
-            if XLENGTH(yy) != n as R_xlen_t {
-                err("'qr' and 'y' must have the same number of rows")
-            }
-            1
-        };
-        let Some(y_len) = n_us.checked_mul(ny) else {
-            err("result too large")
-        };
-        if XLENGTH(yy) as usize != y_len {
-            err("invalid NCOL(y)")
-        }
-        for field in [f, qraux, yy] {
-            for i in 0..XLENGTH(field) as usize {
-                if i % 4096 == 0 {
-                    crate::eval::limits::poll_computation();
-                }
-                if !REAL(field).add(i).read().is_finite() {
-                    err("NA/NaN/Inf in foreign function call");
-                }
-            }
-        }
-        let out = crate::mainutils::duplicate::Rf_duplicate(yy);
-        let _og = protect(out);
-        if ny == 0 {
-            return out;
-        }
-        if k == 0 {
-            if matches!(job, Job::Fitted) {
-                for i in 0..y_len {
-                    *REAL(out).add(i) = 0.0;
-                }
-            }
-            return out;
-        }
-        let qty_tail = Rf_cons(yy, R_NilValue());
-        let _qty_tail = protect(qty_tail);
-        let qty_args = Rf_cons(q, qty_tail);
-        let _qty_args = protect(qty_args);
-        let qty = crate::mainutils::qr_apply::do_qr_qty(
-            R_NilValue(),
-            R_NilValue(),
-            qty_args,
-            R_NilValue(),
-        );
-        let _qty = protect(qty);
-        for j in 0..ny {
-            for i in k as usize..n_us {
-                *REAL(qty).add(i + j * n_us) = 0.0;
-            }
-        }
-        let qy_tail = Rf_cons(qty, R_NilValue());
-        let _qy_tail = protect(qy_tail);
-        let qy_args = Rf_cons(q, qy_tail);
-        let _qy_args = protect(qy_args);
-        let fitted =
-            crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
-        let _fitted = protect(fitted);
-        match job {
-            Job::Fitted => {
-                for i in 0..y_len {
-                    *REAL(out).add(i) = *REAL(fitted).add(i);
-                }
-            }
-            Job::Resid => {
-                for i in 0..y_len {
-                    *REAL(out).add(i) = *REAL(yy).add(i) - *REAL(fitted).add(i);
-                }
-            }
-        }
-        out
     }
+    if TYPEOF(q) != VECSXP_C || !is_qr(q) {
+        err("argument is not a QR decomposition")
+    }
+    let (f, rank_s, qraux) = fields(q);
+    if TYPEOF(f) != REALSXP_C {
+        err("not implemented for complex 'qr'")
+    }
+    let f_values = root(f);
+    let lap = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
+    // GNU uses LAPACK only when useLAPACK is TRUE.
+    let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) != 0;
+    if lap {
+        err("not supported for LAPACK QR")
+    }
+    let d = getAttrib(f, R_DimSymbol());
+    if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
+        err("invalid nrow(qr)")
+    }
+    let n = INTEGER_ELT(d, 0);
+    if n < 0 {
+        err("invalid nrow(qr)")
+    }
+    let p = INTEGER_ELT(d, 1);
+    if p < 0 {
+        err("invalid ncol(qr)")
+    }
+    let n_us = n as usize;
+    let p_us = p as usize;
+    if n_us.checked_mul(p_us) != Some(XLENGTH(f) as usize) {
+        err("invalid QR matrix length")
+    }
+    if TYPEOF(rank_s) != INTSXP_C || XLENGTH(rank_s) != 1 {
+        err("invalid ncol(qr)")
+    }
+    let rank = INTEGER_ELT(rank_s, 0);
+    if rank == NA_INTEGER || rank < 0 || rank as usize > n_us.min(p_us) {
+        err("invalid ncol(qr)")
+    }
+    let k = match k_arg {
+        Some(arg) => {
+            let value = asInteger(arg);
+            if value == NA_INTEGER {
+                err("invalid 'k'")
+            }
+            if value > rank {
+                err("'k' is too large")
+            }
+            if value < 0 {
+                err("invalid 'k'")
+            }
+            value
+        }
+        None => rank,
+    };
+    if matches!(job, Job::Resid) && k == 0 {
+        return y;
+    }
+    if TYPEOF(qraux) != REALSXP_C || XLENGTH(qraux) < k as R_xlen_t {
+        err("invalid QR decomposition")
+    }
+    let aux_values = root(qraux);
+    let yy = if TYPEOF(y) == REALSXP_C {
+        y
+    } else if matches!(TYPEOF(y), INTSXP_C | STRSXP_C | LGLSXP_C) {
+        coerceVector(y, REALSXP_C)
+    } else {
+        err("'y' must be numeric")
+    };
+    let y_values = root(yy);
+    let yd = getAttrib(yy, R_DimSymbol());
+    let matrix = yd != R_NilValue() && !yd.is_null();
+    if matrix && (TYPEOF(yd) != INTSXP_C || XLENGTH(yd) != 2) {
+        err("invalid NCOL(y)")
+    }
+    let ny = if matrix {
+        let rows = INTEGER_ELT(yd, 0);
+        if rows != n {
+            err("'qr' and 'y' must have the same number of rows")
+        }
+        let cols = INTEGER_ELT(yd, 1);
+        if cols < 0 {
+            err("invalid NCOL(y)")
+        }
+        cols as usize
+    } else {
+        if XLENGTH(yy) != n as R_xlen_t {
+            err("'qr' and 'y' must have the same number of rows")
+        }
+        1
+    };
+    let Some(y_len) = n_us.checked_mul(ny) else {
+        err("result too large")
+    };
+    if XLENGTH(yy) as usize != y_len {
+        err("invalid NCOL(y)")
+    }
+    for field in [&f_values, &aux_values, &y_values] {
+        for i in 0..field.len() as usize {
+            if i % 4096 == 0 {
+                crate::eval::limits::poll_computation();
+            }
+            if !real(field, i).is_finite() {
+                err("NA/NaN/Inf in foreign function call");
+            }
+        }
+    }
+    let out = crate::mainutils::duplicate::Rf_duplicate(yy);
+    let mut out_values = writable(out);
+    if ny == 0 {
+        return out;
+    }
+    if k == 0 {
+        if matches!(job, Job::Fitted) {
+            for i in 0..y_len {
+                write_real(&mut out_values, i, 0.0);
+            }
+        }
+        return out;
+    }
+    let qty_tail = Rf_cons(yy, R_NilValue());
+    let _qty_tail = protect(qty_tail);
+    let qty_args = Rf_cons(q, qty_tail);
+    let _qty_args = protect(qty_args);
+    let qty =
+        crate::mainutils::qr_apply::do_qr_qty(R_NilValue(), R_NilValue(), qty_args, R_NilValue());
+    let mut qty_values = writable(qty);
+    for j in 0..ny {
+        for i in k as usize..n_us {
+            write_real(&mut qty_values, i + j * n_us, 0.0);
+        }
+    }
+    let qy_tail = Rf_cons(qty, R_NilValue());
+    let _qy_tail = protect(qy_tail);
+    let qy_args = Rf_cons(q, qy_tail);
+    let _qy_args = protect(qy_args);
+    let fitted =
+        crate::mainutils::qr_apply::do_qr_qy(R_NilValue(), R_NilValue(), qy_args, R_NilValue());
+    let fitted_values = root(fitted);
+    match job {
+        Job::Fitted => {
+            for i in 0..y_len {
+                write_real(&mut out_values, i, real(&fitted_values, i));
+            }
+        }
+        Job::Resid => {
+            for i in 0..y_len {
+                write_real(
+                    &mut out_values,
+                    i,
+                    real(&y_values, i) - real(&fitted_values, i),
+                );
+            }
+        }
+    }
+    out
 }
 
-pub unsafe fn do_qr_fitted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply(args, Job::Fitted) }
+pub fn do_qr_fitted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply(args, Job::Fitted)
 }
 
-pub unsafe fn do_qr_resid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { apply(args, Job::Resid) }
+pub fn do_qr_resid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply(args, Job::Resid)
 }
