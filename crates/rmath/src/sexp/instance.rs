@@ -326,7 +326,6 @@ pub(crate) struct EvalControlState {
     pub relop_lang_option: c_int,
     pub tracing_state: c_int,
     pub debugging_state: c_int,
-    pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub print: crate::mainutils::print::PrintRuntimeState,
     pub(crate) portable_primitive_names: Vec<String>,
 }
@@ -338,7 +337,6 @@ impl Default for EvalControlState {
             relop_lang_option: 0,
             tracing_state: crate::sexp::ffi::TRUE,
             debugging_state: crate::sexp::ffi::TRUE,
-            printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),
             portable_primitive_names: Vec::new(),
         }
@@ -433,6 +431,8 @@ pub struct RInstance {
     pub(crate) eval_state: EvalControlState,
     /// Print defaults snapshot owning exact-generation roots for its raw view.
     print_data: RefCell<crate::mainutils::print::PrintDataSnapshot>,
+    /// Separate storage for legacy printer results.
+    printutils: crate::mainutils::printutils::PrintUtilsState,
     /// Scalar formatter settings and the character-coercion override flag.
     scalar_print: Cell<ScalarPrintState>,
     /// Deparse line limit, separate from the evaluator state.
@@ -680,6 +680,7 @@ impl RInstance {
             finalizer_state: RefCell::default(),
             eval_state: EvalControlState::default(),
             print_data: RefCell::default(),
+            printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             scalar_print: Cell::default(),
             deparse_state: RefCell::default(),
             repl_flags: ReplFlags::default(),
@@ -1096,6 +1097,19 @@ pub(crate) unsafe fn with_print_data_in<R>(
     // SAFETY: project only the checked cell from the retained instance.
     let cell = unsafe { &(*instance).print_data };
     f(&mut cell.borrow_mut())
+}
+
+/// Access legacy encoder storage on the original session.
+///
+/// # Safety
+/// The original instance remains allocated and has no overlapping exclusive
+/// whole-instance borrow for the duration of this local operation.
+pub(crate) unsafe fn with_printutils_in<R>(
+    instance: *mut RInstance,
+    f: impl FnOnce(&crate::mainutils::printutils::PrintUtilsState) -> R,
+) -> R {
+    // SAFETY: the caller retains the original allocation; the fields use interior mutability.
+    f(unsafe { &(*instance).printutils })
 }
 
 /// Access only the scalar print cell, without lending the evaluator state.

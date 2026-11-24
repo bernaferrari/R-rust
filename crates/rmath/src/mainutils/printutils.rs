@@ -19,8 +19,7 @@
 use crate::sexp::encoding::{CE_BYTES, CE_LATIN1, CE_UTF8};
 mod string_buffer;
 mod utf8;
-#[cfg(test)]
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_double, c_int, c_void};
@@ -37,6 +36,7 @@ use crate::sexp::ffi::{
 };
 
 use crate::mainutils::format::{integer_field_width, real_field, string_element_width};
+use crate::sexp::instance::with_printutils_in;
 
 // ---------------------------------------------------------------------------
 // Optional console sink
@@ -98,40 +98,41 @@ impl Default for RPrint {
 }
 
 pub(crate) struct PrintUtilsState {
-    pub print: RPrint,
-    encode_logical: [u8; NB],
-    encode_integer: [u8; NB],
-    encode_real0: [u8; 2 * NB],
-    encode_real_drop0: [u8; 2 * NB],
-    encode_real2: [u8; NB],
-    encode_complex: [u8; NB + 3],
-    encode_raw: [u8; 10],
-    encode_environment: [u8; 1000],
-    encode_extptr: [u8; 1000],
-    encode_string: string_buffer::StringBuffer,
+    print: Cell<RPrint>,
+    // Each encoder may overwrite its own result without borrowing sibling buffers.
+    encode_logical: Cell<[u8; NB]>,
+    encode_integer: Cell<[u8; NB]>,
+    encode_real0: Cell<[u8; 2 * NB]>,
+    encode_real_drop0: Cell<[u8; 2 * NB]>,
+    encode_real2: Cell<[u8; NB]>,
+    encode_complex: Cell<[u8; NB + 3]>,
+    encode_raw: Cell<[u8; 10]>,
+    encode_environment: Cell<[u8; 1000]>,
+    encode_extptr: Cell<[u8; 1000]>,
+    encode_string: RefCell<string_buffer::StringBuffer>,
 }
 
 impl Default for PrintUtilsState {
     fn default() -> Self {
         PrintUtilsState {
-            print: RPrint::default(),
-            encode_logical: [0; NB],
-            encode_integer: [0; NB],
-            encode_real0: [0; 2 * NB],
-            encode_real_drop0: [0; 2 * NB],
-            encode_real2: [0; NB],
-            encode_complex: [0; NB + 3],
-            encode_raw: [0; 10],
-            encode_environment: [0; 1000],
-            encode_extptr: [0; 1000],
-            encode_string: string_buffer::StringBuffer::default(),
+            print: Cell::default(),
+            encode_logical: Cell::new([0; NB]),
+            encode_integer: Cell::new([0; NB]),
+            encode_real0: Cell::new([0; 2 * NB]),
+            encode_real_drop0: Cell::new([0; 2 * NB]),
+            encode_real2: Cell::new([0; NB]),
+            encode_complex: Cell::new([0; NB + 3]),
+            encode_raw: Cell::new([0; 10]),
+            encode_environment: Cell::new([0; 1000]),
+            encode_extptr: Cell::new([0; 1000]),
+            encode_string: RefCell::default(),
         }
     }
 }
 
 fn current_R_print() -> RPrint {
     crate::sexp::instance::with_current_instance(|inst| unsafe {
-        let mut print = (*inst).eval_state.printutils.print;
+        let mut print = with_printutils_in(inst, |state| state.print.get());
         // Public print.default owns the active NA strings in R_PrintData.
         // Explicit low-level encoder overrides still take precedence.
         crate::sexp::instance::with_print_data_in(inst, |state| {
@@ -259,11 +260,10 @@ pub(crate) fn encode_char_bytes(x: SEXP) -> Option<Vec<u8>> {
 }
 
 /// Run `f` on the active session's retained encode buffers.
-fn with_encode_buffers<R>(f: impl FnOnce(&mut PrintUtilsState) -> R) -> R {
+fn with_encode_buffers<R>(f: impl FnOnce(&PrintUtilsState) -> R) -> R {
     crate::sexp::instance::with_required_current_instance(|inst| {
-        // SAFETY: `inst` is the pinned current instance; `f` only copies
-        // bytes into its buffers and runs no callbacks.
-        f(unsafe { &mut (*inst).eval_state.printutils })
+        // SAFETY: the active session is retained for this local, callback-free operation.
+        unsafe { with_printutils_in(inst, f) }
     })
 }
 
@@ -291,7 +291,7 @@ pub fn get_R_print() -> RPrint {
 
 /// Set the R_print configuration.
 pub fn set_R_print(rp: RPrint) {
-    with_encode_buffers(|state| state.print = rp);
+    with_encode_buffers(|state| state.print.set(rp));
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
@@ -324,7 +324,7 @@ pub const NA_LOGICAL: c_int = c_int::MIN;
 /// value (NA_LOGICAL for NA), `w` is the minimum field width.
 pub fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     let text = encode_logical_cell(x, w);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_logical, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_logical, &text))
 }
 
 /// Logical cell text with the legacy encoder's fixed-buffer limit.
@@ -378,7 +378,7 @@ pub(crate) fn encode_logical_text(x: c_int, w: c_int) -> Vec<u8> {
 /// value (NA_INTEGER for NA), `w` is the minimum field width.
 pub fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     let text = encode_integer_text(x, w);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_integer, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_integer, &text))
 }
 
 /// Text of [`EncodeInteger`]: GNU `%*d` (minimum width) or the NA string.
@@ -484,11 +484,12 @@ fn real_text_with_dec(formatted: &str, dec: &str, cap: usize) -> Vec<u8> {
 }
 
 /// Copy `text` into a retained encode buffer as a NUL-terminated C string.
-fn store_text(buf: &mut [u8], text: &[u8]) -> *const c_char {
-    let len = text.len().min(buf.len() - 1);
-    buf[..len].copy_from_slice(&text[..len]);
-    buf[len] = 0;
-    buf.as_ptr() as *const c_char
+fn store_text<const N: usize>(buf: &Cell<[u8; N]>, text: &[u8]) -> *const c_char {
+    let len = text.len().min(N - 1);
+    let mut bytes = [0; N];
+    bytes[..len].copy_from_slice(&text[..len]);
+    buf.set(bytes);
+    buf.as_ptr().cast()
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +517,7 @@ pub unsafe fn EncodeReal0(
         unsafe { CStr::from_ptr(dec) }.to_bytes()
     };
     let text = encode_real0_text(x, w, d, e, dec_bytes);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_real0, &text))
 }
 
 /// Text of [`EncodeReal0`] with decimal separator `dec`.
@@ -539,7 +540,7 @@ pub fn EncodeReal(x: f64, w: c_int, d: c_int, e: c_int, cdec: c_char) -> *const 
     let dec = [cdec as u8];
     let dec: &[u8] = if cdec == 0 { &[] } else { &dec };
     let text = encode_real0_text(x, w, d, e, dec);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_real0, &text))
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +564,7 @@ pub unsafe fn EncodeRealDrop0(
         unsafe { CStr::from_ptr(dec) }.to_bytes()
     };
     let text = encode_real_drop0_text(x, w, d, e, dec_bytes);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real_drop0, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_real_drop0, &text))
 }
 
 /// Text of [`EncodeRealDrop0`] with decimal separator `dec`.
@@ -634,7 +635,7 @@ pub fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
     let formatted = format_real_printf_style(x, w, d, e, true, &na);
     let bytes = formatted.as_bytes();
     let text = &bytes[..bytes.len().min(NB - 1)];
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_real2, text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_real2, text))
 }
 
 // ---------------------------------------------------------------------------
@@ -657,7 +658,7 @@ pub fn EncodeComplex(
     _dec: *const c_char,
 ) -> *const c_char {
     let text = encode_complex_text(x, wr, dr, er, wi, di, ei);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_complex, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_complex, &text))
 }
 
 /// Text of [`EncodeComplex`] (the decimal separator is not applied).
@@ -712,7 +713,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
         unsafe { CStr::from_ptr(prefix) }.to_bytes()
     };
     let text = encode_raw_text(x, prefix_bytes);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_raw, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_raw, &text))
 }
 
 /// Text of [`EncodeRaw`]: `prefix` then two lowercase hex digits.
@@ -853,7 +854,7 @@ pub fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 /// Encode an environment SEXP for display (GNU printutils.c EncodeEnvironment).
 pub fn EncodeEnvironment(x: SEXP) -> *const c_char {
     let text = encode_environment_text(x);
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_environment, &text))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_environment, &text))
 }
 
 /// Text of [`EncodeEnvironment`].
@@ -873,7 +874,7 @@ pub(crate) fn encode_environment_text(x: SEXP) -> Vec<u8> {
 
 /// Encode an external pointer SEXP for display.
 pub fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    with_encode_buffers(|buffers| store_text(&mut buffers.encode_extptr, b"<pointer: 0x0>"))
+    with_encode_buffers(|buffers| store_text(&buffers.encode_extptr, b"<pointer: 0x0>"))
 }
 
 /// Create a CHARSXP from a formatted real value.
@@ -1012,19 +1013,17 @@ pub fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *cons
     }
     .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     let instance = owner.as_ptr();
-    // SAFETY: `owner` is pinned and active. Ledger admission and streaming
-    // formatting are callback-free; no R allocation or arena lend occurs
-    // while this retained buffer is loaned.
-    unsafe {
+    // SAFETY: the original owner is retained. Rendering only touches its ledger
+    // and string buffer, and neither operation can reenter R.
+    let encoded = unsafe {
         let ledger = (*instance).heap_identity.byte_ledger();
-        (*instance)
-            .eval_state
-            .printutils
-            .encode_string
-            .render(&plan, &ledger)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-            .cast()
-    }
+        with_printutils_in(instance, |state| {
+            state.encode_string.borrow_mut().render(&plan, &ledger)
+        })
+    };
+    encoded
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        .cast()
 }
 
 /// Encode a single element of an R vector for printing.
@@ -1132,7 +1131,7 @@ fn encode_element(x: SEXP, indx: R_xlen_t, quote: c_int, dec: &[u8]) -> *const c
             let val = one_real(x, indx);
             let fmt = real_field(1, 0, |_| val);
             let text = encode_real0_text(val, fmt.w, fmt.d, fmt.e, dec);
-            with_encode_buffers(|buffers| store_text(&mut buffers.encode_real0, &text))
+            with_encode_buffers(|buffers| store_text(&buffers.encode_real0, &text))
         }
         SEXPTYPE::STRSXP => {
             let elt = one_string(x, indx);
@@ -1147,7 +1146,7 @@ fn encode_element(x: SEXP, indx: R_xlen_t, quote: c_int, dec: &[u8]) -> *const c
         SEXPTYPE::RAWSXP => {
             let val = one_raw(x, indx);
             let text = encode_raw_text(val, b"");
-            with_encode_buffers(|buffers| store_text(&mut buffers.encode_raw, &text))
+            with_encode_buffers(|buffers| store_text(&buffers.encode_raw, &text))
         }
         _ => b"\0".as_ptr() as *const c_char,
     }

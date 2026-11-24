@@ -5,10 +5,31 @@ use crate::sexp::{RSession, memory::ArenaBudget};
 #[test]
 fn printer_workspace_default_has_no_unfunded_native_buffer() {
     assert_eq!(
-        PrintUtilsState::default().encode_string.capacity(),
+        PrintUtilsState::default().encode_string.borrow().capacity(),
         0,
         "formatter defaults must not allocate before their original ledger exists"
     );
+}
+
+#[test]
+fn printer_workspace_unrelated_encoders_keep_returned_pointers_live() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let text = owner.node_factory().character("text").unwrap();
+        let logical = EncodeLogical(1, 4);
+        let integer = EncodeInteger(42, 0);
+        let string = EncodeString(text.as_raw(), 0, 0, Rprt_adj::none);
+        set_R_print(get_R_print());
+        EncodeExtptr(ptr::null_mut());
+        // SAFETY: all three results are in distinct live session buffers,
+        // and none of those encoders has been called again.
+        unsafe {
+            assert_eq!(CStr::from_ptr(logical).to_bytes(), b"TRUE");
+            assert_eq!(CStr::from_ptr(integer).to_bytes(), b"42");
+            assert_eq!(CStr::from_ptr(string).to_bytes(), b"text");
+        }
+    });
 }
 
 #[test]
@@ -18,19 +39,11 @@ fn printer_workspace_retained_capacity_remains_in_the_original_ledger() {
         let owner = session.owner_token().unwrap();
         let factory = owner.node_factory();
         let value = factory.character(&"x".repeat(16384)).unwrap();
-        let old = (*owner.as_ptr())
-            .eval_state
-            .printutils
-            .encode_string
-            .capacity();
+        let old = with_printutils_in(owner.as_ptr(), |state| state.encode_string.borrow().capacity());
         let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
         let encoded = EncodeString(value.as_raw(), 0, 0, Rprt_adj::none);
         assert_eq!(CStr::from_ptr(encoded).to_bytes().len(), 16384);
-        let capacity = (*owner.as_ptr())
-            .eval_state
-            .printutils
-            .encode_string
-            .capacity();
+        let capacity = with_printutils_in(owner.as_ptr(), |state| state.encode_string.borrow().capacity());
         let after = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
         assert_eq!(
             after - before,
@@ -49,11 +62,7 @@ fn denied_growth(delta_only: bool, unicode: bool) {
         let short = factory.character("ok").unwrap();
         let previous = EncodeString(short.as_raw(), 0, 0, Rprt_adj::none);
         assert_eq!(CStr::from_ptr(previous).to_bytes(), b"ok");
-        let capacity = (*owner.as_ptr())
-            .eval_state
-            .printutils
-            .encode_string
-            .capacity();
+        let capacity = with_printutils_in(owner.as_ptr(), |state| state.encode_string.borrow().capacity());
         let text = if unicode {
             "é".repeat(4096)
         } else {
@@ -97,11 +106,7 @@ fn denied_growth(delta_only: bool, unicode: bool) {
                 .is_some()
         );
         assert_eq!(
-            (*owner.as_ptr())
-                .eval_state
-                .printutils
-                .encode_string
-                .capacity(),
+            with_printutils_in(owner.as_ptr(), |state| state.encode_string.borrow().capacity()),
             capacity
         );
         assert_eq!(
@@ -199,11 +204,7 @@ fn printer_workspace_charge_releases_with_its_final_runtime_owner() {
         let value = owner.node_factory().character(&"x".repeat(16384)).unwrap();
         EncodeString(value.as_raw(), 0, 0, Rprt_adj::none);
         let ledger = (*owner.as_ptr()).heap_identity.byte_ledger();
-        let retained = (*owner.as_ptr())
-            .eval_state
-            .printutils
-            .encode_string
-            .capacity();
+        let retained = with_printutils_in(owner.as_ptr(), |state| state.encode_string.borrow().capacity());
         assert!(ledger.allocated_bytes() >= retained && retained >= 16385);
         ledger
     });
