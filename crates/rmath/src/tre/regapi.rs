@@ -1397,6 +1397,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn legacy_nul_terminated_backreference_stops_at_the_terminator() {
+        unsafe {
+            let (mut preg, rc) = compile(r"(ab)\1", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let mut matches = [regmatch_t::default(); 2];
+            let status = tre_regexec(
+                &preg,
+                c"xababy".as_ptr(),
+                matches.len(),
+                matches.as_mut_ptr(),
+                0,
+            );
+            tre_regfree(&mut preg);
+            assert_eq!(status, REG_OK);
+            assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(1, 5), (1, 3)]);
+        }
+    }
+
     // ==================================================================
     // Extended coverage: capture groups and submatches
     // ==================================================================
@@ -2002,5 +2021,31 @@ mod owned_match_tests {
             );
             assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
         });
+    }
+
+    #[test]
+    fn backreferences_use_bounded_byte_and_wide_positions() {
+        let compile = |pattern: &str| {
+            let units: Vec<_> = pattern.chars().map(u32::from).collect();
+            compile::tre_compile_owned_slice(&units, REG_EXTENDED, RegexWorkspace::unbounded())
+                .unwrap()
+        };
+        let mut matches = [regmatch_t::default(); 2];
+        let bytes = compile(r"(ab)\1");
+        for (input, expected) in [
+            (&b"xababy"[..], [(1, 5), (1, 3)]),
+            (&b"abaabab"[..], [(3, 7), (3, 5)]),
+            (&b"\0abab"[..], [(1, 5), (1, 3)]),
+        ] {
+            assert_eq!(bytes.match_bytes(input, &mut matches, 0), REG_OK);
+            assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), expected);
+        }
+        assert_eq!(bytes.match_bytes(b"ab", &mut matches, 0), REG_NOMATCH);
+        let wide = compile(r"(.)\1");
+        assert_eq!(wide.match_wide(&[0xe9, 0xe9], &mut matches, 0), REG_OK);
+        assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(0, 2), (0, 1)]);
+        let empty = compile(r"(a*)\1b");
+        assert_eq!(empty.match_bytes(b"b", &mut matches, 0), REG_OK);
+        assert_eq!(matches.map(|m| (m.rm_so, m.rm_eo)), [(0, 1), (0, 0)]);
     }
 }

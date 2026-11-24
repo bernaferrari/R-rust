@@ -7,6 +7,7 @@
 */
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
+use std::ffi::CStr;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -16,9 +17,107 @@ use crate::mainutils::grep::{RegexWorkspace, WorkspaceBuffer};
 use super::match_parallel::{apply_tags, filled};
 
 #[derive(Clone, Copy)]
+enum BacktrackInput<'a> {
+    Byte(&'a [u8]),
+    Wide(&'a [tre_char_t]),
+}
+
+impl<'a> BacktrackInput<'a> {
+    /// # Safety
+    /// The input is readable for `len` code units or through its first NUL
+    /// when `len` is negative. Null is accepted for a bounded empty input.
+    unsafe fn from_raw(
+        string: *const c_void,
+        len: c_int,
+        kind: tre_str_type_t,
+    ) -> Result<Self, c_int> {
+        match kind {
+            tre_str_type_t::STR_BYTE => {
+                let bytes = if len == 0 {
+                    &[]
+                } else if len < 0 {
+                    // SAFETY: the legacy byte input is NUL-terminated.
+                    unsafe { CStr::from_ptr(string.cast()) }.to_bytes()
+                } else {
+                    // SAFETY: the caller supplies this bounded byte input.
+                    unsafe { std::slice::from_raw_parts(string.cast(), len as usize) }
+                };
+                c_int::try_from(bytes.len()).map_err(|_| REG_ESPACE)?;
+                Ok(Self::Byte(bytes))
+            }
+            tre_str_type_t::STR_WIDE => {
+                let wide = string.cast::<tre_char_t>();
+                let max = (isize::MAX as usize / std::mem::size_of::<tre_char_t>())
+                    .min(c_int::MAX as usize);
+                let count = if len < 0 {
+                    let mut count = 0;
+                    loop {
+                        if count >= max {
+                            return Err(REG_ESPACE);
+                        }
+                        // SAFETY: the caller supplies a terminator and we stop at it.
+                        if unsafe { *wide.add(count) } == 0 {
+                            break count;
+                        }
+                        count += 1;
+                    }
+                } else {
+                    len as usize
+                };
+                if count > max {
+                    return Err(REG_ESPACE);
+                }
+                let units = if count == 0 {
+                    &[]
+                } else {
+                    // SAFETY: the bounded extent was supplied or scanned above.
+                    unsafe { std::slice::from_raw_parts(wide, count) }
+                };
+                Ok(Self::Wide(units))
+            }
+            _ => Err(REG_NOMATCH),
+        }
+    }
+
+    fn len(self) -> usize {
+        match self {
+            Self::Byte(input) => input.len(),
+            Self::Wide(input) => input.len(),
+        }
+    }
+
+    fn at(self, pos: c_int) -> tre_cint_t {
+        let Ok(index) = usize::try_from(pos) else {
+            return 0;
+        };
+        match self {
+            Self::Byte(input) => input.get(index).copied().map_or(0, tre_cint_t::from),
+            Self::Wide(input) => input.get(index).copied().unwrap_or(0),
+        }
+    }
+
+    fn backref_end(self, so: c_int, eo: c_int, pos: c_int) -> Option<c_int> {
+        // TRE treats a capture that did not participate as empty.
+        if (so, eo) == (-1, -1) {
+            return Some(pos);
+        }
+        let (start, end, pos) = (
+            usize::try_from(so).ok()?,
+            usize::try_from(eo).ok()?,
+            usize::try_from(pos).ok()?,
+        );
+        let target_end = pos.checked_add(end.checked_sub(start)?)?;
+        let equal = match self {
+            Self::Byte(input) => input.get(start..end)? == input.get(pos..target_end)?,
+            Self::Wide(input) => input.get(start..end)? == input.get(pos..target_end)?,
+        };
+        equal.then_some(target_end as c_int)
+    }
+}
+
+#[derive(Clone, Copy)]
 struct BacktrackFrame {
     pos: c_int,
-    str_byte: *const u8,
     state: *mut tre_tnfa_transition_t,
     next_c: tre_cint_t,
     seen_slot: Option<c_int>,
@@ -137,7 +236,8 @@ unsafe fn CHECK_CHAR_CLASSES(
 ///
 /// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
 /// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
+/// here; `string` must describe `len` code units or be NUL-terminated when `len` is negative;
+/// null is accepted only where the original C TRE API accepts it.
 pub unsafe fn tre_tnfa_run_backtrack(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
@@ -175,17 +275,20 @@ pub(super) unsafe fn run_backtrack(
     match_end_ofs: *mut c_int,
     workspace: &RegexWorkspace,
 ) -> c_int {
+    // SAFETY: the raw matcher boundary supplies the input extent or terminator.
+    let input = match unsafe { BacktrackInput::from_raw(string, len, type_) } {
+        Ok(input) => input,
+        Err(status) => return status,
+    };
+    let input_len = input.len() as c_int;
     unsafe {
-        let mut str_byte = string as *const u8;
         let mut pos: c_int = 0;
-        let pos_add_next: u32 = 1;
 
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
         let reg_newline = (*tnfa).cflags & REG_NEWLINE;
 
         let mut next_c_start: tre_cint_t = 0;
-        let mut str_byte_start: *const u8 = ptr::null();
         let mut pos_start: c_int = -1;
 
         let mut match_eo: c_int = -1;
@@ -232,35 +335,13 @@ pub(super) unsafe fn run_backtrack(
             state = ptr::null_mut();
             pos = pos_start;
 
-            // GET_NEXT_WCHAR — for NUL-terminated strings, break if we've
-            // gone past the terminator (the inner loop may break without
-            // breaking the outer loop when it hits NUL).
+            // GET_NEXT_WCHAR
             prev_c = next_c;
-            if len < 0 && prev_c == 0 && pos_start >= 0 {
-                if match_eo >= 0 {
-                    break; // have a match, done
-                } else {
-                    break; // exhausted input, no match
-                }
-            }
             pos += 1;
-            if len >= 0 && pos >= len {
-                next_c = 0;
-            } else if type_ == tre_str_type_t::STR_WIDE {
-                next_c = *(string as *const tre_char_t).add(pos as usize);
-            } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                next_c = *str_byte.add(pos as usize) as tre_cint_t;
-            } else {
-                next_c = 0;
-            }
+            next_c = input.at(pos);
 
             pos_start = pos;
             next_c_start = next_c;
-            str_byte_start = if !str_byte.is_null() {
-                str_byte
-            } else {
-                ptr::null()
-            };
 
             // Handle initial states
             next_tags = ptr::null();
@@ -288,7 +369,6 @@ pub(super) unsafe fn run_backtrack(
                     // BT_STACK_PUSH
                     let frame = BacktrackFrame {
                         pos,
-                        str_byte,
                         state: (*trans_i).state,
                         next_c,
                         // The transition's destination is non-null in this loop.
@@ -312,20 +392,15 @@ pub(super) unsafe fn run_backtrack(
                 };
                 if let Some(frame) = frame {
                     pos = frame.pos;
-                    str_byte = frame.str_byte;
                     state = frame.state;
                     next_c = frame.next_c;
                     continue; // Back to main loop
                 } else if match_eo < 0 {
                     // Try starting from a later position
-                    if len >= 0 && pos >= len {
-                        break;
-                    }
-                    if next_c == 0 {
+                    if pos_start >= input_len {
                         break;
                     }
                     next_c = next_c_start;
-                    str_byte = str_byte_start;
                     continue; // retry
                 } else {
                     break;
@@ -359,19 +434,14 @@ pub(super) unsafe fn run_backtrack(
                     };
                     if let Some(frame) = frame {
                         pos = frame.pos;
-                        str_byte = frame.str_byte;
                         state = frame.state;
                         next_c = frame.next_c;
                         continue;
                     } else if match_eo < 0 {
-                        if len >= 0 && pos >= len {
-                            break;
-                        }
-                        if next_c == 0 {
+                        if pos_start >= input_len {
                             break;
                         }
                         next_c = next_c_start;
-                        str_byte = str_byte_start;
                         done = true;
                     } else {
                         break;
@@ -403,44 +473,8 @@ pub(super) unsafe fn run_backtrack(
                         rm_so: so,
                         rm_eo: eo,
                     } = prefix[bt];
-                    let bt_len = eo - so;
-
-                    let result: c_int;
-                    if len < 0 {
-                        if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                            result = libc_memcmp(
-                                string as *const u8,
-                                so as usize,
-                                str_byte.sub(1),
-                                bt_len,
-                            );
-                        } else {
-                            result = 1;
-                        }
-                    } else if len - pos < bt_len {
-                        result = 1;
-                    } else if type_ == tre_str_type_t::STR_WIDE && so >= 0 && bt_len >= 0 {
-                        let base = string as *const tre_char_t;
-                        result =
-                            if std::slice::from_raw_parts(base.add(so as usize), bt_len as usize)
-                                == std::slice::from_raw_parts(
-                                    base.add(pos as usize),
-                                    bt_len as usize,
-                                )
-                            {
-                                0
-                            } else {
-                                1
-                            };
-                    } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                        result =
-                            libc_memcmp(string as *const u8, so as usize, str_byte.sub(1), bt_len);
-                    } else {
-                        result = 1;
-                    }
-
-                    if result == 0 {
-                        if bt_len == 0 {
+                    if let Some(end) = input.backref_end(so, eo, pos) {
+                        if end == pos {
                             empty_br_match = 1;
                         }
                         let Some(&seen) = states_seen.get((*trans_i).state_id as usize) else {
@@ -453,16 +487,14 @@ pub(super) unsafe fn run_backtrack(
                             };
                             if let Some(frame) = frame {
                                 pos = frame.pos;
-                                str_byte = frame.str_byte;
                                 state = frame.state;
                                 next_c = frame.next_c;
                                 continue;
                             } else if match_eo < 0 {
-                                if next_c == 0 {
+                                if pos_start >= input_len {
                                     break;
                                 }
                                 next_c = next_c_start;
-                                str_byte = str_byte_start;
                                 done = true;
                             } else {
                                 break;
@@ -471,22 +503,9 @@ pub(super) unsafe fn run_backtrack(
                         }
                         states_seen[(*trans_i).state_id as usize] = empty_br_match != 0;
                         // Advance in input string
-                        if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                            str_byte = str_byte.offset(bt_len as isize - 1);
-                        }
-                        pos += bt_len - 1;
-                        // GET_NEXT_WCHAR
                         prev_c = next_c;
-                        pos += 1;
-                        if len >= 0 && pos >= len {
-                            next_c = 0;
-                        } else if type_ == tre_str_type_t::STR_WIDE {
-                            next_c = *(string as *const tre_char_t).add(pos as usize);
-                        } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                            next_c = *str_byte.add(pos as usize) as tre_cint_t;
-                        } else {
-                            next_c = 0;
-                        }
+                        pos = end;
+                        next_c = input.at(pos);
                     } else {
                         // goto backtrack
                         let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
@@ -494,16 +513,14 @@ pub(super) unsafe fn run_backtrack(
                         };
                         if let Some(frame) = frame {
                             pos = frame.pos;
-                            str_byte = frame.str_byte;
                             state = frame.state;
                             next_c = frame.next_c;
                             continue;
                         } else if match_eo < 0 {
-                            if next_c == 0 {
+                            if pos_start >= input_len {
                                 break;
                             }
                             next_c = next_c_start;
-                            str_byte = str_byte_start;
                             done = true;
                         } else {
                             break;
@@ -512,59 +529,32 @@ pub(super) unsafe fn run_backtrack(
                     }
                 } else {
                     // Check for end of string
-                    if len >= 0 && pos >= len {
+                    if pos >= input_len {
                         // goto backtrack
                         let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
                             return REG_BADPAT;
                         };
                         if let Some(frame) = frame {
                             pos = frame.pos;
-                            str_byte = frame.str_byte;
                             state = frame.state;
                             next_c = frame.next_c;
                             continue;
                         } else if match_eo < 0 {
-                            if next_c == 0 {
+                            if pos_start >= input_len {
                                 break;
                             }
                             next_c = next_c_start;
-                            str_byte = str_byte_start;
                             done = true;
                         } else {
                             break;
                         }
                         continue;
                     }
-                    if len < 0 && next_c == 0 {
-                        // goto backtrack
-                        let Ok(frame) = stack.pop(&mut tags, &mut states_seen) else {
-                            return REG_BADPAT;
-                        };
-                        if let Some(frame) = frame {
-                            pos = frame.pos;
-                            str_byte = frame.str_byte;
-                            state = frame.state;
-                            next_c = frame.next_c;
-                            continue;
-                        } else if match_eo < 0 {
-                            break;
-                        } else {
-                            break;
-                        }
-                    }
 
                     // GET_NEXT_WCHAR
                     prev_c = next_c;
                     pos += 1;
-                    if len >= 0 && pos >= len {
-                        next_c = 0;
-                    } else if type_ == tre_str_type_t::STR_WIDE {
-                        next_c = *(string as *const tre_char_t).add(pos as usize);
-                    } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                        next_c = *str_byte.add(pos as usize) as tre_cint_t;
-                    } else {
-                        next_c = 0;
-                    }
+                    next_c = input.at(pos);
                 }
 
                 let mut next_state: *mut tre_tnfa_transition_t = ptr::null_mut();
@@ -593,7 +583,6 @@ pub(super) unsafe fn run_backtrack(
                             // BT_STACK_PUSH
                             let frame = BacktrackFrame {
                                 pos,
-                                str_byte,
                                 state: (*trans_i).state,
                                 next_c,
                                 seen_slot: (((*(*trans_i).state).assertions & ASSERT_BACKREF) != 0)
@@ -618,18 +607,13 @@ pub(super) unsafe fn run_backtrack(
                     };
                     if let Some(frame) = frame {
                         pos = frame.pos;
-                        str_byte = frame.str_byte;
                         state = frame.state;
                         next_c = frame.next_c;
                     } else if match_eo < 0 {
-                        if len >= 0 && pos >= len {
-                            break;
-                        }
-                        if next_c == 0 {
+                        if pos_start >= input_len {
                             break;
                         }
                         next_c = next_c_start;
-                        str_byte = str_byte_start;
                         done = true;
                     } else {
                         break;
@@ -653,30 +637,6 @@ pub(super) unsafe fn run_backtrack(
     }
 }
 
-/// # Safety
-///
-/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
-/// sized per the accompanying length/count arguments) valid for the reads and writes performed
-/// here; null is accepted only where the original C TRE API accepts it.
-unsafe fn libc_memcmp(s1: *const u8, s1_offset: usize, s2: *const u8, n: c_int) -> c_int {
-    unsafe {
-        if n <= 0 {
-            return 0;
-        }
-        for i in 0..n as usize {
-            let a = *s1.add(s1_offset + i);
-            let b = *s2.add(i);
-            if a < b {
-                return -1;
-            }
-            if a > b {
-                return 1;
-            }
-        }
-        0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,7 +650,6 @@ mod tests {
                 .push(
                     BacktrackFrame {
                         pos,
-                        str_byte: ptr::null(),
                         state: ptr::null_mut(),
                         next_c: 0,
                         seen_slot: (pos % 2 == 0).then_some(0),
