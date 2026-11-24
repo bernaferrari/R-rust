@@ -790,7 +790,7 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
             let mut done = false;
 
             if counts_set == 0 {
-                while ctx.re.add(1) < ctx.re_end && !done {
+                while !done && ctx.re_end.offset_from(ctx.re) > 1 {
                     let c = *ctx.re;
                     if c == CHAR_PLUS {
                         ctx.re = ctx.re.add(1);
@@ -833,7 +833,7 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
 
             done = false;
             if costs_set == 0 {
-                while ctx.re.add(1) < ctx.re_end && !done {
+                while !done && ctx.re_end.offset_from(ctx.re) > 1 {
                     let c = *ctx.re;
                     if c == CHAR_PLUS || c == CHAR_SPACE {
                         ctx.re = ctx.re.add(1);
@@ -854,6 +854,9 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
                         done = true;
                     } else if c >= '0' as tre_char_t && c <= '9' as tre_char_t {
                         let cost = parse_int!();
+                        if ctx.re == ctx.re_end {
+                            return REG_BADBR;
+                        }
                         let next_c = *ctx.re;
                         if next_c == 'i' as tre_char_t {
                             ctx.re = ctx.re.add(1);
@@ -1329,6 +1332,9 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         let mut bit: c_int = 1;
                         ctx.re = ctx.re.add(2);
                         loop {
+                            if ctx.re == ctx.re_end {
+                                return REG_BADPAT;
+                            }
                             let ac = *ctx.re;
                             if ac == 'i' as tre_char_t {
                                 if bit != 0 {
@@ -1397,7 +1403,7 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         || (ctx.re > ctx.re_start && *ctx.re.sub(1) == CHAR_BACKSLASH)
                     {
                         depth += 1;
-                        if ctx.re.add(2) < ctx.re_end
+                        if ctx.re_end.offset_from(ctx.re) > 2
                             && *ctx.re.add(1) == CHAR_QUESTIONMARK
                             && *ctx.re.add(2) == CHAR_COLON
                         {
@@ -1596,12 +1602,18 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                         break;
                                     }
                                     if tre_isxdigit(*ctx.re) {
-                                        tmp[idx] = *ctx.re as u8;
+                                        let Some(digit) = tmp.get_mut(idx) else {
+                                            return REG_EBRACE;
+                                        };
+                                        *digit = *ctx.re as u8;
                                         idx += 1;
                                         ctx.re = ctx.re.add(1);
                                     } else {
                                         return REG_EBRACE;
                                     }
+                                }
+                                if ctx.re == ctx.re_end {
+                                    return REG_EBRACE;
                                 }
                                 ctx.re = ctx.re.add(1);
                                 let val = i32::from_str_radix(
@@ -1675,7 +1687,7 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     ctx.re = ctx.re.add(1);
                 } else if c == CHAR_CARET {
                     if ctx.cflags & REG_EXTENDED != 0
-                        || (ctx.re.sub(2) >= ctx.re_start
+                        || (ctx.re.offset_from(ctx.re_start) >= 2
                             && *ctx.re.sub(2) == CHAR_BACKSLASH
                             && *ctx.re.sub(1) == CHAR_LPAREN)
                         || ctx.re == ctx.re_start
@@ -1699,7 +1711,7 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     }
                 } else if c == CHAR_DOLLAR {
                     if ctx.cflags & REG_EXTENDED != 0
-                        || (ctx.re.add(2) < ctx.re_end
+                        || (ctx.re_end.offset_from(ctx.re) > 2
                             && *ctx.re.add(1) == CHAR_BACKSLASH
                             && *ctx.re.add(2) == CHAR_RPAREN)
                         || ctx.re.add(1) == ctx.re_end
@@ -1769,12 +1781,12 @@ fn parse_literal(
     status: &mut c_int,
 ) -> *mut tre_ast_node_t {
     unsafe {
+        // Both cursors delimit the remaining pattern within the same live slice.
+        let tail = std::slice::from_raw_parts(ctx.re, ctx.re_end.offset_from(ctx.re) as usize);
+        let current = tail.first().copied();
+
         // Check for \E (end of literal mode)
-        if *temporary_cflags != 0
-            && ctx.re.add(1) < ctx.re_end
-            && *ctx.re == CHAR_BACKSLASH
-            && *ctx.re.add(1) == 'E' as tre_char_t
-        {
+        if *temporary_cflags != 0 && tail.starts_with(&[CHAR_BACKSLASH, 'E' as tre_char_t]) {
             ctx.cflags &= !*temporary_cflags;
             *temporary_cflags = 0;
             ctx.re = ctx.re.add(2);
@@ -1785,44 +1797,34 @@ fn parse_literal(
             return ptr::null_mut();
         }
 
-        // Check for empty expression
-        if ctx.cflags & REG_LITERAL == 0
-            && (ctx.re >= ctx.re_end
-                || *ctx.re == CHAR_STAR
-                || (ctx.cflags & REG_EXTENDED != 0
-                    && (*ctx.re == CHAR_PIPE
-                        || *ctx.re == CHAR_LBRACE
-                        || *ctx.re == CHAR_PLUS
-                        || *ctx.re == CHAR_QUESTIONMARK))
-                || (ctx.cflags & REG_EXTENDED == 0
-                    && ctx.re.add(1) < ctx.re_end
-                    && *ctx.re == CHAR_BACKSLASH
-                    && *ctx.re.add(1) == CHAR_LBRACE))
-        {
+        // In literal mode, keep R's treatment of an embedded zero as empty.
+        let empty = if ctx.cflags & REG_LITERAL != 0 {
+            current == Some(0)
+        } else {
+            current == Some(CHAR_STAR)
+                || if ctx.cflags & REG_EXTENDED != 0 {
+                    matches!(
+                        current,
+                        Some(CHAR_PIPE | CHAR_LBRACE | CHAR_PLUS | CHAR_QUESTIONMARK)
+                    )
+                } else {
+                    tail.starts_with(&[CHAR_BACKSLASH, CHAR_LBRACE])
+                }
+        };
+        let Some(c) = current.filter(|_| !empty) else {
             let node = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
             if node.is_null() {
                 *status = REG_ESPACE;
-                return ptr::null_mut();
             }
             return node;
-        }
-
-        // R change: literal empty
-        if (ctx.cflags & REG_LITERAL != 0) && *ctx.re == 0 {
-            let node = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
-            if node.is_null() {
-                *status = REG_ESPACE;
-                return ptr::null_mut();
-            }
-            return node;
-        }
+        };
 
         // Normal literal
-        if ctx.cflags & REG_ICASE != 0 && (tre_isupper(*ctx.re) || tre_islower(*ctx.re)) {
+        if ctx.cflags & REG_ICASE != 0 && (tre_isupper(c) || tre_islower(c)) {
             let tmp1 = tre_ast_new_literal(
                 ctx.mem,
-                tre_toupper(*ctx.re) as c_int,
-                tre_toupper(*ctx.re) as c_int,
+                tre_toupper(c) as c_int,
+                tre_toupper(c) as c_int,
                 ctx.position,
             );
             if tmp1.is_null() {
@@ -1831,8 +1833,8 @@ fn parse_literal(
             }
             let tmp2 = tre_ast_new_literal(
                 ctx.mem,
-                tre_tolower(*ctx.re) as c_int,
-                tre_tolower(*ctx.re) as c_int,
+                tre_tolower(c) as c_int,
+                tre_tolower(c) as c_int,
                 ctx.position,
             );
             if tmp2.is_null() {
@@ -1848,8 +1850,7 @@ fn parse_literal(
             ctx.re = ctx.re.add(1);
             node
         } else {
-            let node =
-                tre_ast_new_literal(ctx.mem, *ctx.re as c_int, *ctx.re as c_int, ctx.position);
+            let node = tre_ast_new_literal(ctx.mem, c as c_int, c as c_int, ctx.position);
             if node.is_null() {
                 *status = REG_ESPACE;
                 return ptr::null_mut();
@@ -1893,6 +1894,69 @@ mod bounded_bracket_tests {
             )
         };
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod bounded_lookahead_tests {
+    use super::*;
+    use crate::mainutils::grep::RegexWorkspace;
+    use crate::tre::compile::{CompiledTre, tre_compile_owned_slice};
+
+    fn compile(pattern: &str, flags: c_int) -> Result<CompiledTre, c_int> {
+        let pattern: Box<[_]> = pattern.chars().map(u32::from).collect();
+        tre_compile_owned_slice(&pattern, flags, RegexWorkspace::unbounded())
+    }
+
+    #[test]
+    fn bounded_lookahead_reports_incomplete_syntax() {
+        for (pattern, status) in [
+            ("(?", REG_BADPAT),
+            ("(?i", REG_BADPAT),
+            (r"\x{31", REG_EBRACE),
+            ("a{1,12", REG_EBRACE),
+            ("a{1,2 123", REG_BADBR),
+        ] {
+            assert_eq!(
+                compile(pattern, REG_EXTENDED).err(),
+                Some(status),
+                "{pattern:?}"
+            );
+        }
+        let wide_escape = format!("\\x{{{}41}}", "0".repeat(32));
+        assert_eq!(
+            compile(&wide_escape, REG_EXTENDED).err(),
+            Some(REG_EBRACE)
+        );
+    }
+
+    #[test]
+    fn bounded_lookahead_preserves_literal_flags_and_anchors() {
+        for (pattern, flags, text, expected) in [
+            ("", REG_LITERAL, &b"a"[..], Some((0, 0))),
+            (r"\Q", REG_EXTENDED, &b"a"[..], Some((0, 0))),
+            (r"\Qab\E", REG_EXTENDED, &b"xab"[..], Some((1, 3))),
+            ("(?i:a)b", REG_EXTENDED, &b"Ab"[..], Some((0, 2))),
+            ("(?i:a)b", REG_EXTENDED, &b"AB"[..], None),
+            (r"\x{41}", REG_EXTENDED, &b"A"[..], Some((0, 1))),
+            ("^$", 0, &b""[..], Some((0, 0))),
+            ("^$", 0, &b"x"[..], None),
+            ("($", 0, &b"("[..], Some((0, 1))),
+        ] {
+            let regex = compile(pattern, flags).unwrap();
+            let mut output = [regmatch_t::default()];
+            let actual = regex.match_bytes(text, &mut output, 0);
+            if let Some(offsets) = expected {
+                assert_eq!(actual, REG_OK, "{pattern:?}, {text:?}");
+                assert_eq!(
+                    (output[0].rm_so, output[0].rm_eo),
+                    offsets,
+                    "{pattern:?}, {text:?}"
+                );
+            } else {
+                assert_eq!(actual, REG_NOMATCH, "{pattern:?}, {text:?}");
+            }
+        }
     }
 }
 
