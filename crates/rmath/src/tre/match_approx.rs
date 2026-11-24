@@ -308,6 +308,7 @@ pub(super) unsafe fn run_approx(
         else {
             return REG_ESPACE;
         };
+        let (mut reach_tag_base, mut next_tag_base) = (0, state_count);
         let directions = if tag_count == 0 {
             &[][..]
         } else {
@@ -355,7 +356,7 @@ pub(super) unsafe fn run_approx(
                         }
                         next.state = (*trans).state;
                         next.pos = pos;
-                        let row = tags.row_mut(state_count + stateid);
+                        let row = tags.row_mut(next_tag_base + stateid);
                         row.fill(-1);
                         apply_tags((*trans).tags, row, pos);
 
@@ -419,7 +420,7 @@ pub(super) unsafe fn run_approx(
 
                 next.state = source.state;
                 next.pos = pos;
-                tags.copy_row(id, state_count + id);
+                tags.copy_row(reach_tag_base + id, next_tag_base + id);
                 next.params = source.params;
                 next.depth = source.depth;
                 next.costs[..=depth].copy_from_slice(&source.costs[..=depth]);
@@ -494,7 +495,7 @@ pub(super) unsafe fn run_approx(
                             continue;
                         }
 
-                        tags.copy_row(state_count + id, tmp_row);
+                        tags.copy_row(next_tag_base + id, tmp_row);
                         apply_tags((*trans).tags, tags.row_mut(tmp_row), pos);
 
                         if reach_next[dest_id].pos == pos
@@ -504,7 +505,7 @@ pub(super) unsafe fn run_approx(
                                         || tre_tag_order(
                                             directions,
                                             tags.row(tmp_row),
-                                            tags.row(state_count + dest_id),
+                                            tags.row(next_tag_base + dest_id),
                                         ) == 0)))
                         {
                             trans = trans.add(1);
@@ -513,7 +514,7 @@ pub(super) unsafe fn run_approx(
 
                         reach_next[dest_id].state = (*trans).state;
                         reach_next[dest_id].pos = pos;
-                        tags.copy_row(tmp_row, state_count + dest_id);
+                        tags.copy_row(tmp_row, next_tag_base + dest_id);
                         reach_next[dest_id].params = reach_next[id].params;
                         if !(*trans).params.is_null() {
                             tre_set_params(
@@ -587,8 +588,11 @@ pub(super) unsafe fn run_approx(
                 next_c = 0;
             }
 
-            // Consume from reach_next into reach, as in the legacy matcher.
-            for (id, source) in reach_next.iter().enumerate() {
+            // The current position becomes the source for exact matches and substitutions.
+            // Keep each capture-tag row paired with its reach table.
+            std::mem::swap(&mut reach, &mut reach_next);
+            std::mem::swap(&mut reach_tag_base, &mut next_tag_base);
+            for (id, source) in reach.iter().enumerate() {
                 if source.pos < prev_pos {
                     continue;
                 }
@@ -597,7 +601,7 @@ pub(super) unsafe fn run_approx(
                     let Ok(dest_id) = usize::try_from((*trans).state_id) else {
                         return REG_ESPACE;
                     };
-                    let Some(next) = reach.get_mut(dest_id) else {
+                    let Some(next) = reach_next.get_mut(dest_id) else {
                         return REG_ESPACE;
                     };
                     let depth = source.depth as usize;
@@ -650,7 +654,7 @@ pub(super) unsafe fn run_approx(
                         }
                     }
 
-                    tags.copy_row(state_count + id, tmp_row);
+                    tags.copy_row(reach_tag_base + id, tmp_row);
                     apply_tags((*trans).tags, tags.row_mut(tmp_row), pos);
 
                     if next.pos == pos
@@ -659,7 +663,7 @@ pub(super) unsafe fn run_approx(
                                 && tre_tag_order(
                                     directions,
                                     tags.row(tmp_row),
-                                    tags.row(dest_id),
+                                    tags.row(next_tag_base + dest_id),
                                 ) == 0))
                     {
                         trans = trans.add(1);
@@ -668,7 +672,7 @@ pub(super) unsafe fn run_approx(
 
                     next.state = (*trans).state;
                     next.pos = pos;
-                    tags.copy_row(tmp_row, dest_id);
+                    tags.copy_row(tmp_row, next_tag_base + dest_id);
                     next.depth = source.depth;
                     next.params = source.params;
                     if !(*trans).params.is_null() {

@@ -1479,6 +1479,87 @@ mod tests {
     }
 
     #[test]
+    fn approximate_matching_advances_states_and_capture_tags() {
+        let params = regaparams_t {
+            cost_ins: 1,
+            cost_del: 1,
+            cost_subst: 1,
+            max_cost: 1,
+            max_ins: 1,
+            max_del: 1,
+            max_subst: 1,
+            max_err: 1,
+        };
+        let (mut anchored, rc) = unsafe { compile("^(ab)(cd)$", REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+        let (mut unanchored, rc) = unsafe { compile("(ab)(cd)", REG_EXTENDED) };
+        assert_eq!(rc, REG_OK);
+
+        // Zero-based, half-open offsets from GNU R 4.6.2 aregexec(useBytes = TRUE).
+        for (regex, text, expected) in [
+            (&anchored, c"abcd", Some(([(0, 4), (0, 2), (2, 4)], (0, 0, 0, 0)))),
+            (
+                &anchored,
+                c"abxd",
+                Some(([(0, 4), (0, 2), (2, 4)], (1, 0, 0, 1))),
+            ),
+            (
+                &anchored,
+                c"abXcd",
+                Some(([(0, 5), (0, 2), (2, 5)], (1, 1, 0, 0))),
+            ),
+            (
+                &anchored,
+                c"abd",
+                Some(([(0, 3), (0, 2), (2, 3)], (1, 0, 1, 0))),
+            ),
+            (&anchored, c"abXYcd", None),
+            (
+                &unanchored,
+                c"axcd__abcd",
+                Some(([(6, 10), (6, 8), (8, 10)], (0, 0, 0, 0))),
+            ),
+        ] {
+            let mut output = [regmatch_t::default(); 3];
+            let mut matched = regamatch_t {
+                nmatch: output.len(),
+                pmatch: output.as_mut_ptr(),
+                cost: -1,
+                num_ins: -1,
+                num_del: -1,
+                num_subst: -1,
+            };
+            // SAFETY: the compiled regex, input, and output array are live for the call.
+            let status = unsafe {
+                tre_reganexec(
+                    regex,
+                    text.as_ptr(),
+                    text.to_bytes().len(),
+                    &mut matched,
+                    params,
+                    0,
+                )
+            };
+            if let Some((offsets, costs)) = expected {
+                assert_eq!(status, REG_OK, "{text:?}");
+                assert_eq!(output.map(|m| (m.rm_so, m.rm_eo)), offsets, "{text:?}");
+                assert_eq!(
+                    (matched.cost, matched.num_ins, matched.num_del, matched.num_subst),
+                    costs,
+                    "{text:?}"
+                );
+            } else {
+                assert_eq!(status, REG_NOMATCH, "{text:?}");
+            }
+        }
+        // SAFETY: each compiled regex has no remaining borrowers.
+        unsafe {
+            tre_regfree(&mut anchored);
+            tre_regfree(&mut unanchored);
+        }
+    }
+
+    #[test]
     fn capture_with_alternation() {
         unsafe {
             let (mut preg, rc) = compile("(cat|dog) food", REG_EXTENDED);
